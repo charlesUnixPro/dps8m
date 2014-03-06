@@ -1,0 +1,2387 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>wired_fim.alm                                                                                                                                        
+ASSEMBLED ON:	11/11/89  0951.6 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  
+                                    13  " HISTORY COMMENTS:
+                                    14  "  1) change(87-03-02,Lippard), approve(87-04-06,MCR7658),
+                                    15  "     audit(87-06-10,Fawcett), install(87-07-17,MR12.1-1043):
+                                    16  "     Modified to complete cam_wait race fix.  (This fix from SGH (UNCA).)
+                                    17  "                                                      END HISTORY COMMENTS
+                                    18  
+                                    19  
+                                    20  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    21  "
+                                    22  "	wired_fim
+                                    23  "
+                                    24  "	Last Modified: (Date and Reason)
+                                    25  "	Written 1/70 S.Webber
+                                    26  "	Modified by S.Webber 01/01/72 for followon
+                                    27  "	Modified by S.Webber 10/15/73 to add SPL/LPL code for all faults
+                                    28  "	Modified by S.Webber 12/18/73 to remove page fault code
+                                    29  "	Modified by Noel I. Morris 2/11/76 for new connect faults
+                                    30  "	Modified by Mike Grady 6/79 to do stop on prds
+                                    31  "	Modified by J. A. Bush 3/80 to store execute fault time in machine conditions
+                                    32  "	Modified by J. Bongiovanni 1/81 for fault_counters
+                                    33  "	Modified by J. Bongiovanni 2/81 for fast connect code,
+                                    34  "		traffic control race condition
+                                    35  "	Modified by J. A. Bush 6/3/81 to save fault time for unexpected faults
+                                    36  "	Modified by J. Bongiovanni 1/05/82 to fix CPU start wait bug
+                                    37  "	Modified by R. Coppola 10/12/83 to meter faults on a per-cpu basis
+                                    38  "         Modified 84-03-13 BIM (after Steve Harris) to close cam_wait race
+                                    39  "
+                                    40  "	The following entries exist within this procedure:
+                                    41  "
+                                    42  "	connect_handler	handles inter-processor communication
+                                    43  "
+                                    44  "	pre_empt_return	return from pxss after pre-empt
+                                    45  "
+                                    46  "	ignore		certain faults are ignored here
+                                    47  "
+                                    48  "	timer_runout	timer runout faults are mapped into
+                                    49  "			pre-empts
+                                    50  "
+                                    51  "	unexp_fault	unexpected faults come here during
+                                    52  "			system initialization
+                                    53  "
+                                    54  "	xec_fault		execute faults will cause return to BOS
+                                    55  "
+                                    56  "
+                                    57  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    58  
+                                    59  
+    000000                          60  	name	wired_fim
+                                    61  
+                                    62  " 
+                                    63  
+                                    64  	include	pxss_page_stack
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   1-3  "
+                                   1-4  
+                        000006     1-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     1-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   1-7  
+                                   1-8  	temp8	notify_regs
+                                   1-9  	temp	save_stack(stack_size),stackp
+                                  1-10  	tempd	pre_time,pre_temp(3)
+                                  1-11  	tempd	arg(11),temp
+                                  1-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  1-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  1-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  1-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  1-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  1-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  1-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  1-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  1-20  	temp	lock_volmap_temp
+                                  1-21  	temp	volmap_page_temp
+                                  1-22  	tempd	free_store_start_time,post_io_start_time
+                                  1-23  
+                                  1-24  	temp	done_astep,volmap_page_temp_1
+                                  1-25  	temp	vtocx,pageno
+                                  1-26  
+                                  1-27  	tempd	page_synch_temp,page_synch_time
+                                  1-28  	temp	page_synch_index
+                                  1-29  
+                                  1-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  1-31  	tempd	pf_sdw
+                                  1-32  
+                                  1-33  	temp	pad(22)		" to grow compatibly
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  1-36  "
+                                    65  
+                                    66  " 
+                                    67  
+                        000002      68  	segdef	prs,scuinfo
+                        000004      69  	segdef	int_scuinfo
+                        000010      70  	segdef	trouble_prs,trouble_scuinfo
+                        000012      71  	segdef	ignore_scuinfo,ignore_pl
+                        000016      72  	segdef	my_linkage_ptr
+                                    73  
+                        000242      74  	segdef	pre_empt_return
+                        000067      75  	segdef	ignore
+                        000122      76  	segdef	timer_runout
+                        000020      77  	segdef	connect_handler
+                        000106      78  	segdef	unexp_fault
+                        000072      79  	segdef	xec_fault
+                                    80  
+                                    81  
+                                    82  
+                                    83  
+                                    84  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    85  "
+                                    86  "	The following variables are set up during initialization.
+                                    87  "
+                                    88  "
+                                    89  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    90  
+                                    91  	even
+    000000                          92  prs:	bss	,2
+    000002                          93  scuinfo:	bss	,2
+                                    94  
+    000004                          95  int_scuinfo:
+    000004                          96  	bss	,2
+                                    97  
+    000006                          98  trouble_prs:
+    000006                          99  	bss	,2
+    000010                         100  trouble_scuinfo:
+    000010                         101  	bss	,2
+    000012                         102  ignore_pl:
+    000012                         103  	bss	,2
+    000014                         104  ignore_scuinfo:
+    000014                         105  	bss	,2
+                                   106  
+    000016                         107  my_linkage_ptr:
+    000016                         108  	bss	,2
+                                   109  
+                                   110  "
+                                   111  
+                                   112  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   113  "
+                                   114  "	CONNECT_HANDLER -- Handle Connect Faults.
+                                   115  "
+                                   116  "	Connect faults may be sent for the following reasons:
+                                   117  "	1.	To cause a system trouble abort.
+                                   118  "	2.	To clear cache and associative memory.
+                                   119  "		(the clearing has already been done by
+                                   120  "		 prds$fast_connect_code by the time we get here)
+                                   121  "	3.	To wait for a new CPU to start up.
+                                   122  "	4.	To cause a processor to delete itself.
+                                   123  "	5.	To cause a process pre-empt.
+                                   124  "	6.	To cause a process stop.
+                                   125  "	7.	To cause an IPS event to be signalled.
+                                   126  "
+                                   127  "
+                                   128  "	By the time this entry has been called, the fast connect
+                                   129  "	in the prds has been called.  This code has done the
+                                   130  "	following:
+                                   131  "
+                                   132  "	1. 	If scs$fast_cam_pending was set for this cpu,
+                                   133  "		AND this is not a cam_wait exchange,
+                                   134  "		xed  scs$cam_pair
+                                   135  "		stz  scs$fast_cam_pending + <processor tag>
+                                   136  "	2.	Added 1 to the counter
+                                   137  "		wired_hardcore_data$fault_counters + <FAULT_NO_CON>
+                                   138  "
+                                   139  "         In the cam_wait case the clearing of the fast_cam_pending
+                                   140  "	must await our being done with the pds, since it may be
+                                   141  "	under eviction to move it to another scu. Clearing fast_cam_pending
+                                   142  "	informs cam_cache that we are in fact looping on scs$cam_wait,
+                                   143  "	AND NOTHING ELSE.
+                                   144  "
+                                   145  "
+                                   146  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   147  
+    000020                         148  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                   149  	even
+    000020                         150  connect_handler:
+    000020  0a   000000 2542 20    151  	spri	prs,*		save prs
+    000021  0a   000000 3522 20    152  	eppbp	prs,*		bp -> place for machine conditions
+    000022  aa  2 00020 7533 00    153  	sreg	bp|mc.regs	save regs
+    000023  aa  2 00050 4477 00    154  	spl	bp|mc.eis_info	save EIS ptrs and lgths
+    000024  0a   000016 3702 20    155  	epplp	my_linkage_ptr,*	set up linkage ptr
+                                   156  
+    000025  4a  4 00012 7003 20    157  	tsx0	fim_util$v_time_init  start virtual time metering
+                                   158  
+    000026  4a  4 00014 2353 20    159  	lda	scs$sys_trouble_pending  system trouble?
+    000027  4a  4 00016 3153 20    160  	cana	prds$processor_pattern  for this CPU?
+    000030  4a  4 00020 6013 20    161  	tnz	sys_trouble$sys_trouble  go handle it
+                                   162  
+    000031  4a  4 00022 7003 20    163  	tsx0	fim_util$check_mct	go save M.C.s and hregs if trace is on
+    000032  aa   000000 0112 00    164  	nop			" return ic +1
+    000033  4a  4 00024 7003 20    165  	tsx0	fim_util$reset_mode_reg  start up hist regs again
+                                   166  
+    000034  4a  4 00016 2353 20    167  	lda	prds$processor_pattern	see if we're waiting for
+    000035  4a  4 00026 3153 20    168  	cana	scs$cam_wait		for all cams to clear
+    000036  0a   000156 6012 00    169  	tnz	cam_wait			yes--go do it
+                                   170  
+    000037  4a  4 00030 3153 20    171  	cana	scs$processor_start_wait  waiting for CPU to start up?
+    000040  0a   000205 6012 00    172  	tnz	start_wait	if so, go wait
+                                   173  
+    000041  4a  4 00032 7213 20    174  	lxl1	prds$processor_tag	CPU tag in X1
+    000042  4a  4 00034 2353 20    175  	lda	scs$processor_data,1  look at CPU flags
+    000043  aa   020000 3152 03    176  	cana	processor_data.delete_cpu,du  is this CPU to delete itself?
+    000044  0a   000152 6012 00    177  	tnz	delete_cpu	if so, cause a pre-emption
+                                   178  
+    000045  4a  4 00036 3717 20    179  more:	epplb	pds$apt_ptr,*	lb -> APT entry for this process
+    000046  aa  5 00001 2353 00    180  	lda	lb|apte.flags	look at process flags
+    000047  aa   100000 3152 03    181  	cana	apte.stop_pending,du  stop?
+    000050  0a   000254 6012 00    182  	tnz	stop		go handle stop
+                                   183  
+    000051  aa   000400 3152 03    184  	cana	apte.pre_empt_pending,du  pre-empt?
+    000052  0a   000231 6012 00    185  	tnz	pre_empt		go handle pre-empt
+                                   186  
+    000053  aa  5 00011 2353 00    187  	lda	lb|apte.ips_message	IPS message?
+    000054  0a   000265 6012 00    188  	tnz	ips		go handle IPS
+    000055  0a   000061 7102 00    189  	tra	exit		drop through to exit
+                                   190  
+                                   191  "
+                                   192  
+    000056                         193  ralr_set_1:
+    000056  aa   000001 2352 07    194  	lda	1,dl		cannot handle fault now
+    000057  4a  4 00040 7553 20    195  	sta	pds$alarm_ring	defer it until later
+                                   196  
+    000060  aa   000000 0112 03    197  	odd
+    000061                         198  exit:
+    000061  4a  4 00042 7003 20    199  	tsx0	fim_util$v_time_calc  calculate virtual time
+                                   200  
+    000062                         201  exit_1:
+    000062  aa  2 00050 4677 00    202  	lpl	bp|mc.eis_info	restore EIS ptrs and lths
+    000063  4a  4 00040 7747 20    203  	lra	pds$alarm_ring	FIM may have reset this
+    000064  aa  2 00020 0733 00    204  	lreg	bp|mc.regs	restore regs
+    000065  aa  2 00000 1733 00    205  	lpri	bp|mc.prs		and prs
+    000066  0a   000002 6132 20    206  	rcu	scuinfo,*		good-bye
+                                   207  
+                                   208  
+                                   209  
+                                   210  " 
+                                   211  
+                                   212  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   213  "
+                                   214  "	IGNORE -- several faults are ignored by directing them
+                                   215  "		to this entry.
+                                   216  "
+                                   217  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   218  
+    000067                         219  ignore:
+    000067  0a   000012 4476 20    220  	spl	ignore_pl,*         make EIS happy
+    000070  0a   000012 4676 20    221  	lpl	ignore_pl,*
+    000071  0a   000014 6132 20    222  	rcu	ignore_scuinfo,*	restore the machine conditions
+                                   223  
+                                   224  
+                                   225  
+                                   226  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   227  "
+                                   228  "	XEC_FAULT and UNEXP_FAULT -- These entries cause
+                                   229  "		the system to abort.
+                                   230  "
+                                   231  "
+                                   232  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   233  
+    000072                         234  xec_fault:
+    000072  0a   000006 2542 20    235  	spri	trouble_prs,*	save prs
+    000073  0a   000006 3522 20    236  	eppbp	trouble_prs,*	bp -> machine conditions
+    000074  aa  2 00020 7533 00    237  	sreg	bp|mc.regs	save regs
+    000075  aa  2 00050 4477 00    238  	spl	bp|mc.eis_info	save EIS ptrs and lths
+    000076  0a   000016 3702 20    239  	epplp	my_linkage_ptr,*	establish linkage ptr
+    000077  4a  4 00044 6333 20    240  	rccl	sys_info$clock_,*	read the clock
+    000100  aa  2 00046 7573 00    241  	staq	bp|mc.fault_time	and save in machine conditions
+                                   242  
+    000101  aa   000007 3352 07    243  	lca	trbl_exec_flt,dl	set sys trouble indicator
+    000102  4a  4 00014 7553 20    244  	sta	scs$sys_trouble_pending  ..
+    000103  4a  4 00046 2353 20    245  	lda	pds$processid	save our process ID
+    000104  4a  4 00050 3543 20    246  	stac	scs$trouble_processid if we're the first
+    000105  4a  4 00020 7103 20    247  	tra	sys_trouble$sys_trouble  map into sys_trouble code
+                                   248  
+                                   249  
+    000106                         250  unexp_fault:
+    000106  0a   000006 2542 20    251  	spri	trouble_prs,*	save prs
+    000107  0a   000006 3522 20    252  	eppbp	trouble_prs,*	bp -> machine conditions
+    000110  aa  2 00020 7533 00    253  	sreg	bp|mc.regs	save regs
+    000111  aa  2 00050 4477 00    254  	spl	bp|mc.eis_info	save EIS ptrs and lths
+    000112  0a   000016 3702 20    255  	epplp	my_linkage_ptr,*	establish linkage ptr
+    000113  4a  4 00044 6333 20    256  	rccl	sys_info$clock_,*	read the clock
+    000114  aa  2 00046 7573 00    257  	staq	bp|mc.fault_time	and save in machine conditions
+                                   258  
+    000115  aa   000006 3352 07    259  	lca	trbl_unexp_flt,dl	set sys trouble indicator
+    000116  4a  4 00014 7553 20    260  	sta	scs$sys_trouble_pending  ..
+    000117  4a  4 00046 2353 20    261  	lda	pds$processid	save our process ID
+    000120  4a  4 00050 3543 20    262  	stac	scs$trouble_processid if we're the first
+    000121  4a  4 00020 7103 20    263  	tra	sys_trouble$sys_trouble  map into sys_trouble code
+                                   264  
+                                   265  " 
+                                   266  
+                                   267  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   268  "
+                                   269  "	TIMER_RUNOUT - Timer runouts are mapped into pre-empts.
+                                   270  "
+                                   271  "
+                                   272  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   273  
+                                   274  	even
+    000122                         275  timer_runout:
+    000122  0a   000000 2542 20    276  	spri	prs,*		save prs
+    000123  0a   000000 3522 20    277  	eppbp	prs,*		bp -> machine conditions
+                                   278  
+    000124  aa  2 00020 7533 00    279  	sreg	bp|mc.regs	save regs
+    000125  aa  2 00050 4477 00    280  	spl	bp|mc.eis_info	save EIS ptrs and lths
+    000126  0a   000016 3702 20    281  	epplp	my_linkage_ptr,*	establish linkage ptr
+                                   282  
+    000127  4a  4 00012 7003 20    283  	tsx0	fim_util$v_time_init  start virtual time meter
+                                   284  
+    000130  4a  4 00022 7003 20    285  	tsx0	fim_util$check_mct	go save M.Cs ad hregs if trace is on
+    000131  aa   000000 0112 00    286  	nop			" return ic +1
+    000132  4a  4 00024 7003 20    287  	tsx0	fim_util$reset_mode_reg  start up hist regs
+    000133  4a  4 00032 2353 20    288  	lda	prds$processor_tag	get cpu num in A for index
+    000134  0a   000142 7162 05    289  	xec	fault_ctr_table,al	LB => per-cpu flt ctr array
+    000135  aa  5 00004 0543 00    290  	aos	lb|0+FAULT_NO_TRO
+                                   291  	
+    000136                         292  cause_pre_empt:
+    000136  4a  4 00036 3717 20    293  	epplb	pds$apt_ptr,*	lb -> APT entry for this process
+    000137  aa   000400 2202 03    294  	ldx0	apte.pre_empt_pending,du  get pre-empt indicator flag
+    000140  aa  5 00001 2403 00    295  	orsx0	lb|apte.flags	set pre-empt flag
+                                   296  
+    000141  0a   000231 7102 00    297  	tra	pre_empt		join common code
+                                   298  
+    000142                         299  fault_ctr_table: 
+    000142  4a  4 00052 3717 20    300  	epplb	wired_hardcore_data$cpu_a_flt_ctr_array
+    000143  4a  4 00054 3717 20    301  	epplb	wired_hardcore_data$cpu_b_flt_ctr_array
+    000144  4a  4 00056 3717 20    302  	epplb	wired_hardcore_data$cpu_c_flt_ctr_array
+    000145  4a  4 00060 3717 20    303  	epplb	wired_hardcore_data$cpu_d_flt_ctr_array
+    000146  4a  4 00062 3717 20    304  	epplb	wired_hardcore_data$cpu_e_flt_ctr_array
+    000147  4a  4 00064 3717 20    305  	epplb	wired_hardcore_data$cpu_f_flt_ctr_array
+    000150  4a  4 00066 3717 20    306  	epplb	wired_hardcore_data$cpu_g_flt_ctr_array
+    000151  4a  4 00070 3717 20    307  	epplb	wired_hardcore_data$cpu_h_flt_ctr_array
+                                   308  
+                                   309  
+                                   310  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   311  "
+                                   312  "	DELETE_CPU - Cause a pre-empt to stop CPU.
+                                   313  "
+                                   314  "
+                                   315  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   316  
+    000152                         317  delete_cpu:
+    000152  aa   000001 3352 07    318  	lca	1,dl		all ones in A
+    000153  4a  4 00016 6753 20    319  	era	prds$processor_pattern  get bit for CPU to be deleted
+    000154  4a  4 00072 3553 20    320  	ansa	scs$connect_lock	undo the connect lock
+                                   321  
+    000155  0a   000136 7102 00    322  	tra	cause_pre_empt	now, cause a pre-empt to take place
+                                   323  
+                                   324  " 
+                                   325  
+                                   326  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   327  "
+                                   328  "	CAM_WAIT -- Wait for all cpus to clear, and originator to
+                                   329  "		  give "Go"
+                                   330  "
+                                   331  "
+                                   332  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   333  
+    000156                         334  cam_wait: 
+    000156  4a  4 00074 3737 20    335  	eppsb	prds$		push a frame onto the prds
+    000157  0a   000325 2272 00    336  	ldx7	push		..
+    000160  4a  4 00076 7003 20    337  	tsx0	fim_util$push_stack_32  ..
+                                   338  
+    000161  aa  6 00050 3503 00    339  	eppap	notify_regs	ap -> place to copy conditions
+    000162  4a  4 00100 7003 20    340  	tsx0	fim_util$copy_mc	copy the conditions into stack
+                                   341  
+                                   342  " NB: once scs$fast_cam_pending is cleared by this processor it must
+                                   343  " not reference anything that the originator of the cam_wait condition
+                                   344  " might be in the process of moving -- see evict_page.alm.  This includes
+                                   345  " pds and prds pages which may exist outside of bootload memory.
+                                   346  
+    000163  4a  4 00102 7003 20    347  	tsx0	fim_util$set_mask	must uninhibit to prevent lockup
+                                   348  
+    000164  4a  4 00016 2353 20    349  	lda	prds$processor_pattern  get bit for this CPU
+                                   350  
+    000165  4a  4 00104 7173 20    351  	xed	scs$cam_pair	clear AM (and maybe cache?)
+    000166  4a  4 00032 7273 20    352  	lxl7	prds$processor_tag
+    000167  4a  4 00106 4503 20    353  	stz	scs$fast_cam_pending,x7 signal that we are out of the way
+                                   354  
+    000170                         355  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   356  
+    000170  4a  4 00026 3151 20    357  	cana	scs$cam_wait	still waiting?
+    000171  0a   000175 6000 00    358  	tze	*+4		if not, exit loop
+    000172  aa   000110 7770 00    359  	llr	72
+    000173  aa   000110 7770 00    360  	llr	72
+    000174  0a   000170 7100 00    361  	tra	*-4		if so, wait more
+                                   362  
+    000175  4a  4 00110 7001 20    363  	tsx0	fim_util$restore_mask  can inhibit again
+    000176                         364  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                   365  
+    000176  aa   000000 5322 00    366  	cams	0		now, clear A.M.'s
+    000177  aa   000000 5326 00    367  	camp	0		a second time
+                                   368  
+    000200  0a   000000 3502 20    369  	eppap	prs,*		prepare to copy machine conditions back
+    000201  4a  4 00100 7003 20    370  	tsx0	fim_util$copy_mc	..
+                                   371  
+    000202  aa  6 77740 3503 00    372  	eppap	sp|-32		get original stack end pointer
+    000203  aa  7 00024 2503 00    373  	spriap	sb|stack_header.stack_end_ptr  pop our stack frame
+    000204  0a   000045 7102 00    374  	tra	more		and leave
+                                   375  
+                                   376  " 
+                                   377  
+                                   378  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   379  "
+                                   380  "	START_WAIT - Wait until new CPU has started up.
+                                   381  "
+                                   382  "
+                                   383  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   384  
+    000205                         385  start_wait:
+    000205  aa   000001 3352 07    386  	lca	1,dl		all ones in A
+    000206  4a  4 00016 6753 20    387  	era	prds$processor_pattern  turn off bit for this CPU
+    000207  4a  4 00030 3553 20    388  	ansa	scs$processor_start_wait  check ourselves off
+                                   389  
+    000210  4a  4 00074 3737 20    390  	eppsb	prds$		push a frame onto the prds
+    000211  0a   000325 2272 00    391  	ldx7	push		..
+    000212  4a  4 00076 7003 20    392  	tsx0	fim_util$push_stack_32  ..
+                                   393  
+    000213  aa  6 00050 3503 00    394  	eppap	notify_regs	ap -> place to copy conditions
+    000214  4a  4 00100 7003 20    395  	tsx0	fim_util$copy_mc	copy the conditions into stack
+                                   396  
+    000215  4a  4 00102 7003 20    397  	tsx0	fim_util$set_mask	uninhibit to prevent lockups
+    000216                         398  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   399  
+    000216  4a  4 00072 2341 20    400  	szn	scs$connect_lock	test connect lock
+    000217  0a   000223 6000 00    401  	tze	*+4		wait until it is cleared
+    000220  aa   000110 7770 00    402  	llr	72
+    000221  aa   000110 7770 00    403  	llr	72
+    000222  0a   000216 7100 00    404  	tra	*-4
+                                   405  
+    000223  4a  4 00110 7001 20    406  	tsx0	fim_util$restore_mask  can inhibit again
+    000224                         407  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                   408  
+    000224  0a   000000 3502 20    409  	eppap	prs,*		prepare to copy machine conditions back
+    000225  4a  4 00100 7003 20    410  	tsx0	fim_util$copy_mc	..
+                                   411  
+    000226  aa  6 77740 3503 00    412  	eppap	sp|-32		get original stack end pointer
+    000227  aa  7 00024 2503 00    413  	spriap	sb|stack_header.stack_end_ptr  pop our stack frame
+    000230  0a   000061 7102 00    414  	tra	exit		all finished waiting
+                                   415  
+                                   416  " 
+                                   417  
+                                   418  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   419  "
+                                   420  "	PRE_EMPT - Handle process pre-emptions.
+                                   421  "
+                                   422  "
+                                   423  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   424  
+    000231                         425  pre_empt:
+    000231  0a   000312 7002 00    426  	tsx0	ring_test		ring 0 & not idle?
+    000232  0a   000056 7102 00    427  	tra	ralr_set_1	if so, delay this for later
+                                   428  
+    000233  4a  4 00112 3503 20    429  	eppap	pds$page_fault_data	copy machine conditions
+    000234  4a  4 00100 7003 20    430  	tsx0	fim_util$copy_mc	..
+                                   431  
+    000235  4a  4 00102 7003 20    432  	tsx0	fim_util$set_mask	mask system controller
+                                   433  
+    000236  4a  4 00074 3737 20    434  	eppsb	prds$		establish stack frame on the prds
+    000237  0a   000325 2272 00    435  	ldx7	push		..
+    000240  4a  4 00114 7003 20    436  	tsx0	fim_util$push_stack	..
+    000241                         437  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   438  
+    000241  4a  4 00116 7101 20    439  	tra	pxss$pre_empt	go to pxss
+                                   440  
+                                   441  
+                                   442  
+                                   443  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   444  "
+                                   445  "	PRE_EMPT_RETURN -- Transferred to when pre_empt has been processed
+                                   446  "
+                                   447  "
+                                   448  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   449  
+    000242                         450  pre_empt_return:
+    000242  0a   000016 3700 20    451  	epplp	my_linkage_ptr,*
+    000243  4a  4 00112 3521 20    452  	eppbp	pds$page_fault_data	get pointer to machine conditions
+                                   453  
+    000244  4a  4 00110 7001 20    454  	tsx0	fim_util$restore_mask  restore old controller mask
+    000245                         455  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                   456  
+    000245  aa  7 00022 2373 00    457  	ldaq	sb|stack_header.stack_begin_ptr  restore prds to virgin state
+    000246  aa  7 00024 7573 00    458  	staq	sb|stack_header.stack_end_ptr  ..
+                                   459  
+                                   460  	odd
+    000247  4a  4 00042 7003 20    461  	tsx0	fim_util$v_time_calc  compute virtual time
+                                   462  
+    000250  aa  2 00050 4677 00    463  	lpl	bp|mc.eis_info	restore EIS ptrs and lths
+    000251  aa  2 00020 0733 00    464  	lreg	bp|mc.regs	restore regs
+    000252  aa  2 00000 1733 00    465  	lpri	bp|mc.prs		and prs
+    000253  0a   000004 6132 20    466  	rcu	int_scuinfo,*	bye-bye
+                                   467  
+                                   468  " 
+                                   469  
+                                   470  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   471  "
+                                   472  "	STOP - Handle process stop
+                                   473  "
+                                   474  "
+                                   475  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   476  
+    000254                         477  stop:
+    000254  0a   000312 7002 00    478  	tsx0	ring_test		ring 0 & not idle?
+    000255  0a   000056 7102 00    479  	tra	ralr_set_1	if so, delay handling this
+                                   480  
+    000256  4a  4 00112 3503 20    481  	eppap	pds$page_fault_data	copy machine conditions
+    000257  4a  4 00100 7003 20    482  	tsx0	fim_util$copy_mc	..
+                                   483  
+    000260  4a  4 00102 7003 20    484  	tsx0	fim_util$set_mask	mask system controller
+                                   485  
+    000261  4a  4 00074 3737 20    486  	eppsb	prds$		Establish stack on prds
+    000262  0a   000325 2272 00    487  	ldx7	push		..
+    000263  4a  4 00114 7003 20    488  	tsx0	fim_util$push_stack	..
+    000264                         489  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   490  
+    000264  4a  4 00120 7101 20    491  	tra	pxss$force_stop	go to pxss
+                                   492  
+    000265                         493  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                   494  
+                                   495  " 
+                                   496  
+                                   497  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   498  "
+                                   499  "	IPS - Handle Interprocess Signals
+                                   500  "
+                                   501  "
+                                   502  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   503  
+    000265                         504  ips:
+    000265  0a   000312 7002 00    505  	tsx0	ring_test		ring 0 & not idle?
+    000266  0a   000056 7102 00    506  	tra	ralr_set_1	we'll hear about this later
+                                   507  
+    000267  4a  4 00122 3503 20    508  	eppap	pds$signal_data	copy the machine conditions
+    000270  4a  4 00100 7003 20    509  	tsx0	fim_util$copy_mc	..
+                                   510  
+    000271  4a  4 00124 3737 20    511  	eppsb	pds$stack_0_ptr,*	Establish pageable stack.
+    000272  0a   000325 2272 00    512  	ldx7	push		..
+    000273  4a  4 00114 7003 20    513  	tsx0	fim_util$push_stack	..
+                                   514  
+    000274  4a  4 00042 7003 20    515  	tsx0	fim_util$v_time_calc  compute virtual time
+    000275                         516  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   517  
+    000275  aa  6 00000 2541 00    518  	call	proc_int_handler$proc_int_handler
+    000276  0a   000330 3500 00
+    000277  4a  4 00010 3521 20
+    000300  aa  6 00040 7531 00
+    000301  aa  7 00036 6701 20
+    000302  aa  6 00000 1731 00
+    000303  aa  6 00040 0731 00
+                                   519  
+    000304                         520  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+    000304  0a   000000 3502 20    521  	eppap	prs,*		copy SCU data only back
+    000305  aa  0 00100 1007 00    522  	mlr	(pr),(pr)		..
+    000306  aa   200030 000040     523  	desc9a	bp|mc.scu,8*4
+    000307  aa   000030 000040     524  	desc9a	ap|mc.scu,8*4
+                                   525  
+    000310  aa  7 00024 6523 00    526  	sprisp	sb|stack_header.stack_end_ptr  release our stack frame
+    000311  0a   000062 7102 00    527  	tra	exit_1		all finished
+                                   528  
+                                   529  " 
+                                   530  
+                                   531  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   532  "
+                                   533  "	RING_TEST - internal subroutine to see if process
+                                   534  "		is in ring 0 and not an idle process
+                                   535  "
+                                   536  "
+                                   537  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   538  
+    000312                         539  ring_test:
+    000312  aa  2 00030 2353 00    540  	lda	bp|mc.scu.ppr.prr_word  get PRR
+    000313  aa   700000 3752 03    541  	ana	scu.ppr.prr_mask,du ..
+    000314  aa   000001 6012 10    542  	tnz	1,0		if outer ring, take second return
+                                   543  
+    000315  aa  5 00001 2353 00    544  	lda	lb|apte.flags	get process flags
+    000316  aa   002000 3152 03    545  	cana	apte.idle,du	idle process?
+    000317  aa   000000 6002 10    546  	tze	0,0		if not, take first return
+                                   547  
+    000320  aa  6 00000 2133 00    548  	epaq	sp|0		get stack pointer in AQ
+    000321  aa   000000 6272 01    549  	eax7	0,au		stack segno in X7
+    000322  0a   000010 1072 00    550  	cmpx7	trouble_scuinfo	is it prds?
+    000323  aa   000000 6002 10    551  	tze	0,0		if so, go away
+    000324  aa   000001 7102 10    552  	tra	1,0		if not, take second return
+                                   553  
+                                   554  " 
+                                   555  
+    000325  aa   000300 6272 00    556  push:	push
+    000326  aa  7 00040 2723 20
+                                   557  
+                                   558  
+                                   559  	include	mc
+                                   2-1  "
+                                   2-2  "	BEGIN INCLUDE FILE  mc.incl.alm  6/72 SHW
+                                   2-3  "	Modified 8/80 by J. A. Bush for dps8/70M CPU
+                                   2-4  "
+                                   2-5  
+                                   2-6  "	General layout of data items.
+                                   2-7  
+                        000000     2-8  	equ	mc.prs,0		pointer registers
+                        000020     2-9  	equ	mc.regs,16	registers
+                        000030    2-10  	equ	mc.scu,24		SCU data
+                        000050    2-11  	equ	mc.eis_info,40	pointers and lengths for EIS
+                                  2-12  
+                                  2-13  "	Temporary storage for software
+                                  2-14  
+                        000040    2-15  	equ	mc.mask,32	system controller mask at time of fault
+                        000042    2-16  	equ	mc.ips_temp,34	temporary storage for IPS info
+                        000043    2-17  	equ	mc.errcode,35	error code
+                        000044    2-18  	equ	mc.fim_temp,36	temporary to hold fault index and unique index
+                        000045    2-19  	equ	mc.fault_reg,37	fault register
+                        000046    2-20  	equ	mc.fault_time,38	time of fault
+                        000046    2-21  	equ	mc.cpu_type_word,38	CPU type from  rsw (2). overlays part of time word
+                        300000    2-22  	bool	mc.cpu_type_mask,300000 DU
+                        000046    2-23  	equ	mc.ext_fault_reg,38	ext fault reg for dps8. overlays part of time word
+                        077774    2-24  	bool	mc.ext_fault_reg_mask,77774 DU
+                        000003    2-25  	equ	mc.cpu_type_shift,3 positions to shift right or left
+                                  2-26  
+                                  2-27  
+                                  2-28  
+                                  2-29  "	SCU  DATA
+                                  2-30  
+                                  2-31  "	WORD  (0)		PROCEDURE POINTER REGISTER
+                                  2-32  
+                        000030    2-33  	equ	mc.scu.ppr.prr_word,24	Procedure Ring Register
+                        000000    2-34  	equ	scu.ppr.prr_word,0
+                        700000    2-35  	bool	scu.ppr.prr_mask,700000	DU
+                        000041    2-36  	equ	scu.ppr.prr_shift,33
+                                  2-37  
+                        000030    2-38  	equ	mc.scu.ppr.psr_word,24	Procedure Segment Register
+                        000000    2-39  	equ	scu.ppr.psr_word,0
+                        077777    2-40  	bool	scu.ppr.psr_mask,077777	DU
+                        000022    2-41  	equ	scu.ppr.psr_shift,18
+                                  2-42  
+                        000030    2-43  	equ	mc.scu.ppr.p_word,24	Procedure Privileged Bit
+                        000000    2-44  	equ	scu.ppr.p_word,0
+                        400000    2-45  	bool	scu.ppr.p,400000		DL
+                                  2-46  
+                                  2-47  "	  APPENDING UNIT STATUS
+                        000030    2-48  	equ	mc.scu.apu_stat_word,24	APPENDING UNIT STATUS
+                        000000    2-49  	equ	scu.apu_stat_word,0		
+                                  2-50  
+                        200000    2-51  	bool	scu.apu.xsf,200000		DL - Ext Seg Flag - IT mod.
+                        100000    2-52  	bool	scu.apu.sdwm,100000		DL - Match in SDW Ass. Mem.
+                        040000    2-53  	bool	scu.apu.sd_on,040000	DL - SDW Ass. Mem.  ON
+                        020000    2-54  	bool	scu.apu.ptwm,020000		DL - Match in PTW Ass. Mem.
+                        010000    2-55  	bool	scu.apu.pt_on,010000	DL - PTW Ass. Mem.  ON
+                        004000    2-56  	bool	scu.apu.pi_ap,004000	DL - Instr fetch or Append cycle
+                        002000    2-57  	bool	scu.apu.dsptw,002000	DL - Fetch of DSPTW
+                        001000    2-58  	bool	scu.apu.sdwnp,001000	DL - Fetch of SDW non-paged
+                        000400    2-59  	bool	scu.apu.sdwp,000400		DL - Fetch of SDW paged
+                        000200    2-60  	bool	scu.apu.ptw,000200		DL - Fetch of PTW
+                        000100    2-61  	bool	scu.apu.ptw2,000100		DL - Fetch of pre-paged  PTW
+                        000040    2-62  	bool	scu.apu.fap,000040		DL - Fetch of final address paged
+                        000020    2-63  	bool	scu.apu.fanp,000020		DL - Fetch final address non-paged
+                        000010    2-64  	bool	scu.apu.fabs,000010		DL - Fetch of final address absolute
+                                  2-65  
+                        000030    2-66  	equ	mc.scu.fault_cntr_word,24	Num of retrys of EIS instructions.
+                        000000    2-67  	equ	scu.fault_cntr_word,0	
+                                  2-68  
+                        000007    2-69  	bool	scu.fault_cntr_mask,000007
+                                  2-70  
+                                  2-71  
+                                  2-72  "	WORD  (1)		FAULT DATA
+                                  2-73  
+                        000031    2-74  	equ	mc.scu.fault_data_word,25	FAULT  DATA
+                        000001    2-75  	equ	scu.fault_data_word,1
+                                  2-76  
+                        400000    2-77  	bool	scu.fd.iro,400000		DU - Illegal Ring Order
+                        200000    2-78  	bool	scu.fd.oeb,200000		DU - Not In Execute Bracket
+                        100000    2-79  	bool	scu.fd.e_off,100000		DU - No  Execute
+                        040000    2-80  	bool	scu.fd.orb,040000		DU - Not In Read Bracket
+                        020000    2-81  	bool	scu.fd.r_off,020000		DU - No  Read
+                        010000    2-82  	bool	scu.fd.owb,010000		DU - Not In Write Bracket
+                        004000    2-83  	bool	scu.fd.w_off,004000		DU - No  Write
+                        002000    2-84  	bool	scu.fd.no_ga,002000		DU - Not A Gate
+                        001000    2-85  	bool	scu.fd.ocb,001000		DU - Not in  Call Bracket
+                        000400    2-86  	bool	scu.fd.ocall,000400		DU - Outward Call
+                        000200    2-87  	bool	scu.fd.boc,000200		DU - Bad Outward Call
+                        000100    2-88  	bool	scu.fd.inret,000100		DU - Inward Return
+                        000040    2-89  	bool	scu.fd.crt,000040		DU - Cross  Ring Transfer
+                        000020    2-90  	bool	scu.fd.ralr,000020		DU - Ring   Alarm
+                        000010    2-91  	bool	scu.fd.am_er,000010		DU - Assoc. Mem. Fault
+                        000004    2-92  	bool	scu.fd.oosb,000004		DU - Out Of Bounds
+                        000002    2-93  	bool	scu.fd.paru,000002		DU - Parity Upper
+                        000001    2-94  	bool	scu.fd.parl,000001		DU - Parity Lower
+                                  2-95  
+                        400000    2-96  	bool	scu.fd.onc_1,400000		DL - Op Not Complete
+                        200000    2-97  	bool	scu.fd.onc_2,200000		DL - Op Not Complete
+                                  2-98  
+                                  2-99  "  	  GROUP II  FAULT DATA
+                        400000   2-100  	bool	scu.fd.isn,400000		DU - Illegal Segment Number
+                        200000   2-101  	bool	scu.fd.ioc,200000		DU - Illegal Op Code
+                        100000   2-102  	bool	scu.fd.ia_im,100000		DU - Illegal Addr - Modifier
+                        040000   2-103  	bool	scu.fd.isp,040000		DU - Illegal Slave Procedure
+                        020000   2-104  	bool	scu.fd.ipr,020000		DU - Illegal Procedure
+                        010000   2-105  	bool	scu.fd.nea,010000		DU - Non Existent Address
+                        004000   2-106  	bool	scu.fd.oobb,004000		DU - Out Of  Bounds
+                                 2-107  
+                        000031   2-108  	equ	mc.scu.port_stat_word,25	PORT STATUS
+                        000001   2-109  	equ	scu.port_stat_word,1
+                                 2-110  
+                        170000   2-111  	bool	scu.ial_mask,170000		DL - Illegal Action Lines
+                        000014   2-112  	equ	scu.ial_shift,12
+                                 2-113  
+                        007000   2-114  	bool	scu.iac_mask,007000		DL - Illegal Action Channel
+                        000011   2-115  	equ	scu.iac_shift,9
+                                 2-116  
+                        000700   2-117  	bool	scu.con_chan_mask,000700	DL - Connect Channel
+                        000006   2-118  	equ	scu.con_chan_shift,6
+                                 2-119  
+                        000076   2-120  	bool	scu.fi_num_mask,000076	DL - Fault / Interrupt  Number
+                        000001   2-121  	equ	scu.fi_num_shift,1
+                                 2-122  
+                        000001   2-123  	bool	scu.fi_flag_mask,000001	DL - Fault / Interrupt  Flag
+                                 2-124  
+                                 2-125  
+                                 2-126  "	WORD  (2)		TEMPORARY POINTER REGISTER
+                                 2-127  
+                        000032   2-128  	equ	mc.scu.tpr.trr_word,26	Temporary Ring Register
+                        000002   2-129  	equ	scu.tpr.trr_word,2
+                        700000   2-130  	bool	scu.tpr.trr_mask,700000	DU
+                        000041   2-131  	equ	scu.tpr.trr_shift,33
+                                 2-132  
+                        000032   2-133  	equ	mc.scu.tpr.tsr_word,26	Temporary Segment Register
+                        000002   2-134  	equ	scu.tpr.tsr_word,2
+                        077777   2-135  	bool	scu.tpr.tsr_mask,077777	DU
+                        000022   2-136  	equ	scu.tpr.tsr_shift,18
+                                 2-137  
+                        000032   2-138  	equ	mc.scu.cpu_no_word,26	CPU  Number
+                        000002   2-139  	equ	scu.cpu_no_word,2
+                                 2-140  
+                        000700   2-141  	bool	scu.cpu_no_mask,000700	DL
+                        000006   2-142  	equ	scu.cpu_shift,6
+                                 2-143  
+                        000032   2-144  	equ	mc.scu.delta_word,26	Tally Modification DELTA
+                        000002   2-145  	equ	scu.delta_word,2
+                                 2-146  
+                        000077   2-147  	bool	scu.delta_mask,000077	DL
+                                 2-148  
+                                 2-149  
+                                 2-150  "	WORD  (3)		TSR STATUS
+                                 2-151  
+                        000033   2-152  	equ	mc.scu.tsr_stat_word,27	TSR STATUS for 1,2, and 3
+                        000003   2-153  	equ	scu.tsr_stat_word,3		Word Instructions
+                                 2-154  
+                        777700   2-155  	bool	scu.tsr_stat_mask,777700	DL - All of Status
+                        000006   2-156  	equ	scu.tsr_stat_shift,6
+                                 2-157  
+                        740000   2-158  	bool	scu.tsna_mask,740000	DL - Word 1 Status
+                        700000   2-159  	bool	scu.tsna.prn_mask,700000	DL - Word 1 PR num
+                        000017   2-160  	equ	scu.tsna.prn_shift,15
+                        040000   2-161  	bool	scu.tsna.prv,040000		DL - Word 1 PR valid bit
+                                 2-162  
+                        036000   2-163  	bool	scu.tsnb_mask,036000	DL - Word 2 Status
+                        034000   2-164  	bool	scu.tsnb.prn_mask,034000	DL - Word 2 PR num
+                        000013   2-165  	equ	scu.tsnb.prn_shift,11
+                        002000   2-166  	bool	scu.tsnb.prv,002000		DL - Word 2 PR valid bit
+                                 2-167  
+                        000013   2-168  	bool	scu.tsnc_mask,0013		DL - Word 3 Status
+                        001600   2-169  	bool 	scu.tsnc.prn_mask,001600	DL - Word 3 PR num
+                        000007   2-170  	equ	scu.tsnc.prn_shift,7
+                        000100   2-171  	bool	scu.tsnc.prv,000100		DL - Word 3 PR valid bit
+                                 2-172  
+                                 2-173  
+                        000033   2-174  	equ	mc.scu.tpr.tbr_word,27	TPR.TBR  Field
+                        000003   2-175  	equ	scu.tpr.tbr_word,3
+                                 2-176  
+                        000077   2-177  	bool	scu.tpr.tbr_mask,000077	DL
+                                 2-178  
+                                 2-179  
+                                 2-180  "	WORD  (4)		INSTRUCTION COUNTER
+                                 2-181  
+                        000034   2-182  	equ	mc.scu.ilc_word,28		INSTRUCTION  COUNTER
+                        000004   2-183  	equ	scu.ilc_word,4
+                        000022   2-184  	equ	scu.ilc_shift,18
+                                 2-185  
+                        000034   2-186  	equ	mc.scu.indicators_word,28	INDICATOR  REGISTERS
+                        000004   2-187  	equ	scu.indicators_word,4
+                                 2-188  
+                        400000   2-189  	bool	scu.ir.zero,400000		DL - Zero  Indicator
+                        200000   2-190  	bool	scu.ir.neg,200000		DL - Negative Indicator
+                        100000   2-191  	bool	scu.ir.carry,100000		DL - Carry Indicator
+                        040000   2-192  	bool	scu.ir.ovfl,040000		DL - Overflow Indicator
+                        020000   2-193  	bool	scu.ir.eovf,020000		DL - Exponent Overflow  Ind
+                        010000   2-194  	bool	scu.ir.eufl,010000		DL - Exponent Underflow Ind
+                        004000   2-195  	bool	scu.ir.oflm,004000		DL - Overflow Mask Indicator
+                        002000   2-196  	bool	scu.ir.tro,002000		DL - Tally Runout  Indicator
+                        001000   2-197  	bool	scu.ir.par,001000		DL - Parity  Indicator
+                        000400   2-198  	bool	scu.ir.parm,000400		DL - Parity  Mask  Indicator
+                        000200   2-199  	bool	scu.ir.bm,000200			DL - Bar  Mode  Indicator
+                        000100   2-200  	bool	scu.ir.tru,000100		DL - Truncation Indicator
+                        000040   2-201  	bool	scu.ir.mif,000040		DL - Multiword  Indicator
+                        000020   2-202  	bool	scu.ir.abs,000020		DL - Absolute   Indicator
+                        000010   2-203  	bool	scu.ir.hex,000010		DL - Hexadecimal Indicator
+                                 2-204  
+                                 2-205  "	WORD  (5)		COMPUTED ADDRESS
+                                 2-206  
+                        000035   2-207  	equ	mc.scu.ca_word,29		COMPUTED  ADDRESS
+                        000005   2-208  	equ	scu.ca_word,5
+                        000022   2-209  	equ	scu.ca_shift,18
+                                 2-210  
+                        000035   2-211  	equ	mc.scu.cu_stat_word,29	CONTROL UNIT STATUS
+                        000005   2-212  	equ	scu.cu_stat_word,5
+                                 2-213  
+                        400000   2-214  	bool	scu.cu.rf,400000		DL - Repeat First
+                                 2-215  "					On First Cycle of Repeat Inst.
+                        200000   2-216  	bool	scu.cu.rpt,200000		DL - Repeat Instruction
+                        100000   2-217  	bool	scu.cu.rd,100000		DL - Repeat Double Instr.
+                        040000   2-218  	bool	scu.cu.rl,040000		DL - Repeat Link   Instr.
+                                 2-219  
+                        020000   2-220  	bool	scu.cu.pot,020000		DL - IT Modification
+                        010000   2-221  	bool	scu.cu.pon,010000		DL - Return Type Instruction
+                                 2-222  
+                        004000   2-223  	bool	scu.cu.xde,004000		DL - XDE from Even Location
+                        002000   2-224  	bool	scu.cu.xdo,002000		DL - XDE from Odd  Location
+                                 2-225  
+                        001000   2-226  	bool	scu.cu.poa,001000		DL - Operand Preparation
+                        000400   2-227  	bool	scu.cu.rfi,000400		DL - Tells CPU to refetch instruction
+                                 2-228  "	This Bit  Not Used    (000200)
+                        000100   2-229  	bool	scu.cu.if,000100		DL - Fault occurred during instruction fetch
+                                 2-230  
+                        000035   2-231  	equ	mc.scu.cpu_tag_word,29	Computed Tag Field
+                        000005   2-232  	equ	scu.cpu_tag_word,5
+                                 2-233  
+                        000007   2-234  	bool	scu.cpu_tag_mask,000007	DL
+                                 2-235  
+                                 2-236  
+                                 2-237  "	WORDS  (6,7)	INSTRUCTIONS
+                                 2-238  
+                        000036   2-239  	equ	scu.even_inst_word,30	Even Instruction
+                                 2-240  
+                        000037   2-241  	equ	scu.odd_inst_word,31	Odd  Instruction
+                                 2-242  
+                                 2-243  
+                                 2-244  "	END INCLUDE FILE incl.alm
+                                   560  
+                                   561  " 
+                                   562  
+                                   563  	include	stack_header
+                                   3-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   3-2  "
+                                   3-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   3-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   3-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   3-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   3-7  
+                                   3-8  " HISTORY COMMENTS:
+                                   3-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  3-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  3-11  "     added the heap_header_ptr definition
+                                  3-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  3-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  3-14  "     Modified to support control point management.  These changes were
+                                  3-15  "     actually made in February 1985 by G. Palter.
+                                  3-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  3-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  3-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  3-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  3-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  3-21  "     cpm_data_ptr (ITS pair).
+                                  3-22  "                                                      END HISTORY COMMENTS
+                                  3-23  
+                        000004    3-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    3-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  3-26  
+                        000010    3-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    3-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    3-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    3-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    3-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    3-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    3-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    3-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  3-35  
+                        000020    3-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    3-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    3-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    3-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  3-40  
+                        000030    3-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    3-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    3-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    3-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  3-45  
+                        000040    3-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    3-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    3-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    3-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  3-50  
+                        000050    3-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    3-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    3-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    3-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  3-55  
+                        000060    3-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    3-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    3-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    3-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    3-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    3-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    3-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    3-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    3-64  	equ	stack_header_end,64			length of stack header
+                                  3-65  
+                                  3-66  
+                                  3-67  
+                                  3-68  
+                        000000    3-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    3-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  3-71  
+                                  3-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  3-73  "	It  references a  transfer vector table.
+                                  3-74  
+                        000551    3-75  	bool	tv_offset,551
+                                  3-76  
+                                  3-77  
+                                  3-78  "	The  following constants are offsets within this transfer vector table.
+                                  3-79  
+                        001170    3-80  	equ	call_offset,tv_offset+271
+                        001171    3-81  	equ	push_offset,tv_offset+272
+                        001172    3-82  	equ	return_offset,tv_offset+273
+                        001173    3-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    3-84  	equ	entry_offset,tv_offset+275
+                                  3-85  
+                                  3-86  
+                                  3-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                   564  
+                                   565  " 
+                                   566  
+                                   567  	include	scs
+                                   4-1  "	BEGIN INCLUDE FILE scs.incl.alm  2/4/76 S. Webber
+                                   4-2  "	Modified 80 Sep 19 by Art Beattie:  added hbound_processor_data.
+                                   4-3  
+                        400000     4-4  	bool	processor_data.online,400000 "DU
+                        200000     4-5  	bool	processor_data.offline,200000	"DU
+                        020000     4-6  	bool	processor_data.delete_cpu,020000	"DU
+                        010000     4-7  	bool	processor_data.interrupt_cpu,010000	"DU
+                        004000     4-8  	bool	processor_data.halted_cpu,004000	"DU
+                        000007     4-9  	bool	processor_data.port_mask,000007	"DL
+                        000007    4-10  	bool	hbound_processor_data,7
+                                  4-11  
+                                  4-12  "	END INCLUDE FILE scs.incl.alm
+                                   568  
+                                   569  	include	sys_trouble_codes
+                                   5-1  " Begin include file ...... sys_trouble_codes.incl.alm ...... Feb. 24, 1982
+                                   5-2  
+                        000001     5-3  	equ	trbl_prds_pf,1	page fault while on prds
+                        000002     5-4  	equ	trbl_prds_fi,2	fault/interrupt while on prds
+                        000003     5-5  	equ	trbl_idle_flt,3	fault in idle process
+                        000004     5-6  	equ	trbl_ptl_fi,4	fault/interrupt with ptl set
+                        000005     5-7  	equ	trbl_illeg_flt,5	unrecognized fault
+                        000006     5-8  	equ	trbl_unexp_flt,6	unexpected fault
+                        000007     5-9  	equ	trbl_exec_flt,7	operator caused execute fault
+                        000010    5-10  	equ	trbl_oosb_prds,8	OOSB on prds with target prds
+                        000011    5-11  	equ	trbl_fault_masked,9  interrupts masked in user-ring
+                        000012    5-12  	equ	trbl_fim_flt,10     Fault while in bound_interceptors
+                        000013    5-13  	equ	trbl_r0_drl_flt,11	derail in ring 0
+                                  5-14  
+                                  5-15  " End of include file ...... sys_trouble_codes.incl.alm
+                                   570  
+                                   571  " 
+                                   572  
+                                   573  	include	apte
+                                   6-1  "	BEGIN INCLUDE FILE apte.incl.alm
+                                   6-2  "
+                                   6-3  "
+                                   6-4  " HISTORY COMMENTS:
+                                   6-5  "  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+                                   6-6  "     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+                                   6-7  "     Added the ipc_r_offset, ipc_r_factor, and apad fields from the pl1
+                                   6-8  "     include file to support async event channel wakeups.
+                                   6-9  "                                                      END HISTORY COMMENTS
+                                  6-10  
+                        000000    6-11  	equ	apte.thread,0
+                        000000    6-12  	equ	apte.fp,0			"UPPER
+                        000000    6-13  	equ	apte.bp,0			"LOWER
+                                  6-14  
+                        000001    6-15  	equ	apte.flags,1
+                        000001    6-16  	equ	apte.sentinel,1
+                        400000    6-17  	bool	apte.mbz,400000		"DU
+                        200000    6-18  	bool	apte.wakeup_waiting,200000	"DU
+                        100000    6-19  	bool	apte.stop_pending,100000	"DU
+                        040000    6-20  	bool	apte.pre_empted,040000	"DU
+                        020000    6-21  	bool	apte.hproc,020000		"DU
+                        010000    6-22  	bool	apte.loaded,010000		"DU
+                        004000    6-23  	bool	apte.eligible,004000	"DU
+                        002000    6-24  	bool	apte.idle,002000		"DU
+                        001000    6-25  	bool	apte.interaction,001000	"DU
+                        000400    6-26  	bool	apte.pre_empt_pending,000400	"DU
+                        000200    6-27  	bool	apte.default_procs_required,000200 "DU
+                        000100    6-28  	bool	apte.realtime_burst,000100	"DU
+                        000040    6-29  	bool	apte.always_loaded,000040	"DU
+                        000020    6-30  	bool	apte.dbr_loaded,000020	"DU
+                        000010    6-31  	bool	apte.being_loaded,000010	"DU
+                        000004    6-32  	bool	apte.shared_stack_0,000004	"DU
+                        000002    6-33  	bool	apte.page_wait_flag,000002	"DU
+                        000001    6-34  	bool	apte.firstsw,000001		"DU
+                        000001    6-35  	equ	apte.state,1		"LOWER
+                                  6-36  
+                        000002    6-37  	equ	apte.page_faults,2
+                                  6-38  
+                        000003    6-39  	equ	apte.processid,3
+                                  6-40  
+                        000004    6-41  	equ	apte.te,4
+                                  6-42  
+                        000005    6-43  	equ	apte.ts,5
+                                  6-44  
+                        000006    6-45  	equ	apte.ti,6
+                                  6-46  
+                        000007    6-47  	equ	apte.timax,7
+                                  6-48  
+                        000010    6-49  	equ	apte.ipc_pointers,8
+                        000010    6-50  	equ	apte.event_thread,8		"UPPER
+                                  6-51  
+                        000011    6-52  	equ	apte.ips_message,9
+                                  6-53  
+                        000012    6-54  	equ	apte.asteps,10
+                        000012    6-55  	equ	apte.pds,10		"UPPER
+                        000012    6-56  	equ	apte.dseg,10		"LOWER
+                                  6-57  
+                        000013    6-58  	equ	apte.prds,11		"UPPER
+                        000013    6-59  	equ	apte.savex7,11		"LOWER
+                                  6-60  
+                        000014    6-61  	equ	apte.term_processid,12
+                                  6-62  
+                        000015    6-63  	equ	apte.lock_id,13
+                        000016    6-64  	equ	apte.time_used_clock,14
+                                  6-65  
+                        000020    6-66  	equ	apte.wait_event,16
+                                  6-67  
+                        000021    6-68  	equ	apte.wct_index,17		"UPPER
+                        000021    6-69  	equ	apte.flags2,17		"LOWER
+                        400000    6-70  	bool	apte.prior_sched,400000	"DL
+                        000023    6-71  	equ	apte.chans_offset,19
+                        374000    6-72  	bool	apte.special_chans,374000	"DL
+                        000021    6-73  	equ	apte.batch_word,17
+                        000010    6-74  	bool	apte.batch,000010		"DL
+                        000007    6-75  	bool	apte.pr_tag_mask,000007
+                                  6-76  
+                        000022    6-77  	equ	apte.state_change_time,18
+                                  6-78  
+                        000024    6-79  	equ	apte.alarm_event,20
+                                  6-80  
+                        000026    6-81  	equ	apte.alarm_time_thread,22	"UPPER
+                        000026    6-82  	equ	apte.alarm_time,22
+                                  6-83  
+                        000030    6-84  	equ	apte.term_channel,24
+                                  6-85  
+                        000032    6-86  	equ	apte.ws_size,26
+                                  6-87  
+                        000033    6-88  	equ	apte.temax,27
+                                  6-89  
+                        000034    6-90  	equ	apte.deadline,28
+                                  6-91  
+                        000036    6-92  	equ	apte.lock,30
+                                  6-93  
+                        000037    6-94  	equ	apte.cpu_monitor,31		units = 1/1024 sec
+                                  6-95  
+                        000040    6-96  	equ	apte.paging_measure,32
+                                  6-97  
+                        000042    6-98  	equ	apte.access_authorization,34 	"DOUBLE WORD
+                        400000    6-99  	bool	apte.no_ipc_check,400000	"DL
+                                 6-100  
+                        000044   6-101  	equ	apte.dbr,36
+                                 6-102  
+                        000046   6-103  	equ	apte.virtual_cpu_time,38
+                                 6-104  
+                        000050   6-105  	equ	apte.ittes_sent,40
+                        000051   6-106  	equ	apte.ittes_got,41
+                                 6-107  
+                        000052   6-108  	equ	apte.current_response_state,42	" DU
+                        000053   6-109  	equ	apte.number_processing,43
+                        000054   6-110  	equ	apte.last_response_state_time,44
+                        000056   6-111  	equ	apte.total_processing_time,46
+                        000060   6-112  	equ	apte.begin_interaction_vcpu,48
+                                 6-113  
+                        000062   6-114  	equ	apte.saved_temax,50
+                        000063   6-115  	equ	apte.procs_required,51
+                        776000   6-116  	bool	apte.procs_required_mask,776000	" DU
+                                 6-117  
+                        000064   6-118  	equ	apte.ipc_r_offset,52
+                        000065   6-119  	equ	apte.ipc_r_factor,53
+                        000066   6-120  	equ	apte.apad,54
+                                 6-121  
+                        000100   6-122  	equ	size_of_apt_entry,64
+                                 6-123  
+                                 6-124  "	MISC OLD DCLS.
+                                 6-125  
+                        000013   6-126  	equ	apte.le_shift,11
+                        000175   6-127  	bool	apte.timer_factor,175
+                                 6-128  
+                                 6-129  
+                                 6-130  "
+                                 6-131  "	END INCLUDE FILE apte.incl.alm
+                                 6-132  "
+                                   574  "
+                                   575  	include	fault_vector
+                                   7-1  
+                                   7-2  
+                                   7-3       "BEGIN INCLUDE FILE fault_vector.incl.alm
+                                   7-4  
+                                   7-5  "	Modified February 1981 by J. Bongiovanni to add fault types
+                                   7-6  
+                                   7-7  "
+                                   7-8  "	Structure fv
+                                   7-9  "
+                        000600    7-10  	equ	fv_size,384
+                                  7-11  
+                                  7-12  
+                        000000    7-13  	equ	fv.ipair,0		"LEVEL 2
+                                  7-14  
+                        000000    7-15  	equ	fv.ipair.scu,0
+                        000001    7-16  	equ	fv.ipair.tra,1
+                        000100    7-17  	equ	fv.fpair,64		"LEVEL 2
+                                  7-18  
+                        000100    7-19  	equ	fv.fpair.scu,64
+                        000101    7-20  	equ	fv.fpair.tra,65
+                        000200    7-21  	equ	fv.i_tra_ptr,128
+                        000300    7-22  	equ	fv.i_scu_ptr,192
+                        000400    7-23  	equ	fv.f_tra_ptr,256
+                        000500    7-24  	equ	fv.f_scu_ptr,320
+                                  7-25  
+                        000000    7-26  	equ	FAULT_NO_SDF,0		" Shutdown
+                        000001    7-27  	equ	FAULT_NO_STR,1		" Store
+                        000002    7-28  	equ	FAULT_NO_MME,2		" Master Mode Entry 1
+                        000003    7-29  	equ	FAULT_NO_F1,3		" Fault Tag 1
+                        000004    7-30  	equ	FAULT_NO_TRO,4		" Timer Runout
+                        000005    7-31  	equ	FAULT_NO_CMD,5		" Command
+                        000006    7-32  	equ	FAULT_NO_DRL,6		" Derail
+                        000007    7-33  	equ	FAULT_NO_LUF,7		" Lockup
+                        000010    7-34  	equ	FAULT_NO_CON,8		" Connect
+                        000011    7-35  	equ	FAULT_NO_PAR,9		" Parity
+                        000012    7-36  	equ	FAULT_NO_IPR,10		" Illegal Procedure
+                        000013    7-37  	equ	FAULT_NO_ONC,11		" Operation Not Complete
+                        000014    7-38  	equ	FAULT_NO_SUF,12		" Startup
+                        000015    7-39  	equ	FAULT_NO_OFL,13		" Overflow
+                        000016    7-40  	equ	FAULT_NO_DIV,14		" Divide Check
+                        000017    7-41  	equ	FAULT_NO_EXF,15		" Execute
+                        000020    7-42  	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
+                        000021    7-43  	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
+                        000022    7-44  	equ	FAULT_NO_DF2,18		" Directed Fault 2
+                        000023    7-45  	equ	FAULT_NO_DF3,19		" Directed Fault 3
+                        000024    7-46  	equ	FAULT_NO_ACV,20		" Access Violation
+                        000025    7-47  	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
+                        000026    7-48  	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
+                        000027    7-49  	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
+                        000030    7-50  	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
+                        000031    7-51  	equ	FAULT_NO_F3,25		" Fault Tag 3
+                                  7-52  					" Fault No. 26-30 are Undefined
+                        000037    7-53  	equ	FAULT_NO_TRB,31		" Trouble
+                                  7-54  
+                                  7-55       "END INCLUDE FILE fault_vector.incl.alm
+                                   576  
+                                   577  
+                                   578  
+                                   579  	
+                                   580  
+                                   581  	end
+LITERALS
+     
+    000330  aa   000000 000000 
+    000331  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000332  5a   000003 000000 
+    000333  5a   000146 600000 
+    000334  aa   000000 000000 
+    000335  55   000011 000002 
+    000336  5a   000002 400003 
+    000337  55   000006 000011 
+    000340  aa  011 167 151 162
+    000341  aa  145 144 137 146
+    000342  aa  151 155 000 000
+    000343  55   000017 000003 
+    000344  0a   000072 400000 
+    000345  55   000014 000003 
+    000346  aa  011 170 145 143         xec_fault
+    000347  aa  137 146 141 165
+    000350  aa  154 164 000 000
+    000351  55   000025 000011 
+    000352  0a   000106 400000 
+    000353  55   000022 000003 
+    000354  aa  013 165 156 145         unexp_fault
+    000355  aa  170 160 137 146
+    000356  aa  141 165 154 164
+    000357  55   000034 000017 
+    000360  0a   000020 400000 
+    000361  55   000030 000003 
+    000362  aa  017 143 157 156         connect_handler
+    000363  aa  156 145 143 164
+    000364  aa  137 150 141 156
+    000365  aa  144 154 145 162
+    000366  55   000043 000025 
+    000367  0a   000122 400000 
+    000370  55   000037 000003 
+    000371  aa  014 164 151 155         timer_runout
+    000372  aa  145 162 137 162
+    000373  aa  165 156 157 165
+    000374  aa  164 000 000 000
+    000375  55   000050 000034 
+    000376  0a   000067 400000 
+    000377  55   000046 000003 
+    000400  aa  006 151 147 156         ignore
+    000401  aa  157 162 145 000
+    000402  55   000057 000043 
+    000403  0a   000242 400000 
+    000404  55   000053 000003 
+    000405  aa  017 160 162 145         pre_empt_return
+    000406  aa  137 145 155 160
+    000407  aa  164 137 162 145
+    000410  aa  164 165 162 156
+    000411  55   000066 000050 
+    000412  0a   000016 400000 
+    000413  55   000062 000003 
+    000414  aa  016 155 171 137         my_linkage_ptr
+    000415  aa  154 151 156 153
+    000416  aa  141 147 145 137
+    000417  aa  160 164 162 000
+    000420  55   000074 000057 
+    000421  0a   000012 400000 
+    000422  55   000071 000003 
+    000423  aa  011 151 147 156         ignore_pl
+    000424  aa  157 162 145 137
+    000425  aa  160 154 000 000
+    000426  55   000103 000066 
+    000427  0a   000014 400000 
+    000430  55   000077 000003 
+    000431  aa  016 151 147 156         ignore_scuinfo
+    000432  aa  157 162 145 137
+    000433  aa  163 143 165 151
+    000434  aa  156 146 157 000
+    000435  55   000112 000074 
+    000436  0a   000010 400000 
+    000437  55   000106 000003 
+    000440  aa  017 164 162 157         trouble_scuinfo
+    000441  aa  165 142 154 145
+    000442  aa  137 163 143 165
+    000443  aa  151 156 146 157
+    000444  55   000120 000103 
+    000445  0a   000006 400000 
+    000446  55   000115 000003 
+    000447  aa  013 164 162 157         trouble_prs
+    000450  aa  165 142 154 145
+    000451  aa  137 160 162 163
+    000452  55   000126 000112 
+    000453  0a   000004 400000 
+    000454  55   000123 000003 
+    000455  aa  013 151 156 164         int_scuinfo
+    000456  aa  137 163 143 165
+    000457  aa  151 156 146 157
+    000460  55   000133 000120 
+    000461  0a   000002 400000 
+    000462  55   000131 000003 
+    000463  aa  007 163 143 165         scuinfo
+    000464  aa  151 156 146 157
+    000465  55   000137 000126 
+    000466  0a   000000 400000 
+    000467  55   000136 000003 
+    000470  aa  003 160 162 163         prs
+    000471  55   000002 000133 
+    000472  6a   000000 400002 
+    000473  55   000142 000003 
+    000474  aa  014 163 171 155         symbol_table
+    000475  aa  142 157 154 137
+    000476  aa  164 141 142 154
+    000477  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000500  aa   000000 000033 
+    000501  5a   000034 000000 
+    000502  5a   000011 000000 
+    000503  5a   000025 000000 
+    000504  5a   000050 000000 
+    000505  5a   000133 000000 
+    000506  aa   000000 000000 
+    000507  aa   000000 000000 
+    000510  aa   000000 000000 
+    000511  aa   000000 000000 
+    000512  aa   000000 000000 
+    000513  5a   000137 000000 
+    000514  aa   000000 000000 
+    000515  aa   000000 000000 
+    000516  aa   000000 000000 
+    000517  aa   000000 000000 
+    000520  5a   000057 000000 
+    000521  5a   000017 000000 
+    000522  5a   000074 000000 
+    000523  5a   000103 000000 
+    000524  5a   000120 000000 
+    000525  5a   000126 000000 
+    000526  5a   000112 000000 
+    000527  5a   000066 000000 
+    000530  aa   000000 000000 
+    000531  aa   000000 000000 
+    000532  5a   000043 000000 
+    000533  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000534  aa  013 163 164 141         stack_0_ptr
+    000535  aa  143 153 137 060
+    000536  aa  137 160 164 162
+    000537  aa  013 163 151 147         signal_data
+    000540  aa  156 141 154 137
+    000541  aa  144 141 164 141
+    000542  aa  012 146 157 162         force_stop
+    000543  aa  143 145 137 163
+    000544  aa  164 157 160 000
+    000545  aa  010 160 162 145         pre_empt
+    000546  aa  137 145 155 160
+    000547  aa  164 000 000 000
+    000550  aa  004 160 170 163         pxss
+    000551  aa  163 000 000 000
+    000552  aa  012 160 165 163         push_stack
+    000553  aa  150 137 163 164
+    000554  aa  141 143 153 000
+    000555  aa  017 160 141 147         page_fault_data
+    000556  aa  145 137 146 141
+    000557  aa  165 154 164 137
+    000560  aa  144 141 164 141
+    000561  aa  014 162 145 163         restore_mask
+    000562  aa  164 157 162 145
+    000563  aa  137 155 141 163
+    000564  aa  153 000 000 000
+    000565  aa  020 146 141 163         fast_cam_pending
+    000566  aa  164 137 143 141
+    000567  aa  155 137 160 145
+    000570  aa  156 144 151 156
+    000571  aa  147 000 000 000
+    000572  aa  010 143 141 155         cam_pair
+    000573  aa  137 160 141 151
+    000574  aa  162 000 000 000
+    000575  aa  010 163 145 164         set_mask
+    000576  aa  137 155 141 163
+    000577  aa  153 000 000 000
+    000600  aa  007 143 157 160         copy_mc
+    000601  aa  171 137 155 143
+    000602  aa  015 160 165 163         push_stack_32
+    000603  aa  150 137 163 164
+    000604  aa  141 143 153 137
+    000605  aa  063 062 000 000
+    000606  aa  014 143 157 156         connect_lock
+    000607  aa  156 145 143 164
+    000610  aa  137 154 157 143
+    000611  aa  153 000 000 000
+    000612  aa  023 143 160 165         cpu_h_flt_ctr_array
+    000613  aa  137 150 137 146
+    000614  aa  154 164 137 143
+    000615  aa  164 162 137 141
+    000616  aa  162 162 141 171
+    000617  aa  023 143 160 165         cpu_g_flt_ctr_array
+    000620  aa  137 147 137 146
+    000621  aa  154 164 137 143
+    000622  aa  164 162 137 141
+    000623  aa  162 162 141 171
+    000624  aa  023 143 160 165         cpu_f_flt_ctr_array
+    000625  aa  137 146 137 146
+    000626  aa  154 164 137 143
+    000627  aa  164 162 137 141
+    000630  aa  162 162 141 171
+    000631  aa  023 143 160 165         cpu_e_flt_ctr_array
+    000632  aa  137 145 137 146
+    000633  aa  154 164 137 143
+    000634  aa  164 162 137 141
+    000635  aa  162 162 141 171
+    000636  aa  023 143 160 165         cpu_d_flt_ctr_array
+    000637  aa  137 144 137 146
+    000640  aa  154 164 137 143
+    000641  aa  164 162 137 141
+    000642  aa  162 162 141 171
+    000643  aa  023 143 160 165         cpu_c_flt_ctr_array
+    000644  aa  137 143 137 146
+    000645  aa  154 164 137 143
+    000646  aa  164 162 137 141
+    000647  aa  162 162 141 171
+    000650  aa  023 143 160 165         cpu_b_flt_ctr_array
+    000651  aa  137 142 137 146
+    000652  aa  154 164 137 143
+    000653  aa  164 162 137 141
+    000654  aa  162 162 141 171
+    000655  aa  023 143 160 165         cpu_a_flt_ctr_array
+    000656  aa  137 141 137 146
+    000657  aa  154 164 137 143
+    000660  aa  164 162 137 141
+    000661  aa  162 162 141 171
+    000662  aa  023 167 151 162         wired_hardcore_data
+    000663  aa  145 144 137 150
+    000664  aa  141 162 144 143
+    000665  aa  157 162 145 137
+    000666  aa  144 141 164 141
+    000667  aa  021 164 162 157         trouble_processid
+    000670  aa  165 142 154 145
+    000671  aa  137 160 162 157
+    000672  aa  143 145 163 163
+    000673  aa  151 144 000 000
+    000674  aa  011 160 162 157         processid
+    000675  aa  143 145 163 163
+    000676  aa  151 144 000 000
+    000677  aa  006 143 154 157         clock_
+    000700  aa  143 153 137 000
+    000701  aa  010 163 171 163         sys_info
+    000702  aa  137 151 156 146
+    000703  aa  157 000 000 000
+    000704  aa  013 166 137 164         v_time_calc
+    000705  aa  151 155 145 137
+    000706  aa  143 141 154 143
+    000707  aa  012 141 154 141         alarm_ring
+    000710  aa  162 155 137 162
+    000711  aa  151 156 147 000
+    000712  aa  007 141 160 164         apt_ptr
+    000713  aa  137 160 164 162
+    000714  aa  003 160 144 163         pds
+    000715  aa  016 160 162 157         processor_data
+    000716  aa  143 145 163 163
+    000717  aa  157 162 137 144
+    000720  aa  141 164 141 000
+    000721  aa  015 160 162 157         processor_tag
+    000722  aa  143 145 163 163
+    000723  aa  157 162 137 164
+    000724  aa  141 147 000 000
+    000725  aa  024 160 162 157         processor_start_wait
+    000726  aa  143 145 163 163
+    000727  aa  157 162 137 163
+    000730  aa  164 141 162 164
+    000731  aa  137 167 141 151
+    000732  aa  164 000 000 000
+    000733  aa  010 143 141 155         cam_wait
+    000734  aa  137 167 141 151
+    000735  aa  164 000 000 000
+    000736  aa  016 162 145 163         reset_mode_reg
+    000737  aa  145 164 137 155
+    000740  aa  157 144 145 137
+    000741  aa  162 145 147 000
+    000742  aa  011 143 150 145         check_mct
+    000743  aa  143 153 137 155
+    000744  aa  143 164 000 000
+    000745  aa  013 163 171 163         sys_trouble
+    000746  aa  137 164 162 157
+    000747  aa  165 142 154 145
+    000750  aa  021 160 162 157         processor_pattern
+    000751  aa  143 145 163 163
+    000752  aa  157 162 137 160
+    000753  aa  141 164 164 145
+    000754  aa  162 156 000 000
+    000755  aa  004 160 162 144         prds
+    000756  aa  163 000 000 000
+    000757  aa  023 163 171 163         sys_trouble_pending
+    000760  aa  137 164 162 157
+    000761  aa  165 142 154 145
+    000762  aa  137 160 145 156
+    000763  aa  144 151 156 147
+    000764  aa  003 163 143 163         scs
+    000765  aa  013 166 137 164         v_time_init
+    000766  aa  151 155 145 137
+    000767  aa  151 156 151 164
+    000770  aa  010 146 151 155         fim_util
+    000771  aa  137 165 164 151
+    000772  aa  154 000 000 000
+    000773  aa  020 160 162 157         proc_int_handler
+    000774  aa  143 137 151 156
+    000775  aa  164 137 150 141
+    000776  aa  156 144 154 145
+    000777  aa  162 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001000  aa   000004 000000 
+    001001  55   000362 000202 
+    001002  aa   000004 000000 
+    001003  55   000362 000205 
+    001004  aa   000004 000000 
+    001005  55   000216 000210 
+    001006  aa   000004 000000 
+    001007  55   000216 000213 
+    001010  aa   000004 000000 
+    001011  55   000436 000220 
+    001012  aa   000004 000000 
+    001013  55   000362 000223 
+    001014  aa   000004 000000 
+    001015  55   000436 000227 
+    001016  aa   000004 000000 
+    001017  55   000432 000233 
+    001020  aa   000004 000000 
+    001021  55   000432 000240 
+    001022  aa   000004 000000 
+    001023  55   000436 000243 
+    001024  aa   000004 000000 
+    001025  55   000436 000246 
+    001026  aa   000004 000000 
+    001027  55   000436 000250 
+    001030  aa   000003 000000 
+    001031  5a   000423 000000 
+    001032  aa   000004 000000 
+    001033  55   000432 000254 
+    001034  aa   000004 000000 
+    001035  55   000330 000260 
+    001036  aa   000004 000000 
+    001037  55   000330 000265 
+    001040  aa   000004 000000 
+    001041  55   000330 000272 
+    001042  aa   000004 000000 
+    001043  55   000330 000277 
+    001044  aa   000004 000000 
+    001045  55   000330 000304 
+    001046  aa   000004 000000 
+    001047  55   000330 000311 
+    001050  aa   000004 000000 
+    001051  55   000330 000316 
+    001052  aa   000004 000000 
+    001053  55   000330 000323 
+    001054  aa   000004 000000 
+    001055  55   000432 000335 
+    001056  aa   000004 000000 
+    001057  55   000362 000342 
+    001060  aa   000004 000000 
+    001061  55   000347 000345 
+    001062  aa   000004 000000 
+    001063  55   000436 000352 
+    001064  aa   000004 000000 
+    001065  55   000362 000355 
+    001066  aa   000004 000000 
+    001067  55   000362 000360 
+    001070  aa   000004 000000 
+    001071  55   000432 000363 
+    001072  aa   000004 000000 
+    001073  55   000423 000367 
+    001074  aa   000004 000000 
+    001075  55   000432 000373 
+    001076  aa   000004 000000 
+    001077  55   000432 000401 
+    001100  aa   000004 000000 
+    001101  55   000436 000404 
+    001102  aa   000004 000000 
+    001103  55   000436 000410 
+    001104  aa   000004 000000 
+    001105  55   000413 000413 
+    001106  aa   000004 000000 
+    001107  55   000423 000416 
+    001110  aa   000004 000000 
+    001111  55   000432 000425 
+    001112  aa   000004 000000 
+    001113  55   000436 000433 
+    001114  aa   000004 000000 
+    001115  55   000441 000441 
+    001116  aa   000001 000000 
+    001117  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001120  5a   000446 000000 
+    001121  5a   000450 000000 
+    001122  5a   000452 000000 
+    001123  5a   000454 000000 
+    001124  5a   000456 000000 
+    001125  5a   000460 000000 
+    001126  5a   000462 000000 
+    001127  5a   000464 000000 
+    001130  5a   000466 000000 
+    001131  5a   000470 000000 
+    001132  5a   000472 000000 
+    001133  5a   000474 000000 
+    001134  5a   000476 000000 
+    001135  5a   000500 000000 
+    001136  5a   000502 000000 
+    001137  5a   000504 000000 
+    001140  5a   000506 000000 
+    001141  5a   000510 000000 
+    001142  5a   000512 000000 
+    001143  5a   000514 000000 
+    001144  5a   000516 000000 
+    001145  5a   000520 000000 
+    001146  5a   000522 000000 
+    001147  5a   000524 000000 
+    001150  5a   000526 000000 
+    001151  5a   000530 000000 
+    001152  5a   000532 000000 
+    001153  5a   000534 000000 
+    001154  5a   000536 000000 
+    001155  5a   000540 000000 
+    001156  5a   000542 000000 
+    001157  5a   000544 000000 
+    001160  5a   000546 000000 
+    001161  5a   000550 000000 
+    001162  5a   000552 000000 
+    001163  5a   000554 000000 
+    001164  5a   000556 000000 
+    001165  5a   000560 000000 
+    001166  5a   000562 000000 
+    001167  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000332 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000126 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         proc_int_handler|proc_int_handler
+    000011  5a   000634 0000 00
+    000012  9a   777766 0000 46         fim_util|v_time_init
+    000013  5a   000633 0000 00
+    000014  9a   777764 0000 46         scs|sys_trouble_pending
+    000015  5a   000632 0000 00
+    000016  9a   777762 0000 46         prds|processor_pattern
+    000017  5a   000631 0000 00
+    000020  9a   777760 0000 46         sys_trouble|sys_trouble
+    000021  5a   000630 0000 00
+    000022  9a   777756 0000 46         fim_util|check_mct
+    000023  5a   000627 0000 00
+    000024  9a   777754 0000 46         fim_util|reset_mode_reg
+    000025  5a   000626 0000 00
+    000026  9a   777752 0000 46         scs|cam_wait
+    000027  5a   000625 0000 00
+    000030  9a   777750 0000 46         scs|processor_start_wait
+    000031  5a   000624 0000 00
+    000032  9a   777746 0000 46         prds|processor_tag
+    000033  5a   000623 0000 00
+    000034  9a   777744 0000 46         scs|processor_data
+    000035  5a   000622 0000 11
+    000036  9a   777742 0000 46         pds|apt_ptr
+    000037  5a   000621 0000 20
+    000040  9a   777740 0000 46         pds|alarm_ring
+    000041  5a   000620 0000 00
+    000042  9a   777736 0000 46         fim_util|v_time_calc
+    000043  5a   000617 0000 00
+    000044  9a   777734 0000 46         sys_info|clock_
+    000045  5a   000616 0000 20
+    000046  9a   777732 0000 46         pds|processid
+    000047  5a   000615 0000 00
+    000050  9a   777730 0000 46         scs|trouble_processid
+    000051  5a   000614 0000 00
+    000052  9a   777726 0000 46         wired_hardcore_data|cpu_a_flt_ctr_array
+    000053  5a   000613 0000 00
+    000054  9a   777724 0000 46         wired_hardcore_data|cpu_b_flt_ctr_array
+    000055  5a   000612 0000 00
+    000056  9a   777722 0000 46         wired_hardcore_data|cpu_c_flt_ctr_array
+    000057  5a   000611 0000 00
+    000060  9a   777720 0000 46         wired_hardcore_data|cpu_d_flt_ctr_array
+    000061  5a   000610 0000 00
+    000062  9a   777716 0000 46         wired_hardcore_data|cpu_e_flt_ctr_array
+    000063  5a   000607 0000 00
+    000064  9a   777714 0000 46         wired_hardcore_data|cpu_f_flt_ctr_array
+    000065  5a   000606 0000 00
+    000066  9a   777712 0000 46         wired_hardcore_data|cpu_g_flt_ctr_array
+    000067  5a   000605 0000 00
+    000070  9a   777710 0000 46         wired_hardcore_data|cpu_h_flt_ctr_array
+    000071  5a   000604 0000 00
+    000072  9a   777706 0000 46         scs|connect_lock
+    000073  5a   000603 0000 00
+    000074  9a   777704 0000 46         prds|       
+    000075  5a   000602 0000 00
+    000076  9a   777702 0000 46         fim_util|push_stack_32
+    000077  5a   000601 0000 00
+    000100  9a   777700 0000 46         fim_util|copy_mc
+    000101  5a   000600 0000 00
+    000102  9a   777676 0000 46         fim_util|set_mask
+    000103  5a   000577 0000 00
+    000104  9a   777674 0000 46         scs|cam_pair
+    000105  5a   000576 0000 00
+    000106  9a   777672 0000 46         scs|fast_cam_pending
+    000107  5a   000575 0000 17
+    000110  9a   777670 0000 46         fim_util|restore_mask
+    000111  5a   000574 0000 00
+    000112  9a   777666 0000 46         pds|page_fault_data
+    000113  5a   000573 0000 00
+    000114  9a   777664 0000 46         fim_util|push_stack
+    000115  5a   000572 0000 00
+    000116  9a   777662 0000 46         pxss|pre_empt
+    000117  5a   000571 0000 00
+    000120  9a   777660 0000 46         pxss|force_stop
+    000121  5a   000570 0000 00
+    000122  9a   777656 0000 46         pds|signal_data
+    000123  5a   000567 0000 00
+    000124  9a   777654 0000 46         pds|stack_0_ptr
+    000125  5a   000566 0000 20
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   256326 516464 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000401 
+    000020  aa   000000 000230 
+    000021  aa   000305 000265 
+    000022  aa   000366 000230 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000010 
+    000066  aa   000126 000040 
+    000067  aa   175453 017356 
+    000070  aa   000000 117547 
+    000071  aa   175062 200000 
+    000072  aa   000136 000045 
+    000073  aa   133234 136230 
+    000074  aa   000000 113324 
+    000075  aa   322064 400000 
+    000076  aa   000150 000030 
+    000077  aa   123154 505731 
+    000100  aa   000000 112316 
+    000101  aa   133412 600000 
+    000102  aa   000156 000042 
+    000103  aa   147777 464111 
+    000104  aa   000000 115000 
+    000105  aa   507463 000000 
+    000106  aa   000167 000031 
+    000107  aa   075522 764240 
+    000110  aa   000000 107555 
+    000111  aa   332322 000000 
+    000112  aa   000176 000047 
+    000113  aa   123154 505732 
+    000114  aa   000000 112316 
+    000115  aa   133413 400000 
+    000116  aa   000210 000032 
+    000117  aa   147777 464062 
+    000120  aa   000000 115000 
+    000121  aa   507456 000000 
+    000122  aa   000217 000042 
+    000123  aa   101301 045475 
+    000124  aa   000000 110133 
+    000125  aa   352304 600000 
+    000126  aa   076163 160145          >spec>install>1110>wired_fim.alm
+    000127  aa   143076 151156 
+    000130  aa   163164 141154 
+    000131  aa   154076 061061 
+    000132  aa   061060 076167 
+    000133  aa   151162 145144 
+    000134  aa   137146 151155 
+    000135  aa   056141 154155 
+    000136  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000137  aa   076151 156143 
+    000140  aa   154165 144145 
+    000141  aa   076160 170163 
+    000142  aa   163137 160141 
+    000143  aa   147145 137163 
+    000144  aa   164141 143153 
+    000145  aa   056151 156143 
+    000146  aa   154056 141154 
+    000147  aa   155040 040040 
+    000150  aa   076154 144144          >ldd>include>mc.incl.alm
+    000151  aa   076151 156143 
+    000152  aa   154165 144145 
+    000153  aa   076155 143056 
+    000154  aa   151156 143154 
+    000155  aa   056141 154155 
+    000156  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000157  aa   076151 156143 
+    000160  aa   154165 144145 
+    000161  aa   076163 164141 
+    000162  aa   143153 137150 
+    000163  aa   145141 144145 
+    000164  aa   162056 151156 
+    000165  aa   143154 056141 
+    000166  aa   154155 040040 
+    000167  aa   076154 144144          >ldd>include>scs.incl.alm
+    000170  aa   076151 156143 
+    000171  aa   154165 144145 
+    000172  aa   076163 143163 
+    000173  aa   056151 156143 
+    000174  aa   154056 141154 
+    000175  aa   155040 040040 
+    000176  aa   076154 144144          >ldd>include>sys_trouble_codes.incl.alm
+    000177  aa   076151 156143 
+    000200  aa   154165 144145 
+    000201  aa   076163 171163 
+    000202  aa   137164 162157 
+    000203  aa   165142 154145 
+    000204  aa   137143 157144 
+    000205  aa   145163 056151 
+    000206  aa   156143 154056 
+    000207  aa   141154 155040 
+    000210  aa   076154 144144          >ldd>include>apte.incl.alm
+    000211  aa   076151 156143 
+    000212  aa   154165 144145 
+    000213  aa   076141 160164 
+    000214  aa   145056 151156 
+    000215  aa   143154 056141 
+    000216  aa   154155 040040 
+    000217  aa   076154 144144          >ldd>include>fault_vector.incl.alm
+    000220  aa   076151 156143 
+    000221  aa   154165 144145 
+    000222  aa   076146 141165 
+    000223  aa   154164 137166 
+    000224  aa   145143 164157 
+    000225  aa   162056 151156 
+    000226  aa   143154 056141 
+    000227  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                alarm_ring               wired_fim:    195,  203.
+          42    apte.access_authorization      apte:          98.
+          24    apte.alarm_event         apte:          79.
+          26    apte.alarm_time          apte:          82.
+          26    apte.alarm_time_thread   apte:          81.
+          40    apte.always_loaded       apte:          29.
+          66    apte.apad                apte:         120.
+          12    apte.asteps              apte:          54.
+          10    apte.batch               apte:          74.
+          21    apte.batch_word          apte:          73.
+          60    apte.begin_interaction_vcpu    apte:         112.
+          10    apte.being_loaded        apte:          31.
+           0    apte.bp                  apte:          13.
+          23    apte.chans_offset        apte:          71.
+          37    apte.cpu_monitor         apte:          94.
+          52    apte.current_response_state    apte:         108.
+          44    apte.dbr                 apte:         101.
+          20    apte.dbr_loaded          apte:          30.
+          34    apte.deadline            apte:          90.
+         200    apte.default_procs_required    apte:          27.
+          12    apte.dseg                apte:          56.
+        4000    apte.eligible            apte:          23.
+          10    apte.event_thread        apte:          50.
+           1    apte.firstsw             apte:          34.
+           1    apte.flags               wired_fim:    180,  295,  544,
+                                         apte:          15.
+          21    apte.flags2              apte:          69.
+           0    apte.fp                  apte:          12.
+       20000    apte.hproc               apte:          21.
+        2000    apte.idle                wired_fim:    545,
+                                         apte:          24.
+        1000    apte.interaction         apte:          25.
+          10    apte.ipc_pointers        apte:          49.
+          65    apte.ipc_r_factor        apte:         119.
+          64    apte.ipc_r_offset        apte:         118.
+          11    apte.ips_message         wired_fim:    187,
+                                         apte:          52.
+          51    apte.ittes_got           apte:         106.
+          50    apte.ittes_sent          apte:         105.
+          54    apte.last_response_state_time  apte:         110.
+          13    apte.le_shift            apte:         126.
+       10000    apte.loaded              apte:          22.
+          36    apte.lock                apte:          92.
+          15    apte.lock_id             apte:          63.
+      400000    apte.mbz                 apte:          17.
+      400000    apte.no_ipc_check        apte:          99.
+          53    apte.number_processing   apte:         109.
+           2    apte.page_faults         apte:          37.
+           2    apte.page_wait_flag      apte:          33.
+          40    apte.paging_measure      apte:          96.
+          12    apte.pds                 apte:          55.
+          13    apte.prds                apte:          58.
+       40000    apte.pre_empted          apte:          20.
+         400    apte.pre_empt_pending    wired_fim:    184,  294,
+                                         apte:          26.
+      400000    apte.prior_sched         apte:          70.
+           3    apte.processid           apte:          39.
+          63    apte.procs_required      apte:         115.
+      776000    apte.procs_required_mask       apte:         116.
+           7    apte.pr_tag_mask         apte:          75.
+         100    apte.realtime_burst      apte:          28.
+          62    apte.saved_temax         apte:         114.
+          13    apte.savex7              apte:          59.
+           1    apte.sentinel            apte:          16.
+           4    apte.shared_stack_0      apte:          32.
+      374000    apte.special_chans       apte:          72.
+           1    apte.state               apte:          35.
+          22    apte.state_change_time   apte:          77.
+      100000    apte.stop_pending        wired_fim:    181,
+                                         apte:          19.
+           4    apte.te                  apte:          41.
+          33    apte.temax               apte:          88.
+          30    apte.term_channel        apte:          84.
+          14    apte.term_processid      apte:          61.
+           0    apte.thread              apte:          11.
+           6    apte.ti                  apte:          45.
+           7    apte.timax               apte:          47.
+         175    apte.timer_factor        apte:         127.
+          16    apte.time_used_clock     apte:          64.
+          56    apte.total_processing_time     apte:         111.
+           5    apte.ts                  apte:          43.
+          46    apte.virtual_cpu_time    apte:         103.
+          20    apte.wait_event          apte:          66.
+      200000    apte.wakeup_waiting      apte:          18.
+          21    apte.wct_index           apte:          68.
+          32    apte.ws_size             apte:          86.
+         150    apt_ptr                  wired_fim:    179,  293,
+                                         pxss_page_stack:     13.
+         106    arg                      pxss_page_stack:     11.
+         204    before                   pxss_page_stack:     17.
+        1170    call_offset              stack_header:        80.
+                cam_pair                 wired_fim:    351.
+         156    cam_wait                 wired_fim:    168,  169,  334,  357.
+         136    cause_pre_empt           wired_fim:    292,  322.
+                check_mct                wired_fim:    163,  285.
+                clock_                   wired_fim:    240,  256.
+         164    cmep                     pxss_page_stack:     15.
+          20    connect_handler          wired_fim:     77,  150.
+                connect_lock             wired_fim:    320,  400.
+                copy_mc                  wired_fim:    340,  370,  395,  410,  430,  482,  509.
+         173    core_add                 pxss_page_stack:     16.
+         174    count                    pxss_page_stack:     16.
+                cpu_a_flt_ctr_array      wired_fim:    300.
+                cpu_b_flt_ctr_array      wired_fim:    301.
+                cpu_c_flt_ctr_array      wired_fim:    302.
+                cpu_d_flt_ctr_array      wired_fim:    303.
+                cpu_e_flt_ctr_array      wired_fim:    304.
+                cpu_f_flt_ctr_array      wired_fim:    305.
+                cpu_g_flt_ctr_array      wired_fim:    306.
+                cpu_h_flt_ctr_array      wired_fim:    307.
+         152    delete_cpu               wired_fim:    177,  317.
+         154    delta_t                  pxss_page_stack:     13.
+         205    depth                    pxss_page_stack:     17.
+         200    devadd                   pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+         232    done_astep               pxss_page_stack:     24.
+        1174    entry_offset             stack_header:        84.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+          61    exit                     wired_fim:    189,  198,  414.
+          62    exit_1                   wired_fim:    201,  527.
+                fast_cam_pending         wired_fim:    353.
+         142    fault_ctr_table          wired_fim:    289,  299.
+          24    FAULT_NO_ACV             fault_vector:        46.
+           5    FAULT_NO_CMD             fault_vector:        31.
+          10    FAULT_NO_CON             fault_vector:        34.
+          20    FAULT_NO_DF0             fault_vector:        42.
+          21    FAULT_NO_DF1             fault_vector:        43.
+          22    FAULT_NO_DF2             fault_vector:        44.
+          23    FAULT_NO_DF3             fault_vector:        45.
+          16    FAULT_NO_DIV             fault_vector:        40.
+           6    FAULT_NO_DRL             fault_vector:        32.
+          17    FAULT_NO_EXF             fault_vector:        41.
+           3    FAULT_NO_F1              fault_vector:        29.
+          30    FAULT_NO_F2              fault_vector:        50.
+          31    FAULT_NO_F3              fault_vector:        51.
+          12    FAULT_NO_IPR             fault_vector:        36.
+           7    FAULT_NO_LUF             fault_vector:        33.
+           2    FAULT_NO_MME             fault_vector:        28.
+          25    FAULT_NO_MME2            fault_vector:        47.
+          26    FAULT_NO_MME3            fault_vector:        48.
+          27    FAULT_NO_MME4            fault_vector:        49.
+          15    FAULT_NO_OFL             fault_vector:        39.
+          13    FAULT_NO_ONC             fault_vector:        37.
+          11    FAULT_NO_PAR             fault_vector:        35.
+           0    FAULT_NO_SDF             fault_vector:        26.
+           1    FAULT_NO_STR             fault_vector:        27.
+          14    FAULT_NO_SUF             fault_vector:        38.
+          37    FAULT_NO_TRB             fault_vector:        53.
+           4    FAULT_NO_TRO             wired_fim:    290,
+                                         fault_vector:        30.
+                fim_util                 wired_fim:    157,  163,  165,  199,  283,  285,  287,  337,  340,  347,  363,  370,
+                                                       392,  395,  397,  406,  410,  430,  432,  436,  454,  461,  482,  484,
+                                                       488,  509,  513,  515.
+                force_stop               wired_fim:    491.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         100    fv.fpair                 fault_vector:        17.
+         100    fv.fpair.scu             fault_vector:        19.
+         101    fv.fpair.tra             fault_vector:        20.
+         500    fv.f_scu_ptr             fault_vector:        24.
+         400    fv.f_tra_ptr             fault_vector:        23.
+           0    fv.ipair                 fault_vector:        13.
+           0    fv.ipair.scu             fault_vector:        15.
+           1    fv.ipair.tra             fault_vector:        16.
+         300    fv.i_scu_ptr             fault_vector:        22.
+         200    fv.i_tra_ptr             fault_vector:        21.
+         600    fv_size                  fault_vector:        10.
+         152    getwork_temp             pxss_page_stack:     13.
+           7    hbound_processor_data    scs:           10.
+          67    ignore                   wired_fim:     75,  219.
+          12    ignore_pl                wired_fim:     71,  102,  220,  221.
+          14    ignore_scuinfo           wired_fim:     71,  104,  222.
+         177    inter                    pxss_page_stack:     16.
+           4    int_scuinfo              wired_fim:     69,   95,  466.
+         265    ips                      wired_fim:    188,  504.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+      300000    mc.cpu_type_mask         mc:            22.
+           3    mc.cpu_type_shift        mc:            25.
+          46    mc.cpu_type_word         mc:            21.
+          50    mc.eis_info              wired_fim:    154,  202,  238,  254,  280,  463,
+                                         mc:            11.
+          43    mc.errcode               mc:            17.
+          46    mc.ext_fault_reg         mc:            23.
+       77774    mc.ext_fault_reg_mask    mc:            24.
+          45    mc.fault_reg             mc:            19.
+          46    mc.fault_time            wired_fim:    241,  257,
+                                         mc:            20.
+          44    mc.fim_temp              mc:            18.
+          42    mc.ips_temp              mc:            16.
+          40    mc.mask                  mc:            15.
+           0    mc.prs                   wired_fim:    205,  465,
+                                         mc:             8.
+          20    mc.regs                  wired_fim:    153,  204,  237,  253,  279,  464,
+                                         mc:             9.
+          30    mc.scu                   wired_fim:    523,  524,
+                                         mc:            10.
+          30    mc.scu.apu_stat_word     mc:            48.
+          35    mc.scu.ca_word           mc:           207.
+          32    mc.scu.cpu_no_word       mc:           138.
+          35    mc.scu.cpu_tag_word      mc:           231.
+          35    mc.scu.cu_stat_word      mc:           211.
+          32    mc.scu.delta_word        mc:           144.
+          30    mc.scu.fault_cntr_word   mc:            66.
+          31    mc.scu.fault_data_word   mc:            74.
+          34    mc.scu.ilc_word          mc:           182.
+          34    mc.scu.indicators_word   mc:           186.
+          31    mc.scu.port_stat_word    mc:           108.
+          30    mc.scu.ppr.prr_word      wired_fim:    540,
+                                         mc:            33.
+          30    mc.scu.ppr.psr_word      mc:            38.
+          30    mc.scu.ppr.p_word        mc:            43.
+          33    mc.scu.tpr.tbr_word      mc:           174.
+          32    mc.scu.tpr.trr_word      mc:           128.
+          32    mc.scu.tpr.tsr_word      mc:           133.
+          33    mc.scu.tsr_stat_word     mc:           152.
+          45    more                     wired_fim:    179,  374.
+          16    my_linkage_ptr           wired_fim:     72,  107,  155,  239,  255,  281,  451.
+          50    notify_regs              wired_fim:    339,  394,
+                                         pxss_page_stack:      8.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+                page_fault_data          wired_fim:    429,  452,  481.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+                pds                      wired_fim:    179,  195,  203,  245,  261,  293,  429,  452,  481,  508,  511.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+                prds                     wired_fim:    160,  167,  174,  288,  319,  335,  349,  352,  387,  390,  434,  486.
+         231    pre_empt                 wired_fim:    185,  297,  425,  439.
+         242    pre_empt_return          wired_fim:     74,  450.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+                processid                wired_fim:    245,  261.
+                processor_data           wired_fim:    175.
+       20000    processor_data.delete_cpu      wired_fim:    176,
+                                               scs:            6.
+        4000    processor_data.halted_cpu      scs:            8.
+       10000    processor_data.interrupt_cpu   scs:            7.
+      200000    processor_data.offline   scs:            5.
+      400000    processor_data.online    scs:            4.
+           7    processor_data.port_mask       scs:            9.
+                processor_pattern        wired_fim:    160,  167,  319,  349,  387.
+                processor_start_wait     wired_fim:    171,  388.
+                processor_tag            wired_fim:    174,  288,  352.
+                proc_int_handler         wired_fim:    518.
+           0    prs                      wired_fim:     68,   92,  151,  152,  276,  277,  369,  409,  521.
+         176    ptp_astep                pxss_page_stack:     16.
+         325    push                     wired_fim:    336,  391,  435,  487,  512,  556.
+        1171    push_offset              stack_header:        81.
+                push_stack               wired_fim:    436,  488,  513.
+                push_stack_32            wired_fim:    337,  392.
+         172    pvtx                     pxss_page_stack:     16.
+                pxss                     wired_fim:    439,  491.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+          56    ralr_set_1               wired_fim:    193,  427,  479,  506.
+                reset_mode_reg           wired_fim:    165,  287.
+                restore_mask             wired_fim:    363,  406,  454.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+         312    ring_test                wired_fim:    426,  478,  505,  539.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+                scs                      wired_fim:    159,  168,  171,  175,  244,  246,  260,  262,  320,  351,  353,  357,
+                                                       388,  400.
+        2000    scu.apu.dsptw            mc:            57.
+          10    scu.apu.fabs             mc:            64.
+          20    scu.apu.fanp             mc:            63.
+          40    scu.apu.fap              mc:            62.
+        4000    scu.apu.pi_ap            mc:            56.
+         200    scu.apu.ptw              mc:            60.
+         100    scu.apu.ptw2             mc:            61.
+       20000    scu.apu.ptwm             mc:            54.
+       10000    scu.apu.pt_on            mc:            55.
+      100000    scu.apu.sdwm             mc:            52.
+        1000    scu.apu.sdwnp            mc:            58.
+         400    scu.apu.sdwp             mc:            59.
+       40000    scu.apu.sd_on            mc:            53.
+      200000    scu.apu.xsf              mc:            51.
+           0    scu.apu_stat_word        mc:            49.
+          22    scu.ca_shift             mc:           209.
+           5    scu.ca_word              mc:           208.
+         700    scu.con_chan_mask        mc:           117.
+           6    scu.con_chan_shift       mc:           118.
+         700    scu.cpu_no_mask          mc:           141.
+           2    scu.cpu_no_word          mc:           139.
+           6    scu.cpu_shift            mc:           142.
+           7    scu.cpu_tag_mask         mc:           234.
+           5    scu.cpu_tag_word         mc:           232.
+         100    scu.cu.if                mc:           229.
+        1000    scu.cu.poa               mc:           226.
+       10000    scu.cu.pon               mc:           221.
+       20000    scu.cu.pot               mc:           220.
+      100000    scu.cu.rd                mc:           217.
+      400000    scu.cu.rf                mc:           214.
+         400    scu.cu.rfi               mc:           227.
+       40000    scu.cu.rl                mc:           218.
+      200000    scu.cu.rpt               mc:           216.
+        4000    scu.cu.xde               mc:           223.
+        2000    scu.cu.xdo               mc:           224.
+           5    scu.cu_stat_word         mc:           212.
+          77    scu.delta_mask           mc:           147.
+           2    scu.delta_word           mc:           145.
+          36    scu.even_inst_word       mc:           239.
+           7    scu.fault_cntr_mask      mc:            69.
+           0    scu.fault_cntr_word      mc:            67.
+           1    scu.fault_data_word      mc:            75.
+          10    scu.fd.am_er             mc:            91.
+         200    scu.fd.boc               mc:            87.
+          40    scu.fd.crt               mc:            89.
+      100000    scu.fd.e_off             mc:            79.
+      100000    scu.fd.ia_im             mc:           102.
+         100    scu.fd.inret             mc:            88.
+      200000    scu.fd.ioc               mc:           101.
+       20000    scu.fd.ipr               mc:           104.
+      400000    scu.fd.iro               mc:            77.
+      400000    scu.fd.isn               mc:           100.
+       40000    scu.fd.isp               mc:           103.
+       10000    scu.fd.nea               mc:           105.
+        2000    scu.fd.no_ga             mc:            84.
+         400    scu.fd.ocall             mc:            86.
+        1000    scu.fd.ocb               mc:            85.
+      200000    scu.fd.oeb               mc:            78.
+      400000    scu.fd.onc_1             mc:            96.
+      200000    scu.fd.onc_2             mc:            97.
+        4000    scu.fd.oobb              mc:           106.
+           4    scu.fd.oosb              mc:            92.
+       40000    scu.fd.orb               mc:            80.
+       10000    scu.fd.owb               mc:            82.
+           1    scu.fd.parl              mc:            94.
+           2    scu.fd.paru              mc:            93.
+          20    scu.fd.ralr              mc:            90.
+       20000    scu.fd.r_off             mc:            81.
+        4000    scu.fd.w_off             mc:            83.
+           1    scu.fi_flag_mask         mc:           123.
+          76    scu.fi_num_mask          mc:           120.
+           1    scu.fi_num_shift         mc:           121.
+        7000    scu.iac_mask             mc:           114.
+          11    scu.iac_shift            mc:           115.
+      170000    scu.ial_mask             mc:           111.
+          14    scu.ial_shift            mc:           112.
+          22    scu.ilc_shift            mc:           184.
+           4    scu.ilc_word             mc:           183.
+           4    scu.indicators_word      mc:           187.
+          20    scu.ir.abs               mc:           202.
+         200    scu.ir.bm                mc:           199.
+      100000    scu.ir.carry             mc:           191.
+       20000    scu.ir.eovf              mc:           193.
+       10000    scu.ir.eufl              mc:           194.
+          10    scu.ir.hex               mc:           203.
+          40    scu.ir.mif               mc:           201.
+      200000    scu.ir.neg               mc:           190.
+        4000    scu.ir.oflm              mc:           195.
+       40000    scu.ir.ovfl              mc:           192.
+        1000    scu.ir.par               mc:           197.
+         400    scu.ir.parm              mc:           198.
+        2000    scu.ir.tro               mc:           196.
+         100    scu.ir.tru               mc:           200.
+      400000    scu.ir.zero              mc:           189.
+          37    scu.odd_inst_word        mc:           241.
+           1    scu.port_stat_word       mc:           109.
+      400000    scu.ppr.p                mc:            45.
+      700000    scu.ppr.prr_mask         wired_fim:    541,
+                                         mc:            35.
+          41    scu.ppr.prr_shift        mc:            36.
+           0    scu.ppr.prr_word         mc:            34.
+       77777    scu.ppr.psr_mask         mc:            40.
+          22    scu.ppr.psr_shift        mc:            41.
+           0    scu.ppr.psr_word         mc:            39.
+           0    scu.ppr.p_word           mc:            44.
+          77    scu.tpr.tbr_mask         mc:           177.
+           3    scu.tpr.tbr_word         mc:           175.
+      700000    scu.tpr.trr_mask         mc:           130.
+          41    scu.tpr.trr_shift        mc:           131.
+           2    scu.tpr.trr_word         mc:           129.
+       77777    scu.tpr.tsr_mask         mc:           135.
+          22    scu.tpr.tsr_shift        mc:           136.
+           2    scu.tpr.tsr_word         mc:           134.
+      700000    scu.tsna.prn_mask        mc:           159.
+          17    scu.tsna.prn_shift       mc:           160.
+       40000    scu.tsna.prv             mc:           161.
+      740000    scu.tsna_mask            mc:           158.
+       34000    scu.tsnb.prn_mask        mc:           164.
+          13    scu.tsnb.prn_shift       mc:           165.
+        2000    scu.tsnb.prv             mc:           166.
+       36000    scu.tsnb_mask            mc:           163.
+        1600    scu.tsnc.prn_mask        mc:           169.
+           7    scu.tsnc.prn_shift       mc:           170.
+         100    scu.tsnc.prv             mc:           171.
+          13    scu.tsnc_mask            mc:           168.
+      777700    scu.tsr_stat_mask        mc:           155.
+           6    scu.tsr_stat_shift       mc:           156.
+           3    scu.tsr_stat_word        mc:           153.
+           2    scuinfo                  wired_fim:     68,   93,  206.
+                set_mask                 wired_fim:    347,  397,  432,  484.
+                signal_data              wired_fim:    508.
+         100    size_of_apt_entry        apte:         122.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+          75    stackp                   pxss_page_stack:      9.
+                stack_0_ptr              wired_fim:    511.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   wired_fim:    457,
+                                               stack_header:        37.
+          24    stack_header.stack_end_ptr     wired_fim:    373,  413,  458,  526,
+                                               stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+          15    stack_size               pxss_page_stack:      6,    9.
+         205    start_wait               wired_fim:    172,  385.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+         254    stop                     wired_fim:    182,  477.
+                sys_info                 wired_fim:    240,  256.
+                sys_trouble              wired_fim:    161,  247,  263.
+                sys_trouble_pending      wired_fim:    159,  244,  260.
+         134    temp                     pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+         122    timer_runout             wired_fim:     76,  275.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+           7    trbl_exec_flt            wired_fim:    243,
+                                         sys_trouble_codes:    9.
+          11    trbl_fault_masked        sys_trouble_codes:   11.
+          12    trbl_fim_flt             sys_trouble_codes:   12.
+           3    trbl_idle_flt            sys_trouble_codes:    5.
+           5    trbl_illeg_flt           sys_trouble_codes:    7.
+          10    trbl_oosb_prds           sys_trouble_codes:   10.
+           2    trbl_prds_fi             sys_trouble_codes:    4.
+           1    trbl_prds_pf             sys_trouble_codes:    3.
+           4    trbl_ptl_fi              sys_trouble_codes:    6.
+          13    trbl_r0_drl_flt          sys_trouble_codes:   13.
+           6    trbl_unexp_flt           wired_fim:    259,
+                                         sys_trouble_codes:    8.
+                trouble_processid        wired_fim:    246,  262.
+           6    trouble_prs              wired_fim:     70,   98,  235,  236,  251,  252.
+          10    trouble_scuinfo          wired_fim:     70,  100,  550.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+         106    unexp_fault              wired_fim:     78,  250.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+         234    vtocx                    pxss_page_stack:     25.
+                v_time_calc              wired_fim:    199,  461,  515.
+                v_time_init              wired_fim:    157,  283.
+                wired_hardcore_data      wired_fim:    300,  301,  302,  303,  304,  305,  306,  307.
+         206    x5                       pxss_page_stack:     17.
+          72    xec_fault                wired_fim:     79,  234.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

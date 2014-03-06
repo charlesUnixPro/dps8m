@@ -1,0 +1,482 @@
+	COMPILATION LISTING OF SEGMENT init_vtoc_man
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0938.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* format: style3 */
+        9 init_vtoc_man:
+       10      proc;
+       11 
+       12 /*
+       13*
+       14*
+       15*
+       16*				init_vtoc_man	
+       17*
+       18*
+       19*
+       20*
+       21*
+       22*             The "init_vtoc_man" procedure initializes all constants located  in
+       23*          the  header  of the vtoc buffer segment. 
+       24*
+       25*	It gets the number of buffers to use from the vtb parameter found
+       26*	on one of the parm cards.
+       27*
+       28*
+       29*	Modified by :
+       30*
+       31*          07/09/82  J. Bongiovanni for new VTOC buffer strategy
+       32*	02/14/76	Steve Webber to call get_main
+       33*	06/20/75	Andre Bensoussan.
+       34*
+       35*	*/
+       36 
+       37 
+       38 /*  Automatic  */
+       39 
+       40 dcl	code		fixed bin (35);
+       41 dcl	mask		bit (36) aligned;
+       42 dcl	tsdw		fixed bin (71);
+       43 
+       44 /*  Static  */
+       45 
+       46 dcl	DEFAULT_MASK	bit (36) aligned int static options (constant) init ("000000000037"b3);
+       47 dcl	DEFAULT_N_BUCKETS	fixed bin int static options (constant) init (32);
+       48 dcl	DEFAULT_N_BUFFERS	fixed bin int static options (constant) init (30);
+       49 dcl	WAIT_EVENT	bit (36) aligned int static options (constant) init ("333000000000"b3);
+       50 
+       51 /*  Entry  */
+       52 
+       53 dcl	absadr		entry (ptr, fixed bin (35)) returns (fixed bin (24));
+       54 dcl	find_parm		entry (char (4) aligned, ptr);
+       55 dcl	get_main		entry (ptr, fixed bin (18), fixed bin (71));
+       56 dcl	pmut$swap_sdw	entry (ptr, ptr);
+       57 dcl	syserr		entry options (variable);
+       58 
+       59 
+       60 	vtoc_buffer_segp = addr (vtoc_buffer_seg$);
+       61 
+       62 /* Determine the number of VTOCE buffers */
+       63 
+       64 	call find_parm ("vtb ", parm_ptr);
+       65 	if parm_ptr = null ()
+       66 	then vtoc_buf_n_buffers = DEFAULT_N_BUFFERS;
+       67 	else vtoc_buf_n_buffers = numeric_parm.value;
+       68 
+       69 /* Determine the number of hash buckets (currently constant)  */
+       70 
+       71 	vtoc_buf_n_buckets = DEFAULT_N_BUCKETS;
+       72 	mask = DEFAULT_MASK;
+       73 
+       74 /* Get contiguous memory for vtoc_buffer_seg and establish its SDW */
+       75 
+       76 	call get_main (vtoc_buffer_segp, size (vtoc_buffer), tsdw);
+       77 	call pmut$swap_sdw (vtoc_buffer_segp, addr (tsdw));
+       78 
+       79 /* Fill in vtoc_buffer_seg */
+       80 
+       81 	vtoc_buffer.lock.wait_event = WAIT_EVENT;
+       82 	vtoc_buffer.n_bufs = vtoc_buf_n_buffers;
+       83 	vtoc_buffer.n_hash_buckets = vtoc_buf_n_buckets;
+       84 	vtoc_buffer.hash_mask = mask;
+       85 
+       86 	vtoc_buffer.abs_addr = absadr (vtoc_buffer_segp, code);
+       87 	if code ^= 0
+       88 	then call syserr (CRASH, "init_vtoc_man: Unexpected error from absadr. Code ^o", code);
+       89 
+       90 	vtoc_buffer.wait_event_constant = bin (WAIT_EVENT, 36);
+       91 
+       92 	vtoc_buf_desc_arrayp = addr (vtoc_buffer.buf_desc);
+       93 	vtoc_buf_arrayp = addr (vtoc_buffer.buffer);
+       94 
+       95 	vtoc_buffer.buf_desc_offset = rel (vtoc_buf_desc_arrayp);
+       96 	vtoc_buffer.buf_offset = rel (vtoc_buf_arrayp);
+       97 	vtoc_buffer.hash_table_offset = rel (addr (vtoc_buffer.hash_table));
+       98 	vtoc_buffer.search_index = 1;
+       99 
+      100 	return;
+      101 
+  1     1 /* BEGIN INCLUDE FILE ... config_parm_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  1     2 
+  1     3 dcl parm_cardp pointer;				/* pointer to PARM card */
+  1     4 
+  1     5 dcl 1 parm_card aligned based (parm_cardp),		/* PARM card declaration */
+  1     6     2 word char (4),				/* "parm" */
+  1     7     2 options (14) char (4),				/* Parameters and their values */
+  1     8 
+  1     9     2 type_word aligned,
+  1    10       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  1    11       3 pad1 bit (4) unaligned,
+  1    12       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  1    13 
+  1    14 dcl 1 parm_card_array based (parm_cardp),		/* Overlay for counting options */
+  1    15     2 pad bit (36) aligned,
+  1    16     2 options (parm_card.n_fields) bit (36) aligned;
+  1    17 
+  1    18 
+  1    19 dcl  parm_ptr pointer;				/* For use with config$find_parm */
+  1    20 
+  1    21 dcl 1 numeric_parm aligned based (parm_ptr),		/* Overlay into middle of card for looking */
+  1    22     2 name char (4),				/* at a parameter found by config$find_parm */
+  1    23     2 value fixed bin (35);
+  1    24 
+  1    25 dcl 1 string_parm aligned based (parm_ptr),
+  1    26     2 name char (4),
+  1    27     2 value char (4);
+  1    28 
+  1    29 dcl  PARM_CARD_WORD char (4) aligned internal static options (constant) init ("parm");
+  1    30 
+  1    31 /* END INCLUDE FILE ... config_parm_card.incl.pl1 */
+      102 
+      103 
+  2     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  2     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  2     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  2     4 
+  2     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  2     6 
+  2     7 dcl (
+  2     8 
+  2     9 /* The following constants define the message action codes.  This indicates
+  2    10*how a message is to be handled.  */
+  2    11 
+  2    12      SYSERR_CRASH_SYSTEM	init (1),			
+  2    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  2    14 
+  2    15      SYSERR_TERMINATE_PROCESS	init (2),
+  2    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  2    17 
+  2    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  2    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  2    20 
+  2    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  2    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  2    23 
+  2    24      SYSERR_LOG_OR_PRINT	init (4),
+  2    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  2    26 
+  2    27      SYSERR_LOG_OR_DISCARD	init (5),
+  2    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  2    29 
+  2    30 
+  2    31 /* The following constants are added to the normal severities to indicate
+  2    32*different sorting classes of messages.  */
+  2    33 
+  2    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  2    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  2    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  2    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  2    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  2    39 	) fixed bin internal static options (constant);
+  2    40 
+  2    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      104 
+      105 
+  3     1 /*  START OF:	vtoc_buffer.incl.pl1   November 1982      *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3      
+  3     4 
+  3     5 /****^  HISTORY COMMENTS:
+  3     6*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  3     7*     audit(86-05-27,GDixon), install(86-07-18,MR12.0-1098):
+  3     8*     Add the software read-alter-rewrite when needed for devices that do only
+  3     9*     512 word IO.
+  3    10*                                                   END HISTORY COMMENTS */
+  3    11 
+  3    12 
+  3    13 dcl	   vtoc_buffer_seg$	      ext;
+  3    14 
+  3    15      dcl	   vtoc_buffer_segp	      ptr;
+  3    16      dcl	   vtoc_buf_descp	      ptr;
+  3    17      dcl	   vtoc_bufp	      ptr;
+  3    18      dcl	   vtoc_buf_desc_arrayp   ptr;
+  3    19      dcl	   vtoc_buf_arrayp	      ptr;
+  3    20 
+  3    21      dcl	   vtoc_buf_n_buffers     fixed bin;
+  3    22      dcl	   vtoc_buf_n_buckets     fixed bin;
+  3    23 
+  3    24 
+  3    25      dcl	   1 vtoc_buffer	      aligned based (vtoc_buffer_segp),
+  3    26 
+  3    27 	     2 lock,				/* Global lock for VTOC buffers */
+  3    28 	       3 processid	      bit (36) aligned,	/* Owner */
+  3    29 	       3 wait_event	      bit (36) aligned,	/* For lock */
+  3    30 	       3 notify_sw	      bit (1) aligned,	/* ON => notify on unlock */
+  3    31 
+  3    32 	     2 n_bufs	      fixed bin,		/* Number of full VTOCE buffers */
+  3    33 	     2 n_hash_buckets     fixed bin,		/* Number of hash table buckets */
+  3    34 	     2 hash_mask	      bit (36) aligned,	/* Mask for hash algorithm */
+  3    35 	     2 abs_addr	      fixed bin (24),	/* Absolute address of vtoc_buffer_seg */
+  3    36 	     2 wait_event_constant fixed bin (36) uns unal,    /* Constant to add to part index to form wait event */
+  3    37 	     2 buf_desc_offset    bit (18),		/* Offset of buf_desc */
+  3    38 	     2 buf_offset	      bit (18),		/* Offset of buf */
+  3    39 	     2 hash_table_offset  bit (18),		/* Offset of hash_table */
+  3    40 	     2 search_index	      fixed bin,		/* Roving pointer for buffer selection */
+  3    41 	     2 unsafe_pvtx	      fixed bin,		/* PVTE index with update in progress */
+  3    42 	     2 scavenger_free_p_clock
+  3    43                                     fixed bin (35),	/* Pseudo-Clock for scavenger-free-other-allocate race */
+  3    44 	     2 meters,
+  3    45 	       3 call_get	      fixed bin (35),	/* Calls to get_vtoce */
+  3    46 	       3 call_put	      fixed bin (35),	/* Calls to put_vtoce */
+  3    47 	       3 call_alloc	      fixed bin (35),	/* Calls to alloc_and_put_vtoce */
+  3    48 	       3 call_free	      fixed bin (35),	/* Calls to free_vtoce */
+  3    49 	       3 call_await	      fixed bin (35),	/* Calls to await_vtoce */
+  3    50 	       3 steps	      fixed bin (35),	/* Steps through buffer allocation */
+  3    51 	       3 skip_os	      fixed bin (35),	/* Skipped because out-of-service */
+  3    52 	       3 skip_hot	      fixed bin (35),	/* Skipped because buffer hot */
+  3    53 	       3 skip_wait	      fixed bin (35),	/* Skipped because notify_sw set */
+  3    54 	       3 disk_reads	      fixed bin (35),	/* Number of same */
+  3    55 	       3 disk_writes      fixed bin (35),	/* Number of same */
+  3    56 	       3 get_buffer_calls fixed bin (35),	/* Number of calls to GET_BUFFER */
+  3    57 	       3 get_buffer_hits  fixed bin (35),	/* Number times VTOCE in buffer */
+  3    58 	       3 wait_calls	      fixed bin (35),	/* Number of calls to WAIT */
+  3    59 	       3 wait_os	      fixed bin (35),	/* Number of times had to wait */
+  3    60 	       3 scavenger_free_checks
+  3    61                                     fixed bin (35),	/* Number of times had to check pseudo-clock */
+  3    62 	       3 scavenger_free_losses
+  3    63                                     fixed bin (35),	/* Number of times race lost between scavenger freeing and other allocate */
+  3    64 	       3 soft_rar	      fixed bin (35),         /* Nunber of times a software read_alter_rewrite performed */
+  3    65 
+  3    66 	       3 pad (14)	      fixed bin (35),
+  3    67 
+  3    68 	     2 hash_table	      (vtoc_buf_n_buckets refer (vtoc_buffer.n_hash_buckets)) bit (18) aligned,
+  3    69 
+  3    70 
+  3    71 	     2 buf_desc	      (vtoc_buf_n_buffers refer (vtoc_buffer.n_bufs)) aligned like vtoc_buf_desc,
+  3    72 
+  3    73 	     2 buffer	      (vtoc_buf_n_buffers refer (vtoc_buffer.n_bufs)) aligned like vtoce_buffer;
+  3    74 
+  3    75 
+  3    76 
+  3    77      dcl	   1 vtoc_buf_desc_array  (vtoc_buffer.n_bufs) aligned based (vtoc_buf_desc_arrayp) like vtoc_buf_desc;
+  3    78 
+  3    79 
+  3    80      dcl	   1 vtoc_buf_desc	      aligned based (vtoc_buf_descp),
+  3    81 	     2 pvtx	      fixed bin (17) unal,	/* PVTE index */
+  3    82 	     2 vtocx	      fixed bin (17) unal,	/* VTOCE Index */
+  3    83 	     2 parts_used	      bit (3) unal,		/* Mask of parts used or os */
+  3    84 	     2 err	      bit (1) unal,		/* ON => I/O error on buffer */
+  3    85 	     2 notify_sw	      bit (1) unal,		/* ON => notify requied on I/O completion */
+  3    86 	     2 write_sw	      bit (1) unal,		/* ON => write I/O */
+  3    87 	     2 os		      bit (1) unal,		/* ON => I/O in progress */
+  3    88 	     2 ioq	      bit (1) unal,		/* ON => I/O has been requested */
+  3    89 	     2 used	      bit (1) unal,		/* ON => this descriptor is in use */
+  3    90 	     2 pad	      bit (9) unal,
+  3    91 	     2 wait_index	      fixed bin (17) unal,	/* Buffer index for forming wait event */
+  3    92 	     2 ht_thread	      bit (18) unal,	/* Offset of next entry in hash table */
+  3    93 	     2 buf_rel	      bit (18) unal;	/* Offset of buffer in segment */
+  3    94 
+  3    95      dcl	   1 vtoce_buffer_array   (vtoc_buffer.n_bufs) aligned based (vtoc_buf_arrayp) like vtoce_buffer;
+  3    96 
+  3    97      dcl	   1 vtoce_buffer	      aligned based (vtoc_bufp),
+  3    98 	     2 parts	      (3) aligned,
+  3    99 	       3 words	      (64) bit (36) aligned;
+  3   100 
+  3   101 
+  3   102      dcl	   N_PARTS_PER_VTOCE      fixed bin int static options (constant) init (3);
+  3   103      dcl	   VTOCE_PART_SIZE	      fixed bin int static options (constant) init (64);
+  3   104      dcl	   VTOCE_BUFFER_SIZE      fixed bin int static options (constant) init (3 * 64);
+  3   105      dcl	   N_VTOCE_PER_RECORD     fixed bin int static options (constant) init (5);
+  3   106      dcl	   N_SECTOR_PER_VTOCE     fixed bin int static options (constant) init (3);
+  3   107 
+  3   108 
+  3   109 /*  END OF:	vtoc_buffer.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      106 
+      107 
+      108 /* BEGIN MESSAGE DOCUMENTATION
+      109*
+      110*
+      111*Message:
+      112*init_vtoc_man: Unexpected error from absadr. Code XX.
+      113*
+      114*S:        $crash
+      115*
+      116*T:	$init
+      117*
+      118*M:	The absolute address of vtoc_buffer_seg could not be determined.
+      119*This indicates hardware or software malfunction.
+      120*
+      121*A:        $recover
+      122*
+      123*
+      124*END MESSAGE DOCUMENTATION */
+      125 
+      126      end init_vtoc_man;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.9  init_vtoc_man.pl1                 >spec>install>1112>init_vtoc_man.pl1
+102          1    05/08/81  1853.7  config_parm_card.incl.pl1         >ldd>include>config_parm_card.incl.pl1
+104          2    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+106          3    07/24/86  2051.8  vtoc_buffer.incl.pl1              >ldd>include>vtoc_buffer.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000004 constant        fixed bin(17,0)          initial dcl 2-7 set ref 87*
+DEFAULT_MASK                           constant        bit(36)                  initial dcl 46 ref 72
+DEFAULT_N_BUCKETS                      constant        fixed bin(17,0)          initial dcl 47 ref 71
+DEFAULT_N_BUFFERS                      constant        fixed bin(17,0)          initial dcl 48 ref 65
+WAIT_EVENT                             constant        bit(36)                  initial dcl 49 ref 81 90
+abs_addr                  6            based           fixed bin(24,0)          level 2 dcl 3-25 set ref 86*
+absadr                          000010 constant        entry                    external dcl 53 ref 86
+buf_desc                               based           structure                array level 2 dcl 3-25 set ref 92
+buf_desc_offset          10            based           bit(18)                  level 2 dcl 3-25 set ref 95*
+buf_offset               11            based           bit(18)                  level 2 dcl 3-25 set ref 96*
+buffer                                 based           structure                array level 2 dcl 3-25 set ref 93
+code                            000100 automatic       fixed bin(35,0)          dcl 40 set ref 86* 87 87*
+find_parm                       000012 constant        entry                    external dcl 54 ref 64
+get_main                        000014 constant        entry                    external dcl 55 ref 76
+hash_mask                 5            based           bit(36)                  level 2 dcl 3-25 set ref 84*
+hash_table               56            based           bit(18)                  array level 2 dcl 3-25 set ref 97
+hash_table_offset        12            based           bit(18)                  level 2 dcl 3-25 set ref 97*
+lock                                   based           structure                level 2 dcl 3-25
+mask                            000101 automatic       bit(36)                  dcl 41 set ref 72* 84
+n_bufs                    3            based           fixed bin(17,0)          level 2 dcl 3-25 set ref 82* 93
+n_hash_buckets            4            based           fixed bin(17,0)          level 2 dcl 3-25 set ref 83* 92 93
+numeric_parm                           based           structure                level 1 dcl 1-21
+parm_ptr                        000104 automatic       pointer                  dcl 1-19 set ref 64* 65 67
+pmut$swap_sdw                   000016 constant        entry                    external dcl 56 ref 77
+search_index             13            based           fixed bin(17,0)          level 2 dcl 3-25 set ref 98*
+syserr                          000020 constant        entry                    external dcl 57 ref 87
+tsdw                            000102 automatic       fixed bin(71,0)          dcl 42 set ref 76* 77 77
+value                     1            based           fixed bin(35,0)          level 2 dcl 1-21 ref 67
+vtoc_buf_arrayp                 000112 automatic       pointer                  dcl 3-19 set ref 93* 96
+vtoc_buf_desc                          based           structure                level 1 dcl 3-80
+vtoc_buf_desc_arrayp            000110 automatic       pointer                  dcl 3-18 set ref 92* 95
+vtoc_buf_n_buckets              000115 automatic       fixed bin(17,0)          dcl 3-22 set ref 71* 76 76 83
+vtoc_buf_n_buffers              000114 automatic       fixed bin(17,0)          dcl 3-21 set ref 65* 67* 76 76 76 76 82
+vtoc_buffer                            based           structure                level 1 dcl 3-25 set ref 76 76
+vtoc_buffer_seg$                000022 external static fixed bin(17,0)          dcl 3-13 set ref 60
+vtoc_buffer_segp                000106 automatic       pointer                  dcl 3-15 set ref 60* 76* 76 76 77* 81 82 83 84 86
+                                                                                  86* 90 92 93 95 96 97 97 98
+vtoce_buffer                           based           structure                level 1 dcl 3-97
+wait_event                1            based           bit(36)                  level 3 dcl 3-25 set ref 81*
+wait_event_constant       7            based           fixed bin(36,0)          level 2 packed packed unsigned unaligned dcl 3-25
+                                                                                  set ref 90*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 2-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 2-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 2-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 2-7
+N_PARTS_PER_VTOCE                      internal static fixed bin(17,0)          initial dcl 3-102
+N_SECTOR_PER_VTOCE                     internal static fixed bin(17,0)          initial dcl 3-106
+N_VTOCE_PER_RECORD                     internal static fixed bin(17,0)          initial dcl 3-105
+PARM_CARD_WORD                         internal static char(4)                  initial dcl 1-29
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 2-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 2-7
+VTOCE_BUFFER_SIZE                      internal static fixed bin(17,0)          initial dcl 3-104
+VTOCE_PART_SIZE                        internal static fixed bin(17,0)          initial dcl 3-103
+parm_card                              based           structure                level 1 dcl 1-5
+parm_card_array                        based           structure                level 1 unaligned dcl 1-14
+parm_cardp                             automatic       pointer                  dcl 1-3
+string_parm                            based           structure                level 1 dcl 1-25
+vtoc_buf_desc_array                    based           structure                array level 1 dcl 3-77
+vtoc_buf_descp                         automatic       pointer                  dcl 3-16
+vtoc_bufp                              automatic       pointer                  dcl 3-17
+vtoce_buffer_array                     based           structure                array level 1 dcl 3-95
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+init_vtoc_man                   000026 constant        entry                    external dcl 9
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 60 77 77 92 93 97
+bin                                                    builtin function         ref 90
+null                                                   builtin function         ref 65
+rel                                                    builtin function         ref 95 96 97
+size                                                   builtin function         ref 76 76
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       324         350     232         334
+Length       572     232        24         206      72           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_vtoc_man                       126 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_vtoc_man            000100 code                        init_vtoc_man
+                         000101 mask                        init_vtoc_man
+                         000102 tsdw                        init_vtoc_man
+                         000104 parm_ptr                    init_vtoc_man
+                         000106 vtoc_buffer_segp            init_vtoc_man
+                         000110 vtoc_buf_desc_arrayp        init_vtoc_man
+                         000112 vtoc_buf_arrayp             init_vtoc_man
+                         000114 vtoc_buf_n_buffers          init_vtoc_man
+                         000115 vtoc_buf_n_buckets          init_vtoc_man
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        find_parm                     get_main                      pmut$swap_sdw
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+vtoc_buffer_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      9 000025        60 000033        64 000035        65 000047        67 000056        71 000061        72 000063
+     76 000065        77 000113        81 000126        82 000131        83 000133        84 000135        86 000137
+     87 000152        90 000200        92 000205        93 000210        95 000220        96 000222        97 000224
+     98 000227       100 000231
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

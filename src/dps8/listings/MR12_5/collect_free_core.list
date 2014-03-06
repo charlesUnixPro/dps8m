@@ -1,0 +1,818 @@
+	COMPILATION LISTING OF SEGMENT collect_free_core
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2 */
+       14 
+       15 collect_free_core:
+       16      procedure;
+       17 
+       18 /*
+       19*
+       20*   This procedure is called at the end of collection 1 initialization by
+       21*real_initializer.  It inspects the SDW's for all "unpaged" segments, and marks
+       22*all core map entries which describe page frames containing words of these
+       23*segments.  All core map entries are then scanned, and any unmarked page frames
+       24*are freed.
+       25*
+       26*   Written by Bernard Greenberg,  3/19/74.   */
+       27 /* Last modified 8/12/74 by BSG to abs-wire toehold for IOBM system */
+       28 /* Modified 8/82 BIM for $early entrypoint that marks initsegs and sup segs */
+       29 /* Remodified 10/82 BIM to remove same -- it was unneccessary */
+       30 /* Modified 9/83, Keith Loepere to tolerate paged wired segs */
+       31 /* Modified 12/83, Keith Loepere for breakpoint page support */
+       32 
+       33 	dcl     slt$		 bit (36) external static;
+       34 	dcl     dseg$		 (0:4095) fixed bin (71) ext static;
+       35 
+       36 	dcl     sst$cmp		 pointer external static;
+       37 	dcl     sst$last_core_block	 fixed bin (18) external static;
+       38 
+       39 	dcl     absadr		 external entry (ptr, fixed bin (35)) returns (fixed bin (26));
+       40 	dcl     freecore		 external entry (fixed bin (18));
+       41 						/* entry to free a core frame */
+       42 	dcl     sdw_util_$dissect	 entry (ptr, ptr);
+       43 	dcl     (i, j)		 fixed bin (18);	/* temporaries */
+       44 
+       45 	declare 1 sdwi		 aligned like sdw_info;
+       46 
+       47 	dcl     cmp		 pointer;		/* core map and dseg pointers */
+       48 	dcl     (addr, fixed, baseno, divide)
+       49 				 builtin;
+       50 
+       51 	declare PAGE_SIZE		 fixed bin init (1024) int static options (constant);
+       52 	declare 1 CME		 (0:sst$last_core_block) aligned like cme based (cmp);
+       53 
+       54 /* format: off */
+       55 
+       56  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  1     2 
+  1     3 /* Declarations for Segment Loading Table header and array.
+  1     4*
+  1     5*   Used by Initialization and MST Checker subroutines */
+  1     6 
+  1     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  1     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  1     9     namep ptr,					/* pointer to segment name list block */
+  1    10     pathp ptr,					/* pointer to segment's directory path name */
+  1    11     aclp ptr;					/* pointer to acl structure */
+  1    12 
+  1    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  1    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  1    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  1    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  1    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  1    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  1    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  1    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  1    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  1    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  1    23 
+  1    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  1    25 
+  1    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  1    27 	2 pad bit (18) unal,
+  1    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  1    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  1    30 
+  1    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  1    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  1    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  1    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  1    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  1    36 	  3 pad bit (5) unal,
+  1    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  1    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  1    39 
+  1    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  1    41 	2 size fixed bin (17),			/* length of pathname */
+  1    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  1    43 	2 acls fixed bin;				/* ACL list starts here */
+  1    44 
+  1    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  1    46 	2 count fixed bin,				/* number of entries in acl list */
+  1    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  1    48 	  3 userid char (32),			/* user specification */
+  1    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  1    50 	  3 pad bit (36) aligned,
+  1    51 	  3 code fixed bin;
+  1    52 
+  1    53 
+  1    54 /* END INCLUDE FILE slt.incl.pl1 */
+       56 
+       57  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  2     2 /* Declaration for Segment Loading Table Entry structure.
+  2     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  2     4 /* modified 5/4/76 by Noel I. Morris	*/
+  2     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  2     6 /* format: style3 */
+  2     7 
+  2     8 dcl	sltep		ptr;
+  2     9 
+  2    10 dcl	1 slte_uns	based (sltep) aligned,
+  2    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  2    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  2    13 /**** End of word 1 */
+  2    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  2    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  2    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  2    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  2    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  2    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  2    20 	  2 pad1		bit (3),			/* unused */
+  2    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  2    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  2    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  2    24 	  2 pad3		bit (2),
+  2    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  2    26 /**** End of 1st half of word 2 */
+  2    27 	  2 pad4		bit (3),
+  2    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  2    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  2    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  2    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  2    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  2    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  2    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  2    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  2    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  2    37 /***** End of word 2 */
+  2    38 	  2 pad5		bit (6),
+  2    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  2    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  2    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  2    42 /***** End of word 3 */
+  2    43 	  2 pad7		bit (3),
+  2    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  2    45 	  2 bit_count	fixed bin (24) uns
+  2    46 	  )		unaligned;		/* bitcount of segment */
+  2    47 
+  2    48 dcl	1 slte		based (sltep) aligned,
+  2    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  2    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  2    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  2    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  2    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  2    54 	  2 firmware_seg    bit (1),
+  2    55 	  2 layout_seg      bit (1),
+  2    56 	  2 breakpointable  bit (1),
+  2    57 	  2 pad2		bit (3),
+  2    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  2    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  2    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  2    61 	  2 pad3		bit (2),
+  2    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  2    63 	  2 pad4		bit (3),
+  2    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  2    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  2    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  2    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  2    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  2    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  2    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  2    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  2    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  2    73 	  2 pad5		bit (6),
+  2    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  2    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  2    76 	  2 segno		bit (18),			/* text/link segment number */
+  2    77 	  2 pad6		bit (3),
+  2    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  2    79 	  2 bit_count	bit (24)
+  2    80 	  )		unaligned;		/* bitcount of segment */
+  2    81 
+  2    82 /* END INCLUDE FILE slte.incl.pl1 */
+       57 
+       58  /* BEGIN INCLUDE FILE scs.incl.pl1 ... March 1983 */
+  3     2 /* format: style4 */
+  3     3 
+  3     4 /* Information about system controllers */
+  3     5 
+  3     6 dcl  1 scs$controller_data (0:7) aligned ext,		/* per-controller info */
+  3     7        2 size fixed bin (17) unaligned,			/* size (in 1024 word blocks) of this controller */
+  3     8        2 base fixed bin (17) unaligned,			/* abs address (0 mod 1024) for base of this controller */
+  3     9        2 eima_data (4) unaligned,			/* EIMA information for this controller */
+  3    10          3 mask_available bit (1) unaligned,		/* ON if corresponding mask exists */
+  3    11          3 mask_assigned bit (1) unaligned,		/* ON if mask assigned to a port */
+  3    12          3 mbz bit (3) unaligned,
+  3    13          3 mask_assignment fixed bin (3) unaligned,	/* port to which mask is assigned */
+  3    14        2 info aligned,
+  3    15          3 online bit (1) unaligned,			/* ON if controller is online */
+  3    16          3 offline bit (1) unaligned,			/* ON if controller is offline but can be added */
+  3    17          3 store_a_online bit (1) unaligned,		/* ON if store A is online */
+  3    18          3 store_a1_online bit (1) unaligned,		/* ON if store A1 is online */
+  3    19          3 store_b_online bit (1) unaligned,		/* ON if store B is online */
+  3    20          3 store_b1_online bit (1) unaligned,		/* ON if store B1 is online */
+  3    21          3 store_b_is_lower bit (1) unaligned,		/* ON if store B is lower */
+  3    22          3 ext_interlaced bit (1) unaligned,		/* ON if this SCU is interlaced with other SCU */
+  3    23          3 int_interlaced bit (1) unaligned,		/* ON if this SCU is internally interlaced */
+  3    24          3 four_word bit (1) unaligned,			/* ON if external interlace is 4-word */
+  3    25          3 cyclic_priority (7) bit (1) unaligned,		/* Cyclic priority for adjacent ports */
+  3    26          3 type bit (4) unaligned,			/* Model number for this controller */
+  3    27          3 abs_wired bit (1) unaligned,			/* ON if controller can have abs_wired pages */
+  3    28          3 program bit (1) unaligned,			/* PROGRAM/MANUAL switch setting */
+  3    29          3 mbz bit (13) unaligned,
+  3    30        2 lower_store_size fixed bin (17) unaligned,	/* size (in 1024 word blocks) of lower store */
+  3    31        2 upper_store_size fixed bin (17) unaligned;	/* size (in 1024 word blocks) of upper store */
+  3    32 
+  3    33 /* Information about CPUs */
+  3    34 
+  3    35 dcl  1 scs$processor_data (0:7) aligned ext,		/* information about CPUs in the system */
+  3    36        (
+  3    37        2 online bit (1),				/* "1"b if CPU is online */
+  3    38        2 offline bit (1),				/* "1"b if CPU is offline but can be added */
+  3    39        2 release_mask bit (1),			/* "1"b is this CPU is to give up its mask */
+  3    40        2 accept_mask bit (1),				/* "1"b if this CPU is to grap mask in idle loop */
+  3    41        2 delete_cpu bit (1),				/* "1"b if this CPU is to delete itself */
+  3    42        2 interrupt_cpu bit (1),			/* "1"b if this CPU takes hardware interrupts */
+  3    43        2 halted_cpu bit (1),				/* "1"b if this CPU has stopped itself (going to BOS) */
+  3    44        2 cpu_type fixed bin (2) unsigned,		/*  0 => DPS or L68, 1 => DPS8 */
+  3    45        2 mbz1 bit (6),
+  3    46        2 cache_size fixed bin (3) unsigned,		/* 0 = No cache; 1 = L68 2K cache;
+  3    47*						   2 = DPS8 8K cache; 3 = DPS8 VS&SC 8K cache;
+  3    48*						   4 = DPS8 VS&SC 16K cache; 5 = DPS8 VS&SC 32K cache
+  3    49*						   7 = ignore cache size (set by ISOLTS reconfig) */
+  3    50        2 mbz2 bit (12),
+  3    51        2 expanded_port bit (1),			/* "1"b = on expanded port */
+  3    52        2 expander_port fixed bin (2) unsigned,		/* The actual expander port */
+  3    53        2 controller_port fixed bin (3) unsigned
+  3    54        ) unaligned;					/* Port on controller */
+  3    55 
+  3    56 dcl  1 scs$port_data (0:7) aligned external static,	/* Info about what is connected to each SCU port */
+  3    57        2 assigned fixed bin (4) unsigned unaligned,	/* Type of device on this port		*/
+  3    58        2 expander_port bit (1) unaligned,		/* "1"b => this port has a port expander */
+  3    59        2 expanded_cpu (0:3) bit (1) unaligned,		/* "1"b => this expander port has a CPU attached */
+  3    60        2 iom_number fixed bin (3) unsigned unaligned,	/* IOM number of IOM attached to this port */
+  3    61        2 cpu_number (0:3) fixed bin (3) unsigned unaligned, /* CPU number of CPU(s) attached to this port */
+  3    62 						/* cpu_number (0) is only one if expander_port is "0"b */
+  3    63        2 pad bit (12) unaligned;
+  3    64 
+  3    65 dcl  1 scs$cow (0:7) aligned external,			/* Actual connect words */
+  3    66        2 pad bit (36) aligned,			/* Expander COW's must be odd-word */
+  3    67        2 cow,
+  3    68          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  3    69          3 mbz1 bit (13) unaligned,
+  3    70          3 expander_command bit (3) unaligned,		/* Expander command. */
+  3    71          3 mbz2 bit (2) unaligned,
+  3    72          3 expanded_port bit (1) unaligned,		/* "1"b = on expanded port */
+  3    73          3 expander_port fixed bin (3) unsigned unaligned,	/* Port on expander for cioc */
+  3    74          3 mbz3 bit (3) unaligned,
+  3    75          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  3    76 
+  3    77 dcl  1 scs$cow_ptrs (0:7) external aligned,		/* Pointers to COW's */
+  3    78        2 rel_cow_ptr bit (18) unal,			/* Relative pointer to COW */
+  3    79        2 pad bit (12) unal,
+  3    80        2 tag bit (6) unal;				/* Better be zero. */
+  3    81 
+  3    82 dcl  1 scs$reconfig_general_cow aligned external,		/* Used during reconfig ops. */
+  3    83        2 pad bit (36) aligned,
+  3    84        2 cow,					/* Connect operand word, in odd location. */
+  3    85          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  3    86          3 mbz1 bit (13) unaligned,
+  3    87          3 expander_command bit (3) unaligned,		/* Expander command. */
+  3    88          3 mbz2 bit (9) unaligned,
+  3    89          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  3    90 
+  3    91 /* MASKS and PATTERNS */
+  3    92 
+  3    93 dcl  scs$sys_level bit (72) aligned ext;		/* mask used while handling I/O interrupts */
+  3    94 dcl  scs$open_level bit (72) aligned ext;		/* mask used during normal operation */
+  3    95 dcl  scs$processor_start_mask bit (72) aligned ext;	/* mask used when starting up a CPU */
+  3    96 dcl  scs$cpu_test_mask bit (72) aligned ext;		/* mask used for ISOLTS CPU testing */
+  3    97 dcl  scs$number_of_masks fixed bin ext;			/* number of masks (starting at sys_level) */
+  3    98 dcl  scs$processor_start_pattern bit (36) aligned ext;	/* SMIC pattern used to send processor start interrupt */
+  3    99 dcl  scs$cpu_test_pattern bit (36) aligned ext;		/* SMIC pattern used for ISOLTS processor testing */
+  3   100 
+  3   101 /* CAM and CACHE clear info */
+  3   102 
+  3   103 dcl  scs$cam_pair fixed bin (71) ext;			/* instructions XEDd when CAMing and clearing CACHE */
+  3   104 dcl  scs$cam_wait bit (8) aligned ext;			/* Used when evicting pages from main memory */
+  3   105 
+  3   106 /* MASKING INSTRUCTIONS & POINTERS */
+  3   107 
+  3   108 dcl  scs$set_mask (0:7) bit (36) aligned ext;		/* instructions to set mask (STAQ or SMCM) */
+  3   109 dcl  scs$read_mask (0:7) bit (36) aligned ext;		/* instructions to read mask (LDAQ or RMCM) */
+  3   110 dcl  scs$mask_ptr (0:7) ptr unaligned ext;		/* pointers for real or simulated masks */
+  3   111 
+  3   112 /* MISCELLANEOUS */
+  3   113 
+  3   114 dcl  1 scs$processor_test_data aligned ext,		/* info used for cpu testing */
+  3   115        (
+  3   116        2 active bit (1),				/* = "1"b if cpu currently under test */
+  3   117        2 scu_state bit (2),				/* state of scu being used for testing (see definition below) */
+  3   118        2 pad1 bit (4),
+  3   119        2 req_mem fixed bin (10),			/* dedicated memory required to test this cpu */
+  3   120        2 cpu_tag fixed bin (5),			/* tag of cpu under test */
+  3   121        2 scu_tag fixed bin (5),			/* tag of scu being used for cpu testing */
+  3   122        2 mask_cpu fixed bin (5)
+  3   123        ) unaligned;					/* tag of active cpu that has mask asigned to above scu */
+  3   124 
+  3   125 /* scu_state = "00"b => SCU defined by scs$processor_test_data.scu_tag not yet effected */
+  3   126 /* scu_state = "01"b => all core removed from SCU, port mask not yet changed */
+  3   127 /* scu_state = "10"b => all core removed from SCU, port mask changed */
+  3   128 /* scu_state = "11"b => only 64k at base of SCU being used for testing, original port mask restored */
+  3   129 
+  3   130 dcl  scs$idle_aptep (0:7) ptr unaligned ext;		/* pointer to idle process APTE for each processor */
+  3   131 
+  3   132 dcl  scs$connect_lock bit (36) aligned ext;		/* lock for sending connects */
+  3   133 dcl  scs$reconfig_lock bit (36) aligned ext;		/* Lock used during reconfiguration */
+  3   134 dcl  scs$trouble_flags bit (8) aligned ext;		/* checkoff flags for sys_trouble stopping */
+  3   135 dcl  scs$bos_restart_flags bit (8) aligned ext;		/* checkoff flags for restarting after sys_trouble */
+  3   136 dcl  scs$nprocessors fixed bin ext;			/* number of runnung processors */
+  3   137 dcl  scs$bos_processor_tag fixed bin (3) ext;		/* CPU tag of processor running BOS */
+  3   138 dcl  scs$faults_initialized bit (1) aligned ext;		/* ON after faults have been enabled */
+  3   139 dcl  scs$sys_trouble_pending bit (1) aligned ext;		/* sys_trouble event is pending in the system */
+  3   140 dcl  scs$fast_cam_pending (0:7) bit (36) aligned ext;	/* checkoff cells for cam connect		*/
+  3   141 dcl  scs$interrupt_controller fixed bin (3) ext;		/* port number of low order controller */
+  3   142 dcl  scs$processor_start_int_no fixed bin (5) ext;	/* interrupt cell for starting a processor */
+  3   143 dcl  scs$processor bit (8) aligned ext;			/* bits ON for online CPUs */
+  3   144 dcl  scs$processor_start_wait bit (8) aligned ext;	/* checkoff flags for waiting for new processor */
+  3   145 
+  3   146 dcl  scs$trouble_dbrs (0:7) fixed bin (71);		/* DBR values at system crash time */
+  3   147 
+  3   148 dcl  scs$port_addressing_word (0:7) bit (3) aligned ext;	/* active module port number for each controller */
+  3   149 
+  3   150 dcl  scs$cfg_data (0:7) fixed bin (71) aligned ext;	/* RSCR-CFG data from each controller */
+  3   151 
+  3   152 dcl  scs$cfg_data_save fixed bin (71) aligned ext;	/* RSCR-CFG save area for ISOLTS CPU testing */
+  3   153 
+  3   154 dcl  scs$expanded_ports bit (1) unaligned dim (0:7) external;
+  3   155 						/* Which ports have expanders */
+  3   156 
+  3   157 dcl  scs$processor_switch_data (0:4) bit (36) aligned ext;	/* raw data from RSW 0 thru 4 */
+  3   158 dcl  scs$processor_switch_template (0:4) bit (36) aligned ext; /* expected data from RSW 0 thru 4 */
+  3   159 dcl  scs$processor_switch_compare (0:4) bit (36) aligned ext; /* discrepancies from expected data */
+  3   160 dcl  scs$processor_switch_mask (0:4) bit (36) aligned ext;	/* masks for comparing switch data */
+  3   161 
+  3   162 dcl  scs$processor_data_switch_value bit (36) aligned ext;	/* Correct value for CPU data switches */
+  3   163 
+  3   164 dcl  scs$controller_config_size (0:7) fixed bin (14) aligned ext;
+  3   165 						/* Controller size on config card */
+  3   166 
+  3   167 dcl  scs$reconfig_locker_id char (32) aligned ext;	/* process group ID of process doing reconfiguration */
+  3   168 
+  3   169 dcl  scs$scas_page_table (0:31) bit (36) aligned external static;
+  3   170 						/* PTWs for SCAS pages */
+  3   171 
+  3   172 dcl  scs$cycle_priority_template bit (7) aligned ext;	/* template for setting anti-hog switches	*/
+  3   173 dcl  scs$set_cycle_switches bit (1) aligned ext;		/* flag to set ant-hog switches		*/
+  3   174 
+  3   175 
+  3   176 dcl  (
+  3   177      IOM_PORT init (1),
+  3   178      CPU_PORT init (2),
+  3   179      BULK_PORT init (3)
+  3   180      ) fixed bin int static options (constant);		/* values for scs$port_data.assigned		*/
+  3   181 
+  3   182 
+  3   183 /* END INCLUDE FILE scs.incl.pl1 */
+       58 
+       59  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  4     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  4     3 
+  4     4 dcl  cmep ptr;					/* pointer to core map entry */
+  4     5 
+  4     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  4     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  4     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  4     9 
+  4    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  4    11     2 pad5 bit (1) unaligned,
+  4    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  4    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  4    14     2 pad2 bit (1) unaligned,
+  4    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  4    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  4    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  4    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  4    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  4    20     2 pad3 bit (1) unaligned,
+  4    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  4    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  4    23 
+  4    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  4    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  4    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  4    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  4    28 
+  4    29 
+  4    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  4    31 
+  4    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  4    33     2 pad bit (36) unaligned,
+  4    34     2 record_no bit (18) unaligned,			/* record number of device */
+  4    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  4    36     2 flags bit (14) unal,
+  4    37     2 pad1 bit (18) unal;
+  4    38 
+  4    39 
+  4    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+       59 
+       60  /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  5     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  5     3 
+  5     4 dcl  sdw_info_ptr pointer;
+  5     5 
+  5     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  5     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  5     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  5     9 
+  5    10     2 access unaligned,				/* REWP */
+  5    11       3 read bit (1) unaligned,
+  5    12       3 execute bit (1) unaligned,
+  5    13       3 write bit (1) unaligned,
+  5    14       3 privileged bit (1) unaligned,
+  5    15 
+  5    16     2 pad1 bit (32) unaligned,
+  5    17 
+  5    18     2 rings unaligned,				/* Ring brackets */
+  5    19       3 r1 bit (3) unaligned,
+  5    20       3 r2 bit (3) unaligned,
+  5    21       3 r3 bit (3) unaligned,
+  5    22 
+  5    23     2 pad2 bit (27) unaligned,
+  5    24 
+  5    25     2 flags aligned,
+  5    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  5    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  5    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  5    29       3 pad3 bit (33) unaligned,
+  5    30 
+  5    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  5    32 
+  5    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+       60 
+       61  /* BEGIN include file unpaged_page_tables.incl.pl1 */
+  6     2 
+  6     3 /* This include file describes the segments unpaged_page_tables and
+  6     4*int_unpaged_page_tables.  These segments contain the page tables for
+  6     5*segments that are paged and wired, those segments previously called
+  6     6*unpaged.
+  6     7*
+  6     8*Written September 15, 1983 by Keith Loepere. */
+  6     9 
+  6    10 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  6    11 
+  6    12 dcl  upt_ptr		        ptr;
+  6    13 dcl  1 upt		        aligned based (upt_ptr),
+  6    14        2 sst_absloc		        fixed bin (26),	/* for dump analyzers */
+  6    15        2 sst_last_loc	        fixed bin (26),
+  6    16        2 upt_absloc		        fixed bin (26),
+  6    17        2 upt_last_loc	        fixed bin (26),
+  6    18        2 iupt_absloc	        fixed bin (26),
+  6    19        2 iupt_last_loc	        fixed bin (26),
+  6    20 
+  6    21        2 current_length	        fixed bin,		/* number of words currently used */
+  6    22        2 max_length		        fixed bin,		/* max number of words in memory allocated */
+  6    23        2 first_entry	        like upt_entry;
+  6    24 
+  6    25 dcl  upt_entry_ptr		        ptr;
+  6    26 dcl  1 upt_entry		        aligned based (upt_entry_ptr),
+  6    27        2 size		        fixed bin,		/* number of page table words allocated */
+  6    28        2 segno		        fixed bin,		/* of hardcore segment */
+  6    29        2 ptws		        (0 refer (upt_entry.size)) bit (36) aligned;
+  6    30 
+  6    31 /* END include file unpaged_page_tables.incl.pl1 */
+       61 
+       62 
+       63 /* format: on */
+       64 
+       65 
+       66 	sltp = addr (slt$);
+       67 
+       68 	cmp = sst$cmp;				/* get pointer to core map array */
+       69 
+       70 	begin;
+       71 	     declare bound_bootload_0$      ext static bit (36) aligned;
+       72 	     declare int_unpaged_page_tables$ ext static bit (36) aligned;
+       73 	     declare unpaged_page_tables$   ext static;
+       74 	     declare segno		      builtin;
+       75 
+       76 /* Force the memory for bound_bootload_0 to be reclaimed now.
+       77*Note, though, that the first two pages thereof (the toehold) will be claimed
+       78*by the toehold's sdw. */
+       79 /* Also, int_upt is no longer needed.  It was not made paged by make_segs_paged
+       80*(and memory claimed) since it was needed until that program finished. */
+       81 
+       82 	     dseg$ (segno (addr (bound_bootload_0$))) = 0;
+       83 	     dseg$ (segno (addr (int_unpaged_page_tables$))) = 0;
+       84 	     addr (unpaged_page_tables$) -> upt.iupt_absloc = 0; /* for dump analyzers */
+       85 	     addr (unpaged_page_tables$) -> upt.iupt_last_loc = 0;
+       86 	end;
+       87 
+       88 	do i = slt.first_sup_seg to slt.last_sup_seg;
+       89 	     call PROCESS_SEGMENT (i);
+       90 	end;
+       91 
+       92 PROCESS_SEGMENT:
+       93      procedure (segno);
+       94 	declare segno		 fixed bin (18);
+       95 	declare sdwp		 pointer;
+       96 
+       97 	sdwp = addr (dseg$ (segno));			/* construct a pointer to the sdw for this seg */
+       98 	unspec (sdwi) = ""b;
+       99 	call sdw_util_$dissect (sdwp, addr (sdwi));
+      100 	sltep = addr (slt.seg (segno));
+      101 	if slte.breakpointable 
+      102 	then sdwi.size = sdwi.size - 1024;		/* subtract off bkpt page */
+      103 	if ^sdwi.faulted & ((^slte.paged) | slte.layout_seg) & ^slte.abs_seg
+      104 	then call mark_core (absadr (baseptr (segno), (0)), sdwi.size);/* mark the start of the remaining words as used */
+      105 
+      106 	return;
+      107 
+      108 mark_core:
+      109      procedure (absadr, length);
+      110 
+      111 /* This procedure marks a core page frame
+      112*   as in use by "unpaged" segments */
+      113 
+      114 	dcl     absadr		 fixed bin (26);	/* absolute address  pointing into page to be marked */
+      115 	dcl     first_page		 fixed bin (18);
+      116 	dcl     last_page		 fixed bin (18);
+      117 	dcl     length		 fixed bin (19);
+      118 
+      119 	first_page = divide (absadr, PAGE_SIZE, 26, 0);
+      120 	last_page = divide (absadr + length - 1, PAGE_SIZE, 26, 0);
+      121 
+      122 	begin;
+      123 	     declare 1 CMES		      (last_page - first_page + 1) aligned like cme defined (CME (first_page));
+      124 
+      125 	     declare aa		      fixed bin;
+      126 	     declare syserr		      entry options (variable);
+      127 
+      128 	     declare 1 TEMPLATE_CME	      aligned like CME;
+      129 
+      130 	     unspec (TEMPLATE_CME) = ""b;
+      131 	     TEMPLATE_CME.bp, TEMPLATE_CME.fp = (18)"0"b;
+      132 	     TEMPLATE_CME.abs_w = "1"b;
+      133 	     CMES (*) = TEMPLATE_CME;
+      134 	end;
+      135      end mark_core;
+      136      end PROCESS_SEGMENT;
+      137 
+      138 
+      139 	do i = 0 to 7;				/* loop through all controllers, scanning core */
+      140 	     if scs$controller_data (i).online
+      141 	     then do;
+      142 		     do j = scs$controller_data (i).base
+      143 			to scs$controller_data (i).base + scs$controller_config_size (i) - 1;
+      144 						/* loop over all pages in controller */
+      145 			if CME (j).fp = (18)"1"b
+      146 			then call freecore (j);	/* free if not being used */
+      147 		     end;
+      148 		end;
+      149 	end;
+      150 
+      151 	return;
+      152 
+      153      end collect_free_core;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0815.2  collect_free_core.pl1             >spec>install>1112>collect_free_core.pl1
+56           1    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+57           2    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+58           3    10/12/83  0943.5  scs.incl.pl1                      >ldd>include>scs.incl.pl1
+59           4    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+60           5    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+61           6    07/11/84  0937.3  unpaged_page_tables.incl.pl1      >ldd>include>unpaged_page_tables.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CME                                    based           structure                array level 1 dcl 52 ref 133 133 133 133 133 133 133
+                                                                                  133 133 133 133 133 133 133 133 133 133 133 133
+                                                                                  133 133 133 133 133 133 133 133 133 133 133 133
+                                                                                  133 133 133 133 133 133 133
+CMES                                   defined         structure                array level 1 dcl 123 set ref 133*
+PAGE_SIZE                              constant        fixed bin(17,0)          initial dcl 51 ref 119 120
+TEMPLATE_CME                    000140 automatic       structure                level 1 dcl 128 set ref 130* 133
+abs_seg                   1(05)        based           bit(1)                   level 2 packed packed unaligned dcl 2-48 ref 103
+absadr                          000016 constant        entry                    external dcl 39 in procedure "collect_free_core" ref
+                                                                                  103 103
+absadr                                 parameter       fixed bin(26,0)          dcl 114 in procedure "mark_core" ref 108 119 120
+addr                                                   builtin function         dcl 48 ref 66 82 83 84 85 97 99 99 100
+base                      0(18) 000024 external static fixed bin(17,0)          array level 2 packed packed unaligned dcl 3-6 ref
+                                                                                  142 142
+bound_bootload_0$               000030 external static bit(36)                  dcl 71 set ref 82
+breakpointable            1(08)        based           bit(1)                   level 2 packed packed unaligned dcl 2-48 ref 101
+cme                                    based           structure                level 1 dcl 4-6
+cmp                             000110 automatic       pointer                  dcl 47 set ref 68* 133 133 133 133 133 133 133 133
+                                                                                  133 133 133 133 133 133 133 133 133 133 133 145
+divide                                                 builtin function         dcl 48 ref 119 120
+dseg$                           000012 external static fixed bin(71,0)          array dcl 34 set ref 82* 83* 97
+faulted                   4(01) 000102 automatic       bit(1)                   level 3 packed packed unaligned dcl 45 set ref 103
+first_page                      000136 automatic       fixed bin(18,0)          dcl 115 set ref 119* 123 133 133 133 133 133 133 133
+                                                                                  133 133 133 133 133 133 133 133 133 133 133 133
+first_sup_seg             3            based           fixed bin(18,0)          level 2 dcl 1-13 ref 88
+flags                     4     000102 automatic       structure                level 2 dcl 45
+fp                                     based           bit(18)                  array level 2 packed packed unaligned dcl 52 ref 145
+freecore                        000020 constant        entry                    external dcl 40 ref 145
+i                               000100 automatic       fixed bin(18,0)          dcl 43 set ref 88* 89* 139* 140 142 142 142*
+info                      2     000024 external static structure                array level 2 dcl 3-6
+int_unpaged_page_tables$        000032 external static bit(36)                  dcl 72 set ref 83
+iupt_absloc               4            based           fixed bin(26,0)          level 2 dcl 6-13 set ref 84*
+iupt_last_loc             5            based           fixed bin(26,0)          level 2 dcl 6-13 set ref 85*
+j                               000101 automatic       fixed bin(18,0)          dcl 43 set ref 142* 145 145*
+last_page                       000137 automatic       fixed bin(18,0)          dcl 116 set ref 120* 123
+last_sup_seg              4            based           fixed bin(18,0)          level 2 dcl 1-13 ref 88
+layout_seg                1(07)        based           bit(1)                   level 2 packed packed unaligned dcl 2-48 ref 103
+length                                 parameter       fixed bin(19,0)          dcl 117 ref 108 120
+online                    2     000024 external static bit(1)                   array level 3 packed packed unaligned dcl 3-6 ref
+                                                                                  140
+paged                     1(13)        based           bit(1)                   level 2 packed packed unaligned dcl 2-48 ref 103
+scs$controller_config_size      000026 external static fixed bin(14,0)          array dcl 3-164 ref 142
+scs$controller_data             000024 external static structure                array level 1 dcl 3-6
+sdw_info                               based           structure                level 1 dcl 5-6
+sdw_util_$dissect               000022 constant        entry                    external dcl 42 ref 99
+sdwi                            000102 automatic       structure                level 1 dcl 45 set ref 98* 99 99
+sdwp                            000126 automatic       pointer                  dcl 95 set ref 97* 99*
+seg                      10            based           structure                array level 2 dcl 1-13 set ref 100
+segno                                                  builtin function         dcl 74 in begin block on line 70 ref 82 83
+segno                                  parameter       fixed bin(18,0)          dcl 94 in procedure "PROCESS_SEGMENT" ref 92 97 100
+                                                                                  103 103 103 103
+size                      1     000102 automatic       fixed bin(19,0)          level 2 dcl 45 set ref 101* 101 103*
+slt                                    based           structure                level 1 dcl 1-13
+slt$                            000010 external static bit(36)                  packed unaligned dcl 33 set ref 66
+slte                                   based           structure                level 1 dcl 2-48
+sltep                           000114 automatic       pointer                  dcl 2-8 set ref 100* 101 103 103 103
+sltp                            000112 automatic       pointer                  dcl 1-7 set ref 66* 88 88 100
+sst$cmp                         000014 external static pointer                  dcl 36 ref 68
+unpaged_page_tables$            000034 external static fixed bin(17,0)          dcl 73 set ref 84 85
+upt                                    based           structure                level 1 dcl 6-13
+upt_entry                              based           structure                level 1 dcl 6-26
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BULK_PORT                              internal static fixed bin(17,0)          initial dcl 3-176
+CPU_PORT                               internal static fixed bin(17,0)          initial dcl 3-176
+IOM_PORT                               internal static fixed bin(17,0)          initial dcl 3-176
+aa                                     automatic       fixed bin(17,0)          dcl 125
+aclp                                   automatic       pointer                  dcl 1-7
+acls                                   based           structure                level 1 dcl 1-45
+baseno                                                 builtin function         dcl 48
+cma                                    based           structure                array level 1 dcl 4-30
+cmep                                   automatic       pointer                  dcl 4-4
+fixed                                                  builtin function         dcl 48
+mcme                                   based           structure                level 1 dcl 4-32
+name_seg                               based           structure                level 1 dcl 1-26
+namep                                  automatic       pointer                  dcl 1-7
+names_ptr                              automatic       pointer                  dcl 1-7
+path                                   based           structure                level 1 dcl 1-40
+pathp                                  automatic       pointer                  dcl 1-7
+scs$bos_processor_tag                  external static fixed bin(3,0)           dcl 3-137
+scs$bos_restart_flags                  external static bit(8)                   dcl 3-135
+scs$cam_pair                           external static fixed bin(71,0)          dcl 3-103
+scs$cam_wait                           external static bit(8)                   dcl 3-104
+scs$cfg_data                           external static fixed bin(71,0)          array dcl 3-150
+scs$cfg_data_save                      external static fixed bin(71,0)          dcl 3-152
+scs$connect_lock                       external static bit(36)                  dcl 3-132
+scs$cow                                external static structure                array level 1 dcl 3-65
+scs$cow_ptrs                           external static structure                array level 1 dcl 3-77
+scs$cpu_test_mask                      external static bit(72)                  dcl 3-96
+scs$cpu_test_pattern                   external static bit(36)                  dcl 3-99
+scs$cycle_priority_template            external static bit(7)                   dcl 3-172
+scs$expanded_ports                     external static bit(1)                   array packed unaligned dcl 3-154
+scs$fast_cam_pending                   external static bit(36)                  array dcl 3-140
+scs$faults_initialized                 external static bit(1)                   dcl 3-138
+scs$idle_aptep                         external static pointer                  array packed unaligned dcl 3-130
+scs$interrupt_controller               external static fixed bin(3,0)           dcl 3-141
+scs$mask_ptr                           external static pointer                  array packed unaligned dcl 3-110
+scs$nprocessors                        external static fixed bin(17,0)          dcl 3-136
+scs$number_of_masks                    external static fixed bin(17,0)          dcl 3-97
+scs$open_level                         external static bit(72)                  dcl 3-94
+scs$port_addressing_word               external static bit(3)                   array dcl 3-148
+scs$port_data                          external static structure                array level 1 dcl 3-56
+scs$processor                          external static bit(8)                   dcl 3-143
+scs$processor_data                     external static structure                array level 1 dcl 3-35
+scs$processor_data_switch_value        external static bit(36)                  dcl 3-162
+scs$processor_start_int_no             external static fixed bin(5,0)           dcl 3-142
+scs$processor_start_mask               external static bit(72)                  dcl 3-95
+scs$processor_start_pattern            external static bit(36)                  dcl 3-98
+scs$processor_start_wait               external static bit(8)                   dcl 3-144
+scs$processor_switch_compare           external static bit(36)                  array dcl 3-159
+scs$processor_switch_data              external static bit(36)                  array dcl 3-157
+scs$processor_switch_mask              external static bit(36)                  array dcl 3-160
+scs$processor_switch_template          external static bit(36)                  array dcl 3-158
+scs$processor_test_data                external static structure                level 1 dcl 3-114
+scs$read_mask                          external static bit(36)                  array dcl 3-109
+scs$reconfig_general_cow               external static structure                level 1 dcl 3-82
+scs$reconfig_lock                      external static bit(36)                  dcl 3-133
+scs$reconfig_locker_id                 external static char(32)                 dcl 3-167
+scs$scas_page_table                    external static bit(36)                  array dcl 3-169
+scs$set_cycle_switches                 external static bit(1)                   dcl 3-173
+scs$set_mask                           external static bit(36)                  array dcl 3-108
+scs$sys_level                          external static bit(72)                  dcl 3-93
+scs$sys_trouble_pending                external static bit(1)                   dcl 3-139
+scs$trouble_dbrs                       automatic       fixed bin(71,0)          array dcl 3-146
+scs$trouble_flags                      external static bit(8)                   dcl 3-134
+sdw_info_ptr                           automatic       pointer                  dcl 5-4
+segnam                                 based           structure                level 1 dcl 1-31
+slte_uns                               based           structure                level 1 dcl 2-10
+sst$last_core_block                    external static fixed bin(18,0)          dcl 37
+syserr                          000000 constant        entry                    external dcl 126
+upt_entry_ptr                          automatic       pointer                  dcl 6-25
+upt_ptr                                automatic       pointer                  dcl 6-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+PROCESS_SEGMENT                 000136 constant        entry                    internal dcl 92 ref 89
+collect_free_core               000007 constant        entry                    external dcl 15
+mark_core                       000234 constant        entry                    internal dcl 108 ref 103
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+baseptr                                                builtin function         ref 103 103 103 103
+unspec                                                 builtin function         set ref 98 130*
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       650         706     506         660
+Length      1200     506        36         256     141           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+collect_free_core                   134 external procedure  is an external procedure.  
+begin block on line 70                  begin block         shares stack frame of external procedure collect_free_core.  
+PROCESS_SEGMENT                         internal procedure  shares stack frame of external procedure collect_free_core.  
+mark_core                               internal procedure  shares stack frame of external procedure collect_free_core.  
+begin block on line 122                 begin block         shares stack frame of external procedure collect_free_core.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+collect_free_core        000100 i                           collect_free_core
+                         000101 j                           collect_free_core
+                         000102 sdwi                        collect_free_core
+                         000110 cmp                         collect_free_core
+                         000112 sltp                        collect_free_core
+                         000114 sltep                       collect_free_core
+                         000126 sdwp                        PROCESS_SEGMENT
+                         000136 first_page                  mark_core
+                         000137 last_page                   mark_core
+                         000140 TEMPLATE_CME                begin block on line 122
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        freecore                      sdw_util_$dissect
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bound_bootload_0$             dseg$                         int_unpaged_page_tables$      scs$controller_config_size
+scs$controller_data           slt$                          sst$cmp                       unpaged_page_tables$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000006        66 000014        68 000016        82 000021        83 000033        84 000044        85 000046
+     88 000047        89 000061        90 000063       139 000065       140 000071       142 000077       145 000115
+    147 000131       149 000133       151 000135        92 000136        97 000140        98 000145        99 000150
+    100 000162       101 000170       103 000175       106 000233       108 000234       119 000236       120 000241
+    123 000246       130 000252       131 000255       132 000261       133 000263       135 000472
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1541 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>core_queue_man.alm                                                                                                                                   
+ASSEMBLED ON:	11/11/89  0932.1 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  "
+                                    13  "	core_queue_man --- obscure program to
+                                    14  "	manage locks which manage the locking of locks.
+                                    15  
+                                    16  "	Bernard Greenberg 12/06/76
+                                    17  "	Modified for concurrent scheduler, RE Mullen 5/16/77
+                                    18  "
+                                    19  "	core queue is ordered queue of postings to be done, wich
+                                    20  "	could not be done because ptl was locked. Since all
+                                    21  "	ptl unlocking is done under cql, no requests are ever lost.
+                                    22  
+                                    23  
+    000000                          24  	segref	page_fault,savex,unsavex,init_savex_bb,page_fault_error
+                                    25  
+                        000065      26  	segdef	disk_post,unlock_ptl,trylock_ptl,run_core_queue,clearout
+                                    27  
+                        000052      28  	entry	ptl_notify_return
+                                    29  
+                        000001      30  	equ	cq,1
+                                    31  
+                                    32  
+                                    33  	include	disk_post_queue
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE disk_post_queue.incl.alm
+                                   1-4  
+                                   1-5  	"Created 12/08/76  1107.1 mst Wed by convert_include_file,
+                                   1-6  	"   Version of 05/04/76  0834.0 mst Tue.
+                                   1-7  
+                                   1-8  	"Made from >udd>m>bsg>pq>disk_post_queue.incl.pl1,
+                                   1-9  	"   modified 12/08/76  1107.0 mst Wed
+                                  1-10  
+                                  1-11  
+                        000310    1-12  	equ	cq_limit,200		"MANIFEST
+                                  1-13  
+                                  1-14  "
+                                  1-15  "	Structure cq
+                                  1-16  "
+                        000640    1-17  	equ	cq_size,416
+                                  1-18  
+                        000000    1-19  	equ	cq.lock,0
+                        000001    1-20  	equ	cq.lockings,1
+                        000002    1-21  	equ	cq.overflows,2
+                        000003    1-22  	equ	cq.number_in_queue,3
+                        000004    1-23  	equ	cq.looplock_time,4		"DOUBLE
+                        000006    1-24  	equ	cq.process_time,6		"DOUBLE
+                                  1-25  
+                        000010    1-26  	equ	cq.put_ptr,8		"UPPER
+                                  1-27  
+                        000011    1-28  	equ	cq.get_ptr,9		"UPPER
+                                  1-29  
+                        000012    1-30  	equ	cq.queueings,10
+                        000020    1-31  	equ	cq.queue,16		"LEVEL 2
+                                  1-32  
+                        000020    1-33  	equ	cq.coreadd,16
+                        000021    1-34  	equ	cq.errcode,17
+                                  1-35  
+                                  1-36       "END INCLUDE FILE disk_post_queue.incl.alm
+                                    34  
+                                    35  
+                                    36  "
+    000000                          37  disk_post:
+    000000  aa   000300 6270 00     38  	push			"args to stack..
+    000001  aa  7 00040 2721 20
+    000002  aa  0 00002 2351 20     39  	lda	ap|2,*
+    000003  aa  6 00173 7551 00     40  	sta	core_add
+    000004  aa  0 00004 2351 20     41  	lda	ap|4,*
+    000005  aa  6 00201 7551 00     42  	sta	errcode
+    000006  4a  4 00010 7061 20     43  	tsx6	init_savex_bb
+                                    44  
+    000007  0a   000020 6360 00     45  	eaq	lock_and_done	assume complicated entry
+    000010  4a  4 00012 2351 20     46  	lda	pds$processid	new mylock dones?
+    000011  aa  3 00020 1151 00     47  	cmpa	sst|sst.ptl
+    000012  0a   000014 6010 00     48  	tnz	*+2		go on with lock_and_done if ^=
+    000013  4a  4 00014 6361 20     49  	eaq	page_fault$done_
+    000014  aa   000000 7070 02     50  	tsx7	0,qu
+    000015  aa  7 00042 7101 20     51  	return
+                                    52  
+                                    53  "
+                                    54  " - - - - - - - - - - - - - - - - - - - - - - - - - -
+                                    55  "
+                                    56  
+    000016                          57  unlock_ptl:			"from page fault...
+                                    58  				"push done, lp set, bb set, x7 is ret.
+    000016  4a  4 00016 7061 20     59  	tsx6	savex
+    000017  0a   000024 7100 00     60  	tra	unlock_ptl_test_postq
+                                    61  
+                                    62  
+    000020                          63  lock_and_done:
+    000020  4a  4 00016 7061 20     64  	tsx6	savex		save x7
+                                    65  
+    000021  0a   000176 7070 00     66  	tsx7	trylock_ptl	can we get the PTL?
+    000022  0a   000031 7100 00     67  	 tra	done_fails_ptl	tra if not.
+                                    68  
+    000023                          69  do_the_done:
+    000023  4a  4 00014 7071 20     70  	tsx7	page_fault$done_	have ptl, will post
+                                    71  
+    000024                          72  unlock_ptl_test_postq:
+    000024  0a   000073 7070 00     73  	tsx7	looplock_cql	grab the posting queue
+                                    74  
+    000025                          75  test_postq:
+    000025  0a   000156 7070 00     76  	tsx7	dequeue_posting	see if posting to be done...
+    000026  0a   000045 7100 00     77  	 tra	unlock_ptl_real	no, unlock ptl and cql.
+                                    78  
+    000027  0a   000117 7070 00     79  	tsx7	unlock_cql	unlock cql, there is posting,
+    000030  0a   000023 7100 00     80  	tra	do_the_done	and do it.
+                                    81  
+                                    82  "
+                                    83  "	Disk interrupt has failed to grab the PTL.
+                                    84  "	Enqueue the data from stack.
+                                    85  "
+                                    86  
+    000031                          87  done_fails_ptl:
+    000031  0a   000073 7070 00     88  	tsx7	looplock_cql	grab cql. This assures no-one can
+                                    89  				"unlock ptl until we unlock cql.
+    000032  0a   000137 7070 00     90  	tsx7	enqueue_posting
+    000033  0a   000041 7100 00     91  	 tra	queue_overflow	no more room... looplock the ptl
+                                    92  
+    000034  0a   000176 7070 00     93  	tsx7	trylock_ptl	see if we can get ptl, for we have no guarantee that
+                                    94  				"ptl holder didnt go away right before
+                                    95  				"line at done_fails_ptl.
+    000035  0a   000037 7100 00     96  	 tra	*+2		"if ptl fails, guaranteed that enqueuement
+                                    97  				"will be picked up.
+    000036  0a   000025 7100 00     98  	tra	test_postq	"However, if we get it, we can now
+                                    99  				"do postings (both locks locked here.)
+    000037  0a   000117 7070 00    100  	tsx7	unlock_cql	"don't have ptl, we deposited, so unlock cql
+    000040  4a  4 00020 7101 20    101  	tra	unsavex		and return.
+                                   102  
+                                   103  "
+                                   104  "	Queue overflown. Loop lock the PTL.
+                                   105  "
+    000041                         106  queue_overflow:
+    000041  aa  1 00002 0541 00    107  	aos	cq|cq.overflows
+                                   108  
+    000042  0a   000117 7070 00    109  	tsx7	unlock_cql	done with cq
+                                   110  
+    000043  4a  4 00022 7071 20    111  	tsx7	page_fault$lock_ptl_no_lp
+                                   112  				"this guy doesn't kid around.
+    000044  0a   000023 7100 00    113  	tra	do_the_done
+                                   114  
+                                   115  "
+                                   116  "	Can now unlock ptl, for all posting is done, and anybody
+                                   117  "	who's trying to enqueue must wait for cql.
+                                   118  "
+    000045                         119  unlock_ptl_real:
+    000045  0a   000206 7070 00    120  	tsx7	actual_ptl_unlock_code  he really, really does it.
+    000046  0a   000117 7070 00    121  	tsx7	unlock_cql
+                                   122  
+    000047  aa  3 00032 2341 00    123  	szn	sst|sst.ptl_wait_ct	anybody wanna know?
+    000050  4a  4 00020 6001 20    124  	tze	unsavex		no, return to caller of core_queue_man
+                                   125  
+                                   126  "
+                                   127  "	Notify single PTL waiting process via pxss.
+                                   128  "
+    000051  4a  4 00024 7101 20    129  	tra	pxss$ptl_notify	which returns to cqm$ptl_notify_return
+    000052                         130  ptl_notify_return:
+    000052  4a  4 00026 3535 20    131  	epp	sst,sst$		for luck ..
+    000053  4a  4 00020 7101 20    132  	tra	unsavex		return to call of core_queue_man
+                                   133  
+                                   134  "
+                                   135  "	Entry to make sure this thing isn't stuck.
+                                   136  "	The thing is called from dvctl$run with the
+                                   137  "	entire pc environment set up and the ptl locked
+                                   138  "	during the entire exercise.
+                                   139  "
+                                   140  "
+    000054                         141  run_core_queue:
+    000054  4a  4 00016 7061 20    142  	tsx6	savex
+                                   143  	
+    000055                         144  run_core_queue_loop:
+    000055  0a   000073 7070 00    145  	tsx7	looplock_cql
+                                   146  
+    000056  0a   000156 7070 00    147  	tsx7	dequeue_posting
+    000057  0a   000063 7100 00    148  	 tra	run_core_queue_done
+                                   149  
+    000060  0a   000117 7070 00    150  	tsx7	unlock_cql
+    000061  4a  4 00014 7071 20    151  	tsx7	page_fault$done_	do the done
+    000062  0a   000055 7100 00    152  	tra	run_core_queue_loop
+                                   153  
+    000063                         154  run_core_queue_done:
+    000063  0a   000117 7070 00    155  	tsx7	unlock_cql
+    000064  4a  4 00020 7101 20    156  	tra	unsavex
+                                   157  
+                                   158  "
+                                   159  "	Entry to clear the thing out at ESD time to validate
+                                   160  "	assumptions of pc_recover_sst (no "fatal_error in done!")
+                                   161  "
+                                   162  
+    000065                         163  clearout:
+    000065  4a  4 00030 3515 20    164  	epp	cq,disk_post_queue_seg$
+                                   165  
+    000066  aa  1 00000 4501 00    166  	stz	cq|cq.lock
+    000067  aa  1 00010 4501 00    167  	stz	cq|cq.put_ptr
+    000070  aa  1 00011 4501 00    168  	stz	cq|cq.get_ptr
+    000071  aa  1 00003 4501 00    169  	stz	cq|cq.number_in_queue
+    000072  aa   000000 7100 17    170  	tra	0,7
+                                   171  
+                                   172  "
+                                   173  
+                                   174  "
+                                   175  "	Coreadd queue management.
+                                   176  "
+                                   177  
+    000073                         178  looplock_cql:			"must be looplock to avoid
+                                   179  				"russian doll lock syndrome.
+                                   180  
+    000073  4a  4 00032 6331 20    181  	rccl	sys_info$clock_,*
+    000074  aa  6 00134 7571 00    182  	staq	temp
+                                   183  
+    000075  4a  4 00030 3515 20    184  	epp	cq,disk_post_queue_seg$+0
+    000076  aa  1 00001 0541 00    185  	aos	cq|cq.lockings
+                                   186  
+    000077  4a  4 00012 2351 20    187  	lda	pds$processid
+    000100  aa  1 00000 3541 00    188  	stac	cq|cq.lock
+    000101  0a   000106 6000 00    189  	tze	*+5
+    000102  aa   000000 0110 00    190  	nop
+    000103  aa   000000 0110 00    191  	nop
+    000104  aa   000000 0110 00    192  	nop
+    000105  0a   000100 6010 00    193  	tnz	*-5
+    000106  aa  1 00000 1151 00    194  	cmpa	cq|cq.lock	never trust this hw
+    000107  0a   000111 6000 00    195  	tze	*+2
+    000110  4a  4 00034 7051 20    196  	tsx5	page_fault_error	"ERROR - MYLOCK ON DISK POST QUEUE
+    000111  4a  4 00032 6331 20    197  	rccl	sys_info$clock_,*
+    000112  aa  6 00166 7571 00    198  	staq	temp1		save for under-lock metering
+    000113  aa  6 00134 1771 00    199  	sbaq	temp
+    000114  aa  1 00004 0771 00    200  	adaq	cq|cq.looplock_time
+    000115  aa  1 00004 7571 00    201  	staq	cq|cq.looplock_time
+                                   202  
+    000116  aa   000000 7100 17    203  	tra	0,7
+                                   204  
+                                   205  
+    000117                         206  unlock_cql:
+                                   207  
+    000117  4a  4 00030 3515 20    208  	epp	cq,disk_post_queue_seg$+0  NO CHANCES
+    000120  4a  4 00032 6331 20    209  	rccl	sys_info$clock_,*
+    000121  aa  6 00166 1771 00    210  	sbaq	temp1
+    000122  aa  1 00006 0771 00    211  	adaq	cq|cq.process_time
+    000123  aa  1 00006 7571 00    212  	staq	cq|cq.process_time
+    000124  4a  4 00012 2361 20    213  	ldq	pds$processid
+    000125  aa  1 00000 1161 00    214  	cmpq	cq|cq.lock
+    000126  0a   000130 6000 00    215  	tze	*+2
+    000127  4a  4 00034 7051 20    216  	tsx5	page_fault_error	"ERROR - STAC FAILS DISK POST QUEUE
+    000130  aa   000000 6350 00    217  	eaa	0
+    000131  aa  1 00000 6541 00    218  	stacq	cq|cq.lock
+    000132  0a   000134 6000 00    219  	tze	*+2
+    000133  4a  4 00034 7051 20    220  	tsx5	page_fault_error	"ERROR - UNLOCK ERR DISK POST QUEUE
+    000134  aa  1 00000 1161 00    221  	cmpq	cq|cq.lock
+    000135  aa   000000 6010 17    222  	tnz	0,7
+    000136  4a  4 00034 7051 20    223  	tsx5	page_fault_error	"ERROR - STACQ HW FAILS DISK POST QUEUE
+                                   224  "
+                                   225  "
+                                   226  "	Enqueue and dequeue.  cq -> seg.
+                                   227  "
+                                   228  
+    000137                         229  enqueue_posting:
+    000137  aa  1 00003 2361 00    230  	ldq	cq|cq.number_in_queue
+    000140  aa   000310 1160 07    231  	cmpq	cq_limit,dl	all full?
+    000141  aa   000000 6050 17    232  	tpl	0,7		error exit
+                                   233  
+    000142  aa  1 00012 0541 00    234  	aos	cq|cq.queueings	meter
+                                   235  
+    000143  aa  1 00003 0541 00    236  	aos	cq|cq.number_in_queue
+    000144  aa  1 00010 2211 00    237  	ldx1	cq|cq.put_ptr
+    000145  aa  6 00173 2351 00    238  	lda	core_add
+    000146  aa  6 00201 2361 00    239  	ldq	errcode
+                                   240  
+    000147  aa  1 00020 7571 11    241  	staq	cq|cq.queue,1
+                                   242  
+    000150  aa   000002 6210 11    243  	eax1	2,1
+    000151  aa   000620 1010 03    244  	cmpx1	2*cq_limit,du
+    000152  0a   000154 6040 00    245  	tmi	*+2
+    000153  aa   000000 6210 00    246  	eax1	0
+    000154  aa  1 00010 7411 00    247  	stx1	cq|cq.put_ptr
+                                   248  
+    000155  aa   000001 7100 17    249  	tra	1,7
+                                   250  
+                                   251  
+    000156                         252  dequeue_posting:
+    000156  aa  1 00003 2341 00    253  	szn	cq|cq.number_in_queue
+    000157  aa   000000 6000 17    254  	tze	0,7		exit no stuff
+                                   255  
+    000160  aa   000001 3360 07    256  	lcq	1,dl
+    000161  aa  1 00003 0561 00    257  	asq	cq|cq.number_in_queue
+    000162  0a   000164 6050 00    258  	tpl	*+2
+    000163  4a  4 00034 7051 20    259  	tsx5	page_fault_error	"ERROR - DISK POST QUEUE CT NEGATIVE
+                                   260  
+    000164  aa  1 00011 2211 00    261  	ldx1	cq|cq.get_ptr
+    000165  aa  1 00020 2371 11    262  	ldaq	cq|cq.queue,1
+    000166  aa  6 00173 7551 00    263  	sta	core_add
+    000167  aa  6 00201 7561 00    264  	stq	errcode
+                                   265  
+    000170  aa   000002 6210 11    266  	eax1	2,1
+    000171  aa   000620 1010 03    267  	cmpx1	2*cq_limit,du
+    000172  0a   000174 6040 00    268  	tmi	*+2
+    000173  aa   000000 6210 00    269  	eax1	0
+    000174  aa  1 00011 7411 00    270  	stx1	cq|cq.get_ptr
+                                   271  
+    000175  aa   000001 7100 17    272  	tra	1,7
+                                   273  "
+                                   274  "
+                                   275  "	Real page_table lockery.
+                                   276  "
+                                   277  
+    000176                         278  trylock_ptl:
+    000176  4a  4 00012 2351 20    279  	lda	pds$processid
+    000177  aa  3 00020 1151 00    280  	cmpa	sst|sst.ptl
+    000200  4a  4 00036 6001 20    281  	tze	page_error$ptl_mylock
+                                   282  
+    000201  aa  3 00020 3541 00    283  	stac	sst|sst.ptl
+    000202  aa   000000 6010 17    284  	tnz	0,7		fail
+                                   285  
+    000203  aa  3 00020 1151 00    286  	cmpa	sst|sst.ptl
+    000204  aa   000001 6000 17    287  	tze	1,7
+    000205  4a  4 00034 7051 20    288  	tsx5	page_fault_error	"ERROR - STAC FAILS PTL
+                                   289  
+                                   290  
+                                   291  "
+                                   292  "	Real page_table_lock unlockery
+                                   293  "
+                                   294  
+    000206                         295  actual_ptl_unlock_code:
+    000206  4a  4 00012 2361 20    296  	ldq	pds$processid
+    000207  aa   000000 2350 07    297  	lda	0,dl
+    000210  aa  3 00020 6541 00    298  	stacq	sst|sst.ptl	unlock it
+    000211  0a   000213 6000 00    299  	tze	*+2
+    000212  4a  4 00034 7051 20    300  	tsx5	page_fault_error	"ERROR - PTL UNLOCK FAILS
+    000213  aa   000000 0110 00    301  	nop
+    000214  aa  3 00020 1161 00    302  	cmpq	sst|sst.ptl	double-check hw
+    000215  aa   000000 6010 17    303  	tnz	0,7
+                                   304  
+    000216  4a  4 00034 7051 20    305  	tsx5	page_fault_error	"ERROR - PTL STACQ HW FAILS
+                                   306  "
+                                   307  	include	sst
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE sst.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 01/14/85  1523.7 est Mon by convert_include_file,
+                                   2-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   2-8  
+                                   2-9  	"Made from >Pool>m>loe>incl>sst.incl.pl1,
+                                  2-10  	"   modified 01/09/85  1148.3 est Wed
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure sst
+                                  2-14  "
+                        001000    2-15  	equ	sst_size,512
+                                  2-16  
+                                  2-17  
+                        000000    2-18  	equ	sst.space,0
+                        000010    2-19  	equ	sst.pre_page_time,8		" DOUBLE
+                        000012    2-20  	equ	sst.post_purge_time,10	" DOUBLE
+                        000014    2-21  	equ	sst.post_in_core,12
+                        000015    2-22  	equ	sst.thrashing,13
+                        000016    2-23  	equ	sst.npfs_misses,14
+                        000017    2-24  	equ	sst.salv,15
+                        000020    2-25  	equ	sst.ptl,16
+                        000021    2-26  	equ	sst.astl,17
+                        000022    2-27  	equ	sst.astl_event,18
+                                  2-28  
+                        000023    2-29  	equ	sst.astl_notify_requested_word,19
+                        400000    2-30  	bool	sst.astl_notify_requested,400000 " DU
+                                  2-31  
+                        000024    2-32  	equ	sst.nused,20
+                        000025    2-33  	equ	sst.ptwbase,21
+                        000026    2-34  	equ	sst.tfreep,22
+                        000030    2-35  	equ	sst.astap,24
+                        000032    2-36  	equ	sst.ptl_wait_ct,26
+                        000033    2-37  	equ	sst.astsize,27
+                        000034    2-38  	equ	sst.cmesize,28
+                        000036    2-39  	equ	sst.root_astep,30
+                        000040    2-40  	equ	sst.pts,32
+                        000044    2-41  	equ	sst.level,36		" LEVEL 2
+                                  2-42  
+                        000044    2-43  	equ	sst.ausedp,36		" UPPER
+                        000044    2-44  	equ	sst.no_aste,36		" LOWER
+                                  2-45  
+                        000050    2-46  	equ	sst.atempp,40		" UPPER
+                        000050    2-47  	equ	sst.atempp1,40		" LOWER
+                                  2-48  
+                        000051    2-49  	equ	sst.dm_enabled_word,41
+                        400000    2-50  	bool	sst.dm_enabled,400000	" DU
+                                  2-51  
+                        000052    2-52  	equ	sst.ainitp,42		" UPPER
+                        000052    2-53  	equ	sst.ainitp1,42		" LOWER
+                                  2-54  
+                        000053    2-55  	equ	sst.strsize,43
+                        000054    2-56  	equ	sst.cmp,44
+                                  2-57  
+                        000056    2-58  	equ	sst.usedp,46		" UPPER
+                                  2-59  
+                        000057    2-60  	equ	sst.wtct,47
+                                  2-61  
+                        000060    2-62  	equ	sst.startp,48		" UPPER
+                                  2-63  
+                        000061    2-64  	equ	sst.removep,49		" UPPER
+                                  2-65  
+                        000062    2-66  	equ	sst.double_write,50
+                        000063    2-67  	equ	sst.temp_w_event,51
+                        000064    2-68  	equ	sst.root_pvtx,52
+                                  2-69  
+                        000065    2-70  	equ	sst.nolock_word,53
+                        400000    2-71  	bool	sst.nolock,400000		" DU
+                                  2-72  
+                        000066    2-73  	equ	sst.fc_skips_pinned,54
+                        000067    2-74  	equ	sst.cl_skips_pinned,55
+                        000070    2-75  	equ	sst.ast_ht_ptr,56
+                        000072    2-76  	equ	sst.ast_ht_n_buckets,58
+                        000073    2-77  	equ	sst.ast_ht_uid_mask,59
+                        000074    2-78  	equ	sst.meter_ast_locking,60
+                        000075    2-79  	equ	sst.checksum_filemap,61
+                        000076    2-80  	equ	sst.page_read_errors,62
+                        000077    2-81  	equ	sst.page_write_errors,63
+                        000100    2-82  	equ	sst.cycle_pv_allocation,64
+                        000101    2-83  	equ	sst.n_trailers,65
+                        000102    2-84  	equ	sst.synch_activations,66
+                        000103    2-85  	equ	sst.synch_skips,67
+                        000104    2-86  	equ	sst.lock_waits,68
+                        000105    2-87  	equ	sst.total_locks_set,69
+                        000106    2-88  	equ	sst.pdir_page_faults,70
+                        000107    2-89  	equ	sst.level_1_page_faults,71
+                        000110    2-90  	equ	sst.dir_page_faults,72
+                        000111    2-91  	equ	sst.ring_0_page_faults,73
+                        000112    2-92  	equ	sst.rqover,74
+                        000113    2-93  	equ	sst.pc_io_waits,75
+                        000114    2-94  	equ	sst.steps,76
+                        000115    2-95  	equ	sst.needc,77
+                        000116    2-96  	equ	sst.ceiling,78
+                        000117    2-97  	equ	sst.ctwait,79
+                        000120    2-98  	equ	sst.wired,80
+                        000121    2-99  	equ	sst.laps,81
+                        000122   2-100  	equ	sst.skipw,82
+                        000123   2-101  	equ	sst.skipu,83
+                        000124   2-102  	equ	sst.skipm,84
+                        000125   2-103  	equ	sst.skipos,85
+                        000126   2-104  	equ	sst.aused,86
+                        000127   2-105  	equ	sst.damaged_ct,87
+                        000130   2-106  	equ	sst.deact_count,88
+                        000131   2-107  	equ	sst.demand_deact_attempts,89
+                        000132   2-108  	equ	sst.demand_deactivations,90
+                        000133   2-109  	equ	sst.reads,91
+                        000143   2-110  	equ	sst.writes,99
+                        000153   2-111  	equ	sst.short_pf_count,107
+                        000154   2-112  	equ	sst.loop_locks,108
+                        000156   2-113  	equ	sst.loop_lock_time,110	" DOUBLE
+                        000160   2-114  	equ	sst.cpu_sf_time,112		" DOUBLE
+                        000162   2-115  	equ	sst.total_sf_pf,114
+                        000163   2-116  	equ	sst.total_sf,115
+                        000164   2-117  	equ	sst.pre_page_size,116
+                        000165   2-118  	equ	sst.post_list_size,117
+                        000166   2-119  	equ	sst.post_purgings,118
+                        000167   2-120  	equ	sst.post_purge_calls,119
+                        000170   2-121  	equ	sst.pre_page_calls,120
+                        000171   2-122  	equ	sst.pre_page_list_size,121
+                        000172   2-123  	equ	sst.pre_page_misses,122
+                        000173   2-124  	equ	sst.pre_pagings,123
+                        000174   2-125  	equ	sst.wire_proc_data,124	" DOUBLE
+                        000214   2-126  	equ	sst.abs_wired_count,140
+                        000215   2-127  	equ	sst.system_type,141
+                        000216   2-128  	equ	sst.wired_copies,142
+                        000217   2-129  	equ	sst.recopies,143
+                        000220   2-130  	equ	sst.first_core_block,144
+                        000221   2-131  	equ	sst.last_core_block,145
+                        000222   2-132  	equ	sst.fw_retries,146
+                        000223   2-133  	equ	sst.pvhtp,147
+                        000224   2-134  	equ	sst.askipsize,148
+                        000230   2-135  	equ	sst.aneedsize,152
+                        000234   2-136  	equ	sst.stepsa,156
+                        000235   2-137  	equ	sst.askipsehs,157
+                        000236   2-138  	equ	sst.asearches,158
+                        000237   2-139  	equ	sst.askipslevel,159
+                        000240   2-140  	equ	sst.askipsinit,160
+                        000241   2-141  	equ	sst.acost,161
+                        000242   2-142  	equ	sst.askipslock,162
+                        000243   2-143  	equ	sst.askipdius,163
+                        000244   2-144  	equ	sst.alaps,164
+                        000245   2-145  	equ	sst.updates,165
+                        000246   2-146  	equ	sst.setfaults_all,166
+                        000247   2-147  	equ	sst.setfaults_acc,167
+                        000250   2-148  	equ	sst.total_bf,168
+                        000251   2-149  	equ	sst.total_bf_pf,169
+                        000252   2-150  	equ	sst.cpu_bf_time,170		" DOUBLE
+                        000254   2-151  	equ	sst.asteps,172
+                        000260   2-152  	equ	sst.ast_locked_at_time,176	" DOUBLE
+                        000262   2-153  	equ	sst.ast_locked_total_time,178	" DOUBLE
+                        000264   2-154  	equ	sst.ast_lock_wait_time,180	" DOUBLE
+                        000266   2-155  	equ	sst.ast_locking_count,182
+                        000267   2-156  	equ	sst.cleanup_count,183
+                        000270   2-157  	equ	sst.cleanup_real_time,184	" DOUBLE
+                        000272   2-158  	equ	sst.tree_count,186
+                        000372   2-159  	equ	sst.pp_meters,250
+                                 2-160  
+                        000472   2-161  	equ	sst.wusedp,314		" UPPER
+                                 2-162  
+                        000473   2-163  	equ	sst.write_hunts,315
+                        000474   2-164  	equ	sst.claim_skip_cme,316
+                        000475   2-165  	equ	sst.claim_skip_free,317
+                        000476   2-166  	equ	sst.claim_notmod,318
+                        000477   2-167  	equ	sst.claim_passed_used,319
+                        000500   2-168  	equ	sst.claim_skip_ptw,320
+                        000501   2-169  	equ	sst.claim_writes,321
+                        000502   2-170  	equ	sst.claim_steps,322
+                        000503   2-171  	equ	sst.pre_seeks_failed,323
+                        000504   2-172  	equ	sst.resurrections,324
+                        000505   2-173  	equ	sst.volmap_seg_page_faults,325
+                        000506   2-174  	equ	sst.oopv,326
+                        000507   2-175  	equ	sst.dblw_resurrections,327
+                        000510   2-176  	equ	sst.sgm_time,328		" DOUBLE
+                        000512   2-177  	equ	sst.sgm_pf,330
+                        000513   2-178  	equ	sst.bad_sgms,331
+                        000514   2-179  	equ	sst.sgm_sgft,332
+                        000515   2-180  	equ	sst.good_sgms,333
+                        000516   2-181  	equ	sst.claim_runs,334
+                        000517   2-182  	equ	sst.activations,335
+                        000520   2-183  	equ	sst.dir_activations,336
+                        000521   2-184  	equ	sst.hedge_updatevs,337
+                        000522   2-185  	equ	sst.hedge_writes,338
+                        000523   2-186  	equ	sst.evict_recover_data,339	" LEVEL 2
+                                 2-187  
+                        000523   2-188  	equ	sst.evict_ptp,339		" UPPER
+                        000523   2-189  	equ	sst.evict_phmbit,339	" LOWER
+                                 2-190  
+                        000524   2-191  	equ	sst.force_swrites,340
+                        000525   2-192  	equ	sst.force_pwrites,341
+                        000526   2-193  	equ	sst.fw_none,342
+                        000527   2-194  	equ	sst.force_updatevs,343
+                        000530   2-195  	equ	sst.pf_unlock_ptl_time,344	" DOUBLE
+                        000532   2-196  	equ	sst.pf_unlock_ptl_meterings,346
+                        000533   2-197  	equ	sst.makeknown_activations,347
+                        000534   2-198  	equ	sst.backup_activations,348
+                        000535   2-199  	equ	sst.metering_flags,349	" LEVEL 2
+                                 2-200  
+                        400000   2-201  	bool	sst.activate_activated,400000	" DU
+                                 2-202  
+                        000536   2-203  	equ	sst.seg_fault_calls,350
+                        000537   2-204  	equ	sst.stk_truncate_should_didnt,351
+                        000540   2-205  	equ	sst.stk_truncate_should_did,352
+                        000541   2-206  	equ	sst.stk_truncate_shouldnt_didnt,353
+                        000542   2-207  	equ	sst.stk_truncate_shouldnt_did,354
+                        000543   2-208  	equ	sst.stk_pages_truncated,355
+                        000544   2-209  	equ	sst.stk_pages_truncated_in_core,356
+                        000545   2-210  	equ	sst.segmove_lock,357	" LEVEL 2
+                                 2-211  
+                        000545   2-212  	equ	sst.pid,357
+                        000546   2-213  	equ	sst.event,358
+                                 2-214  
+                        000547   2-215  	equ	sst.notify_word,359
+                        400000   2-216  	bool	sst.notify,400000		" DU
+                                 2-217  
+                        000550   2-218  	equ	sst.segmove_io_limit,360
+                        000551   2-219  	equ	sst.segmove_found_synch,361
+                        000552   2-220  	equ	sst.segmove_synch_disappeared,362
+                        000553   2-221  	equ	sst.segmove_n_reads,363
+                        000554   2-222  	equ	sst.segmove_max_tries,364
+                        000555   2-223  	equ	sst.segmove_astep,365
+                        000556   2-224  	equ	sst.segmove_pvtx,366
+                        000557   2-225  	equ	sst.segmove_vtocx,367
+                        000560   2-226  	equ	sst.segmove_old_addr_astep,368
+                        000561   2-227  	equ	sst.segmove_new_addr_astep,369
+                        000562   2-228  	equ	sst.mod_during_write,370
+                        000563   2-229  	equ	sst.zero_pages,371
+                        000564   2-230  	equ	sst.trace_sw,372		" LEVEL 2
+                                 2-231  
+                        000010   2-232  	bool	sst.pc_trace_pf,000010	" DL
+                        000004   2-233  	bool	sst.tty_trace,000004	" DL
+                        000002   2-234  	bool	sst.pc_trace,000002		" DL
+                        000001   2-235  	bool	sst.sc_trace,000001		" DL
+                                 2-236  
+                        000565   2-237  	equ	sst.new_pages,373
+                                 2-238  
+                        000566   2-239  	equ	sst.ast_track_word,374
+                        400000   2-240  	bool	sst.ast_track,400000	" DU
+                                 2-241  
+                        000567   2-242  	equ	sst.dirlock_writebehind,375
+                        000570   2-243  	equ	sst.write_limit,376
+                                 2-244  
+                        000571   2-245  	equ	sst.crash_test_segmove_word,377
+                        400000   2-246  	bool	sst.crash_test_segmove,400000	" DU
+                                 2-247  
+                        000572   2-248  	equ	sst.delayed_seg_state_chg,378
+                        000573   2-249  	equ	sst.audit_seg_state_chg,379
+                        000574   2-250  	equ	sst.seg_state_chg_delay,380	" DOUBLE
+                        000576   2-251  	equ	sst.seg_state_change_limit,382
+                        000577   2-252  	equ	sst.max_seg_state_change_bw,383
+                        000600   2-253  	equ	sst.audit_seg_state_change_bw,384
+                        000601   2-254  	equ	sst.seg_state_chg_operation,385
+                                 2-255  
+                                 2-256       "END INCLUDE FILE sst.incl.alm
+                                   308  
+                                   309  	include	pxss_page_stack
+                                   3-1  "
+                                   3-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   3-3  "
+                                   3-4  
+                        000006     3-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     3-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   3-7  
+                                   3-8  	temp8	notify_regs
+                                   3-9  	temp	save_stack(stack_size),stackp
+                                  3-10  	tempd	pre_time,pre_temp(3)
+                                  3-11  	tempd	arg(11),temp
+                                  3-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  3-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  3-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  3-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  3-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  3-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  3-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  3-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  3-20  	temp	lock_volmap_temp
+                                  3-21  	temp	volmap_page_temp
+                                  3-22  	tempd	free_store_start_time,post_io_start_time
+                                  3-23  
+                                  3-24  	temp	done_astep,volmap_page_temp_1
+                                  3-25  	temp	vtocx,pageno
+                                  3-26  
+                                  3-27  	tempd	page_synch_temp,page_synch_time
+                                  3-28  	temp	page_synch_index
+                                  3-29  
+                                  3-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  3-31  	tempd	pf_sdw
+                                  3-32  
+                                  3-33  	temp	pad(22)		" to grow compatibly
+                                  3-34  "
+                                  3-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  3-36  "
+                                   310  
+                                   311  	include	page_info
+                                   4-1  "	BEGIN INCLUDE FILE page_info.incl.alm  --  6/72
+                                   4-2  "
+                                   4-3  " Modified 02/22/81, W. Olin Sibert, for ADP conversion
+                                   4-4  " Modified 06/23/82, E. N. Kittlitz, to move core map.
+                                   4-5  "
+                        000012     4-6  	equ	page_power,10		" 2**10 = size of page
+                        000001     4-7  	bool	df1,000001		" directed fault 1 on page fault
+                                   4-8  
+                 777777 740000     4-9  	bool	address_mask,777777740000	" Mask for PTW add, add_type compares
+                                  4-10  					" Use as =v36/address_mask
+                                  4-11  
+                        400000    4-12  	bool	ptw.nulled,400000		" flag for testing addresses
+                                  4-13  
+                        100000    4-14  	bool	int,100000		" Disk dim flags
+                        000020    4-15  	bool	pri,000020
+                        000004    4-16  	bool	no_post,000004
+                                  4-17  
+                        000003    4-18  	equ	sst,3			" Standard pointer and index
+                        000003    4-19  	equ	pdm,sst			" register usage
+                        000003    4-20  	equ	ast,sst
+                        000002    4-21  	equ	ptw,2
+                                  4-22  
+                                  4-23  "	Various AST masks which are not
+                                  4-24  "	expressible in standard notation
+                                  4-25  "
+                        777000    4-26  	bool	aste.csl_mask_inner,777000
+                        777000    4-27  	bool	aste.records_mask_inner,777000
+                                  4-28  
+                        000000    4-29  	equ	fault_entry,0		" Flags indicating how we
+                        000001    4-30  	equ	read_entry,1		" were entered
+                        000002    4-31  	equ	write_entry,2
+                        000003    4-32  	equ	pre_page_entry,3
+                        000004    4-33  	equ	post_purge_entry,4
+                        000005    4-34  	equ	pd_flush_entry,5
+                        000006    4-35  	equ	evict_entry,6
+                        000007    4-36  	equ	abs_wire_entry,7
+                        000010    4-37  	equ	cleanup_entry,8
+                                  4-38  
+                                  4-39  " Constants for manipulating core addresses and PTWs. The core address
+                                  4-40  " is a fixed bin (35) aligned, and must be moved to/from the appropriate
+                                  4-41  " field in the SDW or PTW.
+                                  4-42  "
+                                  4-43  	iftarget	l68
+                        777760          	   bool	ptw_add_mask,777760 " Page number
+                        777760          	   bool	sdw_add_mask,777760 " Page number
+                 000077 777777          	   bool	coreadd_mask,000077777777 " Mask for coreadd in AL
+                                        
+                        000014          	   equ	coreadd_to_ptw.ls,12
+                        000014          	   equ	coreadd_to_sdw.ls,12
+                        000014          	   equ	ptw_to_coreadd.rl,12
+                        000014          	   equ	sdw_to_coreadd.rl,12
+                        000002          	   equ	cmep_to_ptw.ls,2
+                        000002          	   equ	cmep_to_sdw.ls,2
+                        000002          	   equ	ptw_to_cmep.rl,2
+                        000024          	   equ	ptw_to_cmep_lower.rl,20
+                        000002          	   equ	sdw_to_cmep.rl,2
+                                        "	ifend
+                                  4-58  
+                                  4-59  	iftarget	adp
+                                        "	   bool	ptw_add_mask,177777 " Page number
+                                        "	   bool	sdw_add_mask,777774 " Page number
+                                        "	   bool	coreadd_mask,000377777777 " Mask for coreadd in AL
+                                        "
+                                        "	   equ	coreadd_to_ptw.ls,8
+                                        "	   equ	coreadd_to_sdw.ls,10
+                                        "	   equ	ptw_to_coreadd.rl,8
+                                        "	   equ	sdw_to_coreadd.rl,10
+                                        "	   equ	cmep_to_ptw.rl,2	" Must shift backwards
+                                        "	   equ	cmep_to_sdw.ls,0
+                                        "	   equ	ptw_to_cmep.ls,2	" Must shift backwards
+                                        "	   equ	ptw_to_cmep_lower.rl,16
+                                        "	   equ	sdw_to_cmep.rl,0
+                                        "	ifend
+                                  4-74  
+                        000012    4-75  	equ	cmep_to_coreadd.rl,10	.cmep to coreadd
+                        000012    4-76  	equ	coreadd_to_cmep.ls,10	coreadd to .cmep
+                                  4-77  
+                                  4-78  " 
+                                  4-79  "
+                                  4-80  " Assorted general purpose macros used in PC. These will be changed
+                                  4-81  " when address types are changed for 20 bit addresses. Additionally,
+                                  4-82  " for more accurate metering on the ADP, the metering macros should
+                                  4-83  " modified to update the metering cells uninterruptably.
+                                  4-84  "
+                                  4-85  
+                                  4-86  	macro	missing
+                              1   4-87  	ife	&2,()
+                              2   4-88  	  warn	(&1: Argument missing.)
+                              3   4-89  	ifend
+                              4   4-90  	&end
+                                  4-91  "
+                                  4-92  " staddra and staddrq store the address portion (upper 22 bits) of the A or Q
+                                  4-93  " into the specified location.
+                                  4-94  "
+                                  4-95  	macro	staddra
+                              1   4-96  	missing	staddra,&1
+                              2   4-97  	era	&F1
+                              3   4-98  	ana	=v36/address_mask
+                              4   4-99  	ersa	&F1
+                              5  4-100  	&end
+                                 4-101  
+                                 4-102  	macro	staddrq
+                              1  4-103  	missing	staddrq,&1
+                              2  4-104  	erq	&F1
+                              3  4-105  	anq	=v36/address_mask
+                              4  4-106  	ersq	&F1
+                              5  4-107  	&end
+                                 4-108  
+                                 4-109  "	Macros for metering 6/23/80
+                                 4-110  
+                                 4-111  	macro	read_clock
+                              1  4-112  	iftarget	l68
+                              2  4-113  	  rccl	sys_info$clock_,*
+                              3  4-114  	ifend
+                              4  4-115  	iftarget adp
+                              5  4-116  	  rccl	0
+                              6  4-117  	ifend
+                              7  4-118  	&end
+                                 4-119  
+                                 4-120  	macro	increment
+                              1  4-121  	missing	increment,&1
+                              2  4-122  	aos	&1
+                              3  4-123  	&end
+                                 4-124  
+                                 4-125  	macro	store_clock
+                              1  4-126  	missing	store_clock,&1
+                              2  4-127  	read_clock
+                              3  4-128  	staq	&1
+                              4  4-129  	&end
+                                 4-130  
+                                 4-131  	macro	meter_time
+                              1  4-132  	missing	meter_time,&3
+                              2  4-133  	increment &3
+                              3  4-134  	read_clock
+                              4  4-135  	sbaq	&1
+                              5  4-136  	adaq	&2
+                              6  4-137  	staq	&2
+                              7  4-138  	&end
+                                 4-139  
+                                 4-140  "	END INCLUDE FILE  page_info.incl.alm
+                                   312  	end
+ENTRY SEQUENCES
+     
+    000217  5a   000012 0000 00
+    000220  aa  7 00046 2721 20
+    000221  0a   000052 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000222  5a   000003 000000 
+    000223  5a   000070 600000 
+    000224  aa   000000 000000 
+    000225  55   000012 000002 
+    000226  5a   000002 400003 
+    000227  55   000006 000012 
+    000230  aa  016 143 157 162
+    000231  aa  145 137 161 165
+    000232  aa  145 165 145 137
+    000233  aa  155 141 156 000
+    000234  55   000022 000003 
+    000235  0a   000220 500000 
+    000236  55   000015 000003 
+    000237  aa  021 160 164 154         ptl_notify_return
+    000240  aa  137 156 157 164
+    000241  aa  151 146 171 137
+    000242  aa  162 145 164 165
+    000243  aa  162 156 000 000
+    000244  55   000030 000012 
+    000245  0a   000065 400000 
+    000246  55   000025 000003 
+    000247  aa  010 143 154 145         clearout
+    000250  aa  141 162 157 165
+    000251  aa  164 000 000 000
+    000252  55   000037 000022 
+    000253  0a   000054 400000 
+    000254  55   000033 000003 
+    000255  aa  016 162 165 156         run_core_queue
+    000256  aa  137 143 157 162
+    000257  aa  145 137 161 165
+    000260  aa  145 165 145 000
+    000261  55   000045 000030 
+    000262  0a   000176 400000 
+    000263  55   000042 000003 
+    000264  aa  013 164 162 171         trylock_ptl
+    000265  aa  154 157 143 153
+    000266  aa  137 160 164 154
+    000267  55   000053 000037 
+    000270  0a   000016 400000 
+    000271  55   000050 000003 
+    000272  aa  012 165 156 154         unlock_ptl
+    000273  aa  157 143 153 137
+    000274  aa  160 164 154 000
+    000275  55   000061 000045 
+    000276  0a   000000 400000 
+    000277  55   000056 000003 
+    000300  aa  011 144 151 163         disk_post
+    000301  aa  153 137 160 157
+    000302  aa  163 164 000 000
+    000303  55   000002 000053 
+    000304  6a   000000 400002 
+    000305  55   000064 000003 
+    000306  aa  014 163 171 155         symbol_table
+    000307  aa  142 157 154 137
+    000310  aa  164 141 142 154
+    000311  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000312  aa   000000 000015 
+    000313  5a   000037 000000 
+    000314  5a   000053 000000 
+    000315  aa   000000 000000 
+    000316  aa   000000 000000 
+    000317  5a   000030 000000 
+    000320  aa   000000 000000 
+    000321  5a   000061 000000 
+    000322  aa   000000 000000 
+    000323  5a   000022 000000 
+    000324  aa   000000 000000 
+    000325  5a   000012 000000 
+    000326  5a   000045 000000 
+    000327  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000330  aa  012 160 164 154         ptl_mylock
+    000331  aa  137 155 171 154
+    000332  aa  157 143 153 000
+    000333  aa  012 160 141 147         page_error
+    000334  aa  145 137 145 162
+    000335  aa  162 157 162 000
+    000336  aa  006 143 154 157         clock_
+    000337  aa  143 153 137 000
+    000340  aa  010 163 171 163         sys_info
+    000341  aa  137 151 156 146
+    000342  aa  157 000 000 000
+    000343  aa  023 144 151 163         disk_post_queue_seg
+    000344  aa  153 137 160 157
+    000345  aa  163 164 137 161
+    000346  aa  165 145 165 145
+    000347  aa  137 163 145 147
+    000350  aa  003 163 163 164         sst
+    000351  aa  012 160 164 154         ptl_notify
+    000352  aa  137 156 157 164
+    000353  aa  151 146 171 000
+    000354  aa  004 160 170 163         pxss
+    000355  aa  163 000 000 000
+    000356  aa  016 154 157 143         lock_ptl_no_lp
+    000357  aa  153 137 160 164
+    000360  aa  154 137 156 157
+    000361  aa  137 154 160 000
+    000362  aa  005 144 157 156         done_
+    000363  aa  145 137 000 000
+    000364  aa  011 160 162 157         processid
+    000365  aa  143 145 163 163
+    000366  aa  151 144 000 000
+    000367  aa  003 160 144 163         pds
+    000370  aa  020 160 141 147         page_fault_error
+    000371  aa  145 137 146 141
+    000372  aa  165 154 164 137
+    000373  aa  145 162 162 157
+    000374  aa  162 000 000 000
+    000375  aa  015 151 156 151         init_savex_bb
+    000376  aa  164 137 163 141
+    000377  aa  166 145 170 137
+    000400  aa  142 142 000 000
+    000401  aa  007 165 156 163         unsavex
+    000402  aa  141 166 145 170
+    000403  aa  005 163 141 166         savex
+    000404  aa  145 170 000 000
+    000405  aa  012 160 141 147         page_fault
+    000406  aa  145 137 146 141
+    000407  aa  165 154 164 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000410  aa   000004 000000 
+    000411  55   000111 000106 
+    000412  aa   000004 000000 
+    000413  55   000116 000114 
+    000414  aa   000003 000000 
+    000415  5a   000121 000000 
+    000416  aa   000003 000000 
+    000417  5a   000126 000000 
+    000420  aa   000004 000000 
+    000421  55   000132 000127 
+    000422  aa   000004 000000 
+    000423  55   000163 000134 
+    000424  aa   000004 000000 
+    000425  55   000163 000140 
+    000426  aa   000004 000000 
+    000427  55   000145 000142 
+    000430  aa   000004 000000 
+    000431  55   000163 000146 
+    000432  aa   000004 000000 
+    000433  55   000163 000153 
+    000434  aa   000004 000000 
+    000435  55   000163 000157 
+    000436  aa   000004 000000 
+    000437  55   000163 000161 
+    000440  aa   000001 000000 
+    000441  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000442  5a   000166 000000 
+    000443  5a   000206 000000 
+    000444  5a   000170 000000 
+    000445  5a   000172 000000 
+    000446  5a   000174 000000 
+    000447  5a   000176 000000 
+    000450  5a   000200 000000 
+    000451  5a   000212 000000 
+    000452  5a   000214 000000 
+    000453  5a   000202 000000 
+    000454  5a   000204 000000 
+    000455  5a   000210 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000222 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000040 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         page_fault|init_savex_bb
+    000011  5a   000233 0000 00
+    000012  9a   777766 0000 46         pds|processid
+    000013  5a   000232 0000 00
+    000014  9a   777764 0000 46         page_fault|done_
+    000015  5a   000231 0000 00
+    000016  9a   777762 0000 46         page_fault|savex
+    000017  5a   000230 0000 00
+    000020  9a   777760 0000 46         page_fault|unsavex
+    000021  5a   000227 0000 00
+    000022  9a   777756 0000 46         page_fault|lock_ptl_no_lp
+    000023  5a   000226 0000 00
+    000024  9a   777754 0000 46         pxss|ptl_notify
+    000025  5a   000225 0000 00
+    000026  9a   777752 0000 46         sst|       
+    000027  5a   000224 0000 00
+    000030  9a   777750 0000 46         disk_post_queue_seg|       
+    000031  5a   000223 0000 00
+    000032  9a   777746 0000 46         sys_info|clock_
+    000033  5a   000222 0000 20
+    000034  9a   777744 0000 46         page_fault|page_fault_error
+    000035  5a   000221 0000 00
+    000036  9a   777742 0000 46         page_error|ptl_mylock
+    000037  5a   000220 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   245566 505234 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000256 
+    000020  aa   000000 000167 
+    000021  aa   000221 000212 
+    000022  aa   000245 000167 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000005 
+    000066  aa   000112 000045 
+    000067  aa   175453 017614 
+    000070  aa   000000 117547 
+    000071  aa   176235 000000 
+    000072  aa   000124 000045 
+    000073  aa   043244 570122 
+    000074  aa   000000 104324 
+    000075  aa   772771 200000 
+    000076  aa   000136 000031 
+    000077  aa   133234 136144 
+    000100  aa   000000 113324 
+    000101  aa   322064 400000 
+    000102  aa   000145 000045 
+    000103  aa   133234 136230 
+    000104  aa   000000 113324 
+    000105  aa   322064 400000 
+    000106  aa   000157 000037 
+    000107  aa   112456 132235 
+    000110  aa   000000 111250 
+    000111  aa   530556 400000 
+    000112  aa   076163 160145          >spec>install>1111>core_queue_man.alm
+    000113  aa   143076 151156 
+    000114  aa   163164 141154 
+    000115  aa   154076 061061 
+    000116  aa   061061 076143 
+    000117  aa   157162 145137 
+    000120  aa   161165 145165 
+    000121  aa   145137 155141 
+    000122  aa   156056 141154 
+    000123  aa   155040 040040 
+    000124  aa   076154 144144          >ldd>include>disk_post_queue.incl.alm
+    000125  aa   076151 156143 
+    000126  aa   154165 144145 
+    000127  aa   076144 151163 
+    000130  aa   153137 160157 
+    000131  aa   163164 137161 
+    000132  aa   165145 165145 
+    000133  aa   056151 156143 
+    000134  aa   154056 141154 
+    000135  aa   155040 040040 
+    000136  aa   076154 144144          >ldd>include>sst.incl.alm
+    000137  aa   076151 156143 
+    000140  aa   154165 144145 
+    000141  aa   076163 163164 
+    000142  aa   056151 156143 
+    000143  aa   154056 141154 
+    000144  aa   155040 040040 
+    000145  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000146  aa   076151 156143 
+    000147  aa   154165 144145 
+    000150  aa   076160 170163 
+    000151  aa   163137 160141 
+    000152  aa   147145 137163 
+    000153  aa   164141 143153 
+    000154  aa   056151 156143 
+    000155  aa   154056 141154 
+    000156  aa   155040 040040 
+    000157  aa   076154 144144          >ldd>include>page_info.incl.alm
+    000160  aa   076151 156143 
+    000161  aa   154165 144145 
+    000162  aa   076160 141147 
+    000163  aa   145137 151156 
+    000164  aa   146157 056151 
+    000165  aa   156143 154056 
+    000166  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           7    abs_wire_entry           page_info:     36.
+         206    actual_ptl_unlock_code   core_queue_man:     120,  295.
+      740000    address_mask             page_info:      9.
+         150    apt_ptr                  pxss_page_stack:     13.
+         106    arg                      pxss_page_stack:     11.
+           3    ast                      page_info:     20.
+      777000    aste.csl_mask_inner      page_info:     26.
+      777000    aste.records_mask_inner  page_info:     27.
+         204    before                   pxss_page_stack:     17.
+          10    cleanup_entry            page_info:     37.
+          65    clearout                 core_queue_man:      26,  163.
+                clock_                   core_queue_man:     181,  197,  209.
+         164    cmep                     pxss_page_stack:     15.
+          12    cmep_to_coreadd.rl       page_info:     75.
+           2    cmep_to_ptw.ls           page_info:     57.
+           2    cmep_to_sdw.ls           page_info:     57.
+      777777    coreadd_mask             page_info:     57.
+          12    coreadd_to_cmep.ls       page_info:     76.
+          14    coreadd_to_ptw.ls        page_info:     57.
+          14    coreadd_to_sdw.ls        page_info:     57.
+         173    core_add                 core_queue_man:      40,  238,  263,
+                                         pxss_page_stack:     16.
+         174    count                    pxss_page_stack:     16.
+           1    cq                       core_queue_man:      30,  107,  164,  166,  167,  168,  169,  184,  185,  188,  194,
+                                                             200,  201,  208,  211,  212,  214,  218,  221,  230,  234,  236,
+                                                             237,  241,  247,  253,  257,  261,  262,  270.
+          20    cq.coreadd               disk_post_queue:     33.
+          21    cq.errcode               disk_post_queue:     34.
+          11    cq.get_ptr               core_queue_man:     168,  261,  270,
+                                         disk_post_queue:     28.
+           0    cq.lock                  core_queue_man:     166,  188,  194,  214,  218,  221,
+                                         disk_post_queue:     19.
+           1    cq.lockings              core_queue_man:     185,
+                                         disk_post_queue:     20.
+           4    cq.looplock_time         core_queue_man:     200,  201,
+                                         disk_post_queue:     23.
+           3    cq.number_in_queue       core_queue_man:     169,  230,  236,  253,  257,
+                                         disk_post_queue:     22.
+           2    cq.overflows             core_queue_man:     107,
+                                         disk_post_queue:     21.
+           6    cq.process_time          core_queue_man:     211,  212,
+                                         disk_post_queue:     24.
+          10    cq.put_ptr               core_queue_man:     167,  237,  247,
+                                         disk_post_queue:     26.
+          20    cq.queue                 core_queue_man:     241,  262,
+                                         disk_post_queue:     31.
+          12    cq.queueings             core_queue_man:     234,
+                                         disk_post_queue:     30.
+         310    cq_limit                 core_queue_man:     231,  244,  267,
+                                         disk_post_queue:     12.
+         640    cq_size                  disk_post_queue:     17.
+         154    delta_t                  pxss_page_stack:     13.
+         205    depth                    pxss_page_stack:     17.
+         156    dequeue_posting          core_queue_man:      76,  147,  252.
+         200    devadd                   pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+           1    df1                      page_info:      7.
+           0    disk_post                core_queue_man:      26,   37.
+                disk_post_queue_seg      core_queue_man:     164,  184,  208.
+                done_                    core_queue_man:      49,   70,  151.
+         232    done_astep               pxss_page_stack:     24.
+          31    done_fails_ptl           core_queue_man:      67,   87.
+          23    do_the_done              core_queue_man:      69,   80,  113.
+         137    enqueue_posting          core_queue_man:      90,  229.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  core_queue_man:      42,  239,  264,
+                                         pxss_page_stack:     16.
+           6    evict_entry              page_info:     35.
+           0    fault_entry              page_info:     29.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         152    getwork_temp             pxss_page_stack:     13.
+                init_savex_bb            core_queue_man:      24,   43.
+      100000    int                      page_info:     14.
+         177    inter                    pxss_page_stack:     16.
+          20    lock_and_done            core_queue_man:      45,   63.
+                lock_ptl_no_lp           core_queue_man:     111.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+          73    looplock_cql             core_queue_man:      73,   88,  145,  178.
+          50    notify_regs              pxss_page_stack:      8.
+           4    no_post                  page_info:     16.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+                page_error               core_queue_man:     281.
+                page_fault               core_queue_man:      24,   49,   70,  111,  151.
+                page_fault_error         core_queue_man:      24,  196,  216,  220,  223,  259,  288,  300,  305.
+          12    page_power               page_info:      6.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+           3    pdm                      page_info:     19.
+                pds                      core_queue_man:      46,  187,  213,  279,  296.
+           5    pd_flush_entry           page_info:     34.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+           4    post_purge_entry         page_info:     33.
+           3    pre_page_entry           page_info:     32.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+          20    pri                      page_info:     15.
+                processid                core_queue_man:      46,  187,  213,  279,  296.
+                ptl_mylock               core_queue_man:     281.
+                ptl_notify               core_queue_man:     129.
+          52    ptl_notify_return        core_queue_man:      28,  130.
+         176    ptp_astep                pxss_page_stack:     16.
+           2    ptw                      page_info:     21.
+      400000    ptw.nulled               page_info:     12.
+      777760    ptw_add_mask             page_info:     57.
+           2    ptw_to_cmep.rl           page_info:     57.
+          24    ptw_to_cmep_lower.rl     page_info:     57.
+          14    ptw_to_coreadd.rl        page_info:     57.
+         172    pvtx                     pxss_page_stack:     16.
+                pxss                     core_queue_man:     129.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+          41    queue_overflow           core_queue_man:      91,  106.
+           1    read_entry               page_info:     30.
+          54    run_core_queue           core_queue_man:      26,  141.
+          63    run_core_queue_done      core_queue_man:     148,  154.
+          55    run_core_queue_loop      core_queue_man:     144,  152.
+                savex                    core_queue_man:      24,   59,   64,  142.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+      777760    sdw_add_mask             page_info:     57.
+           2    sdw_to_cmep.rl           page_info:     57.
+          14    sdw_to_coreadd.rl        page_info:     57.
+           3    sst                      core_queue_man:      47,  123,  131,  280,  283,  286,  298,  302,
+                                         page_info:     18,   19,   20.
+         214    sst.abs_wired_count      sst:          126.
+         241    sst.acost                sst:          141.
+      400000    sst.activate_activated   sst:          201.
+         517    sst.activations          sst:          182.
+          52    sst.ainitp               sst:           52.
+          52    sst.ainitp1              sst:           53.
+         244    sst.alaps                sst:          144.
+         230    sst.aneedsize            sst:          135.
+         236    sst.asearches            sst:          138.
+         243    sst.askipdius            sst:          143.
+         235    sst.askipsehs            sst:          137.
+         240    sst.askipsinit           sst:          140.
+         224    sst.askipsize            sst:          134.
+         237    sst.askipslevel          sst:          139.
+         242    sst.askipslock           sst:          142.
+          30    sst.astap                sst:           35.
+         254    sst.asteps               sst:          151.
+          21    sst.astl                 sst:           26.
+          22    sst.astl_event           sst:           27.
+      400000    sst.astl_notify_requested      sst:           30.
+          23    sst.astl_notify_requested_word       sst:           29.
+          33    sst.astsize              sst:           37.
+          72    sst.ast_ht_n_buckets     sst:           76.
+          70    sst.ast_ht_ptr           sst:           75.
+          73    sst.ast_ht_uid_mask      sst:           77.
+         260    sst.ast_locked_at_time   sst:          152.
+         262    sst.ast_locked_total_time      sst:          153.
+         266    sst.ast_locking_count    sst:          155.
+         264    sst.ast_lock_wait_time   sst:          154.
+      400000    sst.ast_track            sst:          240.
+         566    sst.ast_track_word       sst:          239.
+          50    sst.atempp               sst:           46.
+          50    sst.atempp1              sst:           47.
+         600    sst.audit_seg_state_change_bw  sst:          253.
+         573    sst.audit_seg_state_chg  sst:          249.
+         126    sst.aused                sst:          104.
+          44    sst.ausedp               sst:           43.
+         534    sst.backup_activations   sst:          198.
+         513    sst.bad_sgms             sst:          178.
+         116    sst.ceiling              sst:           96.
+          75    sst.checksum_filemap     sst:           79.
+         476    sst.claim_notmod         sst:          166.
+         477    sst.claim_passed_used    sst:          167.
+         516    sst.claim_runs           sst:          181.
+         474    sst.claim_skip_cme       sst:          164.
+         475    sst.claim_skip_free      sst:          165.
+         500    sst.claim_skip_ptw       sst:          168.
+         502    sst.claim_steps          sst:          170.
+         501    sst.claim_writes         sst:          169.
+         267    sst.cleanup_count        sst:          156.
+         270    sst.cleanup_real_time    sst:          157.
+          67    sst.cl_skips_pinned      sst:           74.
+          34    sst.cmesize              sst:           38.
+          54    sst.cmp                  sst:           56.
+         252    sst.cpu_bf_time          sst:          150.
+         160    sst.cpu_sf_time          sst:          114.
+      400000    sst.crash_test_segmove   sst:          246.
+         571    sst.crash_test_segmove_word    sst:          245.
+         117    sst.ctwait               sst:           97.
+         100    sst.cycle_pv_allocation  sst:           82.
+         127    sst.damaged_ct           sst:          105.
+         507    sst.dblw_resurrections   sst:          175.
+         130    sst.deact_count          sst:          106.
+         572    sst.delayed_seg_state_chg      sst:          248.
+         132    sst.demand_deactivations       sst:          108.
+         131    sst.demand_deact_attempts      sst:          107.
+         567    sst.dirlock_writebehind  sst:          242.
+         520    sst.dir_activations      sst:          183.
+         110    sst.dir_page_faults      sst:           90.
+      400000    sst.dm_enabled           sst:           50.
+          51    sst.dm_enabled_word      sst:           49.
+          62    sst.double_write         sst:           66.
+         546    sst.event                sst:          213.
+         523    sst.evict_phmbit         sst:          189.
+         523    sst.evict_ptp            sst:          188.
+         523    sst.evict_recover_data   sst:          186.
+          66    sst.fc_skips_pinned      sst:           73.
+         220    sst.first_core_block     sst:          130.
+         525    sst.force_pwrites        sst:          192.
+         524    sst.force_swrites        sst:          191.
+         527    sst.force_updatevs       sst:          194.
+         526    sst.fw_none              sst:          193.
+         222    sst.fw_retries           sst:          132.
+         515    sst.good_sgms            sst:          180.
+         521    sst.hedge_updatevs       sst:          184.
+         522    sst.hedge_writes         sst:          185.
+         121    sst.laps                 sst:           99.
+         221    sst.last_core_block      sst:          131.
+          44    sst.level                sst:           41.
+         107    sst.level_1_page_faults  sst:           89.
+         104    sst.lock_waits           sst:           86.
+         154    sst.loop_locks           sst:          112.
+         156    sst.loop_lock_time       sst:          113.
+         533    sst.makeknown_activations      sst:          197.
+         577    sst.max_seg_state_change_bw    sst:          252.
+         535    sst.metering_flags       sst:          199.
+          74    sst.meter_ast_locking    sst:           78.
+         562    sst.mod_during_write     sst:          228.
+         115    sst.needc                sst:           95.
+         565    sst.new_pages            sst:          237.
+      400000    sst.nolock               sst:           71.
+          65    sst.nolock_word          sst:           70.
+      400000    sst.notify               sst:          216.
+         547    sst.notify_word          sst:          215.
+          44    sst.no_aste              sst:           44.
+          16    sst.npfs_misses          sst:           23.
+          24    sst.nused                sst:           32.
+         101    sst.n_trailers           sst:           83.
+         506    sst.oopv                 sst:          174.
+          76    sst.page_read_errors     sst:           80.
+          77    sst.page_write_errors    sst:           81.
+         113    sst.pc_io_waits          sst:           93.
+           2    sst.pc_trace             sst:          234.
+          10    sst.pc_trace_pf          sst:          232.
+         106    sst.pdir_page_faults     sst:           88.
+         532    sst.pf_unlock_ptl_meterings    sst:          196.
+         530    sst.pf_unlock_ptl_time   sst:          195.
+         545    sst.pid                  sst:          212.
+          14    sst.post_in_core         sst:           21.
+         165    sst.post_list_size       sst:          118.
+         167    sst.post_purge_calls     sst:          120.
+          12    sst.post_purge_time      sst:           20.
+         166    sst.post_purgings        sst:          119.
+         372    sst.pp_meters            sst:          159.
+         170    sst.pre_page_calls       sst:          121.
+         171    sst.pre_page_list_size   sst:          122.
+         172    sst.pre_page_misses      sst:          123.
+         164    sst.pre_page_size        sst:          117.
+          10    sst.pre_page_time        sst:           19.
+         173    sst.pre_pagings          sst:          124.
+         503    sst.pre_seeks_failed     sst:          171.
+          20    sst.ptl                  core_queue_man:      47,  280,  283,  286,  298,  302,
+                                         sst:           25.
+          32    sst.ptl_wait_ct          core_queue_man:     123,
+                                         sst:           36.
+          40    sst.pts                  sst:           40.
+          25    sst.ptwbase              sst:           33.
+         223    sst.pvhtp                sst:          133.
+         133    sst.reads                sst:          109.
+         217    sst.recopies             sst:          129.
+          61    sst.removep              sst:           64.
+         504    sst.resurrections        sst:          172.
+         111    sst.ring_0_page_faults   sst:           91.
+          36    sst.root_astep           sst:           39.
+          64    sst.root_pvtx            sst:           68.
+         112    sst.rqover               sst:           92.
+          17    sst.salv                 sst:           24.
+           1    sst.sc_trace             sst:          235.
+         555    sst.segmove_astep        sst:          223.
+         551    sst.segmove_found_synch  sst:          219.
+         550    sst.segmove_io_limit     sst:          218.
+         545    sst.segmove_lock         sst:          210.
+         554    sst.segmove_max_tries    sst:          222.
+         561    sst.segmove_new_addr_astep     sst:          227.
+         553    sst.segmove_n_reads      sst:          221.
+         560    sst.segmove_old_addr_astep     sst:          226.
+         556    sst.segmove_pvtx         sst:          224.
+         552    sst.segmove_synch_disappeared  sst:          220.
+         557    sst.segmove_vtocx        sst:          225.
+         536    sst.seg_fault_calls      sst:          203.
+         576    sst.seg_state_change_limit     sst:          251.
+         574    sst.seg_state_chg_delay  sst:          250.
+         601    sst.seg_state_chg_operation    sst:          254.
+         247    sst.setfaults_acc        sst:          147.
+         246    sst.setfaults_all        sst:          146.
+         512    sst.sgm_pf               sst:          177.
+         514    sst.sgm_sgft             sst:          179.
+         510    sst.sgm_time             sst:          176.
+         153    sst.short_pf_count       sst:          111.
+         124    sst.skipm                sst:          102.
+         125    sst.skipos               sst:          103.
+         123    sst.skipu                sst:          101.
+         122    sst.skipw                sst:          100.
+           0    sst.space                sst:           18.
+          60    sst.startp               sst:           62.
+         114    sst.steps                sst:           94.
+         234    sst.stepsa               sst:          136.
+         543    sst.stk_pages_truncated  sst:          208.
+         544    sst.stk_pages_truncated_in_core      sst:          209.
+         542    sst.stk_truncate_shouldnt_did  sst:          207.
+         541    sst.stk_truncate_shouldnt_didnt      sst:          206.
+         540    sst.stk_truncate_should_did    sst:          205.
+         537    sst.stk_truncate_should_didnt  sst:          204.
+          53    sst.strsize              sst:           55.
+         102    sst.synch_activations    sst:           84.
+         103    sst.synch_skips          sst:           85.
+         215    sst.system_type          sst:          127.
+          63    sst.temp_w_event         sst:           67.
+          26    sst.tfreep               sst:           34.
+          15    sst.thrashing            sst:           22.
+         250    sst.total_bf             sst:          148.
+         251    sst.total_bf_pf          sst:          149.
+         105    sst.total_locks_set      sst:           87.
+         163    sst.total_sf             sst:          116.
+         162    sst.total_sf_pf          sst:          115.
+         564    sst.trace_sw             sst:          230.
+         272    sst.tree_count           sst:          158.
+           4    sst.tty_trace            sst:          233.
+         245    sst.updates              sst:          145.
+          56    sst.usedp                sst:           58.
+         505    sst.volmap_seg_page_faults     sst:          173.
+         120    sst.wired                sst:           98.
+         216    sst.wired_copies         sst:          128.
+         174    sst.wire_proc_data       sst:          125.
+         143    sst.writes               sst:          110.
+         473    sst.write_hunts          sst:          163.
+         570    sst.write_limit          sst:          243.
+          57    sst.wtct                 sst:           60.
+         472    sst.wusedp               sst:          161.
+         563    sst.zero_pages           sst:          229.
+        1000    sst_size                 sst:           15.
+          75    stackp                   pxss_page_stack:      9.
+          15    stack_size               pxss_page_stack:      6,    9.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+                sys_info                 core_queue_man:     181,  197,  209.
+         134    temp                     core_queue_man:     182,  199,
+                                         pxss_page_stack:     11.
+         166    temp1                    core_queue_man:     198,  210,
+                                         pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+          25    test_postq               core_queue_man:      75,   98.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+         176    trylock_ptl              core_queue_man:      26,   66,   93,  278.
+         117    unlock_cql               core_queue_man:      79,  100,  109,  121,  150,  155,  206.
+          16    unlock_ptl               core_queue_man:      26,   57.
+          45    unlock_ptl_real          core_queue_man:      77,  119.
+          24    unlock_ptl_test_postq    core_queue_man:      60,   72.
+                unsavex                  core_queue_man:      24,  101,  124,  132,  156.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+         234    vtocx                    pxss_page_stack:     25.
+           2    write_entry              page_info:     31.
+         206    x5                       pxss_page_stack:     17.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

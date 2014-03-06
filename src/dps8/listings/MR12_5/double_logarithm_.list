@@ -1,0 +1,597 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>double_logarithm_.alm                                                                                                                                
+ASSEMBLED ON:	11/11/89  0945.7 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1985 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+    000000                           6  	name	double_logarithm_
+                                     7  " Modification history:
+                                     8  "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+                                     9  "	based on GCOS routine '7nar'.
+                                    10  "
+                                    11  " Function:  Calculates the logarithm functions log_base_e(x), log_base_2(x),
+                                    12  "	and log_base_10(x) to double precision accuracy in either BFP or
+                                    13  "	HFP mode.
+                                    14  "
+                                    15  " Entry:	through the appropriately named entry point with:
+                                    16  " 	EAQ = the argument x.
+                                    17  "	PR2 = the address of a 16 word, even-word aligned scratch area.
+                                    18  "	PR3 = the return address.
+                                    19  "
+                                    20  " Exit:	EAQ = the desired logarithm
+                                    21  "
+                                    22  " Uses:	X0, X1, X2, X3
+                                    23  "	X0 = saves a return address from call_math_error_
+                                    24  "	     or saves a return address from log2
+                                    25  "	X1 = saves a return address from part_log2_of_ratio
+                                    26  "	X2 = indicates BFP or HFP mode - all the floating point math
+                                    27  "	     routines use this register for the same purpose.
+                                    28  "	X3 = address of second argument for part_log2_of_ratio
+                                    29  
+    000000                          30  	segref	math_constants_,hfp_log_10_of_2,hfp_log_e_of_2,log_10_of_2,log_e_of_2,max_value
+                                    31  
+                        000000      32  	equ	BFP,0
+                        000002      33  	equ	HFP,2
+                        000000      34  	equ	xe,0
+                        000002      35  	equ	xm,2
+                        000004      36  	equ	bias,4
+                        000006      37  	equ	shift,6
+                        000010      38  	equ	x_plus_y,8
+                        000012      39  	equ	z,10
+                        000014      40  	equ	zz,12
+                        000016      41  	equ	zp,14
+                                    42  
+                        000013      43  	segdef	double_log_base_10_,hfp_double_log_base_10_
+                        000017      44  	segdef	double_log_base_2_,hfp_double_log_base_2_
+                        000022      45  	segdef	double_log_base_e_,hfp_double_log_base_e_
+                                    46  
+                                    47  
+    000000                          48  double_log_base_10_:
+    000000  0a   000040 7000 00     49  	tsx0	log2		" calculate log2 (x)
+    000001  4a  4 00010 4631 20     50  	dfmp	log_10_of_2	" EAQ := log_10_of_2 * log2 (x)
+    000002  aa   000000 4730 00     51  	dfrd	0
+    000003  aa  3 00000 7101 00     52  	tra	pr3|0		" return to caller
+                                    53  
+    000004                          54  double_log_base_2_:
+    000004  0a   000040 7000 00     55  	tsx0	log2		" calculate log2 (x)
+    000005  aa   000000 4730 00     56  	dfrd	0
+    000006  aa  3 00000 7101 00     57  	tra	pr3|0		" return to caller
+                                    58  
+    000007                          59  double_log_base_e_:
+    000007  0a   000040 7000 00     60  	tsx0	log2		" calculate log2 (x)
+    000010  4a  4 00012 4631 20     61  	dfmp	log_e_of_2	" EAQ := log_e_of_2 * log2 (x)
+    000011  aa   000000 4730 00     62  	dfrd	0
+    000012  aa  3 00000 7101 00     63  	tra	pr3|0		" return to caller
+                                    64  
+    000013                          65  hfp_double_log_base_10_:
+    000013  0a   000070 7000 00     66  	tsx0	hfp_log2		" calculate log2 (x)
+    000014  4a  4 00014 4631 20     67  	dfmp	hfp_log_10_of_2	" EAQ := hfp_log_10_of_2 * log2 (x)
+    000015  aa   000000 4730 00     68  	dfrd	0
+    000016  aa  3 00000 7101 00     69  	tra	pr3|0		" return to caller
+                                    70  
+    000017                          71  hfp_double_log_base_2_:
+    000017  0a   000070 7000 00     72  	tsx0	hfp_log2		" calculate log2 (x)
+    000020  aa   000000 4730 00     73  	dfrd	0
+    000021  aa  3 00000 7101 00     74  	tra	pr3|0		" return to caller
+                                    75  
+    000022                          76  hfp_double_log_base_e_:
+    000022  0a   000070 7000 00     77  	tsx0	hfp_log2		" calculate log2 (x)
+    000023  4a  4 00016 4631 20     78  	dfmp	hfp_log_e_of_2	" EAQ := hfp_log_e_of_2 * log2 (x)
+    000024  aa   000000 4730 00     79  	dfrd	0
+    000025  aa  3 00000 7101 00     80  	tra	pr3|0		" return to caller
+                                    81  
+    000026                          82  log_of_negative:
+    000026  aa   000025 2360 07     83  	ldq	21,dl
+    000027  4a  4 00020 7001 20     84  	tsx0	<call_math_error_>|[call_math_error_]
+    000030  4a  4 00022 4331 20     85  	dfld	max_value
+    000031  aa   000000 5130 00     86  	fneg	0
+    000032  aa  3 00000 7101 00     87  	tra	pr3|0
+                                    88  
+    000033                          89  log_of_zero:
+    000033  aa   000024 2360 07     90  	ldq	20,dl
+    000034  4a  4 00020 7001 20     91  	tsx0	<call_math_error_>|[call_math_error_]
+    000035  4a  4 00022 4331 20     92  	dfld	max_value
+    000036  aa   000000 5130 00     93  	fneg	0
+    000037  aa  3 00000 7101 00     94  	tra	pr3|0
+                                    95  
+    000040                          96  log2:
+    000040  aa   000000 6220 00     97  	eax2	BFP		" no offset for BFP constants
+    000041  aa   400000 4750 03     98  	fad	=0.0,du		" normalize input and set indicators
+    000042  0a   000026 6040 00     99  	tmi	log_of_negative
+    000043  0a   000033 6000 00    100  	tze	log_of_zero
+                                   101  
+    000044  0a   000244 5170 00    102  	dfcmp	square_root_two	" check for x in the range [.707,1.414]
+    000045  aa   000006 6050 04    103  	tpl	6,ic
+    000046  0a   000240 5170 00    104  	  dfcmp	square_root_half
+    000047  aa   000004 6040 04    105  	  tmi	4,ic		" if square_root_half >= x & x <= square_root_two
+    000050  0a   000174 6230 00    106  	    eax3	one		"   X3 := addr (1.0)
+    000051  aa   000000 6210 10    107  	    eax1	0,x0		"   copy return address
+    000052  0a   000130 7100 00    108  	    tra	part_log2_of_ratio	"   result = part_log2_of_ratio (x, 1)
+                                   109  				" else
+    000053  aa  2 00000 4561 00    110  	ste	pr2|xe		"   store addr (x) -> expon in xe 
+    000054  aa   000000 4110 03    111  	lde	=0,du		"   addr (xm) -> expon = 0
+    000055  aa  2 00002 4571 00    112  	dfst	pr2|xm
+    000056  aa  2 00000 2351 00    113  	lda	pr2|xe		"   A := 8/xe,10/0,18/garbage
+    000057  aa   000066 7330 00    114  	lrs	72-18		"   AQ := 62/xe,10/0
+    000060  aa   172000 4110 03    115  	lde	=61b25,du		"   EAQ := unnormalized float(xe)
+    000061  aa   000400 5750 03    116  	fsb	=0.5,du		"   EAQ := float(xe) - 0.5
+    000062  aa  2 00004 4551 00    117  	fst	pr2|bias
+    000063  aa  2 00002 4331 00    118  	dfld	pr2|xm
+    000064  0a   000240 6230 00    119  	eax3	square_root_half	"   X3 := addr (square_root_half)
+    000065  0a   000130 7010 00    120  	tsx1	part_log2_of_ratio	"   EAQ := part_log2_of_ratio (x, square_root_half)
+    000066  aa  2 00004 4751 00    121            fad       pr2|bias            "   EAQ := part_log2_of_ratio (x, square_root_half) + bias  (= log2(x))
+    000067  aa   000000 7100 10    122  	tra	0,x0		"   return result
+                                   123  
+                                   124  
+    000070                         125  hfp_log2:
+    000070  aa   000002 6220 00    126  	eax2	HFP		" 2 word offset for HFP constants
+    000071  aa   400000 4750 03    127  	fad	=0.0,du		" normalize input and set indicators
+    000072  0a   000026 6040 00    128  	tmi	log_of_negative
+    000073  0a   000033 6000 00    129  	tze	log_of_zero
+                                   130  
+    000074  0a   000246 5170 00    131  	dfcmp	hfp_square_root_two	" check for x in the range [.707,1.414]
+    000075  aa   000006 6050 04    132  	tpl	6,ic
+    000076  0a   000242 5170 00    133  	  dfcmp	hfp_square_root_half
+    000077  aa   000004 6040 04    134  	  tmi	4,ic		" if square_root_half >= x & x <= square_root_two
+    000100  0a   000176 6230 00    135  	    eax3	hfp_one		"   X3 := addr (1.0)
+    000101  aa   000000 6210 10    136  	    eax1	0,x0		"   copy return address
+    000102  0a   000130 7100 00    137  	    tra	part_log2_of_ratio
+                                   138  				"   result = part_log2_of_ratio (x, 1)
+                                   139  				" else
+    000103  aa  2 00000 4561 00    140  	ste	pr2|xe		"   store addr (x) -> expon in xe
+    000104  aa   000000 4110 03    141  	lde	=0,du		"   addr (xm) -> expon = 0
+                                   142  				"   EAQ := xm
+    000105  aa  2 00006 4501 00    143  	stz	pr2|shift		"   shift := 0
+                                   144  
+                                   145  	even
+    000106                         146  do_while:				"   do while (xm < 0.5)
+    000106  0a   000250 5170 00    147  	dfcmp	=0.5d0
+    000107  0a   000113 6050 00    148  	tpl	end_do_while
+    000110  aa   000001 7370 00    149  	lls	1		"      xm = 2*xm
+    000111  aa  2 00006 0541 00    150            aos	pr2|shift		"      shift := shift + 1
+    000112  0a   000106 7100 00    151  	tra	do_while		"   end do_while
+    000113                         152  end_do_while:
+                                   153  
+    000113  aa  2 00002 4571 00    154  	dfst	pr2|xm
+    000114  aa  2 00000 2351 00    155  	lda	pr2|xe		"   A := 8/xe,10/0,18/garbage
+    000115  aa   000032 7330 00    156  	lrs	36-10		"   AQ := 36/4*xe,8/0,28/garbage
+    000116  aa  2 00006 1751 00    157  	sba	pr2|shift		"   AQ := 36/4*xe-shift,8/0,28/garbage
+    000117  aa   000035 7330 00    158  	lrs	29		"   AQ := 65/4*xe-shift,7/0
+    000120  aa   040000 4110 03    159  	lde	=16b25,du		"   EAQ := unnormalized float(4*xe-shift)
+    000121  aa   000400 5750 03    160  	fsb	=0.5,du		"   EAQ := float(4*xe-shift)-0.5
+    000122  aa  2 00004 4551 00    161  	fst	pr2|bias
+    000123  aa  2 00002 4331 00    162  	dfld	pr2|xm
+    000124  0a   000242 6230 00    163  	eax3	hfp_square_root_half
+                                   164  				"   X3 := addr (square_root_half)
+    000125  0a   000130 7010 00    165  	tsx1	part_log2_of_ratio
+                                   166  				"   EAQ := part_log2_of_ratio (x, square_root_half)
+    000126  aa  2 00004 4751 00    167  	fad	pr2|bias		"   EAQ := part_log2_of_ratio (x, square_root_half) + bias
+    000127  aa   000000 7100 10    168  	tra	0,x0		"   return result
+                                   169  
+                                   170  
+                                   171  " part_log2_of_ratio (x, y) calculates log2(x/y), where x/y is in the
+                                   172  " range [0.5*2**0.5, 2**0.5], given x in the EAQ and the address of y in X3.
+                                   173  
+    000130                         174  part_log2_of_ratio:
+                                   175  
+    000130  aa   000000 4770 13    176  	dfad	0,x3		" EAQ := x + y
+    000131  aa  2 00010 4571 00    177  	dfst	pr2|x_plus_y
+    000132  aa   000000 5770 13    178  	dfsb	0,x3		" EAQ := x
+    000133  aa   000000 5770 13    179  	dfsb	0,x3		" EAQ := x - y
+    000134  aa  2 00010 5671 00    180  	dfdv	pr2|x_plus_y	" calculate z = (x - y) / (x + y)
+    000135  0a   000170 4250 12    181  	fcmg	eps,x2
+    000136  aa   000004 6054 04    182  	tpnz	4,ic		" if abs(z) < 1.27420168d-11
+    000137  0a   000200 4630 12    183  	  dfmp	p0,x2		"   EAQ = z * p0
+    000140  0a   000220 5670 12    184  	  dfdv	q0,x2		"   EAQ = z * p0 / q0
+    000141  aa   000000 7100 11    185  	  tra	0,x1		"   return to caller
+    000142  aa  2 00012 4721 00    186  	dfstr	pr2|z
+    000143  aa  2 00012 4631 00    187  	dfmp	pr2|z		" calculate zz = z*z
+    000144  aa  2 00014 4721 00    188  	dfstr	pr2|zz		" calculate p(zz)
+    000145  0a   000214 4630 12    189  	dfmp	p3,x2
+    000146  0a   000210 4770 12    190  	dfad	p2,x2
+    000147  aa  2 00014 4631 00    191  	dfmp	pr2|zz
+    000150  0a   000204 4770 12    192  	dfad	p1,x2
+    000151  aa  2 00014 4631 00    193  	dfmp	pr2|zz
+    000152  0a   000200 4770 12    194  	dfad	p0,x2
+    000153  aa  2 00012 4631 00    195  	dfmp	pr2|z		" calculate z*p(zz)
+    000154  aa  2 00016 4721 00    196  	dfstr	pr2|zp
+    000155  aa  2 00014 4331 00    197  	dfld	pr2|zz		" calculate q(zz)
+    000156  0a   000234 4770 12    198  	dfad	q3,x2
+    000157  aa  2 00014 4631 00    199  	dfmp	pr2|zz
+    000160  0a   000230 4770 12    200  	dfad	q2,x2
+    000161  aa  2 00014 4631 00    201  	dfmp	pr2|zz
+    000162  0a   000224 4770 12    202  	dfad	q1,x2
+    000163  aa  2 00014 4631 00    203  	dfmp	pr2|zz
+    000164  0a   000220 4770 12    204  	dfad	q0,x2
+    000165  aa  2 00016 5271 00    205  	dfdi	pr2|zp		" calculate z*p(zz)/q(zz)
+                                   206  
+    000166  aa   000000 7100 11    207  	tra	0,x1		" return to caller
+                                   208  
+    000167  aa   000000 0110 03    209  	even
+    000170  aa   670700 243611     210  eps:	dec	1.27420168d-11
+    000171  aa   344366 577352 
+    000172  aa   756700 243611     211  	oct	756700243611,000000000000
+    000173  aa   000000 000000 
+    000174  aa   002400 000000     212  one:	dec	1.0d0
+    000175  aa   000000 000000 
+    000176  aa   002040 000000     213  hfp_one:	oct	002040000000,000000000000
+    000177  aa   000000 000000 
+    000200  aa   024400 747446     214  p0:	dec	.51390458864923992069d03
+    000201  aa   174506 427516 
+    000202  aa   006100 171711     215  	oct	006100171711,437121505724
+    000203  aa   437121 505724 
+    000204  aa   025163 745604     216  p1:	dec	-.79210250577344319906d03
+    000205  aa   271773 220370 
+    000206  aa   007634 771341     217  	oct	007634771341,056376644076
+    000207  aa   056376 644076 
+    000210  aa   022524 552235     218  p2:	dec	.34070763364903118663d03
+    000211  aa   724502 153162 
+    000212  aa   006052 455223     219  	oct	006052455223,572450215316
+    000213  aa   572450 215316 
+    000214  aa   015344 513075     220  p3:	dec	-.35419160305337449948d02
+    000215  aa   101145 525643 
+    000216  aa   005671 122617     221  	oct	005671122617,220231325351
+    000217  aa   220231 325351 
+    000220  aa   020544 154227     222  q0:	dec	.17810575834951956203d03
+    000221  aa   652616 712022 
+    000222  aa   004544 154227     223  	oct	004544154227,652616712022
+    000223  aa   652616 712022 
+    000224  aa   023262 070074     224  q1:	dec	-.33389039541217149928d03
+    000225  aa   136603 341023 
+    000226  aa   007726 207007     225  	oct	007726207007,413660334102
+    000227  aa   413660 334102 
+    000230  aa   020603 406034     226  q2:	dec	.19375591463035879517d03
+    000231  aa   760376 537401 
+    000232  aa   004603 406034     227  	oct	004603406034,760376537401
+    000233  aa   760376 537401 
+    000234  aa   015343 624363     228  q3:	dec	-.35526251110400238735d02
+    000235  aa   334654 347743 
+    000236  aa   005670 745074     229  	oct	005670745074,667153071771
+    000237  aa   667153 071771 
+    000240                         230  square_root_half:
+    000240  aa   000552 023631     231  	dec	7.071067811865475244008d-01
+    000241  aa   477473 631102 
+    000242                         232  hfp_square_root_half:
+    000242  aa   000552 023631     233  	oct	000552023631,477473631102
+    000243  aa   477473 631102 
+    000244                         234  square_root_two:
+    000244  aa   002552 023631     235  	dec	1.414213562373095048801d+00
+    000245  aa   477473 631102 
+    000246                         236  hfp_square_root_two:
+    000246  aa   002055 202363     237  	oct	002055202363,147747363110
+    000247  aa   147747 363110 
+                                   238  
+                                   239  	end
+LITERALS
+     
+    000250  aa   000400 000000 
+    000251  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000252  5a   000003 000000 
+    000253  5a   000105 600000 
+    000254  aa   000000 000000 
+    000255  55   000013 000002 
+    000256  5a   000002 400003 
+    000257  55   000006 000013 
+    000260  aa  021 144 157 165
+    000261  aa  142 154 145 137
+    000262  aa  154 157 147 141
+    000263  aa  162 151 164 150
+    000264  aa  155 137 000 000
+    000265  55   000024 000003 
+    000266  0a   000022 400000 
+    000267  55   000016 000003 
+    000270  aa  026 150 146 160         hfp_double_log_base_e_
+    000271  aa  137 144 157 165
+    000272  aa  142 154 145 137
+    000273  aa  154 157 147 137
+    000274  aa  142 141 163 145
+    000275  aa  137 145 137 000
+    000276  55   000034 000013 
+    000277  0a   000007 400000 
+    000300  55   000027 000003 
+    000301  aa  022 144 157 165         double_log_base_e_
+    000302  aa  142 154 145 137
+    000303  aa  154 157 147 137
+    000304  aa  142 141 163 145
+    000305  aa  137 145 137 000
+    000306  55   000045 000024 
+    000307  0a   000017 400000 
+    000310  55   000037 000003 
+    000311  aa  026 150 146 160         hfp_double_log_base_2_
+    000312  aa  137 144 157 165
+    000313  aa  142 154 145 137
+    000314  aa  154 157 147 137
+    000315  aa  142 141 163 145
+    000316  aa  137 062 137 000
+    000317  55   000055 000034 
+    000320  0a   000004 400000 
+    000321  55   000050 000003 
+    000322  aa  022 144 157 165         double_log_base_2_
+    000323  aa  142 154 145 137
+    000324  aa  154 157 147 137
+    000325  aa  142 141 163 145
+    000326  aa  137 062 137 000
+    000327  55   000066 000045 
+    000330  0a   000013 400000 
+    000331  55   000060 000003 
+    000332  aa  027 150 146 160         hfp_double_log_base_10_
+    000333  aa  137 144 157 165
+    000334  aa  142 154 145 137
+    000335  aa  154 157 147 137
+    000336  aa  142 141 163 145
+    000337  aa  137 061 060 137
+    000340  55   000076 000055 
+    000341  0a   000000 400000 
+    000342  55   000071 000003 
+    000343  aa  023 144 157 165         double_log_base_10_
+    000344  aa  142 154 145 137
+    000345  aa  154 157 147 137
+    000346  aa  142 141 163 145
+    000347  aa  137 061 060 137
+    000350  55   000002 000066 
+    000351  6a   000000 400002 
+    000352  55   000101 000003 
+    000353  aa  014 163 171 155         symbol_table
+    000354  aa  142 157 154 137
+    000355  aa  164 141 142 154
+    000356  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000357  aa   000000 000015 
+    000360  5a   000055 000000 
+    000361  5a   000024 000000 
+    000362  5a   000045 000000 
+    000363  aa   000000 000000 
+    000364  aa   000000 000000 
+    000365  5a   000013 000000 
+    000366  5a   000034 000000 
+    000367  5a   000076 000000 
+    000370  aa   000000 000000 
+    000371  5a   000066 000000 
+    000372  aa   000000 000000 
+    000373  aa   000000 000000 
+    000374  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000375  aa  020 143 141 154         call_math_error_
+    000376  aa  154 137 155 141
+    000377  aa  164 150 137 145
+    000400  aa  162 162 157 162
+    000401  aa  137 000 000 000
+    000402  aa  011 155 141 170         max_value
+    000403  aa  137 166 141 154
+    000404  aa  165 145 000 000
+    000405  aa  012 154 157 147         log_e_of_2
+    000406  aa  137 145 137 157
+    000407  aa  146 137 062 000
+    000410  aa  013 154 157 147         log_10_of_2
+    000411  aa  137 061 060 137
+    000412  aa  157 146 137 062
+    000413  aa  016 150 146 160         hfp_log_e_of_2
+    000414  aa  137 154 157 147
+    000415  aa  137 145 137 157
+    000416  aa  146 137 062 000
+    000417  aa  017 150 146 160         hfp_log_10_of_2
+    000420  aa  137 154 157 147
+    000421  aa  137 061 060 137
+    000422  aa  157 146 137 062
+    000423  aa  017 155 141 164         math_constants_
+    000424  aa  150 137 143 157
+    000425  aa  156 163 164 141
+    000426  aa  156 164 163 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000427  aa   000004 000000 
+    000430  55   000123 000123 
+    000431  aa   000004 000000 
+    000432  55   000151 000130 
+    000433  aa   000004 000000 
+    000434  55   000151 000133 
+    000435  aa   000004 000000 
+    000436  55   000151 000136 
+    000437  aa   000004 000000 
+    000440  55   000151 000141 
+    000441  aa   000004 000000 
+    000442  55   000151 000145 
+    000443  aa   000001 000000 
+    000444  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000445  5a   000157 000000 
+    000446  5a   000155 000000 
+    000447  5a   000165 000000 
+    000450  5a   000167 000000 
+    000451  5a   000161 000000 
+    000452  5a   000163 000000 
+    000453  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000252 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000024 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         math_constants_|log_10_of_2
+    000011  5a   000200 0000 00
+    000012  9a   777766 0000 46         math_constants_|log_e_of_2
+    000013  5a   000177 0000 00
+    000014  9a   777764 0000 46         math_constants_|hfp_log_10_of_2
+    000015  5a   000176 0000 00
+    000016  9a   777762 0000 46         math_constants_|hfp_log_e_of_2
+    000017  5a   000175 0000 00
+    000020  9a   777760 0000 46         call_math_error_|call_math_error_
+    000021  5a   000174 0000 00
+    000022  9a   777756 0000 46         math_constants_|max_value
+    000023  5a   000173 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253617 454633 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000161 
+    000020  aa   000000 000104 
+    000021  aa   000132 000125 
+    000022  aa   000153 000104 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000050 
+    000067  aa   175453 017773 
+    000070  aa   000000 117547 
+    000071  aa   176723 400000 
+    000072  aa   076163 160145          >spec>install>1110>double_logarithm_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076144 
+    000077  aa   157165 142154 
+    000100  aa   145137 154157 
+    000101  aa   147141 162151 
+    000102  aa   164150 155137 
+    000103  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    BFP                      double_logarithm_:   32,   97.
+           4    bias                     double_logarithm_:   36,  117,  121,  161,  167.
+                call_math_error_         double_logarithm_:   84,   91.
+           0    double_log_base_10_      double_logarithm_:   43,   48.
+           4    double_log_base_2_       double_logarithm_:   44,   54.
+           7    double_log_base_e_       double_logarithm_:   45,   59.
+         106    do_while                 double_logarithm_:  146,  151.
+         113    end_do_while             double_logarithm_:  148,  152.
+         170    eps                      double_logarithm_:  181,  210.
+           2    HFP                      double_logarithm_:   33,  126.
+          13    hfp_double_log_base_10_  double_logarithm_:   43,   65.
+          17    hfp_double_log_base_2_   double_logarithm_:   44,   71.
+          22    hfp_double_log_base_e_   double_logarithm_:   45,   76.
+          70    hfp_log2                 double_logarithm_:   66,   72,   77,  125.
+                hfp_log_10_of_2          double_logarithm_:   30,   67.
+                hfp_log_e_of_2           double_logarithm_:   30,   78.
+         176    hfp_one                  double_logarithm_:  135,  213.
+         242    hfp_square_root_half     double_logarithm_:  133,  163,  232.
+         246    hfp_square_root_two      double_logarithm_:  131,  236.
+          40    log2                     double_logarithm_:   49,   55,   60,   96.
+                log_10_of_2              double_logarithm_:   30,   50.
+                log_e_of_2               double_logarithm_:   30,   61.
+          26    log_of_negative          double_logarithm_:   82,   99,  128.
+          33    log_of_zero              double_logarithm_:   89,  100,  129.
+                math_constants_          double_logarithm_:   30.
+                max_value                double_logarithm_:   30,   85,   92.
+         174    one                      double_logarithm_:  106,  212.
+         200    p0                       double_logarithm_:  183,  194,  214.
+         204    p1                       double_logarithm_:  192,  216.
+         210    p2                       double_logarithm_:  190,  218.
+         214    p3                       double_logarithm_:  189,  220.
+         130    part_log2_of_ratio       double_logarithm_:  108,  120,  137,  165,  174.
+         220    q0                       double_logarithm_:  184,  204,  222.
+         224    q1                       double_logarithm_:  202,  224.
+         230    q2                       double_logarithm_:  200,  226.
+         234    q3                       double_logarithm_:  198,  228.
+           6    shift                    double_logarithm_:   37,  143,  150,  157.
+         240    square_root_half         double_logarithm_:  104,  119,  230.
+         244    square_root_two          double_logarithm_:  102,  234.
+           0    xe                       double_logarithm_:   34,  110,  113,  140,  155.
+           2    xm                       double_logarithm_:   35,  112,  118,  154,  162.
+          10    x_plus_y                 double_logarithm_:   38,  177,  180.
+          12    z                        double_logarithm_:   39,  186,  187,  195.
+          16    zp                       double_logarithm_:   41,  196,  205.
+          14    zz                       double_logarithm_:   40,  188,  191,  193,  197,  199,  201,  203.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

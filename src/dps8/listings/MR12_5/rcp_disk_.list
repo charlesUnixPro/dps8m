@@ -1,0 +1,1926 @@
+	COMPILATION LISTING OF SEGMENT rcp_disk_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0949.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+       16*     audit(85-12-17,CLJones), install(86-03-21,MR12.0-1033):
+       17*     Add code for no
+       18*     PROTECT and OPR INT switches.
+       19*  2) change(86-01-15,Fawcett), approve(86-04-11,MCR7383),
+       20*     audit(86-06-17,Farley), install(86-07-17,MR12.0-1097):
+       21*     Add support for subvolumes and 512_WORD_IO.
+       22*  3) change(86-09-26,Farley), approve(86-10-24,MCR7557),
+       23*     audit(86-10-27,Fawcett), install(86-10-28,MR12.0-1200):
+       24*     Added call to admin_gate_$ioi_set_ws_max, before calling ioi_$workspace.
+       25*     This will allow proper workspace size setting when the workspace may be
+       26*     currently smaller than required.
+       27*                                                   END HISTORY COMMENTS */
+       28 
+       29 rcp_disk_:
+       30      procedure (arg_rcse_ptr, arg_ecode);
+       31 
+       32 /*	This program is an internal interface of RCP.
+       33*   *	Created on 05/13/75 by Bill Silver.
+       34*   *	Changed on 04/02/76 by Bill Silver for NSS.
+       35*   *	Changed on 11/01/76 by Bill Silver to set mount timer.
+       36*   *	Changed on 12/02/76 by Bernard Greenberg for label countervalidator.
+       37*   *	Changed on 1/79 by R.J.C. Kissel to add disk label authentication.
+       38*   *	Changed 3/79 by Michael R. Jordan for MR7.0R.
+       39*   *	Changed 2/85 by Paul Farley to add code for no PROTECT and OPR INT switches.
+       40*   *
+       41*   *	This program is called to perform special disk attachment processing.
+       42**/
+       43 
+       44 /*		ARGUMENT  DATA		*/
+       45 
+       46 	dcl     arg_ecode		 fixed bin (35);	/* (O) Return error_table_ code. */
+       47 	dcl     arg_rcse_ptr	 ptr;		/* (I) Pointer to attachment RCS entry. */
+       48 
+       49 
+       50 /*		AUTOMATIC  DATA		*/
+       51 
+       52 	dcl     command		 bit (6);
+       53 	dcl     device_off		 bit (18) aligned;	/* RCPD device entry offset. */
+       54 	dcl     drive_num		 fixed bin;	/* Disk drive number. */
+       55 	dcl     (ecode, scode)	 fixed bin (35);	/* error_table_ code. */
+       56 	dcl     ioi_index		 fixed bin;	/* IOI internal device index. */
+       57 	dcl     label_address	 fixed bin;
+       58 	dcl     special_flag	 bit (1) aligned;	/* ON => special interrupt. */
+       59 	dcl     special_status_word	 bit (36) aligned;	/* One word of special status. */
+       60 	dcl     workspace_ptr	 ptr;		/* Pointer to our workspace. */
+       61 	dcl     real_story		 char (160);
+       62 	dcl     label_story		 char (160);
+       63 	dcl     what_user_asked_for	 bit (1);
+       64 	dcl     write_flag		 bit (1) aligned;
+       65 	dcl     valid_reg		 bit (1);		/* Pack has valid registration */
+       66 	dcl     ss_pack		 bit (1);		/* Pack is Storage System */
+       67 	dcl     valid_copy		 bit (1);		/* Pack is provably copy of mounted vol */
+       68 	dcl     (i, sector, record_factor, record_offset, cylinder, devadd, usable_sect_per_cyl, unused_sect_per_cyl) fixed bin (24); /* variables used to calculate label sector addresses */
+       69 
+       70 /*		BASED  DATA		*/
+       71 
+       72 	dcl     1 wspace		 based (workspace_ptr) aligned, /* Overlay of IOI workspace. */
+       73 		2 idcw		 bit (36),	/* Disk IDCW. */
+       74 		2 seek_dcw	 bit (36),	/* Used in label checking seek-read operation. */
+       75 		2 read_idcw	 bit (36),
+       76 		2 read_dcw	 bit (36),
+       77 		2 seek_addr	 bit (36),	/* Specifies record to seek. */
+       78 		2 state		 fixed bin,	/* Index that => current state of attachment. */
+       79 		2 mount_state	 fixed bin,	/* Save state used to wait for mounts. */
+       80 		2 retry_count	 fixed bin,	/* Number of REREADYs we have issued. */
+       81 		2 protect_comment	 char (8),	/* Used in disk mount messages. */
+       82 		2 flags,
+       83 		( 3 waiting_for_operator_interrupt
+       84 				 bit (1),		/* ON => interrupt must come from MPC button. */
+       85 		  3 pad1		 bit (35)
+       86 		  )		 unaligned,
+       87 		2 pad_ptr		 ptr,		/* Pad so status queue starts at even offset. */
+       88 		2 istatq		 like istat,	/* Our status queue - only 1 entry. */
+       89 		2 fs_type_idx	 fixed bin,	/* index into fs_devtype arrays for this device */
+       90 		2 n_label		 fixed bin,	/* number of labels */
+       91 		2 cur_label	 fixed bin,	/* what label currently checking */
+       92 		2 sv		 (3),		/* info on labels */
+       93 		  3 pvname	 char (32),	/* pv_name found in label */
+       94 		  3 story		 char (32),	/* Need this in wspace since it is used in different states. */
+       95 
+       96 		2 label_buffer	 (1024) bit (36);	/* Area where we read pack label. */
+       97 
+       98 
+       99 /*		INTERNAL STATIC DATA	*/
+      100 
+      101 	dcl     max_num_retries	 fixed bin /* Number of times we will ready a disk drive. */ internal static init (5);
+      102 
+      103 	dcl     template_idcw	 bit (36) internal static init ("000000700201"b3);
+      104 						/* Template of the IDCW we will use. */
+      105 
+      106 	dcl     set_standby_command	 bit (6) internal static init ("72"b3);
+      107 	dcl     request_status_command
+      108 				 bit (6) internal static init ("00"b3);
+      109 	dcl     read_command	 bit (6) internal static init ("25"b3);
+      110 	dcl     reset_status_command
+      111 				 bit (6) internal static init ("40"b3);
+      112 	dcl     LABEL_ADDRESS	 fixed bin (24) internal static init (0);
+      113 
+      114 /*		EXTERNAL ENTRIES CALLED	*/
+      115 
+      116 	dcl     (addr, bin, bit, divide, hbound, null, mod, rel, rtrim, size, substr)
+      117 				 builtin;
+      118 
+      119 	dcl     (error_table_$bad_label, error_table_$device_attention, error_table_$invalid_state, error_table_$unable_to_do_io)
+      120 				 fixed bin (35) external;
+      121 
+      122 	dcl     admin_gate_$ioi_set_ws_max
+      123 				 entry (fixed bin, fixed bin (19), fixed bin (35));
+      124 	dcl     admin_gate_$syserr	 entry options (variable);
+      125 	dcl     countervalidate_label_
+      126 				 entry (ptr, bit (1), bit (1), bit (1));
+      127 	dcl     cv_dec_		 entry (char (*), fixed bin);
+      128 	dcl     ioa_$rsnnl		 entry () options (variable);
+      129 	dcl     ioi_$connect	 entry (fixed bin, fixed bin, fixed bin (35));
+      130 	dcl     ioi_$get_special_status
+      131 				 entry (fixed bin, bit (1) aligned, bit (36) aligned, fixed bin (35));
+      132 	dcl     ioi_$set_status	 entry (fixed bin, fixed bin (18), fixed bin, fixed bin (35));
+      133 	dcl     ioi_$workspace	 entry (fixed bin, ptr, fixed bin (19), fixed bin (35));
+      134 	dcl     rcp_auto_register_	 entry (char (*), char (*), char (*), fixed bin (35));
+      135 	dcl     rcp_ioi_attach_	 entry (ptr, fixed bin (35));
+      136 	dcl     rcp_mount_timer_$reset
+      137 				 entry (bit (18) aligned, fixed bin (35));
+      138 	dcl     rcp_mount_timer_$set
+      139 				 entry (bit (18) aligned, bit (1) aligned, fixed bin (35));
+      140 						/* 	*/
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      141 
+      142 
+  2     1 /*	Begin include file ... rcp_resource_types.incl.pl1
+  2     2*   *
+  2     3*   *	Created 3/79 by Michael R. Jordan for MR7.0R
+  2     4*   *
+  2     5*   *	This include file defines the official RCP resource types.
+  2     6*   *	The array of names is indexed by the corresponding device type.
+  2     7*   *      MOD by RAF for MCA
+  2     8**/
+  2     9 
+  2    10 
+  2    11 
+  2    12 /****^  HISTORY COMMENTS:
+  2    13*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+  2    14*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  2    15*     Support of MCA.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18 dcl  DEVICE_TYPE (8) char (32)
+  2    19 	internal static options (constant)
+  2    20 	init ("tape_drive", "disk_drive", "console", "printer", "punch", "reader", "special", "mca");
+  2    21 
+  2    22 dcl  NUM_QUALIFIERS (8) fixed bin			/* Number of qualifiers for each device type. */
+  2    23 	internal static init (3, 0, 0, 2, 0, 0, 0, 0);
+  2    24 
+  2    25 dcl  VOLUME_TYPE (8) char (32)
+  2    26 	internal static options (constant)
+  2    27 	init ("tape_vol", "disk_vol", "", "", "", "", "", "");
+  2    28 
+  2    29 dcl  TAPE_DRIVE_DTYPEX fixed bin static internal options (constant) init (1);
+  2    30 dcl  DISK_DRIVE_DTYPEX fixed bin static internal options (constant) init (2);
+  2    31 dcl  CONSOLE_DTYPEX fixed bin static internal options (constant) init (3);
+  2    32 dcl  PRINTER_DTYPEX fixed bin static internal options (constant) init (4);
+  2    33 dcl  PUNCH_DTYPEX fixed bin static internal options (constant) init (5);
+  2    34 dcl  READER_DTYPEX fixed bin static internal options (constant) init (6);
+  2    35 dcl  SPECIAL_DTYPEX fixed bin static internal options (constant) init (7);
+  2    36 dcl  MCA_DTYPEX fixed bin static internal options (constant) init (8);
+  2    37 dcl  TAPE_VOL_VTYPEX fixed bin static internal options (constant) init (1);
+  2    38 dcl  DISK_VOL_VTYPEX fixed bin static internal options (constant) init (2);
+  2    39 
+  2    40 
+  2    41 /*	End include file ... rcp_resource_types.incl.pl1 */
+      143 
+      144 /* 	*/
+  3     1 /* Begin include file ...... fs_dev_types.incl.pl1 */
+  3     2 
+  3     3 /****^  HISTORY COMMENTS:
+  3     4*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  3     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  3     6*     Add support for FIPS
+  3     7*     3380.
+  3     8*  2) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  3     9*     audit(86-05-15,Coppola), install(86-07-18,MR12.0-1098):
+  3    10*     Add the support for subvolumes for the MSU3380 and MSU3390.
+  3    11*  3) change(86-10-02,Fawcett), approve(86-10-02,PBF7383),
+  3    12*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+  3    13*     Changed 3390 to 3381, "d338" to "3380" & "d339" to "3381".
+  3    14*                                                   END HISTORY COMMENTS */
+  3    15 
+  3    16 /* Modified 5/19/76 by N. I. Morris */
+  3    17 /* Modified 12/27/78 by Michael R. Jordan to correct MSS0500 information */
+  3    18 /* Modified 4/79 by R.J.C. Kissel to add msu0501 information. */
+  3    19 /* Modified '82 by BIM for needs_alt_part */
+  3    20 /* Modified 4/84 by Chris Jones for FIPS disks */
+  3    21 /* Modified 12/84 by Paul Farley for FIPS disks formatted for 512wd sectors */
+  3    22 /* Modified 1/85 by Paul Farley to decrease the size of the 3380, until the
+  3    23*   volmap and record stock can be expanded. */
+  3    24 
+  3    25 /*
+  3    26********************************************************************************
+  3    27**							        *
+  3    28**                           WARNING:                                          *
+  3    29**							        *
+  3    30**   There exists fs_dev_types.incl.alm that must me updated when a new device *
+  3    31**   type is added.						        *
+  3    32**							        *
+  3    33**   There are other include files that contain arrays indexed by the device   *
+  3    34**   index obtained by references to MODELX or MODELN in this include file.    *
+  3    35**   These must be modified when a new device type is added:		        *
+  3    36**   disk_pack.incl.pl1					        *
+  3    37**   fs_dev_types_sector.incl.pl1 (included in this include)		        *
+  3    38**							        *
+  3    39********************************************************************************
+  3    40**/
+  3    41 
+  3    42 
+  3    43 dcl (maxdevt init (9),				/* maximum legal devt */
+  3    44      bulkdevt init (1),				/* bulk store devt */
+  3    45      msu0500devt init (2),				/* MSU0500 device type */
+  3    46      msu0451devt init (3),				/* MSU0451 device type */
+  3    47      msu0450devt init (3),				/* MSU0450 device type */
+  3    48      msu0400devt init (4),				/* MSU0400 device type */
+  3    49      dsu191devt init (4),				/* DSU191 device type */
+  3    50      dsu190devt init (5),				/* DSU190 device type */
+  3    51      dsu181devt init (6),				/* DSU181 device type */
+  3    52      msu0501devt init (7),				/* MSU0501 device type */
+  3    53      fips3380devt init (8),				/* 3380D FIPS device type */
+  3    54      fips3381devt init (9)				/* 3380E FIPS device type */
+  3    55      ) fixed bin (4) static options (constant);
+  3    56 
+  3    57 dcl  MODEL (12) fixed bin static options (constant) init	/* Known device model numbers */
+  3    58      (0, 500, 451, 450, 400, 402, 191, 190, 181, 501, 3380, 3381);
+  3    59 
+  3    60 dcl  MODELX (12) fixed bin static options (constant) init	/* translation from model number to device type */
+  3    61      (1, 2, 3, 3, 4, 4, 4, 5, 6, 7, 8, 9);
+  3    62 
+  3    63 dcl  MODELN (9) fixed bin static options (constant) init	/* translation from device type to model number */
+  3    64      (0, 500, 451, 400, 190, 181, 501, 3380, 3381);
+  3    65 
+  3    66 dcl  device_names (9) char (4) aligned static options (constant) init /* device names indexed by device type */
+  3    67      ("bulk", "d500", "d451", "d400", "d190", "d181", "d501", "3380", "3381");
+  3    68 
+  3    69 dcl  first_dev_number (9) fixed bin (17) static options (constant) init /* First valid device_number */
+  3    70      (1, 1, 1, 1, 1, 1, 1, 0, 0);
+  3    71 
+  3    72 dcl  fips_type_disk (9) bit (1) unal static options (constant) init /* ON => FIPS disk */
+  3    73      ("0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"1"b,"1"b);
+  3    74 
+  3    75 dcl  media_removable (9) bit (1) static options (constant) init /* ON => demountable pack on device */
+  3    76      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  3    77 
+  3    78 dcl  shared_spindle (9) bit (1) static options (constant) init /* ON => 2 devices per spindle */
+  3    79      ("0"b, "1"b, "0"b, "0"b, "0"b, "0"b, "1"b, "0"b, "0"b);
+  3    80 
+  3    81 dcl  needs_alt_part (9) bit (1) static options (constant) init /* ON => needs alternate partition to run alternate tracks */
+  3    82      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  3    83 
+  3    84 dcl  seek_command (9) bit (6) init /* Seek command: 00 => N/A, 30 => Seek_512, 34 => seek_64 */
+  3    85      ("00"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"30"b3, "30"b3);
+  3    86 
+  3    87 dcl  rec_per_dev (9) fixed bin (21) static options (constant) init /* table of # of records on each device */
+  3    88      (0, 38258, 38258, 19270, 14760, 4444, 67200, 112395, 224790);
+  3    89 
+  3    90 dcl  rec_per_sv (9) fixed bin static options (constant) init /* table of  # of records on each subvol */
+  3    91      (0, 38258, 38258, 19270, 14760, 4444, 67200, 56134, 74930);
+  3    92 
+  3    93 dcl  number_of_sv (9) fixed bin static options (constant) init /* table of subvolumes */
+  3    94      (0, 0, 0, 0, 0, 0, 0, 2, 3);
+  3    95 
+  3    96 dcl  valid_sv_string char (3) static options (constant) init  /* string of valid subvolume names */
+  3    97      ("abc");
+  3    98 
+  3    99 dcl  valid_sv_array (0:2) char (1) static options (constant) /* array of valid subvolume names */
+  3   100      init ("a","b","c");
+  3   101 
+  3   102 dcl  cyl_per_dev (9) fixed bin static options (constant) init /* table of # of cylinders on each device */
+  3   103      (0, 814, 814, 410, 410, 202, 840, 885, 1770);
+  3   104 
+  3   105 dcl  cyl_per_sv (9) fixed bin static options (constant) init /* table of # of cylinders on each subvolume */
+  3   106      (0, 814, 814, 410, 410, 202, 840, 442, 590);
+  3   107 
+  3   108 dcl  rec_per_cyl (9) fixed bin static options (constant) init /* table of # of records per cylinder on each device */
+  3   109      (0, 47, 47, 47, 36, 22, 80, 127, 127);
+  3   110 
+  3   111 dcl  tracks_per_cyl (9) fixed bin static options (constant) init /* table of # of tracks per cylinder on each device */
+  3   112      (0, 19, 19, 19, 19, 20, 20, 15, 15);
+  3   113 
+  3   114 
+  3   115 dcl  first_rec_num (9) fixed bin static options (constant) init /* table of # of first record on each device */
+  3   116      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  3   117 
+  3   118 dcl  last_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each device */
+  3   119      (0, 38257, 38116, 19128, 14651, 4399, 67199, 112394, 224789);
+  3   120 
+  3   121 dcl  last_sv_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each subvolume */
+  3   122      (0, 38257, 38116, 19128, 14651, 4399, 67199, 56133, 74929);
+  3   123 
+  3   124 dcl  first_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector for each device */
+  3   125      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  3   126 
+  3   127 dcl  last_sect_num (9) fixed bin (24) static options (constant) init /* table of # last sector number for each device */
+  3   128      (0, 618639, 616359, 309319, 239722, 71999, 1075199, 225674, 451349);
+  3   129 
+  3   130 dcl  first_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector of alt partition */
+  3   131      (0, 638400, 616360, 309320, 239723, 72000, 1075200, 225675, 451350);
+  3   132 
+  3   133 dcl  last_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector of alt partition */
+  3   134      (0, 639919, 618639, 311599, 241489, 72719, 1077759, 225930, 451605);
+  3   135 
+  3   136 dcl  last_physical_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector on device (includes T&D cylinders) */
+  3   137      (0, 639919, 619399, 312359, 242249, 72359, 1077759, 225674, 451859);
+  3   138 
+  3   139 dcl  dev_time (9) float bin (27) static options (constant) init /* table of average access times for each device */
+  3   140      (384e0, 33187e0, 33187e0, 34722e0, 46935e0, 52631e0, 33187e0, 26260e0, 26260e0);
+  3   141 
+  4     1 /* Begin fs_dev_types_sector.incl.pl1 */
+  4     2 
+  4     3 
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  4     6*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  4     7*     Add the sector differance for devices that do 64 word IO and devices that
+  4     8*     do 512 word IO.
+  4     9*                                                   END HISTORY COMMENTS */
+  4    10 
+  4    11 /* Created by R. A. Fawcett for 512 word IO. for procedures that do not
+  4    12*	 need all the data in fs_dev_types. This is also included in
+  4    13*	 fs_dev_types.incl.pl1  */
+  4    14 
+  4    15 dcl  sect_per_cyl (9) fixed bin static options (constant) init /* table of # of sectors per cylinder on each device */
+  4    16     (0, 760, 760, 760, 589, 360, 1280, 255, 255);
+  4    17 
+  4    18 dcl  sect_per_sv (9) fixed bin (24) static options (constant) init /* table of # of sectors per cylinder on each subvolume */
+  4    19      (0, 0, 0, 0, 0, 0, 0, 112710, 150450);
+  4    20 
+  4    21 dcl  sect_per_rec (9) fixed bin static options (constant) init
+  4    22  /* table of # of sectors per record on each device */
+  4    23  /* coresponding array in disk_pack.incl.pl1 called SECTORS_PER_RECORD */
+  4    24     (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  4    25 
+  4    26 dcl  sect_per_vtoc (9) fixed bin static options (constant) init
+  4    27      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  4    28 	
+  4    29 dcl  vtoc_per_rec (9) fixed bin  static options  (constant) init
+  4    30 /* corespending array in disk_pack.incl.pl1 named VTOCES_PER_RECORD */
+  4    31      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  4    32 
+  4    33 dcl  sect_per_track (9) fixed bin static options (constant) init /* table of # of sectors per track on each device */
+  4    34     (0, 40, 40, 40, 31, 18, 64, 17, 17);
+  4    35 
+  4    36 dcl  words_per_sect (9) fixed bin static options (constant) init /* table of # of words per sector on each device */
+  4    37     (0, 64, 64, 64, 64, 64, 64, 512, 512);
+  4    38 
+  4    39 /* End fs_dev_types_sector.incl.pl1 */
+  4    40 
+  3   142 
+  3   143 
+  3   144 /* End of include file ...... fs_dev_types.incl.pl1 */
+      145 
+  5     1 /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  5     2 
+  5     3 /****^  HISTORY COMMENTS:
+  5     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  5     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  5     6*     Add the subvolume info.
+  5     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  5     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  5     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  5    10*     dumper bit maps.
+  5    11*                                                   END HISTORY COMMENTS */
+  5    12 
+  5    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  5    14 /* Note: fsout_vol clears pad fields before writing the label */
+  5    15 
+  5    16 dcl  labelp ptr;
+  5    17 
+  5    18 dcl 1 label based (labelp) aligned,
+  5    19 
+  5    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  5    21 
+  5    22     2 gcos (5*64) fixed bin,
+  5    23 
+  5    24 /* Now we have the Multics label */
+  5    25 
+  5    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  5    27     2 version fixed bin,				/* Version 1 */
+  5    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  5    29     2 pv_name char (32),				/* Physical volume name. */
+  5    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  5    31     2 pvid bit (36),				/* Unique ID of this pack */
+  5    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  5    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  5    34     2 time_registered fixed bin (71),			/* time imported to system */
+  5    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  5    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  5    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  5    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  5    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  5    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  5    41     2 flagpad bit (33) unal,
+  5    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  5    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  5    44     2 password bit (72),				/* not yet used */
+  5    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  5    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  5    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  5    48     2 pad1 (13) fixed bin,
+  5    49     2 time_mounted fixed bin (71),			/* time mounted */
+  5    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  5    51 
+  5    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  5    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  5    54* */
+  5    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  5    56     2 pad6 fixed bin,				
+  5    57 
+  5    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  5    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  5    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  5    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  5    62     2 pad1a (2) fixed bin,
+  5    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  5    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  5    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  5    66     2 pad2 (40) fixed bin,
+  5    67     2 root,
+  5    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  5    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  5    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  5    71       3 pad7 bit (1) aligned,				
+  5    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  5    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  5    74       3 esd_state fixed bin,				/* State of esd */
+  5    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  5    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  5    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  5    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  5    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  5    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  5    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  5    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  5    83     2 pad3 (52) fixed bin,
+  5    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  5    85     2 parts (47),
+  5    86       3 part char (4),				/* Name of partition */
+  5    87       3 frec fixed bin,				/* First record */
+  5    88       3 nrec fixed bin,				/* Number of records */
+  5    89       3 pad5 fixed bin,
+  5    90     2 pad4 (5*64) fixed bin;
+  5    91 
+  5    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  5    93 
+  5    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+      146 
+      147 /* 	*/
+  6     1 
+  6     2 /* Begin include file ...... iom_pcw.incl.pl1 */
+  6     3 
+  6     4 dcl  pcwp ptr;					/* pointer to PCW */
+  6     5 
+  6     6 dcl 1 pcw based (pcwp) aligned,			/* Peripheral Control Word */
+  6     7      (2 command bit (6),				/* device command */
+  6     8       2 device bit (6),				/* device code */
+  6     9       2 ext bit (6),				/* address extension */
+  6    10       2 code bit (3),				/* should be "111"b for PCW */
+  6    11       2 mask bit (1),				/* channel mask bit */
+  6    12       2 control bit (2),				/* terminate/proceed and marker control bits */
+  6    13       2 chan_cmd bit (6),				/* type of I/O operation */
+  6    14       2 count bit (6),				/* record count or control character */
+  6    15       2 mbz1 bit (3),
+  6    16       2 channel bit (6),				/* channel number */
+  6    17       2 mbz2 bit (27)) unal;
+  6    18 
+  6    19 dcl  idcwp ptr;					/* pointer to IDCW */
+  6    20 
+  6    21 dcl 1 idcw based (idcwp) aligned,			/* Instruction DCW */
+  6    22      (2 command bit (6),				/* device command */
+  6    23       2 device bit (6),				/* device code */
+  6    24       2 ext bit (6),				/* address extension */
+  6    25       2 code bit (3),				/* should be "111"b for PCW */
+  6    26       2 ext_ctl bit (1),				/* "1"b if address extension to be used */
+  6    27       2 control bit (2),				/* terminate/proceed and marker control bits */
+  6    28       2 chan_cmd bit (6),				/* type of I/O operation */
+  6    29       2 count bit (6)) unal;				/* record count or control character */
+  6    30 
+  6    31 /* End include file ...... iom_pcw.incl.pl1 */
+  6    32 
+      148 
+  7     1 
+  7     2 /* Begin include file ...... iom_dcw.incl.pl1 */
+  7     3 
+  7     4 dcl  dcwp ptr,					/* pointer to DCW */
+  7     5      tdcwp ptr;					/* pointer to TDCW */
+  7     6 
+  7     7 dcl 1 dcw based (dcwp) aligned,			/* Data Control Word */
+  7     8      (2 address bit (18),				/* address for data transfer */
+  7     9       2 char_pos bit (3),				/* character position */
+  7    10       2 m64 bit (1),				/* non-zero for mod 64 address */
+  7    11       2 type bit (2),				/* DCW type */
+  7    12       2 tally bit (12)) unal;				/* tally for data transfer */
+  7    13 
+  7    14 dcl 1 tdcw based (tdcwp) aligned,			/* Transfer DCW */
+  7    15      (2 address bit (18),				/* address to transfer to */
+  7    16       2 mbz1 bit (4),
+  7    17       2 type bit (2),				/* should be "10"b for TDCW */
+  7    18       2 mbz2 bit (9),
+  7    19       2 ec bit (1),					/* non-zero to set LPW AE bit */
+  7    20       2 res bit (1),				/* non-zero to restrict further use of IDCW */
+  7    21       2 rel bit (1)) unal;				/* non-zero to set relative mode after transfer */
+  7    22 
+  7    23 /* End of include file ...... iom_dcw.incl.pl1 */
+  7    24 
+      149 
+      150 /* 	*/
+  8     1 
+  8     2 /* Begin include file ...... ioi_stat.incl.pl1 */
+  8     3 /* Last modified 3/24/75 by Noel I. Morris */
+  8     4 
+  8     5 dcl  isp ptr;					/* pointer to status structure */
+  8     6 
+  8     7 dcl 1 istat based (isp) aligned,			/* I/O Interfacer status structure */
+  8     8     2 completion,					/* completion flags */
+  8     9      (3 st bit (1),					/* "1"b if status returned */
+  8    10       3 er bit (1),					/* "1"b if status indicates error condition */
+  8    11       3 run bit (1),				/* "1"b if channel still running */
+  8    12       3 time_out bit (1)) unal,			/* "1"b if time-out occurred */
+  8    13     2 level fixed bin (3),				/* IOM interrupt level */
+  8    14     2 offset fixed bin (18),				/* DCW list offset */
+  8    15     2 absaddr fixed bin (24),				/* absolute address of workspace */
+  8    16     2 iom_stat bit (72),				/* IOM status */
+  8    17     2 lpw bit (72);					/* LPW residue */
+  8    18 
+  8    19 dcl  imp ptr;					/* pointer to message structure */
+  8    20 
+  8    21 dcl 1 imess based (imp) aligned,			/* I/O Interfacer event message structure */
+  8    22    (2 completion like istat.completion,			/* completion flags */
+  8    23     2 pad bit (11),
+  8    24     2 level bit (3),				/* interrupt level */
+  8    25     2 offset bit (18),				/* DCW list offset */
+  8    26     2 status bit (36)) unal;				/* first 36 bits of status */
+  8    27 
+  8    28 /* End of include file ...... ioi_stat.incl.pl1 */
+  8    29 
+      151 
+      152 /* 	*/
+  9     1 
+  9     2 /* Begin include file ...... iom_stat.incl.pl1 */
+  9     3 /* Last modified on 10/31/74 by Noel I. Morris */
+  9     4 
+  9     5 dcl  statp ptr;					/* pointer to status */
+  9     6 
+  9     7 dcl 1 status based (statp) aligned,			/* IOM status information */
+  9     8      (2 t bit (1),					/* set to "1"b by IOM */
+  9     9       2 power bit (1),				/* non-zero if peripheral absent or power off */
+  9    10       2 major bit (4),				/* major status */
+  9    11       2 sub bit (6),				/* substatus */
+  9    12       2 eo bit (1),					/* even/odd bit */
+  9    13       2 marker bit (1),				/* non-zero if marker status */
+  9    14       2 soft bit (2),				/* software status */
+  9    15       2 initiate bit (1),				/* initiate bit */
+  9    16       2 abort bit (1),				/* software abort bit */
+  9    17       2 channel_stat bit (3),				/* IOM channel status */
+  9    18       2 central_stat bit (3),				/* IOM central status */
+  9    19       2 mbz bit (6),
+  9    20       2 rcount bit (6),				/* record count residue */
+  9    21       2 address bit (18),				/* DCW address residue */
+  9    22       2 char_pos bit (3),				/* character position residue */
+  9    23       2 r bit (1),					/* non-zero if reading */
+  9    24       2 type bit (2),				/* type of last DCW */
+  9    25       2 tally bit (12)) unal;				/* DCW tally residue */
+  9    26 
+  9    27 dcl 1 faultword based (statp) aligned,			/* system fault word */
+  9    28      (2 mbz1 bit (9),
+  9    29       2 channel bit (9),				/* channel number */
+  9    30       2 serv_req bit (5),				/* service request */
+  9    31       2 mbz2 bit (3),
+  9    32       2 controller_fault bit (4),			/* system controller fault code */
+  9    33       2 io_fault bit (6)) unal;			/* I/O fault code */
+  9    34 
+  9    35 dcl 1 special_status based (statp) aligned,		/* special status from PSIA */
+  9    36    (2 t bit (1),					/* entry present bit */
+  9    37     2 channel bit (8),				/* channel number */
+  9    38     2 pad1 bit (3),
+  9    39     2 device bit (6),				/* device address */
+  9    40     2 pad2 bit (1),
+  9    41     2 byte2 bit (8),				/* device dependent information */
+  9    42     2 pad3 bit (1),
+  9    43     2 byte3 bit (8)) unal;				/* device dependent information */
+  9    44 
+  9    45 /* End of include file iom_stat.incl.pl1 */
+  9    46 
+      153 
+      154 /* 	*/
+      155 /*	Begin special disk attachment processing.
+      156**/
+      157 	rcse_ptr = arg_rcse_ptr;			/* Copy argument. */
+      158 	workspace_ptr = rcse.workspace_ptr;		/* Get pointer to current workspace. */
+      159 	ecode = 0;
+      160 
+      161 	if workspace_ptr ^= null ()			/* Have we set up a workspace yet? */
+      162 	then do;					/* Yes. */
+      163 		ioi_index = rcse.ioi_index;		/* Needed to call IOI. */
+      164 		isp = addr (wspace.istatq);		/* Almost every state needs this pointer. */
+      165 		goto DISK_STATE (wspace.state);	/* Go do next step in disk attachment. */
+      166 	     end;
+      167 
+      168 
+      169 /*	No workspace implies that this is the first call to rcp_$check_attach.
+      170*   *	We must attach the disk drive in ring 0 via IOI.
+      171**/
+      172 	call rcp_ioi_attach_ (rcse_ptr, ecode);
+      173 	if ecode ^= 0				/* Any error at all? */
+      174 	then do;					/* Yes, abort attachment. */
+      175 		arg_ecode = ecode;
+      176 		return;
+      177 	     end;
+      178 	ioi_index = rcse.ioi_index;			/* Get IOI index for this attachment. */
+      179 
+      180 /*	We have just attached the disk drive to IOI.  We must get an IOI workspace.
+      181*   *	Then we will issue a set standby command in order to power down this drive.
+      182*   *	For T&D attachments we don't want to do any of this special processing.
+      183**/
+      184 	if rcse.flags.t_and_d			/* Is this a special T&D attachment? */
+      185 	then do;					/* Yes, nothing to do. */
+      186 		rcse.state = 4;			/* Tell caller that disk is ready for use. */
+      187 		arg_ecode = 0;
+      188 		return;
+      189 	     end;
+      190 
+      191 	call admin_gate_$ioi_set_ws_max (ioi_index, size (wspace), ecode);
+      192 	if ecode ^= 0
+      193 	then do;
+      194 		arg_ecode = ecode;
+      195 		return;
+      196 	     end;
+      197 
+      198 	call ioi_$workspace (ioi_index, workspace_ptr, size (wspace), ecode);
+      199 	if ecode ^= 0
+      200 	then do;
+      201 		arg_ecode = ecode;
+      202 		return;
+      203 	     end;
+      204 
+      205 	rcse.workspace_ptr = workspace_ptr;		/* Save workspace pointer for this attachment. */
+      206 	wspace.idcw = template_idcw;			/* Set up template IDCW. */
+      207 	call cv_dec_ (substr (rcse.device_name, 6, 2), drive_num);
+      208 	addr (wspace.idcw) -> idcw.device = bit (bin (drive_num, 6));
+      209 	wspace.state,				/* Initialize the state variable that controls all. */ wspace.mount_state, wspace.retry_count = 0;
+      210 						/* Initialize retry count. */
+      211 	if rcse.flags.writing			/* Set up mount comment. */
+      212 	then wspace.protect_comment = "without";
+      213 	else wspace.protect_comment = "with";
+      214 
+      215 	isp = addr (wspace.istatq);			/* Call IOI to set up our status queue. */
+      216 	call ioi_$set_status (ioi_index, bin (rel (isp), 18), 1, ecode);
+      217 	if ecode ^= 0
+      218 	then do;					/* Can't go on without a status queue. */
+      219 		arg_ecode = ecode;
+      220 		return;
+      221 	     end;
+      222 
+      223 	if rcse.flags.preloaded | rcse.flags.not_removable_media
+      224 	then do;					/* In these cases we do not want to unload the disk */
+      225 		command = reset_status_command;
+      226 		wspace.state = 3;
+      227 		wspace.mount_state = 2;
+      228 	     end;
+      229 	else do;					/* UNLOAD the disk */
+      230 		command = set_standby_command;
+      231 		wspace.state = 1;
+      232 	     end;
+      233 
+      234 /* find the device index from model number */
+      235 	do wspace.fs_type_idx = 1 to hbound (MODELN, 1) while (rcse.model ^= MODELN (wspace.fs_type_idx));
+      236 	end;
+      237 	wspace.n_label = number_of_sv (wspace.fs_type_idx);
+      238 	if wspace.n_label = 0 then wspace.n_label = 1;
+      239 	wspace.cur_label = 0;
+      240 	istat.completion.st = "0"b;			/* Try to put this disk drive in standby or reset status. */
+      241 	addr (wspace.idcw) -> idcw.command = command;
+      242 	call ioi_$connect (ioi_index, 0, ecode);
+      243 	arg_ecode = ecode;
+      244 	return;
+      245 
+      246 
+      247 /*	Somehow or other we are trying to use the workspace out of sequence.
+      248**/
+      249 DISK_STATE (0):					/* INVALID STATE */
+      250 	arg_ecode = error_table_$invalid_state;
+      251 	return;
+      252 
+      253 
+      254 /*	The connect issued to perform the set standby has terminated.
+      255*   *	We don't really care whether or not the set standby operation worked.
+      256*   *	We will tell the operator to mount the disk volume being attached.
+      257*   *	Then we will wait for any special interrupts generated by a set standby
+      258*   *	or the mounting.
+      259**/
+      260 DISK_STATE (1):					/* SET STANDBY TERMINATION */
+      261 	if ^istat.completion.st			/* There should at least be some status. */
+      262 	then return;				/* None, so ignore. */
+      263 						/* REQUEST DISK MOUNT */
+      264 	call admin_gate_$syserr (3, "RCP: Mount Pack ^a^[^s^; ^a protect^] on ^a for ^a", rcse.volume_name, rcse.flags.no_protect, wspace.protect_comment, rcse.device_name, rcse.group_id);
+      265 	wspace.state = 2;				/* Wait for special for mount. */
+      266 	wspace.mount_state = 2;			/* Remember state used to wait for mount. */
+      267 	wspace.flags.waiting_for_operator_interrupt = "0"b;
+      268 						/* Turn ON mount timer. */
+      269 	device_off = rcse.device_off;			/* Need RCPD device entry offset. */
+      270 	write_flag = rcse.flags.writing;		/* Pass on write flag. */
+      271 	call rcp_mount_timer_$set (device_off, write_flag, ecode);
+      272 	arg_ecode = ecode;
+      273 	return;
+      274 
+      275 
+      276 /*	We should come here because we have received a special interrupt.
+      277*   *	We will check to see if it was generated by the disk mount.
+      278*   *	If so bit # 36 should be ON.  If not we will wait for another special.
+      279**/
+      280 DISK_STATE (2):					/* SPECIAL from MOUNT. */
+      281 	call ioi_$get_special_status (ioi_index, special_flag, special_status_word, ecode);
+      282 
+      283 /*
+      284*   Check for: an error return, not a special, the wrong special, or not a special from the MPC.
+      285**/
+      286 
+      287 	arg_ecode = ecode;
+      288 
+      289 	if ecode ^= 0 | ^special_flag
+      290 	then return;				/* Not a special. */
+      291 
+      292 	else do;					/* A good special. */
+      293 		if wspace.flags.waiting_for_operator_interrupt
+      294 		then do;				/* Make sure it is from MPC butoon. */
+      295 			if substr (special_status_word, 20, 1) ^= "1"b | substr (special_status_word, 13, 6) ^= "00"b3
+      296 			then return;
+      297 		     end;				/* Make sure it is from MPC button. */
+      298 
+      299 		else do;				/* Make sure it is from a device. */
+      300 			if substr (special_status_word, 34, 3) ^= "001"b
+      301 			then return;
+      302 		     end;				/* Make sure it is from a device. */
+      303 	     end;					/* A good special. */
+      304 
+      305 	istat.completion.st = "0"b;			/* DISK READY - check its current state. */
+      306 	addr (wspace.idcw) -> idcw.command = request_status_command;
+      307 	call ioi_$connect (ioi_index, 0, ecode);
+      308 	wspace.state = 3;				/* Wait for request status to terminate. */
+      309 
+      310 	device_off = rcse.device_off;			/* Turn OFF mount timer. */
+      311 	call rcp_mount_timer_$reset (device_off, scode);
+      312 	if ecode = 0
+      313 	then ecode = scode;
+      314 
+      315 	rcse.flags.disk_ss_pack = "0"b;
+      316 	rcse.flags.disk_copy_of_ss_pack = "0"b;
+      317 	rcse.flags.disk_io_pack = "0"b;
+      318 	rcse.flags.disk_unregistered = "0"b;
+      319 	rcse.flags.disk_unreadable = "0"b;
+      320 	arg_ecode = ecode;
+      321 	return;
+      322 
+      323 
+      324 /*	Check the status from the request (or reset) status operation.  We must check that
+      325*   *	write protect is set correctly.  If everything is OK we will indicate that
+      326*   *	the attachment has been completed.
+      327**/
+      328 DISK_STATE (3):					/* REQUEST (or RESET) STATUS TERMINATION. */
+      329 	if ^istat.completion.st			/* Is there any status. */
+      330 	then do;					/* No, ignore. */
+      331 		arg_ecode = 0;
+      332 		return;
+      333 	     end;
+      334 
+      335 	if istat.level ^= 3				/* Is this a terminiate? */
+      336 	then do;					/* No, something wrong. */
+      337 		call REREADY_DISK ("0"b, "0"b);
+      338 		arg_ecode = ecode;
+      339 		return;
+      340 	     end;
+      341 
+      342 	statp = addr (istat.iom_stat);		/* Get pointer to IOM status. */
+      343 	if istat.completion.er			/* Test for error that is not an Attention with Protect. */
+      344 	then if (status.major ^= "0010"b) | (status.sub ^= "000001"b)
+      345 	     then do;				/* That is what we have. */
+      346 		     call REREADY_DISK ("0"b, "0"b);
+      347 		     arg_ecode = ecode;
+      348 		     return;
+      349 		end;
+      350 
+      351 /*	Now check that the write protect is set correctly.  If the user
+      352*   *	wants to write then protect should be OFF and the major status should
+      353*   *	be Ready and thus there should be no error.  If the user does not want
+      354*   *	to write then protect should be ON and the status should be Device
+      355*   *	Attention with Protect and there should be an error.
+      356**/
+      357 	if rcse.flags.writing = istat.completion.er &
+      358 	     ^rcse.flags.no_protect			/* device has protect sw. */
+      359 	then do;					/* Protect is not set correctly. */
+      360 		call REREADY_DISK ("0"b, "1"b);
+      361 		arg_ecode = ecode;
+      362 		return;
+      363 	     end;
+      364 
+      365 /*	Set up channel program to read label  of pack.  We want to verify that this
+      366*   *	pack is not a storage system pack.  Only users acting as system processes
+      367*   *	may mount a storage system pack for user I/O.
+      368**/
+      369 	idcwp = addr (wspace.idcw);			/* Set up a seek for the label record. */
+      370 	idcw.command = seek_command (wspace.fs_type_idx); /* Get correct seek type for this dev */
+      371 	idcw.control = "10"b;			/* Continue to next IDCW. */
+      372 	idcw.count = "0"b;
+      373 
+      374 	wspace.seek_dcw = "0"b;			/* Set up seek DCW. */
+      375 	dcwp = addr (wspace.seek_dcw);
+      376 	dcw.address = rel (addr (wspace.seek_addr));
+      377 	dcw.tally = bit (bin (1, 12));
+      378 
+      379 	wspace.read_idcw = "0"b;			/* Set up to read on record. */
+      380 	idcwp = addr (wspace.read_idcw);
+      381 	idcw.command = read_command;
+      382 	idcw.device = addr (wspace.idcw) -> idcw.device;
+      383 	idcw.code = "111"b;
+      384 
+      385 	wspace.read_dcw = "0"b;			/*  Set up read DCW. */
+      386 	dcwp = addr (wspace.read_dcw);
+      387 	dcw.address = rel (addr (wspace.label_buffer));
+      388 	dcw.tally = bit (bin (size (label), 12), 12);
+      389 
+      390 
+      391 
+      392 LABEL_LOOP:
+      393 	wspace.cur_label = wspace.cur_label + 1;
+      394 	label_address = LABEL_ADDRESS;
+      395 	if wspace.cur_label > 1 then do;
+      396 
+      397 		record_factor = (wspace.cur_label - 1) * rec_per_cyl (wspace.fs_type_idx);
+      398 		record_offset = mod (label_address, rec_per_cyl (wspace.fs_type_idx));
+      399 		devadd = ((label_address - record_offset) * wspace.n_label) +
+      400 		     record_factor + record_offset;
+      401 		sector = devadd * sect_per_rec (wspace.fs_type_idx); /* raw sector. */
+      402 		usable_sect_per_cyl =
+      403 		     divide (sect_per_cyl (wspace.fs_type_idx), sect_per_rec (wspace.fs_type_idx), 24, 0) *
+      404 		     sect_per_rec (wspace.fs_type_idx);
+      405 		unused_sect_per_cyl = sect_per_cyl (wspace.fs_type_idx) - usable_sect_per_cyl;
+      406 		cylinder = divide (sector, usable_sect_per_cyl, 12, 0);
+      407 		sector = sector + cylinder * unused_sect_per_cyl;
+      408 	     end;
+      409 	else sector = label_address;
+      410 	wspace.seek_addr = bit (bin (sect_per_rec (wspace.fs_type_idx), 12), 12) ||
+      411 	     bit (bin (sector, 24), 24);
+      412 
+      413 	istat.completion.st = "0"b;			/* Reset before connect.  */
+      414 	call ioi_$connect (ioi_index, 0, ecode);
+      415 	if ecode ^= 0
+      416 	then do;					/* Bad error from IOI. */
+      417 		arg_ecode = ecode;
+      418 		return;
+      419 	     end;
+      420 
+      421 	wspace.state = 4;
+      422 	return;
+      423 
+      424 /*	Check the status from the seek and read request.
+      425**/
+      426 DISK_STATE (4):					/* SEEK and READ TERMINATION */
+      427 	if ^istat.completion.st			/* Did we get a real interrupt? */
+      428 	then do;					/* No, ignore. */
+      429 		arg_ecode = 0;
+      430 		return;
+      431 	     end;
+      432 
+      433 	if istat.level ^= 3				/* Is it a termination? */
+      434 	then do;					/* No, must be an unwanted special. */
+      435 		call REREADY_DISK ("0"b, "0"b);
+      436 		arg_ecode = ecode;
+      437 		return;
+      438 	     end;
+      439 
+      440 /* Initialize for label checking. */
+      441 	wspace.n_label = number_of_sv (wspace.fs_type_idx);
+      442 	if wspace.n_label = 0 then wspace.n_label = 1;
+      443 
+      444 	labelp = addr (wspace.label_buffer);		/* Always need this whether the read was successful or not. */
+      445 
+      446 	statp = addr (istat.iom_stat);		/* Check termination status. */
+      447 	if istat.completion.er			/* Did we get an error? */
+      448 	then do;					/* An error reading the label. */
+      449 		if rcse.flags.system
+      450 		then do;				/* System processes get a chance to authenticate. */
+      451 			label.pv_name = "";		/* Blank this for authentication message. */
+      452 			sv (wspace.cur_label).pvname = label.pv_name;
+      453 			wspace.sv (wspace.cur_label).story = "UnReaDable";
+      454 			rcse.flags.disk_unreadable = "1"b;
+      455 		     end;
+      456 
+      457 		else do;				/* Normal people don't. */
+      458 			arg_ecode = error_table_$unable_to_do_io;
+      459 			return;
+      460 		     end;
+      461 	     end;					/* An error reading the label. */
+      462 
+      463 	else do;					/* Check the label. */
+      464 		sv (wspace.cur_label).pvname = label.pv_name;
+      465 		call countervalidate_label_ (labelp, valid_reg, valid_copy, ss_pack);
+      466 
+      467 		if ss_pack
+      468 		then do;				/* Some sort of known pack. */
+      469 
+      470 			if valid_copy
+      471 			then do;
+      472 				wspace.sv (wspace.cur_label).story = "copy of Storage System";
+      473 				rcse.flags.disk_copy_of_ss_pack = "1"b;
+      474 			     end;
+      475 
+      476 			else if valid_reg
+      477 			then do;
+      478 				wspace.sv (wspace.cur_label).story = "Storage System";
+      479 				rcse.flags.disk_ss_pack = "1"b;
+      480 			     end;
+      481 
+      482 			else do;
+      483 				wspace.sv (wspace.cur_label).story = "UnReGistered";
+      484 				rcse.flags.disk_unregistered = "1"b;
+      485 			     end;
+      486 
+      487 			if ^rcse.flags.system
+      488 			then do;			/* Normal people can't use these. */
+      489 				call admin_gate_$syserr (0, "RCP: Rejected mount of ^a volume ^a for ^a.",
+      490 				     wspace.sv (wspace.cur_label).story, wspace.sv (wspace.cur_label).pvname, rcse.group_id);
+      491 				arg_ecode = error_table_$bad_label;
+      492 				return;
+      493 			     end;			/* Normal people can't use these. */
+      494 		     end;				/* Some sort of known pack. */
+      495 
+      496 		else do;				/* An unknown pack. */
+      497 			label.pv_name = "";		/* Blank this for authentication message. */
+      498 			wspace.sv (wspace.cur_label).pvname = label.pv_name;
+      499 			wspace.sv (wspace.cur_label).story = "IO";
+      500 			rcse.flags.disk_io_pack = "1"b;
+      501 		     end;				/* An unknown pack. */
+      502 	     end;					/* Check the label. */
+      503 
+      504 /* Initialize for the authentication state. */
+      505 
+      506 	rcse.flags.have_auth = "0"b;
+      507 	rcse.flags.need_auth = "0"b;
+      508 	rcse.flags.auth_set = "0"b;
+      509 
+      510 /*
+      511*   Everybody (except the Initializer) must get authenticated at this point.  User processes only get
+      512*   here if the label was readable and not a registered or unregistered storage system pack.
+      513*   System processes always get here with an appropriate story.
+      514**/
+      515 
+      516 	if rcse.group_id = "Initializer.SysDaemon.z"
+      517 	then do;					/* Set flags so Initializer does'nt need authentication. */
+      518 		rcse.flags.have_auth = "1"b;
+      519 		rcse.flags.auth_set = "1"b;
+      520 		rcse.flags.need_auth = "0"b;
+      521 	     end;
+      522 
+      523 /* check for all labels read */
+      524 
+      525 	if wspace.cur_label < n_label then do;
+      526 		wspace.state = 3;
+      527 		goto LABEL_LOOP;
+      528 	     end;
+      529 
+      530 DISK_STATE (5):					/* The authentication state. */
+      531 	wspace.state = 5;
+      532 
+      533 	labelp = addr (wspace.label_buffer);		/* Always need this for messages. */
+      534 
+      535 	if rcse.flags.auth_set			/* Note that this will be false the first time. */
+      536 	then do;					/* Check whether authenticated or not. */
+      537 		if rcse.flags.have_auth
+      538 		then do;				/* Everything is done. */
+      539 			device_off = rcse.device_off;
+      540 			call rcp_mount_timer_$reset (device_off, scode);
+      541 						/* Turn OFF mount timer. */
+      542 			do i = 1 to wspace.n_label;
+      543 			     call admin_gate_$syserr (0, "RCP: Mounted ^a volume ^a on ^a^[^a^] for user I/O.",
+      544 				wspace.sv (i).story, wspace.sv (i).pvname, rcse.device_name, (n_label > 1), substr (valid_sv_string, i, 1));
+      545 			end;
+      546 			call ioi_$set_status (ioi_index, 0, 0, ecode);
+      547 			if ecode ^= 0
+      548 			then do;			/* Bad error. */
+      549 				arg_ecode = ecode;
+      550 				return;
+      551 			     end;			/* Bad error. */
+      552 
+      553 			if rcse.flags.must_auto_register
+      554 			then do;			/* Register this disk_vol to this user. */
+      555 				call rcp_auto_register_ (VOLUME_TYPE (DISK_VOL_VTYPEX), (rcse.volume_name), (rcse.group_id), ecode);
+      556 				if ecode ^= 0	/* ERROR */
+      557 				then do;
+      558 					arg_ecode = ecode;
+      559 					return;
+      560 				     end;
+      561 			     end;
+      562 
+      563 			rcse.state = 4;
+      564 			wspace.state = 0;
+      565 			arg_ecode = scode;		/* Not a fatal error. */
+      566 			return;
+      567 		     end;				/* Everything is done. */
+      568 
+      569 		else do;				/* Bad authentication. */
+      570 			device_off = rcse.device_off;
+      571 			call rcp_mount_timer_$reset (device_off, scode);
+      572 						/* Turn OFF mount timer. */
+      573 
+      574 			call admin_gate_$syserr (3, "RCP: Authentication denied for ^a.", rcse.device_name);
+      575 
+      576 			if rcse.flags.not_removable_media
+      577 			then do;			/* Nothing we can do about this. */
+      578 				arg_ecode = error_table_$bad_label;
+      579 				return;
+      580 			     end;
+      581 
+      582 			else do;			/* Give the operator another chance. */
+      583 				istat.completion.st = "0"b;
+      584 				addr (wspace.idcw) -> idcw.command = set_standby_command;
+      585 				call ioi_$connect (ioi_index, 0, ecode);
+      586 						/* Ignore the code. */
+      587 
+      588 				wspace.retry_count = 0;
+      589 						/* Start over. */
+      590 				call REREADY_DISK ("1"b, "0"b);
+      591 						/* Authentication denied. */
+      592 				arg_ecode = ecode;
+      593 				return;
+      594 			     end;			/* Give the operator another chance. */
+      595 		     end;				/* Denied authentication. */
+      596 	     end;					/* Check whether authenticated or not. */
+      597 
+      598 	else do;					/* Tell operator to authenticate, type of pack is already set. */
+      599 
+      600 		if ^rcse.flags.need_auth
+      601 		then do;				/* Authentication is needed. */
+      602 			rcse.flags.need_auth = "1"b;
+      603 			rcse.flags.auth_set = "0"b;
+      604 			rcse.flags.have_auth = "0"b;
+      605 
+      606 			if wspace.n_label > 1 then do;
+      607 				real_story = "";
+      608 				what_user_asked_for = "0"b;
+      609 				if rcse.flags.disk_ss_pack then do;
+      610 					real_story = "a Storage System";
+      611 					rcse.flags.disk_copy_of_ss_pack = "0"b;
+      612 					rcse.flags.disk_io_pack = "0"b;
+      613 					rcse.flags.disk_unregistered = "0"b;
+      614 					rcse.flags.disk_unreadable = "0"b;
+      615 				     end;
+      616 				else if rcse.flags.disk_copy_of_ss_pack then do;
+      617 					real_story = "a copy of Storage System";
+      618 					rcse.flags.disk_io_pack = "0"b;
+      619 					rcse.flags.disk_unregistered = "0"b;
+      620 					rcse.flags.disk_unreadable = "0"b;
+      621 				     end;
+      622 				else if rcse.flags.disk_unregistered then do;
+      623 					real_story = "an UnReGistered";
+      624 					rcse.flags.disk_io_pack = "0"b;
+      625 					rcse.flags.disk_unreadable = "0"b;
+      626 				     end;
+      627 				else if rcse.flags.disk_io_pack then do;
+      628 					real_story = "an IO";
+      629 					rcse.flags.disk_unreadable = "0"b;
+      630 				     end;
+      631 				else if rcse.flags.disk_unreadable then do;
+      632 					real_story = "an UnReaDable label.";
+      633 					call ioa_$rsnnl ("All ^d subvolume labels are unreadable.", label_story, (0), wspace.n_label);
+      634 					goto TELL_STORY;
+      635 				     end;
+      636 
+      637 				call ioa_$rsnnl ("^a label.", real_story, (0), rtrim (real_story));
+      638 				label_story = "";
+      639 				do i = 1 to wspace.n_label;
+      640 				     call ioa_$rsnnl ("^a^x^[no label for^s^;^a on^] subvol ^a^[.^;,^]",
+      641 					label_story, (0), rtrim (label_story), (wspace.sv (i).pvname = ""), wspace.sv (i).pvname,
+      642 					valid_sv_array (i - 1), (i = wspace.n_label));
+      643 				     if wspace.sv (i).pvname = rcse.volume_name
+      644 				     then what_user_asked_for = "1"b;
+      645 				end;
+      646 TELL_STORY:
+      647 				call admin_gate_$syserr (3, "RCP: Authenticate ^a for ^a.^/^8xRCP: It has ^a^/^8xRCP:^a^[^s^;^/^8xRCP: User requested volume ^a.^]^[
+      648 RCP: WARNING!!  IF YOU AUTHENTICATE THIS REQUEST ^a WILL OWN VOLUME ^a!^]",
+      649 				     rcse.device_name, rcse.group_id,
+      650 				     real_story, label_story, what_user_asked_for, rcse.volume_name,
+      651 				     rcse.flags.must_auto_register, rcse.group_id, rcse.volume_name);
+      652 			     end;
+      653 			else do;
+      654 				call admin_gate_$syserr (3,
+      655 				     "RCP: Authenticate ^a for ^a.^/^8xRCP: It has ^a label ^a.^[^s^;^/^8xRCP: User requested volume ^a.^]^[
+      656 RCP: WARNING!!  IF YOU AUTHENTICATE THIS REQUEST ^a WILL OWN VOLUME ^a!^]",
+      657 				     rcse.device_name, rcse.group_id, wspace.sv (1).story, wspace.sv (1).pvname,
+      658 				     wspace.sv (1).pvname = rcse.volume_name, rcse.volume_name,
+      659 				     rcse.flags.must_auto_register, rcse.group_id, wspace.sv (1).pvname);
+      660 			     end;
+      661 			device_off = rcse.device_off;
+      662 			write_flag = rcse.flags.writing;
+      663 			call rcp_mount_timer_$set (device_off, write_flag, scode);
+      664 						/* Turn ON mount timer. */
+      665 
+      666 			arg_ecode = 0;		/* Ignore code from timer setting. */
+      667 			return;
+      668 		     end;				/* Authentication is needed. */
+      669 
+      670 		else do;				/* Ignore some spurious wakeups. */
+      671 			arg_ecode = 0;
+      672 			return;
+      673 		     end;
+      674 	     end;					/* Tell operator to authenticate. */
+      675 						/* 	*/
+      676 REREADY_DISK:
+      677      procedure (remount_flag, protect_flag);
+      678 
+      679 /*	This procedure is called to tell the operator to ready the disk again.
+      680*   *	We will have to wait for the special again.
+      681**/
+      682 	dcl     remount_flag	 bit (1);		/* ON => remount,  OFF => reready. */
+      683 	dcl     protect_flag	 bit (1);		/* ON => protect wrong, OFF => protect ok. */
+      684 
+      685 	if wspace.retry_count = max_num_retries		/* Have we retried too many times. */
+      686 	then do;					/* Yes, abort attachment. */
+      687 		ecode = error_table_$device_attention;
+      688 		return;
+      689 	     end;
+      690 	wspace.retry_count = wspace.retry_count + 1;
+      691 
+      692 	device_off = rcse.device_off;			/* Turn ON mount timer. */
+      693 	write_flag = rcse.flags.writing;		/* Pass on write flag. */
+      694 	call rcp_mount_timer_$set (device_off, write_flag, ecode);
+      695 	if ecode ^= 0
+      696 	then return;
+      697 
+      698 	if protect_flag & rcse.flags.opr_int_available
+      699 	then do;					/* Must change protect switch on drive. */
+      700 		call admin_gate_$syserr (3,
+      701 		     "RCP: Turn protect switch ^[OFF^;ON^] on drive ^a and then push Operator Interrupt on MPC.",
+      702 		     rcse.flags.writing, rcse.device_name);
+      703 		wspace.state = wspace.mount_state;
+      704 		wspace.flags.waiting_for_operator_interrupt = "1"b;
+      705 	     end;					/* Must change protect switch on drive. */
+      706 
+      707 	else do;
+      708 		if remount_flag			/* Remount or ready? */
+      709 		then call admin_gate_$syserr (3, "RCP: Wrong pack (^a) mounted on ^a.  Mount pack ^a^[^s^; ^a protect^] on ^a",
+      710 			label.pv_name, rcse.device_name, rcse.volume_name, rcse.flags.no_protect, wspace.protect_comment, rcse.device_name);
+      711 		else call admin_gate_$syserr (3, "RCP: Reready ^a^[^s^; ^a protect^]", rcse.device_name, rcse.flags.no_protect, wspace.protect_comment);
+      712 
+      713 		wspace.state = wspace.mount_state;	/* Wait for special from mount again. */
+      714 		wspace.flags.waiting_for_operator_interrupt = "0"b;
+      715 	     end;
+      716 
+      717      end REREADY_DISK;
+      718 
+      719 /* BEGIN MESSAGE DOCUMENTATION
+      720*
+      721*   Message:
+      722*   RCP: Mount Pack PACK with(out) protect on DRIVE for PERSON.PROJ.T
+      723*
+      724*   S:	$beep
+      725*
+      726*   T:	$run
+      727*
+      728*   M:	The user PERSON.PROJ.T has requested the mounting of
+      729*   the user I/O pack named PACK on disk drive DRIVE.
+      730*
+      731*   A:	Mount the pack and make it ready.
+      732*   Set the PROTECT status as specified in the message.
+      733*
+      734*
+      735*   Message:
+      736*   RCP: Mount Pack PACK on DRIVE for PERSON.PROJ.T
+      737*
+      738*   S:	$beep
+      739*
+      740*   T:	$run
+      741*
+      742*   M:	The user PERSON.PROJ.T has requested the mounting of
+      743*   the user I/O pack named PACK on disk drive DRIVE.
+      744*
+      745*   A:	Mount the pack and make it ready.
+      746*
+      747*
+      748*   Message:
+      749*   RCP: Turn protect switch ON/OFF on drive DRIVE and then push Operator Interrupt on MPC
+      750*
+      751*   S:	$beep
+      752*
+      753*   T:	$run
+      754*
+      755*   M:	The PROTECT status was wrong for DRIVE.
+      756*
+      757*   M:	Correct the PROTECT status and push the Operator Interrupt button on the MPC.
+      758*
+      759*
+      760*   Message:
+      761*   RCP: Reready DRIVE with(out) protect
+      762*
+      763*   S:	$beep
+      764*
+      765*   T:	$run
+      766*
+      767*   M:	DRIVE is not ready.
+      768*
+      769*
+      770*   A:	Make the drive ready.
+      771*
+      772*
+      773*   Message:
+      774*   RCP: Reready DRIVE
+      775*
+      776*   S:	$beep
+      777*
+      778*   T:	$run
+      779*
+      780*   M:	DRIVE is not ready.
+      781*
+      782*
+      783*   A:	Make the drive ready.
+      784*
+      785*
+      786*   Message:
+      787*   RCP: Rejected mount of LABEL_TYPE volume NAME for PERSON.PROJ.T
+      788*
+      789*   S:	$info
+      790*
+      791*   T:	$run
+      792*
+      793*   M:	A user has attempted to mount a storage-system format or unreadable (LABEL_TYPE)
+      794*   disk pack for user I/O, without specifying the -sys parameter.
+      795*   Because this might interfere with later storage system use of the pack
+      796*   or compromise system security,
+      797*   this action is not permitted.
+      798*   The user's request is rejected.
+      799*   This error could arise if an operator inadvertently mounted
+      800*   the wrong pack.
+      801*
+      802*   A:	$ignore
+      803*
+      804*
+      805*   Message:
+      806*   RCP: Mounted LABEL_TYPE volume NAME on DRIVE for user I/O.
+      807*
+      808*   S:	$info
+      809*
+      810*   T:	$run
+      811*
+      812*   M:	A user has mounted LABEL_TYPE volume NAME as a user I/O disk on DRIVE.
+      813*   The operator has authenticated the mount.
+      814*
+      815*   A:	$ignore
+      816*
+      817*
+      818*   Message:
+      819*   RCP: Authenticate DRIVE for PERSON.PROJ.T.
+      820*.brf
+      821*RCP: It has LABEL_TYPE label NAME.
+      822*.brf;.unl 1
+      823*(RCP: All N subvolume labels are unreadable.)
+      824*.brf;.unl 1
+      825*(RCP: VOL_NAME on subvol a, VOL_NAME on subvol b, VOL_NAME on subvol c.)
+      826*.brf;.unl 1
+      827*(RCP: User requested volume DIFFERENT_NAME.)
+      828*
+      829*   S:	$beep
+      830*
+      831*   T:	$run
+      832*
+      833*   M:	The operator must verify that the correct pack is mounted on DRIVE.
+      834*   If the DIFFERENT_NAME message indicates that the label on the
+      835*   pack (NAME) is different from the user's request then special
+      836*   instructions from the system administrator must be followed.
+      837*
+      838*   A:	If the pack is correct then use the "x auth" function to input the
+      839*   DRIVE and the authentication code which matches LABEL_TYPE:  "ss"
+      840*   for "Storage System" or "copy of Storage System"; "io" for "IO";
+      841*   "urd" for "UnReaDable"; or "urg" for "UnReGistered".  If the wrong
+      842*   pack is mounted then use the authentication code "no".
+      843*
+      844*
+      845*   Message:
+      846*   RCP: Authentication denied for DRIVE
+      847*
+      848*   S:	$beep
+      849*
+      850*   T:	$run
+      851*
+      852*   M:	The operator has denied authentication for DRIVE.
+      853*
+      854*   A:	$ignore
+      855*
+      856*
+      857*   Message:
+      858*   RCP: Wrong pack (NAME) mounted on DRIVE. Mount pack PACK with(out) protect on DRIVE.
+      859*
+      860*   S:	$beep
+      861*
+      862*   T:	$run
+      863*
+      864*   M:	The operator has denied authentication for a removable disk pack (NAME)
+      865*   on drive DRIVE.  The disk drive is put in standby.
+      866*
+      867*   A:	Mount the correct pack PACK with protect as specified and ready drive.
+      868*
+      869*
+      870*   Message:
+      871*   RCP: Wrong pack (NAME) mounted on DRIVE. Mount pack PACK on DRIVE.
+      872*
+      873*   S:	$beep
+      874*
+      875*   T:	$run
+      876*
+      877*   M:	The operator has denied authentication for a removable disk pack (NAME)
+      878*   on drive DRIVE.  The disk drive is put in standby.
+      879*
+      880*   A:	Mount the correct pack PACK with protect as specified and ready drive.
+      881*
+      882*
+      883*   Message:
+      884*   RCP: WARNING!!  IF YOU AUTHENTICATE THIS REQUEST <USER> WILL OWN VOLUME <VOLUME>!
+      885*
+      886*   S:	$beep
+      887*
+      888*   T:	$run
+      889*
+      890*   M:	This is a warning to the operator.  He should be very careful to check the
+      891*   physical label of the volume before authenticating this request.  As the message states,
+      892*   if the request is autheticated, <VOLUME> will be registered and acquired to <USER>.
+      893*
+      894*   A:	Check the physical label of the disk pack.  If it is the property of
+      895*   <USER>, authenticate the request.  If it is not the property of <USER> deny the
+      896*   request by typing "x auth no".
+      897*
+      898*
+      899*   END MESSAGE DOCUMENTATION */
+      900 
+      901      end rcp_disk_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.3  rcp_disk_.pl1                     >spec>install>1111>rcp_disk_.pl1
+141          1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+143          2    03/27/86  1120.0  rcp_resource_types.incl.pl1       >ldd>include>rcp_resource_types.incl.pl1
+145          3    10/30/86  2010.5  fs_dev_types.incl.pl1             >ldd>include>fs_dev_types.incl.pl1
+3-142        4    07/24/86  2051.8  fs_dev_types_sector.incl.pl1      >ldd>include>fs_dev_types_sector.incl.pl1
+146          5    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+148          6    05/06/74  1742.1  iom_pcw.incl.pl1                  >ldd>include>iom_pcw.incl.pl1
+149          7    11/12/74  1550.1  iom_dcw.incl.pl1                  >ldd>include>iom_dcw.incl.pl1
+151          8    08/17/79  2215.0  ioi_stat.incl.pl1                 >ldd>include>ioi_stat.incl.pl1
+153          9    01/10/75  1343.6  iom_stat.incl.pl1                 >ldd>include>iom_stat.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DISK_VOL_VTYPEX                        constant        fixed bin(17,0)          initial dcl 2-38 ref 555
+LABEL_ADDRESS                          constant        fixed bin(24,0)          initial dcl 112 ref 394
+MODELN                          000053 constant        fixed bin(17,0)          initial array dcl 3-63 ref 235 235
+VOLUME_TYPE                     000064 constant        char(32)                 initial array packed unaligned dcl 2-25 set ref 555*
+addr                                                   builtin function         dcl 116 ref 164 208 215 241 306 342 369 375 376 380
+                                                                                  382 386 387 444 446 533 584
+address                                based           bit(18)                  level 2 packed packed unaligned dcl 7-7 set ref 376*
+                                                                                  387*
+admin_gate_$ioi_set_ws_max      000020 constant        entry                    external dcl 122 ref 191
+admin_gate_$syserr              000022 constant        entry                    external dcl 124 ref 264 489 543 574 646 654 700 708
+                                                                                  711
+arg_ecode                              parameter       fixed bin(35,0)          dcl 46 set ref 29 175* 187* 194* 201* 219* 243* 249*
+                                                                                  272* 287* 320* 331* 338* 347* 361* 417* 429* 436*
+                                                                                  458* 491* 549* 558* 565* 578* 592* 666* 671*
+arg_rcse_ptr                           parameter       pointer                  dcl 47 ref 29 157
+auth_set                 35(08)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  508* 519* 535 603*
+bin                                                    builtin function         dcl 116 ref 208 216 216 377 388 410 410
+bit                                                    builtin function         dcl 116 ref 208 377 388 410 410
+code                      0(18)        based           bit(3)                   level 2 packed packed unaligned dcl 6-21 set ref
+                                                                                  383*
+command                         000100 automatic       bit(6)                   packed unaligned dcl 52 in procedure "rcp_disk_" set
+                                                                                  ref 225* 230* 241
+command                                based           bit(6)                   level 2 in structure "idcw" packed packed unaligned
+                                                                                  dcl 6-21 in procedure "rcp_disk_" set ref 241*
+                                                                                  306* 370* 381* 584*
+completion                             based           structure                level 2 in structure "istat" dcl 8-7 in procedure
+                                                                                  "rcp_disk_"
+completion               16            based           structure                level 3 in structure "wspace" dcl 72 in procedure
+                                                                                  "rcp_disk_"
+control                   0(22)        based           bit(2)                   level 2 packed packed unaligned dcl 6-21 set ref
+                                                                                  371*
+count                     0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 6-21 set ref
+                                                                                  372*
+countervalidate_label_          000024 constant        entry                    external dcl 125 ref 465
+cur_label                30            based           fixed bin(17,0)          level 2 dcl 72 set ref 239* 392* 392 395 397 452 453
+                                                                                  464 472 478 483 489 489 498 499 525
+cv_dec_                         000026 constant        entry                    external dcl 127 ref 207
+cylinder                        000245 automatic       fixed bin(24,0)          dcl 68 set ref 406* 407
+dcw                                    based           structure                level 1 dcl 7-7
+dcwp                            000262 automatic       pointer                  dcl 7-4 set ref 375* 376 377 386* 387 388
+devadd                          000246 automatic       fixed bin(24,0)          dcl 68 set ref 399* 401
+device                    0(06)        based           bit(6)                   level 2 packed packed unaligned dcl 6-21 set ref
+                                                                                  208* 382* 382
+device_name                            based           char(8)                  level 2 dcl 1-55 set ref 207 207 264* 543* 574* 646*
+                                                                                  654* 700* 708* 708* 711*
+device_off                      000101 automatic       bit(18)                  dcl 53 in procedure "rcp_disk_" set ref 269* 271*
+                                                                                  310* 311* 539* 540* 570* 571* 661* 663* 692* 694*
+device_off               30            based           bit(18)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_disk_" ref 269 310 539 570 661 692
+disk_copy_of_ss_pack     35(13)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  316* 473* 611* 616
+disk_io_pack             35(14)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  317* 500* 612* 618* 624* 627
+disk_ss_pack             35(12)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  315* 479* 609
+disk_unreadable          35(16)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  319* 454* 614* 620* 625* 629* 631
+disk_unregistered        35(15)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  318* 484* 613* 619* 622
+divide                                                 builtin function         dcl 116 ref 402 406
+drive_num                       000102 automatic       fixed bin(17,0)          dcl 54 set ref 207* 208
+ecode                           000103 automatic       fixed bin(35,0)          dcl 55 set ref 159* 172* 173 175 191* 192 194 198*
+                                                                                  199 201 216* 217 219 242* 243 271* 272 280* 287
+                                                                                  289 307* 312 312* 320 338 347 361 414* 415 417 436
+                                                                                  546* 547 549 555* 556 558 585* 592 687* 694* 695
+er                        0(01)        based           bit(1)                   level 3 packed packed unaligned dcl 8-7 ref 343 357
+                                                                                  447
+error_table_$bad_label          000010 external static fixed bin(35,0)          dcl 119 ref 491 578
+error_table_$device_attention   000012 external static fixed bin(35,0)          dcl 119 ref 687
+error_table_$invalid_state      000014 external static fixed bin(35,0)          dcl 119 ref 249
+error_table_$unable_to_do_io    000016 external static fixed bin(35,0)          dcl 119 ref 458
+flags                    12            based           structure                level 2 in structure "wspace" dcl 72 in procedure
+                                                                                  "rcp_disk_"
+flags                    35            based           structure                level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_disk_"
+fs_type_idx              26            based           fixed bin(17,0)          level 2 dcl 72 set ref 235* 235* 237 370 397 398 401
+                                                                                  402 402 402 405 410 441
+group_id                 43            based           char(32)                 level 2 dcl 1-55 set ref 264* 489* 516 555 646* 646*
+                                                                                  654* 654*
+have_auth                35(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  506* 518* 537 604*
+hbound                                                 builtin function         dcl 116 ref 235
+i                               000241 automatic       fixed bin(24,0)          dcl 68 set ref 542* 543 543 543 543* 639* 640 640
+                                                                                  640 640 643*
+idcw                                   based           structure                level 1 dcl 6-21 in procedure "rcp_disk_"
+idcw                                   based           bit(36)                  level 2 in structure "wspace" dcl 72 in procedure
+                                                                                  "rcp_disk_" set ref 206* 208 241 306 369 382 584
+idcwp                           000260 automatic       pointer                  dcl 6-19 set ref 369* 370 371 372 380* 381 382 383
+ioa_$rsnnl                      000030 constant        entry                    external dcl 128 ref 633 637 640
+ioi_$connect                    000032 constant        entry                    external dcl 129 ref 242 307 414 585
+ioi_$get_special_status         000034 constant        entry                    external dcl 130 ref 280
+ioi_$set_status                 000036 constant        entry                    external dcl 132 ref 216 546
+ioi_$workspace                  000040 constant        entry                    external dcl 133 ref 198
+ioi_index                60            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_disk_" ref 163 178
+ioi_index                       000105 automatic       fixed bin(17,0)          dcl 56 in procedure "rcp_disk_" set ref 163* 178*
+                                                                                  191* 198* 216* 242* 280* 307* 414* 546* 585*
+iom_stat                  4            based           bit(72)                  level 2 dcl 8-7 set ref 342 446
+isp                             000264 automatic       pointer                  dcl 8-5 set ref 164* 215* 216 216 240 260 305 328
+                                                                                  335 342 343 357 413 426 433 446 447 583
+istat                                  based           structure                level 1 dcl 8-7
+istatq                   16            based           structure                level 2 dcl 72 set ref 164 215
+label                                  based           structure                level 1 dcl 5-18 set ref 388
+label_address                   000106 automatic       fixed bin(17,0)          dcl 57 set ref 394* 398 399 409
+label_buffer            111            based           bit(36)                  array level 2 dcl 72 set ref 387 444 533
+label_story                     000164 automatic       char(160)                packed unaligned dcl 62 set ref 633* 638* 640* 640
+                                                                                  640 646*
+labelp                          000256 automatic       pointer                  dcl 5-16 set ref 388 444* 451 452 464 465* 497 498
+                                                                                  533* 708
+level                     1            based           fixed bin(3,0)           level 2 dcl 8-7 ref 335 433
+lock_info                              based           structure                level 1 dcl 1-46
+major                     0(02)        based           bit(4)                   level 2 packed packed unaligned dcl 9-7 ref 343
+max_num_retries                        constant        fixed bin(17,0)          initial dcl 101 ref 685
+mod                                                    builtin function         dcl 116 ref 398
+model                    13            based           fixed bin(17,0)          level 2 dcl 1-55 ref 235
+mount_state               6            based           fixed bin(17,0)          level 2 dcl 72 set ref 209* 227* 266* 703 713
+must_auto_register       35(17)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref 553
+                                                                                  646* 654*
+n_label                  27            based           fixed bin(17,0)          level 2 dcl 72 set ref 237* 238 238* 399 441* 442
+                                                                                  442* 525 542 543 606 633* 639 640
+need_auth                35(07)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  507* 520* 600 602*
+no_protect               35(19)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  264* 357 708* 711*
+not_removable_media      35(11)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 223 576
+null                                                   builtin function         dcl 116 ref 161
+number_of_sv                    000042 constant        fixed bin(17,0)          initial array dcl 3-93 ref 237 441
+opr_int_available        35(20)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 698
+preloaded                35(10)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 223
+protect_comment          10            based           char(8)                  level 2 dcl 72 set ref 211* 213* 264* 708* 711*
+protect_flag                           parameter       bit(1)                   packed unaligned dcl 683 ref 676 698
+pv_name                 521            based           char(32)                 level 2 dcl 5-18 set ref 451* 452 464 497* 498 708*
+pvname                   31            based           char(32)                 array level 3 dcl 72 set ref 452* 464* 489* 498*
+                                                                                  543* 640 640* 643 654* 654 654*
+rcp_auto_register_              000042 constant        entry                    external dcl 134 ref 555
+rcp_ioi_attach_                 000044 constant        entry                    external dcl 135 ref 172
+rcp_mount_timer_$reset          000046 constant        entry                    external dcl 136 ref 311 540 571
+rcp_mount_timer_$set            000050 constant        entry                    external dcl 138 ref 271 663 694
+rcse                                   based           structure                level 1 dcl 1-55
+rcse_ptr                        000252 automatic       pointer                  dcl 1-24 set ref 157* 158 163 172* 178 184 186 205
+                                                                                  207 207 211 223 223 235 264 264 264 264 269 270
+                                                                                  310 315 316 317 318 319 357 357 449 454 473 479
+                                                                                  484 487 489 500 506 507 508 516 518 519 520 535
+                                                                                  537 539 543 553 555 555 563 570 574 576 600 602
+                                                                                  603 604 609 611 612 613 614 616 618 619 620 622
+                                                                                  624 625 627 629 631 643 646 646 646 646 646 646
+                                                                                  654 654 654 654 654 654 661 662 692 693 698 700
+                                                                                  700 708 708 708 708 711 711
+read_command                           constant        bit(6)                   initial packed unaligned dcl 109 ref 381
+read_dcw                  3            based           bit(36)                  level 2 dcl 72 set ref 385* 386
+read_idcw                 2            based           bit(36)                  level 2 dcl 72 set ref 379* 380
+real_story                      000114 automatic       char(160)                packed unaligned dcl 61 set ref 607* 610* 617* 623*
+                                                                                  628* 632* 637* 637 637 646*
+rec_per_cyl                     000030 constant        fixed bin(17,0)          initial array dcl 3-108 ref 397 398
+record_factor                   000243 automatic       fixed bin(24,0)          dcl 68 set ref 397* 399
+record_offset                   000244 automatic       fixed bin(24,0)          dcl 68 set ref 398* 399 399
+rel                                                    builtin function         dcl 116 ref 216 216 376 387
+remount_flag                           parameter       bit(1)                   packed unaligned dcl 682 ref 676 708
+request_status_command                 constant        bit(6)                   initial packed unaligned dcl 107 ref 306
+reset_status_command                   constant        bit(6)                   initial packed unaligned dcl 110 ref 225
+retry_count               7            based           fixed bin(17,0)          level 2 dcl 72 set ref 209* 588* 685 690* 690
+rtrim                                                  builtin function         dcl 116 ref 637 637 640 640
+scode                           000104 automatic       fixed bin(35,0)          dcl 55 set ref 311* 312 540* 565 571* 663*
+sect_per_cyl                    000017 constant        fixed bin(17,0)          initial array dcl 4-15 ref 402 405
+sect_per_rec                    000006 constant        fixed bin(17,0)          initial array dcl 4-21 ref 401 402 402 410
+sector                          000242 automatic       fixed bin(24,0)          dcl 68 set ref 401* 406 407* 407 409* 410
+seek_addr                 4            based           bit(36)                  level 2 dcl 72 set ref 376 410*
+seek_command                    000254 automatic       bit(6)                   initial array packed unaligned dcl 3-84 set ref 370
+                                                                                  3-84* 3-84* 3-84* 3-84* 3-84* 3-84* 3-84* 3-84*
+                                                                                  3-84*
+seek_dcw                  1            based           bit(36)                  level 2 dcl 72 set ref 374* 375
+set_standby_command                    constant        bit(6)                   initial packed unaligned dcl 106 ref 230 584
+size                                                   builtin function         dcl 116 ref 191 191 198 198 388
+special_flag                    000107 automatic       bit(1)                   dcl 58 set ref 280* 289
+special_status_word             000110 automatic       bit(36)                  dcl 59 set ref 280* 295 295 300
+ss_pack                         000237 automatic       bit(1)                   packed unaligned dcl 66 set ref 465* 467
+st                                     based           bit(1)                   level 3 packed packed unaligned dcl 8-7 set ref 240*
+                                                                                  260 305* 328 413* 426 583*
+state                     5            based           fixed bin(17,0)          level 2 in structure "wspace" dcl 72 in procedure
+                                                                                  "rcp_disk_" set ref 165 209* 226* 231* 265* 308*
+                                                                                  421* 526* 530* 564* 703* 713*
+state                    24            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_disk_" set ref 186* 563*
+statp                           000266 automatic       pointer                  dcl 9-5 set ref 342* 343 343 446*
+status                                 based           structure                level 1 dcl 9-7
+story                    41            based           char(32)                 array level 3 dcl 72 set ref 453* 472* 478* 483*
+                                                                                  489* 499* 543* 654*
+sub                       0(06)        based           bit(6)                   level 2 packed packed unaligned dcl 9-7 ref 343
+substr                                                 builtin function         dcl 116 ref 207 207 295 295 300 543 543
+sv                       31            based           structure                array level 2 dcl 72
+system                   35(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 449 487
+t_and_d                  35(03)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 184
+tally                     0(24)        based           bit(12)                  level 2 packed packed unaligned dcl 7-7 set ref 377*
+                                                                                  388*
+template_idcw                          constant        bit(36)                  initial packed unaligned dcl 103 ref 206
+unused_sect_per_cyl             000250 automatic       fixed bin(24,0)          dcl 68 set ref 405* 407
+usable_sect_per_cyl             000247 automatic       fixed bin(24,0)          dcl 68 set ref 402* 405 406
+valid_copy                      000240 automatic       bit(1)                   packed unaligned dcl 67 set ref 465* 470
+valid_reg                       000236 automatic       bit(1)                   packed unaligned dcl 65 set ref 465* 476
+valid_sv_array                         constant        char(1)                  initial array packed unaligned dcl 3-99 set ref 640*
+valid_sv_string                 000041 constant        char(3)                  initial packed unaligned dcl 3-96 ref 543 543
+volume_name               2            based           char(32)                 level 2 dcl 1-55 set ref 264* 555 643 646* 646* 654
+                                                                                  654* 708*
+waiting_for_operator_interrupt
+                         12            based           bit(1)                   level 3 packed packed unaligned dcl 72 set ref 267*
+                                                                                  293 704* 714*
+what_user_asked_for             000234 automatic       bit(1)                   packed unaligned dcl 63 set ref 608* 643* 646*
+workspace_ptr            62            based           pointer                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_disk_" set ref 158 205*
+workspace_ptr                   000112 automatic       pointer                  dcl 60 in procedure "rcp_disk_" set ref 158* 161 164
+                                                                                  165 191 191 198* 198 198 205 206 208 209 209 209
+                                                                                  211 213 215 226 227 231 235 235 237 237 238 238
+                                                                                  239 241 264 265 266 267 293 306 308 369 370 374
+                                                                                  375 376 379 380 382 385 386 387 392 392 395 397
+                                                                                  397 398 399 401 402 402 402 405 410 410 421 441
+                                                                                  441 442 442 444 452 452 453 453 464 464 472 472
+                                                                                  478 478 483 483 489 489 489 489 498 498 499 499
+                                                                                  525 525 526 530 533 542 543 543 543 564 584 588
+                                                                                  606 633 639 640 640 640 643 654 654 654 654 685
+                                                                                  690 690 703 703 704 708 711 713 713 714
+write_flag                      000235 automatic       bit(1)                   dcl 64 set ref 270* 271* 662* 663* 693* 694*
+writing                  35(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref 211
+                                                                                  270 357 662 693 700*
+wspace                                 based           structure                level 1 dcl 72 set ref 191 191 198 198
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+CONSOLE_DTYPEX                         internal static fixed bin(17,0)          initial dcl 2-31
+DEVICE_TYPE                            internal static char(32)                 initial array packed unaligned dcl 2-18
+DISK_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 2-30
+MCA_DTYPEX                             internal static fixed bin(17,0)          initial dcl 2-36
+MODEL                                  internal static fixed bin(17,0)          initial array dcl 3-57
+MODELX                                 internal static fixed bin(17,0)          initial array dcl 3-60
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 5-92
+NUM_QUALIFIERS                         internal static fixed bin(17,0)          initial array dcl 2-22
+PRINTER_DTYPEX                         internal static fixed bin(17,0)          initial dcl 2-32
+PUNCH_DTYPEX                           internal static fixed bin(17,0)          initial dcl 2-33
+READER_DTYPEX                          internal static fixed bin(17,0)          initial dcl 2-34
+SPECIAL_DTYPEX                         internal static fixed bin(17,0)          initial dcl 2-35
+TAPE_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 2-29
+TAPE_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 2-37
+based_rcp_id                           based           structure                level 1 dcl 1-26
+bulkdevt                               internal static fixed bin(4,0)           initial dcl 3-43
+cyl_per_dev                            internal static fixed bin(17,0)          initial array dcl 3-102
+cyl_per_sv                             internal static fixed bin(17,0)          initial array dcl 3-105
+dev_time                               internal static float bin(27)            initial array dcl 3-139
+device_names                           internal static char(4)                  initial array dcl 3-66
+dsu181devt                             internal static fixed bin(4,0)           initial dcl 3-43
+dsu190devt                             internal static fixed bin(4,0)           initial dcl 3-43
+dsu191devt                             internal static fixed bin(4,0)           initial dcl 3-43
+faultword                              based           structure                level 1 dcl 9-27
+fips3380devt                           internal static fixed bin(4,0)           initial dcl 3-43
+fips3381devt                           internal static fixed bin(4,0)           initial dcl 3-43
+fips_type_disk                         internal static bit(1)                   initial array packed unaligned dcl 3-72
+first_alt_sect_num                     internal static fixed bin(24,0)          initial array dcl 3-130
+first_dev_number                       internal static fixed bin(17,0)          initial array dcl 3-69
+first_rec_num                          internal static fixed bin(17,0)          initial array dcl 3-115
+first_sect_num                         internal static fixed bin(24,0)          initial array dcl 3-124
+imess                                  based           structure                level 1 dcl 8-21
+imp                                    automatic       pointer                  dcl 8-19
+last_alt_sect_num                      internal static fixed bin(24,0)          initial array dcl 3-133
+last_physical_sect_num                 internal static fixed bin(24,0)          initial array dcl 3-136
+last_rec_num                           internal static fixed bin(18,0)          initial array dcl 3-118
+last_sect_num                          internal static fixed bin(24,0)          initial array dcl 3-127
+last_sv_rec_num                        internal static fixed bin(18,0)          initial array dcl 3-121
+lock_info_ptr                          automatic       pointer                  dcl 1-22
+maxdevt                                internal static fixed bin(4,0)           initial dcl 3-43
+media_removable                        internal static bit(1)                   initial array packed unaligned dcl 3-75
+msu0400devt                            internal static fixed bin(4,0)           initial dcl 3-43
+msu0450devt                            internal static fixed bin(4,0)           initial dcl 3-43
+msu0451devt                            internal static fixed bin(4,0)           initial dcl 3-43
+msu0500devt                            internal static fixed bin(4,0)           initial dcl 3-43
+msu0501devt                            internal static fixed bin(4,0)           initial dcl 3-43
+needs_alt_part                         internal static bit(1)                   initial array packed unaligned dcl 3-81
+pcw                                    based           structure                level 1 dcl 6-6
+pcwp                                   automatic       pointer                  dcl 6-4
+rcs                                    based           structure                level 1 dcl 1-30
+rcs_ptr                                automatic       pointer                  dcl 1-23
+rec_per_dev                            internal static fixed bin(21,0)          initial array dcl 3-87
+rec_per_sv                             internal static fixed bin(17,0)          initial array dcl 3-90
+sect_per_sv                            internal static fixed bin(24,0)          initial array dcl 4-18
+sect_per_track                         internal static fixed bin(17,0)          initial array dcl 4-33
+sect_per_vtoc                          internal static fixed bin(17,0)          initial array dcl 4-26
+shared_spindle                         internal static bit(1)                   initial array packed unaligned dcl 3-78
+special_status                         based           structure                level 1 dcl 9-35
+tdcw                                   based           structure                level 1 dcl 7-14
+tdcwp                                  automatic       pointer                  dcl 7-4
+tracks_per_cyl                         internal static fixed bin(17,0)          initial array dcl 3-111
+vtoc_per_rec                           internal static fixed bin(17,0)          initial array dcl 4-29
+words_per_sect                         internal static fixed bin(17,0)          initial array dcl 4-36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+DISK_STATE                      000000 constant        label                    array(0:5) dcl 249 ref 165
+LABEL_LOOP                      001653 constant        label                    dcl 392 ref 527
+REREADY_DISK                    003412 constant        entry                    internal dcl 676 ref 337 346 360 435 590
+TELL_STORY                      003204 constant        label                    dcl 646 ref 634
+rcp_disk_                       000626 constant        entry                    external dcl 29
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4156        4230    3736        4166
+Length      4630    3736        52         363     220           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_disk_                           488 external procedure  is an external procedure.  
+REREADY_DISK                            internal procedure  shares stack frame of external procedure rcp_disk_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_disk_                000100 command                     rcp_disk_
+                         000101 device_off                  rcp_disk_
+                         000102 drive_num                   rcp_disk_
+                         000103 ecode                       rcp_disk_
+                         000104 scode                       rcp_disk_
+                         000105 ioi_index                   rcp_disk_
+                         000106 label_address               rcp_disk_
+                         000107 special_flag                rcp_disk_
+                         000110 special_status_word         rcp_disk_
+                         000112 workspace_ptr               rcp_disk_
+                         000114 real_story                  rcp_disk_
+                         000164 label_story                 rcp_disk_
+                         000234 what_user_asked_for         rcp_disk_
+                         000235 write_flag                  rcp_disk_
+                         000236 valid_reg                   rcp_disk_
+                         000237 ss_pack                     rcp_disk_
+                         000240 valid_copy                  rcp_disk_
+                         000241 i                           rcp_disk_
+                         000242 sector                      rcp_disk_
+                         000243 record_factor               rcp_disk_
+                         000244 record_offset               rcp_disk_
+                         000245 cylinder                    rcp_disk_
+                         000246 devadd                      rcp_disk_
+                         000247 usable_sect_per_cyl         rcp_disk_
+                         000250 unused_sect_per_cyl         rcp_disk_
+                         000252 rcse_ptr                    rcp_disk_
+                         000254 seek_command                rcp_disk_
+                         000256 labelp                      rcp_disk_
+                         000260 idcwp                       rcp_disk_
+                         000262 dcwp                        rcp_disk_
+                         000264 isp                         rcp_disk_
+                         000266 statp                       rcp_disk_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_g_a               r_e_as              alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac
+mdfx1               shorten_stack       ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$ioi_set_ws_max    admin_gate_$syserr            countervalidate_label_        cv_dec_
+ioa_$rsnnl                    ioi_$connect                  ioi_$get_special_status       ioi_$set_status
+ioi_$workspace                rcp_auto_register_            rcp_ioi_attach_               rcp_mount_timer_$reset
+rcp_mount_timer_$set
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_label        error_table_$device_attention error_table_$invalid_state    error_table_$unable_to_do_io
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     29 000622    3   84 000633       157 000722       158 000726       159 000730       161 000731       163 000735
+    164 000737       165 000741       172 000743       173 000753       175 000755       176 000757       178 000760
+    184 000763       186 000766       187 000770       188 000772       191 000773       192 001010       194 001012
+    195 001014       198 001015       199 001034       201 001036       202 001040       205 001041       206 001044
+    207 001046       208 001067       209 001076       211 001102       213 001112       215 001115       216 001117
+    217 001141       219 001143       220 001145       223 001146       225 001152       226 001154       227 001157
+    228 001161       230 001162       231 001164       235 001167       236 001206       237 001210       238 001214
+    239 001217       240 001220       241 001222       242 001224       243 001240       244 001243       249 001244
+    251 001246       260 001247       264 001252       265 001317       266 001322       267 001323       269 001325
+    270 001330       271 001334       272 001347       273 001352       280 001353       287 001367       289 001372
+    293 001376       295 001402       297 001412       300 001413       305 001417       306 001421       307 001423
+    308 001437       310 001442       311 001445       312 001456       315 001462       316 001465       317 001467
+    318 001471       319 001473       320 001475       321 001477       328 001500       331 001503       332 001504
+    335 001505       337 001510       338 001515       339 001520       342 001521       343 001523       346 001542
+    347 001547       348 001552       357 001553       360 001564       361 001572       362 001575       369 001576
+    370 001600       371 001606       372 001612       374 001614       375 001615       376 001617       377 001622
+    379 001627       380 001630       381 001632       382 001634       383 001636       385 001640       386 001641
+    387 001643       388 001646       392 001653       394 001657       395 001661       397 001664       398 001670
+    399 001674       401 001702       402 001704       405 001710       406 001713       407 001716       408 001721
+    409 001722       410 001724       413 001740       414 001742       415 001756       417 001760       418 001762
+    421 001763       422 001766       426 001767       429 001772       430 001773       433 001774       435 001777
+    436 002004       437 002007       441 002010       442 002013       444 002016       446 002020       447 002022
+    449 002025       451 002031       452 002035       453 002044       454 002050       455 002053       458 002054
+    459 002056       461 002057       464 002060       465 002070       467 002104       470 002107       472 002112
+    473 002121       474 002124       476 002125       478 002130       479 002137       480 002142       483 002143
+    484 002152       487 002155       489 002160       491 002215       492 002221       494 002222       497 002223
+    498 002227       499 002236       500 002242       506 002245       507 002250       508 002252       516 002254
+    518 002260       519 002262       520 002264       525 002266       526 002272       527 002274       530 002275
+    533 002300       535 002302       537 002306       539 002311       540 002313       542 002324       543 002335
+    545 002415       546 002417       547 002436       549 002440       550 002442       553 002443       555 002447
+    556 002502       558 002504       559 002506       563 002507       564 002512       565 002514       566 002517
+    570 002520       571 002522       574 002533       576 002561       578 002565       579 002571       583 002572
+    584 002574       585 002577       588 002613       590 002615       592 002623       593 002626       600 002627
+    602 002632       603 002634       604 002636       606 002640       607 002643       608 002646       609 002647
+    610 002652       611 002655       612 002657       613 002661       614 002663       615 002665       616 002666
+    617 002671       618 002674       619 002676       620 002700       621 002702       622 002703       623 002706
+    624 002711       625 002713       626 002715       627 002716       628 002721       629 002724       630 002726
+    631 002727       632 002732       633 002735       634 002766       637 002767       638 003041       639 003045
+    640 003055       643 003167       645 003202       646 003204       652 003270       654 003271       661 003361
+    662 003364       663 003370       666 003403       667 003405       671 003406       672 003410       901 003411
+    676 003412       685 003414       687 003420       688 003423       690 003424       692 003425       693 003430
+    694 003434       695 003447       698 003452       700 003464       703 003520       704 003523       705 003525
+    708 003526       711 003610       713 003651       714 003654       717 003656
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

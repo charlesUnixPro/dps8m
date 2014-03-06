@@ -1,0 +1,6 @@
+!INFO date Wed Feb 19 02:57:09 2014 UTC
+!INFO src TestBugs15.as8
+!SIZE 000402
+!SEGNAME Bug_B_Gone_seg15
+000400 xxxx 500000764101     lprplp  lb|0,au  
+000401 xxxx 012345654321     oct 12345654321

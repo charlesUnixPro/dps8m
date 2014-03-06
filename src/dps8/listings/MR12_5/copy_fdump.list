@@ -1,0 +1,2867 @@
+	COMPILATION LISTING OF SEGMENT copy_fdump
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1058.78_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* COPY_FDUMP - Make Copy of Information in Dump Partition:
+       13*
+       14*   This program creates a toe-hold into the dump partition.
+       15*   This partition may contain dump information left by
+       16*   the bce dump program. This information is copied into
+       17*   multiple segments in the directory >dumps. These segments
+       18*   are force-deactivated as a hedge against crashes.
+       19*
+       20*   4/7/71 - N. I. Morris & S. H. Webber
+       21*   9/28/71 - modified to allow setting erf no and to add error codes - D. M. Jordan
+       22*   3/2/73 - modified for 6180 and v2pl1 - RE Mullen
+       23*   7/11/73 - modified to copy dn355 core image out of part dump and added get_erf_no entry - RE Mullen
+       24*   10/08/75 - modified for multiple 355s - Robert Coren
+       25*   02/01/79 - modified to allow more than 10 segnos - F. W. Martinson
+       26*   08/25/80 - Modified to announce copy in syserr log -- W. Olin Sibert
+       27*   11/11/80 - modified for the DPS8/70M CPU -- J. A. Bush
+       28*   03/21/81, W. Olin Sibert, for ADP PTWs and ptw_util_.
+       29*   02/26/82 - J. Bongiovanni, to eliminate use of FSDCT, force deactivate
+       30*             dump segments.
+       31*   11/05/84, Keith Loepere to change terminate to terminate_.
+       32*   01/22/85, Keith Loepere for new find_partition.
+       33*
+       34*   */
+       35 
+       36 
+       37 /****^  HISTORY COMMENTS:
+       38*  1) change(86-10-23,Fawcett), approve(86-10-23,MCR7517),
+       39*     audit(86-10-30,Beattie), install(86-11-03,MR12.0-1206):
+       40*     Changed to remove the word BOS from message.
+       41*                                                   END HISTORY COMMENTS */
+       42 
+       43 
+       44 copy_fdump: proc (a_code);
+       45 
+       46 	dcl     i			 fixed bin,	/* page table index */
+       47 	        p			 ptr,		/* handy pointer */
+       48 	        ptp		 ptr,		/* Pointer to page table of abs-seg */
+       49 	        (dt, dt_dn355)	 char (24),	/* date and time strings */
+       50 	        (ename, a_ename, xname, ename_dn355, a_ename_dn355) char (32), /* dump segment entry names */
+       51 	        erf		 char (12),	/* converted ERF number */
+       52 	        (erf_no, a_erf_no)	 fixed bin,	/* number to set next dump to */
+       53 	        ptsi		 fixed bin,	/* page table size index */
+       54 	        code		 fixed bin (35),	/* error code */
+       55 	        a_code		 fixed bin (35),	/* error code to return to caller */
+       56 	        rb		 (3) fixed bin (6) init (7, 7, 7), /* ring brackets for call to append */
+       57 	        seqno		 fixed bin,	/* dump sequence number */
+       58 	        esw		 fixed bin,	/* entry switch */
+       59 	        dumpadd		 fixed bin (18),	/* address within dump partition */
+       60 	        nrecs		 fixed bin (18),	/* number of records in PART DUMP */
+       61 	        next_part_add	 fixed bin,	/* dumpadd of rec following PART DUMP */
+       62 	        first		 fixed bin (20),	/* first address within dump partition */
+       63 	        (length, a_length)	 fixed bin (35),	/* length dump info */
+       64 	        (a_valid, a_valid_dn355) bit (1),	/* = 1 if dumps are valid */
+       65 	        word_count		 fixed bin (18),	/* number of words to copy from dump partition at one time */
+       66 	        copy		 (word_count) fixed bin (35) based, /* structure to allow copying of dump data */
+       67 	        dump_pvtx		 fixed bin,
+       68 	        dump_pvid		 bit (36) aligned,
+       69 	        tsdwp		 ptr,		/* pointer to SDW */
+       70 	        tsdw		 bit (72);	/* temporary for SDW */
+       71 
+       72 	dcl     (max_size, max_pages, dn355_size) fixed bin; /* max for output segs */
+       73 	dcl     single_dn355_size	 fixed bin (35);	/* number of bits in 355 core image */
+       74 	dcl     words_per_image	 fixed bin;
+       75 	dcl     pg_size		 fixed bin;
+       76 
+       77 	dcl     (dumping_Multics, dumping_dn355) bit (1); /* to keep track of what we want to dump */
+       78 
+       79 	dcl     (hdr_size, rest_size)	 fixed bin;	/* sizes in words */
+       80 
+       81 	dcl     dn355_copy		 bit (single_dn355_size) aligned based; /* for copying 355 dump */
+       82 
+       83 	dcl     1 din		 based aligned,	/* structure of first 64K of PART DUMP */
+       84 		2 header		 (hdr_size) fixed bin (35), /* registers, rel locs of segs, etc */
+       85 		2 dn355_images	 (4),
+       86 		  3 dn355_core	 bit (single_dn355_size) aligned, /* dn355 core image put here by FD355 */
+       87 		2 rest		 (rest_size) fixed bin (35); /* start of segments dumped by FDUMP */
+       88 
+       89 
+       90 	dcl     (error_table_$noaccess fixed bin (35),
+       91 	        error_table_$dmpinvld	 fixed bin (35),
+       92 	        error_table_$noprtdmp	 fixed bin (35),
+       93 	        error_table_$bdprtdmp	 fixed bin (35),
+       94 	        error_table_$dmpvalid	 fixed bin (35),
+       95 	        error_table_$nopart	 fixed bin (35),
+       96 	        sys_info$default_max_length fixed bin (35),
+       97 	        sys_info$page_size	 fixed bin (35),
+       98 	        pds$process_group_id	 char (32) aligned,
+       99 	        abs_seg$)		 ext;
+      100 
+      101 	dcl     sst$astsize		 fixed bin external static;
+      102 	dcl     1 sst$level		 (0:3) aligned external static,
+      103 		2 ausedp		 bit (18) unaligned,
+      104 		2 no_aste		 bit (18) unaligned;
+      105 
+      106 	dcl     privileged_mode_ut$swap_sdw ext entry (ptr, ptr),
+      107 	        thread$out		 entry (ptr, bit (18) unal),
+      108 	        lock$lock_ast	 entry,
+      109 	        lock$unlock_ast	 entry,
+      110 	        get_ptrs_$given_astep	 ext entry (ptr) returns (bit (72) aligned),
+      111 	        syserr		 ext entry options (variable),
+      112 	        condition_		 ext entry (char (*), entry),
+      113 	        reversion_		 ext entry (char (*)),
+      114 	        date_time_		 ext entry (fixed bin (71), char (*)),
+      115 	        append$branchx	 ext entry (char (*), char (*), fixed bin (5), (3) fixed bin (6), char (*),
+      116 				 fixed bin (1), fixed bin (1), fixed bin (24), fixed bin (35)),
+      117 	        initiate		 ext entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr, fixed bin (35)),
+      118 	        pc$cleanup		 entry (ptr),
+      119 	        get_aste		 ext entry (fixed bin) returns (ptr),
+      120 	        put_aste		 ext entry (ptr),
+      121 	        cv_bin_$dec		 ext entry (fixed bin (17)) returns (char (12) aligned),
+      122 	        demand_deactivate$force_given_segno entry (ptr, fixed bin (35)),
+      123 	        terminate_$noname	 entry (ptr, fixed bin (35)),
+      124 	        find_partition	 entry (char (*), fixed bin, bit (36) aligned, fixed bin (18), fixed bin (18), fixed bin (35)),
+      125 	        ptw_util_$make_disk	 entry (pointer, fixed bin (20));
+      126 
+      127 	dcl     (addr, addrel, bit, char, divide, fixed, ltrim, min, null, size, substr) builtin;
+      128 
+      129 /*  */
+      130 
+      131 	esw = 0;
+      132 	go to setup;
+      133 
+      134 set_erf_no:
+      135      entry (a_erf_no, a_code);
+      136 	erf_no = a_erf_no;
+      137 	esw = 1;
+      138 	go to setup;
+      139 
+      140 get_erf_no:
+      141      entry (a_length, a_valid, a_ename, a_valid_dn355, a_ename_dn355, a_code);
+      142 	esw = 2;
+      143 	a_length = 0;
+      144 	a_valid, a_valid_dn355 = "0"b;
+      145 	a_ename, a_ename_dn355 = "                                ";
+      146 
+      147 setup:
+      148 	a_code = 0;
+      149 	p = null ();				/* So any_other handler wins */
+      150 	pg_size = sys_info$page_size;			/* number of words per page */
+      151 	max_size = sys_info$default_max_length;		/* max number of words in segs copy_fdump creates */
+      152 	max_pages = divide (max_size + pg_size - 1, pg_size, 17, 0);
+      153 	dn355_size = 16384 * 4;			/* words equaling 32K of 18bit words for up to 4 355s */
+      154 	single_dn355_size = 16384 * 36;		/* bits for one 355 core image */
+      155 	words_per_image = 16384;			/* same in words */
+      156 	hdr_size = size (dump);			/* number of words in dump header */
+      157 
+      158 /* Determine location and size of the dump partition. */
+      159 
+      160 	call find_partition ("dump", dump_pvtx, dump_pvid, dumpadd, nrecs, code);
+      161 	if code ^= 0 then do;
+      162 		if code = error_table_$nopart then a_code = error_table_$noprtdmp;
+      163 		else a_code = code;
+      164 		return;
+      165 	     end;
+      166 
+      167 	first = dumpadd;
+      168 
+      169 	if nrecs = 0 then do;
+      170 		a_code = error_table_$bdprtdmp;
+      171 		return;
+      172 	     end;
+      173 
+      174 	next_part_add = first + nrecs;		/*  Stop before here */
+      175 
+      176 /* Now create an abs_seg through which to look at the dump */
+      177 
+      178 	dumpptr = addr (abs_seg$);			/* get pointer to abs_seg */
+      179 	tsdwp = addr (tsdw);			/* get a pointer to the SDW to be used */
+      180 	call lock$lock_ast;
+      181 	astep = get_aste (max_pages);			/* get a large page table / ASTE */
+      182 	ptsi = fixed (aste.ptsi, 2);
+      183 	call thread$out (astep, sst$level.ausedp (ptsi));
+      184 	call lock$unlock_ast;
+      185 	ptp = addrel (astep, sst$astsize);		/* get a pointer to the page table */
+      186 	tsdw = get_ptrs_$given_astep (astep);		/* get the actual SDW to use */
+      187 	call privileged_mode_ut$swap_sdw (dumpptr, tsdwp);/* make abs_seg point to the dump seg */
+      188 	aste.pvtx = dump_pvtx;
+      189 	aste.csl = bit (fixed (max_pages,9), 9);		/* Set correct current length in AST entry. */
+      190 	aste.nqsw = "1"b;				/* indicate no quota for this segment */
+      191 						/*  */
+      192 						/* Set up a condition in case we bomb out. */
+      193 	call condition_ ("any_other", handler);
+      194 	if esw = 1 then go to set_num;		/* just set the erf number in the dump partition */
+      195 	if esw = 2 then go to get_num;		/* just return info in dump header */
+      196 
+      197 /* Attempt to copy the dump information into the hierarchy. */
+      198 
+      199 	do seqno = 0 by 1;				/* Keep going until we run out of information. */
+      200 	     do i = 0 to (max_pages - 1) while (i < next_part_add - dumpadd);
+      201 		call ptw_util_$make_disk (addrel (ptp, i), (dumpadd + i)); /* The disk record */
+      202 	     end;
+      203 	     if seqno = 0 then do;			/* were making our first seg in >dumps */
+      204 		     call check_dump_header;		/* Initialize some variables and see whats in PART DUMP */
+      205 		     length = min (length, nrecs * pg_size - dn355_size - hdr_size);
+      206 		     if dumping_dn355 then do;	/* we want to make a special seg in >dumps for 355core image */
+      207 			     xname = ename_dn355;	/* will have ".355" suffix */
+      208 			     word_count = dn355_size; /* clearly */
+      209 			     call get_branch;	/* get and initiate a branch */
+      210 			     do i = 1 to 4;		/* copy up to four 355 core images */
+      211 				if substr (dumpptr -> dump.dumped_355s, i, 1) /* there is an image for this one */
+      212 				then p -> dn355_copy = dumpptr -> din.dn355_images (i).dn355_core; /* copy it */
+      213 				else p -> dn355_copy = "0"b;
+      214 
+      215 				p = addrel (p, words_per_image); /* bump to next core image */
+      216 			     end;
+      217 
+      218 			     dumpptr -> dump.valid_355 = "0"b; /*  turn off the valid bit */
+      219 			end;
+      220 		     if dumping_Multics then do;	/* need to skip over the dn355 stuff */
+      221 			     call pc$cleanup (astep); /* Force all pages from core. */
+      222 			     aste.npfs = "0"b;	/* turn off no page fault switch */
+      223 			     do i = 0 to 1;		/* fill in first 2 ptws */
+      224 				call ptw_util_$make_disk (addrel (ptp, i), (dumpadd + i)); /* The disk record */
+      225 			     end;
+      226 			     dumpadd = dumpadd + divide (dn355_size, pg_size, 18, 0); /* skip over dn355 data */
+      227 			     do i = 2 to (max_pages - 1) while (i < next_part_add - dumpadd);
+      228 				call ptw_util_$make_disk (addrel (ptp, i), (dumpadd + i)); /* The disk record */
+      229 			     end;
+      230 			     rest_size = min (max_size - hdr_size, length); /* does not include header */
+      231 			     word_count = hdr_size + rest_size; /* the number of words to this branch */
+      232 			     xname = ename;		/* the name of the branch we will create */
+      233 			     call get_branch;	/* get and initiate the branch */
+      234 			     p -> copy = dumpptr -> copy; /* copy the header and some Multics segs */
+      235 			     length = length - rest_size; /* remaining length is less now */
+      236 			end;
+      237 		end;
+      238 	     else do;				/* no need to worry about dn355 stuff */
+      239 		     substr (ename, 13) = ltrim (char (seqno)) || "." || ltrim (erf);
+      240 		     word_count = min (length, max_size); /* take what we can */
+      241 		     xname = ename;			/* a standard name */
+      242 		     call get_branch;
+      243 		     p -> copy = dumpptr -> copy;	/* copy the data */
+      244 		     length = length - word_count;	/* shorten remaining length */
+      245 		end;
+      246 	     call pc$cleanup (astep);			/* Force all pages from core. */
+      247 	     aste.npfs = "0"b;			/* Turn off the no page fault switch. */
+      248 	     dumpadd = dumpadd + max_pages;		/* Step partition address to next max_pagesK. */
+      249 	     if ^dumping_Multics then go to endup;	/* dn355 core is copied already */
+      250 	     if length <= 0 then go to cleanup;		/* Check for completion of Multics dump copying */
+      251 	end;					/* Continue loop until dump info exhausted. */
+      252 						/*  */
+      253 cleanup:
+      254 	call ptw_util_$make_disk (ptp, first);		/* Insert toe-hold to first record */
+      255 	dumpptr -> dump.valid = "0"b;			/* Turn off valid bit. */
+      256 	call syserr (LOG, "copy_fdump: Copied fdump image of erf ^d (^a) for ^a", /* let anyone who cares know about this */
+      257 	     dumpptr -> dump.erfno, dt, pds$process_group_id);
+      258 
+      259 endup:
+      260 	call pc$cleanup (astep);			/* Force all pages from core. */
+      261 
+      262 exit:
+      263 	call reversion_ ("any_other");
+      264 	if p ^= null () then do;			/* terminate and force-deactivate */
+      265 		call demand_deactivate$force_given_segno (p, code);
+      266 		call terminate_$noname (p, code);
+      267 	     end;
+      268 
+      269 
+      270 	call lock$lock_ast;
+      271 	call put_aste (astep);			/* return the AST entry */
+      272 	call lock$unlock_ast;
+      273 	tsdw = ""b;
+      274 	call privileged_mode_ut$swap_sdw (dumpptr, tsdwp);
+      275 	return;
+      276 
+      277 set_num:						/* CODE to reset the erf number in PART DUMP */
+      278 	call ptw_util_$make_disk (ptp, first);		/* Establish address for first page */
+      279 
+      280 	if (dumpptr -> dump.valid | dumpptr -> dump.valid_355)
+      281 	then do;					/* Previous dump hasn't been picked up */
+      282 		a_code = error_table_$dmpvalid;
+      283 		go to endup;
+      284 	     end;
+      285 
+      286 	dumpptr -> dump.erfno = erf_no - 1;		/* set the dump number */
+      287 	go to endup;
+      288 
+      289 get_num:						/* CODE to get the erf number in PART DUMP */
+      290 	call ptw_util_$make_disk (ptp, first);		/* get address of first page */
+      291 
+      292 	call check_dump_header;			/* internal proc to decode header info */
+      293 
+      294 	if dumping_Multics then do;
+      295 		a_length = length;
+      296 		a_valid = dumping_Multics;
+      297 		a_ename = ename;
+      298 	     end;
+      299 	if dumping_dn355 then do;
+      300 		a_valid_dn355 = dumping_dn355;
+      301 		a_ename_dn355 = ename_dn355;
+      302 	     end;
+      303 
+      304 	go to endup;
+      305 
+      306 
+      307 
+      308 
+      309 /*  */
+      310 
+      311 /* INTERNAL PROC to examine the dump header */
+      312 check_dump_header: proc;
+      313 	if esw ^= 1 then /* previously checked that it's invalid for set_erf_no entry */
+      314 	     if dumpptr -> dump.valid = "0"b then
+      315 		if dumpptr -> dump.valid_355 = "0"b then do;
+      316 			a_code = error_table_$dmpinvld; /* No valid dumps so scram */
+      317 			go to endup;
+      318 		     end;
+      319 	dumping_Multics = dumpptr -> dump.valid;	/* want to copy valid Multics dump */
+      320 	dumping_dn355 = dumpptr -> dump.valid_355;	/* want to copy valid 355 dump */
+      321 	length = dumpptr -> dump.words_dumped;		/* keep this number handy */
+      322 						/* Now fabricate a name for the dump. The names look like ...
+      323*						   MMDDYY.TTTT.N.EEE
+      324*						   MMDDYY	= month, day, year
+      325*						   TTTT	= time of day
+      326*						   N	= sequence number of dump segment
+      327*						   EEE	= ERF number
+      328*						   */
+      329 	erf = cv_bin_$dec ((dumpptr -> dump.erfno));	/* Convert the ERF number. */
+      330 	if dumping_Multics then do;
+      331 		call date_time_ (dumpptr -> dump.time, dt); /* Convert the date and time of dump. */
+      332 		ename = substr (dt, 1, 2) || substr (dt, 4, 2) || substr (dt, 7, 2) || "."
+      333 		     || substr (dt, 11, 5) || "0." || ltrim (erf);
+      334 	     end;
+      335 	if dumping_dn355 then do;
+      336 		call date_time_ (dumpptr -> dump.time_355, dt_dn355); /* setup name for 355 segs in >dumps similarly */
+      337 		ename_dn355 = substr (dt_dn355, 1, 2) || substr (dt_dn355, 4, 2) || substr (dt_dn355, 7, 2) || "."
+      338 		     || substr (dt_dn355, 11, 5) || "0." || ltrim (erf) || ".355";
+      339 	     end;
+      340      end check_dump_header;
+      341 
+      342 /* INTERNAL PROC to create a seg in >dumps, and initiate it */
+      343 get_branch: proc;					/* share stack frame */
+      344 append:
+      345 	if p ^= null () then do;			/* terminate and force-deactivate */
+      346 		call demand_deactivate$force_given_segno (p, code);
+      347 		call terminate_$noname (p, code);
+      348 	     end;
+      349 
+      350 	call append$branchx (">dumps", xname, RW_ACCESS_BIN, rb, (pds$process_group_id), 0, 0, 36 * word_count, code);
+      351 	if code ^= 0 then do;
+      352 		if code = error_table_$noaccess then do;/* >dumps is not there */
+      353 			call append$branchx (">", "dumps", A_ACCESS_BIN, rb, "*.*.*", 1, 0, 0, code); /* create it */
+      354 			if code ^= 0 then do;
+      355 				a_code = code;
+      356 				go to endup;
+      357 			     end;
+      358 			go to append;		/* loop back to try again */
+      359 		     end;
+      360 		else do;				/* Branch cannot be created. */
+      361 			a_code = code;
+      362 			go to endup;
+      363 		     end;
+      364 	     end;
+      365 	call initiate (">dumps", xname, "", 0, 0, p, code); /* get a pointer to the new seg */
+      366 	if p = null then do;			/* If initiation failed ... */
+      367 		a_code = code;
+      368 		go to endup;
+      369 	     end;
+      370      end get_branch;
+      371 						/*  */
+      372 
+      373 /* INTERNAL PROC to handle unclaimed signals */
+      374 
+      375 handler: proc (mc_ptr, name);
+      376 
+      377 	dcl     mc_ptr		 ptr,		/* pointer to machine conditions (not used) */
+      378 	        name		 char (*);	/* name of the condition */
+      379 
+      380 
+      381 	call syserr (ANNOUNCE, "copy_fdump: unexpected ^a signal.", name);
+      382 	go to exit;				/* Print comment, and then clean up and exit. */
+      383      end handler;
+      384 
+      385  /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      385 
+      386  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  2     2 
+  2     3 /* Template for an AST entry. Length = 12 words. */
+  2     4 
+  2     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  2     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  2     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  2     8 
+  2     9 dcl  astep ptr;
+  2    10 
+  2    11 dcl 1 aste based (astep) aligned,
+  2    12 
+  2    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  2    14     2 bp bit (18),					/* backward used list rel pointer */
+  2    15 
+  2    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  2    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  2    18 
+  2    19     2 strp bit (18),				/* rel pointer to process trailer */
+  2    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  2    21 
+  2    22     2 uid bit (36),					/* segment unique id */
+  2    23 
+  2    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  2    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  2    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    27 
+  2    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  2    29     2 init bit (1),					/* used bit - insure 1 lap */
+  2    30     2 gtus bit (1),					/* global transparent usage switch */
+  2    31     2 gtms bit (1),					/* global transparent modified switch */
+  2    32     2 hc bit (1),					/* hard core segment */
+  2    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  2    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  2    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  2    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  2    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  2    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  2    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  2    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  2    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  2    42     2 pad1 bit (2),					/* OO */
+  2    43     2 dius bit (1),					/* dumper in use switch */
+  2    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  2    45     2 dmpr_pad bit (1),
+  2    46     2 ehs bit (1),					/* entry hold switch */
+  2    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  2    48     2 dirsw bit (1),				/* directory switch */
+  2    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  2    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  2    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  2    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  2    53 
+  2    54     2 dtu bit (36),					/* date and time segment last used */
+  2    55 
+  2    56     2 dtm bit (36),					/* date and time segment last modified */
+  2    57 
+  2    58 
+  2    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  2    60 
+  2    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  2    62 
+  2    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  2    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  2    65     2 fms bit (1),					/* file modified switch */
+  2    66     2 npfs bit (1),					/* no page fault switch */
+  2    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  2    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  2    69     2 per_process bit (1),				/* use master quota for this entry */
+  2    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  2    71     2 pad2 bit (2),
+  2    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  2    73     2 np bit (9),					/* number of pages in core */
+  2    74 
+  2    75 
+  2    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  2    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  2    78     2 damaged bit (1),				/* PC declared segment unusable */
+  2    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  2    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  2    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  2    82     2 ptsi bit (2),					/* page table size index */
+  2    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  2    84 
+  2    85 
+  2    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  2    87 
+  2    88 
+  2    89 dcl 1 aste_part aligned based (astep),
+  2    90 
+  2    91     2 one bit (36) unaligned,				/* fp and bp */
+  2    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  2    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  2    94 
+  2    95 
+  2    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  2    97     2 pad1 bit (8*36),
+  2    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  2    99     2 pad2 bit (3*36);
+  2   100 
+  2   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      386 
+      387  /* BEGIN INCLUDE FILE ... bos_dump.incl.pl1 ... */
+  3     2 /* Modified 1 September 1976 */
+  3     3 /* Modified 11/11/80 by J. A. Bush for the DPS8/70M CPU */
+  3     4 /* Modified 6/12/81 by Rich Coppola to extend the dps8 extended fault reg to 
+  3     5*   15 bits  */
+  3     6 /* Modified 02/23/81, W. Olin Sibert, to describe old and new FDUMP styles */
+  3     7 
+  3     8 
+  3     9 dcl  dumpptr ptr;					/* pointer to following structure */
+  3    10 
+  3    11 dcl 1 dump based (dumpptr) aligned,			/* header of dump by fdump */
+  3    12     2 dump_header aligned like dump_header,
+  3    13 
+  3    14     2 segs (1008),					/* segment array */
+  3    15       3 segno bit (18) unal,				/* segment number */
+  3    16       3 length bit (18) unal, 			/* length of segment in sector sized blocks */
+  3    17 
+  3    18     2 amptwregs (0 : 63) bit (36),			/* assoc. mem. page table word regs */
+  3    19     2 amptwptrs (0 : 63) bit (36),			/* assoc. mem. page table word pointers */
+  3    20     2 amsdwregs (0 : 63) bit (72),			/* assoc. mem. segment descriptor word registers */
+  3    21     2 amsdwptrs (0 : 63) bit (36),			/* assoc. mem. segment descriptor word pointers */
+  3    22 
+  3    23     2 ouhist (0 : 63) bit (72), 			/* operations unit history registers */
+  3    24     2 cuhist (0 : 63) bit (72), 			/* control unit history registers */
+  3    25     2 duhist (0 : 63) bit (72), 			/* decimal unit history registers */
+  3    26     2 auhist (0 : 63) bit (72), 			/* appending unit history registers */
+  3    27 
+  3    28     2 prs (0 : 7) ptr,				/* pointer registers */
+  3    29 
+  3    30     2 regs aligned like dump_registers, 		/* assorted machine registers */
+  3    31 
+  3    32     2 low_order_port bit (3), 			/* from which clock is read */
+  3    33     2 pad4 bit (36),
+  3    34     2 mctime fixed bin (52),				/* time conditions were taken */
+  3    35     2 pad5 (0 : 3) bit (36),
+  3    36 
+  3    37     2 misc_registers like dump_misc_registers,		/* Assorted registers & processor data */
+  3    38 
+  3    39     2 ptrlen (0 : 7) bit (36),			/* pointers and lengths for EIS */
+  3    40 
+  3    41     2 coreblocks (0 : 7),
+  3    42       3 num_first bit (18) unal,			/* first addr in coreblock */
+  3    43       3 num_blocks bit (18) unal,			/* number of blocks used */
+  3    44     2 pad7 (112) fixed bin;
+  3    45 
+  3    46 
+  3    47 dcl 1 dump_header aligned based,			/* Standard header for FDUMP */
+  3    48     2 words_dumped fixed bin (35),			/* total words in dump */
+  3    49     2 valid bit (1),				/* = 1 if there is a 6180 dump to be had */
+  3    50     2 time fixed bin (71),				/* time of dump */
+  3    51     2 erfno fixed bin (18),				/* Error Report Form Number */
+  3    52     2 num_segs fixed bin,				/* number of segments dumped */
+  3    53     2 valid_355 bit (1),				/* = 1 if there is a dn355 dump to be had */
+  3    54     2 dumped_355s bit (4),				/* indicates which 355s were dumped */
+  3    55     2 time_355 fixed bin (71),			/* time of 355 dump */
+  3    56     2 version fixed bin,				/* currently 2 */
+  3    57     2 pad0 (5) fixed bin;				/* pad0 to 16 words */
+  3    58 
+  3    59 dcl 1 dump_registers aligned based,			/* Standard (SREG) arrangement of registers in dump */
+  3    60    (2 x (0 : 7) bit (18),				/* index registers */
+  3    61     2 a bit (36),					/* the a register */
+  3    62     2 q bit (36),					/* the q register */
+  3    63     2 e bit (8),					/* the e register */
+  3    64     2 pad2 bit (28),				/* pad */
+  3    65     2 t bit (27),					/* timer register */
+  3    66     2 pad3 bit (6), 				/* pad */
+  3    67     2 ralr bit (3)) unaligned;			/* ring alarm register */
+  3    68 
+  3    69 dcl 1 dump_misc_registers aligned based,
+  3    70     2 scu (0 : 7) bit (36),				/* from store control unit instr. */
+  3    71     2 mcm (0 : 7) bit (72),				/* memory controller masks every 64 K */
+  3    72     2 dbr bit (72), 				/* descriptor segment base register */
+  3    73     2 intrpts bit (36),				/* interrupts */
+  3    74     2 bar bit (36), 				/* base address register */
+  3    75     2 modereg bit (36),				/* mode register */
+  3    76     2 cmodereg bit (36),				/* cache mode register */
+  3    77     2 faultreg bit (36),				/* fault register */
+  3    78     2 ext_fault_reg bit (15) unaligned,			/* DPS8 extended fault register */
+  3    79     2 pad6 bit (21) unaligned;
+  3    80     
+  3    81     
+  3    82 
+  3    83 dcl 1 v1_dump aligned based (dumpptr),			/* Old version of FDUMP (pre March, 1981) */
+  3    84     2 dump_header aligned like dump_header,
+  3    85 
+  3    86     2 segs (688),					/* segment array */
+  3    87       3 segno bit (18) unal,				/* segment number */
+  3    88       3 length bit (18) unal, 			/* length of segment in sector sized blocks */
+  3    89 
+  3    90     2 amsdwregs (0 : 15) bit (72),			/* assoc. mem. segment descriptor word registers */
+  3    91     2 amsdwptrs (0 : 15) bit (36),			/* assoc. mem. segment descriptor word pointers */
+  3    92     2 amptwregs (0 : 15) bit (36),			/* assoc. mem. page table word regs */
+  3    93     2 amptwptrs (0 : 15) bit (36),			/* assoc. mem. page table word pointers */
+  3    94     2 pad1 (0 : 15) bit (36),
+  3    95 
+  3    96     2 ouhist (0 : 15) bit (72), 			/* operations unit history registers */
+  3    97     2 cuhist (0 : 15) bit (72), 			/* control unit history registers */
+  3    98     2 auhist (0 : 15) bit (72), 			/* appending unit history registers */
+  3    99     2 duhist (0 : 15) bit (72), 			/* decimal unit history registers */
+  3   100 
+  3   101     2 prs (0 : 7) ptr,				/* pointer registers */
+  3   102 
+  3   103     2 regs aligned like dump_registers, 		/* assorted machine registers */
+  3   104 
+  3   105     2 mctime fixed bin (52),				/* time conditions were taken */
+  3   106     2 pad4 (0 : 5) bit (36),
+  3   107 
+  3   108     2 misc_registers aligned like dump_misc_registers,	/* Assorted registers */
+  3   109 
+  3   110     2 pad5 bit (36),
+  3   111     2 ptrlen (0 : 7) bit (36),			/* pointers and lengths for EIS */
+  3   112     2 pad6 (15) bit (36),
+  3   113     2 low_order_port bit (3), 			/* from which clock was read */
+  3   114 
+  3   115     2 coreblocks (0 : 7),
+  3   116       3 num_first bit (18) unal,			/* first addr in coreblock */
+  3   117       3 num_blocks bit (18) unal;			/* number of blocks used */
+  3   118 
+  3   119 
+  3   120 dcl  DUMP_VERSION_1 fixed bin internal static options (constant) init (1);
+  3   121 dcl  DUMP_VERSION_2 fixed bin internal static options (constant) init (2);
+  3   122 
+  3   123 /* END INCLUDE FILE ... bos_dump.incl.pl1 ... */
+      387 
+      388  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  4     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  4     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  4     4 
+  4     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  4     6 
+  4     7 dcl (
+  4     8 
+  4     9 /* The following constants define the message action codes.  This indicates
+  4    10*how a message is to be handled.  */
+  4    11 
+  4    12      SYSERR_CRASH_SYSTEM	init (1),			
+  4    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  4    14 
+  4    15      SYSERR_TERMINATE_PROCESS	init (2),
+  4    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  4    17 
+  4    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  4    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  4    20 
+  4    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  4    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  4    23 
+  4    24      SYSERR_LOG_OR_PRINT	init (4),
+  4    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  4    26 
+  4    27      SYSERR_LOG_OR_DISCARD	init (5),
+  4    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  4    29 
+  4    30 
+  4    31 /* The following constants are added to the normal severities to indicate
+  4    32*different sorting classes of messages.  */
+  4    33 
+  4    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  4    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  4    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  4    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  4    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  4    39 	) fixed bin internal static options (constant);
+  4    40 
+  4    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      388 
+      389 /*  */
+      390 
+      391 /* BEGIN MESSAGE DOCUMENTATION
+      392*
+      393*   Message:
+      394*   copy_fdump: unexpected NAME signal.
+      395*
+      396*   S:	$info
+      397*
+      398*   T:	$run
+      399*
+      400*   M:	An attempt to copy the dump from the DUMP partition with
+      401*   copy_fdump resulted in an unclaimed signal. This may be due to
+      402*   damage to the DUMP partition contents, a malfunction of the BCE
+      403*   dump command, a supervisor error, or a simple difficulty
+      404*   like running out of space in >dumps. The system continues operation.
+      405*   The copied dump may be only partly valid.
+      406*
+      407*   A:	$notify
+      408*
+      409*
+      410*   Message:
+      411*   copy_fdump: Copied fdump image of erf NNN (MM/DD/YY HHMM.M) for USERNAME
+      412*
+      413*   S:	$info
+      414*
+      415*   T:	$run
+      416*
+      417*   M:	The user identified by USERNAME has successfully copied the
+      418*   FDUMP image for the specified ERF out of the DUMP partition. The time
+      419*   the FDUMP was taken is also included in the message. This message is
+      420*   informational only, and is intended only as an aid in tracking system
+      421*   progress by perusing the syserr log.
+      422*
+      423*   A:	$ignore
+      424*
+      425*
+      426*   END MESSAGE DOCUMENTATION */
+      427 
+      428      end copy_fdump;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1058.7  copy_fdump.pl1                    >udd>sm>ds>w>ml>copy_fdump.pl1
+385          1    04/11/85  1552.6  access_mode_values.incl.pl1       >ldd>incl>access_mode_values.incl.pl1
+386          2    01/30/85  1623.9  aste.incl.pl1                     >ldd>incl>aste.incl.pl1
+387          3    08/12/81  2125.8  bos_dump.incl.pl1                 >ldd>incl>bos_dump.incl.pl1
+388          4    05/17/85  0715.7  syserr_constants.incl.pl1         >ldd>incl>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000034 constant        fixed bin(17,0)          initial dcl 4-7 set ref 381*
+A_ACCESS_BIN                    000036 constant        fixed bin(5,0)           initial dcl 1-36 set ref 353*
+LOG                             000032 constant        fixed bin(17,0)          initial dcl 4-7 set ref 256*
+RW_ACCESS_BIN                   000017 constant        fixed bin(5,0)           initial dcl 1-36 set ref 350*
+a_code                                 parameter       fixed bin(35,0)          dcl 46 set ref 44 134 140 147* 162* 163* 170* 282*
+                                                                                  316* 355* 361* 367*
+a_ename                                parameter       char(32)                 packed unaligned dcl 46 set ref 140 145* 297*
+a_ename_dn355                          parameter       char(32)                 packed unaligned dcl 46 set ref 140 145* 301*
+a_erf_no                               parameter       fixed bin(17,0)          dcl 46 ref 134 136
+a_length                               parameter       fixed bin(35,0)          dcl 46 set ref 140 143* 295*
+a_valid                                parameter       bit(1)                   packed unaligned dcl 46 set ref 140 144* 296*
+a_valid_dn355                          parameter       bit(1)                   packed unaligned dcl 46 set ref 140 144* 300*
+abs_seg$                        000032 external static fixed bin(17,0)          dcl 90 set ref 178
+addr                                                   builtin function         dcl 127 ref 178 179
+addrel                                                 builtin function         dcl 127 ref 185 201 201 215 224 224 228 228
+append$branchx                  000062 constant        entry                    external dcl 106 ref 350 353
+aste                                   based           structure                level 1 dcl 2-11
+astep                           000214 automatic       pointer                  dcl 2-9 set ref 181* 182 183* 185 186* 188 189 190
+                                                                                  221* 222 246* 247 259* 271*
+ausedp                          000036 external static bit(18)                  array level 2 packed packed unaligned dcl 102 set
+                                                                                  ref 183*
+bit                                                    builtin function         dcl 127 ref 189
+char                                                   builtin function         dcl 127 ref 239
+code                            000157 automatic       fixed bin(35,0)          dcl 46 set ref 160* 161 162 163 265* 266* 346* 347*
+                                                                                  350* 351 352 353* 354 355 361 365* 367
+condition_                      000054 constant        entry                    external dcl 106 ref 193
+copy                                   based           fixed bin(35,0)          array dcl 46 set ref 234* 234 243* 243
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  189*
+cv_bin_$dec                     000074 constant        entry                    external dcl 106 ref 329
+date_time_                      000060 constant        entry                    external dcl 106 ref 331 336
+demand_deactivate$force_given_segno
+                                000076 constant        entry                    external dcl 106 ref 265 346
+din                                    based           structure                level 1 dcl 83
+divide                                                 builtin function         dcl 127 ref 152 226
+dn355_copy                             based           bit                      dcl 81 set ref 211* 213*
+dn355_core                             based           bit                      array level 3 dcl 83 ref 211
+dn355_images                           based           structure                array level 2 dcl 83
+dn355_size                      000204 automatic       fixed bin(17,0)          dcl 72 set ref 153* 205 208 226
+dt                              000106 automatic       char(24)                 packed unaligned dcl 46 set ref 256* 331* 332 332
+                                                                                  332 332
+dt_dn355                        000114 automatic       char(24)                 packed unaligned dcl 46 set ref 336* 337 337 337 337
+dump                                   based           structure                level 1 dcl 3-11 set ref 156
+dump_header                            based           structure                level 2 in structure "dump" dcl 3-11 in procedure
+                                                                                  "copy_fdump"
+dump_header                            based           structure                level 1 dcl 3-47 in procedure "copy_fdump"
+dump_misc_registers                    based           structure                level 1 dcl 3-69
+dump_pvid                       000174 automatic       bit(36)                  dcl 46 set ref 160*
+dump_pvtx                       000173 automatic       fixed bin(17,0)          dcl 46 set ref 160* 188
+dump_registers                         based           structure                level 1 dcl 3-59
+dumpadd                         000165 automatic       fixed bin(18,0)          dcl 46 set ref 160* 167 200 201 224 226* 226 227 228
+                                                                                  248* 248
+dumped_355s               7            based           bit(4)                   level 3 dcl 3-11 ref 211
+dumping_Multics                 000210 automatic       bit(1)                   packed unaligned dcl 77 set ref 220 249 294 296 319*
+                                                                                  330
+dumping_dn355                   000211 automatic       bit(1)                   packed unaligned dcl 77 set ref 206 299 300 320* 335
+dumpptr                         000216 automatic       pointer                  dcl 3-9 set ref 156 178* 187* 211 211 218 234 243
+                                                                                  255 256 274* 280 280 286 313 313 319 320 321 329
+                                                                                  331 336
+ename                           000122 automatic       char(32)                 packed unaligned dcl 46 set ref 232 239* 241 297
+                                                                                  332*
+ename_dn355                     000142 automatic       char(32)                 packed unaligned dcl 46 set ref 207 301 337*
+erf                             000152 automatic       char(12)                 packed unaligned dcl 46 set ref 239 329* 332 337
+erf_no                          000155 automatic       fixed bin(17,0)          dcl 46 set ref 136* 286
+erfno                     4            based           fixed bin(18,0)          level 3 dcl 3-11 set ref 256* 286* 329
+error_table_$bdprtdmp           000016 external static fixed bin(35,0)          dcl 90 ref 170
+error_table_$dmpinvld           000012 external static fixed bin(35,0)          dcl 90 ref 316
+error_table_$dmpvalid           000020 external static fixed bin(35,0)          dcl 90 ref 282
+error_table_$noaccess           000010 external static fixed bin(35,0)          dcl 90 ref 352
+error_table_$nopart             000022 external static fixed bin(35,0)          dcl 90 ref 162
+error_table_$noprtdmp           000014 external static fixed bin(35,0)          dcl 90 ref 162
+esw                             000164 automatic       fixed bin(17,0)          dcl 46 set ref 131* 137* 142* 194 195 313
+find_partition                  000102 constant        entry                    external dcl 106 ref 160
+first                           000170 automatic       fixed bin(20,0)          dcl 46 set ref 167* 174 253* 277* 289*
+fixed                                                  builtin function         dcl 127 ref 182 189
+get_aste                        000070 constant        entry                    external dcl 106 ref 181
+get_ptrs_$given_astep           000050 constant        entry                    external dcl 106 ref 186
+hdr_size                        000212 automatic       fixed bin(17,0)          dcl 79 set ref 156* 205 211 230 231
+i                               000100 automatic       fixed bin(17,0)          dcl 46 set ref 200* 200* 201 201 201* 210* 211 211*
+                                                                                  223* 224 224 224* 227* 227* 228 228 228*
+initiate                        000064 constant        entry                    external dcl 106 ref 365
+length                          000171 automatic       fixed bin(35,0)          dcl 46 set ref 205* 205 230 235* 235 240 244* 244
+                                                                                  250 295 321*
+lock$lock_ast                   000044 constant        entry                    external dcl 106 ref 180 270
+lock$unlock_ast                 000046 constant        entry                    external dcl 106 ref 184 272
+ltrim                                                  builtin function         dcl 127 ref 239 239 332 337
+max_pages                       000203 automatic       fixed bin(17,0)          dcl 72 set ref 152* 181* 189 200 227 248
+max_size                        000202 automatic       fixed bin(17,0)          dcl 72 set ref 151* 152 230 240
+mc_ptr                                 parameter       pointer                  dcl 377 ref 375
+min                                                    builtin function         dcl 127 ref 205 230 240
+name                                   parameter       char                     packed unaligned dcl 377 set ref 375 381*
+next_part_add                   000167 automatic       fixed bin(17,0)          dcl 46 set ref 174* 200 227
+npfs                     12(11)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  222* 247*
+nqsw                      5(20)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  190*
+nrecs                           000166 automatic       fixed bin(18,0)          dcl 46 set ref 160* 169 174 205
+null                                                   builtin function         dcl 127 ref 149 264 344 366
+p                               000102 automatic       pointer                  dcl 46 set ref 149* 211 213 215* 215 234 243 264
+                                                                                  265* 266* 344 346* 347* 365* 366
+pc$cleanup                      000066 constant        entry                    external dcl 106 ref 221 246 259
+pds$process_group_id            000030 external static char(32)                 dcl 90 set ref 256* 350
+pg_size                         000207 automatic       fixed bin(17,0)          dcl 75 set ref 150* 152 152 205 226
+privileged_mode_ut$swap_sdw     000040 constant        entry                    external dcl 106 ref 187 274
+ptp                             000104 automatic       pointer                  dcl 46 set ref 185* 201 201 224 224 228 228 253*
+                                                                                  277* 289*
+ptsi                     13(28)        based           bit(2)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 2-11 in procedure "copy_fdump" ref 182
+ptsi                            000156 automatic       fixed bin(17,0)          dcl 46 in procedure "copy_fdump" set ref 182* 183
+ptw_util_$make_disk             000104 constant        entry                    external dcl 106 ref 201 224 228 253 277 289
+put_aste                        000072 constant        entry                    external dcl 106 ref 271
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  188*
+rb                              000160 automatic       fixed bin(6,0)           initial array dcl 46 set ref 46* 46* 46* 350* 353*
+rest_size                       000213 automatic       fixed bin(17,0)          dcl 79 set ref 230* 231 235
+reversion_                      000056 constant        entry                    external dcl 106 ref 262
+seqno                           000163 automatic       fixed bin(17,0)          dcl 46 set ref 199* 203 239*
+single_dn355_size               000205 automatic       fixed bin(35,0)          dcl 73 set ref 154* 211 211 211 211 213
+size                                                   builtin function         dcl 127 ref 156
+sst$astsize                     000034 external static fixed bin(17,0)          dcl 101 ref 185
+sst$level                       000036 external static structure                array level 1 dcl 102
+substr                                                 builtin function         dcl 127 set ref 211 239* 332 332 332 332 337 337 337
+                                                                                  337
+sys_info$default_max_length     000024 external static fixed bin(35,0)          dcl 90 ref 151
+sys_info$page_size              000026 external static fixed bin(35,0)          dcl 90 ref 150
+syserr                          000052 constant        entry                    external dcl 106 ref 256 381
+terminate_$noname               000100 constant        entry                    external dcl 106 ref 266 347
+thread$out                      000042 constant        entry                    external dcl 106 ref 183
+time                      2            based           fixed bin(71,0)          level 3 dcl 3-11 set ref 331*
+time_355                 10            based           fixed bin(71,0)          level 3 dcl 3-11 set ref 336*
+tsdw                            000200 automatic       bit(72)                  packed unaligned dcl 46 set ref 179 186* 273*
+tsdwp                           000176 automatic       pointer                  dcl 46 set ref 179* 187* 274*
+valid                     1            based           bit(1)                   level 3 dcl 3-11 set ref 255* 280 313 319
+valid_355                 6            based           bit(1)                   level 3 dcl 3-11 set ref 218* 280 313 320
+word_count                      000172 automatic       fixed bin(18,0)          dcl 46 set ref 208* 231* 234 240* 243 244 350
+words_dumped                           based           fixed bin(35,0)          level 3 dcl 3-11 ref 321
+words_per_image                 000206 automatic       fixed bin(17,0)          dcl 74 set ref 155* 215
+xname                           000132 automatic       char(32)                 packed unaligned dcl 46 set ref 207* 232* 241* 350*
+                                                                                  365*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+BEEP                                   internal static fixed bin(17,0)          initial dcl 4-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 4-7
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+DUMP_VERSION_1                         internal static fixed bin(17,0)          initial dcl 3-120
+DUMP_VERSION_2                         internal static fixed bin(17,0)          initial dcl 3-121
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 4-7
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 4-7
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 4-7
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+asta                                   based           bit(432)                 array dcl 2-86
+aste_part                              based           structure                level 1 dcl 2-89
+seg_aste                               based           structure                level 1 dcl 2-96
+v1_dump                                based           structure                level 1 dcl 3-83
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+append                          001675 constant        label                    dcl 344 ref 358
+check_dump_header               001400 constant        entry                    internal dcl 312 ref 204 292
+cleanup                         001131 constant        label                    dcl 253 ref 250
+copy_fdump                      000132 constant        entry                    external dcl 44
+endup                           001200 constant        label                    dcl 259 ref 249 283 287 304 317 356 362 368
+exit                            001207 constant        label                    dcl 262 ref 382
+get_branch                      001674 constant        entry                    internal dcl 343 ref 209 233 242
+get_erf_no                      000176 constant        entry                    external dcl 140
+get_num                         001335 constant        label                    dcl 289 ref 195
+handler                         002160 constant        entry                    internal dcl 375 ref 193 193
+set_erf_no                      000151 constant        entry                    external dcl 134
+set_num                         001307 constant        label                    dcl 277 ref 194
+setup                           000233 constant        label                    dcl 147 set ref 132 138
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2626        2734    2227        2636
+Length      3252    2227       106         302     377           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+copy_fdump                          316 external procedure  is an external procedure.  
+check_dump_header                       internal procedure  shares stack frame of external procedure copy_fdump.  
+get_branch                              internal procedure  shares stack frame of external procedure copy_fdump.  
+handler                              90 internal procedure  is assigned to an entry variable.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+copy_fdump               000100 i                           copy_fdump
+                         000102 p                           copy_fdump
+                         000104 ptp                         copy_fdump
+                         000106 dt                          copy_fdump
+                         000114 dt_dn355                    copy_fdump
+                         000122 ename                       copy_fdump
+                         000132 xname                       copy_fdump
+                         000142 ename_dn355                 copy_fdump
+                         000152 erf                         copy_fdump
+                         000155 erf_no                      copy_fdump
+                         000156 ptsi                        copy_fdump
+                         000157 code                        copy_fdump
+                         000160 rb                          copy_fdump
+                         000163 seqno                       copy_fdump
+                         000164 esw                         copy_fdump
+                         000165 dumpadd                     copy_fdump
+                         000166 nrecs                       copy_fdump
+                         000167 next_part_add               copy_fdump
+                         000170 first                       copy_fdump
+                         000171 length                      copy_fdump
+                         000172 word_count                  copy_fdump
+                         000173 dump_pvtx                   copy_fdump
+                         000174 dump_pvid                   copy_fdump
+                         000176 tsdwp                       copy_fdump
+                         000200 tsdw                        copy_fdump
+                         000202 max_size                    copy_fdump
+                         000203 max_pages                   copy_fdump
+                         000204 dn355_size                  copy_fdump
+                         000205 single_dn355_size           copy_fdump
+                         000206 words_per_image             copy_fdump
+                         000207 pg_size                     copy_fdump
+                         000210 dumping_Multics             copy_fdump
+                         000211 dumping_dn355               copy_fdump
+                         000212 hdr_size                    copy_fdump
+                         000213 rest_size                   copy_fdump
+                         000214 astep                       copy_fdump
+                         000216 dumpptr                     copy_fdump
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac          tra_ext_1
+shorten_stack       ext_entry           int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branchx                condition_                    cv_bin_$dec                   date_time_
+demand_deactivate$force_given_segno                         find_partition                get_aste
+get_ptrs_$given_astep         initiate                      lock$lock_ast                 lock$unlock_ast
+pc$cleanup                    privileged_mode_ut$swap_sdw   ptw_util_$make_disk           put_aste
+reversion_                    syserr                        terminate_$noname             thread$out
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+abs_seg$                      error_table_$bdprtdmp         error_table_$dmpinvld         error_table_$dmpvalid
+error_table_$noaccess         error_table_$nopart           error_table_$noprtdmp         pds$process_group_id
+sst$astsize                   sst$level                     sys_info$default_max_length   sys_info$page_size
+
+
+CONSTANTS
+002222  aa  403 040 022 146	 f
+002223  aa  040 321 000 000	 Ñ
+
+002224  aa     777677777777
+
+000000  aa     524000000041
+
+000001  aa     526077777777
+
+000002  aa     404000000002
+
+000003  aa     524000000000
+
+000004  aa     524000000005
+
+000005  aa     524000000001
+
+000006  aa     404000000030
+
+000007  aa     404000000001
+
+000010  aa     404000000005
+
+000011  aa     524000000006
+
+000012  aa  056 063 065 065	.355
+
+002225  aa  060 056 000 000	0.
+
+000013  aa     410000000107
+
+000014  aa     524000000040
+
+000015  aa     526000000030
+
+000016  aa     524000000064
+
+002226  aa  056 000 000 000	.
+
+000017  aa     000000000012
+
+000020  aa     500000000000
+
+000021  aa     524000000011
+
+000022  aa     404000000022
+
+000023  aa     514000000044
+
+000024  aa     524000000004
+
+000025  aa  144 165 155 160	dump
+
+000026  aa     000002200000
+
+000027  aa     524000000014
+
+000030  aa     464000000000
+
+000031  aa     514000000110
+
+000032  aa     000000000004
+
+000033  aa     516000000001
+
+000034  aa     000000000000
+
+000035  aa     404000000043
+
+000036  aa     000000000001
+
+000037  aa     404000000021
+
+000040  aa     526000000040
+
+000042  aa  052 056 052 056	*.*.
+000043  aa  052 000 000 000	*
+
+000044  aa  144 165 155 160	dump
+000045  aa  163 000 000 000	s
+
+000046  aa  076 144 165 155	>dum
+000047  aa  160 163 000 000	ps
+
+000050  aa     000000000000
+000051  aa     000000000000
+
+000052  aa     077777000043
+000053  aa     000001000000
+
+000054  aa  141 156 171 137	any_
+000055  aa  157 164 150 145	othe
+000056  aa  162 000 000 000	r
+
+000057  aa     404100000006
+000060  aa     000000000001
+000061  aa     000000000003
+000062  aa     000000000001
+
+000063  aa  143 157 160 171	copy
+000064  aa  137 146 144 165	_fdu
+000065  aa  155 160 072 040	mp: 
+000066  aa  165 156 145 170	unex
+000067  aa  160 145 143 164	pect
+000070  aa  145 144 040 136	ed ^
+000071  aa  141 040 163 151	a si
+000072  aa  147 156 141 154	gnal
+000073  aa  056 000 000 000	.
+
+000074  aa  143 157 160 171	copy
+000075  aa  137 146 144 165	_fdu
+000076  aa  155 160 072 040	mp: 
+000077  aa  103 157 160 151	Copi
+000100  aa  145 144 040 146	ed f
+000101  aa  144 165 155 160	dump
+000102  aa  040 151 155 141	 ima
+000103  aa  147 145 040 157	ge o
+000104  aa  146 040 145 162	f er
+000105  aa  146 040 136 144	f ^d
+000106  aa  040 050 136 141	 (^a
+000107  aa  051 040 146 157	) fo
+000110  aa  162 040 136 141	r ^a
+
+BEGIN PROCEDURE copy_fdump
+PROLOGUE SEQUENCE
+000111  aa  6 00242 4401 00	sxl0 	pr6|162
+						STATEMENT 1 ON LINE 46
+000112  aa  6 00222 4501 00	stz  	pr6|146
+000113  aa  6 00222 0541 00	aos  	pr6|146
+000114  aa   000007 2360 07	ldq  	7,dl
+000115  aa  6 00222 7271 00	lxl7 	pr6|146
+000116  aa  6 00157 7561 17	stq  	pr6|111,7		rb
+000117  aa  6 00222 0541 00	aos  	pr6|146
+000120  aa  6 00222 7271 00	lxl7 	pr6|146
+000121  aa  6 00157 7561 17	stq  	pr6|111,7		rb
+000122  aa  6 00222 0541 00	aos  	pr6|146
+000123  aa  6 00222 7271 00	lxl7 	pr6|146
+000124  aa  6 00157 7561 17	stq  	pr6|111,7		rb
+000125  aa  6 00242 7201 00	lxl0 	pr6|162
+000126  aa   000000 7100 10	tra  	0,0
+MAIN SEQUENCE
+ENTRY TO copy_fdump                                         STATEMENT 1 ON LINE 44
+copy_fdump: proc (a_code);
+
+000127  at     000001000035
+000130  ta     000127000000
+000131  da     000352300000
+000132  aa   000500 6270 00	eax7 	320
+000133  aa  7 00034 3521 20	epp2 	pr7|28,*
+000134  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000135  aa     000002000000
+000136  aa     000000000000
+000137  aa  6 00032 3735 20	epp7 	pr6|26,*
+000140  aa  7 00002 3715 20	epp5 	pr7|2,*
+000141  aa  6 00220 6515 00	spri5	pr6|144
+000142  aa   777747 7000 04	tsx0 	-25,ic		000111
+						STATEMENT 1 ON LINE 131
+	esw = 0;
+
+000143  aa  6 00164 4501 00	stz  	pr6|116		esw
+						STATEMENT 1 ON LINE 132
+	go to setup;
+
+000144  aa   000067 7100 04	tra  	55,ic		000233
+ENTRY TO set_erf_no                                         STATEMENT 1 ON LINE 134
+set_erf_no:
+     entry (a_erf_no, a_code);
+
+000145  at     000002000037
+000146  ta     000035000000
+000147  ta     000145000000
+000150  da     000360300000
+000151  aa   000500 6270 00	eax7 	320
+000152  aa  7 00034 3521 20	epp2 	pr7|28,*
+000153  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000154  aa     000004000000
+000155  aa     000000000000
+000156  aa  6 00032 3735 20	epp7 	pr6|26,*
+000157  aa  7 00004 3715 20	epp5 	pr7|4,*
+000160  aa  6 00220 6515 00	spri5	pr6|144
+000161  aa   777730 7000 04	tsx0 	-40,ic		000111
+						STATEMENT 1 ON LINE 136
+	erf_no = a_erf_no;
+
+000162  aa  6 00032 3735 20	epp7 	pr6|26,*
+000163  aa  7 00002 2361 20	ldq  	pr7|2,*		a_erf_no
+000164  aa  6 00155 7561 00	stq  	pr6|109		erf_no
+						STATEMENT 1 ON LINE 137
+	esw = 1;
+
+000165  aa   000001 2360 07	ldq  	1,dl
+000166  aa  6 00164 7561 00	stq  	pr6|116		esw
+						STATEMENT 1 ON LINE 138
+	go to setup;
+
+000167  aa   000044 7100 04	tra  	36,ic		000233
+ENTRY TO get_erf_no                                         STATEMENT 1 ON LINE 140
+get_erf_no:
+     entry (a_length, a_valid, a_ename, a_valid_dn355, a_ename_dn355, a_code);
+
+000170  at     000006000035
+000171  tt     000033000040
+000172  tt     000033000040
+000173  ta     000035000000
+000174  ta     000170000000
+000175  da     000366300000
+000176  aa   000500 6270 00	eax7 	320
+000177  aa  7 00034 3521 20	epp2 	pr7|28,*
+000200  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000201  aa     000014000000
+000202  aa     000000000000
+000203  aa  6 00032 3735 20	epp7 	pr6|26,*
+000204  aa  7 00014 3715 20	epp5 	pr7|12,*
+000205  aa  6 00220 6515 00	spri5	pr6|144
+000206  aa   777703 7000 04	tsx0 	-61,ic		000111
+						STATEMENT 1 ON LINE 142
+	esw = 2;
+
+000207  aa   000002 2360 07	ldq  	2,dl
+000210  aa  6 00164 7561 00	stq  	pr6|116		esw
+						STATEMENT 1 ON LINE 143
+	a_length = 0;
+
+000211  aa  6 00032 3735 20	epp7 	pr6|26,*
+000212  aa  7 00002 4501 20	stz  	pr7|2,*		a_length
+						STATEMENT 1 ON LINE 144
+	a_valid, a_valid_dn355 = "0"b;
+
+000213  aa  7 00004 3715 20	epp5 	pr7|4,*
+000214  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000215  aa   000000 00 0000	descb	0,0
+000216  aa  5 00000 00 0001	descb	pr5|0,1		a_valid
+000217  aa  7 00010 3535 20	epp3 	pr7|8,*
+000220  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000221  aa   000000 00 0000	descb	0,0
+000222  aa  3 00000 00 0001	descb	pr3|0,1		a_valid_dn355
+						STATEMENT 1 ON LINE 145
+	a_ename, a_ename_dn355 = "                                ";
+
+000223  aa  7 00006 3515 20	epp1 	pr7|6,*
+000224  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000225  aa   000000 00 0000	desc9a	0,0
+000226  aa  1 00000 00 0040	desc9a	pr1|0,32		a_ename
+000227  aa  7 00012 3715 20	epp5 	pr7|10,*
+000230  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000231  aa   000000 00 0000	desc9a	0,0
+000232  aa  5 00000 00 0040	desc9a	pr5|0,32		a_ename_dn355
+						STATEMENT 1 ON LINE 147
+setup:
+	a_code = 0;
+
+000233  aa  6 00220 4501 20	stz  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 149
+	p = null ();
+
+000234  aa   777616 2370 04	ldaq 	-114,ic		000052 = 077777000043 000001000000
+000235  aa  6 00102 7571 00	staq 	pr6|66		p
+						STATEMENT 1 ON LINE 150
+	pg_size = sys_info$page_size;
+
+000236  aa  6 00044 3701 20	epp4 	pr6|36,*
+000237  la  4 00026 2361 20	ldq  	pr4|22,*		sys_info$page_size
+000240  aa  6 00207 7561 00	stq  	pr6|135		pg_size
+						STATEMENT 1 ON LINE 151
+	max_size = sys_info$default_max_length;
+
+000241  la  4 00024 2361 20	ldq  	pr4|20,*		sys_info$default_max_length
+000242  aa  6 00202 7561 00	stq  	pr6|130		max_size
+						STATEMENT 1 ON LINE 152
+	max_pages = divide (max_size + pg_size - 1, pg_size, 17, 0);
+
+000243  aa  6 00207 0761 00	adq  	pr6|135		pg_size
+000244  aa   000001 1760 07	sbq  	1,dl
+000245  aa  6 00207 5061 00	div  	pr6|135		pg_size
+000246  aa  6 00203 7561 00	stq  	pr6|131		max_pages
+						STATEMENT 1 ON LINE 153
+	dn355_size = 16384 * 4;
+
+000247  aa   200000 2360 07	ldq  	65536,dl
+000250  aa  6 00204 7561 00	stq  	pr6|132		dn355_size
+						STATEMENT 1 ON LINE 154
+	single_dn355_size = 16384 * 36;
+
+000251  aa   777555 2360 04	ldq  	-147,ic		000026 = 000002200000
+000252  aa  6 00205 7561 00	stq  	pr6|133		single_dn355_size
+						STATEMENT 1 ON LINE 155
+	words_per_image = 16384;
+
+000253  aa   040000 2360 07	ldq  	16384,dl
+000254  aa  6 00206 7561 00	stq  	pr6|134		words_per_image
+						STATEMENT 1 ON LINE 156
+	hdr_size = size (dump);
+
+000255  aa   004000 2360 07	ldq  	2048,dl
+000256  aa  6 00212 7561 00	stq  	pr6|138		hdr_size
+						STATEMENT 1 ON LINE 160
+	call find_partition ("dump", dump_pvtx, dump_pvid, dumpadd, nrecs, code);
+
+000257  aa   777546 2350 04	lda  	-154,ic		000025 = 144165155160
+000260  aa  6 00243 7551 00	sta  	pr6|163
+000261  aa  6 00243 3521 00	epp2 	pr6|163
+000262  aa  6 00246 2521 00	spri2	pr6|166
+000263  aa  6 00173 3521 00	epp2 	pr6|123		dump_pvtx
+000264  aa  6 00250 2521 00	spri2	pr6|168
+000265  aa  6 00174 3521 00	epp2 	pr6|124		dump_pvid
+000266  aa  6 00252 2521 00	spri2	pr6|170
+000267  aa  6 00165 3521 00	epp2 	pr6|117		dumpadd
+000270  aa  6 00254 2521 00	spri2	pr6|172
+000271  aa  6 00166 3521 00	epp2 	pr6|118		nrecs
+000272  aa  6 00256 2521 00	spri2	pr6|174
+000273  aa  6 00157 3521 00	epp2 	pr6|111		code
+000274  aa  6 00260 2521 00	spri2	pr6|176
+000275  aa   777527 3520 04	epp2 	-169,ic		000024 = 524000000004
+000276  aa  6 00262 2521 00	spri2	pr6|178
+000277  aa   777540 3520 04	epp2 	-160,ic		000037 = 404000000021
+000300  aa  6 00264 2521 00	spri2	pr6|180
+000301  aa   777522 3520 04	epp2 	-174,ic		000023 = 514000000044
+000302  aa  6 00266 2521 00	spri2	pr6|182
+000303  aa   777517 3520 04	epp2 	-177,ic		000022 = 404000000022
+000304  aa  6 00270 2521 00	spri2	pr6|184
+000305  aa  6 00272 2521 00	spri2	pr6|186
+000306  aa   777527 3520 04	epp2 	-169,ic		000035 = 404000000043
+000307  aa  6 00274 2521 00	spri2	pr6|188
+000310  aa  6 00244 6211 00	eax1 	pr6|164
+000311  aa   030000 4310 07	fld  	12288,dl
+000312  la  4 00102 3521 20	epp2 	pr4|66,*		find_partition
+000313  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 161
+	if code ^= 0 then do;
+
+000314  aa  6 00157 2361 00	ldq  	pr6|111		code
+000315  aa   000011 6000 04	tze  	9,ic		000326
+						STATEMENT 1 ON LINE 162
+		if code = error_table_$nopart then a_code = error_table_$noprtdmp;
+
+000316  aa  6 00044 3701 20	epp4 	pr6|36,*
+000317  la  4 00022 1161 20	cmpq 	pr4|18,*		error_table_$nopart
+000320  aa   000004 6010 04	tnz  	4,ic		000324
+000321  la  4 00014 2361 20	ldq  	pr4|12,*		error_table_$noprtdmp
+000322  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+000323  aa   000002 7100 04	tra  	2,ic		000325
+						STATEMENT 1 ON LINE 163
+		else a_code = code;
+
+000324  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 164
+		return;
+
+000325  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 165
+	     end;
+
+						STATEMENT 1 ON LINE 167
+	first = dumpadd;
+
+000326  aa  6 00165 2361 00	ldq  	pr6|117		dumpadd
+000327  aa  6 00170 7561 00	stq  	pr6|120		first
+						STATEMENT 1 ON LINE 169
+	if nrecs = 0 then do;
+
+000330  aa  6 00166 2361 00	ldq  	pr6|118		nrecs
+000331  aa   000005 6010 04	tnz  	5,ic		000336
+						STATEMENT 1 ON LINE 170
+		a_code = error_table_$bdprtdmp;
+
+000332  aa  6 00044 3701 20	epp4 	pr6|36,*
+000333  la  4 00016 2361 20	ldq  	pr4|14,*		error_table_$bdprtdmp
+000334  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 171
+		return;
+
+000335  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 172
+	     end;
+
+						STATEMENT 1 ON LINE 174
+	next_part_add = first + nrecs;
+
+000336  aa  6 00170 0761 00	adq  	pr6|120		first
+000337  aa  6 00167 7561 00	stq  	pr6|119		next_part_add
+						STATEMENT 1 ON LINE 178
+	dumpptr = addr (abs_seg$);
+
+000340  aa  6 00044 3701 20	epp4 	pr6|36,*
+000341  la  4 00032 3735 20	epp7 	pr4|26,*		abs_seg$
+000342  aa  6 00216 6535 00	spri7	pr6|142		dumpptr
+						STATEMENT 1 ON LINE 179
+	tsdwp = addr (tsdw);
+
+000343  aa  6 00200 3715 00	epp5 	pr6|128		tsdw
+000344  aa  6 00176 6515 00	spri5	pr6|126		tsdwp
+						STATEMENT 1 ON LINE 180
+	call lock$lock_ast;
+
+000345  aa  6 00056 6211 00	eax1 	pr6|46
+000346  aa   000000 4310 07	fld  	0,dl
+000347  la  4 00044 3521 20	epp2 	pr4|36,*		lock$lock_ast
+000350  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 181
+	astep = get_aste (max_pages);
+
+000351  aa  6 00203 3521 00	epp2 	pr6|131		max_pages
+000352  aa  6 00246 2521 00	spri2	pr6|166
+000353  aa  6 00214 3521 00	epp2 	pr6|140		astep
+000354  aa  6 00250 2521 00	spri2	pr6|168
+000355  aa  6 00244 6211 00	eax1 	pr6|164
+000356  aa   010000 4310 07	fld  	4096,dl
+000357  aa  6 00044 3701 20	epp4 	pr6|36,*
+000360  la  4 00070 3521 20	epp2 	pr4|56,*		get_aste
+000361  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 182
+	ptsi = fixed (aste.ptsi, 2);
+
+000362  aa  6 00214 3735 20	epp7 	pr6|140,*		astep
+000363  aa  7 00013 2351 00	lda  	pr7|11		aste.ptsi
+000364  aa   000034 7350 00	als  	28
+000365  aa   000106 7730 00	lrl  	70
+000366  aa  6 00156 7561 00	stq  	pr6|110		ptsi
+						STATEMENT 1 ON LINE 183
+	call thread$out (astep, sst$level.ausedp (ptsi));
+
+000367  aa  6 00214 3521 00	epp2 	pr6|140		astep
+000370  aa  6 00246 2521 00	spri2	pr6|166
+000371  aa  6 00044 3701 20	epp4 	pr6|36,*
+000372  la  4 00036 3521 66	epp2 	pr4|30,*ql	sst$level.ausedp
+000373  aa  6 00250 2521 00	spri2	pr6|168
+000374  aa  6 00244 6211 00	eax1 	pr6|164
+000375  aa   010000 4310 07	fld  	4096,dl
+000376  la  4 00042 3521 20	epp2 	pr4|34,*		thread$out
+000377  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 184
+	call lock$unlock_ast;
+
+000400  aa  6 00056 6211 00	eax1 	pr6|46
+000401  aa   000000 4310 07	fld  	0,dl
+000402  aa  6 00044 3701 20	epp4 	pr6|36,*
+000403  la  4 00046 3521 20	epp2 	pr4|38,*		lock$unlock_ast
+000404  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 185
+	ptp = addrel (astep, sst$astsize);
+
+000405  aa  6 00044 3701 20	epp4 	pr6|36,*
+000406  la  4 00034 2361 20	ldq  	pr4|28,*		sst$astsize
+000407  aa  6 00214 3521 66	epp2 	pr6|140,*ql	astep
+000410  aa   000000 0520 03	adwp2	0,du
+000411  aa  6 00104 2521 00	spri2	pr6|68		ptp
+						STATEMENT 1 ON LINE 186
+	tsdw = get_ptrs_$given_astep (astep);
+
+000412  aa  6 00214 3521 00	epp2 	pr6|140		astep
+000413  aa  6 00246 2521 00	spri2	pr6|166
+000414  aa  6 00276 3521 00	epp2 	pr6|190
+000415  aa  6 00250 2521 00	spri2	pr6|168
+000416  aa  6 00244 6211 00	eax1 	pr6|164
+000417  aa   010000 4310 07	fld  	4096,dl
+000420  la  4 00050 3521 20	epp2 	pr4|40,*		get_ptrs_$given_astep
+000421  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000422  aa  6 00276 2371 00	ldaq 	pr6|190
+000423  aa  6 00200 7571 00	staq 	pr6|128		tsdw
+						STATEMENT 1 ON LINE 187
+	call privileged_mode_ut$swap_sdw (dumpptr, tsdwp);
+
+000424  aa  6 00216 3521 00	epp2 	pr6|142		dumpptr
+000425  aa  6 00246 2521 00	spri2	pr6|166
+000426  aa  6 00176 3521 00	epp2 	pr6|126		tsdwp
+000427  aa  6 00250 2521 00	spri2	pr6|168
+000430  aa  6 00244 6211 00	eax1 	pr6|164
+000431  aa   010000 4310 07	fld  	4096,dl
+000432  aa  6 00044 3701 20	epp4 	pr6|36,*
+000433  la  4 00040 3521 20	epp2 	pr4|32,*		privileged_mode_ut$swap_sdw
+000434  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 188
+	aste.pvtx = dump_pvtx;
+
+000435  aa  6 00173 2361 00	ldq  	pr6|123		dump_pvtx
+000436  aa   000066 7370 00	lls  	54
+000437  aa  6 00214 3735 20	epp7 	pr6|140,*		astep
+000440  aa  7 00004 5511 20	stba 	pr7|4,20		aste.pvtx
+						STATEMENT 1 ON LINE 189
+	aste.csl = bit (fixed (max_pages,9), 9);
+
+000441  aa  6 00203 2351 00	lda  	pr6|131		max_pages
+000442  aa   000002 6050 04	tpl  	2,ic		000444
+000443  aa   000000 5310 00	neg  	0
+000444  aa   000033 7350 00	als  	27
+000445  aa  7 00012 5511 40	stba 	pr7|10,40		aste.csl
+						STATEMENT 1 ON LINE 190
+	aste.nqsw = "1"b;
+
+000446  aa   100000 2350 07	lda  	32768,dl
+000447  aa  7 00005 2551 00	orsa 	pr7|5		aste.nqsw
+						STATEMENT 1 ON LINE 193
+	call condition_ ("any_other", handler);
+
+000450  aa   777404 2370 04	ldaq 	-252,ic		000054 = 141156171137 157164150145
+000451  aa  6 00244 7571 00	staq 	pr6|164
+000452  aa   162000 2350 03	lda  	58368,du
+000453  aa  6 00246 7551 00	sta  	pr6|166
+000454  aa   001504 3520 04	epp2 	836,ic		002160 = 000140627000
+000455  aa  6 00300 2521 00	spri2	pr6|192		cp.178
+000456  aa  6 00302 6521 00	spri6	pr6|194		cp.178
+000457  aa  6 00244 3521 00	epp2 	pr6|164
+000460  aa  6 00306 2521 00	spri2	pr6|198
+000461  aa  6 00300 3521 00	epp2 	pr6|192		cp.178
+000462  aa  6 00310 2521 00	spri2	pr6|200
+000463  aa   777336 3520 04	epp2 	-290,ic		000021 = 524000000011
+000464  aa  6 00312 2521 00	spri2	pr6|202
+000465  aa   777333 3520 04	epp2 	-293,ic		000020 = 500000000000
+000466  aa  6 00314 2521 00	spri2	pr6|204
+000467  aa  6 00304 6211 00	eax1 	pr6|196
+000470  aa   010000 4310 07	fld  	4096,dl
+000471  aa  6 00044 3701 20	epp4 	pr6|36,*
+000472  la  4 00054 3521 20	epp2 	pr4|44,*		condition_
+000473  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 194
+	if esw = 1 then go to set_num;
+
+000474  aa  6 00164 2361 00	ldq  	pr6|116		esw
+000475  aa   000001 1160 07	cmpq 	1,dl
+000476  aa   000611 6000 04	tze  	393,ic		001307
+						STATEMENT 1 ON LINE 195
+	if esw = 2 then go to get_num;
+
+000477  aa   000002 1160 07	cmpq 	2,dl
+000500  aa   000635 6000 04	tze  	413,ic		001335
+						STATEMENT 1 ON LINE 199
+	do seqno = 0 by 1;
+
+000501  aa  6 00163 4501 00	stz  	pr6|115		seqno
+						STATEMENT 1 ON LINE 200
+	     do i = 0 to (max_pages - 1) while (i < next_part_add - dumpadd);
+
+000502  aa  6 00203 2361 00	ldq  	pr6|131		max_pages
+000503  aa   000001 1760 07	sbq  	1,dl
+000504  aa  6 00223 7561 00	stq  	pr6|147
+000505  aa  6 00100 4501 00	stz  	pr6|64		i
+000506  aa  6 00100 2361 00	ldq  	pr6|64		i
+000507  aa  6 00223 1161 00	cmpq 	pr6|147
+000510  aa   000026 6054 04	tpnz 	22,ic		000536
+000511  aa  6 00167 2361 00	ldq  	pr6|119		next_part_add
+000512  aa  6 00165 1761 00	sbq  	pr6|117		dumpadd
+000513  aa  6 00100 1161 00	cmpq 	pr6|64		i
+000514  aa   000022 6044 04	tmoz 	18,ic		000536
+						STATEMENT 1 ON LINE 201
+		call ptw_util_$make_disk (addrel (ptp, i), (dumpadd + i));
+
+000515  aa  6 00100 2361 00	ldq  	pr6|64		i
+000516  aa  6 00104 3521 66	epp2 	pr6|68,*ql	ptp
+000517  aa   000000 0520 03	adwp2	0,du
+000520  aa  6 00276 2521 00	spri2	pr6|190
+000521  aa  6 00165 0761 00	adq  	pr6|117		dumpadd
+000522  aa  6 00243 7561 00	stq  	pr6|163
+000523  aa  6 00276 3521 00	epp2 	pr6|190
+000524  aa  6 00306 2521 00	spri2	pr6|198
+000525  aa  6 00243 3521 00	epp2 	pr6|163
+000526  aa  6 00310 2521 00	spri2	pr6|200
+000527  aa  6 00304 6211 00	eax1 	pr6|196
+000530  aa   010000 4310 07	fld  	4096,dl
+000531  aa  6 00044 3701 20	epp4 	pr6|36,*
+000532  la  4 00104 3521 20	epp2 	pr4|68,*		ptw_util_$make_disk
+000533  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 202
+	     end;
+
+000534  aa  6 00100 0541 00	aos  	pr6|64		i
+000535  aa   777751 7100 04	tra  	-23,ic		000506
+						STATEMENT 1 ON LINE 203
+	     if seqno = 0 then do;
+
+000536  aa  6 00163 2361 00	ldq  	pr6|115		seqno
+000537  aa   000233 6010 04	tnz  	155,ic		000772
+						STATEMENT 1 ON LINE 204
+		     call check_dump_header;
+
+000540  aa   000640 6700 04	tsp4 	416,ic		001400
+						STATEMENT 1 ON LINE 205
+		     length = min (length, nrecs * pg_size - dn355_size - hdr_size);
+
+000541  aa  6 00166 2361 00	ldq  	pr6|118		nrecs
+000542  aa  6 00207 4021 00	mpy  	pr6|135		pg_size
+000543  aa   000000 5330 00	negl 	0
+000544  aa  6 00204 0331 00	adl  	pr6|132		dn355_size
+000545  aa   000000 5330 00	negl 	0
+000546  aa   000000 5330 00	negl 	0
+000547  aa  6 00212 0331 00	adl  	pr6|138		hdr_size
+000550  aa   000000 5330 00	negl 	0
+000551  aa  6 00276 7571 00	staq 	pr6|190
+000552  aa  6 00171 2351 00	lda  	pr6|121		length
+000553  aa   000044 7330 00	lrs  	36
+000554  aa  6 00276 1171 00	cmpaq	pr6|190
+000555  aa   000002 6040 04	tmi  	2,ic		000557
+000556  aa  6 00276 2371 00	ldaq 	pr6|190
+000557  aa  6 00171 7561 00	stq  	pr6|121		length
+						STATEMENT 1 ON LINE 206
+		     if dumping_dn355 then do;
+
+000560  aa  6 00211 2351 00	lda  	pr6|137		dumping_dn355
+000561  aa   000056 6000 04	tze  	46,ic		000637
+						STATEMENT 1 ON LINE 207
+			     xname = ename_dn355;
+
+000562  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000563  aa  6 00142 00 0040	desc9a	pr6|98,32		ename_dn355
+000564  aa  6 00132 00 0040	desc9a	pr6|90,32		xname
+						STATEMENT 1 ON LINE 208
+			     word_count = dn355_size;
+
+000565  aa  6 00204 2361 00	ldq  	pr6|132		dn355_size
+000566  aa  6 00172 7561 00	stq  	pr6|122		word_count
+						STATEMENT 1 ON LINE 209
+			     call get_branch;
+
+000567  aa   001105 6700 04	tsp4 	581,ic		001674
+						STATEMENT 1 ON LINE 210
+			     do i = 1 to 4;
+
+000570  aa   000001 2360 07	ldq  	1,dl
+000571  aa  6 00100 7561 00	stq  	pr6|64		i
+000572  aa  6 00100 2361 00	ldq  	pr6|64		i
+000573  aa   000004 1160 07	cmpq 	4,dl
+000574  aa   000041 6054 04	tpnz 	33,ic		000635
+						STATEMENT 1 ON LINE 211
+				if substr (dumpptr -> dump.dumped_355s, i, 1) /* there is an image for this one */
+				then p -> dn355_copy = dumpptr -> din.dn355_images (i).dn355_core;
+
+000575  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+000576  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+000577  aa  7 00006 70 0001	descb	pr7|6(35),1	dump.dumped_355s
+000600  aa   000000 00 0000	descb	0,0
+000601  aa   000017 6000 04	tze  	15,ic		000620
+000602  aa  6 00205 2361 00	ldq  	pr6|133		single_dn355_size
+000603  aa   000043 0760 07	adq  	35,dl
+000604  aa   000044 5060 07	div  	36,dl
+000605  aa  6 00243 7561 00	stq  	pr6|163
+000606  aa  6 00100 4021 00	mpy  	pr6|64		i
+000607  aa  6 00243 1761 00	sbq  	pr6|163
+000610  aa  6 00212 0761 00	adq  	pr6|138		hdr_size
+000611  aa  7 00000 3715 06	epp5 	pr7|0,ql		din.dn355_core
+000612  aa  6 00102 3535 20	epp3 	pr6|66,*		p
+000613  aa  6 00205 2351 00	lda  	pr6|133		single_dn355_size
+000614  aa  003 140 060 540	csl  	(pr,rl),(pr,rl),fill(0),bool(move)
+000615  aa  5 00000 00 0005	descb	pr5|0,al		din.dn355_core
+000616  aa  3 00000 00 0005	descb	pr3|0,al		dn355_copy
+000617  aa   000010 7100 04	tra  	8,ic		000627
+						STATEMENT 1 ON LINE 213
+				else p -> dn355_copy = "0"b;
+
+000620  aa  6 00205 2361 00	ldq  	pr6|133		single_dn355_size
+000621  aa   000010 0760 07	adq  	8,dl
+000622  aa   000011 5060 07	div  	9,dl
+000623  aa  6 00102 3715 20	epp5 	pr6|66,*		p
+000624  aa  000 140 100 400	mlr  	(),(pr,rl),fill(000)
+000625  aa   000000 00 0000	desc9a	0,0
+000626  aa  5 00000 00 0006	desc9a	pr5|0,ql		dn355_copy
+						STATEMENT 1 ON LINE 215
+				p = addrel (p, words_per_image);
+
+000627  aa  6 00206 2361 00	ldq  	pr6|134		words_per_image
+000630  aa  6 00102 3521 66	epp2 	pr6|66,*ql	p
+000631  aa   000000 0520 03	adwp2	0,du
+000632  aa  6 00102 2521 00	spri2	pr6|66		p
+						STATEMENT 1 ON LINE 216
+			     end;
+
+000633  aa  6 00100 0541 00	aos  	pr6|64		i
+000634  aa   777736 7100 04	tra  	-34,ic		000572
+						STATEMENT 1 ON LINE 218
+			     dumpptr -> dump.valid_355 = "0"b;
+
+000635  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+000636  aa  7 00006 4501 00	stz  	pr7|6		dump.valid_355
+						STATEMENT 1 ON LINE 219
+			end;
+
+						STATEMENT 1 ON LINE 220
+		     if dumping_Multics then do;
+
+000637  aa  6 00210 2351 00	lda  	pr6|136		dumping_Multics
+000640  aa   000247 6000 04	tze  	167,ic		001107
+						STATEMENT 1 ON LINE 221
+			     call pc$cleanup (astep);
+
+000641  aa  6 00214 3521 00	epp2 	pr6|140		astep
+000642  aa  6 00302 2521 00	spri2	pr6|194
+000643  aa  6 00300 6211 00	eax1 	pr6|192
+000644  aa   004000 4310 07	fld  	2048,dl
+000645  aa  6 00044 3701 20	epp4 	pr6|36,*
+000646  la  4 00066 3521 20	epp2 	pr4|54,*		pc$cleanup
+000647  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 222
+			     aste.npfs = "0"b;
+
+000650  aa   001354 2350 04	lda  	748,ic		002224 = 777677777777
+000651  aa  6 00214 3735 20	epp7 	pr6|140,*		astep
+000652  aa  7 00012 3551 00	ansa 	pr7|10		aste.npfs
+						STATEMENT 1 ON LINE 223
+			     do i = 0 to 1;
+
+000653  aa  6 00100 4501 00	stz  	pr6|64		i
+000654  aa  6 00100 2361 00	ldq  	pr6|64		i
+000655  aa   000001 1160 07	cmpq 	1,dl
+000656  aa   000021 6054 04	tpnz 	17,ic		000677
+						STATEMENT 1 ON LINE 224
+				call ptw_util_$make_disk (addrel (ptp, i), (dumpadd + i));
+
+000657  aa  6 00104 3521 66	epp2 	pr6|68,*ql	ptp
+000660  aa   000000 0520 03	adwp2	0,du
+000661  aa  6 00276 2521 00	spri2	pr6|190
+000662  aa  6 00165 0761 00	adq  	pr6|117		dumpadd
+000663  aa  6 00243 7561 00	stq  	pr6|163
+000664  aa  6 00276 3521 00	epp2 	pr6|190
+000665  aa  6 00306 2521 00	spri2	pr6|198
+000666  aa  6 00243 3521 00	epp2 	pr6|163
+000667  aa  6 00310 2521 00	spri2	pr6|200
+000670  aa  6 00304 6211 00	eax1 	pr6|196
+000671  aa   010000 4310 07	fld  	4096,dl
+000672  aa  6 00044 3701 20	epp4 	pr6|36,*
+000673  la  4 00104 3521 20	epp2 	pr4|68,*		ptw_util_$make_disk
+000674  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 225
+			     end;
+
+000675  aa  6 00100 0541 00	aos  	pr6|64		i
+000676  aa   777756 7100 04	tra  	-18,ic		000654
+						STATEMENT 1 ON LINE 226
+			     dumpadd = dumpadd + divide (dn355_size, pg_size, 18, 0);
+
+000677  aa  6 00204 2361 00	ldq  	pr6|132		dn355_size
+000700  aa  6 00207 5061 00	div  	pr6|135		pg_size
+000701  aa  6 00165 0561 00	asq  	pr6|117		dumpadd
+						STATEMENT 1 ON LINE 227
+			     do i = 2 to (max_pages - 1) while (i < next_part_add - dumpadd);
+
+000702  aa  6 00203 2361 00	ldq  	pr6|131		max_pages
+000703  aa   000001 1760 07	sbq  	1,dl
+000704  aa  6 00224 7561 00	stq  	pr6|148
+000705  aa   000002 2360 07	ldq  	2,dl
+000706  aa  6 00100 7561 00	stq  	pr6|64		i
+000707  aa   000000 0110 03	nop  	0,du
+000710  aa  6 00100 2361 00	ldq  	pr6|64		i
+000711  aa  6 00224 1161 00	cmpq 	pr6|148
+000712  aa   000026 6054 04	tpnz 	22,ic		000740
+000713  aa  6 00167 2361 00	ldq  	pr6|119		next_part_add
+000714  aa  6 00165 1761 00	sbq  	pr6|117		dumpadd
+000715  aa  6 00100 1161 00	cmpq 	pr6|64		i
+000716  aa   000022 6044 04	tmoz 	18,ic		000740
+						STATEMENT 1 ON LINE 228
+				call ptw_util_$make_disk (addrel (ptp, i), (dumpadd + i));
+
+000717  aa  6 00100 2361 00	ldq  	pr6|64		i
+000720  aa  6 00104 3521 66	epp2 	pr6|68,*ql	ptp
+000721  aa   000000 0520 03	adwp2	0,du
+000722  aa  6 00276 2521 00	spri2	pr6|190
+000723  aa  6 00165 0761 00	adq  	pr6|117		dumpadd
+000724  aa  6 00243 7561 00	stq  	pr6|163
+000725  aa  6 00276 3521 00	epp2 	pr6|190
+000726  aa  6 00306 2521 00	spri2	pr6|198
+000727  aa  6 00243 3521 00	epp2 	pr6|163
+000730  aa  6 00310 2521 00	spri2	pr6|200
+000731  aa  6 00304 6211 00	eax1 	pr6|196
+000732  aa   010000 4310 07	fld  	4096,dl
+000733  aa  6 00044 3701 20	epp4 	pr6|36,*
+000734  la  4 00104 3521 20	epp2 	pr4|68,*		ptw_util_$make_disk
+000735  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 229
+			     end;
+
+000736  aa  6 00100 0541 00	aos  	pr6|64		i
+000737  aa   777751 7100 04	tra  	-23,ic		000710
+						STATEMENT 1 ON LINE 230
+			     rest_size = min (max_size - hdr_size, length);
+
+000740  aa  6 00202 2361 00	ldq  	pr6|130		max_size
+000741  aa  6 00212 1761 00	sbq  	pr6|138		hdr_size
+000742  aa  6 00171 1161 00	cmpq 	pr6|121		length
+000743  aa   000002 6040 04	tmi  	2,ic		000745
+000744  aa  6 00171 2361 00	ldq  	pr6|121		length
+000745  aa  6 00213 7561 00	stq  	pr6|139		rest_size
+						STATEMENT 1 ON LINE 231
+			     word_count = hdr_size + rest_size;
+
+000746  aa  6 00212 0761 00	adq  	pr6|138		hdr_size
+000747  aa  6 00172 7561 00	stq  	pr6|122		word_count
+						STATEMENT 1 ON LINE 232
+			     xname = ename;
+
+000750  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000751  aa  6 00122 00 0040	desc9a	pr6|82,32		ename
+000752  aa  6 00132 00 0040	desc9a	pr6|90,32		xname
+						STATEMENT 1 ON LINE 233
+			     call get_branch;
+
+000753  aa   000721 6700 04	tsp4 	465,ic		001674
+						STATEMENT 1 ON LINE 234
+			     p -> copy = dumpptr -> copy;
+
+000754  aa  6 00172 2361 00	ldq  	pr6|122		word_count
+000755  aa   000002 7360 00	qls  	2
+000756  aa  6 00102 3735 20	epp7 	pr6|66,*		p
+000757  aa  6 00216 3715 20	epp5 	pr6|142,*		dumpptr
+000760  aa  000 140 100 540	mlr  	(pr,rl),(pr,rl),fill(000)
+000761  aa  5 00000 00 0006	desc9a	pr5|0,ql		copy
+000762  aa  7 00000 00 0006	desc9a	pr7|0,ql		copy
+						STATEMENT 1 ON LINE 235
+			     length = length - rest_size;
+
+000763  aa  6 00171 3361 00	lcq  	pr6|121		length
+000764  aa   000044 7770 00	llr  	36
+000765  aa   000044 7330 00	lrs  	36
+000766  aa  6 00213 0331 00	adl  	pr6|139		rest_size
+000767  aa   000000 5330 00	negl 	0
+000770  aa  6 00171 7561 00	stq  	pr6|121		length
+						STATEMENT 1 ON LINE 236
+			end;
+
+						STATEMENT 1 ON LINE 237
+		end;
+
+000771  aa   000116 7100 04	tra  	78,ic		001107
+						STATEMENT 1 ON LINE 238
+	     else do;
+
+						STATEMENT 1 ON LINE 239
+		     substr (ename, 13) = ltrim (char (seqno)) || "." || ltrim (erf);
+
+000772  aa  000 000 164 500	tct  	(pr)
+000773  aa  6 00152 00 0014	desc9a	pr6|106,12	erf
+000774  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000775  aa  6 00056 0001 00	arg  	pr6|46
+000776  aa  6 00056 2361 00	ldq  	pr6|46
+000777  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+001000  aa  6 00243 7561 00	stq  	pr6|163
+001001  aa   000014 2360 07	ldq  	12,dl
+001002  aa  6 00243 1761 00	sbq  	pr6|163
+001003  aa  000 100 301 500	btd  	(pr),(pr)
+001004  aa  6 00163 00 0004	desc9a	pr6|115,4		seqno
+001005  aa  6 00276 01 0010	desc9ls	pr6|190,8,0
+001006  aa  100 004 024 500	mvne 	(pr),(ic),(pr)
+001007  aa  6 00276 01 0010	desc9ls	pr6|190,8,0
+001010  aa   001214 00 0006	desc9a	652,6		002222 = 403040022146
+001011  aa  6 00300 00 0012	desc9a	pr6|192,10
+001012  aa  6 00316 7561 00	stq  	pr6|206
+001013  aa  000 000 164 500	tct  	(pr)
+001014  aa  6 00300 00 0012	desc9a	pr6|192,10
+001015  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+001016  aa  6 00056 0001 00	arg  	pr6|46
+001017  aa  6 00056 2361 00	ldq  	pr6|46
+001020  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+001021  aa  6 00317 7561 00	stq  	pr6|207
+001022  aa   000012 2360 07	ldq  	10,dl
+001023  aa  6 00317 1761 00	sbq  	pr6|207
+001024  aa  6 00320 7561 00	stq  	pr6|208
+001025  aa   000001 0760 07	adq  	1,dl
+001026  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+001027  aa  6 00317 2351 00	lda  	pr6|207
+001030  aa  6 00321 7561 00	stq  	pr6|209
+001031  aa  6 00320 2361 00	ldq  	pr6|208
+001032  aa  040 140 100 545	mlr  	(pr,rl,al),(pr,rl),fill(040)
+001033  aa  6 00300 00 0006	desc9a	pr6|192,ql
+001034  aa  2 00000 00 0006	desc9a	pr2|0,ql
+001035  aa  040 106 100 404	mlr  	(ic),(pr,ql),fill(040)
+001036  aa   001171 00 0001	desc9a	633,1		002226 = 056000000000
+001037  aa  2 00000 00 0001	desc9a	pr2|0,1
+001040  aa  6 00321 2361 00	ldq  	pr6|209
+001041  aa  6 00316 0761 00	adq  	pr6|206
+001042  aa  6 00317 7561 00	stq  	pr6|207
+001043  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001044  aa  6 00321 2351 00	lda  	pr6|209
+001045  aa  6 00243 2361 00	ldq  	pr6|163
+001046  aa  6 00152 3735 00	epp7 	pr6|106		erf
+001047  aa  7 00000 5005 06	a9bd 	pr7|0,ql
+001050  aa  6 00316 2361 00	ldq  	pr6|206
+001051  aa  040 145 100 540	mlr  	(pr,rl),(pr,rl,al),fill(040)
+001052  aa  7 00000 00 0006	desc9a	pr7|0,ql		erf
+001053  aa  2 00000 00 0006	desc9a	pr2|0,ql
+001054  aa  6 00317 2351 00	lda  	pr6|207
+001055  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+001056  aa  2 00000 00 0005	desc9a	pr2|0,al
+001057  aa  6 00125 00 0024	desc9a	pr6|85,20		ename
+						STATEMENT 1 ON LINE 240
+		     word_count = min (length, max_size);
+
+001060  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+001061  aa  6 00171 2361 00	ldq  	pr6|121		length
+001062  aa  6 00202 1161 00	cmpq 	pr6|130		max_size
+001063  aa   000002 6040 04	tmi  	2,ic		001065
+001064  aa  6 00202 2361 00	ldq  	pr6|130		max_size
+001065  aa  6 00172 7561 00	stq  	pr6|122		word_count
+						STATEMENT 1 ON LINE 241
+		     xname = ename;
+
+001066  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001067  aa  6 00122 00 0040	desc9a	pr6|82,32		ename
+001070  aa  6 00132 00 0040	desc9a	pr6|90,32		xname
+						STATEMENT 1 ON LINE 242
+		     call get_branch;
+
+001071  aa   000603 6700 04	tsp4 	387,ic		001674
+						STATEMENT 1 ON LINE 243
+		     p -> copy = dumpptr -> copy;
+
+001072  aa  6 00172 2361 00	ldq  	pr6|122		word_count
+001073  aa   000002 7360 00	qls  	2
+001074  aa  6 00102 3735 20	epp7 	pr6|66,*		p
+001075  aa  6 00216 3715 20	epp5 	pr6|142,*		dumpptr
+001076  aa  000 140 100 540	mlr  	(pr,rl),(pr,rl),fill(000)
+001077  aa  5 00000 00 0006	desc9a	pr5|0,ql		copy
+001100  aa  7 00000 00 0006	desc9a	pr7|0,ql		copy
+						STATEMENT 1 ON LINE 244
+		     length = length - word_count;
+
+001101  aa  6 00171 3361 00	lcq  	pr6|121		length
+001102  aa   000044 7770 00	llr  	36
+001103  aa   000044 7330 00	lrs  	36
+001104  aa  6 00172 0331 00	adl  	pr6|122		word_count
+001105  aa   000000 5330 00	negl 	0
+001106  aa  6 00171 7561 00	stq  	pr6|121		length
+						STATEMENT 1 ON LINE 245
+		end;
+
+						STATEMENT 1 ON LINE 246
+	     call pc$cleanup (astep);
+
+001107  aa  6 00214 3521 00	epp2 	pr6|140		astep
+001110  aa  6 00302 2521 00	spri2	pr6|194
+001111  aa  6 00300 6211 00	eax1 	pr6|192
+001112  aa   004000 4310 07	fld  	2048,dl
+001113  aa  6 00044 3701 20	epp4 	pr6|36,*
+001114  la  4 00066 3521 20	epp2 	pr4|54,*		pc$cleanup
+001115  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 247
+	     aste.npfs = "0"b;
+
+001116  aa   001106 2350 04	lda  	582,ic		002224 = 777677777777
+001117  aa  6 00214 3735 20	epp7 	pr6|140,*		astep
+001120  aa  7 00012 3551 00	ansa 	pr7|10		aste.npfs
+						STATEMENT 1 ON LINE 248
+	     dumpadd = dumpadd + max_pages;
+
+001121  aa  6 00203 2361 00	ldq  	pr6|131		max_pages
+001122  aa  6 00165 0561 00	asq  	pr6|117		dumpadd
+						STATEMENT 1 ON LINE 249
+	     if ^dumping_Multics then go to endup;
+
+001123  aa  6 00210 2351 00	lda  	pr6|136		dumping_Multics
+001124  aa   000054 6000 04	tze  	44,ic		001200
+						STATEMENT 1 ON LINE 250
+	     if length <= 0 then go to cleanup;
+
+001125  aa  6 00171 2361 00	ldq  	pr6|121		length
+001126  aa   000003 6044 04	tmoz 	3,ic		001131
+						STATEMENT 1 ON LINE 251
+	end;
+
+001127  aa  6 00163 0541 00	aos  	pr6|115		seqno
+001130  aa   777352 7100 04	tra  	-278,ic		000502
+						STATEMENT 1 ON LINE 253
+cleanup:
+	call ptw_util_$make_disk (ptp, first);
+
+001131  aa  6 00104 3521 00	epp2 	pr6|68		ptp
+001132  aa  6 00306 2521 00	spri2	pr6|198
+001133  aa  6 00170 3521 00	epp2 	pr6|120		first
+001134  aa  6 00310 2521 00	spri2	pr6|200
+001135  aa  6 00304 6211 00	eax1 	pr6|196
+001136  aa   010000 4310 07	fld  	4096,dl
+001137  aa  6 00044 3701 20	epp4 	pr6|36,*
+001140  la  4 00104 3521 20	epp2 	pr4|68,*		ptw_util_$make_disk
+001141  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 255
+	dumpptr -> dump.valid = "0"b;
+
+001142  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+001143  aa  7 00001 4501 00	stz  	pr7|1		dump.valid
+						STATEMENT 1 ON LINE 256
+	call syserr (LOG, "copy_fdump: Copied fdump image of erf ^d (^a) for ^a", /* let anyone who cares know about this */
+	     dumpptr -> dump.erfno, dt, pds$process_group_id);
+
+001144  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001145  aa   776730 00 0064	desc9a	-552,52		000074 = 143157160171
+001146  aa  6 00244 00 0064	desc9a	pr6|164,52
+001147  aa   776663 3520 04	epp2 	-589,ic		000032 = 000000000004
+001150  aa  6 00324 2521 00	spri2	pr6|212
+001151  aa  6 00244 3521 00	epp2 	pr6|164
+001152  aa  6 00326 2521 00	spri2	pr6|214
+001153  aa  7 00004 3521 00	epp2 	pr7|4		dump.erfno
+001154  aa  6 00330 2521 00	spri2	pr6|216
+001155  aa  6 00106 3521 00	epp2 	pr6|70		dt
+001156  aa  6 00332 2521 00	spri2	pr6|218
+001157  aa  6 00044 3701 20	epp4 	pr6|36,*
+001160  la  4 00030 3521 20	epp2 	pr4|24,*		pds$process_group_id
+001161  aa  6 00334 2521 00	spri2	pr6|220
+001162  aa   776655 3520 04	epp2 	-595,ic		000037 = 404000000021
+001163  aa  6 00336 2521 00	spri2	pr6|222
+001164  aa   776632 3520 04	epp2 	-614,ic		000016 = 524000000064
+001165  aa  6 00340 2521 00	spri2	pr6|224
+001166  aa   776634 3520 04	epp2 	-612,ic		000022 = 404000000022
+001167  aa  6 00342 2521 00	spri2	pr6|226
+001170  aa   776625 3520 04	epp2 	-619,ic		000015 = 526000000030
+001171  aa  6 00344 2521 00	spri2	pr6|228
+001172  aa   776622 3520 04	epp2 	-622,ic		000014 = 524000000040
+001173  aa  6 00346 2521 00	spri2	pr6|230
+001174  aa  6 00322 6211 00	eax1 	pr6|210
+001175  aa   024000 4310 07	fld  	10240,dl
+001176  la  4 00052 3521 20	epp2 	pr4|42,*		syserr
+001177  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 259
+endup:
+	call pc$cleanup (astep);
+
+001200  aa  6 00214 3521 00	epp2 	pr6|140		astep
+001201  aa  6 00302 2521 00	spri2	pr6|194
+001202  aa  6 00300 6211 00	eax1 	pr6|192
+001203  aa   004000 4310 07	fld  	2048,dl
+001204  aa  6 00044 3701 20	epp4 	pr6|36,*
+001205  la  4 00066 3521 20	epp2 	pr4|54,*		pc$cleanup
+001206  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 262
+exit:
+	call reversion_ ("any_other");
+
+001207  aa   776645 2370 04	ldaq 	-603,ic		000054 = 141156171137 157164150145
+001210  aa  6 00300 7571 00	staq 	pr6|192
+001211  aa   162000 2350 03	lda  	58368,du
+001212  aa  6 00302 7551 00	sta  	pr6|194
+001213  aa  6 00300 3521 00	epp2 	pr6|192
+001214  aa  6 00306 2521 00	spri2	pr6|198
+001215  aa   776604 3520 04	epp2 	-636,ic		000021 = 524000000011
+001216  aa  6 00310 2521 00	spri2	pr6|200
+001217  aa  6 00304 6211 00	eax1 	pr6|196
+001220  aa   004000 4310 07	fld  	2048,dl
+001221  aa  6 00044 3701 20	epp4 	pr6|36,*
+001222  la  4 00056 3521 20	epp2 	pr4|46,*		reversion_
+001223  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 264
+	if p ^= null () then do;
+
+001224  aa  6 00102 2371 00	ldaq 	pr6|66		p
+001225  aa   776625 6770 04	eraq 	-619,ic		000052 = 077777000043 000001000000
+001226  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001227  aa   000023 6000 04	tze  	19,ic		001252
+						STATEMENT 1 ON LINE 265
+		call demand_deactivate$force_given_segno (p, code);
+
+001230  aa  6 00102 3521 00	epp2 	pr6|66		p
+001231  aa  6 00306 2521 00	spri2	pr6|198
+001232  aa  6 00157 3521 00	epp2 	pr6|111		code
+001233  aa  6 00310 2521 00	spri2	pr6|200
+001234  aa  6 00304 6211 00	eax1 	pr6|196
+001235  aa   010000 4310 07	fld  	4096,dl
+001236  aa  6 00044 3701 20	epp4 	pr6|36,*
+001237  la  4 00076 3521 20	epp2 	pr4|62,*		demand_deactivate$force_given_segno
+001240  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 266
+		call terminate_$noname (p, code);
+
+001241  aa  6 00102 3521 00	epp2 	pr6|66		p
+001242  aa  6 00306 2521 00	spri2	pr6|198
+001243  aa  6 00157 3521 00	epp2 	pr6|111		code
+001244  aa  6 00310 2521 00	spri2	pr6|200
+001245  aa  6 00304 6211 00	eax1 	pr6|196
+001246  aa   010000 4310 07	fld  	4096,dl
+001247  aa  6 00044 3701 20	epp4 	pr6|36,*
+001250  la  4 00100 3521 20	epp2 	pr4|64,*		terminate_$noname
+001251  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 267
+	     end;
+
+						STATEMENT 1 ON LINE 270
+	call lock$lock_ast;
+
+001252  aa  6 00056 6211 00	eax1 	pr6|46
+001253  aa   000000 4310 07	fld  	0,dl
+001254  aa  6 00044 3701 20	epp4 	pr6|36,*
+001255  la  4 00044 3521 20	epp2 	pr4|36,*		lock$lock_ast
+001256  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 271
+	call put_aste (astep);
+
+001257  aa  6 00214 3521 00	epp2 	pr6|140		astep
+001260  aa  6 00302 2521 00	spri2	pr6|194
+001261  aa  6 00300 6211 00	eax1 	pr6|192
+001262  aa   004000 4310 07	fld  	2048,dl
+001263  aa  6 00044 3701 20	epp4 	pr6|36,*
+001264  la  4 00072 3521 20	epp2 	pr4|58,*		put_aste
+001265  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 272
+	call lock$unlock_ast;
+
+001266  aa  6 00056 6211 00	eax1 	pr6|46
+001267  aa   000000 4310 07	fld  	0,dl
+001270  aa  6 00044 3701 20	epp4 	pr6|36,*
+001271  la  4 00046 3521 20	epp2 	pr4|38,*		lock$unlock_ast
+001272  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 273
+	tsdw = ""b;
+
+001273  aa   776555 2370 04	ldaq 	-659,ic		000050 = 000000000000 000000000000
+001274  aa  6 00200 7571 00	staq 	pr6|128		tsdw
+						STATEMENT 1 ON LINE 274
+	call privileged_mode_ut$swap_sdw (dumpptr, tsdwp);
+
+001275  aa  6 00216 3521 00	epp2 	pr6|142		dumpptr
+001276  aa  6 00306 2521 00	spri2	pr6|198
+001277  aa  6 00176 3521 00	epp2 	pr6|126		tsdwp
+001300  aa  6 00310 2521 00	spri2	pr6|200
+001301  aa  6 00304 6211 00	eax1 	pr6|196
+001302  aa   010000 4310 07	fld  	4096,dl
+001303  aa  6 00044 3701 20	epp4 	pr6|36,*
+001304  la  4 00040 3521 20	epp2 	pr4|32,*		privileged_mode_ut$swap_sdw
+001305  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 275
+	return;
+
+001306  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 277
+set_num:						/* CODE to reset the erf number in PART DUMP */
+	call ptw_util_$make_disk (ptp, first);
+
+001307  aa  6 00104 3521 00	epp2 	pr6|68		ptp
+001310  aa  6 00306 2521 00	spri2	pr6|198
+001311  aa  6 00170 3521 00	epp2 	pr6|120		first
+001312  aa  6 00310 2521 00	spri2	pr6|200
+001313  aa  6 00304 6211 00	eax1 	pr6|196
+001314  aa   010000 4310 07	fld  	4096,dl
+001315  aa  6 00044 3701 20	epp4 	pr6|36,*
+001316  la  4 00104 3521 20	epp2 	pr4|68,*		ptw_util_$make_disk
+001317  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 280
+	if (dumpptr -> dump.valid | dumpptr -> dump.valid_355)
+	then do;
+
+001320  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+001321  aa  7 00001 2351 00	lda  	pr7|1		dump.valid
+001322  aa   000003 6010 04	tnz  	3,ic		001325
+001323  aa  7 00006 2351 00	lda  	pr7|6		dump.valid_355
+001324  aa   000005 6000 04	tze  	5,ic		001331
+						STATEMENT 1 ON LINE 282
+		a_code = error_table_$dmpvalid;
+
+001325  aa  6 00044 3701 20	epp4 	pr6|36,*
+001326  la  4 00020 2361 20	ldq  	pr4|16,*		error_table_$dmpvalid
+001327  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 283
+		go to endup;
+
+001330  aa   777650 7100 04	tra  	-88,ic		001200
+						STATEMENT 1 ON LINE 284
+	     end;
+
+						STATEMENT 1 ON LINE 286
+	dumpptr -> dump.erfno = erf_no - 1;
+
+001331  aa  6 00155 2361 00	ldq  	pr6|109		erf_no
+001332  aa   000001 1760 07	sbq  	1,dl
+001333  aa  7 00004 7561 00	stq  	pr7|4		dump.erfno
+						STATEMENT 1 ON LINE 287
+	go to endup;
+
+001334  aa   777644 7100 04	tra  	-92,ic		001200
+						STATEMENT 1 ON LINE 289
+get_num:						/* CODE to get the erf number in PART DUMP */
+	call ptw_util_$make_disk (ptp, first);
+
+001335  aa  6 00104 3521 00	epp2 	pr6|68		ptp
+001336  aa  6 00306 2521 00	spri2	pr6|198
+001337  aa  6 00170 3521 00	epp2 	pr6|120		first
+001340  aa  6 00310 2521 00	spri2	pr6|200
+001341  aa  6 00304 6211 00	eax1 	pr6|196
+001342  aa   010000 4310 07	fld  	4096,dl
+001343  aa  6 00044 3701 20	epp4 	pr6|36,*
+001344  la  4 00104 3521 20	epp2 	pr4|68,*		ptw_util_$make_disk
+001345  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 292
+	call check_dump_header;
+
+001346  aa   000032 6700 04	tsp4 	26,ic		001400
+						STATEMENT 1 ON LINE 294
+	if dumping_Multics then do;
+
+001347  aa  6 00210 2351 00	lda  	pr6|136		dumping_Multics
+001350  aa   000014 6000 04	tze  	12,ic		001364
+						STATEMENT 1 ON LINE 295
+		a_length = length;
+
+001351  aa  6 00171 2361 00	ldq  	pr6|121		length
+001352  aa  6 00032 3735 20	epp7 	pr6|26,*
+001353  aa  7 00002 7561 20	stq  	pr7|2,*		a_length
+						STATEMENT 1 ON LINE 296
+		a_valid = dumping_Multics;
+
+001354  aa  7 00004 3715 20	epp5 	pr7|4,*
+001355  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001356  aa  6 00210 00 0001	descb	pr6|136,1		dumping_Multics
+001357  aa  5 00000 00 0001	descb	pr5|0,1		a_valid
+						STATEMENT 1 ON LINE 297
+		a_ename = ename;
+
+001360  aa  7 00006 3535 20	epp3 	pr7|6,*
+001361  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001362  aa  6 00122 00 0040	desc9a	pr6|82,32		ename
+001363  aa  3 00000 00 0040	desc9a	pr3|0,32		a_ename
+						STATEMENT 1 ON LINE 298
+	     end;
+
+						STATEMENT 1 ON LINE 299
+	if dumping_dn355 then do;
+
+001364  aa  6 00211 2351 00	lda  	pr6|137		dumping_dn355
+001365  aa   777613 6000 04	tze  	-117,ic		001200
+						STATEMENT 1 ON LINE 300
+		a_valid_dn355 = dumping_dn355;
+
+001366  aa  6 00032 3735 20	epp7 	pr6|26,*
+001367  aa  7 00010 3715 20	epp5 	pr7|8,*
+001370  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001371  aa  6 00211 00 0001	descb	pr6|137,1		dumping_dn355
+001372  aa  5 00000 00 0001	descb	pr5|0,1		a_valid_dn355
+						STATEMENT 1 ON LINE 301
+		a_ename_dn355 = ename_dn355;
+
+001373  aa  7 00012 3535 20	epp3 	pr7|10,*
+001374  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001375  aa  6 00142 00 0040	desc9a	pr6|98,32		ename_dn355
+001376  aa  3 00000 00 0040	desc9a	pr3|0,32		a_ename_dn355
+						STATEMENT 1 ON LINE 302
+	     end;
+
+						STATEMENT 1 ON LINE 304
+	go to endup;
+
+001377  aa   777601 7100 04	tra  	-127,ic		001200
+						STATEMENT 1 ON LINE 428
+     end copy_fdump;
+
+BEGIN PROCEDURE check_dump_header
+ENTRY TO check_dump_header                                  STATEMENT 1 ON LINE 312
+check_dump_header: proc;
+
+001400  aa  6 00226 6501 00	spri4	pr6|150
+						STATEMENT 1 ON LINE 313
+	if esw ^= 1 then /* previously checked that it's invalid for set_erf_no entry */
+	     if dumpptr -> dump.valid = "0"b then
+		if dumpptr -> dump.valid_355 = "0"b then do;
+
+001401  aa  6 00164 2361 00	ldq  	pr6|116		esw
+001402  aa   000001 1160 07	cmpq 	1,dl
+001403  aa   000012 6000 04	tze  	10,ic		001415
+001404  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+001405  aa  7 00001 2351 00	lda  	pr7|1		dump.valid
+001406  aa   000007 6010 04	tnz  	7,ic		001415
+001407  aa  7 00006 2351 00	lda  	pr7|6		dump.valid_355
+001410  aa   000005 6010 04	tnz  	5,ic		001415
+						STATEMENT 1 ON LINE 316
+			a_code = error_table_$dmpinvld;
+
+001411  aa  6 00044 3701 20	epp4 	pr6|36,*
+001412  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$dmpinvld
+001413  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 317
+			go to endup;
+
+001414  aa   777564 7100 04	tra  	-140,ic		001200
+						STATEMENT 1 ON LINE 318
+		     end;
+
+						STATEMENT 1 ON LINE 319
+	dumping_Multics = dumpptr -> dump.valid;
+
+001415  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+001416  aa  7 00001 2351 00	lda  	pr7|1		dump.valid
+001417  aa  6 00210 7551 00	sta  	pr6|136		dumping_Multics
+						STATEMENT 1 ON LINE 320
+	dumping_dn355 = dumpptr -> dump.valid_355;
+
+001420  aa  7 00006 2351 00	lda  	pr7|6		dump.valid_355
+001421  aa  6 00211 7551 00	sta  	pr6|137		dumping_dn355
+						STATEMENT 1 ON LINE 321
+	length = dumpptr -> dump.words_dumped;
+
+001422  aa  7 00000 2361 00	ldq  	pr7|0		dump.words_dumped
+001423  aa  6 00171 7561 00	stq  	pr6|121		length
+						STATEMENT 1 ON LINE 329
+	erf = cv_bin_$dec ((dumpptr -> dump.erfno));
+
+001424  aa  7 00004 2361 00	ldq  	pr7|4		dump.erfno
+001425  aa  6 00350 7561 00	stq  	pr6|232
+001426  aa  6 00350 3521 00	epp2 	pr6|232
+001427  aa  6 00360 2521 00	spri2	pr6|240
+001430  aa  6 00352 3521 00	epp2 	pr6|234
+001431  aa  6 00362 2521 00	spri2	pr6|242
+001432  aa  6 00356 6211 00	eax1 	pr6|238
+001433  aa   010000 4310 07	fld  	4096,dl
+001434  aa  6 00044 3701 20	epp4 	pr6|36,*
+001435  la  4 00074 3521 20	epp2 	pr4|60,*		cv_bin_$dec
+001436  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001437  aa  6 00352 2371 00	ldaq 	pr6|234
+001440  aa  6 00152 7571 00	staq 	pr6|106		erf
+001441  aa  6 00354 2351 00	lda  	pr6|236
+001442  aa  6 00154 7551 00	sta  	pr6|108		erf
+						STATEMENT 1 ON LINE 330
+	if dumping_Multics then do;
+
+001443  aa  6 00210 2351 00	lda  	pr6|136		dumping_Multics
+001444  aa   000107 6000 04	tze  	71,ic		001553
+						STATEMENT 1 ON LINE 331
+		call date_time_ (dumpptr -> dump.time, dt);
+
+001445  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+001446  aa  7 00002 3521 00	epp2 	pr7|2		dump.time
+001447  aa  6 00366 2521 00	spri2	pr6|246
+001450  aa  6 00106 3521 00	epp2 	pr6|70		dt
+001451  aa  6 00370 2521 00	spri2	pr6|248
+001452  aa   776341 3520 04	epp2 	-799,ic		000013 = 410000000107
+001453  aa  6 00372 2521 00	spri2	pr6|250
+001454  aa   776341 3520 04	epp2 	-799,ic		000015 = 526000000030
+001455  aa  6 00374 2521 00	spri2	pr6|252
+001456  aa  6 00364 6211 00	eax1 	pr6|244
+001457  aa   010000 4310 07	fld  	4096,dl
+001460  aa  6 00044 3701 20	epp4 	pr6|36,*
+001461  la  4 00060 3521 20	epp2 	pr4|48,*		date_time_
+001462  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 332
+		ename = substr (dt, 1, 2) || substr (dt, 4, 2) || substr (dt, 7, 2) || "."
+		     || substr (dt, 11, 5) || "0." || ltrim (erf);
+
+001463  aa  000 000 164 500	tct  	(pr)
+001464  aa  6 00152 00 0014	desc9a	pr6|106,12	erf
+001465  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+001466  aa  6 00056 0001 00	arg  	pr6|46
+001467  aa  6 00056 2361 00	ldq  	pr6|46
+001470  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+001471  aa  6 00350 7561 00	stq  	pr6|232
+001472  aa   000014 2360 07	ldq  	12,dl
+001473  aa  6 00350 1761 00	sbq  	pr6|232
+001474  aa  6 00106 2351 00	lda  	pr6|70		dt
+001475  aa  6 00355 7561 00	stq  	pr6|237
+001476  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+001477  aa  6 00351 7551 00	sta  	pr6|233		dt
+001500  aa  6 00106 2371 00	ldaq 	pr6|70		dt
+001501  aa   000033 7370 00	lls  	27
+001502  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+001503  aa   000022 7710 00	arl  	18
+001504  aa  6 00351 2751 00	ora  	pr6|233		dt
+001505  aa  6 00351 7551 00	sta  	pr6|233
+001506  aa  6 00107 2351 00	lda  	pr6|71		dt
+001507  aa   000022 7350 00	als  	18
+001510  aa   000044 7730 00	lrl  	36
+001511  aa  6 00351 2751 00	ora  	pr6|233
+001512  aa  6 00376 7571 00	staq 	pr6|254
+001513  aa   056000 2350 03	lda  	23552,du
+001514  aa  0 00110 3771 00	anaq 	pr0|72		= 777777777777 000000000000
+001515  aa   000066 7730 00	lrl  	54
+001516  aa  6 00376 2771 00	oraq 	pr6|254
+001517  aa  6 00376 7571 00	staq 	pr6|254
+001520  aa   000014 2360 07	ldq  	12,dl
+001521  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+001522  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001523  aa  6 00376 00 0007	desc9a	pr6|254,7
+001524  aa  2 00000 00 0007	desc9a	pr2|0,7
+001525  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001526  aa  6 00110 40 0005	desc9a	pr6|72(2),5	dt
+001527  aa  2 00001 60 0005	desc9a	pr2|1(3),5
+001530  aa   000016 2360 07	ldq  	14,dl
+001531  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001532  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001533  aa   000473 00 0002	desc9a	315,2		002225 = 060056000000
+001534  aa  2 00003 00 0002	desc9a	pr2|3,2
+001535  aa   000016 2360 07	ldq  	14,dl
+001536  aa  6 00355 0761 00	adq  	pr6|237
+001537  aa  6 00351 7561 00	stq  	pr6|233
+001540  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001541  aa  6 00350 2351 00	lda  	pr6|232
+001542  aa  6 00355 2361 00	ldq  	pr6|237
+001543  aa  040 140 100 545	mlr  	(pr,rl,al),(pr,rl),fill(040)
+001544  aa  6 00152 00 0006	desc9a	pr6|106,ql	erf
+001545  aa  2 00003 40 0006	desc9a	pr2|3(2),ql
+001546  aa  6 00351 2351 00	lda  	pr6|233
+001547  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+001550  aa  2 00000 00 0005	desc9a	pr2|0,al
+001551  aa  6 00122 00 0040	desc9a	pr6|82,32		ename
+						STATEMENT 1 ON LINE 334
+	     end;
+
+001552  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+						STATEMENT 1 ON LINE 335
+	if dumping_dn355 then do;
+
+001553  aa  6 00211 2351 00	lda  	pr6|137		dumping_dn355
+001554  aa   000117 6000 04	tze  	79,ic		001673
+						STATEMENT 1 ON LINE 336
+		call date_time_ (dumpptr -> dump.time_355, dt_dn355);
+
+001555  aa  6 00216 3735 20	epp7 	pr6|142,*		dumpptr
+001556  aa  7 00010 3521 00	epp2 	pr7|8		dump.time_355
+001557  aa  6 00366 2521 00	spri2	pr6|246
+001560  aa  6 00114 3521 00	epp2 	pr6|76		dt_dn355
+001561  aa  6 00370 2521 00	spri2	pr6|248
+001562  aa   776231 3520 04	epp2 	-871,ic		000013 = 410000000107
+001563  aa  6 00372 2521 00	spri2	pr6|250
+001564  aa   776231 3520 04	epp2 	-871,ic		000015 = 526000000030
+001565  aa  6 00374 2521 00	spri2	pr6|252
+001566  aa  6 00364 6211 00	eax1 	pr6|244
+001567  aa   010000 4310 07	fld  	4096,dl
+001570  aa  6 00044 3701 20	epp4 	pr6|36,*
+001571  la  4 00060 3521 20	epp2 	pr4|48,*		date_time_
+001572  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 337
+		ename_dn355 = substr (dt_dn355, 1, 2) || substr (dt_dn355, 4, 2) || substr (dt_dn355, 7, 2) || "."
+		     || substr (dt_dn355, 11, 5) || "0." || ltrim (erf) || ".355";
+
+001573  aa  000 000 164 500	tct  	(pr)
+001574  aa  6 00152 00 0014	desc9a	pr6|106,12	erf
+001575  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+001576  aa  6 00056 0001 00	arg  	pr6|46
+001577  aa  6 00056 2361 00	ldq  	pr6|46
+001600  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+001601  aa  6 00351 7561 00	stq  	pr6|233
+001602  aa   000014 2360 07	ldq  	12,dl
+001603  aa  6 00351 1761 00	sbq  	pr6|233
+001604  aa  6 00114 2351 00	lda  	pr6|76		dt_dn355
+001605  aa  6 00350 7561 00	stq  	pr6|232
+001606  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+001607  aa  6 00355 7551 00	sta  	pr6|237		dt_dn355
+001610  aa  6 00114 2371 00	ldaq 	pr6|76		dt_dn355
+001611  aa   000033 7370 00	lls  	27
+001612  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+001613  aa   000022 7710 00	arl  	18
+001614  aa  6 00355 2751 00	ora  	pr6|237		dt_dn355
+001615  aa  6 00355 7551 00	sta  	pr6|237
+001616  aa  6 00115 2351 00	lda  	pr6|77		dt_dn355
+001617  aa   000022 7350 00	als  	18
+001620  aa   000044 7730 00	lrl  	36
+001621  aa  6 00355 2751 00	ora  	pr6|237
+001622  aa  6 00376 7571 00	staq 	pr6|254
+001623  aa   056000 2350 03	lda  	23552,du
+001624  aa  0 00110 3771 00	anaq 	pr0|72		= 777777777777 000000000000
+001625  aa   000066 7730 00	lrl  	54
+001626  aa  6 00376 2771 00	oraq 	pr6|254
+001627  aa  6 00376 7571 00	staq 	pr6|254
+001630  aa   000014 2360 07	ldq  	12,dl
+001631  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+001632  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001633  aa  6 00376 00 0007	desc9a	pr6|254,7
+001634  aa  2 00000 00 0007	desc9a	pr2|0,7
+001635  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001636  aa  6 00116 40 0005	desc9a	pr6|78(2),5	dt_dn355
+001637  aa  2 00001 60 0005	desc9a	pr2|1(3),5
+001640  aa   000016 2360 07	ldq  	14,dl
+001641  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001642  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001643  aa   000363 00 0002	desc9a	243,2		002225 = 060056000000
+001644  aa  2 00003 00 0002	desc9a	pr2|3,2
+001645  aa   000016 2360 07	ldq  	14,dl
+001646  aa  6 00350 0761 00	adq  	pr6|232
+001647  aa  6 00355 7561 00	stq  	pr6|237
+001650  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001651  aa  6 00351 2351 00	lda  	pr6|233
+001652  aa  6 00350 2361 00	ldq  	pr6|232
+001653  aa  040 140 100 545	mlr  	(pr,rl,al),(pr,rl),fill(040)
+001654  aa  6 00152 00 0006	desc9a	pr6|106,ql	erf
+001655  aa  2 00003 40 0006	desc9a	pr2|3(2),ql
+001656  aa  6 00355 2361 00	ldq  	pr6|237
+001657  aa   000004 0760 07	adq  	4,dl
+001660  aa  6 00351 7561 00	stq  	pr6|233
+001661  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001662  aa  6 00355 2351 00	lda  	pr6|237
+001663  aa  040 105 100 404	mlr  	(ic),(pr,al),fill(040)
+001664  aa   776127 00 0004	desc9a	-937,4		000012 = 056063065065
+001665  aa  2 00000 00 0004	desc9a	pr2|0,4
+001666  aa  6 00351 2361 00	ldq  	pr6|233
+001667  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+001670  aa  2 00000 00 0006	desc9a	pr2|0,ql
+001671  aa  6 00142 00 0040	desc9a	pr6|98,32		ename_dn355
+						STATEMENT 1 ON LINE 339
+	     end;
+
+001672  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+						STATEMENT 1 ON LINE 340
+     end check_dump_header;
+
+001673  aa  6 00226 6101 00	rtcd 	pr6|150
+  END PROCEDURE check_dump_header
+BEGIN PROCEDURE get_branch
+ENTRY TO get_branch                                         STATEMENT 1 ON LINE 343
+get_branch: proc;
+
+001674  aa  6 00234 6501 00	spri4	pr6|156
+						STATEMENT 1 ON LINE 344
+append:
+	if p ^= null () then do;
+
+001675  aa  6 00102 2371 00	ldaq 	pr6|66		p
+001676  aa   776154 6770 04	eraq 	-916,ic		000052 = 077777000043 000001000000
+001677  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001700  aa   000023 6000 04	tze  	19,ic		001723
+						STATEMENT 1 ON LINE 346
+		call demand_deactivate$force_given_segno (p, code);
+
+001701  aa  6 00102 3521 00	epp2 	pr6|66		p
+001702  aa  6 00402 2521 00	spri2	pr6|258
+001703  aa  6 00157 3521 00	epp2 	pr6|111		code
+001704  aa  6 00404 2521 00	spri2	pr6|260
+001705  aa  6 00400 6211 00	eax1 	pr6|256
+001706  aa   010000 4310 07	fld  	4096,dl
+001707  aa  6 00044 3701 20	epp4 	pr6|36,*
+001710  la  4 00076 3521 20	epp2 	pr4|62,*		demand_deactivate$force_given_segno
+001711  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 347
+		call terminate_$noname (p, code);
+
+001712  aa  6 00102 3521 00	epp2 	pr6|66		p
+001713  aa  6 00402 2521 00	spri2	pr6|258
+001714  aa  6 00157 3521 00	epp2 	pr6|111		code
+001715  aa  6 00404 2521 00	spri2	pr6|260
+001716  aa  6 00400 6211 00	eax1 	pr6|256
+001717  aa   010000 4310 07	fld  	4096,dl
+001720  aa  6 00044 3701 20	epp4 	pr6|36,*
+001721  la  4 00100 3521 20	epp2 	pr4|64,*		terminate_$noname
+001722  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 348
+	     end;
+
+						STATEMENT 1 ON LINE 350
+	call append$branchx (">dumps", xname, RW_ACCESS_BIN, rb, (pds$process_group_id), 0, 0, 36 * word_count, code);
+
+001723  aa   776123 2370 04	ldaq 	-941,ic		000046 = 076144165155 160163000000
+001724  aa  6 00406 7571 00	staq 	pr6|262
+001725  aa  6 00044 3701 20	epp4 	pr6|36,*
+001726  la  4 00030 3735 20	epp7 	pr4|24,*		pds$process_group_id
+001727  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001730  aa  7 00000 00 0040	desc9a	pr7|0,32		pds$process_group_id
+001731  aa  6 00410 00 0040	desc9a	pr6|264,32
+001732  aa  6 00420 4501 00	stz  	pr6|272
+001733  aa  6 00421 4501 00	stz  	pr6|273
+001734  aa  6 00172 2361 00	ldq  	pr6|122		word_count
+001735  aa   000044 4020 07	mpy  	36,dl
+001736  aa  6 00422 7561 00	stq  	pr6|274
+001737  aa  6 00406 3521 00	epp2 	pr6|262
+001740  aa  6 00426 2521 00	spri2	pr6|278
+001741  aa  6 00132 3521 00	epp2 	pr6|90		xname
+001742  aa  6 00430 2521 00	spri2	pr6|280
+001743  aa   776054 3520 04	epp2 	-980,ic		000017 = 000000000012
+001744  aa  6 00432 2521 00	spri2	pr6|282
+001745  aa  6 00160 3521 00	epp2 	pr6|112		rb
+001746  aa  6 00434 2521 00	spri2	pr6|284
+001747  aa  6 00410 3521 00	epp2 	pr6|264
+001750  aa  6 00436 2521 00	spri2	pr6|286
+001751  aa  6 00420 3521 00	epp2 	pr6|272
+001752  aa  6 00440 2521 00	spri2	pr6|288
+001753  aa  6 00421 3521 00	epp2 	pr6|273
+001754  aa  6 00442 2521 00	spri2	pr6|290
+001755  aa  6 00422 3521 00	epp2 	pr6|274
+001756  aa  6 00444 2521 00	spri2	pr6|292
+001757  aa  6 00157 3521 00	epp2 	pr6|111		code
+001760  aa  6 00446 2521 00	spri2	pr6|294
+001761  aa   776030 3520 04	epp2 	-1000,ic		000011 = 524000000006
+001762  aa  6 00450 2521 00	spri2	pr6|296
+001763  aa   776055 3520 04	epp2 	-979,ic		000040 = 526000000040
+001764  aa  6 00452 2521 00	spri2	pr6|298
+001765  aa   776023 3520 04	epp2 	-1005,ic		000010 = 404000000005
+001766  aa  6 00454 2521 00	spri2	pr6|300
+001767  aa   776070 3520 04	epp2 	-968,ic		000057 = 404100000006
+001770  aa  6 00456 2521 00	spri2	pr6|302
+001771  aa   776023 3520 04	epp2 	-1005,ic		000014 = 524000000040
+001772  aa  6 00460 2521 00	spri2	pr6|304
+001773  aa   776014 3520 04	epp2 	-1012,ic		000007 = 404000000001
+001774  aa  6 00462 2521 00	spri2	pr6|306
+001775  aa  6 00464 2521 00	spri2	pr6|308
+001776  aa   776010 3520 04	epp2 	-1016,ic		000006 = 404000000030
+001777  aa  6 00466 2521 00	spri2	pr6|310
+002000  aa   776035 3520 04	epp2 	-995,ic		000035 = 404000000043
+002001  aa  6 00470 2521 00	spri2	pr6|312
+002002  aa  6 00424 6211 00	eax1 	pr6|276
+002003  aa   044000 4310 07	fld  	18432,dl
+002004  la  4 00062 3521 20	epp2 	pr4|50,*		append$branchx
+002005  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 351
+	if code ^= 0 then do;
+
+002006  aa  6 00157 2361 00	ldq  	pr6|111		code
+002007  aa   000073 6000 04	tze  	59,ic		002102
+						STATEMENT 1 ON LINE 352
+		if code = error_table_$noaccess then do;
+
+002010  aa  6 00044 3701 20	epp4 	pr6|36,*
+002011  la  4 00010 1161 20	cmpq 	pr4|8,*		error_table_$noaccess
+002012  aa   000066 6010 04	tnz  	54,ic		002100
+						STATEMENT 1 ON LINE 353
+			call append$branchx (">", "dumps", A_ACCESS_BIN, rb, "*.*.*", 1, 0, 0, code);
+
+002013  aa   076000 2350 03	lda  	31744,du
+002014  aa  6 00422 7551 00	sta  	pr6|274
+002015  aa   776027 2370 04	ldaq 	-1001,ic		000044 = 144165155160 163000000000
+002016  aa  6 00406 7571 00	staq 	pr6|262
+002017  aa   776023 2370 04	ldaq 	-1005,ic		000042 = 052056052056 052000000000
+002020  aa  6 00472 7571 00	staq 	pr6|314
+002021  aa   000001 2360 07	ldq  	1,dl
+002022  aa  6 00421 7561 00	stq  	pr6|273
+002023  aa  6 00420 4501 00	stz  	pr6|272
+002024  aa  6 00423 4501 00	stz  	pr6|275
+002025  aa  6 00422 3521 00	epp2 	pr6|274
+002026  aa  6 00426 2521 00	spri2	pr6|278
+002027  aa  6 00406 3521 00	epp2 	pr6|262
+002030  aa  6 00430 2521 00	spri2	pr6|280
+002031  aa   776005 3520 04	epp2 	-1019,ic		000036 = 000000000001
+002032  aa  6 00432 2521 00	spri2	pr6|282
+002033  aa  6 00160 3521 00	epp2 	pr6|112		rb
+002034  aa  6 00434 2521 00	spri2	pr6|284
+002035  aa  6 00472 3521 00	epp2 	pr6|314
+002036  aa  6 00436 2521 00	spri2	pr6|286
+002037  aa  6 00421 3521 00	epp2 	pr6|273
+002040  aa  6 00440 2521 00	spri2	pr6|288
+002041  aa  6 00420 3521 00	epp2 	pr6|272
+002042  aa  6 00442 2521 00	spri2	pr6|290
+002043  aa  6 00423 3521 00	epp2 	pr6|275
+002044  aa  6 00444 2521 00	spri2	pr6|292
+002045  aa  6 00157 3521 00	epp2 	pr6|111		code
+002046  aa  6 00446 2521 00	spri2	pr6|294
+002047  aa   775736 3520 04	epp2 	-1058,ic		000005 = 524000000001
+002050  aa  6 00450 2521 00	spri2	pr6|296
+002051  aa   775733 3520 04	epp2 	-1061,ic		000004 = 524000000005
+002052  aa  6 00452 2521 00	spri2	pr6|298
+002053  aa  6 00460 2521 00	spri2	pr6|304
+002054  aa   775734 3520 04	epp2 	-1060,ic		000010 = 404000000005
+002055  aa  6 00454 2521 00	spri2	pr6|300
+002056  aa   776001 3520 04	epp2 	-1023,ic		000057 = 404100000006
+002057  aa  6 00456 2521 00	spri2	pr6|302
+002060  aa   775727 3520 04	epp2 	-1065,ic		000007 = 404000000001
+002061  aa  6 00462 2521 00	spri2	pr6|306
+002062  aa  6 00464 2521 00	spri2	pr6|308
+002063  aa   775723 3520 04	epp2 	-1069,ic		000006 = 404000000030
+002064  aa  6 00466 2521 00	spri2	pr6|310
+002065  aa   775750 3520 04	epp2 	-1048,ic		000035 = 404000000043
+002066  aa  6 00470 2521 00	spri2	pr6|312
+002067  aa  6 00424 6211 00	eax1 	pr6|276
+002070  aa   044000 4310 07	fld  	18432,dl
+002071  la  4 00062 3521 20	epp2 	pr4|50,*		append$branchx
+002072  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 354
+			if code ^= 0 then do;
+
+002073  aa  6 00157 2361 00	ldq  	pr6|111		code
+002074  aa   777601 6000 04	tze  	-127,ic		001675
+						STATEMENT 1 ON LINE 355
+				a_code = code;
+
+002075  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 356
+				go to endup;
+
+002076  aa   777102 7100 04	tra  	-446,ic		001200
+						STATEMENT 1 ON LINE 357
+			     end;
+
+						STATEMENT 1 ON LINE 358
+			go to append;
+
+002077  aa   777576 7100 04	tra  	-130,ic		001675
+						STATEMENT 1 ON LINE 359
+		     end;
+
+						STATEMENT 1 ON LINE 360
+		else do;
+
+						STATEMENT 1 ON LINE 361
+			a_code = code;
+
+002100  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 362
+			go to endup;
+
+002101  aa   777077 7100 04	tra  	-449,ic		001200
+						STATEMENT 1 ON LINE 363
+		     end;
+
+						STATEMENT 1 ON LINE 364
+	     end;
+
+						STATEMENT 1 ON LINE 365
+	call initiate (">dumps", xname, "", 0, 0, p, code);
+
+002102  aa   775744 2370 04	ldaq 	-1052,ic		000046 = 076144165155 160163000000
+002103  aa  6 00472 7571 00	staq 	pr6|314
+002104  aa  6 00420 4501 00	stz  	pr6|272
+002105  aa  6 00421 4501 00	stz  	pr6|273
+002106  aa  6 00472 3521 00	epp2 	pr6|314
+002107  aa  6 00426 2521 00	spri2	pr6|278
+002110  aa  6 00132 3521 00	epp2 	pr6|90		xname
+002111  aa  6 00430 2521 00	spri2	pr6|280
+002112  aa  6 00423 3521 00	epp2 	pr6|275
+002113  aa  6 00432 2521 00	spri2	pr6|282
+002114  aa  6 00420 3521 00	epp2 	pr6|272
+002115  aa  6 00434 2521 00	spri2	pr6|284
+002116  aa  6 00421 3521 00	epp2 	pr6|273
+002117  aa  6 00436 2521 00	spri2	pr6|286
+002120  aa  6 00102 3521 00	epp2 	pr6|66		p
+002121  aa  6 00440 2521 00	spri2	pr6|288
+002122  aa  6 00157 3521 00	epp2 	pr6|111		code
+002123  aa  6 00442 2521 00	spri2	pr6|290
+002124  aa   775665 3520 04	epp2 	-1099,ic		000011 = 524000000006
+002125  aa  6 00444 2521 00	spri2	pr6|292
+002126  aa   775712 3520 04	epp2 	-1078,ic		000040 = 526000000040
+002127  aa  6 00446 2521 00	spri2	pr6|294
+002130  aa   775653 3520 04	epp2 	-1109,ic		000003 = 524000000000
+002131  aa  6 00450 2521 00	spri2	pr6|296
+002132  aa   775655 3520 04	epp2 	-1107,ic		000007 = 404000000001
+002133  aa  6 00452 2521 00	spri2	pr6|298
+002134  aa   775646 3520 04	epp2 	-1114,ic		000002 = 404000000002
+002135  aa  6 00454 2521 00	spri2	pr6|300
+002136  aa   775672 3520 04	epp2 	-1094,ic		000030 = 464000000000
+002137  aa  6 00456 2521 00	spri2	pr6|302
+002140  aa   775675 3520 04	epp2 	-1091,ic		000035 = 404000000043
+002141  aa  6 00460 2521 00	spri2	pr6|304
+002142  aa  6 00424 6211 00	eax1 	pr6|276
+002143  aa   034000 4310 07	fld  	14336,dl
+002144  aa  6 00044 3701 20	epp4 	pr6|36,*
+002145  la  4 00064 3521 20	epp2 	pr4|52,*		initiate
+002146  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 366
+	if p = null then do;
+
+002147  aa  6 00102 2371 00	ldaq 	pr6|66		p
+002150  aa   775702 6770 04	eraq 	-1086,ic		000052 = 077777000043 000001000000
+002151  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+002152  aa   000004 6010 04	tnz  	4,ic		002156
+						STATEMENT 1 ON LINE 367
+		a_code = code;
+
+002153  aa  6 00157 2361 00	ldq  	pr6|111		code
+002154  aa  6 00220 7561 20	stq  	pr6|144,*		a_code
+						STATEMENT 1 ON LINE 368
+		go to endup;
+
+002155  aa   777023 7100 04	tra  	-493,ic		001200
+						STATEMENT 1 ON LINE 369
+	     end;
+
+						STATEMENT 1 ON LINE 370
+     end get_branch;
+
+002156  aa  6 00234 6101 00	rtcd 	pr6|156
+  END PROCEDURE get_branch
+BEGIN PROCEDURE handler
+ENTRY TO handler                                            STATEMENT 1 ON LINE 375
+handler: proc (mc_ptr, name);
+
+002157  da     000373200000
+002160  aa   000140 6270 00	eax7 	96
+002161  aa  7 00034 3521 20	epp2 	pr7|28,*
+002162  aa  2 01050 2721 00	tsp2 	pr2|552		int_entry_desc
+002163  aa     000004000000
+002164  aa     000000000000
+002165  aa  6 00042 3735 20	epp7 	pr6|34,*
+002166  aa  7 00002 2361 20	ldq  	pr7|2,*
+002167  aa   000002 6040 04	tmi  	2,ic		002171
+002170  aa   777777 3760 07	anq  	262143,dl
+002171  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+002172  aa  6 00100 7561 00	stq  	pr6|64
+						STATEMENT 1 ON LINE 381
+	call syserr (ANNOUNCE, "copy_fdump: unexpected ^a signal.", name);
+
+002173  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002174  aa   775670 00 0044	desc9a	-1096,36		000063 = 143157160171
+002175  aa  6 00102 00 0044	desc9a	pr6|66,36
+002176  aa   775636 3520 04	epp2 	-1122,ic		000034 = 000000000000
+002177  aa  6 00116 2521 00	spri2	pr6|78
+002200  aa  6 00102 3521 00	epp2 	pr6|66
+002201  aa  6 00120 2521 00	spri2	pr6|80
+002202  aa  6 00032 3715 20	epp5 	pr6|26,*
+002203  aa  5 00004 3521 20	epp2 	pr5|4,*		name
+002204  aa  6 00122 2521 00	spri2	pr6|82
+002205  aa   775632 3520 04	epp2 	-1126,ic		000037 = 404000000021
+002206  aa  6 00124 2521 00	spri2	pr6|84
+002207  aa   775571 3520 04	epp2 	-1159,ic		000000 = 524000000041
+002210  aa  6 00126 2521 00	spri2	pr6|86
+002211  aa  7 00002 3521 20	epp2 	pr7|2,*
+002212  aa  6 00130 2521 00	spri2	pr6|88
+002213  aa  6 00114 6211 00	eax1 	pr6|76
+002214  aa   014000 4310 07	fld  	6144,dl
+002215  la  4 00052 3521 20	epp2 	pr4|42,*		syserr
+002216  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 382
+	go to exit;
+
+002217  aa   776770 3520 04	epp2 	-520,ic		001207 = 776645237004
+002220  aa   000001 7270 07	lxl7 	1,dl
+002221  aa  0 00657 7101 00	tra  	pr0|431		tra_ext_1
+						STATEMENT 1 ON LINE 383
+     end handler;
+
+  END PROCEDURE handler
+  END PROCEDURE copy_fdump
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

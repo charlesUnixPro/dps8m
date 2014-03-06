@@ -1,0 +1,54 @@
+" ***********************************************************
+" *                                                         *
+" * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+" *                                                         *
+" ***********************************************************
+	name	tnz
+	entry	tnz
+
+tnz:	push
+
+	spri	pr6|64
+	epp2	ap|2,*
+	epp2	bp|0,*
+	epp3	pr2|1026
+	spri3	pr2|36
+	lda	PATTERN
+	sta	pr2|64
+	lda	0,dl
+	stz	pr2|8
+
+tnz_loop:
+	tra	start
+
+	org	1018
+start:
+	ldq	pr2|64
+	epp3	pr2|36,*
+	cmpq	pr3|540,*
+	tze	2177,ic		= 3198 (=6176o)
+	ldq	pr2|64
+	tnz	2142,ic		= 3165 (=6135o)
+	tra	ZOP
+
+	org	3165
+	adla	1,dl
+	cmpa	=o400,dl
+	tnz	CHECK
+	lpri	pr6|64
+	return
+
+CHECK:	cmpa	pr2|8
+	tmi	BAD1
+	aos	pr2|8
+	cmpa	pr2|8
+	tnz	BAD2
+	tra	tnz_loop
+
+BAD1:	oct	010101000000
+BAD2:	oct	020202000000
+	
+PATTERN:	oct	077777013521
+ZOP:	oct	252525000000
+	org	4096-3   " force next test to be bound at a mod 1024.
+	end

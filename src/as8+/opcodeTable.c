@@ -14,6 +14,7 @@ PRIVATE
 opCode allOpcodes[] =
 {
     // non-EIS....
+
     // 000 - 017
 	{},
 	{"mme", OPCODE, 0, 0, false, 0001, 0001000},
@@ -40,8 +41,10 @@ opCode allOpcodes[] =
 	{"adlx5", OPCODE, 0, 0, false, 0025, 0025000},
 	{"adlx6", OPCODE, 0, 0, false, 0026, 0026000},
 	{"adlx7", OPCODE, 0, 0, false, 0027, 0027000},
+    
+    {},
 	{},
-	{},
+    
 	{"ldqc", OPCODE, 0, 0, false, 0032, 0032000},
 	{"adl", OPCODE, 0, 0, false, 0033, 0033000},
 	{"ldac", OPCODE, 0, 0, false, 0034, 0034000},
@@ -49,7 +52,7 @@ opCode allOpcodes[] =
 	{"adlq", OPCODE, 0, 0, false, 0036, 0036000},
 	{"adlaq", OPCODE, 0, 0, false, 0037, 0037000},
     // 040 - 057
-	{"asx0", OPCODE, 0, 0, false, 0040, 0040000},
+  	{"asx0", OPCODE, 0, 0, false, 0040, 0040000},
 	{"asx1", OPCODE, 0, 0, false, 0041, 0041000},
 	{"asx2", OPCODE, 0, 0, false, 0042, 0042000},
 	{"asx3", OPCODE, 0, 0, false, 0043, 0043000},
@@ -134,7 +137,7 @@ opCode allOpcodes[] =
 	{"ssx5", OPCODE, 0, 0, false, 0145, 0145000},
 	{"ssx6", OPCODE, 0, 0, false, 0146, 0146000},
 	{"ssx7", OPCODE, 0, 0, false, 0147, 0147000},
-	
+
     {"adwp4", OPCODE, 0, 0, false, 0150, 0150000},
 	{"adwplp", OPCODE, 0, 0, false, 0150, 0150000},
 
@@ -263,10 +266,10 @@ opCode allOpcodes[] =
 	{"canx5", OPCODE, 0, 0, false, 0305, 0305000},
 	{"canx6", OPCODE, 0, 0, false, 0306, 0306000},
 	{"canx7", OPCODE, 0, 0, false, 0307, 0307000},
-    
+
 	{"eawp0", OPCODE, 0, 0, false, 0310, 0310000},
     {"eawpap", OPCODE, 0, 0, false, 0310, 0310000},
-    
+
 	{"easp0", OPCODE, 0, 0, false, 0311, 0311000},
     {"easpap", OPCODE, 0, 0, false, 0311, 0311000},
     
@@ -315,7 +318,7 @@ opCode allOpcodes[] =
     {"ansx5", OPCODE, 0, 0, false, 0345, 0345000},
 	{"ansx6", OPCODE, 0, 0, false, 0346, 0346000},
 	{"ansx7", OPCODE, 0, 0, false, 0347, 0347000},
-	
+
 	{"epp0", OPCODE, 0, 0, false, 0350, 0350000},
   	{"eppap", OPCODE, 0, 0, false, 0350, 0350000},
     
@@ -392,7 +395,7 @@ opCode allOpcodes[] =
 	{},
 	{"dufa", OPCODE, 0, 0, false, 0437, 0437000},
     // 440 - 457
-	{"sxl0", OPCODE, 0, 0, false, 0440, 0440000},
+    {"sxl0", OPCODE, 0, 0, false, 0440, 0440000},
 	{"sxl1", OPCODE, 0, 0, false, 0441, 0441000},
 	{"sxl2", OPCODE, 0, 0, false, 0442, 0442000},
 	{"sxl3", OPCODE, 0, 0, false, 0443, 0443000},
@@ -964,6 +967,7 @@ opCode allOpcodes[] =
 	{},
 	{},
 	{},
+
 	{"epbp0", OPCODE, 0, 0, true, 0350, 0350400},
 	{"epbpap", OPCODE, 0, 0, true, 0350, 0350400},
 
@@ -1302,6 +1306,46 @@ opCode allOpcodes[] =
     {"s6bdx", OPCODEARS, 0, 0, true, 0521, 0521400},  //Subtract 6-bit Displacement from Address Register
     {"s9bdx", OPCODEARS, 0, 0, true, 0520, 0520400},  //Subtract 9-bit Displacement from Address Register
     {"sbdx",  OPCODEARS, 0, 0, true, 0523, 0523400},  //Subtract  bit Displacement from Address Register
+    
+    // alternalte index/pointer register instructions
+    {"adlx", OPCODEX, 0, 0, false, 0, 0},
+    {"asx",  OPCODEX, 0, 0, false, 0, 0},
+    {"adx",  OPCODEX, 0, 0, false, 0, 0},
+    {"cmpx", OPCODEX, 0, 0, false, 0, 0},
+	{"sblx", OPCODEX, 0, 0, false, 0, 0},
+	{"ssx",  OPCODEX, 0, 0, false, 0, 0},
+	{"sbx",  OPCODEX, 0, 0, false, 0, 0},
+	{"cnax", OPCODEX, 0, 0, false, 0, 0},
+	{"ldx",  OPCODEX, 0, 0, false, 0, 0},
+	{"orsx", OPCODEX, 0, 0, false, 0, 0},
+	{"orx",  OPCODEX, 0, 0, false, 0, 0},
+	{"canx", OPCODEX, 0, 0, false, 0, 0},
+	{"lcx",  OPCODEX, 0, 0, false, 0, 0},
+	{"ansx", OPCODEX, 0, 0, false, 0, 0},
+	{"anx",  OPCODEX, 0, 0, false, 0, 0},
+	{"eax",  OPCODEX, 0, 0, false, 0, 0},
+	{"ersx", OPCODEX, 0, 0, false, 0, 0},
+	{"erx",  OPCODEX, 0, 0, false, 0, 0},
+	{"tsx",  OPCODEX, 0, 0, false, 0, 0},
+	{"lxl",  OPCODEX, 0, 0, false, 0, 0},
+	{"stx",  OPCODEX, 0, 0, false, 0, 0},
+	{"ara",  OPCODEX, 0, 0, true, 0, 0},
+	{"aar",  OPCODEX, 0, 0, true, 0, 0},
+	{"arn",  OPCODEX, 0, 0, true, 0, 0},
+	{"nar",  OPCODEX, 0, 0, true, 0, 0},
+	{"sar",  OPCODEX, 0, 0, true, 0, 0},
+	{"lar",  OPCODEX, 0, 0, true, 0, 0},
+    {"sxl",  OPCODEX, 0, 0, false, 0, 0},
+    
+    {"adwp", OPCODER, 0, 0, false, 0, 0},
+    {"spbp", OPCODER, 0, 0, false, 0, 0},
+    {"tsp",  OPCODER, 0, 0, false, 0, 0},
+    {"eawp", OPCODER, 0, 0, false, 0, 0},
+    {"easp", OPCODER, 0, 0, false, 0, 0},
+    {"epp",  OPCODER, 0, 0, false, 0, 0},   // opr pointer,operand
+	{"sprp", OPCODER, 0, 0, false, 0, 0},
+	{"lprp", OPCODER, 0, 0, false, 0, 0},
+	{"epbp", OPCODER, 0, 0, true, 0, 0},   // opr pointer, operand
 };
 
 

@@ -1,0 +1,411 @@
+	COMPILATION LISTING OF SEGMENT log_name_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1025.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 log_name_:
+        9      procedure ();
+       10 
+       11 /* *	LOG_NAME_
+       12*   *
+       13*   *	This procedure deals with log segment names and the date/time suffix.
+       14*   *	The log_name_$name entrypoint, given a clock reading and a name,
+       15*   *	returns the name with the appropriate suffix.  The log_name_$time
+       16*   *	entrypoint, given a suffixed name, returns the time stamp by converting
+       17*   *	it back from GMT. These names have a fixed format, and all the log_read_
+       18*   *	code depends on that format.
+       19*   *
+       20*   *	Modification history:
+       21*   *	84-06-01, W. Olin Sibert: Initial coding
+       22*   *	84-10-16, WOS: Added log_name_$starname
+       23*   *	84-10-30, WOS: Converted to use date_time_$format
+       24*   */
+       25 
+       26 declare	P_ename char (*) parameter;
+       27 declare	P_time fixed bin (71) parameter;
+       28 
+       29 declare	code fixed bin (35);
+       30 declare	name_lth fixed bin;
+       31 declare	return_str char (32);
+       32 
+       33 declare 1 suffix_rep	unaligned automatic,
+       34 	2 period_1	char (1),
+       35 	2 yc		pic "9999",
+       36 	2 my		pic "99",
+       37 	2 dm		pic "99",
+       38 	2 period_2	char (1),
+       39 	2 Hd		pic "99",
+       40 	2 MH		pic "99",
+       41 	2 SM		pic "99";
+       42 
+       43 declare 1 suffix_time	aligned like time_value automatic;
+       44 declare	suffix_clock fixed bin (71);
+       45 
+       46 declare	error_table_$bigarg fixed bin (35) external static;
+       47 declare	error_table_$improper_data_format fixed bin (35) external static;
+       48 declare	error_table_$smallarg fixed bin (35) external static;
+       49 
+       50 declare	date_time_$format entry (char (*), fixed bin (71), char (*), char (*)) returns (char (250) varying);
+       51 declare	date_time_$to_clock entry (pointer, fixed bin (71), fixed bin (35));
+       52 declare	sub_err_ entry options (variable);
+       53 
+       54 declare	WHOAMI char (32) internal static options (constant) init ("log_name_");
+       55 declare	PERIOD char (1) internal static options (constant) init (".");
+       56 declare	GMT char (3) internal static options (constant) init ("gmt");
+       57 
+       58 declare	conversion condition;
+       59 
+       60 declare  (addr, length, null, rtrim, string, substr, unspec) builtin;
+       61 
+       62 /* */
+       63 
+       64 log_name_$name:
+       65      entry (P_ename, P_time) returns (char (32));
+       66 
+       67 	call check_ename ();
+       68 
+       69 	substr (return_str, 1, name_lth) = substr (P_ename, 1, name_lth);
+       70 	substr (return_str, name_lth + 1) = date_time_$format (".^9999yc^my^dm.^Hd^MH^SM", P_time, GMT, "");
+       71 	return (return_str);
+       72 
+       73 
+       74 
+       75 log_name_$starname:
+       76      entry (P_ename) returns (char (32));
+       77 
+       78 	call check_ename ();
+       79 
+       80 	return_str = substr (P_ename, 1, name_lth) || ".????????.??????";
+       81 	return (return_str);
+       82 
+       83 /* */
+       84 
+       85 log_name_$time:
+       86      entry (P_ename) returns (fixed bin (71));
+       87 
+       88 	name_lth = length (rtrim (P_ename));
+       89 	code = error_table_$improper_data_format;	/* For sub_err_ calls */
+       90 	if (name_lth <= length (string (suffix_rep))) then goto INVALID_SUFFIX;
+       91 
+       92 	string (suffix_rep) = substr (P_ename, 1 + name_lth - length (string (suffix_rep)));
+       93 
+       94 	if ((suffix_rep.period_1) ^= PERIOD) then goto INVALID_SUFFIX;
+       95 	if ((suffix_rep.period_2) ^= PERIOD) then goto INVALID_SUFFIX;
+       96 
+       97 	on condition (conversion) goto INVALID_SUFFIX;
+       98 
+       99 	unspec (suffix_time) = ""b;
+      100 	suffix_time.version = Vtime_value_3;
+      101 	suffix_time.za = GMT;
+      102 
+      103 	suffix_time.yc = suffix_rep.yc;		/* Convert the character fields for consumption */
+      104 	suffix_time.my = suffix_rep.my;		/* by date_time_$to_clock. */
+      105 	suffix_time.dm = suffix_rep.dm;
+      106 	suffix_time.Hd = suffix_rep.Hd;
+      107 	suffix_time.MH = suffix_rep.MH;
+      108 	suffix_time.SM = suffix_rep.SM;
+      109 
+      110 	call date_time_$to_clock (addr (suffix_time), suffix_clock, code);
+      111 
+      112 	if (code ^= 0) then do;
+      113 INVALID_SUFFIX:
+      114 	     call sub_err_ (code, WHOAMI, ACTION_CANT_RESTART, null (), "",
+      115 		"Cannot convert suffix of ""^a"" to time value.", P_ename);
+      116 	     end;
+      117 
+      118 	return (suffix_clock);
+      119 
+      120 /* */
+      121 
+      122 check_ename:
+      123      procedure ();
+      124 
+      125 	name_lth = length (rtrim (P_ename));
+      126 	if ((name_lth + length (string (suffix_rep))) > 32) then
+      127 	     code = error_table_$bigarg;
+      128 	else if (name_lth = 0) then
+      129 	     code = error_table_$smallarg;
+      130 	else return;
+      131 
+      132 	call sub_err_ (code, WHOAMI, ACTION_CANT_RESTART, null (), "",
+      133 	     "Cannot add YYYYMMDD.HHMMSS suffix to ""^a"".", P_ename);
+      134 
+      135 	end check_ename;
+      136 
+      137  /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  1     2 /* format: style3 */
+  1     3 
+  1     4 /* These constants are to be used for the flags argument of sub_err_ */
+  1     5 /* They are just "string (condition_info_header.action_flags)" */
+  1     6 
+  1     7 declare	(
+  1     8 	ACTION_CAN_RESTART	init (""b),
+  1     9 	ACTION_CANT_RESTART init ("1"b),
+  1    10 	ACTION_DEFAULT_RESTART
+  1    11 			init ("01"b),
+  1    12 	ACTION_QUIET_RESTART
+  1    13 			init ("001"b),
+  1    14 	ACTION_SUPPORT_SIGNAL
+  1    15 			init ("0001"b)
+  1    16 	)		bit (36) aligned internal static options (constant);
+  1    17 
+  1    18 /* End include file */
+      137 
+      138  /* START OF*	time_value.incl.pl1 	  *  *  *  *  *  *  *  *   */
+  2     2 
+  2     3 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *   */
+  2     4 /*							       */
+  2     5 /* Name:  time_value.incl.pl1				       */
+  2     6 /*							       */
+  2     7 /*	This structure holds output from date_time_$from_clock	       */
+  2     8 /*	                  and input to   date_time_$to_clock	       */
+  2     9 /* (A clock value is a combination of a day portion and a time portion.      */
+  2    10 /*  clock_days represents one part and clock_time the other.)	       */
+  2    11 /*      to_clock accepts "day" (as opposed to "time") data only in certain   */
+  2    12 /*  combinations.  This table shows with the *'s which fields may be present */
+  2    13 /*  together.  All others must be zero.				       */
+  2    14 /* +-1-+-2-+-3-+-4-+--------------+				       */
+  2    15 /* | * | * |   |   |         year |    In cases 1, 2, & 4, if day_in_week is */
+  2    16 /* | * |   |   |   |           mm |    present,  it is used to verify the    */
+  2    17 /* | * |   |   |   |           dd |    value converted.		       */
+  2    18 /* |   |   | * |   |  fiscal_week |    In case 3 it actually defines a day.  */
+  2    19 /* |   |   |(*)|   |  day_in_week |    If not present, Monday is assumed.    */
+  2    20 /* |   | * |   |   |  day_in_year |				       */
+  2    21 /* |   |   |   | * | day_in_clock |				       */
+  2    22 /* +-v-+-v-+-v-+-v-+--------------+				       */
+  2    23 /*   |   |   |   +-- clock_days = day_in_calendar			       */
+  2    24 /*   |   |   +------ clock_days = converted (fiscal_week,day_in_week)	       */
+  2    25 /*   |   +---------- clock_days = converted (year,day_in_year)	       */
+  2    26 /*   +-------------- clock_days = converted (year,mm,dd)		       */
+  2    27 /*							       */
+  2    28 /*    clock_time = converted (HH,MM,SS,UUUUUU)			       */
+  2    29 /*							       */
+  2    30 /* The zone adjustment may be in one of two forms:		       */
+  2    31 /*    if zone^="" then zone_index = INDEX_IN_time_info_OF (zone);	       */
+  2    32 /* 		[ERROR if not found]			       */
+  2    33 /*    if zone="" & zone_index=0 then zone_index = time_defaults_$zone_index  */
+  2    34 /* After these two steps, if zone_index=0, it is an ERROR.		       */
+  2    35 /* The value in time_info_ of zone_delta (zone_index) is used to adjust      */
+  2    36 /* clock_time.						       */
+  2    37 /*							       */
+  2    38 /* If leap_year^=0 it is an ERROR.  All values are range checked, e.g.       */
+  2    39 /*   year<0 or year>9999.  Out-of-range is an ERROR.		       */
+  2    40 /*							       */
+  2    41 /*  Refer to time_offset_.incl.pl1 for the structure used to input data to   */
+  2    42 /*  date_time_$offset_to_clock.				       */
+  2    43 /*							       */
+  2    44 /* Status							       */
+  2    45 /*							       */
+  2    46 /* 0) Created by:   J. Falksen - 06/20/78			       */
+  2    47 /* 1) Updated:	jaf	 - 84-11-01 US & fw enlarged to bin(20)	       */
+  2    48 /*							       */
+  2    49 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *   */
+  2    50 
+  2    51 /*	 All values in this structure are zone adjusted, not GMT.	       */
+  2    52 
+  2    53 dcl 1 time_value		aligned based(Ptime_value),
+  2    54       2 version	char (8),
+  2    55       2 yc 	fixed bin,	/* Year part of date (eg, 1978)      */
+  2    56       2 my 	fixed bin,	/* Month part of date (eg, 7= July)  */
+  2    57       2 dm 	fixed bin,	/* Day of month part of date (eg, 4) */
+  2    58       2 Hd 	fixed bin,	/* Hour of the day (eg, 18)	       */
+  2    59       2 MH 	fixed bin,	/* Minute of the hour (eg, 35)       */
+  2    60       2 SM 	fixed bin,	/* Second of the minute (eg, 59)     */
+  2    61       2 US 	fixed bin (20),	/* Microseconds in excess of second  */
+  2    62       2 fw	fixed bin (20),	/* the digits are yyyyww	 [OUT] */
+  2    63       2 dw	fixed bin,	/* Day of the week (1=Mon, 7=Sun).   */
+  2    64       2 dy	fixed bin,	/* Day of the year		       */
+  2    65 				/*  (eg, 12/31 = 365 or 366).	       */
+  2    66       2 dc	fixed bin(22),	/* Day in calendar value	       */
+  2    67 				/*  (eg, 1 = Jan 1, 0001).	       */
+  2    68       2 Uc	fixed bin(71),	/* Microsecond in calendar value     */
+  2    69 				/*  (eg, 0 = 0001-01-01m)	       */
+  2    70       2 za	char (5),		/* Zone abbreviation	       */
+  2    71       2 zone_index	fixed bin,	/* Index in time_table_$zone_names,  */
+  2    72 				/*  of zone in which time expressed  */
+  2    73       2 leap_year	fixed bin,	/* 1- this is a leap year	 [OUT] */
+  2    74 
+  2    75      Ptime_value	ptr,
+  2    76      Vtime_value_3	char(8) int static options(constant) init("timeval3");
+  2    77 
+  2    78 /* END OF*	time_value.incl.pl1	  *  *  *  *  *  *  *  *   */
+      138 
+      139 
+      140 	end log_name_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.8  log_name_.pl1                     >spec>install>1111>log_name_.pl1
+137          1    04/16/82  0958.1  sub_err_flags.incl.pl1            >ldd>include>sub_err_flags.incl.pl1
+138          2    12/21/84  1239.8  time_value.incl.pl1               >ldd>include>time_value.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_CANT_RESTART             000002 constant        bit(36)                  initial dcl 1-7 set ref 113* 132*
+GMT                             000003 constant        char(3)                  initial packed unaligned dcl 56 set ref 70* 101
+Hd                        5     000116 automatic       fixed bin(17,0)          level 2 in structure "suffix_time" dcl 43
+                                                                                  in procedure "log_name_" set ref 106*
+Hd                        2(18) 000112 automatic       picture(2)               level 2 in structure "suffix_rep" packed packed
+                                                                                  unaligned dcl 33 in procedure "log_name_" set ref
+                                                                                  106
+MH                        6     000116 automatic       fixed bin(17,0)          level 2 in structure "suffix_time" dcl 43
+                                                                                  in procedure "log_name_" set ref 107*
+MH                        3     000112 automatic       picture(2)               level 2 in structure "suffix_rep" packed packed
+                                                                                  unaligned dcl 33 in procedure "log_name_" set ref
+                                                                                  107
+PERIOD                                 constant        char(1)                  initial packed unaligned dcl 55 ref 94 95
+P_ename                                parameter       char                     packed unaligned dcl 26 set ref 64 69 75 80 85 88 92
+                                                                                  113* 125 132*
+P_time                                 parameter       fixed bin(71,0)          dcl 27 set ref 64 70*
+SM                        7     000116 automatic       fixed bin(17,0)          level 2 in structure "suffix_time" dcl 43
+                                                                                  in procedure "log_name_" set ref 108*
+SM                        3(18) 000112 automatic       picture(2)               level 2 in structure "suffix_rep" packed packed
+                                                                                  unaligned dcl 33 in procedure "log_name_" set ref
+                                                                                  108
+Vtime_value_3                   000000 constant        char(8)                  initial packed unaligned dcl 2-53 ref 100
+WHOAMI                          000004 constant        char(32)                 initial packed unaligned dcl 54 set ref 113* 132*
+addr                                                   builtin function         dcl 60 ref 110 110
+code                            000100 automatic       fixed bin(35,0)          dcl 29 set ref 89* 110* 112 113* 126* 128* 132*
+conversion                      000144 stack reference condition                dcl 58 ref 97
+date_time_$format               000016 constant        entry                    external dcl 50 ref 70
+date_time_$to_clock             000020 constant        entry                    external dcl 51 ref 110
+dm                        1(27) 000112 automatic       picture(2)               level 2 in structure "suffix_rep" packed packed
+                                                                                  unaligned dcl 33 in procedure "log_name_" set ref
+                                                                                  105
+dm                        4     000116 automatic       fixed bin(17,0)          level 2 in structure "suffix_time" dcl 43
+                                                                                  in procedure "log_name_" set ref 105*
+error_table_$bigarg             000010 external static fixed bin(35,0)          dcl 46 ref 126
+error_table_$improper_data_format
+                                000012 external static fixed bin(35,0)          dcl 47 ref 89
+error_table_$smallarg           000014 external static fixed bin(35,0)          dcl 48 ref 128
+length                                                 builtin function         dcl 60 ref 88 90 92 125 126
+my                        1(09) 000112 automatic       picture(2)               level 2 in structure "suffix_rep" packed packed
+                                                                                  unaligned dcl 33 in procedure "log_name_" set ref
+                                                                                  104
+my                        3     000116 automatic       fixed bin(17,0)          level 2 in structure "suffix_time" dcl 43
+                                                                                  in procedure "log_name_" set ref 104*
+name_lth                        000101 automatic       fixed bin(17,0)          dcl 30 set ref 69 69 70 80 88* 90 92 125* 126 128
+null                                                   builtin function         dcl 60 ref 113 113 132 132
+period_1                        000112 automatic       char(1)                  level 2 packed packed unaligned dcl 33 set ref 94
+period_2                  2(09) 000112 automatic       char(1)                  level 2 packed packed unaligned dcl 33 set ref 95
+return_str                      000102 automatic       char(32)                 packed unaligned dcl 31 set ref 69* 70* 71 80* 81
+rtrim                                                  builtin function         dcl 60 ref 88 125
+string                                                 builtin function         dcl 60 set ref 90 92* 92 126
+sub_err_                        000022 constant        entry                    external dcl 52 ref 113 132
+substr                                                 builtin function         dcl 60 set ref 69* 69 70* 80 92
+suffix_clock                    000142 automatic       fixed bin(71,0)          dcl 44 set ref 110* 118
+suffix_rep                      000112 automatic       structure                level 1 packed packed unaligned dcl 33 set ref 90
+                                                                                  92* 92 126
+suffix_time                     000116 automatic       structure                level 1 dcl 43 set ref 99* 110 110
+time_value                             based           structure                level 1 dcl 2-53
+unspec                                                 builtin function         dcl 60 set ref 99*
+version                         000116 automatic       char(8)                  level 2 dcl 43 set ref 100*
+yc                        0(09) 000112 automatic       picture(4)               level 2 in structure "suffix_rep" packed packed
+                                                                                  unaligned dcl 33 in procedure "log_name_" set ref
+                                                                                  103
+yc                        2     000116 automatic       fixed bin(17,0)          level 2 in structure "suffix_time" dcl 43
+                                                                                  in procedure "log_name_" set ref 103*
+za                       20     000116 automatic       char(5)                  level 2 dcl 43 set ref 101*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CAN_RESTART                     internal static bit(36)                  initial dcl 1-7
+ACTION_DEFAULT_RESTART                 internal static bit(36)                  initial dcl 1-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 1-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 1-7
+Ptime_value                            automatic       pointer                  dcl 2-53
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+INVALID_SUFFIX                  000556 constant        label                    dcl 113 ref 90 94 95 97
+check_ename                     000656 constant        entry                    internal dcl 122 ref 67 78
+log_name_                       000104 constant        entry                    external dcl 8
+log_name_$name                  000120 constant        entry                    external dcl 64
+log_name_$starname              000247 constant        entry                    external dcl 75
+log_name_$time                  000342 constant        entry                    external dcl 85
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1150        1174     772        1160
+Length      1410     772        24         177     155           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+log_name_                           418 external procedure  is an external procedure.  
+on unit on line 97                   64 on unit               
+check_ename                             internal procedure  shares stack frame of external procedure log_name_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+log_name_                000100 code                        log_name_
+                         000101 name_lth                    log_name_
+                         000102 return_str                  log_name_
+                         000112 suffix_rep                  log_name_
+                         000116 suffix_time                 log_name_
+                         000142 suffix_clock                log_name_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           signal_op
+enable_op           shorten_stack       ext_entry           ext_entry_desc      int_entry           any_to_any_truncate_
+unpack_picture
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+date_time_$format             date_time_$to_clock           sub_err_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bigarg           error_table_$improper_data_format                           error_table_$smallarg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000103        64 000113        67 000140        69 000141        70 000147        71 000214        75 000243
+     78 000267        80 000270        81 000307        85 000336        88 000356        89 000373        90 000376
+     92 000401        94 000411        95 000415        97 000422        99 000441       100 000444       101 000446
+    103 000453       104 000464       105 000475       106 000506       107 000517       108 000526       110 000537
+    112 000554       113 000556       118 000626       122 000656       125 000657       126 000674       128 000703
+    130 000711       132 000712       135 000760
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

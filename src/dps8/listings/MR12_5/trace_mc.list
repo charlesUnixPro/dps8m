@@ -1,0 +1,438 @@
+	COMPILATION LISTING OF SEGMENT trace_mc
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1023.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 trace_mc: proc;
+       14 	return;					/* should never enter here */
+       15 
+       16 /* trace_mc - primitive to turn on/off the hardcore machine condition trace mechanism
+       17*   initially coded by James A. Bush March 1977 */
+       18 
+       19 dcl (a_segptr, segptr) ptr;
+       20 dcl (a_trace_sw, trace_sw) bit (1) aligned;
+       21 dcl (a_code, code) fixed bin (35);
+       22 dcl (p, a_bp) ptr;
+       23 dcl  dirname char (168);
+       24 dcl (i, a_buf_size, buf_size) fixed bin;
+       25 dcl  ename char (32);
+       26 dcl  vl fixed bin (3);
+       27 dcl  based_segno fixed bin (35);
+       28 dcl  rba (3) fixed bin (3);				/* ring bracket array */
+       29 dcl  init_buf (0 : buf_size) bit (36) based (bp);
+       30 dcl 1 bseg based (addr (based_segno)) aligned,
+       31     2 seg fixed bin unal,
+       32     2 pad1 fixed bin unal;
+       33 
+       34 dcl  level$set entry (fixed bin (3));
+       35 dcl  level$get entry returns (fixed bin (3));
+       36 dcl  unique_chars_ entry (bit (*)) returns (char (15));
+       37 dcl  append$branch entry (char (*), char (*), fixed bin (5), fixed bin (35));
+       38 dcl  initiate entry (char (*), char (*), char (*), fixed bin (1), fixed bin (1), ptr, fixed bin (35));
+       39 dcl  ringbr_$set entry (char (*), char (*), (3) fixed bin (3), fixed bin (35));
+       40 dcl  delentry$dseg entry (ptr, fixed bin (35));
+       41 dcl  user_wire entry (ptr, bit (1) aligned, fixed bin (18), fixed bin (18), fixed bin (35));
+       42 dcl  set$bc_seg entry (ptr, fixed bin (24), fixed bin (35));
+       43 
+       44 dcl  pds$process_dir_name char (32) ext;
+       45 dcl  pds$mc_trace_buf ptr unaligned ext;		/* Note packed pointer */
+       46 dcl  pds$mc_trace_seg fixed bin (35) ext;
+       47 dcl 1 pds$mc_trace_sw aligned ext,
+       48     2 hc_trace_sw bit (1) unaligned,
+       49     2 init_sw bit (1) unaligned;
+       50 dcl  error_table_$action_not_performed fixed bin (35) ext;
+       51 dcl  error_table_$buffer_big fixed bin (35) ext;
+       52 
+       53 dcl (addr, fixed, addrel, null, rel, ptr, divide) builtin;
+       54 
+       55 /*  */
+  1     1 
+  1     2 /* Begin include file mc_trace_buf.incl.pl1 */
+  1     3 
+  1     4 /* Created in April 1977 by James A. Bush to define the contents of the machine condition trace buffer */
+  1     5 
+  1     6 dcl  bp ptr;					/* pointer to M. C. buffer */
+  1     7 
+  1     8 dcl 1 mc_trace_buf based (bp) aligned,			/* trace buffer template */
+  1     9     2 mc_lim fixed bin unal,				/* end of machine condition storage area */
+  1    10     2 mc_nxtad fixed bin unal,			/* the nxt avail. location for M. C. storage */
+  1    11     2 mc_strt fixed bin unal,				/* the beginning of the M. C. storage area */
+  1    12     2 mc_cnt fixed bin unal,				/* number of M. C.'s that can be stored */
+  1    13     2 hr_lim fixed bin unal,				/* end of history register storage */
+  1    14     2 hr_nxtad fixed bin unal,			/* the nxt avail. location for history register storage */
+  1    15     2 hr_strt fixed bin unal,				/* the beginning of the H. R. storage area */
+  1    16     2 hr_cnt fixed bin unal,				/* number of H. R.'s that can be stored */
+  1    17     2 pad (4) fixed bin,				/* pad to start of history register area */
+  1    18     2 h_regs (hr_cnt),				/* array of history register blocks */
+  1    19       3 ou_hr (16) bit (72),				/* operations unit history registers */
+  1    20       3 cu_hr (16) bit (72),				/* control unit history registers */
+  1    21       3 du_hr (16) bit (72),				/* decimal unit history registers */
+  1    22       3 au_hr (16) bit (72),				/* appending unit history registers */
+  1    23     2 mach_cond (mc_cnt),				/* array of machine conditions */
+  1    24       3 spri_dta (8) ptr,				/* pointer register storage */
+  1    25       3 sreg_dta (8) bit (36),			/* processor register storage */
+  1    26       3 scu_dta (8) bit (36),				/* SCU data  storage */
+  1    27       3 sw_dta (8) bit (36),				/* software data storage */
+  1    28       3 spl_dta (8) bit (36);				/* EIS ptrs and lengths data */
+  1    29 
+  1    30 dcl  mc_size fixed bin int static options (constant) init (48); /* size of M. C. block in words */
+  1    31 dcl  hr_size fixed bin int static options (constant) init (128); /* size of history register block */
+  1    32 dcl  max_buf_size fixed bin int static options (constant) init (16); /* max size of M. C. buffer in K */
+  1    33 dcl  buf_init bit (36) int static options (constant) init ("525252525252"b3); /* buffer init. constant */
+  1    34 
+  1    35 /* End include file mc_trace_buf.incl.pl1 */
+  1    36 
+       56 
+  2     1 /* BEGIN INCLUDE FILE its.incl.pl1
+  2     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  2     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  2     4 
+  2     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  2     6     2 pad1 bit (3) unaligned,
+  2     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  2     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  2     9     2 pad2 bit (9) unaligned,
+  2    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  2    11 
+  2    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  2    13     2 pad3 bit (3) unaligned,
+  2    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  2    15     2 pad4 bit (3) unaligned,
+  2    16     2 mod bit (6) unaligned;				/* further modification */
+  2    17 
+  2    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  2    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  2    20     2 pad1 bit (27) unaligned,
+  2    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  2    22 
+  2    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  2    24     2 pad2 bit (3) unaligned,
+  2    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  2    26     2 pad3 bit (3) unaligned,
+  2    27     2 mod bit (6) unaligned;				/* further modification */
+  2    28 
+  2    29 
+  2    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  2    31     2 pad1 bit (3) unaligned,
+  2    32     2 segno fixed bin (15) unsigned unaligned,
+  2    33     2 ringno fixed bin (3) unsigned unaligned,
+  2    34     2 pad2 bit (9) unaligned,
+  2    35     2 its_mod bit (6) unaligned,
+  2    36 
+  2    37     2 offset fixed bin (18) unsigned unaligned,
+  2    38     2 pad3 bit (3) unaligned,
+  2    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    40     2 pad4 bit (3) unaligned,
+  2    41     2 mod bit (6) unaligned;
+  2    42 
+  2    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  2    44     2 pr_no fixed bin (3) unsigned unaligned,
+  2    45     2 pad1 bit (27) unaligned,
+  2    46     2 itp_mod bit (6) unaligned,
+  2    47 
+  2    48     2 offset fixed bin (18) unsigned unaligned,
+  2    49     2 pad2 bit (3) unaligned,
+  2    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    51     2 pad3 bit (3) unaligned,
+  2    52     2 mod bit (6) unaligned;
+  2    53 
+  2    54 
+  2    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  2    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  2    57 
+  2    58 /* END INCLUDE FILE   its.incl.pl1 */
+       57 
+       58 
+       59 /*  */
+       60 
+       61 /* trace_buffer_init - entry to create and init M. C. buff | delete M. C. trace buff, per state of a_trace_sw */
+       62 
+       63 trace_buffer_init: entry (a_segptr, a_trace_sw, a_buf_size, a_bp, a_code);
+       64 
+       65 /* copy args */
+       66 
+       67 	segptr = a_segptr;
+       68 	trace_sw = a_trace_sw;
+       69 	a_bp = null;
+       70 	a_code = 0;
+       71 
+       72 	vl = level$get ();				/* Save current validation level. */
+       73 	call level$set (0);				/* Set hardcore ring validation level. */
+       74 	if trace_sw then do;			/* are we turning trace on? */
+       75 	     if a_buf_size <= 0 | a_buf_size > max_buf_size then do; /* user requested invalid buffer size */
+       76 		code = error_table_$buffer_big;
+       77 		go to erret;
+       78 	     end;
+       79 	     ename = unique_chars_ ("0"b) || ".mct";	/* Create unique buffer segment name. */
+       80 	     call append$branch (pds$process_dir_name, ename, 01010b, code);
+       81 	     if code ^= 0 then go to erret;		/* Create the buffer segment. */
+       82 	     call initiate (pds$process_dir_name, ename, "", 0b, 1b, bp, code);
+       83 	     if bp = null then go to erret;		/* Initiate the segment. */
+       84 	     rba (1) = 0;				/* set ring brackets to 0 N N */
+       85 	     rba (2), rba (3) = vl;
+       86 	     call ringbr_$set (pds$process_dir_name, ename, rba, code); /* Change the ring brackets of the buf seg. */
+       87 	     if code ^= 0 then go to erret;
+       88 	     buf_size = a_buf_size * 1024;		/* set up buffer size */
+       89 	     call set$bc_seg (bp, buf_size * 36, code);	/* set bit count  */
+       90 	     if code ^= 0 then go to erret;
+       91 
+       92 /* initialize buffer */
+       93 
+       94 	     do i = 0 to buf_size - 1;
+       95 		init_buf (i) = buf_init;		/* set up constant in entire buffer */
+       96 	     end;
+       97 
+       98 /* initialize trace buffer header */
+       99 
+      100 	     mc_trace_buf.hr_cnt = buf_size / ((8 * mc_size) + hr_size); /* 8:1 ratio mc's to hr's */
+      101 	     mc_trace_buf.mc_cnt = (mc_trace_buf.hr_cnt * 8) - 1; /* have to have room for header */
+      102 	     mc_trace_buf.hr_strt = fixed (rel (addr (mc_trace_buf.h_regs (1)))); /* figure out starting loc's */
+      103 	     mc_trace_buf.mc_strt = fixed (rel (addr (mc_trace_buf.mach_cond (1))));
+      104 	     mc_trace_buf.hr_lim = (mc_trace_buf.hr_cnt * hr_size) + hr_strt;
+      105 	     mc_trace_buf.mc_lim = (mc_trace_buf.mc_cnt * mc_size) + mc_strt;
+      106 	     mc_trace_buf.hr_nxtad = mc_trace_buf.hr_strt;
+      107 	     mc_trace_buf.mc_nxtad = mc_trace_buf.mc_strt;
+      108 
+      109 /* wire trace buffer */
+      110 
+      111 	     call user_wire (bp, "1"b, 0, -1, code);
+      112 	     if code = 0 then do;
+      113 
+      114 /* set up trace buffer pointer, segno to trace and turn on trace switch in pds */
+      115 
+      116 		a_bp = bp;			/* set buffer pointer for user */
+      117 		p = addr (segptr);
+      118 		bseg.seg = fixed (p -> its.segno, 15);	/* set up seg  number in upper half of word */
+      119 		bseg.pad1 = 0;			/* set lower half of word to zero */
+      120 		pds$mc_trace_buf = bp;
+      121 		pds$mc_trace_seg = based_segno;
+      122 		pds$mc_trace_sw.init_sw = "1"b;	/* let user turn on trace */
+      123 	     end;
+      124 	end;
+      125 	else do;					/* user wants to turn trace off */
+      126 	     pds$mc_trace_sw.init_sw = "0"b;		/* don't let user turn on trace */
+      127 	     pds$mc_trace_sw.hc_trace_sw = "0"b;	/*  must turn switch off first */
+      128 	     pds$mc_trace_seg = 0;
+      129 	     bp = pds$mc_trace_buf;			/* save buffer pointer */
+      130 	     pds$mc_trace_buf = null;			/* this makes it cleaner */
+      131 
+      132 /* Unwire trace buffer */
+      133 
+      134 	     call user_wire (bp, "0"b, 0, 0, code);
+      135 	     if code ^= 0 then go to erret;
+      136 	     call delentry$dseg (bp, code);		/* delete buffer segment */
+      137 
+      138 	end;
+      139 erret:
+      140 	a_code = code;
+      141 	call level$set (vl);			/* Restore original validation level. */
+      142 	return;
+      143 
+      144 /* hc_trace_on_off - entry to turn the hc_trace_sw in the pds on or off */
+      145 
+      146 hc_trace_on_off: entry (a_trace_sw, a_code);
+      147 
+      148 	a_code = 0;				/* preset good return code */
+      149 	if a_trace_sw then				/* user wants to turn trace on */
+      150 	     if ^pds$mc_trace_sw.init_sw then		/* if we haven't initialized the trace buffer */
+      151 		a_code = error_table_$action_not_performed; /* don't let user turn trace on */
+      152 	     else pds$mc_trace_sw.hc_trace_sw = "1"b;
+      153 	else pds$mc_trace_sw.hc_trace_sw = "0"b;	/* user wants to turn hc_trace_sw off */
+      154 	return;
+      155 
+      156      end trace_mc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.0  trace_mc.pl1                      >spec>install>1110>trace_mc.pl1
+56           1    08/18/77  0953.5  mc_trace_buf.incl.pl1             >ldd>include>mc_trace_buf.incl.pl1
+57           2    11/26/79  1320.6  its.incl.pl1                      >ldd>include>its.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_bp                                   parameter       pointer                  dcl 22 set ref 63 69* 116*
+a_buf_size                             parameter       fixed bin(17,0)          dcl 24 ref 63 75 75 88
+a_code                                 parameter       fixed bin(35,0)          dcl 21 set ref 63 70* 139* 146 148* 149*
+a_segptr                               parameter       pointer                  dcl 19 ref 63 67
+a_trace_sw                             parameter       bit(1)                   dcl 20 ref 63 68 146 149
+addr                                                   builtin function         dcl 53 ref 102 103 117 118 119
+append$branch                   000016 constant        entry                    external dcl 37 ref 80
+based_segno                     000121 automatic       fixed bin(35,0)          dcl 27 set ref 118 119 121
+bp                              000126 automatic       pointer                  dcl 1-6 set ref 82* 83 89* 95 100 101 101 102 102
+                                                                                  103 103 103 104 104 104 105 105 105 106 106 107
+                                                                                  107 111* 116 120 129* 134* 136*
+bseg                                   based           structure                level 1 dcl 30
+buf_init                        000000 constant        bit(36)                  initial packed unaligned dcl 1-33 ref 95
+buf_size                        000107 automatic       fixed bin(17,0)          dcl 24 set ref 88* 89 94 100
+code                            000103 automatic       fixed bin(35,0)          dcl 21 set ref 76* 80* 81 82* 86* 87 89* 90 111* 112
+                                                                                  134* 135 136* 139
+delentry$dseg                   000024 constant        entry                    external dcl 40 ref 136
+ename                           000110 automatic       char(32)                 packed unaligned dcl 25 set ref 79* 80* 82* 86*
+error_table_$action_not_performed
+                                000042 external static fixed bin(35,0)          dcl 50 ref 149
+error_table_$buffer_big         000044 external static fixed bin(35,0)          dcl 51 ref 76
+fixed                                                  builtin function         dcl 53 ref 102 103 118
+h_regs                   10            based           structure                array level 2 dcl 1-8 set ref 102
+hc_trace_sw                     000040 external static bit(1)                   level 2 packed packed unaligned dcl 47 set ref 127*
+                                                                                  152* 153*
+hr_cnt                    3(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 100*
+                                                                                  101 103 104
+hr_lim                    2            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 104*
+hr_nxtad                  2(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 106*
+hr_size                                constant        fixed bin(17,0)          initial dcl 1-31 ref 100 104
+hr_strt                   3            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 102*
+                                                                                  104 106
+i                               000106 automatic       fixed bin(17,0)          dcl 24 set ref 94* 95*
+init_buf                               based           bit(36)                  array packed unaligned dcl 29 set ref 95*
+init_sw                   0(01) 000040 external static bit(1)                   level 2 packed packed unaligned dcl 47 set ref 122*
+                                                                                  126* 149
+initiate                        000020 constant        entry                    external dcl 38 ref 82
+its                                    based           structure                level 1 dcl 2-5
+level$get                       000012 constant        entry                    external dcl 35 ref 72
+level$set                       000010 constant        entry                    external dcl 34 ref 73 141
+mach_cond                              based           structure                array level 2 dcl 1-8 set ref 103
+max_buf_size                           constant        fixed bin(17,0)          initial dcl 1-32 ref 75
+mc_cnt                    1(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 101*
+                                                                                  105
+mc_lim                                 based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 105*
+mc_nxtad                  0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 107*
+mc_size                                constant        fixed bin(17,0)          initial dcl 1-30 ref 100 105
+mc_strt                   1            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 103*
+                                                                                  105 107
+mc_trace_buf                           based           structure                level 1 dcl 1-8
+null                                                   builtin function         dcl 53 ref 69 83 130
+p                               000104 automatic       pointer                  dcl 22 set ref 117* 118
+pad1                      0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 30 set ref 119*
+pds$mc_trace_buf                000034 external static pointer                  packed unaligned dcl 45 set ref 120* 129 130*
+pds$mc_trace_seg                000036 external static fixed bin(35,0)          dcl 46 set ref 121* 128*
+pds$mc_trace_sw                 000040 external static structure                level 1 dcl 47
+pds$process_dir_name            000032 external static char(32)                 packed unaligned dcl 44 set ref 80* 82* 86*
+rba                             000122 automatic       fixed bin(3,0)           array dcl 28 set ref 84* 85* 85* 86*
+rel                                                    builtin function         dcl 53 ref 102 103
+ringbr_$set                     000022 constant        entry                    external dcl 39 ref 86
+seg                                    based           fixed bin(17,0)          level 2 packed packed unaligned dcl 30 set ref 118*
+segno                     0(03)        based           bit(15)                  level 2 packed packed unaligned dcl 2-5 ref 118
+segptr                          000100 automatic       pointer                  dcl 19 set ref 67* 117
+set$bc_seg                      000030 constant        entry                    external dcl 42 ref 89
+trace_sw                        000102 automatic       bit(1)                   dcl 20 set ref 68* 74
+unique_chars_                   000014 constant        entry                    external dcl 36 ref 79
+user_wire                       000026 constant        entry                    external dcl 41 ref 111 134
+vl                              000120 automatic       fixed bin(3,0)           dcl 26 set ref 72* 85 141*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ITP_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-56
+ITS_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-55
+addrel                                                 builtin function         dcl 53
+dirname                                automatic       char(168)                packed unaligned dcl 23
+divide                                                 builtin function         dcl 53
+itp                                    based           structure                level 1 dcl 2-18
+itp_unsigned                           based           structure                level 1 dcl 2-43
+its_unsigned                           based           structure                level 1 dcl 2-30
+ptr                                                    builtin function         dcl 53
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+erret                           000555 constant        label                    dcl 139 ref 77 81 83 87 90 135
+hc_trace_on_off                 000573 constant        entry                    external dcl 146
+trace_buffer_init               000036 constant        entry                    external dcl 63
+trace_mc                        000023 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1044        1112     632        1054
+Length      1336     632        46         210     211           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+trace_mc                            162 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+trace_mc                 000100 segptr                      trace_mc
+                         000102 trace_sw                    trace_mc
+                         000103 code                        trace_mc
+                         000104 p                           trace_mc
+                         000106 i                           trace_mc
+                         000107 buf_size                    trace_mc
+                         000110 ename                       trace_mc
+                         000120 vl                          trace_mc
+                         000121 based_segno                 trace_mc
+                         000122 rba                         trace_mc
+                         000126 bp                          trace_mc
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack       ext_entry
+trunc_fx2           divide_fx1
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branch                 delentry$dseg                 initiate                      level$get
+level$set                     ringbr_$set                   set$bc_seg                    unique_chars_
+user_wire
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$buffer_big       pds$mc_trace_buf
+pds$mc_trace_seg              pds$mc_trace_sw               pds$process_dir_name
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000022        14 000030        63 000031        67 000050        68 000054        69 000057        70 000061
+     72 000062        73 000071        74 000101        75 000103        76 000110        77 000113        79 000114
+     80 000146        81 000175        82 000177        83 000241        84 000245        85 000246        86 000251
+     87 000275        88 000277        89 000303        90 000320        94 000322        95 000331        96 000335
+    100 000337       101 000351       102 000354       103 000361       104 000375       105 000411       106 000425
+    107 000430       111 000433       112 000461       116 000463       117 000466       118 000470       119 000475
+    120 000477       121 000501       122 000503       124 000505       126 000506       127 000511       128 000513
+    129 000514       130 000516       134 000520       135 000542       136 000544       139 000555       141 000557
+    142 000566       146 000567       148 000605       149 000606       152 000620       153 000623       154 000626
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

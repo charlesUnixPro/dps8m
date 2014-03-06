@@ -31,6 +31,9 @@ cc: bss     1
 
 main:
     tsx2    setupFXE
+
+    "tra tm0
+
     "push
 
 "
@@ -58,6 +61,7 @@ main:
     acc     /'^g^g'\r\n/
     nop     Date
     nop     Date+1
+
 
    " sprpap      g
    " sprp4       f
@@ -109,8 +113,8 @@ TAMmA:
     nop     magicM+1
 
     link    TIND_main, <TIND>|[_main_2]
-    call    TIND_main (ap|0)
-
+tm0:    call    TIND_main (ap|0)
+dis
     "
     " for C ...
     "

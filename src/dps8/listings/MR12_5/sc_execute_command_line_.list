@@ -1,0 +1,1417 @@
+	COMPILATION LISTING OF SEGMENT sc_execute_command_line_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1017.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style2,idind30 */
+       10 
+       11 sc_execute_command_line_:
+       12      procedure (Sci_ptr, Line_ptr, Line_lth, Code);
+       13 
+       14 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       15 /*							       */
+       16 /* ssu_ replaceable execute_line procedure for the system control	       */
+       17 /*      environment.					       */
+       18 /*							       */
+       19 /* This procedure has to peek at the request so as to determine whether it   */
+       20 /* is a "special" request which does not parse its argument.	       */
+       21 /*							       */
+       22 /* It also performs masking of ipc events during execution of SPECIAL        */
+       23 /* requests whose sc_request_table_ entries call for this service.	       */
+       24 /* sc_abort_line_util_$invoke_request masks for nonSPECIAL requests.	       */
+       25 /*							       */
+       26 /* The sequence in which procedures are called in order to invoke a request  */
+       27 /* is as follows:						       */
+       28 /*							       */
+       29 /*    ssu_$listen						       */
+       30 /*     |__sc_execute_command_line_				       */
+       31 /*         |__check for special commands; if special		       */
+       32 /*	     |__INVOKE_SPECIAL_PROCEDURE			       */
+       33 /*	    if not special					       */
+       34 /*	     |__SSU's execute_command_line			       */
+       35 /*	         |__sc_abort_line_util_$invoke_request		       */
+       36 /*	            |__SSU's locate_request			       */
+       37 /*		  |__if event calls should be masked for this request    */
+       38 /*		  |   |__ipc_$mask_ev_calls			       */
+       39 /*		  |					       */
+       40 /*		  |__SSU's invoke_request			       */
+       41 /*		  |   |__sc_execute_command_line_$locate_request	       */
+       42 /*		  |   |   |__SSU's locate request		       */
+       43 /*		  |   |	|__check_restrictions		       */
+       44 /*		  |   |					       */
+       45 /*		  |   |__REQUEST PROCEDURE			       */
+       46 /*		  |					       */
+       47 /*		  |__if event calls were masked		       */
+       48 /*		      |__ipc_$unmask_ev_calls			       */
+       49 /*							       */
+       50 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       51 
+       52 /**** Written 1984-11-01 BIM */
+       53 /**** Modified 1985-01-07, BIM: Changed to allow 
+       54*      installation_parms.require_operator_login to be changed on the fly. */
+       55 /**** Modified 1985-02-01, BIM: changed for mapping of abort_line into 
+       56*     "abort_request"  */
+       57 /**** Modified 1985-03-18, E. Swenson to fix sign_on aborts during special
+       58*      requests. */
+       59 /**** Modified 1985-04-17, E. Swenson to fix masking problems. */
+       60 
+       61 /****^  HISTORY COMMENTS:
+       62*  1) change(86-08-01,Swenson), approve(87-05-25,MCR7680),
+       63*     audit(87-02-05,GDixon), install(87-08-05,MR12.1-1055):
+       64*     Modified to avoid modifying disk_table_ when running in system control
+       65*     test mode.
+       66*  2) change(87-02-05,GDixon), approve(87-05-25,MCR7690),
+       67*     audit(87-05-06,Parisek), install(87-08-05,MR12.1-1055):
+       68*     Modified for changes to mc_anstbl.incl.pl1.
+       69*  3) change(87-02-05,GDixon), approve(87-05-25,MCR7680),
+       70*     audit(87-05-06,Parisek), install(87-08-05,MR12.1-1055):
+       71*     Modified to correct coding standard violations.  Corrected failure to
+       72*     reset sc_subsystem_info.abort_request_label.  Moved masking of IPC event
+       73*     channels for nonSPECIAL requests from this procedure into
+       74*     sc_abort_line_util_$invoke_request.
+       75*  4) change(87-07-02,GDixon), approve(87-07-02,MCR7680),
+       76*     audit(87-05-06,Parisek), install(87-08-05,MR12.1-1055):
+       77*      A) Since our $locate_request is called by the SSU invoke_request
+       78*         procedure, which is called by sc_abort_line_util_$invoke_request,
+       79*         our $locate_request procedure cannot tell sc_abort_line_util_
+       80*         whether or not to mask event call channels.  It must make that
+       81*         decision itself, prior to calling the real SSU invoke_request.
+       82*      B) Since $locate_request no longer needs to communicate with
+       83*         sc_abort_line_util_, we can remove the
+       84*         sc_subsystem_info.dont_mask_calls element from the include file.
+       85*      C) We still do masking for SPECIAL procedures.  Make unmasking
+       86*         dependent upon whether masking was successfully done, rather than
+       87*         upon whether we tried to do masking.
+       88*      D) Call sc_abort_line_util_$real_abort_line to abort the entire request 
+       89*         line if a sign_on fails.
+       90*                                                   END HISTORY COMMENTS */
+       91 
+       92 	declare Sci_ptr		        pointer;
+       93 	declare Line_ptr		        pointer;
+       94 	declare Line_lth		        fixed bin (21);
+       95 	declare Code		        fixed bin (35);
+       96 
+       97 	declare disk_table_$general_mhv       entry (fixed binary (35));
+       98 	declare ipc_$mask_ev_calls	        entry (fixed bin (35));
+       99 	declare ipc_$unmask_ev_calls	        entry (fixed bin (35));
+      100 	declare sc_abort_line_util_$real_abort_line
+      101 				        entry options(variable);
+      102 	declare sc_ipc_mask_$unmask	        entry (fixed bin);
+      103 	declare sc_ipc_mask_$remask	        entry (fixed bin);
+      104 	declare ssu_$abort_line	        entry () options (variable);
+      105 	declare ssu_$execute_line	        entry (ptr, ptr, fixed bin (21), fixed bin (35));
+      106 	declare ssu_$get_info_ptr	        entry (ptr) returns (ptr);
+      107 	declare ssu_$print_message	        entry () options (variable);
+      108 
+      109 	declare WHITESPACE		        char (6) aligned init ("
+      110 	 ") int static options (constant);		/* FF VT NL CR TAB SP */
+      111 	declare ssu_et_$null_request_line     fixed bin (35) ext static;
+      112 
+      113 	declare begin_request_name	        fixed bin (21);
+      114 	declare code		        fixed bin (35);
+      115 	declare dont_mask		        bit (1) aligned;
+      116 	declare ip		        ptr defined (as_data_$rs_ptrs (0));
+      117 	declare 1 l_request_data	        aligned like request_data;
+      118 	declare (masked_ev_calls_code, unmasked_ev_calls_code)
+      119 				        fixed bin (35);
+      120 	declare remask_count	        fixed bin;	/* depth of ipc event masking */
+      121 	declare request_line_ptr	        pointer;
+      122 	declare request_line_lth	        fixed bin (21);
+      123 	declare request_line	        char (request_line_lth) based (request_line_ptr);
+      124 	declare request_name_lth	        fixed bin (21);
+      125 	declare rest_index		        fixed bin (21);
+      126 	declare special_command	        bit (1) aligned;
+      127 	declare ws_at_end		        fixed bin (21);
+      128 
+      129 	dcl     (addr, length, null, reverse, search, string, substr, verify)
+      130 				        builtin;
+      131 
+      132 	declare cleanup		        condition;
+      133 
+      134 
+      135 /* Program */
+      136 
+      137 	sci_ptr = Sci_ptr;
+      138 	sc_subsystem_info_ptr = ssu_$get_info_ptr (sci_ptr);
+      139 	request_data_ptr = addr (l_request_data);	/* we have our own copy for special requests */
+      140 
+      141 	request_line_ptr = Line_ptr;
+      142 	request_line_lth = Line_lth;
+      143 
+      144 	begin_request_name = verify (request_line, WHITESPACE);
+      145 	if begin_request_name = 0
+      146 	then do;
+      147 		Code = ssu_et_$null_request_line;
+      148 		return;
+      149 	     end;
+      150 
+      151 	request_name_lth = search (substr (request_line, begin_request_name), WHITESPACE);
+      152 	if request_name_lth = 0
+      153 	then request_name_lth = request_line_lth - begin_request_name + 1;
+      154 	else request_name_lth = request_name_lth - 1;	/* this cannot come out zero. */
+      155 	code = 0;
+      156 
+      157 	special_command = "0"b;
+      158 	dont_mask = "0"b;				/* most commands mask while executing */
+      159 
+      160 	call sc_subsystem_info
+      161 	     .
+      162 	     real_locate_request (sci_ptr, substr (request_line, begin_request_name, request_name_lth),
+      163 	     addr (request_data), code);
+      164 	if code = 0
+      165 	then do;
+      166 		sc_rf_ptr = addr (request_data.user_flags);
+      167 		if sc_request_flags.dont_parse_arguments
+      168 		then special_command = "1"b;
+      169 		if sc_request_flags.dont_mask_calls
+      170 		then dont_mask = "1"b;
+      171 	     end;
+      172 
+      173 	if special_command
+      174 	then do;
+      175 		rest_index = verify (substr (request_line, begin_request_name + request_name_lth), WHITESPACE);
+      176 		if rest_index = 0
+      177 		then call INVOKE_SPECIAL_PROCEDURE ("");
+      178 		else do;
+      179 			ws_at_end = verify (reverse (request_line), WHITESPACE);
+      180 			if ws_at_end > 0
+      181 			then ws_at_end = ws_at_end - 1;
+      182 
+      183 			begin;
+      184 
+      185 /* format: off */
+      186 declare line_arg
+      187         char (request_line_lth
+      188              - (rest_index + begin_request_name + request_name_lth - 2)
+      189              - ws_at_end
+      190              ) /* flush the NL */
+      191         defined (request_line)
+      192         pos (rest_index + begin_request_name + request_name_lth - 1);
+      193 
+      194 /* format: on */
+      195 
+      196 			     call INVOKE_SPECIAL_PROCEDURE (line_arg);
+      197 			end;
+      198 		     end;
+      199 	     end;
+      200 	else do;
+      201 		call sc_subsystem_info.real_execute_line (sci_ptr, request_line_ptr, request_line_lth, code);
+      202 						/* this will call us to locate */
+      203 	     end;
+      204 	Code = code;
+      205 
+      206 	return;
+      207 
+      208 INVOKE_SPECIAL_PROCEDURE:
+      209      procedure (rest_of_line) options (non_quick);
+      210 
+      211 	declare rest_of_line	        char (*);
+      212 
+      213 	declare saved_request_data_ptr        pointer;
+      214 	declare saved_executing_request       bit (1) aligned;
+      215 	declare saved_abort_request	        label;
+      216 
+      217 	declare cu_$arg_list_ptr	        entry returns (ptr);
+      218 
+      219 	saved_request_data_ptr = sci.request_processor_info.request_data_ptr;
+      220 	saved_executing_request = sci.executing_request;
+      221 	saved_abort_request = sc_subsystem_info.abort_request_label;
+      222 
+      223 	masked_ev_calls_code, unmasked_ev_calls_code = -1;
+      224 	if ^dont_mask then
+      225 	on cleanup
+      226 	     begin;
+      227 		sci.request_processor_info.request_data_ptr = saved_request_data_ptr;
+      228 		sc_subsystem_info.abort_request_label = saved_abort_request;
+      229 		sci.executing_request = saved_executing_request;
+      230 		if masked_ev_calls_code = 0 & unmasked_ev_calls_code ^= 0
+      231 		then call ipc_$unmask_ev_calls (unmasked_ev_calls_code);
+      232 	     end;
+      233 
+      234 	sci.request_processor_info.request_data_ptr = addr (request_data);
+      235 	sci.executing_request = "1"b;
+      236 	sc_subsystem_info.abort_request_label = ABORT_SPECIAL_REQUEST;
+      237 
+      238 	call check_restrictions ();
+      239 
+      240 	request_data.call_info.arg_list_ptr = cu_$arg_list_ptr ();
+      241 	request_data.call_info.arg_count = 1;
+      242 	request_data.call_info.af_sw = "0"b;
+      243 	request_data.call_info.rv_ptr = null ();
+      244 	request_data.call_info.rv_lth = 0;
+      245 
+      246 	if ^dont_mask
+      247 	then call ipc_$mask_ev_calls (masked_ev_calls_code);
+      248 
+      249 	call request_data.entry (sci_ptr, addr (sc_subsystem_info));
+      250 
+      251 ABORT_SPECIAL_REQUEST:
+      252 	if masked_ev_calls_code = 0 & unmasked_ev_calls_code ^= 0
+      253 	then call ipc_$unmask_ev_calls (unmasked_ev_calls_code);
+      254 	sci.request_processor_info.request_data_ptr = saved_request_data_ptr;
+      255 	sci.executing_request = saved_executing_request;
+      256 	sc_subsystem_info.abort_request_label = saved_abort_request;
+      257 
+      258 	return;
+      259      end INVOKE_SPECIAL_PROCEDURE;
+      260 
+      261 check_restrictions:
+      262      procedure;
+      263 
+      264 	declare sci_authority	        (1:36) bit (1) unaligned;
+      265 
+      266 	declare SIGN_ON_COMMAND	        character (7) init ("sign_on") int static options (constant);
+      267 
+      268 /**** This program expects request_data to be set up */
+      269 
+      270 
+      271 	sc_rf_ptr = addr (request_data.user_flags);
+      272 	string (sci_authority) = sc_subsystem_info.restriction_flags;
+      273 
+      274 	if sc_request_flags.restriction_type ^= 0
+      275 	then if ^sci_authority (sc_request_flags.restriction_type)
+      276 	     then call ssu_$abort_line (sci_ptr, 0, "Terminal ^a lacks authority to execute the ^a command.",
+      277 		     sc_subsystem_info.source_name, request_data.full_name);
+      278 
+      279 	if sc_request_flags.obsolete
+      280 	then call ssu_$print_message (sci_ptr, 0, "Warning: the ^a command is obsolete.", request_data.full_name);
+      281 
+      282 	if sc_request_flags.requires_no_as & sc_stat_$Multics
+      283 	then call ssu_$abort_line (sci_ptr, 0,
+      284 		"The Answering Service is already initialized.^[ Type ""go"" to start Multics service.^]",
+      285 		^sc_stat_$Go);
+      286 
+      287 	if sc_request_flags.requires_as & ^sc_stat_$Multics
+      288 	then call ssu_$abort_line (sci_ptr, 0,
+      289 		"The ^a request requires the Answering Service to be initialized.^/"
+      290 		|| "Type ""startup"" or ""multics"" to initialize it.", request_data.full_name);
+      291 
+      292 	if ip ^= null ()
+      293 	then /* Is installations parms initiated? If not, assume no login required */
+      294 	     if ^(sc_request_flags.no_login_needed | sc_stat_$no_operator_login | sc_subsystem_info.mc_atep = null ()
+      295 		| ^installation_parms.require_operator_login)
+      296 	     then do;
+      297 		     if ^sc_subsystem_info.mc_atep -> mc_ate.signed_on
+      298 		     then do;
+      299 			     call ssu_$print_message (sci_ptr, 0, "You must sign on before using the ^a command.",
+      300 				request_data.full_name);
+      301 
+      302 /**** We must unmask IPC event calls here to allow the answering service
+      303*      to function while an operator is being queried for his/her userid
+      304*      and password.  We may have been masked during a previous call to
+      305*      ssu_$execute_line on the stack. */
+      306 
+      307 			     call sc_ipc_mask_$unmask (remask_count);
+      308 
+      309 			     call ssu_$execute_line (sci_ptr, addr (SIGN_ON_COMMAND), length (SIGN_ON_COMMAND),
+      310 				code);
+      311 
+      312 /**** Reset the IPC event call mask to whatever it was before we unmasked
+      313*      above. */
+      314 
+      315 			     call sc_ipc_mask_$remask (remask_count);
+      316 			     if code ^= 0
+      317 			     then call sc_abort_line_util_$real_abort_line
+      318 			        (sci_ptr, code, "Failed to sign on.");
+      319 			end;
+      320 		end;
+      321 
+      322 /**** We are prepared to execute command. Call disk_table_ as needed. */
+      323 
+      324 	if ^sc_stat_$test_mode & sc_request_flags.complete_disks_first
+      325 	then do;
+      326 		call disk_table_$general_mhv (code);
+      327 		if code ^= 0
+      328 		then call ssu_$abort_line (sci_ptr, code, "Failed to mount logical volumes.");
+      329 	     end;
+      330      end check_restrictions;
+      331 
+      332 /**** Note -- caller supplies request_data */
+      333 
+      334 locate_request:
+      335      entry (Sci_ptr, Request_name, Request_data_ptr, Code);
+      336 
+      337 	declare Request_name	        char (*);
+      338 	declare Request_data_ptr	        pointer;
+      339 
+      340 	sci_ptr = Sci_ptr;
+      341 	sc_subsystem_info_ptr = ssu_$get_info_ptr (sci_ptr);
+      342 	call sc_subsystem_info.real_locate_request (sci_ptr, Request_name, Request_data_ptr, Code);
+      343 	if Code ^= 0
+      344 	then return;
+      345 
+      346 	request_data_ptr = Request_data_ptr;
+      347 	call check_restrictions;			/* can we execute this? */
+      348 	if sc_request_flags.dont_parse_arguments
+      349 	then call ssu_$abort_line (sci_ptr, 0,
+      350 		"The ^a command was found in an invalid context.  Special^/"
+      351 		|| "commands may only occur at the beginning of lines.", request_data.full_name);
+      352 	return;
+      353 
+      354 /* format: off */
+      355  /* BEGIN INCLUDE FILE ... as_data_.incl.pl1 ... */
+  1     2 
+  1     3 /* format: style4 */
+  1     4 
+  1     5 /* This file must be kept in sync with as_data_.alm */
+  1     6 
+  1     7 /****^  HISTORY COMMENTS:
+  1     8*  1) change(86-09-21,Beattie), approve(86-09-22,MCR7542),
+  1     9*     audit(86-10-31,Brunelle), install(86-11-12,MR12.0-1211):
+  1    10*     Remove references to the 963 and 029 preaccess commands and remove support
+  1    11*     for ARDS, 202_ETX, 2741 and 1050 in system interfaces.
+  1    12*  2) change(86-09-25,Swenson), approve(87-07-20,MCR7737),
+  1    13*     audit(87-07-20,GDixon), install(87-08-04,MR12.1-1056):
+  1    14*     Add references to as_data_ entrypoints added for Login Server.
+  1    15*  3) change(87-03-03,Brunelle), approve(87-07-20,MCR7697),
+  1    16*     audit(87-07-20,GDixon), install(87-08-04,MR12.1-1056):
+  1    17*     Added new user signal field of inacrcvd (14) to handle inactivity response
+  1    18*     from user.
+  1    19*                                                   END HISTORY COMMENTS */
+  1    20 
+  1    21 dcl  as_data_$BS char (1) aligned ext static;		/* BACKSPACE character */
+  1    22 dcl  as_data_$CR char (1) aligned ext static;		/* CARRIAGE RETURN character */
+  1    23 dcl  as_data_$abs_dim char (32) ext static;		/* absentee DIM */
+  1    24 dcl  as_data_$acct_update_priority fixed bin ext static;	/* accounting update IPC priority */
+  1    25 dcl  as_data_$acsdir char (168) ext static;		/* Access Control Segment directory */
+  1    26 dcl  as_data_$ansp ptr ext static;			/* answer_table */
+  1    27 dcl  as_data_$as_procid bit (36) aligned ext static;	/* Answering Service process id */
+  1    28 dcl  as_data_$as_ring fixed bin (3) ext static;		/* AS operating ring */
+  1    29 dcl  as_data_$as_tty char (6);			/* AS master tty channel */
+  1    30 dcl  as_data_$asmtp ptr ext static;			/* AS meter table */
+  1    31 dcl  as_data_$autp ptr ext static;			/* absentee_user_table */
+  1    32 dcl  as_data_$buzzardp ptr ext static;			/* dpg_ list of buteo processes */
+  1    33 dcl  as_data_$cdtp ptr ext static;			/* CDT */
+  1    34 dcl  as_data_$default_weight fixed bin (35) ext;		/* default user process load control weight */
+  1    35 dcl  as_data_$devtabp ptr ext static;			/* device_table */
+  1    36 dcl  as_data_$dft_user_ring fixed bin (3) ext static;	/* default user ring */
+  1    37 dcl  as_data_$dutp ptr ext static;			/* daemon_user_table */
+  1    38 dcl  as_data_$g115_dim char (32) ext static;
+  1    39 dcl  as_data_$lct_initialized bit (1) aligned ext static;	/* LCT allocated in ring 0 */
+  1    40 dcl  as_data_$lct_size fixed bin ext static;		/* CDT tty channels + spares */
+  1    41 dcl  as_data_$max_user_ring fixed bin (3) ext static;	/* maximum user ring */
+  1    42 dcl  as_data_$mgtp ptr ext static;			/* master group table */
+  1    43 dcl  as_data_$mrd_dim char (32) ext static;		/* daemon's message routing DIM */
+  1    44 dcl  as_data_$ntty_dim char (32) ext static;		/* network connection DIM */
+  1    45 dcl  as_data_$pdtdir char (168) ext static;		/* PDT directory */
+  1    46 dcl  as_data_$pit_ptr ptr ext static;			/* pit_temp_ */
+  1    47 dcl  as_data_$rcpdir char (168) ext static;		/* RCP directory */
+  1    48 dcl  as_data_$request_priority fixed bin ext static;
+  1    49 dcl  as_data_$rs_ptrs (0:9) ptr ext static;		/* rate_structures */
+  1    50 dcl  as_data_$rtdtp ptr ext static;			/* RTDT */
+  1    51 dcl  as_data_$sat_htp ptr ext static;			/* SAT hash table */
+  1    52 dcl  as_data_$satp ptr ext static;			/* SAT */
+  1    53 dcl  as_data_$suffix (0:9) char (2) unaligned ext static;
+  1    54 dcl  as_data_$sysdir char (168) ext static;		/* system control directory */
+  1    55 dcl  as_data_$teens_suffix (10:19) char (2) unaligned ext static;
+  1    56 dcl  as_data_$terminet_tabs_string char (144) varying ext static;
+  1    57 dcl  as_data_$tty_dim char (32) ext static;		/* standard interactive DIM */
+  1    58 dcl  as_data_$update_priority fixed bin ext static;	/* ??? */
+  1    59 dcl  as_data_$version char (8) ext static;		/* AS version */
+  1    60 dcl  as_data_$whoptr ptr ext static;			/* whotab */
+  1    61 
+  1    62 dcl  1 as_data_$login_args aligned ext static,		/* control arguments for login */
+  1    63        2 n_login_args fixed bin,
+  1    64        2 pad fixed bin,
+  1    65        2 login_args (55 /* as_data_$login_args.n_login_args */) char (24) unaligned;
+  1    66 
+  1    67 dcl  1 as_data_$signal_types ext static aligned,		/* IPC process control signals */
+  1    68        2 n_signals fixed bin,
+  1    69        2 pad fixed bin,
+  1    70        2 signals (14 /* as_data_$signal_types.n_signals */) char (8) unaligned;
+  1    71 
+  1    72 dcl  1 as_data_$system_signal_types ext static aligned,	/* IPC process control signals */
+  1    73        2 n_system_signals fixed bin,
+  1    74        2 pad fixed bin,
+  1    75        2 system_signals (10 /* as_data_$system_signal_types.n_system_signals */) char (8) unaligned;
+  1    76 
+  1    77 dcl  as_data_$login_words fixed bin ext static aligned,
+  1    78 						/* interactive login words */
+  1    79      1 as_data_login_words aligned based (addr (as_data_$login_words)),
+  1    80        2 n_words fixed bin,
+  1    81        2 pad fixed bin,
+  1    82        2 words (0 refer (as_data_login_words.n_words)) char (16) unaligned;
+  1    83 
+  1    84 dcl  as_data_$debug_flag bit (1) aligned external static;
+  1    85 dcl  as_data_$ls_request_server_info_ptr ptr external static;
+  1    86 dcl  as_data_$ls_message_buffer_cur_lth fixed bin (18) external static;
+  1    87 dcl  as_data_$ls_message_buffer_max_lth fixed bin (18) external static;
+  1    88 dcl  as_data_$ls_message_buffer_ptr ptr external static;
+  1    89 
+  1    90 /* END INCLUDE FILE ... as_data_.incl.pl1 ... */
+      355 
+      356  /* BEGIN INCLUDE FILE ... installation_parms.incl.pl1 */
+  2     2 
+  2     3 /* Modified 740723 by PG to add short AIM access names */
+  2     4 /* Modified Fall 1977 by T. Casey to add fatal loop and trm_ signal parameters */
+  2     5 /* Modified 04/03/78 by CDT to add rcp_init_flags structure */
+  2     6 /* Modified May 1978 by T. Casey to add resource timer and resource price list parameters */
+  2     7 /* Modified November 1978 by T. Casey for MR7.0, to add absentee control parameters */
+  2     8 /* Modified 17 September 1980 by G. Palter to add default absentee queue */
+  2     9 /* Modified April 1981 by E. N. Kittlitz for chn_wakeup_error_loop, chn_wakeup_error_count */
+  2    10 /* Modified June 1981 by E. N. Kittlitz for nrates/rate_structures UNCA rate_structure support.
+  2    11*     Version, expand foregound_cpu_default_limit and abs_cpu_max_limit to fixed bin (35) fields.
+  2    12*     nrscp & resource array moved from offset 2064 (octal) to 2400 (octal). */
+  2    13 /* Modified 1984-06-19 BIM to remove obsolete fields, and add 
+  2    14*		       strict_trusted_path. */
+  2    15 /* Modified 1984-10-24 BIM for default_pdir_quota. */
+  2    16 /* Modified 1984-12-05 BIM for require_operator_login. */
+  2    17 /* Modified 1985-03-01 by E. Swenson for password flags. */
+  2    18 
+  2    19 
+  2    20 /****^  HISTORY COMMENTS:
+  2    21*  1) change(86-01-27,MSharpe), approve(87-05-25,MCR7690),
+  2    22*     audit(87-03-29,GDixon), install(87-08-04,MR12.1-1056):
+  2    23*     added vchn_requires_accept parameter.
+  2    24*  2) change(87-02-17,GDixon), approve(87-05-25,MCR7680),
+  2    25*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  2    26*     Correct formatting problems.
+  2    27*                                                   END HISTORY COMMENTS */
+  2    28 
+  2    29 
+  2    30 /* NOTE: rate_structure.incl.pl1 uses these declarations */
+  2    31 
+  2    32 
+  2    33 dcl 1 installation_parms based (ip) aligned,		/* describes installation parameters */
+  2    34     2 part_1 like installation_parms_part_1 aligned,
+  2    35     2 resource (0 refer (installation_parms.nrscp)) like installation_parms_resource_array_part aligned;
+  2    36 
+  2    37 dcl  installation_parms_version_1 fixed bin init (1) static internal options (constant);
+  2    38 dcl  installation_parms_version_2 fixed bin init (2) static internal options (constant);
+  2    39 
+  2    40 dcl 1 installation_parms_part_1 based aligned,		/* Used only by installation_parms and rate_structure */
+  2    41     2 installation_id char (32),			/* Name printed at dialup and in who */
+  2    42     2 company char (64),				/* company name */
+  2    43     2 department char (64),				/* department */
+  2    44     2 companyds char (120),				/* company, double spaced */
+  2    45     2 departmentds char (120),			/* dpeartment double spaced */
+  2    46     2 shifttab (336) bit (3) unal,			/* half-hrs from 0000 Mon, value is shift no */
+  2    47     2 cpu_price (0: 7) float bin,			/* price for cpu hour, by shift */
+  2    48     2 log_base_price (0: 7) float bin,			/* price for log hour, by shift */
+  2    49     2 io_ops_price (0: 7) float bin,			/* price per 1000 terminal io ops */
+  2    50     2 core_price (0: 7) float bin,			/* price for core page-hour, by shift */
+  2    51     2 ndevices fixed bin,				/* number of devices to charge */
+  2    52     2 devtab (16),					/* Maximum 16 */
+  2    53       3 device_id char (8),				/* Name of device */
+  2    54       3 device_price (0: 7) float bin,			/* Price by shift */
+  2    55     2 inactive_time fixed bin,			/* seconds of inactivity permitted */
+  2    56     2 warning_time fixed bin,				/* seconds from warning to logout */
+  2    57     2 login_time fixed bin,				/* seconds in which to complete login */
+  2    58     2 acct_update fixed bin,				/* seconds between acct update */
+  2    59     2 login_tries fixed bin,				/* number of login tries allowed */
+  2    60     2 disk_price float bin,				/* disk rate, in $/page-sec */
+  2    61     2 registration_price float bin,			/* fee per month per user */
+  2    62     2 dolsign char (1),				/* "dollar sign" */
+  2    63     2 abs_cpu_price (4) float bin,			/* price for absentee cpu by queue */
+  2    64     2 abs_mem_price (4) float bin,			/* Absentee memory charge */
+  2    65     2 iod_rec_price (4) float bin,			/* price for io daemon lines, per K, by queue */
+  2    66     2 abs_timax (4) fixed bin (35),			/* Absentee TIMAX parameter */
+  2    67     2 abs_cpu_default_limit (4) fixed bin (35),		/* default absentee cpu limit in seconds (changed from usec.) */
+  2    68     2 syserr_log_copy_threshold fixed bin (9),		/* Threshold (in PAGES) at which the
+  2    69*						   Initializer will copy the syserr_log */
+  2    70     2 default_pdir_seg_quota fixed bin (17) unaligned,	/* if system and project say 0 */
+  2    71     2 default_pdir_dir_quota fixed bin (17) unaligned,       /* Always used */
+  2    72     2 fatal_error_loop_count fixed bin (17) unaligned,
+  2    73     2 fatal_error_loop_seconds fixed bin (17) unaligned,
+  2    74     2 term_real_time_seconds fixed bin (17) unaligned,
+  2    75     2 term_cpu_time_seconds fixed bin (17) unaligned,
+  2    76     2 rcp_init_flags like rcp_init_flags aligned,		/* one word long */
+  2    77     2 rsc_timer_seconds fixed bin (17) unaligned,		/* time interval at which to check for resource availability */
+  2    78     2 pad_old_fg_cpu_default_limit bit (18) unaligned,
+  2    79     2 foreground_queue_position fixed bin (17) unal,	/* queue that foreground queue comes after */
+  2    80     2 idle_time_constant_seconds fixed bin (17) unal,	/* how far back to maintain moving average of load */
+  2    81     2 sus_cpu_time_seconds fixed bin (17) unal,		/* allow suspended process this much cpu time */
+  2    82     2 sus_real_time_seconds fixed bin (17) unal,		/* and this much real time, before bumping it */
+  2    83     2 foreground_cpu_default_limit fixed bin (35),	/* default cpu time limit (sec) for foreground absentee jobs */
+  2    84     2 access_authorization_ceiling bit (72),		/* "System high" access authorization. */
+  2    85     2 level_names (0:7) char (32),			/* Names for security levels. */
+  2    86     2 category_names (18) char (32),			/* Names for security categories. */
+  2    87     2 short_level_names (0:7) char (8),			/* Abbreviated level names. */
+  2    88     2 short_category_names (18) char (8),		/* Abbreviated category names. */
+  2    89     2 ncon fixed bin,				/* Number of config elements. */
+  2    90     2 cona (51),					/* each entry is 5 words long */
+  2    91       3 cpu fixed bin (5) unal,			/* Number of CPU's */
+  2    92       3 shift fixed bin (5) unal,			/* Shift number */
+  2    93       3 x1 fixed bin (23) unal,
+  2    94       3 kmem fixed bin (17) unal,			/* Memory size */
+  2    95       3 kbulk fixed bin (17) unal,			/* Bulk store size */
+  2    96       3 x2 fixed bin (17) unal,
+  2    97       3 maxa fixed bin (11) unal,			/* Max abs users */
+  2    98       3 maxq fixed bin (5) unal,			/* Max abs q */
+  2    99       3 maxu_base fixed bin (17) unal,
+  2   100       3 response_high fixed bin (17) unal,
+  2   101       3 response_low fixed bin (17) unal,
+  2   102       3 x3 fixed bin (17) unal,
+  2   103 
+  2   104 /* Absentee control parameters. New for MR7.0 */
+  2   105 
+  2   106     2 max_abs (0:7) fixed bin (17) unal,		/* per-shift upper limit on abs_maxu */
+  2   107     2 min_abs (0:7) fixed bin (17) unal,		/* per-shift lower limit on abs_maxu */
+  2   108     2 pct_abs (0:7) fixed bin (17) unal,		/* abs_maxu is this pct (per-shift) of idle units */
+  2   109 
+  2   110     2 max_qres (0:7, 4) fixed bin (17) unal,		/* per-shift-and-queue upper limit on reserved slots */
+  2   111     2 min_qres (0:7, 4) fixed bin (17) unal,		/* per-shift-and-queue lower limit on reserved slots */
+  2   112     2 pct_qres (0:7, 4) fixed bin (17) unal,		/* reserved slots are these pcts of abs_maxu */
+  2   113 
+  2   114     2 abs_cpu_max_limit (0:7, 4) fixed bin (35),		/* per-shift-and-queue upper limit (sec) on jobs' cpu times */
+  2   115 
+  2   116     2 default_absentee_queue fixed binary (17) unaligned,	/* default absentee queue for ear, etc. */
+  2   117 
+  2   118     2 chn_wakeup_error_loop_count fixed bin (17) unaligned, /* maximum number of channel wakeups in following interval */
+  2   119     2 chn_wakeup_error_loop_seconds fixed bin (17) unaligned, /* works like fatal_error_loop_count/seconds */
+  2   120     2 rate_structure_number fixed bin (17) unaligned,	/* rate_structure number of this RS */
+  2   121     2 version fixed bin (35),				/* must be 2 */
+  2   122     2 nrates fixed bin,				/* number of rate structures */
+  2   123     2 rate_structures (0:9) char (32),			/* names of rate_structures */
+  2   124     2 trusted_path_login bit (1) aligned,		/* forbid logout -hold and new_proc -auth */
+  2   125     2 require_operator_login bit (1) aligned,		/* just what it says */
+  2   126     2 operator_inactive_time fixed bin,			/* seconds between commands --> not logged in. */
+  2   127     2 validate_daemon_commands bit (1) aligned,		/* force existence and adequate access to 
+  2   128*						   mcacs segments for operators */
+  2   129     2 password_min_length fixed bin,			/* minimum length of passwords */
+  2   130     2 password_gpw_length fixed bin,			/* length of generated passwords */
+  2   131     2 password_change_interval fixed bin,		/* number of days until must change */
+  2   132     2 password_expiration_interval fixed bin,		/* number of days that a password may remain unused */
+  2   133     2 vchn_requires_accept bit (1) aligned,		/* "login personid -op -vchn foo" must be
+  2   134*						   "accepted" by operator if personid is not 
+  2   135*						   signed on system console */
+  2   136     2 end_pad (219) bit (36) aligned,			/* leave plenty of pad before the variable length price list */
+  2   137     2 nrscp fixed bin;				/* length of resource price array; must have offset 2400 (octal),
+  2   138*						   or someone miscounted when using part of pad2 */
+  2   139 
+  2   140 
+  2   141 /* Entries in the following array may be accessed via system_info_$resource_price.
+  2   142*   This array should not be accessed directly, since its format will change in subsequent releases of Multics. */
+  2   143 
+  2   144 dcl 1 installation_parms_resource_array_part (0 refer (installation_parms.nrscp)) based,
+  2   145       2 name char (32),
+  2   146       2 price float bin;
+  2   147 
+  3     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  3     2 
+  3     3 /* Created on 04/24/78 by Michael R. Jordan */
+  3     4 /* Modified 04/10/79 by C. D. Tavares */
+  3     5 
+  3     6 dcl  rifp ptr;
+  3     7 
+  3     8 dcl 1 rcp_init_flags based (rifp),
+  3     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  3    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  3    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  3    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  3    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  3    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  3    15 
+  3    16 dcl (No_authentication initial (0),
+  3    17      Nominal_authentication initial (1),
+  3    18      Automatic_authentication initial (2),
+  3    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  3    20 
+  3    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  3    22     ("none", "nominal", "automatic", "manual");
+  3    23 
+  3    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  2   148 
+  2   149 
+  2   150 /* END INCLUDE FILE ... installation_parms.incl.pl1 */
+      356 
+      357  /* BEGIN INCLUDE FILE ... mc_anstbl.incl.pl1 */
+  4     2 
+  4     3 
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(85-12-19,MSharpe), approve(87-05-25,MCR7690),
+  4     6*     audit(87-03-30,GDixon), install(87-08-04,MR12.1-1056):
+  4     7*     Added the pending and virtual flags and virtual_tty_name to mc_ate;
+  4     8*     changed mc_ate.tty_name to mc_ate.real_tty_name; added mc_ate.ls_procid,
+  4     9*     mc_ate.ls_term_ev_chn, mc_ate.ls_resp_ev_chn, mc_ate.ls_handle.
+  4    10*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  4    11*     audit(87-06-01,Parisek), install(87-08-04,MR12.1-1056):
+  4    12*     Add mc_ate.vchn_requires_accept in support of virtual channels. Explicitly
+  4    13*     declare implicit pad fields which the compile adds for element alignment
+  4    14*     purposes.  Declare mc_ansp and mc_atep, on which major structures are
+  4    15*     based, rather than depending upon includers do to so.
+  4    16*  3) change(87-03-27,Parisek), approve(87-05-25,MCR7690),
+  4    17*     audit(87-06-11,GDixon), install(87-08-04,MR12.1-1056):
+  4    18*     Added the dsa_ring_number element to provide a constant for determining
+  4    19*     the DSA ring.
+  4    20*                                                   END HISTORY COMMENTS */
+  4    21 
+  4    22 
+  4    23 /* format: style3,idind30 */
+  4    24 
+  4    25 dcl	1 mc_anstbl		based (mc_ansp) aligned,
+  4    26 						/* Structure of answer table */
+  4    27 	  2 max_size		fixed bin,	/* max number of entries table can grow */
+  4    28 	  2 current_size		fixed bin,	/* actual size of table (in entries) */
+  4    29 	  2 mc_procid		bit (36),		/* process ID of message coordinator */
+  4    30 	  2 sysdir		char (168),	/* name of main system control directory */
+  4    31 	  2 pad_ptrs		bit (36),
+  4    32 	  2 mrtp			ptr,
+  4    33 	  2 vconsp		ptr,
+  4    34 	  2 cons_cont_proc		entry,		/* mc_tty_ */
+  4    35 	  2 con_rec,				/* Data for console recovery. */
+  4    36 	    3 mc_ate_ptr		ptr,		/* Pts to recovery device. */
+  4    37 	    3 ec_id		fixed bin (71),	/* Recovery event chan. */
+  4    38 	    3 seq_num		fixed bin (35),	/* Syserr sequence number. */
+  4    39 	    3 offset		bit (18),		/* Log entry offset. */
+  4    40 	    3 flags,
+  4    41 	    ( 4 enabled		bit (1),		/* ON => recovery possible. */
+  4    42 	      4 active		bit (1),
+  4    43 	      4 pad_flags		bit (16)
+  4    44 	      )			unaligned,	/* ON => recovery going on. */
+  4    45 	  2 n_sources		fixed bin,	/* number of communicating sources */
+  4    46 	  2 max_sources		fixed bin,	/* maximum number of sources allowed */
+  4    47 	  2 current_time		fixed bin (71),	/* Time of last transaction */
+  4    48 	  2 trace			bit (1) aligned,
+  4    49 	  2 dsa_ring_number           fixed bin,	/* DSA ring number */
+  4    50 	  2 pad_entries		(30) bit (36) aligned,
+  4    51 	  2 entry			(0 refer (mc_anstbl.current_size)) aligned like mc_ate,
+  4    52 	mc_ansp			ptr;
+  4    53 
+  4    54 dcl	1 mc_ate			based (mc_atep) aligned,
+  4    55 						/* declaration of a single answer table entry */
+  4    56 	  2 flags			aligned,
+  4    57 	    3 virtual		bit (1) unaligned,	/* 1 => login -vchn XXX */
+  4    58 	    3 pending		bit (1) unaligned,	/* 1 => pending entry created for DSA channel
+  4    59*						   since we can't keep info in cdte for it */
+  4    60 	    3 active		bit (1) unaligned,
+  4    61 	    3 the_system_console	bit (1) unaligned,	/* otw_/ocd_ */
+  4    62 	    3 a_system_console	bit (1) unaligned,	/* Not yet implemented -- a random opc through a	*/
+  4    63 						/*  nonexistent I/O module			*/
+  4    64 	    3 pad001		bit (1) unaligned,
+  4    65 	    3 signed_on		bit (1) unaligned,
+  4    66 	    3 reply_restricted	bit (1) unaligned,
+  4    67 	    3 broadcast		bit (1) unaligned,
+  4    68 	    3 broadcast_all		bit (1) unaligned,
+  4    69 	    3 vchn_requires_accept	bit (1) unaligned,
+  4    70 	    3 pad_flags		bit (25) unaligned,
+  4    71 	  2 virtual_tty_name	char (32) unaligned,
+  4    72 	  2 real_tty_name		char (32) unaligned,
+  4    73 	  2 pad_ptrs		bit (36),
+  4    74 	  2 cdtep			pointer,		/* we get info from cdt */
+  4    75 	  2 iocb			pointer,		/* do I/O here */
+  4    76 	  2 sci_ptr		pointer,
+  4    77 	  2 tra_vec		fixed bin,
+  4    78 	  2 restrict_reply		char (32),	/* Source name. if "", everybody. */
+  4    79 						/* Broadcasting information. */
+  4    80 	  2 n_casts		fixed bin,	/* If flag is 1 */
+  4    81 	  2 cast			(10) char (32),	/* If flag is 1, list of consoles. */
+  4    82 	  2 oper_info,				/* for oper assigned this console... */
+  4    83 	    3 personid		char (32),
+  4    84 	    3 last_input_time	fixed bin (71),	/* time of last input on this console... */
+  4    85 	  2 queue_ptr		ptr,
+  4    86 	  2 queue_event		fixed bin (71),
+  4    87 	  2 event			fixed binary (71),	/* name of event call channel associated with TTY */
+  4    88 	  2 ls_procid		bit (36),		/* ID of login_server who will wake us up with connect
+  4    89*						   and disconnect -- used only for network channels */
+  4    90 	  2 pad_ev_chn		bit (36),
+  4    91 	  2 ls_term_ev_chn		fixed bin (71),	/* event channel to send terminate response to ls */
+  4    92 	  2 ls_resp_ev_chn		fixed bin (71),	/* event channel to send operator response to ls */
+  4    93 	  2 ls_handle		bit (72),		/* login server handle for this connection */
+  4    94 	  2 authority,
+  4    95 	    3 privilege		(36) bit (1) unaligned,
+  4    96 	  2 control,
+  4    97 	    3 inhibit		bit (1) unal,
+  4    98 	    3 output_wait		bit (1) unal,
+  4    99 	    3 output_pending	bit (1) unal,
+  4   100 	    3 pad_control		bit (33) unal,
+  4   101 	mc_atep			ptr;
+  4   102 
+  4   103 declare	(
+  4   104 	MC_WAIT_DIALUP		init (1),
+  4   105 	MC_WAIT_ANSWERBACK		init (2),
+  4   106 	MC_WAIT_READY		init (3),
+  4   107 	MC_WAIT_COMMAND		init (4)
+  4   108 	)			fixed bin int static options (constant);
+  4   109 
+  4   110 /* END INCLUDE FILE ... mc_anstbl.incl.pl1 */
+      357 
+      358  /*  BEGIN:   sc_stat_.incl.pl1			  *  *  *  *  *  */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  5     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  5     7*     Add sc_stat_$vchn_requires_accept in support of DSA virtual channels.
+  5     8*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7680),
+  5     9*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  5    10*     Reorganized by type of data to improve readability.
+  5    11*                                                   END HISTORY COMMENTS */
+  5    12 
+  5    13 
+  5    14 			      /* ACCESS NAMES		       */
+  5    15 dcl (
+  5    16  sc_stat_$exec_access_name,	      /* check MC access in an exec request    */
+  5    17  sc_stat_$unidentified_access_name  /* check access if no one is logged in.  */
+  5    18     ) char(32) ext static;
+  5    19 
+  5    20 		        /* PATHNAMES			       */
+  5    21 dcl (
+  5    22  sc_stat_$info_dir,	        /* admin info segs directory		       */
+  5    23  sc_stat_$log_dir,	        /* as log segs directory		       */
+  5    24  sc_stat_$mc_acs_dir,       /* message coordinator ACS segments (.mcacs) dir */
+  5    25  sc_stat_$sysdir	        /* system control directory		       */
+  5    26     ) char(168) ext static;
+  5    27 
+  5    28 		        /* OTHER CHAR STRINGS			       */
+  5    29 dcl (
+  5    30  sc_stat_$master_channel    /* Master TTY channel.		       */
+  5    31     )  char(6) aligned ext static;
+  5    32 
+  5    33 			       /* LABELS			       */
+  5    34 dcl (
+  5    35  sc_stat_$admin_listener_exit_label, /* GO here to exit admin mode.  Set to  */
+  5    36 			       /*    ssu_$null_label unless 	       */
+  5    37 			       /*	   admin_listener is active.	       */
+  5    38  sc_stat_$master_abort_label,	       /* GO here after fault that is not      */
+  5    39 			       /*    attributable to a particular      */
+  5    40 			       /*	   command.		       */
+  5    41  sc_stat_$system_shutdown_label      /* GO here to shut down system	       */
+  5    42     ) label variable ext static;
+  5    43 
+  5    44 			 /* POINTERS TO			       */
+  5    45 dcl (
+  5    46  sc_stat_$admin_log_iocb,	 /* IOCB for admin log		       */
+  5    47  sc_stat_$admin_log_write_ptr, /* DATA for log_write_ calls on the admin log */
+  5    48  sc_stat_$admin_sci_ptr,	 /* DATA ssu_ for terminal currently executing */
+  5    49  sc_stat_$as_log_write_ptr,	 /* DATA for log_write_ calls on as log, used  */
+  5    50 			 /*      by sys_log_.		       */
+  5    51  sc_stat_$initzer_ttyp,	 /* ENT  mc_ate for initializer terminal       */
+  5    52  sc_stat_$master_iocb,	 /* IOCB for "master_i/o"		       */
+  5    53  sc_stat_$master_sci_ptr,	 /* DATA ssu_ (permanent) for system control   */
+  5    54  sc_stat_$mc_ansp,		 /* HEAD of mc_anstbl		       */
+  5    55  sc_stat_$mc_iocb,		 /* IOCB ptr for "mc_i/o"		       */
+  5    56  sc_stat_$sv1_iocb,		 /* IOCB ptr for "severity1"		       */
+  5    57  sc_stat_$sv2_iocb,		 /* IOCB ptr for "severity2"		       */
+  5    58  sc_stat_$sv3_iocb		 /* IOCB ptr for "severity3"		       */
+  5    59     ) ptr ext static;
+  5    60 
+  5    61 			   /* SWITCHES			       */
+  5    62 dcl (
+  5    63  sc_stat_$Go,		   /* TRUE after answering service is listening*/
+  5    64  sc_stat_$Go_typed,		   /* TRUE immediately after 'go' is typed     */
+  5    65  sc_stat_$Multics,		   /* TRUE after answering service started     */
+  5    66  sc_stat_$Multics_typed,	   /* TRUE immediately after 'mult' is typed   */
+  5    67  sc_stat_$Star_typed,	   /* TRUE if 'mult' and 'go' came from 'star' */
+  5    68  sc_stat_$admin_listener_switch, /* TRUE if in the admin listener	       */
+  5    69  sc_stat_$did_part1,	   /* TRUE if part 1 of system startup ec done */
+  5    70  sc_stat_$did_part2,	   /* TRUE if part 2 of system startup ec done */
+  5    71  sc_stat_$did_part3,	   /* TRUE if part 3 of system startup ec done */
+  5    72  sc_stat_$mc_is_on,		   /* TRUE if message coordinator running      */
+  5    73  sc_stat_$no_operator_login,	   /* TRUE if operator login not required, or  */
+  5    74 			   /*	 if PNT not yet available.	       */
+  5    75  sc_stat_$shutdown_typed,	   /* TRUE if 'shutdown' command in progress.  */
+  5    76  sc_stat_$test_mode,	   /* TRUE if in test environment	       */
+  5    77  sc_stat_$vchn_requires_accept   /* TRUE if vchn may only be used if accepted*/
+  5    78 			   /*      by operator signed on system console*/
+  5    79     ) bit(1) aligned ext static;
+  5    80 
+  5    81 
+  5    82 /*  END OF:  sc_stat_.incl.pl1			  *  *  *  *  *  */
+      358 
+      359  /*  BEGIN:   sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+  6     2 
+  6     3 /* format:style3,idind30 */
+  6     4 
+  6     5 /* Created  1984-10-24  BIM */
+  6     6 /* Modified 1985-01-07, BIM: access control flags that track admin and X */
+  6     7 /* Modified 1985-02-18, E. Swenson to save away abort_line procedure. */
+  6     8 
+  6     9 
+  6    10 /****^  HISTORY COMMENTS:
+  6    11*  1) change(87-02-17,GDixon), approve(87-07-03,MCR7680),
+  6    12*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  6    13*     Correct formatting problems.  Add sc_subsystem_info.flags.dont_mask_calls
+  6    14*     switch.
+  6    15*  2) change(87-07-03,GDixon), approve(87-07-03,MCR7680),
+  6    16*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  6    17*     Removed dont_mask_calls flag.  It is no longer needed to correctly perform
+  6    18*     masking on a per-request basis.
+  6    19*                                                   END HISTORY COMMENTS */
+  6    20 
+  6    21 
+  6    22 declare	sc_subsystem_info_ptr	pointer;
+  6    23 declare	1 sc_subsystem_info		aligned based (sc_subsystem_info_ptr),
+  6    24 	  2 restriction_flags	bit (36) aligned,	/* copied from mc atep or fabricated */
+  6    25 	  2 flags			aligned,
+  6    26 	    3 no_real_tty		bit (1) unaligned,	/* for sc_admin_command_ */
+  6    27 	    3 print_ready		bit (1) unal,	/* on for all except the system console,	*/
+  6    28 						/*  instructs sc_process_command_line_ to deal	*/
+  6    29 						/*  with the prompt				*/
+  6    30 	    3 the_system_console	bit (1) unal,	/* syserr messages are printed here (but console	*/
+  6    31 						/*  recover doesn't try to fix this) copied here	*/
+  6    32 						/*  from the mc_ate to save other looking in there*/
+  6    33 	    3 printer_offed		bit (1) unal,	/* suppress logging */
+  6    34 	    3 pad			bit (32) unaligned,
+  6    35 	  2 source_name		char (32) unaligned,
+  6    36 	  2 area_ptr		pointer,
+  6    37 	  2 mc_atep		pointer,		/* needed to play with attachments */
+  6    38 	  2 real_iocb		pointer,		/* for sc_signal_io_handler_ */
+  6    39 	  2 hangup_entry		entry (pointer) variable,
+  6    40 						/* called on io_no_permission. */
+  6    41 	  2 real_execute_line	entry (ptr, ptr, fixed bin (21), fixed bin (35)),
+  6    42 	  2 real_locate_request	entry (ptr, char (*), ptr, fixed bin (35)),
+  6    43 	  2 access_control_name	char (32) unaligned,
+  6    44 	  2 real_invoke_request	entry,		/* since MR11 ssu_ lacks the ability to	abort a	*/
+  6    45 						/*  single request, we have an invoke_request that*/
+  6    46 						/*  handles a condition to unwind the request	*/
+  6    47 	  2 abort_request_label	label,		/* go here (nonlocally) to unwind a single request */
+  6    48 	  2 real_abort_line		entry options (variable);
+  6    49 
+  6    50 declare	sc_ss_area		area based (sc_subsystem_info.area_ptr);
+  6    51 
+  6    52 /* The following defines the user flags for the request table. */
+  6    53 
+  6    54 declare	sc_rf_ptr			pointer;
+  6    55 declare	1 sc_request_flags		unaligned based (sc_rf_ptr),
+  6    56 	  2 dont_parse_arguments	bit,		/* reply, intercom */
+  6    57 	  2 obsolete		bit,		/* warn opr to not use it */
+  6    58 	  2 dont_mask_calls		bit,		/* this runs without masking ev calls */
+  6    59 	  2 requires_as		bit,		/* not before AS */
+  6    60 	  2 requires_no_as		bit,		/* only before AS */
+  6    61 	  2 complete_disks_first	bit,		/* try to mount disks */
+  6    62 	  2 no_login_needed		bit,		/* sign_on */
+  6    63 	  2 pad			bit (5),
+  6    64 	  2 restriction_type	fixed bin (6) unsigned;
+  6    65 						/* index into restriction flag string */
+  6    66 
+  6    67 
+  6    68 /*  END OF:  sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+      359 
+      360  /* BEGIN INCLUDE FILE ... _ssu_sci.incl.pl1 */
+  7     2 /* Created:  31 April 1980 by W. Olin Sibert */
+  7     3 /* Modified: 17 November 1981 by Jay Pattin to add info_prefix */
+  7     4 /* Modified: 10 December 1981 by G. Palter to make arg_count, arg_ptr, return_arg, and arg_list_ptr replaceable */
+  7     5 /* Modified: 10 February 1982 by G. Palter to reorganize and make changes required for installation */
+  7     6 /* Modified: June 1982 by G. Palter for version 2 (new request processor options and replaceable procedures) */
+  7     7 /* Modified: 6 November 1984 by G. Palter for version 3 (get_subsystem_and_request_name is now replaceable) */
+  7     8 
+  7     9 /* format: style4,^delnl */
+  7    10 
+  7    11 
+  7    12 /* Structure used internally by subsystem utilities to contain control information about a single invocation */
+  7    13 
+  7    14 dcl  1 sci aligned based (sci_ptr),
+  7    15        2 version character (8),
+  7    16        2 parent_area_ptr pointer,			/* -> area holding this data and referenced structures */
+  7    17 
+  7    18        2 global_info,				/* global information about this subsystem ... */
+  7    19          3 subsystem_name char (32) unaligned,		/* ... its name (eg: read_mail) */
+  7    20          3 subsystem_version char (32) unaligned,		/* ... its version numer (eg: 4.3j) */
+  7    21          3 info_ptr pointer,				/* ... -> data maintained by the subsystem */
+  7    22          3 standalone_abort_entry entry () variable,	/* ... for standalone invocations: called by ssu_$abort_* */
+  7    23          3 flags,
+  7    24 	 4 standalone_invocation bit (1) unaligned,	/* ... ON => ssu_$standalone_invocation was used */
+  7    25 	 4 in_listener bit (1) unaligned,		/* ... ON => in subsystem listener loop */
+  7    26 	 4 executing_request bit (1) unaligned,		/* ... ON => executing a request */
+  7    27 	 4 debug_mode bit (1) unaligned,		/* ... ON => debugging the subsystem */
+  7    28 	 4 pad bit (32) unaligned,
+  7    29 
+  7    30        2 recursion_info,				/* describes relationship of this invocation to other active
+  7    31*						   invocations of the same subsystem ... */
+  7    32          3 invocation_data_idx fixed binary,		/* ... locates the list of active invocations */
+  7    33          3 level fixed binary,			/* ... # of active invocations when this one created + 1 */
+  7    34          3 previous_sci_ptr pointer,			/* ... -> description of previous invocation */
+  7    35          3 next_sci_ptr pointer,			/* ... -> description of next invocation */
+  7    36 
+  7    37        2 request_processor_info,			/* information related to request line processing ... */
+  7    38          3 request_tables_ptr pointer,			/* ... -> list of request tables in use */
+  7    39          3 rp_options_ptr pointer,			/* ... -> options controlling the processor */
+  7    40          3 abort_line_label label variable,
+  7    41          3 request_data_ptr pointer,			/* ... -> request_data structure for current request */
+  7    42 
+  7    43        2 prompt_and_ready_info,			/* information related to prompts and ready messages ... */
+  7    44          3 prompt character (64) varying,		/* the prompt (if any): an ioa_ control string */
+  7    45          3 prompt_mode,				/* controls prompting ... */
+  7    46 	 4 dont_prompt bit (1) unaligned,		/* ... ON => never prompt */
+  7    47 	 4 prompt_after_null_lines bit (1) unaligned,	/* ... ON => prompt after a blank line if prompts enabled */
+  7    48 	 4 dont_prompt_if_typeahead bit (1) unaligned,	/* ... ON => suppress prompts if request line available */
+  7    49 	 4 pad bit (33) unaligned,
+  7    50          3 ready_enabled bit (1) aligned,		/* ... ON => ready procedure should be invoked */
+  7    51 
+  7    52        2 listener_info,				/* information used by the listener ... */
+  7    53          3 abort_subsystem_label label variable,
+  7    54          3 temp_seg_ptr pointer,			/* ... -> temporary segment used for long request lines */
+  7    55 
+  7    56        2 temp_info_ptr pointer,			/* pointer to data used by ssu_temp_mgr_ */
+  7    57 
+  7    58        2 info_info,					/* information related to self-documentation ... */
+  7    59          3 info_dirs_ptr pointer,			/* ... -> list of info directories */
+  7    60          3 info_prefix character (32),			/* ... prefix used to form info segment names */
+  7    61 
+  7    62        2 ec_info,					/* data for subsystem exec_com processing ... */
+  7    63          3 ec_suffix char (32) unaligned,		/* ... suffix of exec_com segments */
+  7    64          3 ec_search_list char (32) unaligned,		/* ... search list used to find exec_coms */
+  7    65          3 subsystem_dir_ptr pointer,			/* ... defines referencing_dir rule for above search list */
+  7    66 
+  7    67        2 entries,					/* all replaceable entries ... */
+  7    68          (
+  7    69          3 abort_line,				/* ... invoked by ssu_$abort_line */
+  7    70          3 abort_subsystem,				/* ... invoked by ssu_$abort_subsystem */
+  7    71          3 print_message,				/* ... invoked by ssu_$print_message */
+  7    72          3 program_interrupt,				/* ... cannot be called externally */
+  7    73          3 pre_request_line,				/* ... cannot be called externally */
+  7    74          3 post_request_line,				/* ... cannot be called externally */
+  7    75          3 ready,					/* ... invoked by ssu_$ready_proc */
+  7    76          3 cpescape,				/* ... cannot be called externally */
+  7    77          3 unknown_request,				/* ... invoked by ssu_$unknown_request */
+  7    78          3 listen,					/* ... invoked by ssu_$listen */
+  7    79          3 execute_line,				/* ... invoked by ssu_$execute_line */
+  7    80          3 evaluate_active_string,			/* ... invoked by ssu_$evaluate_active_string */
+  7    81          3 invoke_request,				/* ... invoked by ssu_$invoke_request */
+  7    82          3 locate_request,				/* ... invoked by ssu_$locate_request */
+  7    83          3 arg_count,				/* ... invoked by ssu_$arg_count */
+  7    84          3 arg_ptr,					/* ... invoked by ssu_$arg_ptr */
+  7    85          3 return_arg,				/* ... invoked by ssu_$return_arg */
+  7    86          3 arg_list_ptr,				/* ... invoked by ssu_$arg_list_ptr */
+  7    87          3 get_default_rp_options,			/* ... invoked by ssu_$get_default_rp_options */
+  7    88          3 get_rp_options,				/* ... invoked by ssu_$get_request_processor_options */
+  7    89          3 set_rp_options,				/* ... invoked by ssu_$set_request_processor_options */
+  7    90          3 reset_rp_options,				/* ... invoked by ssu_$reset_request_processor_options */
+  7    91          3 get_subsys_and_request_name			/* ... invoked by ssu_$get_subsystem_and_request_name */
+  7    92          ) entry () variable options (variable);
+  7    93 
+  7    94 dcl  sci_ptr pointer;
+  7    95 
+  7    96 dcl  sci_parent_area area based (sci.parent_area_ptr);
+  7    97 
+  7    98 dcl  SCI_VERSION_3 character (8) static options (constant) init ("sci_0003");
+  7    99 
+  7   100 /* END INCLUDE FILE ... _ssu_sci.incl.pl1 */
+      360 
+      361  /* BEGIN INCLUDE FILE ... _ssu_request_data.incl.pl1 */
+  8     2 /* Created:  13 May 1980 by W. Olin Sibert */
+  8     3 /* Modified: 28 February 1982 by G. Palter to add dont_summarize and dont_list */
+  8     4 /* Modified: 2 August 1982 by Jay Pattin to add unknown flag */
+  8     5 
+  8     6 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+  8     7 
+  8     8 
+  8     9 /* Description of a subsystem request returned by ssu_$locate_request */
+  8    10 
+  8    11 dcl  1 request_data aligned based (request_data_ptr),
+  8    12        2 full_name character (32) unaligned,		/* its primary name */
+  8    13        2 entry entry (pointer, pointer) variable,		/* entry to call to implement the request */
+  8    14        2 call_info,					/* describes current invocation of the request ... */
+  8    15          3 arg_list_ptr pointer,			/* ... -> argument list */
+  8    16          3 arg_count fixed binary,
+  8    17          3 af_sw bit (1) aligned,			/* ... ON => invoked as an active request */
+  8    18          3 rv_ptr pointer,				/* ... -> active request's return string */
+  8    19          3 rv_lth fixed binary (21),			/* ... maxlength of the return string */
+  8    20        2 flags aligned like request_flags,		/* attributes of the request (from the request table) */
+  8    21        2 name_list_ptr pointer unaligned,		/* -> list of all valid names for the request */
+  8    22        2 info_string,				/* brief description of the request (if any) */
+  8    23          3 ptr pointer unaligned,
+  8    24          3 lth fixed binary (18),
+  8    25        2 pad (4) bit (36);
+  8    26 
+  8    27 dcl  request_data_ptr pointer;
+  8    28 
+  8    29 
+  8    30 /* Request attributes from the request table */
+  8    31 
+  8    32 dcl  1 request_flags aligned based,
+  8    33        2 system_flags unaligned,
+  8    34          3 allow_command bit (1) unaligned,		/* ON => request may be called as a command */
+  8    35          3 allow_af bit (1) unaligned,			/* ON => request may be called as an active function */
+  8    36          3 unimplemented bit (1) unaligned,		/* ON => request is not yet implemented */
+  8    37          3 multics_request bit (1) unaligned,		/* ON => this request is really just a Multics command */
+  8    38          3 dont_summarize bit (1) unaligned,		/* ON => summarize_requests doesn't list this request */
+  8    39          3 dont_list bit (1) unaligned,			/* ON => list_requests doesn't match this one without -all */
+  8    40          3 unknown bit (1) unaligned,			/* ON => return unknown_request, don't list or summarize ever */
+  8    41          3 pad bit (11) unaligned,
+  8    42        2 user_flags bit (18) unaligned;			/* no longer used */
+  8    43 
+  8    44 
+  8    45 /* List of all names for a given request */
+  8    46 
+  8    47 dcl  1 request_name_list aligned based (request_name_list_ptr),
+  8    48        2 n_names fixed binary,			/* structure describing name list */
+  8    49        2 name (request_name_list_n_names refer (request_name_list.n_names)) character (32) unaligned;
+  8    50 
+  8    51 dcl  request_name_list_ptr pointer;
+  8    52 dcl  request_name_list_n_names fixed binary;
+  8    53 
+  8    54 
+  8    55 /* Brief description of a request */
+  8    56 
+  8    57 dcl  request_info_string character (request_info_string_lth) based (request_info_string_ptr);
+  8    58 dcl  request_info_string_lth fixed binary (21);
+  8    59 dcl  request_info_string_ptr pointer;
+  8    60 
+  8    61 /* END INCLUDE FILE ... _ssu_request_data.incl.pl1 */
+      361 
+      362 
+      363      end sc_execute_command_line_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.1  sc_execute_command_line_.pl1      >spec>install>1112>sc_execute_command_line_.pl1
+355          1    08/06/87  0913.4  as_data_.incl.pl1                 >ldd>include>as_data_.incl.pl1
+356          2    08/06/87  0913.4  installation_parms.incl.pl1       >ldd>include>installation_parms.incl.pl1
+2-148        3    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+357          4    08/06/87  0913.5  mc_anstbl.incl.pl1                >ldd>include>mc_anstbl.incl.pl1
+358          5    08/06/87  0913.5  sc_stat_.incl.pl1                 >ldd>include>sc_stat_.incl.pl1
+359          6    08/06/87  0913.5  sc_subsystem_info_.incl.pl1       >ldd>include>sc_subsystem_info_.incl.pl1
+360          7    01/21/85  0912.2  _ssu_sci.incl.pl1                 >ldd>include>_ssu_sci.incl.pl1
+361          8    09/28/82  1437.6  _ssu_request_data.incl.pl1        >ldd>include>_ssu_request_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 95 set ref 11 147* 204* 334 342* 343
+Line_lth                               parameter       fixed bin(21,0)          dcl 94 ref 11 142
+Line_ptr                               parameter       pointer                  dcl 93 ref 11 141
+Request_data_ptr                       parameter       pointer                  dcl 338 set ref 334 342* 346
+Request_name                           parameter       char                     packed unaligned dcl 337 set ref 334 342*
+SIGN_ON_COMMAND                 000000 constant        char(7)                  initial packed unaligned dcl 266 set ref 309 309 309
+                                                                                  309
+Sci_ptr                                parameter       pointer                  dcl 92 ref 11 137 334 340
+WHITESPACE                      000002 constant        char(6)                  initial dcl 109 ref 144 151 175 179
+abort_request_label      50            based           label variable           level 2 dcl 6-23 set ref 221 228* 236* 256*
+addr                                                   builtin function         dcl 129 ref 139 160 160 166 234 249 249 271 309 309
+af_sw                    17            based           bit(1)                   level 3 dcl 8-11 set ref 242*
+arg_count                16            based           fixed bin(17,0)          level 3 dcl 8-11 set ref 241*
+arg_list_ptr             14            based           pointer                  level 3 dcl 8-11 set ref 240*
+as_data_$rs_ptrs                000036 external static pointer                  array dcl 1-49 ref 292 292 292 292
+begin_request_name              000100 automatic       fixed bin(21,0)          dcl 113 set ref 144* 145 151 152 160 160 175 186 196
+call_info                14            based           structure                level 2 dcl 8-11
+cleanup                         000000 stack reference condition                dcl 132 ref 224
+code                            000101 automatic       fixed bin(35,0)          dcl 114 set ref 155* 160* 164 201* 204 309* 316 316*
+                                                                                  326* 327 327*
+complete_disks_first      0(05)        based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 324
+cu_$arg_list_ptr                000050 constant        entry                    external dcl 217 ref 240
+disk_table_$general_mhv         000010 constant        entry                    external dcl 97 ref 326
+dont_mask                       000102 automatic       bit(1)                   dcl 115 set ref 158* 169* 224 246
+dont_mask_calls           0(02)        based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 169
+dont_parse_arguments                   based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 167 348
+entry                    10            based           entry variable           level 2 dcl 8-11 set ref 249
+executing_request        32(02)        based           bit(1)                   level 4 packed packed unaligned dcl 7-14 set ref 220
+                                                                                  229* 235* 255*
+flags                    32            based           structure                level 3 in structure "sci" dcl 7-14 in procedure
+                                                                                  "sc_execute_command_line_"
+flags                                  based           structure                level 2 in structure "mc_ate" dcl 4-54 in procedure
+                                                                                  "sc_execute_command_line_"
+flags                    23            based           structure                level 2 in structure "request_data" dcl 8-11
+                                                                                  in procedure "sc_execute_command_line_"
+full_name                              based           char(32)                 level 2 packed packed unaligned dcl 8-11 set ref
+                                                                                  274* 279* 287* 299* 348*
+global_info               4            based           structure                level 2 dcl 7-14
+installation_parms                     based           structure                level 1 dcl 2-33
+installation_parms_part_1              based           structure                level 1 dcl 2-40
+installation_parms_resource_array_part based           structure                array level 1 unaligned dcl 2-144
+ip                                     defined         pointer                  dcl 116 ref 292 292
+ipc_$mask_ev_calls              000012 constant        entry                    external dcl 98 ref 246
+ipc_$unmask_ev_calls            000014 constant        entry                    external dcl 99 ref 230 251
+l_request_data                  000104 automatic       structure                level 1 dcl 117 set ref 139
+length                                                 builtin function         dcl 129 ref 309 309
+line_arg                               defined         char                     packed unaligned dcl 186 set ref 196*
+masked_ev_calls_code            000137 automatic       fixed bin(35,0)          dcl 118 set ref 223* 230 246* 251
+mc_ate                                 based           structure                level 1 dcl 4-54
+mc_atep                  14            based           pointer                  level 2 dcl 6-23 set ref 292 297
+no_login_needed           0(06)        based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 292
+null                                                   builtin function         dcl 129 ref 243 292 292
+obsolete                  0(01)        based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 279
+part_1                                 based           structure                level 2 dcl 2-33
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 3-8
+real_execute_line        24            based           entry variable           level 2 dcl 6-23 set ref 201
+real_locate_request      30            based           entry variable           level 2 dcl 6-23 set ref 160 342
+remask_count                    000141 automatic       fixed bin(17,0)          dcl 120 set ref 307* 315*
+request_data                           based           structure                level 1 dcl 8-11 set ref 160 160 234
+request_data_ptr                000160 automatic       pointer                  dcl 8-27 in procedure "sc_execute_command_line_" set
+                                                                                  ref 139* 160 160 166 234 240 241 242 243 244 249
+                                                                                  271 274 279 287 299 346* 348
+request_data_ptr         52            based           pointer                  level 3 in structure "sci" dcl 7-14 in procedure
+                                                                                  "sc_execute_command_line_" set ref 219 227* 234*
+                                                                                  254*
+request_flags                          based           structure                level 1 dcl 8-32
+request_line                           based           char                     packed unaligned dcl 123 ref 144 151 160 160 175 179
+                                                                                  196 196
+request_line_lth                000144 automatic       fixed bin(21,0)          dcl 122 set ref 142* 144 151 152 160 160 175 179 186
+                                                                                  196 201*
+request_line_ptr                000142 automatic       pointer                  dcl 121 set ref 141* 144 151 160 160 175 179 196
+                                                                                  201*
+request_name_lth                000145 automatic       fixed bin(21,0)          dcl 124 set ref 151* 152 152* 154* 154 160 160 175
+                                                                                  186 196
+request_processor_info
+                         42            based           structure                level 2 dcl 7-14
+require_operator_login
+                       2035            based           bit(1)                   level 3 dcl 2-33 ref 292
+requires_as               0(03)        based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 287
+requires_no_as            0(04)        based           bit(1)                   level 2 packed packed unaligned dcl 6-55 ref 282
+rest_index                      000146 automatic       fixed bin(21,0)          dcl 125 set ref 175* 176 186 196
+rest_of_line                           parameter       char                     packed unaligned dcl 211 ref 208
+restriction_flags                      based           bit(36)                  level 2 dcl 6-23 set ref 272
+restriction_type          0(12)        based           fixed bin(6,0)           level 2 packed packed unsigned unaligned dcl 6-55
+                                                                                  ref 274 274
+reverse                                                builtin function         dcl 129 ref 179
+rv_lth                   22            based           fixed bin(21,0)          level 3 dcl 8-11 set ref 244*
+rv_ptr                   20            based           pointer                  level 3 dcl 8-11 set ref 243*
+saved_abort_request             000104 automatic       label variable           dcl 215 set ref 221* 228 256
+saved_executing_request         000102 automatic       bit(1)                   dcl 214 set ref 220* 229 255
+saved_request_data_ptr          000100 automatic       pointer                  dcl 213 set ref 219* 227 254
+sc_abort_line_util_$real_abort_line
+                                000016 constant        entry                    external dcl 100 ref 316
+sc_ipc_mask_$remask             000022 constant        entry                    external dcl 103 ref 315
+sc_ipc_mask_$unmask             000020 constant        entry                    external dcl 102 ref 307
+sc_request_flags                       based           structure                level 1 packed packed unaligned dcl 6-55
+sc_rf_ptr                       000154 automatic       pointer                  dcl 6-54 set ref 166* 167 169 271* 274 274 279 282
+                                                                                  287 292 324 348
+sc_stat_$Go                     000040 external static bit(1)                   dcl 5-62 ref 282
+sc_stat_$Multics                000042 external static bit(1)                   dcl 5-62 ref 282 287
+sc_stat_$no_operator_login      000044 external static bit(1)                   dcl 5-62 ref 292
+sc_stat_$test_mode              000046 external static bit(1)                   dcl 5-62 ref 324
+sc_subsystem_info                      based           structure                level 1 dcl 6-23 set ref 249 249
+sc_subsystem_info_ptr           000152 automatic       pointer                  dcl 6-22 set ref 138* 160 201 221 228 236 249 249
+                                                                                  256 272 274 292 297 341* 342
+sci                                    based           structure                level 1 dcl 7-14
+sci_authority                   000100 automatic       bit(1)                   array packed unaligned dcl 264 set ref 272* 274
+sci_ptr                         000156 automatic       pointer                  dcl 7-94 set ref 137* 138* 160* 201* 219 220 227 229
+                                                                                  234 235 249* 254 255 274* 279* 282* 287* 299* 309*
+                                                                                  316* 327* 340* 341* 342* 348*
+search                                                 builtin function         dcl 129 ref 151
+signed_on                 0(06)        based           bit(1)                   level 3 packed packed unaligned dcl 4-54 ref 297
+source_name               2            based           char(32)                 level 2 packed packed unaligned dcl 6-23 set ref
+                                                                                  274*
+special_command                 000147 automatic       bit(1)                   dcl 126 set ref 157* 167* 173
+ssu_$abort_line                 000024 constant        entry                    external dcl 104 ref 274 282 287 327 348
+ssu_$execute_line               000026 constant        entry                    external dcl 105 ref 309
+ssu_$get_info_ptr               000030 constant        entry                    external dcl 106 ref 138 341
+ssu_$print_message              000032 constant        entry                    external dcl 107 ref 279 299
+ssu_et_$null_request_line       000034 external static fixed bin(35,0)          dcl 111 ref 147
+string                                                 builtin function         dcl 129 set ref 272*
+substr                                                 builtin function         dcl 129 ref 151 160 160 175
+unmasked_ev_calls_code          000140 automatic       fixed bin(35,0)          dcl 118 set ref 223* 230 230* 251 251*
+user_flags               23(18)        based           bit(18)                  level 3 packed packed unaligned dcl 8-11 set ref 166
+                                                                                  271
+verify                                                 builtin function         dcl 129 ref 144 175 179
+ws_at_end                       000150 automatic       fixed bin(21,0)          dcl 127 set ref 179* 180 180* 180 186
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Automatic_authentication               internal static fixed bin(17,0)          initial dcl 3-16
+MC_WAIT_ANSWERBACK                     internal static fixed bin(17,0)          initial dcl 4-103
+MC_WAIT_COMMAND                        internal static fixed bin(17,0)          initial dcl 4-103
+MC_WAIT_DIALUP                         internal static fixed bin(17,0)          initial dcl 4-103
+MC_WAIT_READY                          internal static fixed bin(17,0)          initial dcl 4-103
+Manual_authentication                  internal static fixed bin(17,0)          initial dcl 3-16
+No_authentication                      internal static fixed bin(17,0)          initial dcl 3-16
+Nominal_authentication                 internal static fixed bin(17,0)          initial dcl 3-16
+SCI_VERSION_3                          internal static char(8)                  initial packed unaligned dcl 7-98
+as_data_$BS                            external static char(1)                  dcl 1-21
+as_data_$CR                            external static char(1)                  dcl 1-22
+as_data_$abs_dim                       external static char(32)                 packed unaligned dcl 1-23
+as_data_$acct_update_priority          external static fixed bin(17,0)          dcl 1-24
+as_data_$acsdir                        external static char(168)                packed unaligned dcl 1-25
+as_data_$ansp                          external static pointer                  dcl 1-26
+as_data_$as_procid                     external static bit(36)                  dcl 1-27
+as_data_$as_ring                       external static fixed bin(3,0)           dcl 1-28
+as_data_$as_tty                        automatic       char(6)                  packed unaligned dcl 1-29
+as_data_$asmtp                         external static pointer                  dcl 1-30
+as_data_$autp                          external static pointer                  dcl 1-31
+as_data_$buzzardp                      external static pointer                  dcl 1-32
+as_data_$cdtp                          external static pointer                  dcl 1-33
+as_data_$debug_flag                    external static bit(1)                   dcl 1-84
+as_data_$default_weight                external static fixed bin(35,0)          dcl 1-34
+as_data_$devtabp                       external static pointer                  dcl 1-35
+as_data_$dft_user_ring                 external static fixed bin(3,0)           dcl 1-36
+as_data_$dutp                          external static pointer                  dcl 1-37
+as_data_$g115_dim                      external static char(32)                 packed unaligned dcl 1-38
+as_data_$lct_initialized               external static bit(1)                   dcl 1-39
+as_data_$lct_size                      external static fixed bin(17,0)          dcl 1-40
+as_data_$login_args                    external static structure                level 1 dcl 1-62
+as_data_$login_words                   external static fixed bin(17,0)          dcl 1-77
+as_data_$ls_message_buffer_cur_lth     external static fixed bin(18,0)          dcl 1-86
+as_data_$ls_message_buffer_max_lth     external static fixed bin(18,0)          dcl 1-87
+as_data_$ls_message_buffer_ptr         external static pointer                  dcl 1-88
+as_data_$ls_request_server_info_ptr    external static pointer                  dcl 1-85
+as_data_$max_user_ring                 external static fixed bin(3,0)           dcl 1-41
+as_data_$mgtp                          external static pointer                  dcl 1-42
+as_data_$mrd_dim                       external static char(32)                 packed unaligned dcl 1-43
+as_data_$ntty_dim                      external static char(32)                 packed unaligned dcl 1-44
+as_data_$pdtdir                        external static char(168)                packed unaligned dcl 1-45
+as_data_$pit_ptr                       external static pointer                  dcl 1-46
+as_data_$rcpdir                        external static char(168)                packed unaligned dcl 1-47
+as_data_$request_priority              external static fixed bin(17,0)          dcl 1-48
+as_data_$rtdtp                         external static pointer                  dcl 1-50
+as_data_$sat_htp                       external static pointer                  dcl 1-51
+as_data_$satp                          external static pointer                  dcl 1-52
+as_data_$signal_types                  external static structure                level 1 dcl 1-67
+as_data_$suffix                        external static char(2)                  array packed unaligned dcl 1-53
+as_data_$sysdir                        external static char(168)                packed unaligned dcl 1-54
+as_data_$system_signal_types           external static structure                level 1 dcl 1-72
+as_data_$teens_suffix                  external static char(2)                  array packed unaligned dcl 1-55
+as_data_$terminet_tabs_string          external static varying char(144)        dcl 1-56
+as_data_$tty_dim                       external static char(32)                 packed unaligned dcl 1-57
+as_data_$update_priority               external static fixed bin(17,0)          dcl 1-58
+as_data_$version                       external static char(8)                  packed unaligned dcl 1-59
+as_data_$whoptr                        external static pointer                  dcl 1-60
+as_data_login_words                    based           structure                level 1 dcl 1-77
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 3-21
+installation_parms_version_1           internal static fixed bin(17,0)          initial dcl 2-37
+installation_parms_version_2           internal static fixed bin(17,0)          initial dcl 2-38
+mc_ansp                                automatic       pointer                  dcl 4-25
+mc_anstbl                              based           structure                level 1 dcl 4-25
+mc_atep                                automatic       pointer                  dcl 4-54
+request_info_string                    based           char                     packed unaligned dcl 8-57
+request_info_string_lth                automatic       fixed bin(21,0)          dcl 8-58
+request_info_string_ptr                automatic       pointer                  dcl 8-59
+request_name_list                      based           structure                level 1 dcl 8-47
+request_name_list_n_names              automatic       fixed bin(17,0)          dcl 8-52
+request_name_list_ptr                  automatic       pointer                  dcl 8-51
+rifp                                   automatic       pointer                  dcl 3-6
+sc_ss_area                             based           area(1024)               dcl 6-50
+sc_stat_$Go_typed                      external static bit(1)                   dcl 5-62
+sc_stat_$Multics_typed                 external static bit(1)                   dcl 5-62
+sc_stat_$Star_typed                    external static bit(1)                   dcl 5-62
+sc_stat_$admin_listener_exit_label     external static label variable           dcl 5-34
+sc_stat_$admin_listener_switch         external static bit(1)                   dcl 5-62
+sc_stat_$admin_log_iocb                external static pointer                  dcl 5-45
+sc_stat_$admin_log_write_ptr           external static pointer                  dcl 5-45
+sc_stat_$admin_sci_ptr                 external static pointer                  dcl 5-45
+sc_stat_$as_log_write_ptr              external static pointer                  dcl 5-45
+sc_stat_$did_part1                     external static bit(1)                   dcl 5-62
+sc_stat_$did_part2                     external static bit(1)                   dcl 5-62
+sc_stat_$did_part3                     external static bit(1)                   dcl 5-62
+sc_stat_$exec_access_name              external static char(32)                 packed unaligned dcl 5-15
+sc_stat_$info_dir                      external static char(168)                packed unaligned dcl 5-21
+sc_stat_$initzer_ttyp                  external static pointer                  dcl 5-45
+sc_stat_$log_dir                       external static char(168)                packed unaligned dcl 5-21
+sc_stat_$master_abort_label            external static label variable           dcl 5-34
+sc_stat_$master_channel                external static char(6)                  dcl 5-29
+sc_stat_$master_iocb                   external static pointer                  dcl 5-45
+sc_stat_$master_sci_ptr                external static pointer                  dcl 5-45
+sc_stat_$mc_acs_dir                    external static char(168)                packed unaligned dcl 5-21
+sc_stat_$mc_ansp                       external static pointer                  dcl 5-45
+sc_stat_$mc_iocb                       external static pointer                  dcl 5-45
+sc_stat_$mc_is_on                      external static bit(1)                   dcl 5-62
+sc_stat_$shutdown_typed                external static bit(1)                   dcl 5-62
+sc_stat_$sv1_iocb                      external static pointer                  dcl 5-45
+sc_stat_$sv2_iocb                      external static pointer                  dcl 5-45
+sc_stat_$sv3_iocb                      external static pointer                  dcl 5-45
+sc_stat_$sysdir                        external static char(168)                packed unaligned dcl 5-21
+sc_stat_$system_shutdown_label         external static label variable           dcl 5-34
+sc_stat_$unidentified_access_name      external static char(32)                 packed unaligned dcl 5-15
+sc_stat_$vchn_requires_accept          external static bit(1)                   dcl 5-62
+sci_parent_area                        based           area(1024)               dcl 7-96
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ABORT_SPECIAL_REQUEST           001103 constant        label                    dcl 251 ref 236
+INVOKE_SPECIAL_PROCEDURE        000704 constant        entry                    internal dcl 208 ref 176 196
+check_restrictions              001140 constant        entry                    internal dcl 261 ref 238 347
+locate_request                  000554 constant        entry                    external dcl 334
+sc_execute_command_line_        000234 constant        entry                    external dcl 11
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2510        2562    2214        2520
+Length      3146    2214        52         350     273           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_execute_command_line_            187 external procedure  is an external procedure.  
+begin block on line 183                 begin block         shares stack frame of external procedure sc_execute_command_line_.  
+INVOKE_SPECIAL_PROCEDURE             94 internal procedure  enables or reverts conditions, and is declared options(non_quick).  
+on unit on line 224                  68 on unit               
+check_restrictions                  152 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+INVOKE_SPECIAL_PROCEDURE 000100 saved_request_data_ptr      INVOKE_SPECIAL_PROCEDURE
+                         000102 saved_executing_request     INVOKE_SPECIAL_PROCEDURE
+                         000104 saved_abort_request         INVOKE_SPECIAL_PROCEDURE
+check_restrictions       000100 sci_authority               check_restrictions
+sc_execute_command_line_ 000100 begin_request_name          sc_execute_command_line_
+                         000101 code                        sc_execute_command_line_
+                         000102 dont_mask                   sc_execute_command_line_
+                         000104 l_request_data              sc_execute_command_line_
+                         000137 masked_ev_calls_code        sc_execute_command_line_
+                         000140 unmasked_ev_calls_code      sc_execute_command_line_
+                         000141 remask_count                sc_execute_command_line_
+                         000142 request_line_ptr            sc_execute_command_line_
+                         000144 request_line_lth            sc_execute_command_line_
+                         000145 request_name_lth            sc_execute_command_line_
+                         000146 rest_index                  sc_execute_command_line_
+                         000147 special_command             sc_execute_command_line_
+                         000150 ws_at_end                   sc_execute_command_line_
+                         000152 sc_subsystem_info_ptr       sc_execute_command_line_
+                         000154 sc_rf_ptr                   sc_execute_command_line_
+                         000156 sci_ptr                     sc_execute_command_line_
+                         000160 request_data_ptr            sc_execute_command_line_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ent_var_desc   call_ent_var        call_ext_out_desc   call_ext_out        call_int_this_desc
+call_int_this       call_int_other      return_mac          enable_op           shorten_stack       ext_entry
+ext_entry_desc      int_entry           int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cu_$arg_list_ptr              disk_table_$general_mhv       ipc_$mask_ev_calls            ipc_$unmask_ev_calls
+sc_abort_line_util_$real_abort_line                         sc_ipc_mask_$remask           sc_ipc_mask_$unmask
+ssu_$abort_line               ssu_$execute_line             ssu_$get_info_ptr             ssu_$print_message
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+as_data_$rs_ptrs              sc_stat_$Go                   sc_stat_$Multics              sc_stat_$no_operator_login
+sc_stat_$test_mode            ssu_et_$null_request_line
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000227       137 000241       138 000245       139 000255       141 000257       142 000263       144 000265
+    145 000277       147 000300       148 000303       151 000304       152 000323       154 000331       155 000333
+    157 000334       158 000335       160 000336       164 000374       166 000377       167 000404       169 000412
+    173 000420       175 000422       176 000445       179 000457       180 000472       186 000475       196 000507
+    199 000525       201 000526       204 000543       206 000546       334 000547       340 000567       341 000573
+    342 000604       343 000632       346 000635       347 000640       348 000644       352 000702       208 000703
+    219 000717       220 000723       221 000727       223 000735       224 000740       227 000756       228 000764
+    229 000772       230 001000       232 001012       234 001013       235 001020       236 001023       238 001027
+    240 001034       241 001045       242 001051       243 001052       244 001054       246 001055       249 001066
+    251 001103       254 001117       255 001123       256 001131       258 001136       261 001137       271 001145
+    272 001153       274 001155       279 001224       282 001263       287 001327       292 001370       297 001416
+    299 001421       307 001451       309 001461       315 001503       316 001513       324 001545       326 001556
+    327 001564       330 001613
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

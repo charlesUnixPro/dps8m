@@ -1,0 +1,700 @@
+	COMPILATION LISTING OF SEGMENT volmap_util
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1008.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 volmap_util$free_address_for_scavenge:
+        9      proc (Pvtx, Record_Address);
+       10 
+       11 /*  Volume Map Utilities
+       12*
+       13*    free_address_for_scavenge   - ensures that a record address is not free
+       14*			    by removing from stock and volume map
+       15*
+       16*    Written July 1982 by J. Bongiovanni
+       17*    Modified November 1982, J. Bongiovanni, to check stock under volmap lock
+       18**/
+       19 
+       20 /*  Parameter  */
+       21 
+       22 	dcl     Pvtx		 fixed bin;	/* PVTE index */
+       23 	dcl     Record_Address	 fixed bin (18);
+       24 
+       25 /*  Automatic  */
+       26 
+       27 	dcl     bit_no		 fixed bin;
+       28 	dcl     page_no		 fixed bin;
+       29 	dcl     p99		 pic "99";
+       30 	dcl     record_address	 fixed bin (18);
+       31 	dcl     volmap_locked	 bit (1) aligned;
+       32 	dcl     vpage_ptr		 ptr;
+       33 	dcl     word_no		 fixed bin;
+       34 
+       35 /*  Static  */
+       36 
+       37 	dcl     NULL_SDW		 fixed bin (71) int static options (constant) init (0);
+       38 	dcl     RECORDS_PER_WORD	 fixed bin int static options (constant) init (32);
+       39 
+       40 /*  Based  */
+       41 
+       42 	dcl     1 vpage		 aligned based (vpage_ptr),
+       43 		2 word		 (0:1023) aligned,
+       44 		  3 pad1		 bit (1) unaligned,
+       45 		  3 bits		 (0:31) bit (1) unaligned,
+       46 		  3 pad2		 bit (3) unaligned;
+       47 
+       48 /*  External  */
+       49 
+       50 	dcl     volmap_abs_seg$	 external;
+       51 
+       52 /*  Entry  */
+       53 
+       54 	dcl     condition_		 entry (char (*), entry);
+       55 	dcl     page$grab_volmap_page_unwired entry (ptr, fixed bin, ptr);
+       56 	dcl     page$lock_volmap	 entry (ptr);
+       57 	dcl     page$unlock_volmap	 entry (ptr);
+       58 	dcl     page$withdraw_range	 entry (ptr, fixed bin (18), fixed bin (18), fixed bin (18));
+       59 	dcl     page$write_volmap_page_unwired entry (ptr, fixed bin);
+       60 	dcl     pmut$swap_sdw	 entry (ptr, ptr);
+       61 	dcl     syserr		 entry options (variable);
+       62 
+       63 	record_address = Record_Address;
+       64 
+       65 	page_no = -1;
+       66 	volmap_locked = "0"b;
+       67 
+       68 	call SETUP_LOCK;
+       69 
+       70 	call condition_ ("page_fault_error", PAGE_FAULT_ERROR);
+       71 
+       72 	call FIND_VOLMAP_PAGE (record_address, page_no);
+       73 
+       74 	call page$grab_volmap_page_unwired (pvtep, page_no - 1, vpage_ptr);
+       75 
+       76 	call page$withdraw_range (pvtep, record_address, record_address + 1, (0));
+       77 
+       78 	word_no = divide (record_address - record_stock.volmap_page (page_no).baseadd, RECORDS_PER_WORD, 17);
+       79 	bit_no = mod (record_address - record_stock.volmap_page (page_no).baseadd, RECORDS_PER_WORD);
+       80 	vpage.word (word_no).bits (bit_no) = "0"b;
+       81 
+       82 	call page$write_volmap_page_unwired (pvtep, page_no);
+       83 	page_no = -1;
+       84 
+       85 	call UNLOCK_RESET;
+       86 
+       87 	return;
+       88 
+       89 /*  Internal Procedure to setup pointers and lock the volume map  */
+       90 
+       91 SETUP_LOCK:
+       92      proc;
+       93 
+       94 	pvtep = addr (addr (pvt$array) -> pvt_array (Pvtx));
+       95 	record_stockp = pvte.volmap_stock_ptr;
+       96 
+       97 	call page$lock_volmap (pvtep);
+       98 	volmap_locked = "1"b;
+       99 
+      100 	call pmut$swap_sdw (addr (volmap_abs_seg$), addr (pvte.volmap_seg_sdw));
+      101 
+      102      end SETUP_LOCK;
+      103 
+      104 
+      105 
+      106 /*  Internal Procedure to reset and unlock  */
+      107 
+      108 UNLOCK_RESET:
+      109      proc;
+      110 
+      111 
+      112 	if page_no > 0
+      113 	then call page$write_volmap_page_unwired (pvtep, page_no - 1);
+      114 	page_no = -1;
+      115 
+      116 	if volmap_locked
+      117 	then call page$unlock_volmap (pvtep);
+      118 	volmap_locked = "0"b;
+      119 
+      120 	call pmut$swap_sdw (addr (volmap_abs_seg$), addr (NULL_SDW));
+      121 
+      122      end UNLOCK_RESET;
+      123 
+      124 /* Internal Procedure to find the Volume Map page associated with a given
+      125*   address */
+      126 
+      127 FIND_VOLMAP_PAGE:
+      128      proc (Devadd, Page_no);
+      129 
+      130 	dcl     Devadd		 fixed bin (18) parameter;
+      131 	dcl     Page_no		 fixed bin parameter;
+      132 
+      133 	dcl     vpagex		 fixed bin;
+      134 	dcl     vpage_found		 bit (1);
+      135 	dcl     address		 fixed bin;
+      136 
+      137 
+      138 	vpage_found = "0"b;
+      139 	address = Devadd;
+      140 
+      141 	if address < pvte.baseadd | address >= pvte.baseadd + pvte.totrec
+      142 	then call syserr (CRASH, "volmap_util: Address ^o out of paging region on ^a_^a.", address, pvte.devname,
+      143 		convert (p99, pvte.logical_area_number));
+      144 
+      145 	do vpagex = record_stock.n_volmap_pages to 1 by -1 while (^vpage_found);
+      146 	     if address >= record_stock.volmap_page (vpagex).baseadd
+      147 	     then do;
+      148 		     vpage_found = "1"b;
+      149 		     Page_no = vpagex;
+      150 		end;
+      151 	end;
+      152 
+      153 	if ^vpage_found
+      154 	then call syserr (CRASH, "volmap_util: Invalid address ^o on ^a_^a.", address, pvte.devname,
+      155 		convert (p99, pvte.logical_area_number));
+      156 	return;
+      157 
+      158      end FIND_VOLMAP_PAGE;
+      159 
+      160 /*  Internal Procedure to clean up and continue signalling of
+      161*    page_fault_error
+      162**/
+      163 
+      164 PAGE_FAULT_ERROR:
+      165      proc (Mcptr, Condition, Coptr, Infoptr, Continue) options (non_quick);
+      166 
+      167 	dcl     Mcptr		 ptr;
+      168 	dcl     Condition		 char (*);
+      169 	dcl     Coptr		 ptr;
+      170 	dcl     Infoptr		 ptr;
+      171 	dcl     Continue		 bit (1) aligned;
+      172 
+      173 	call UNLOCK_RESET;
+      174 	Continue = "1"b;
+      175 
+      176      end PAGE_FAULT_ERROR;
+      177 
+  1     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  1     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  1     8*     Add the support for subvolumes
+  1     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  1    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  1    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  1    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  1    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  1    14*     Added inconsistent_dbm bit for determining the status of volume
+  1    15*     dumper bit maps.
+  1    16*                                                   END HISTORY COMMENTS */
+  1    17 
+  1    18      dcl	   pvt$array	      aligned external;
+  1    19      dcl	   pvt$max_n_entries      fixed bin external;
+  1    20 
+  1    21      dcl	   pvt_arrayp	      ptr;
+  1    22      dcl	   pvtep		      ptr;
+  1    23 
+  1    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  1    25 
+  1    26      dcl	   1 pvte		      based (pvtep) aligned,
+  1    27 
+  1    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  1    29 
+  1    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  1    31 
+  1    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  1    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  1    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  1    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  1    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  1    37 	     2 pad3	      bit (2) unaligned,
+  1    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  1    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  1    40 
+  1    41 
+  1    42 
+  1    43 	     2 devname	      char (4),		/* device name */
+  1    44 
+  1    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  1    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  1    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  1    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  1    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  1    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  1    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  1    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  1    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  1    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  1    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  1    56 	     2 scav_check_address
+  1    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  1    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  1    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  1    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  1    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  1    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  1    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  1    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  1    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  1    66 
+  1    67 
+  1    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  1    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  1    70 
+  1    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  1    72 
+  1    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  1    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  1    75 
+  1    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  1    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  1    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  1    79 	     2 records_per_cyl    fixed bin,
+  1    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  1    81 	     2 sv_name            char (2) aligned,
+  1    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  1    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  1    84 
+  1    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  1    86 	     2 pad2	      bit (18) unaligned,
+  1    87 
+  1    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  1    89 
+  1    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  1    91 
+  1    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  1    93 
+  1    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  1    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  1    96 
+  1    97 
+  1    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  1    99 
+  1   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  1   101 
+  1   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  1   103 
+  1   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  1   105 
+  1   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  1   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  1   108 
+  1   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  1   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  1   111 
+  1   112 
+  1   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  1   114 	   VOLMAP_ASYNC_READ      init (1),
+  1   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  1   116 
+  1   117 
+  1   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      178 
+      179 
+  2     1 /*  START OF:	stock_seg.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3      dcl	   stock_segp	      ptr;
+  2     4      dcl	   record_stockp	      ptr;
+  2     5      dcl	   vtoce_stockp	      ptr;
+  2     6      dcl	   stock_seg$	      ext;
+  2     7 
+  2     8      dcl	   n_in_record_stock      fixed bin;
+  2     9      dcl	   n_volmap_pages	      fixed bin;
+  2    10      dcl	   n_in_vtoce_stock	      fixed bin;
+  2    11 
+  2    12 
+  2    13      dcl	   1 stock_seg	      aligned based (stock_segp),
+  2    14 
+  2    15 	     2 meters	      aligned like rsmeters,
+  2    16 
+  2    17 	     2 record_stock_entries fixed bin,		/* Number of entries in a record stock */
+  2    18 	     2 vtoce_stock_entries fixed bin,		/* Number of entries in a VTOCE stock */
+  2    19 	     2 record_stock_size  fixed bin,		/* Size of a record stock in words */
+  2    20 	     2 vtoce_stock_size   fixed bin,		/* Size of a VTOCE stock in words */
+  2    21 	     2 n_stock_entries    fixed bin,		/* Number of stocks of each type */
+  2    22 	     2 record_stock_arrayp ptr,		/* Record stock region */
+  2    23 	     2 vtoce_stock_arrayp ptr;		/* VTOCE stock region */
+  2    24 
+  2    25 
+  2    26      dcl	   1 record_stock	      aligned based (record_stockp),
+  2    27 
+  2    28 	     2 pvtep	      ptr unal,		/* PVTE for this stock */
+  2    29 
+  2    30 	     2 n_in_stock	      fixed bin (18) uns unal,/* Max number of addresses in stock */
+  2    31 	     2 n_volmap_pages     fixed bin (18) uns unal,/* Number of pages in Volume Map */
+  2    32 
+  2    33 	     2 n_free_in_stock    fixed bin (18) uns unal,/* Number addresses currently free */
+  2    34 	     2 n_os_in_stock      fixed bin (18) uns unal,/* Number addresses currently out-of-service */
+  2    35 
+  2    36 	     2 low_threshold      fixed bin (18) uns unal,/* Low threshold for withdrawing from volmap */
+  2    37 	     2 high_threshold     fixed bin (18) uns unal,/* High threshold for depositing to volmap */
+  2    38 
+  2    39 	     2 target	      fixed bin (18) uns unal,/* Target for stock */
+  2    40 	     2 stock_offset	      bit (18) unal,	/* Offset of stock in this structure */
+  2    41 
+  2    42 	     2 n_words_in_stock   fixed bin (18) uns unal,/* Number of words = Number of entries / 2 */
+  2    43 	     2 search_index	      fixed bin (18) uns unal,/* Roving pointer */
+  2    44 
+  2    45 	     2 old_volmap_page    (3) aligned,		/* N_OLD_VOLMAP_PAGES (cif) */
+  2    46 	       3 last	      fixed bin (18) uns unal,/* Roving pointer */
+  2    47 	       3 pad	      bit (18) unal,
+  2    48 
+  2    49 	     2 volmap_page	      (n_volmap_pages refer (record_stock.n_volmap_pages)) aligned,
+  2    50 	       3 n_free	      fixed bin (18) uns unal,/* Number free records in this volmap page */
+  2    51 	       3 baseadd	      fixed bin (17) unal,	/* First record address described by this page */
+  2    52 
+  2    53 	     2 stock	      (n_in_record_stock refer (record_stock.n_in_stock)) bit (18) unal; /* Stock array of addresses */
+  2    54 						/* bit 0 ON => out-of-service */
+  2    55 
+  2    56 
+  2    57      dcl	   1 vtoce_stock	      aligned based (vtoce_stockp),
+  2    58 	     2 pvtep	      ptr unal,		/* PVTE for this stock */
+  2    59 	     2 n_in_stock	      fixed bin (18) uns unal,/* Max number indices in stock */
+  2    60 	     2 n_free_in_stock    fixed bin (18) uns unal,/* Number indices currently free */
+  2    61 	     2 target	      fixed bin (18) uns unal,/* Target when withdrawing/depositing */
+  2    62 	     2 search_index	      fixed bin (18) uns unal,/* Roving pointer */
+  2    63 	     2 stock	      (n_in_vtoce_stock refer (vtoce_stock.n_in_stock)) fixed bin (17) unal; /* Stock array of VTOCE indices */
+  2    64 
+  2    65 
+  2    66      dcl	   1 rsmeters	      aligned based,
+  2    67 
+  2    68 	     2 async_read_calls   fixed bin (35),	/* Number of asynchronous read attempts */
+  2    69 	     2 async_page_reads   fixed bin (35),	/* Number of times page read was required */
+  2    70 	     2 async_post_io_calls fixed bin (35),	/* Number of times read or write posted */
+  2    71 	     2 deposit_calls      fixed bin (35),	/* Number of times deposit called */
+  2    72 	     2 async_post_io_time fixed bin (71),	/* CPU time posting I/Os (interrupt side) */
+  2    73 	     2 deposit_time	      fixed bin (71),	/* CPU time in deposit (call side) */
+  2    74 	     2 low_thresh_detected fixed bin (35),	/* Number of times stock below low threshold */
+  2    75 	     2 high_thresh_detected fixed bin (35),	/* Number of times stock above high threshold */
+  2    76 	     2 low_thresh_fails   fixed bin (35),	/* Number of times no records in volmap */
+  2    77 	     2 withdraw_stock_steps fixed bin (35),	/* Number steps thru stock in withdraw */
+  2    78 	     2 withdraw_stock_losses fixed bin (35),	/* Number lockless losses */
+  2    79 	     2 n_withdraw_attempt fixed bin (35),	/* Number attempts to withdraw a page */
+  2    80 	     2 n_withdraw_range   fixed bin (35),	/* Number attempts to withdraw within range */
+  2    81 	     2 n_pages_withdraw_stock fixed bin (35),	/* Number pages withdrawn from stock */
+  2    82 	     2 n_pages_withdraw_async fixed bin (35),	/* Number pages withdrawn from volmap */
+  2    83 	     2 n_v_withdraw_attempts fixed bin (35),	/* Number attempts to withdraw from volmap */
+  2    84 	     2 withdraw_volmap_steps fixed bin (35),	/* Number steps thru volmap in withdraw */
+  2    85 	     2 deposit_stock_steps fixed bin (35),	/* Number steps thru stock in deposit */
+  2    86 	     2 deposit_stock_losses fixed bin (35),	/* Number lockless losses */
+  2    87 	     2 n_deposit_attempt  fixed bin (35),	/* Number attempts to deposit a page */
+  2    88 	     2 n_pages_deposit_stock fixed bin (35),	/* Number pages deposited to stock */
+  2    89 	     2 n_pages_deposit_volmap fixed bin (35),	/* Number pages deposited to volmap */
+  2    90 	     2 n_v_deposit_attempts fixed bin (35),	/* Number attempts to deposit to volmap */
+  2    91 	     2 reset_os_calls     fixed bin (35),	/* Number calls to reset_os */
+  2    92 	     2 reset_os_losses    fixed bin (35),	/* Number lockless losses */
+  2    93 	     2 withdraw_calls     fixed bin (35),	/* Number calls to withdraw */
+  2    94 	     2 withdraw_time      fixed bin (71),	/* CPU time in withdraw (page-fault) */
+  2    95 	     2 pc_deposit_time    fixed bin (71),	/* CPU time in pc_deposit */
+  2    96 	     2 pc_deposit_calls   fixed bin (35),	/* Number calls to pc_deposit */
+  2    97 	     2 pc_deposit_pages   fixed bin (35),	/* Number pages deposited by pc_deposit */
+  2    98 	     2 get_free_vtoce_calls fixed bin (35),	/* Number calls to get_free_vtoce */
+  2    99 	     2 return_free_vtoce_call fixed bin (35),	/* Number calls to return_free_vtoce */
+  2   100 	     2 deposit_vstock_calls fixed bin (35),	/* Number attempts to deposit to vtoce stock */
+  2   101 	     2 deposit_vstock_fails fixed bin (35),	/* Number times deposit failed */
+  2   102 	     2 withdraw_vstock_calls fixed bin (35),	/* Number attempts to withdraw from vtoce stock */
+  2   103 	     2 withdraw_vstock_fails fixed bin (35),	/* Number times withdraw failed */
+  2   104 	     2 deposit_vtoc_map fixed bin (35),		/* Number times vtoce deposited to map */
+  2   105 	     2 withdraw_check_scav fixed bin (35),	/* Number times withdraw checked an address for scavenge */
+  2   106 	     2 withdraw_conflict fixed bin (35),	/* Number times conflict found */
+  2   107 	     2 pad (11)	      fixed bin (35);
+  2   108 	
+  2   109 
+  2   110      dcl	   N_OLD_VOLMAP_PAGES     fixed bin init (3) int static options (constant);
+  2   111      dcl	   DEFAULT_N_IN_RECORD_STOCK fixed bin init (104) int static options (constant);
+  2   112      dcl	   DEFAULT_N_IN_VTOCE_STOCK fixed bin init (10) int static options (constant);
+  2   113 
+  2   114 
+  2   115 /*  END OF:	stock_seg.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      180 
+      181 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      182 
+      183 
+      184 /* BEGIN MESSAGE DOCUMENTATION
+      185*
+      186*   Message:
+      187*   volmap_util: Address XXXXXX out of paging region on dskX_NN.
+      188*
+      189*   S:     $crash
+      190*
+      191*   T:	During a physical volume scavenge
+      192*
+      193*   M:	The scavenger attempted to remove an invalid address from the
+      194*   volume map.
+      195*
+      196*   A:     $recover
+      197*
+      198*   Message:
+      199*   volmap_util: Invalid address XXXXXX on dskX_NN.
+      200*
+      201*   S:     $crash
+      202*
+      203*   T:	During a physical volume scavenge
+      204*
+      205*   M:	In attempting to deposit address XXXXXX on device dskX_NN, an invalid
+      206*   volume map offset was computed. 
+      207*
+      208*   A:	$recover
+      209*
+      210*
+      211*   END MESSAGE DOCUMENTATION */
+      212 
+      213      end volmap_util$free_address_for_scavenge;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.7  volmap_util.pl1                   >spec>install>1111>volmap_util.pl1
+178          1    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+180          2    10/25/82  1015.6  stock_seg.incl.pl1                >ldd>include>stock_seg.incl.pl1
+182          3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000014 constant        fixed bin(17,0)          initial dcl 3-7 set ref 141* 153*
+Condition                              parameter       char                     packed unaligned dcl 168 ref 164
+Continue                               parameter       bit(1)                   dcl 171 set ref 164 174*
+Coptr                                  parameter       pointer                  dcl 169 ref 164
+Devadd                                 parameter       fixed bin(18,0)          dcl 130 ref 127 139
+Infoptr                                parameter       pointer                  dcl 170 ref 164
+Mcptr                                  parameter       pointer                  dcl 167 ref 164
+NULL_SDW                        000000 constant        fixed bin(71,0)          initial dcl 37 set ref 120 120
+Page_no                                parameter       fixed bin(17,0)          dcl 131 set ref 127 149*
+Pvtx                                   parameter       fixed bin(17,0)          dcl 22 ref 8 94
+RECORDS_PER_WORD                000574 constant        fixed bin(17,0)          initial dcl 38 ref 78 79
+Record_Address                         parameter       fixed bin(18,0)          dcl 23 ref 8 63
+address                         000132 automatic       fixed bin(17,0)          dcl 135 set ref 139* 141 141 141* 146 153*
+baseadd                  20            based           fixed bin(18,0)          level 2 in structure "pvte" packed packed unsigned
+                                                                                  unaligned dcl 1-26 in procedure
+                                                                                  "volmap_util$free_address_for_scavenge" ref 141
+                                                                                  141
+baseadd                  11(18)        based           fixed bin(17,0)          array level 3 in structure "record_stock" packed
+                                                                                  packed unaligned dcl 2-26 in procedure
+                                                                                  "volmap_util$free_address_for_scavenge" ref 78 79
+                                                                                  146
+bit_no                          000100 automatic       fixed bin(17,0)          dcl 27 set ref 79* 80
+bits                      0(01)        based           bit(1)                   array level 3 packed packed unaligned dcl 42 set ref
+                                                                                  80*
+condition_                      000012 constant        entry                    external dcl 54 ref 70
+devname                   3            based           char(4)                  level 2 dcl 1-26 set ref 141* 153*
+logical_area_number       4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-26 ref 141 141
+                                                                                  153 153
+n_volmap_pages            1(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 2-26
+                                                                                  ref 145
+p99                                    automatic       picture(2)               packed unaligned dcl 29 ref 141 141 153 153
+page$grab_volmap_page_unwired   000014 constant        entry                    external dcl 55 ref 74
+page$lock_volmap                000016 constant        entry                    external dcl 56 ref 97
+page$unlock_volmap              000020 constant        entry                    external dcl 57 ref 116
+page$withdraw_range             000022 constant        entry                    external dcl 58 ref 76
+page$write_volmap_page_unwired  000024 constant        entry                    external dcl 59 ref 82 112
+page_no                         000101 automatic       fixed bin(17,0)          dcl 28 set ref 65* 72* 74 78 79 82* 83* 112 112 114*
+pmut$swap_sdw                   000026 constant        entry                    external dcl 60 ref 100 120
+pvt$array                       000032 external static fixed bin(17,0)          dcl 1-18 set ref 94
+pvt_array                              based           structure                array level 1 dcl 1-24 set ref 94
+pvte                                   based           structure                level 1 dcl 1-26
+pvtep                           000110 automatic       pointer                  dcl 1-22 set ref 74* 76* 82* 94* 95 97* 100 100 112*
+                                                                                  116* 141 141 141 141 141 141 153 153 153
+record_address                  000102 automatic       fixed bin(18,0)          dcl 30 set ref 63* 72* 76* 76 78 79
+record_stock                           based           structure                level 1 dcl 2-26
+record_stockp                   000112 automatic       pointer                  dcl 2-4 set ref 78 79 95* 145 146
+rsmeters                               based           structure                level 1 dcl 2-66
+syserr                          000030 constant        entry                    external dcl 61 ref 141 153
+totrec                    7(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-26 ref 141
+volmap_abs_seg$                 000010 external static fixed bin(17,0)          dcl 50 set ref 100 100 120 120
+volmap_locked                   000103 automatic       bit(1)                   dcl 31 set ref 66* 98* 116 118*
+volmap_page              11            based           structure                array level 2 dcl 2-26
+volmap_seg_sdw           22            based           fixed bin(71,0)          level 2 dcl 1-26 set ref 100 100
+volmap_stock_ptr         30            based           pointer                  level 2 packed packed unaligned dcl 1-26 ref 95
+vpage                                  based           structure                level 1 dcl 42
+vpage_found                     000131 automatic       bit(1)                   packed unaligned dcl 134 set ref 138* 145 148* 153
+vpage_ptr                       000104 automatic       pointer                  dcl 32 set ref 74* 80
+vpagex                          000130 automatic       fixed bin(17,0)          dcl 133 set ref 145* 146 149*
+word                                   based           structure                array level 2 dcl 42
+word_no                         000106 automatic       fixed bin(17,0)          dcl 33 set ref 78* 80
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+DEFAULT_N_IN_RECORD_STOCK              internal static fixed bin(17,0)          initial dcl 2-111
+DEFAULT_N_IN_VTOCE_STOCK               internal static fixed bin(17,0)          initial dcl 2-112
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+N_OLD_VOLMAP_PAGES                     internal static fixed bin(17,0)          initial dcl 2-110
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 1-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 1-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 1-113
+n_in_record_stock                      automatic       fixed bin(17,0)          dcl 2-8
+n_in_vtoce_stock                       automatic       fixed bin(17,0)          dcl 2-10
+n_volmap_pages                         automatic       fixed bin(17,0)          dcl 2-9
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 1-19
+pvt_arrayp                             automatic       pointer                  dcl 1-21
+stock_seg                              based           structure                level 1 dcl 2-13
+stock_seg$                             external static fixed bin(17,0)          dcl 2-6
+stock_segp                             automatic       pointer                  dcl 2-3
+vtoce_stock                            based           structure                level 1 dcl 2-57
+vtoce_stockp                           automatic       pointer                  dcl 2-5
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+FIND_VOLMAP_PAGE                000346 constant        entry                    internal dcl 127 ref 72
+PAGE_FAULT_ERROR                000541 constant        entry                    internal dcl 164 ref 70 70
+SETUP_LOCK                      000226 constant        entry                    internal dcl 91 ref 68
+UNLOCK_RESET                    000270 constant        entry                    internal dcl 108 ref 85 173
+volmap_util$free_address_for_scavenge
+                                000057 constant        entry                    external dcl 8
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 94 94 100 100 100 100 120 120 120 120
+convert                                                builtin function         ref 141 141 153 153
+divide                                                 builtin function         ref 78
+mod                                                    builtin function         ref 79
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       776        1032     575        1006
+Length      1264     575        34         216     201           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+volmap_util$free_address_for_scavenge
+                                    166 external procedure  is an external procedure.  
+SETUP_LOCK                              internal procedure  shares stack frame of external procedure volmap_util$free_address_for_          
+UNLOCK_RESET                         76 internal procedure  is called by several nonquick procedures.  
+FIND_VOLMAP_PAGE                        internal procedure  shares stack frame of external procedure volmap_util$free_address_for_          
+PAGE_FAULT_ERROR                     65 internal procedure  is assigned to an entry variable, and is declared options(non_quick).  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+volmap_util$free_address_for_scavenge
+                         000100 bit_no                      volmap_util$free_address_for_scavenge
+                         000101 page_no                     volmap_util$free_address_for_scavenge
+                         000102 record_address              volmap_util$free_address_for_scavenge
+                         000103 volmap_locked               volmap_util$free_address_for_scavenge
+                         000104 vpage_ptr                   volmap_util$free_address_for_scavenge
+                         000106 word_no                     volmap_util$free_address_for_scavenge
+                         000110 pvtep                       volmap_util$free_address_for_scavenge
+                         000112 record_stockp               volmap_util$free_address_for_scavenge
+                         000130 vpagex                      FIND_VOLMAP_PAGE
+                         000131 vpage_found                 FIND_VOLMAP_PAGE
+                         000132 address                     FIND_VOLMAP_PAGE
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac          mdfx1
+ext_entry           int_entry           int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+condition_                    page$grab_volmap_page_unwired page$lock_volmap              page$unlock_volmap
+page$withdraw_range           page$write_volmap_page_unwired                              pmut$swap_sdw
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$array                     volmap_abs_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000053        63 000064        65 000067        66 000071        68 000072        70 000073        72 000117
+     74 000121        76 000137        78 000160        79 000173        80 000177        82 000206        83 000217
+     85 000221        87 000225        91 000226        94 000227        95 000236        97 000240        98 000246
+    100 000250       102 000266       108 000267       112 000275       114 000312       116 000315       118 000326
+    120 000330       122 000345       127 000346       138 000350       139 000351       141 000353       145 000436
+    146 000447       148 000455       149 000457       151 000462       153 000465       156 000537       164 000540
+    173 000554       174 000561       176 000564
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

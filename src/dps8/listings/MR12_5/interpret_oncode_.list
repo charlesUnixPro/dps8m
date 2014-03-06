@@ -1,0 +1,192 @@
+	COMPILATION LISTING OF SEGMENT interpret_oncode_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0957.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 interpret_oncode_:	proc(on_code, string);
+       14 
+       15 /* This procedure returns the message corresponding to a given pl1 oncode value */
+       16 /* it references a list made up from P. Belmont's 3 lists */
+       17 /* coded  by M.B. Weaver 73/5/3 */
+       18 /* modified 77/03/08 by M. Weaver to increase size of oncode_messages_ */
+       19 
+       20 declare	(lng, i, j, k) fixed bin;
+       21 declare	on_code fixed bin(35);
+       22 declare	(index, substr) builtin;
+       23 declare	nl char(1) int static init("
+       24 ");
+       25 declare	nlnl char(2) aligned int static init("
+       26 
+       27 ");
+       28 declare	string char(150) var;
+       29 declare	oncode_messages_$ char(65536) ext aligned;
+       30 declare	oncode_message_string char (om_length) based (addr (oncode_messages_$));
+       31 declare	om_length fixed bin static init (65536);
+       32 declare	first bit (1) aligned static init ("1"b);
+       33 declare	ioa_$rs entry options(variable);
+       34 declare	convert_binary_integer_$decimal_string entry(fixed bin(35)) returns(char(12) var);
+       35 
+       36 /* * * * * * * * * * * * * * * * * * * * * */
+       37 
+       38 /* a typical message in oncode_messages_ follows:
+       39*
+       40*205 [CTN]Character other than sign or digit follows
+       41*"e" of exponent field.
+       42*
+       43*Messages are located by the oncode value and delimited by a double new-line.
+       44*The name in [] indicates the module signalling the error.
+       45**/
+       46 
+       47 	if first then do;				/* find real length of oncode_messages_$ */
+       48 	     om_length = index (oncode_messages_$, nl || "[END]");
+       49 	     first = "0"b;
+       50 	end;
+       51 
+       52 	/*  find beginning of message */
+       53 
+       54 	i = index(oncode_message_string, nl || convert_binary_integer_$decimal_string(on_code));
+       55 
+       56 	if i = 0 then go to error_return;
+       57 
+       58 	/* find length of message */
+       59 
+       60 	j = index(substr(oncode_message_string, i, 300), nlnl);
+       61 	if j = 0 then go to error_return;
+       62 
+       63 	/* find beginning of relevant part of message */
+       64 
+       65 	k = index(substr(oncode_message_string, i, j), "]");
+       66 	if k = 0 then k = 1;			/* print whole message anyway */
+       67 
+       68 	/* fill in string argument */
+       69 
+       70 	string = substr(oncode_message_string, i+k, j - k - 1);
+       71 
+       72 	return;
+       73 
+       74 error_return:				/* let users know so it will be reported */
+       75 	call ioa_$rs("There is no message for oncode = ^d. Contact pl1 maintainence.",
+       76 	string, lng, on_code);
+       77 
+       78 	return;
+       79 
+       80 	end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.0  interpret_oncode_.pl1             >special_ldd>install>MR12.3-1114>interpret_oncode_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+convert_binary_integer_$decimal_string
+                                000016 constant        entry                    external dcl 34 ref 54
+first                           000011 internal static bit(1)                   initial dcl 32 set ref 47 49*
+i                               000101 automatic       fixed bin(17,0)          dcl 20 set ref 54* 56 60 65 70
+index                                                  builtin function         dcl 22 ref 48 54 60 65
+ioa_$rs                         000014 constant        entry                    external dcl 33 ref 74
+j                               000102 automatic       fixed bin(17,0)          dcl 20 set ref 60* 61 65 70
+k                               000103 automatic       fixed bin(17,0)          dcl 20 set ref 65* 66 66* 70 70
+lng                             000100 automatic       fixed bin(17,0)          dcl 20 set ref 74*
+nl                              000223 constant        char(1)                  initial packed unaligned dcl 23 ref 48 54
+nlnl                                   constant        char(2)                  initial dcl 25 ref 60
+om_length                       000010 internal static fixed bin(17,0)          initial dcl 31 set ref 48* 54 60 65 70
+on_code                                parameter       fixed bin(35,0)          dcl 21 set ref 13 54* 74*
+oncode_message_string                  based           char                     packed unaligned dcl 30 ref 54 60 65 70
+oncode_messages_$               000012 external static char(65536)              dcl 29 set ref 48 54 60 65 70
+string                                 parameter       varying char(150)        dcl 28 set ref 13 70* 74*
+substr                                                 builtin function         dcl 22 ref 60 65 70
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+error_return                    000172 constant        label                    dcl 74 ref 56 61
+interpret_oncode_               000034 constant        entry                    external dcl 13
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 54 60 65 70
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       306         326     224         316
+Length       504     224        20         142      61           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+interpret_oncode_                   118 external procedure  is an external procedure.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 om_length                   interpret_oncode_
+000011 first                       interpret_oncode_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+interpret_oncode_        000100 lng                         interpret_oncode_
+                         000101 i                           interpret_oncode_
+                         000102 j                           interpret_oncode_
+                         000103 k                           interpret_oncode_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack       ext_entry
+set_chars_eis       index_chars_eis
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+convert_binary_integer_$decimal_string                      ioa_$rs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+oncode_messages_$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000030        47 000041        48 000043        49 000056        54 000057        56 000114        60 000117
+     61 000131        65 000132        66 000144        70 000147        72 000171        74 000172        78 000222
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

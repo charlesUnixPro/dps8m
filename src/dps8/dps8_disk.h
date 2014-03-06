@@ -1,4 +1,3 @@
 void disk_init(void);
-int disk_iom_io(int chan, t_uint64 *wordp, int* majorp, int* subp);
-int disk_iom_cmd(chan_devinfo* devinfop);
+t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_code);
 

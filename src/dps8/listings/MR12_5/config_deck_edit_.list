@@ -1,0 +1,663 @@
+	COMPILATION LISTING OF SEGMENT config_deck_edit_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1021.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 config_deck_edit_: proc (ss_info_ptr);
+        9 
+       10 /* Program to use qedx_ to edit config decks.  config_deck_parse_ is used for 
+       11*ascii/binary conversions.
+       12*  
+       13*       In the ascii form, each field is considered to be of two types, 
+       14*labeled and unlabeled.  Labeled fields are fields preceeded by a label, 
+       15*such as "-port 7" ("-port" is the label; "7" is the value).  Unlabeled 
+       16*fields are fields not so labeled; the config card name is considered the 
+       17*first of these.  Normal text editing operations are performed on this 
+       18*source form within qedx_.  Writing the config deck out performs a per card
+       19*validity check in the process of conversion to binary form.
+       20*
+       21*      Buffer 0 is wired (default path set) to <config deck>.  Reads and 
+       22*writes without a pathname operate on the binary config deck. */
+       23 
+       24 /* Initially coded February 1983 by Keith Loepere */
+       25 /* Modified August 1983 by Keith Loepere for new bce switches */
+       26 /* Modified November 1983 by Keith Loepere to use qedx_. */
+       27 /* Modified March 1984 by Keith Loepere to accept a command line deck name */
+       28 /* Modified January 1985 by Keith Loepere to run at crash time. */
+       29 
+       30 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       31 
+       32 dcl  NL			        char (1) static options (constant) init ("
+       33 ");
+       34 dcl  addr			        builtin;
+       35 dcl  arg			        char (arg_lth) based (arg_ptr);
+       36 dcl  arg_count		        fixed bin;
+       37 dcl  arg_lth		        fixed bin (21);
+       38 dcl  arg_ptr		        ptr;
+       39 dcl  bootload_fs_$get	        entry (char (*), ptr, fixed bin (21), fixed bin (21), fixed bin (35));
+       40 dcl  bootload_fs_$get_ptr	        entry (char (*), ptr, fixed bin (21), fixed bin (35));
+       41 dcl  bootload_fs_$put	        entry (char (*), ptr, fixed bin (21), bit (1) aligned, fixed bin (35));
+       42 dcl  code			        fixed bin (35);
+       43 dcl  com_err_		        entry () options (variable);
+       44 dcl  config_deck_parse_$ascii_to_binary entry (char (256) var, ptr, fixed bin);
+       45 dcl  config_deck_parse_$binary_to_ascii entry (ptr, char (256) var);
+       46 dcl  cu_$arg_count_rel	        entry (fixed bin, ptr, fixed bin (35));
+       47 dcl  cu_$arg_ptr_rel	        entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       48 dcl  disk_config_deck$	        (4096) bit (36) aligned external static;
+       49 dcl  error_table_$recoverable_error   fixed bin (35) ext static;
+       50 dcl  get_ptrs_$given_segno	        entry (fixed bin (15)) returns (pointer);
+       51 dcl  index		        builtin;
+       52 dcl  ioa_			        entry () options (variable);
+       53 dcl  length		        builtin;
+       54 dcl  me			        char (11) static options (constant) init ("config_edit");
+       55 dcl  null			        builtin;
+       56 dcl  1 my_qedx_info		        aligned,
+       57        2 header		        like qedx_info.header,
+       58        2 buffers		        (1) like qedx_info.buffers;
+       59 dcl  pc_wired$write_wait	        entry (pointer, fixed bin, fixed bin);
+       60 dcl  qedx_		        entry (ptr, fixed bin (35));
+       61 dcl  segno		        builtin;
+       62 dcl  string		        builtin;
+       63 dcl  substr		        builtin;
+       64 dcl  sys_boot_info$config_has_been_modified bit (1) aligned external static;
+       65 
+       66 	if ss_info_ptr ^= null () then do;
+       67 	     call cu_$arg_count_rel (arg_count, ss_info.arg_list_ptr, code);
+       68 	     if code ^= 0 then go to TERMINATE;		/* active function? */
+       69 	end;
+       70 	else arg_count = 0;
+       71 	if arg_count > 1 then do;
+       72 	     call ioa_ ("Usage is: config_edit {file_name}");
+       73 	     go to TERMINATE;
+       74 	end;
+       75 
+       76 	else if arg_count = 1 then begin;
+       77 
+       78 dcl  buffer_lth		        fixed bin (21);
+       79 dcl  buffer_ptr		        ptr;
+       80 
+       81 	     call cu_$arg_ptr_rel (1, arg_ptr, arg_lth, code, ss_info.arg_list_ptr);
+       82 	     call bootload_fs_$get_ptr (arg, buffer_ptr, buffer_lth, code);
+       83 	     if code ^= 0 then do;
+       84 		call com_err_ (code, me, "^a", arg);
+       85 		go to TERMINATE;
+       86 	     end;
+       87 	     call write_config_deck (buffer_ptr, buffer_lth);
+       88 	     return;
+       89 	end;
+       90 
+       91 /* Enter config deck editor */
+       92 
+       93 	config_max_cards, config_n_cards = 256;
+       94 	qedx_info_ptr = addr (my_qedx_info);
+       95 	qedx_info.header.version = QEDX_INFO_VERSION_1;
+       96 	qedx_info.editor_name = me;
+       97 	qedx_info.buffer_io = config_deck_io;
+       98 	string (qedx_info.header.flags) = ""b;
+       99 	qedx_info.header.query_if_modified = "1"b;
+      100 	qedx_info.caller_does_io = "1"b;
+      101 	qedx_info.n_buffers = 1;
+      102 	qedx_info.buffers (1).buffer_name = "0";
+      103 	qedx_info.buffers (1).buffer_pathname = "<config deck>";
+      104 	string (qedx_info.buffers (1).flags) = ""b;
+      105 	qedx_info.buffers (1).locked_pathname, qedx_info.buffers (1).default_read_ok, qedx_info.buffers (1).default_write_ok = "1"b;
+      106 
+      107 	call qedx_ (qedx_info_ptr, code);
+      108 	if code ^= 0 then
+      109 	     if code ^= error_table_$recoverable_error then call com_err_ (code, me, "from qedx_");
+      110 TERMINATE:
+      111 	return;
+      112 
+      113 config_deck_io: proc (qedx_buffer_io_info_ptr, io_okay) options (non_quick);
+      114 
+      115 /* The routine to fetch data from ascii files.  It also knows how to read
+      116*and write the binary config deck. */
+      117 
+      118 dcl  io_okay		        bit (1) aligned parameter; /* read or write successful */
+      119 dcl  qedx_buffer_io_info_ptr	        ptr parameter;
+      120 
+      121 	qbii_ptr = qedx_buffer_io_info_ptr;
+      122 	if qedx_buffer_io_info.version ^= QEDX_BUFFER_IO_INFO_VERSION_1 then do;
+      123 	     call com_err_ (0, me, "Incorrect version of qedx_buffer_io_info supplied.");
+      124 	     go to TERMINATE;
+      125 	end;
+      126 	if qedx_buffer_io_info.pathname ^= "<config deck>" then do;
+      127 	     if qedx_buffer_io_info.direction = QEDX_READ_FILE then
+      128 		call bootload_fs_$get (qedx_buffer_io_info.pathname, qedx_buffer_io_info.buffer_ptr, qedx_buffer_io_info.buffer_max_lth, qedx_buffer_io_info.buffer_lth, code);
+      129 	     else call bootload_fs_$put (qedx_buffer_io_info.pathname, qedx_buffer_io_info.buffer_ptr, qedx_buffer_io_info.buffer_lth, "0"b, code);
+      130 	     if code ^= 0 then call com_err_ (code, me, "^a", qedx_buffer_io_info.pathname);
+      131 	     io_okay = (code = 0);
+      132 	end;
+      133 	else do;
+      134 	     if qedx_buffer_io_info.direction = QEDX_READ_FILE then do;
+      135 		call read_config_deck (qedx_buffer_io_info.buffer_ptr, qedx_buffer_io_info.buffer_max_lth, qedx_buffer_io_info.buffer_lth);
+      136 		io_okay = "1"b;
+      137 	     end;
+      138 	     else if sys_info$collection_1_phase = CRASH_INITIALIZATION then do;
+      139 		     call com_err_ (0, me, "The config deck cannot be modified with a saved crash image present.");
+      140 		     io_okay = "0"b;
+      141 		end;
+      142 		else do;
+      143 		     call write_config_deck (qedx_buffer_io_info.buffer_ptr, qedx_buffer_io_info.buffer_lth);
+      144 		     io_okay = "1"b;
+      145 		end;
+      146 	end;
+      147 	return;
+      148      end;
+      149 
+      150 read_config_deck: proc (buffer_ptr, buffer_max_lth, buffer_lth);
+      151 
+      152 /* read in the current config deck into the area supplied by qedx */
+      153 
+      154 dcl  ascii_config_card	        char (256) var;
+      155 dcl  buffer		        char (buffer_max_lth) based (buffer_ptr);
+      156 dcl  buffer_max_lth		        fixed bin (21) parameter;
+      157 dcl  buffer_lth		        fixed bin (21) parameter;
+      158 dcl  buffer_ptr		        ptr parameter;
+      159 dcl  cards_to_read		        fixed bin;
+      160 dcl  config_card_num	        fixed bin;		/* counter to card */
+      161 
+      162 	configp = addr (disk_config_deck$);		/* using real deck easy */
+      163 	config_max_cards, config_n_cards = 256;
+      164 	do config_card_num = 1 to 256 while (config_deck.cards (config_card_num).word ^= FREE_CARD_WORD);
+      165 	end;					/* found last true card */
+      166 	cards_to_read = config_card_num - 1;
+      167 
+      168 /* here we convert the config deck to an ascii form */
+      169 
+      170 	buffer_lth = 0;
+      171 	do config_card_num = 1 to cards_to_read;
+      172 	     cardp = addr (config_deck.cards (config_card_num));
+      173 	     call config_deck_parse_$binary_to_ascii (cardp, ascii_config_card);
+      174 	     if buffer_lth + length (ascii_config_card) + 1 /* nl */ > buffer_max_lth then do;
+      175 		call com_err_ (0, me, "Converted config deck does not fit in file.");
+      176 		return;
+      177 	     end;
+      178 	     substr (buffer, buffer_lth + 1, length (ascii_config_card)) = ascii_config_card;
+      179 	     buffer_lth = buffer_lth + length (ascii_config_card) + 1;
+      180 	     substr (buffer, buffer_lth, 1) = NL;
+      181 	end;
+      182 	return;
+      183      end;
+      184 
+      185 write_config_deck: proc (buffer_ptr, buffer_lth);
+      186 
+      187 /* Convert the supplied ascii text into a binary deck. */
+      188 
+      189 dcl  ascii_config_card	        char (256) var;
+      190 dcl  buffer		        char (buffer_lth) based (buffer_ptr);
+      191 dcl  buffer_lth		        fixed bin (21) parameter;
+      192 dcl  buffer_pos		        fixed bin (21);	/* starting pos in buffer for this new line */
+      193 dcl  buffer_ptr		        ptr parameter;
+      194 dcl  card_len		        fixed bin (21);	/* length of text in card (minus nl) */
+      195 dcl  output_card_num	        fixed bin;
+      196 
+      197 	configp = addr (disk_config_deck$);
+      198 	sys_boot_info$config_has_been_modified = "1"b;
+      199 
+      200 	config_max_cards, config_n_cards = 256;
+      201 	output_card_num = 0;
+      202 	buffer_pos = 1;
+      203 	do while (buffer_pos <= buffer_lth);
+      204 	     output_card_num = output_card_num + 1;
+      205 	     cardp = addr (config_deck.cards (output_card_num));
+      206 	     card_len = index (substr (buffer, buffer_pos), NL);
+      207 	     if card_len = 0 then card_len = buffer_lth - buffer_pos + 1;
+      208 	     else card_len = card_len - 1;
+      209 	     ascii_config_card = substr (buffer, buffer_pos, card_len);
+      210 	     buffer_pos = buffer_pos + card_len + 1;
+      211 	     call config_deck_parse_$ascii_to_binary (ascii_config_card, cardp, output_card_num);
+      212 	end;
+      213 	do output_card_num = output_card_num + 1 to config_max_cards; /* blank out rest of deck */
+      214 	     config_deck.cards (output_card_num).word = FREE_CARD_WORD;
+      215 	end;
+      216 
+      217 /*	call total_config_deck_check;  */
+      218 
+      219 	call pc_wired$write_wait (get_ptrs_$given_segno (segno (addr (disk_config_deck$))), 0, 4); /* save on disk */
+      220 	return;
+      221      end;
+      222  /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+      222 
+      223  /* BEGIN include file collection_1_phases.incl.pl1 */
+  2     2 
+  2     3 /* Symbolic names for the various collection1 phases.
+  2     4*Keith Loepere, October 1983. */
+  2     5 
+  2     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  2     7 
+  2     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  2     9 
+  2    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  2    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  2    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  2    13 
+  2    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  2    15*programs can simply tell apart the booting phases from all others (crash or
+  2    16*recovery type phases). */
+  2    17 
+  2    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  2    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  2    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  2    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  2    22 
+  2    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  2    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  2    25 
+  2    26 /* END include file collection_1_phases.incl.pl1 */
+      223 
+      224  /* BEGIN INCLUDE FILE ... config_deck.incl.pl1 ... 11/13/80, W. Olin Sibert */
+  3     2 
+  3     3 dcl (configp, cardp) pointer;
+  3     4 dcl  config_n_cards fixed bin;			/* Number of cards used in config */
+  3     5 dcl  config_max_cards fixed bin;			/* Max number of cards in config */
+  3     6 
+  3     7 dcl  config_deck$ fixed bin external static;
+  3     8 
+  3     9 dcl 1 config_deck aligned based (configp),
+  3    10     2 cards (config_n_cards) aligned like config_card,
+  3    11     2 pad_cards (config_max_cards - config_n_cards) aligned like config_card;
+  3    12 
+  3    13 dcl 1 config_card aligned based (cardp),
+  3    14     2 word char (4) aligned,
+  3    15     2 data_field (14) bit (36) aligned,
+  3    16     2 type_word aligned like config_card_type_word;
+  3    17 
+  3    18 dcl 1 config_card_type_word aligned based,
+  3    19     2 field_type (14) bit (2) unaligned,
+  3    20     2 pad1 bit (4) unaligned,
+  3    21     2 n_fields fixed bin (4) unsigned unaligned;
+  3    22 
+  3    23 dcl (CONFIG_DECIMAL_TYPE	init ("11"b),
+  3    24      CONFIG_OCTAL_TYPE	init ("00"b),
+  3    25      CONFIG_SINGLE_CHAR_TYPE	init ("01"b),
+  3    26      CONFIG_STRING_TYPE	init ("10"b)) bit (2) aligned static options (constant);
+  3    27 
+  3    28 dcl  ZERO_CARD_WORD char (4) aligned internal static options (constant) init ("    ");
+  3    29 dcl  FREE_CARD_WORD char (4) aligned internal static options (constant) init ("ÿÿÿÿ");
+  3    30 
+  3    31 dcl  VALID_CARD_WORD_CHARACTERS char (38) internal static options (constant) init
+  3    32     ("abcdefghijklmnopqrstuvwxyz0123456789_.");		/* lowercase letters, digits, period and underscore */
+  3    33 
+  3    34 dcl  EMPTY_FIELD bit (36) aligned internal static options (constant) init ("777777777777"b3);
+  3    35 
+  3    36 /* END INCLUDE FILE config_deck.incl.pl1 */
+      224 
+      225  /* BEGIN INCLUDE FILE ... qedx_buffer_io_info.incl.pl1 */
+  4     2 /* Created:  January 1983 by G. Palter */
+  4     3 
+  4     4 /* Data structure used by qedx_ to invoke the caller's buffer_io procedure to read/write all or part of an editor buffer
+  4     5*   to the specified "file" */
+  4     6 
+  4     7 dcl  1 qedx_buffer_io_info aligned based (qbii_ptr),
+  4     8        2 version character (8),
+  4     9        2 editor_name character (72),			/* for error messages */
+  4    10        2 pathname character (256) unaligned,		/* pathname of "file" to be read/written */
+  4    11        2 buffer_ptr pointer,				/* -> the buffer to write/read */
+  4    12        2 buffer_max_lth fixed binary (21),		/* read: maximum size of above buffer; write: ignored */
+  4    13        2 buffer_lth fixed binary (21),			/* read: amount of data read into buffer from the "file";
+  4    14*						   write: amount of data to write into the "file" */
+  4    15        2 direction fixed binary,			/* whether to read/write */
+  4    16        2 flags,
+  4    17          3 default_pathname bit (1) unaligned,		/* ON => pathname above is the default for this buffer */
+  4    18          3 pad bit (35) unaligned;
+  4    19 
+  4    20 dcl  qbii_ptr pointer;
+  4    21 
+  4    22 dcl  QEDX_BUFFER_IO_INFO_VERSION_1 character (8) static options (constant) initial ("qbii_001");
+  4    23 
+  4    24 dcl (QEDX_READ_FILE		initial (1),		/* read data from the "file" */
+  4    25      QEDX_WRITE_FILE	initial (2))		/* write data into the "file" */
+  4    26 	fixed binary static options (constant);
+  4    27 
+  4    28 /* END INCLUDE FILE ... qedx_buffer_io_info.incl.pl1 */
+      225 
+      226  /* BEGIN INCLUDE FILE ... qedx_info.incl.pl1 */
+  5     2 /* Created:  January 1983 by G. Palter */
+  5     3 
+  5     4 /* Data structure which supplies input/output arguments to qedx_ subroutine */
+  5     5 
+  5     6 dcl  1 qedx_info aligned based (qedx_info_ptr),
+  5     7        2 header,					/* allows use of like to build automatic version */
+  5     8          3 version character (8),
+  5     9          3 editor_name character (72) unaligned,
+  5    10          3 buffer_io entry (pointer, bit (1) aligned),	/* procedure invoked to read/write an editor buffer */
+  5    11          3 flags,
+  5    12 	 4 no_rw_path bit (1) unaligned,		/* ON => no r/w may use a pathname and R/W are illegal */
+  5    13 	 4 query_if_modified bit (1) unaligned,		/* ON => query on exit if modified buffers exist */
+  5    14 	 4 caller_does_io bit (1) unaligned,		/* ON => caller does actual work of read/write requests */
+  5    15 	 4 quit_forced bit (1) unaligned,		/* set ON => user used Q or asked to punt modified buffers */
+  5    16 	 4 buffers_truncated bit (1) unaligned,		/* set ON => some editing lost when written */
+  5    17 	 4 pad bit (29) unaligned,
+  5    18          3 n_buffers fixed binary,			/* # of buffers supplied by caller */
+  5    19        2 buffers (qedx_info_n_buffers refer (qedx_info.n_buffers)),
+  5    20          3 buffer_name character (16) unaligned,		/* name of the buffer */
+  5    21          3 buffer_pathname character (256) unaligned,	/* initial default pathname of buffer */
+  5    22          3 region_ptr pointer,			/* -> caller's optional region */
+  5    23          3 region_max_lth fixed binary (21),		/* # of characters which will fit in caller's region */
+  5    24          3 region_initial_lth fixed binary (21),		/* # of characters in caller's region for initial read */
+  5    25          3 region_final_lth fixed binary (21),		/* set to # of characters placed in caller's region on exit */
+  5    26          3 flags,
+  5    27 	 4 read_write_region bit (1) unaligned,		/* ON => use caller's region as default for read/write;
+  5    28*						   OFF => use file specified by pathname as default */
+  5    29 	 4 locked_pathname bit (1) unaligned,		/* ON => read/write will never change default pathname or
+  5    30*						         prevent qedx from trusting the default path;
+  5    31*						   OFF => read with pathname sets ^trusted and write with
+  5    32*							pathname changes the default */
+  5    33 	 4 execute_buffer bit (1) unaligned,		/* ON => execute it's contents before reading from terminal */
+  5    34 	 /*** following switches apply only when read_write_region is ON ... */
+  5    35 	 4 default_read_ok bit (1) unaligned,		/* ON => r without explicit pathname is OK */
+  5    36 	 4 default_write_ok bit (1) unaligned,		/* ON => w without explicit pathname is OK */
+  5    37 	 4 auto_write bit (1) unaligned,		/* ON => automatically write buffer contents on "q" */
+  5    38 	 4 truncated bit (1) unaligned,		/* set ON => edited version is too long for caller's region */
+  5    39 	 4 pad bit (29) unaligned;
+  5    40 
+  5    41 dcl  qedx_info_ptr pointer;
+  5    42 dcl  qedx_info_n_buffers fixed binary;			/* needed to allocate above structure */
+  5    43 
+  5    44 dcl  QEDX_INFO_VERSION_1 character (8) static options (constant) initial ("qxi_01.1");
+  5    45 
+  5    46 /* END INCLUDE FILE ... qedx_info.incl.pl1 */
+      226 
+      227      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.3  config_deck_edit_.pl1             >special_ldd>install>MR12.3-1114>config_deck_edit_.pl1
+222          1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+223          2    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+224          3    05/08/81  1853.6  config_deck.incl.pl1              >ldd>include>config_deck.incl.pl1
+225          4    05/04/83  1118.0  qedx_buffer_io_info.incl.pl1      >ldd>include>qedx_buffer_io_info.incl.pl1
+226          5    05/04/83  1118.0  qedx_info.incl.pl1                >ldd>include>qedx_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 2-18 ref 138
+FREE_CARD_WORD                  001252 constant        char(4)                  initial dcl 3-29 ref 164 214
+NL                                     constant        char(1)                  initial packed unaligned dcl 32 ref 180 206
+QEDX_BUFFER_IO_INFO_VERSION_1   000002 constant        char(8)                  initial packed unaligned dcl 4-22 ref 122
+QEDX_INFO_VERSION_1             000000 constant        char(8)                  initial packed unaligned dcl 5-44 ref 95
+QEDX_READ_FILE                         constant        fixed bin(17,0)          initial dcl 4-24 ref 127 134
+addr                                                   builtin function         dcl 34 ref 94 162 172 197 205 219 219 219 219
+arg                                    based           char                     packed unaligned dcl 35 set ref 82* 84*
+arg_count                       000100 automatic       fixed bin(17,0)          dcl 36 set ref 67* 70* 71 76
+arg_list_ptr             16            based           pointer                  level 2 dcl 1-15 set ref 67* 81*
+arg_lth                         000101 automatic       fixed bin(21,0)          dcl 37 set ref 81* 82 82 84 84
+arg_ptr                         000102 automatic       pointer                  dcl 38 set ref 81* 82 84
+ascii_config_card               000100 automatic       varying char(256)        dcl 189 in procedure "write_config_deck" set ref
+                                                                                  209* 211*
+ascii_config_card               000106 automatic       varying char(256)        dcl 154 in procedure "read_config_deck" set ref 173*
+                                                                                  174 178 178 179
+bootload_fs_$get                000010 constant        entry                    external dcl 39 ref 127
+bootload_fs_$get_ptr            000012 constant        entry                    external dcl 40 ref 82
+bootload_fs_$put                000014 constant        entry                    external dcl 41 ref 129
+buffer                                 based           char                     packed unaligned dcl 190 in procedure
+                                                                                  "write_config_deck" ref 206 209
+buffer                                 based           char                     packed unaligned dcl 155 in procedure
+                                                                                  "read_config_deck" set ref 178* 180*
+buffer_io                24            based           entry variable           level 3 dcl 5-6 set ref 97*
+buffer_lth                             parameter       fixed bin(21,0)          dcl 157 in procedure "read_config_deck" set ref 150
+                                                                                  170* 174 178 179* 179 180
+buffer_lth                             parameter       fixed bin(21,0)          dcl 191 in procedure "write_config_deck" ref 185 203
+                                                                                  206 207 209
+buffer_lth                      000264 automatic       fixed bin(21,0)          dcl 78 in begin block on line 76 set ref 82* 87*
+buffer_lth              127            based           fixed bin(21,0)          level 2 in structure "qedx_buffer_io_info" dcl 4-7
+                                                                                  in procedure "config_deck_edit_" set ref 127* 129*
+                                                                                  135* 143*
+buffer_max_lth                         parameter       fixed bin(21,0)          dcl 156 in procedure "read_config_deck" ref 150 174
+                                                                                  178 180
+buffer_max_lth          126            based           fixed bin(21,0)          level 2 in structure "qedx_buffer_io_info" dcl 4-7
+                                                                                  in procedure "config_deck_edit_" set ref 127* 135*
+buffer_name              32            based           char(16)                 array level 3 packed packed unaligned dcl 5-6 set
+                                                                                  ref 102*
+buffer_pathname          36            based           char(256)                array level 3 packed packed unaligned dcl 5-6 set
+                                                                                  ref 103*
+buffer_pos                      000201 automatic       fixed bin(21,0)          dcl 192 set ref 202* 203 206 207 209 210* 210
+buffer_ptr              124            based           pointer                  level 2 in structure "qedx_buffer_io_info" dcl 4-7
+                                                                                  in procedure "config_deck_edit_" set ref 127* 129*
+                                                                                  135* 143*
+buffer_ptr                      000266 automatic       pointer                  dcl 79 in begin block on line 76 set ref 82* 87*
+buffer_ptr                             parameter       pointer                  dcl 158 in procedure "read_config_deck" ref 150 178
+                                                                                  180
+buffer_ptr                             parameter       pointer                  dcl 193 in procedure "write_config_deck" ref 185 206
+                                                                                  209
+buffers                  32            based           structure                array level 2 dcl 5-6
+caller_does_io           30(02)        based           bit(1)                   level 4 packed packed unaligned dcl 5-6 set ref 100*
+card_len                        000202 automatic       fixed bin(21,0)          dcl 194 set ref 206* 207 207* 208* 208 209 210
+cardp                           000254 automatic       pointer                  dcl 3-3 set ref 172* 173* 205* 211*
+cards                                  based           structure                array level 2 dcl 3-9 set ref 172 205
+cards_to_read                   000207 automatic       fixed bin(17,0)          dcl 159 set ref 166* 171
+code                            000104 automatic       fixed bin(35,0)          dcl 42 set ref 67* 68 81* 82* 83 84* 107* 108 108
+                                                                                  108* 127* 129* 130 130* 131
+com_err_                        000016 constant        entry                    external dcl 43 ref 84 108 123 130 139 175
+config_card                            based           structure                level 1 dcl 3-13
+config_card_num                 000210 automatic       fixed bin(17,0)          dcl 160 set ref 164* 164* 166 171* 172*
+config_card_type_word                  based           structure                level 1 dcl 3-18
+config_deck                            based           structure                level 1 dcl 3-9
+config_deck_parse_$ascii_to_binary
+                                000020 constant        entry                    external dcl 44 ref 211
+config_deck_parse_$binary_to_ascii
+                                000022 constant        entry                    external dcl 45 ref 173
+config_max_cards                000257 automatic       fixed bin(17,0)          dcl 3-5 set ref 93* 163* 200* 213
+config_n_cards                  000256 automatic       fixed bin(17,0)          dcl 3-4 set ref 93* 163* 200*
+configp                         000252 automatic       pointer                  dcl 3-3 set ref 162* 164 172 197* 205 214
+cu_$arg_count_rel               000024 constant        entry                    external dcl 46 ref 67
+cu_$arg_ptr_rel                 000026 constant        entry                    external dcl 47 ref 81
+default_read_ok         143(03)        based           bit(1)                   array level 4 packed packed unaligned dcl 5-6 set
+                                                                                  ref 105*
+default_write_ok        143(04)        based           bit(1)                   array level 4 packed packed unaligned dcl 5-6 set
+                                                                                  ref 105*
+direction               130            based           fixed bin(17,0)          level 2 dcl 4-7 ref 127 134
+disk_config_deck$               000030 external static bit(36)                  array dcl 48 set ref 162 197 219 219 219 219
+editor_name               2            based           char(72)                 level 3 packed packed unaligned dcl 5-6 set ref 96*
+error_table_$recoverable_error  000032 external static fixed bin(35,0)          dcl 49 ref 108
+flags                   143            based           structure                array level 3 in structure "qedx_info" dcl 5-6
+                                                                                  in procedure "config_deck_edit_" set ref 104*
+flags                    30            based           structure                level 3 in structure "qedx_info" dcl 5-6
+                                                                                  in procedure "config_deck_edit_" set ref 98*
+get_ptrs_$given_segno           000034 constant        entry                    external dcl 50 ref 219 219
+header                                 based           structure                level 2 dcl 5-6
+index                                                  builtin function         dcl 51 ref 206
+io_okay                                parameter       bit(1)                   dcl 118 set ref 113 131* 136* 140* 144*
+ioa_                            000036 constant        entry                    external dcl 52 ref 72
+length                                                 builtin function         dcl 53 ref 174 178 179
+locked_pathname         143(01)        based           bit(1)                   array level 4 packed packed unaligned dcl 5-6 set
+                                                                                  ref 105*
+me                              000004 constant        char(11)                 initial packed unaligned dcl 54 set ref 84* 96 108*
+                                                                                  123* 130* 139* 175*
+my_qedx_info                    000106 automatic       structure                level 1 dcl 56 set ref 94
+n_buffers                31            based           fixed bin(17,0)          level 3 dcl 5-6 set ref 101*
+null                                                   builtin function         dcl 55 ref 66
+output_card_num                 000203 automatic       fixed bin(17,0)          dcl 195 set ref 201* 204* 204 205 211* 213* 213*
+                                                                                  214*
+pathname                 24            based           char(256)                level 2 packed packed unaligned dcl 4-7 set ref 126
+                                                                                  127* 129* 130*
+pc_wired$write_wait             000040 constant        entry                    external dcl 59 ref 219
+qbii_ptr                        000260 automatic       pointer                  dcl 4-20 set ref 121* 122 126 127 127 127 127 127
+                                                                                  129 129 129 130 134 135 135 135 143 143
+qedx_                           000042 constant        entry                    external dcl 60 ref 107
+qedx_buffer_io_info                    based           structure                level 1 dcl 4-7
+qedx_buffer_io_info_ptr                parameter       pointer                  dcl 119 ref 113 121
+qedx_info                              based           structure                level 1 dcl 5-6
+qedx_info_ptr                   000262 automatic       pointer                  dcl 5-41 set ref 94* 95 96 97 98 99 100 101 102 103
+                                                                                  104 105 105 105 107*
+query_if_modified        30(01)        based           bit(1)                   level 4 packed packed unaligned dcl 5-6 set ref 99*
+segno                                                  builtin function         dcl 61 ref 219 219 219 219
+ss_info                                based           structure                level 1 dcl 1-15
+ss_info_ptr                            parameter       pointer                  dcl 1-14 ref 8 66 67 81
+string                                                 builtin function         dcl 62 set ref 98* 104*
+substr                                                 builtin function         dcl 63 set ref 178* 180* 206 209
+sys_boot_info$config_has_been_modified
+                                000044 external static bit(1)                   dcl 64 set ref 198*
+sys_info$collection_1_phase     000046 external static fixed bin(17,0)          dcl 2-8 ref 138
+version                                based           char(8)                  level 3 in structure "qedx_info" dcl 5-6
+                                                                                  in procedure "config_deck_edit_" set ref 95*
+version                                based           char(8)                  level 2 in structure "qedx_buffer_io_info" dcl 4-7
+                                                                                  in procedure "config_deck_edit_" ref 122
+word                                   based           char(4)                  array level 3 dcl 3-9 set ref 164 214*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BCE_CRASH_INITIALIZATION               internal static fixed bin(17,0)          initial dcl 2-20
+BOOT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 2-11
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 2-23
+CONFIG_DECIMAL_TYPE                    internal static bit(2)                   initial dcl 3-23
+CONFIG_OCTAL_TYPE                      internal static bit(2)                   initial dcl 3-23
+CONFIG_SINGLE_CHAR_TYPE                internal static bit(2)                   initial dcl 3-23
+CONFIG_STRING_TYPE                     internal static bit(2)                   initial dcl 3-23
+EARLY_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 2-10
+EMPTY_FIELD                            internal static bit(36)                  initial dcl 3-34
+QEDX_WRITE_FILE                        internal static fixed bin(17,0)          initial dcl 4-24
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 2-19
+SERVICE_INITIALIZATION                 internal static fixed bin(17,0)          initial dcl 2-12
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 2-21
+VALID_CARD_WORD_CHARACTERS             internal static char(38)                 initial packed unaligned dcl 3-31
+ZERO_CARD_WORD                         internal static char(4)                  initial dcl 3-28
+config_deck$                           external static fixed bin(17,0)          dcl 3-7
+qedx_info_n_buffers                    automatic       fixed bin(17,0)          dcl 5-42
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+TERMINATE                       000426 constant        label                    dcl 110 ref 68 73 85 124
+config_deck_edit_               000124 constant        entry                    external dcl 8
+config_deck_io                  000430 constant        entry                    internal dcl 113 ref 97
+read_config_deck                000717 constant        entry                    internal dcl 150 ref 135
+write_config_deck               001057 constant        entry                    internal dcl 185 ref 87 143
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1522        1572    1254        1532
+Length      2106    1254        50         300     246           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+config_deck_edit_                   248 external procedure  is an external procedure.  
+begin block on line 76                  begin block         shares stack frame of external procedure config_deck_edit_.  
+config_deck_io                      224 internal procedure  is assigned to an entry variable, and is declared options(non_quick).  
+read_config_deck                        internal procedure  shares stack frame of internal procedure config_deck_io.  
+write_config_deck                   147 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+config_deck_edit_        000100 arg_count                   config_deck_edit_
+                         000101 arg_lth                     config_deck_edit_
+                         000102 arg_ptr                     config_deck_edit_
+                         000104 code                        config_deck_edit_
+                         000106 my_qedx_info                config_deck_edit_
+                         000252 configp                     config_deck_edit_
+                         000254 cardp                       config_deck_edit_
+                         000256 config_n_cards              config_deck_edit_
+                         000257 config_max_cards            config_deck_edit_
+                         000260 qbii_ptr                    config_deck_edit_
+                         000262 qedx_info_ptr               config_deck_edit_
+                         000264 buffer_lth                  begin block on line 76
+                         000266 buffer_ptr                  begin block on line 76
+config_deck_io           000106 ascii_config_card           read_config_deck
+                         000207 cards_to_read               read_config_deck
+                         000210 config_card_num             read_config_deck
+write_config_deck        000100 ascii_config_card           write_config_deck
+                         000201 buffer_pos                  write_config_deck
+                         000202 card_len                    write_config_deck
+                         000203 output_card_num             write_config_deck
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        call_int_this       call_int_other      begin_return_mac
+return_mac          tra_ext_1           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bootload_fs_$get              bootload_fs_$get_ptr          bootload_fs_$put              com_err_
+config_deck_parse_$ascii_to_binary                          config_deck_parse_$binary_to_ascii
+cu_$arg_count_rel             cu_$arg_ptr_rel               get_ptrs_$given_segno         ioa_
+pc_wired$write_wait           qedx_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+disk_config_deck$             error_table_$recoverable_error
+sys_boot_info$config_has_been_modified                      sys_info$collection_1_phase
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000121        66 000131        67 000136        68 000152        69 000154        70 000155        71 000156
+     72 000161        73 000175        76 000176        81 000177        82 000223        83 000253        84 000255
+     85 000307        87 000310        88 000320        93 000322        94 000325        95 000327        96 000332
+     97 000335        98 000340        99 000341       100 000343       101 000345       102 000347       103 000352
+    104 000355       105 000356       107 000364       108 000375       110 000426       113 000427       121 000435
+    122 000442       123 000446       124 000472       126 000475       127 000501       129 000534       130 000566
+    131 000621       132 000626       134 000627       135 000632       136 000644       137 000647       138 000650
+    139 000653       140 000677       141 000701       143 000702       144 000713       147 000716       150 000717
+    162 000721       163 000725       164 000730       165 000743       166 000745       170 000750       171 000752
+    172 000761       173 000767       174 001000       175 001007       176 001034       178 001035       179 001045
+    180 001050       181 001053       182 001055       185 001056       197 001064       198 001067       200 001071
+    201 001074       202 001075       203 001077       204 001104       205 001105       206 001114       207 001135
+    208 001143       209 001145       210 001155       211 001161       212 001174       213 001175       214 001205
+    215 001212       219 001214       220 001251
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

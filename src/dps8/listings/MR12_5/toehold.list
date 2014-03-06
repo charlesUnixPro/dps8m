@@ -1,0 +1,2988 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>toehold.alm                                                                                                                            
+ASSEMBLED ON:	11/11/89  0934.0 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " HISTORY COMMENTS:
+                                    10  "  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+                                    11  "     audit(86-01-31,GDixon), install(86-03-21,MR12.0-1033):
+                                    12  "     Support for FIPS.
+                                    13  "  2) change(87-04-14,Farley), approve(87-07-06,MCR7717),
+                                    14  "     audit(87-07-15,Fawcett), install(87-07-17,MR12.1-1043):
+                                    15  "     Added test for unequal dcw list lengths.  In some cases save_dcws will
+                                    16  "     be longer than handler_dcws.
+                                    17  "                                                      END HISTORY COMMENTS
+                                    18  
+                                    19  
+    000000                          20  	name	toehold
+                                    21  
+                                    22  " This wired, privileged program resides in the low 256K
+                                    23  " of memory at a known absolute location (toe_absloc). It is
+                                    24  " 
+                                    25  " *** IMPURE
+                                    26  " *** MODIFIED BY OTHER PROGRAMS
+                                    27  " *** PRIVILEGED
+                                    28  " *** RUNS IN ABSOLUTE MODE
+                                    29  "  
+                                    30  " Started by Olin Sibert and Benson Margulies.
+                                    31  " Finished by Keith Loepere in the glow of a maintenance panel.
+                                    32  " Modified by Paul Farley and Rich Fawcett for large MSU3380 cylinders.
+                                    33  " Modified by Keith Loepere to delay (AAARGHHH!!!) after status for DAU.
+                                    34  	
+                                    35  "
+                                    36  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                    37  "
+                                    38  	include	coll0_segnos
+                                   2-1  " BEGIN INCLUDE FILE coll0_segnos.incl.alm
+                                   2-2  " Modified in '83 for new bce segments, Keith Loepere.
+                                   2-3  
+                        000000     2-4  	equ	ds_segno_,0	" dseg
+                        000001     2-5  	equ	toehold_segno_,1	" bos_toehold
+                        000002     2-6  	equ	config_segno_,2	" config_deck
+                        000003     2-7  	equ	dn355_mbx_segno_,3	" dn355_mailbox
+                        000004     2-8  	equ	fv_segno_,4	" fault_vector
+                        000005     2-9  	equ	fgbx_segno_,5	" flagbox
+                        000006    2-10  	equ	nt_segno_,6	" name_table
+                        000007    2-11  	equ	slt_segno_,7	" slt
+                        000010    2-12  	equ	toehold_data_segno_,8 " toehold_data
+                        000011    2-13  	equ	iom_mbx_segno_,9	" iom_mailbox
+                        000012    2-14  	equ	upt_segno_,10	" unpaged_page_tables
+                        000013    2-15  	equ	toe_segno_,11	" (bce) toehold
+                                  2-16  
+                        000400    2-17  	equ	bbl0_segno_,256	" bound_bootload_0
+                        000401    2-18  	equ	prb_segno_,257	" physical_record_buffer
+                        000402    2-19  	equ	abs_seg0_segno_,258	" abs_seg0
+                        000403    2-20  	equ	iupt_segno_,259	" int_unpaged_page_tables
+                        000404    2-21  	equ	ed_segno_,260	" early_dump (used for early dump save to tape)
+                                  2-22  
+                                  2-23  " END INCLUDE FILE coll0_segnos.incl.alm
+                                    39  "
+                                    40  	include	fault_vector
+                                   3-1  
+                                   3-2  
+                                   3-3       "BEGIN INCLUDE FILE fault_vector.incl.alm
+                                   3-4  
+                                   3-5  "	Modified February 1981 by J. Bongiovanni to add fault types
+                                   3-6  
+                                   3-7  "
+                                   3-8  "	Structure fv
+                                   3-9  "
+                        000600    3-10  	equ	fv_size,384
+                                  3-11  
+                                  3-12  
+                        000000    3-13  	equ	fv.ipair,0		"LEVEL 2
+                                  3-14  
+                        000000    3-15  	equ	fv.ipair.scu,0
+                        000001    3-16  	equ	fv.ipair.tra,1
+                        000100    3-17  	equ	fv.fpair,64		"LEVEL 2
+                                  3-18  
+                        000100    3-19  	equ	fv.fpair.scu,64
+                        000101    3-20  	equ	fv.fpair.tra,65
+                        000200    3-21  	equ	fv.i_tra_ptr,128
+                        000300    3-22  	equ	fv.i_scu_ptr,192
+                        000400    3-23  	equ	fv.f_tra_ptr,256
+                        000500    3-24  	equ	fv.f_scu_ptr,320
+                                  3-25  
+                        000000    3-26  	equ	FAULT_NO_SDF,0		" Shutdown
+                        000001    3-27  	equ	FAULT_NO_STR,1		" Store
+                        000002    3-28  	equ	FAULT_NO_MME,2		" Master Mode Entry 1
+                        000003    3-29  	equ	FAULT_NO_F1,3		" Fault Tag 1
+                        000004    3-30  	equ	FAULT_NO_TRO,4		" Timer Runout
+                        000005    3-31  	equ	FAULT_NO_CMD,5		" Command
+                        000006    3-32  	equ	FAULT_NO_DRL,6		" Derail
+                        000007    3-33  	equ	FAULT_NO_LUF,7		" Lockup
+                        000010    3-34  	equ	FAULT_NO_CON,8		" Connect
+                        000011    3-35  	equ	FAULT_NO_PAR,9		" Parity
+                        000012    3-36  	equ	FAULT_NO_IPR,10		" Illegal Procedure
+                        000013    3-37  	equ	FAULT_NO_ONC,11		" Operation Not Complete
+                        000014    3-38  	equ	FAULT_NO_SUF,12		" Startup
+                        000015    3-39  	equ	FAULT_NO_OFL,13		" Overflow
+                        000016    3-40  	equ	FAULT_NO_DIV,14		" Divide Check
+                        000017    3-41  	equ	FAULT_NO_EXF,15		" Execute
+                        000020    3-42  	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
+                        000021    3-43  	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
+                        000022    3-44  	equ	FAULT_NO_DF2,18		" Directed Fault 2
+                        000023    3-45  	equ	FAULT_NO_DF3,19		" Directed Fault 3
+                        000024    3-46  	equ	FAULT_NO_ACV,20		" Access Violation
+                        000025    3-47  	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
+                        000026    3-48  	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
+                        000027    3-49  	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
+                        000030    3-50  	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
+                        000031    3-51  	equ	FAULT_NO_F3,25		" Fault Tag 3
+                                  3-52  					" Fault No. 26-30 are Undefined
+                        000037    3-53  	equ	FAULT_NO_TRB,31		" Trouble
+                                  3-54  
+                                  3-55       "END INCLUDE FILE fault_vector.incl.alm
+                                    41  "
+                                    42  	include	flagbox
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE flagbox.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  " HISTORY COMMENTS:
+                                   4-7  "  1) change(87-03-03,Farley), approve(87-04-15,MCR7661),
+                                   4-8  "     audit(87-04-21,Fawcett), install(87-04-28,MR12.1-1028):
+                                   4-9  "     Added io_reconfig flag to inhibit BCE from attempting an emergency
+                                  4-10  "     shutdown when the data in memory could be corrupted.
+                                  4-11  "                                                      END HISTORY COMMENTS
+                                  4-12  
+                                  4-13  
+                                  4-14  
+                                  4-15  
+                                  4-16  	"Created 03/03/87  1026.3 mst Tue by convert_include_file,
+                                  4-17  	"   Version of 01/09/85  0754.4 mst Wed.
+                                  4-18  
+                                  4-19  	"Made from >udd>m>Farley>install_dir>rcf>flagbox.incl.pl1,
+                                  4-20  	"   modified 02/26/87  1355.3 mst Thu
+                                  4-21  
+                                  4-22  "
+                                  4-23  "	Structure fgbx
+                                  4-24  "
+                        000140    4-25  	equ	fgbx_size,96
+                                  4-26  
+                                  4-27  
+                        000000    4-28  	equ	fgbx.toehold_used,0
+                                  4-29  
+                        000040    4-30  	equ	fgbx.flags_word,32
+                        400000    4-31  	bool	fgbx.flags,400000		" DU
+                                  4-32  
+                        000041    4-33  	equ	fgbx.slt_segno,33		" UPPER
+                                  4-34  
+                        000043    4-35  	equ	fgbx.rtb,35		" LEVEL 2
+                                  4-36  
+                        400000    4-37  	bool	fgbx.ssenb,400000		" DU
+                        200000    4-38  	bool	fgbx.call_bce,200000	" DU
+                        100000    4-39  	bool	fgbx.shut,100000		" DU
+                        040000    4-40  	bool	fgbx.mess,040000		" DU
+                        020000    4-41  	bool	fgbx.alert,020000		" DU
+                        010000    4-42  	bool	fgbx.breakpoint,010000	" DU
+                        004000    4-43  	bool	fgbx.manual_crash,004000	" DU
+                        002000    4-44  	bool	fgbx.io_reconfig,002000	" DU
+                        000001    4-45  	equ	fgbx.bce_entry_shift,1
+                        000077    4-46  	bool	fgbx.bce_entry_mask,000077
+                                  4-47  
+                        000044    4-48  	equ	fgbx.sentinel,36
+                        000054    4-49  	equ	fgbx.sst_sdw,44		" DOUBLE
+                        000056    4-50  	equ	fgbx.hc_dbr,46		" DOUBLE
+                        000060    4-51  	equ	fgbx.message,48
+                        000100    4-52  	equ	fgbx.return_to_bce_command,64
+                                  4-53  
+                                  4-54       "END INCLUDE FILE flagbox.incl.alm
+                                    43  "
+                                    44  	include	iom_data
+                                   5-1  
+                                   5-2  
+                                   5-3       "BEGIN INCLUDE FILE iom_data.incl.alm
+                                   5-4  
+                                   5-5  
+                                   5-6  	"Created 03/22/85  1256.2 est Fri by convert_include_file,
+                                   5-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   5-8  
+                                   5-9  	"Made from >pool>m>CLJones>d>rcf>iom_data.incl.pl1,
+                                  5-10  	"   modified 03/22/85  1256.1 est Fri
+                                  5-11  
+                                  5-12  "
+                                  5-13  "	Structure iom_data
+                                  5-14  "
+                                  5-15  
+                        000000    5-16  	equ	iom_data.n_devices,0
+                        000001    5-17  	equ	iom_data.stop_lpw,1
+                        000002    5-18  	equ	iom_data.stop_dcw,2
+                        000003    5-19  	equ	iom_data.stop_scw,3
+                        000004    5-20  	equ	iom_data.imw_lock,4
+                        000005    5-21  	equ	iom_data.n_intr_procs,5
+                        000010    5-22  	equ	iom_data.stop_status,8	" DOUBLE
+                        000012    5-23  	equ	iom_data.rfh1,10
+                        000020    5-24  	equ	iom_data.stop_ext_status,16	" DOUBLE
+                        000035    5-25  	equ	iom_data.invalid_interrupts,29
+                        000036    5-26  	equ	iom_data.null_interrupts,30
+                        000037    5-27  	equ	iom_data.multiple_interrupts,31
+                        000040    5-28  	equ	iom_data.per_iom,32		" LEVEL 2
+                                  5-29  
+                        000240    5-30  	equ	iom_data.per_device,160	" LEVEL 2
+                                  5-31  
+                                  5-32  
+                                  5-33  "
+                                  5-34  "	Structure per_iom
+                                  5-35  "
+                        000040    5-36  	equ	per_iom_size,32
+                                  5-37  
+                        000000    5-38  	equ	per_iom.lock,0
+                        000001    5-39  	equ	per_iom.flags,1		" LEVEL 2
+                                  5-40  
+                        400000    5-41  	bool	per_iom.configured,400000	" DU
+                        200000    5-42  	bool	per_iom.on_line,200000	" DU
+                                  5-43  
+                        000002    5-44  	equ	per_iom.model,2
+                        000003    5-45  	equ	per_iom.port,3
+                        000004    5-46  	equ	per_iom.connect_time,4	" DOUBLE
+                        000006    5-47  	equ	per_iom.connect_lpw,6
+                        000007    5-48  	equ	per_iom.cow,7
+                        000010    5-49  	equ	per_iom.special_chx,8
+                        000011    5-50  	equ	per_iom.fault_chx,9
+                        000016    5-51  	equ	per_iom.abandoned_connects,14
+                        000017    5-52  	equ	per_iom.reconnects,15
+                                  5-53  
+                        000020    5-54  	equ	per_iom.chantab_word,16
+                        000033    5-55  	equ	per_iom.chantab_shift,27
+                        000777    5-56  	bool	per_iom.chantab_mask,000777
+                                  5-57  
+                                  5-58  "
+                                  5-59  "	Structure per_device
+                                  5-60  "
+                        000050    5-61  	equ	per_device_size,40
+                                  5-62  
+                                  5-63  
+                        000000    5-64  	equ	per_device.status,0		" DOUBLE
+                        000002    5-65  	equ	per_device.rfh1,2
+                        000010    5-66  	equ	per_device.ext_status,8	" DOUBLE
+                        000020    5-67  	equ	per_device.iom,16
+                        000021    5-68  	equ	per_device.channel,17
+                        000022    5-69  	equ	per_device.handler,18
+                        000026    5-70  	equ	per_device.flags,22		" LEVEL 2
+                                  5-71  
+                        400000    5-72  	bool	per_device.in_use,400000	" DU
+                        200000    5-73  	bool	per_device.queue_status,200000 " DU
+                        100000    5-74  	bool	per_device.on_line,100000	" DU
+                                  5-75  
+                        000027    5-76  	equ	per_device.index,23
+                        000030    5-77  	equ	per_device.pcw,24		" DOUBLE
+                        000032    5-78  	equ	per_device.lpw,26		" DOUBLE
+                        000034    5-79  	equ	per_device.scw,28
+                        000036    5-80  	equ	per_device.status_queue_ptr,30
+                        000040    5-81  	equ	per_device.connect_time,32	" DOUBLE
+                        000042    5-82  	equ	per_device.connects,34	" DOUBLE
+                        000044    5-83  	equ	per_device.interrupts,36	" DOUBLE
+                        000046    5-84  	equ	per_device.interrupt_time,38	" DOUBLE
+                                  5-85  
+                                  5-86  "
+                                  5-87  "	Structure iom_mailbox_seg
+                                  5-88  "
+                        002200    5-89  	equ	iom_mailbox_seg_size,1152
+                                  5-90  
+                        000000    5-91  	equ	iom_mailbox_seg.imw_array_word,0
+                        000004    5-92  	equ	iom_mailbox_seg.imw_array_shift,4
+                                  5-93  
+                        000040    5-94  	equ	iom_mailbox_seg.system_fault,32 " LEVEL 2
+                                  5-95  
+                        000120    5-96  	equ	iom_mailbox_seg.special_status,80 " LEVEL 2
+                                  5-97  
+                        000200    5-98  	equ	iom_mailbox_seg.iom_mailbox,128 " LEVEL 2
+                                  5-99  
+                                 5-100  
+                                 5-101  "
+                                 5-102  "	Structure status_queue
+                                 5-103  "
+                        000014   5-104  	equ	status_queue_size,12
+                                 5-105  
+                        000000   5-106  	equ	status_queue.status,0
+                                 5-107  
+                                 5-108  "
+                                 5-109  "	Structure iom_mailbox
+                                 5-110  "
+                        000400   5-111  	equ	iom_mailbox_size,256
+                                 5-112  
+                        000000   5-113  	equ	iom_mailbox.channel_mailbox,0	" LEVEL 2
+                                 5-114  
+                                 5-115  
+                                 5-116  "
+                                 5-117  "	Structure channel_mailbox
+                                 5-118  "
+                        000004   5-119  	equ	channel_mailbox_size,4
+                                 5-120  
+                        000000   5-121  	equ	channel_mailbox.lpw,0	" DOUBLE
+                        000002   5-122  	equ	channel_mailbox.scw,2
+                        000003   5-123  	equ	channel_mailbox.dcw,3
+                                 5-124  
+                        000001   5-125  	equ	system_fault_channel,1	" MANIFEST
+                        000002   5-126  	equ	connect_channel,2		" MANIFEST
+                        000006   5-127  	equ	special_status_channel,6	" MANIFEST
+                                 5-128  
+                                 5-129       "END INCLUDE FILE iom_data.incl.alm
+                                    45  "
+                                    46  	include	scr
+                                   6-1  
+                                   6-2  
+                                   6-3       "BEGIN INCLUDE FILE scr.incl.alm
+                                   6-4  
+                                   6-5  
+                                   6-6  	"Created 09/28/82  1727.1 edt Tue by convert_include_file,
+                                   6-7  	"   Version of 07/15/82  2204.3 edt Thu.
+                                   6-8  
+                                   6-9  	"Made from >ldd>include>scr.incl.pl1,
+                                  6-10  	"   modified 06/03/82  1518.6 edt Thu
+                                  6-11  
+                                  6-12  
+                        000000    6-13  	equ	SC_MR,0			" MANIFEST
+                        000001    6-14  	equ	SC_CFG,1			" MANIFEST
+                        000002    6-15  	equ	SC_MSK,2			" MANIFEST
+                        000003    6-16  	equ	SC_IC,3			" MANIFEST
+                        000004    6-17  	equ	SC_ETC,4			" MANIFEST
+                        000006    6-18  	equ	SC_SU,6			" MANIFEST
+                                  6-19  
+                                  6-20  "
+                                  6-21  "	Structure scr_cfg1
+                                  6-22  "
+                        000002    6-23  	equ	scr_cfg1_size,2
+                                  6-24  
+                        000000    6-25  	equ	scr_cfg1.mode_a_word,0
+                        000041    6-26  	equ	scr_cfg1.mode_a_shift,33
+                        000007    6-27  	bool	scr_cfg1.mode_a_mask,000007
+                        000000    6-28  	equ	scr_cfg1.bdry_a_word,0
+                        000036    6-29  	equ	scr_cfg1.bdry_a_shift,30
+                        000007    6-30  	bool	scr_cfg1.bdry_a_mask,000007
+                        000000    6-31  	equ	scr_cfg1.mode_b_word,0
+                        000033    6-32  	equ	scr_cfg1.mode_b_shift,27
+                        000007    6-33  	bool	scr_cfg1.mode_b_mask,000007
+                        000000    6-34  	equ	scr_cfg1.bdry_b_word,0
+                        000030    6-35  	equ	scr_cfg1.bdry_b_shift,24
+                        000007    6-36  	bool	scr_cfg1.bdry_b_mask,000007
+                        000000    6-37  	equ	scr_cfg1.int_word,0
+                        000040    6-38  	bool	scr_cfg1.int,000040		" DU
+                        000000    6-39  	equ	scr_cfg1.lwr_word,0
+                        000020    6-40  	bool	scr_cfg1.lwr,000020		" DU
+                        000000    6-41  	equ	scr_cfg1.addr_offset_word,0
+                        000024    6-42  	equ	scr_cfg1.addr_offset_shift,20
+                        000003    6-43  	bool	scr_cfg1.addr_offset_mask,000003
+                        000000    6-44  	equ	scr_cfg1.port_no_word,0
+                        000020    6-45  	equ	scr_cfg1.port_no_shift,16
+                        000017    6-46  	bool	scr_cfg1.port_no_mask,000017
+                        000000    6-47  	equ	scr_cfg1.port_enable_word,0
+                        000016    6-48  	equ	scr_cfg1.port_enable_shift,14
+                        000003    6-49  	bool	scr_cfg1.port_enable_mask,000003
+                                  6-50  
+                        000001    6-51  	equ	scr_cfg1.pima_word,1
+                        000033    6-52  	equ	scr_cfg1.pima_shift,27
+                        000777    6-53  	bool	scr_cfg1.pima_mask,000777
+                                  6-54  
+                                  6-55  "
+                                  6-56  "	Structure scr_cfg2
+                                  6-57  "
+                        000002    6-58  	equ	scr_cfg2_size,2
+                                  6-59  
+                        000000    6-60  	equ	scr_cfg2.mask_a_assign_word,0
+                        000033    6-61  	equ	scr_cfg2.mask_a_assign_shift,27
+                        000777    6-62  	bool	scr_cfg2.mask_a_assign_mask,000777
+                        000000    6-63  	equ	scr_cfg2.size_word,0
+                        000030    6-64  	equ	scr_cfg2.size_shift,24
+                        000007    6-65  	bool	scr_cfg2.size_mask,000007
+                        000000    6-66  	equ	scr_cfg2.a_online_word,0
+                        000040    6-67  	bool	scr_cfg2.a_online,000040	" DU
+                        000000    6-68  	equ	scr_cfg2.a1_online_word,0
+                        000020    6-69  	bool	scr_cfg2.a1_online,000020	" DU
+                        000000    6-70  	equ	scr_cfg2.b_online_word,0
+                        000010    6-71  	bool	scr_cfg2.b_online,000010	" DU
+                        000000    6-72  	equ	scr_cfg2.b1_online_word,0
+                        000004    6-73  	bool	scr_cfg2.b1_online,000004	" DU
+                        000000    6-74  	equ	scr_cfg2.port_no_word,0
+                        000020    6-75  	equ	scr_cfg2.port_no_shift,16
+                        000017    6-76  	bool	scr_cfg2.port_no_mask,000017
+                        000000    6-77  	equ	scr_cfg2.mode_word,0
+                        040000    6-78  	bool	scr_cfg2.mode,040000	" DL
+                        000000    6-79  	equ	scr_cfg2.nea_enabled_word,0
+                        020000    6-80  	bool	scr_cfg2.nea_enabled,020000	" DL
+                        000000    6-81  	equ	scr_cfg2.nea_word,0
+                        000006    6-82  	equ	scr_cfg2.nea_shift,6
+                        000177    6-83  	bool	scr_cfg2.nea_mask,000177
+                        000000    6-84  	equ	scr_cfg2.int_word,0
+                        000040    6-85  	bool	scr_cfg2.int,000040		" DL
+                        000000    6-86  	equ	scr_cfg2.lwr_word,0
+                        000020    6-87  	bool	scr_cfg2.lwr,000020		" DL
+                        000000    6-88  	equ	scr_cfg2.port_mask_0_3_word,0
+                        000000    6-89  	equ	scr_cfg2.port_mask_0_3_shift,0
+                        000017    6-90  	bool	scr_cfg2.port_mask_0_3_mask,000017
+                                  6-91  
+                        000001    6-92  	equ	scr_cfg2.mask_b_assign_word,1
+                        000033    6-93  	equ	scr_cfg2.mask_b_assign_shift,27
+                        000777    6-94  	bool	scr_cfg2.mask_b_assign_mask,000777
+                        000001    6-95  	equ	scr_cfg2.cyclic_prior_word,1
+                        000010    6-96  	equ	scr_cfg2.cyclic_prior_shift,8
+                        000177    6-97  	bool	scr_cfg2.cyclic_prior_mask,000177
+                        000001    6-98  	equ	scr_cfg2.port_mask_4_7_word,1
+                        000000    6-99  	equ	scr_cfg2.port_mask_4_7_shift,0
+                        000017   6-100  	bool	scr_cfg2.port_mask_4_7_mask,000017
+                                 6-101  
+                                 6-102  "
+                                 6-103  "	Structure scr_mr
+                                 6-104  "
+                        000002   6-105  	equ	scr_mr_size,2
+                                 6-106  
+                                 6-107  
+                        000001   6-108  	equ	scr_mr.identification_word,1
+                        000022   6-109  	equ	scr_mr.identification_shift,18
+                        000017   6-110  	bool	scr_mr.identification_mask,000017
+                        000001   6-111  	equ	scr_mr.TS_strobe_margin_word,1
+                        000020   6-112  	equ	scr_mr.TS_strobe_margin_shift,16
+                        000003   6-113  	bool	scr_mr.TS_strobe_margin_mask,000003
+                        000001   6-114  	equ	scr_mr.G0_strobe_margin_word,1
+                        000016   6-115  	equ	scr_mr.G0_strobe_margin_shift,14
+                        000003   6-116  	bool	scr_mr.G0_strobe_margin_mask,000003
+                                 6-117  "	equ	scr_mr.ANSWER_strobe_margin_word,1
+                                 6-118  "	equ	scr_mr.ANSWER_strobe_margin_shift,12
+                                 6-119  "	bool	scr_mr.ANSWER_strobe_margin_mask,000003
+                        000001   6-120  	equ	scr_mr.DA_strobe_margin_word,1
+                        000012   6-121  	equ	scr_mr.DA_strobe_margin_shift,10
+                        000003   6-122  	bool	scr_mr.DA_strobe_margin_mask,000003
+                        000001   6-123  	equ	scr_mr.EOC_strobe_margin_word,1
+                        000010   6-124  	equ	scr_mr.EOC_strobe_margin_shift,8
+                        000003   6-125  	bool	scr_mr.EOC_strobe_margin_mask,000003
+                        000001   6-126  	equ	scr_mr.PLUS_5_VOLT_margin_word,1
+                        000006   6-127  	equ	scr_mr.PLUS_5_VOLT_margin_shift,6
+                        000003   6-128  	bool	scr_mr.PLUS_5_VOLT_margin_mask,000003
+                        000001   6-129  	equ	scr_mr.parity_override_word,1
+                        000040   6-130  	bool	scr_mr.parity_override,000040	" DL
+                        000001   6-131  	equ	scr_mr.parity_disable_word,1
+                        000020   6-132  	bool	scr_mr.parity_disable,000020	" DL
+                        000001   6-133  	equ	scr_mr.store_IA_disable_word,1
+                        000010   6-134  	bool	scr_mr.store_IA_disable,000010 " DL
+                        000001   6-135  	equ	scr_mr.ZAC_parity_error_word,1
+                        000004   6-136  	bool	scr_mr.ZAC_parity_error,000004 " DL
+                        000001   6-137  	equ	scr_mr.SGR_accepted_word,1
+                        000002   6-138  	bool	scr_mr.SGR_accepted,000002	" DL
+                                 6-139  
+                                 6-140  "
+                                 6-141  "	Structure scr_msk
+                                 6-142  "
+                        000002   6-143  	equ	scr_msk_size,2
+                                 6-144  
+                        000000   6-145  	equ	scr_msk.interrupt_mask_1_word,0
+                        000024   6-146  	equ	scr_msk.interrupt_mask_1_shift,20
+                        177777   6-147  	bool	scr_msk.interrupt_mask_1_mask,177777
+                        000000   6-148  	equ	scr_msk.port_mask_1_word,0
+                        000000   6-149  	equ	scr_msk.port_mask_1_shift,0
+                        000017   6-150  	bool	scr_msk.port_mask_1_mask,000017
+                                 6-151  
+                        000001   6-152  	equ	scr_msk.interrupt_mask_2_word,1
+                        000024   6-153  	equ	scr_msk.interrupt_mask_2_shift,20
+                        177777   6-154  	bool	scr_msk.interrupt_mask_2_mask,177777
+                        000001   6-155  	equ	scr_msk.port_mask_2_word,1
+                        000000   6-156  	equ	scr_msk.port_mask_2_shift,0
+                        000017   6-157  	bool	scr_msk.port_mask_2_mask,000017
+                                 6-158  
+                                 6-159  "
+                                 6-160  "	Structure scr_su
+                                 6-161  "
+                        000002   6-162  	equ	scr_su_size,2
+                                 6-163  
+                                 6-164  
+                        000001   6-165  	equ	scr_su.ZAC_line_word,1
+                        000036   6-166  	equ	scr_su.ZAC_line_shift,30
+                        000077   6-167  	bool	scr_su.ZAC_line_mask,000077
+                        000001   6-168  	equ	scr_su.syndrome_word,1
+                        000026   6-169  	equ	scr_su.syndrome_shift,22
+                        000377   6-170  	bool	scr_su.syndrome_mask,000377
+                        000001   6-171  	equ	scr_su.identification_word,1
+                        000022   6-172  	equ	scr_su.identification_shift,18
+                        000017   6-173  	bool	scr_su.identification_mask,000017
+                        000001   6-174  	equ	scr_su.EDAC_disabled_word,1
+                        400000   6-175  	bool	scr_su.EDAC_disabled,400000	" DL
+                        000001   6-176  	equ	scr_su.MINUS_5_VOLT_margin_word,1
+                                 6-177  "	equ	scr_su.MINUS_5_VOLT_margin_shift,11
+                        000003   6-178  	bool	scr_su.MINUS_5_VOLT_margin_mask,000003
+                        000001   6-179  	equ	scr_su.PLUS_5_VOLT_margin_word,1
+                        000011   6-180  	equ	scr_su.PLUS_5_VOLT_margin_shift,9
+                        000003   6-181  	bool	scr_su.PLUS_5_VOLT_margin_mask,000003
+                        000001   6-182  	equ	scr_su.spare_margin_word,1
+                        000007   6-183  	equ	scr_su.spare_margin_shift,7
+                        000003   6-184  	bool	scr_su.spare_margin_mask,000003
+                        000001   6-185  	equ	scr_su.PLUS_19_VOLT_margin_word,1
+                                 6-186  "	equ	scr_su.PLUS_19_VOLT_margin_shift,5
+                        000003   6-187  	bool	scr_su.PLUS_19_VOLT_margin_mask,000003
+                        000001   6-188  	equ	scr_su.SENSE_strobe_margin_word,1
+                                 6-189  "	equ	scr_su.SENSE_strobe_margin_shift,2
+                        000003   6-190  	bool	scr_su.SENSE_strobe_margin_mask,000003
+                                 6-191  "	equ	scr_su.maint_functions_enabled_word,1
+                        000001   6-192  	bool	scr_su.maint_functions_enabled,000001 " DL
+                                 6-193  
+                                 6-194       "END INCLUDE FILE scr.incl.alm
+                                    47  "
+                                    48  	include	stack_frame
+                                   7-1  "
+                                   7-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   7-3  "
+                                   7-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   7-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   7-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   7-7  "
+                        000020     7-8  	equ	stack_frame.prev_sp,16
+                        000020     7-9  	equ	stack_frame.condition_word,16
+                        000022    7-10  	equ	stack_frame.next_sp,18
+                        000022    7-11  	equ	stack_frame.signaller_word,18
+                        000024    7-12  	equ	stack_frame.return_ptr,20
+                        000026    7-13  	equ	stack_frame.entry_ptr,22
+                        000030    7-14  	equ	stack_frame.operator_ptr,24
+                        000030    7-15  	equ	stack_frame.lp_ptr,24
+                        000032    7-16  	equ	stack_frame.arg_ptr,26
+                        000034    7-17  	equ	stack_frame.static_ptr,28
+                        000035    7-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    7-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    7-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    7-21  	equ	stack_frame.translator_id,31
+                        000040    7-22  	equ	stack_frame.regs,32
+                        000060    7-23  	equ	stack_frame.min_length,48
+                        000020    7-24  	equ	stack_frame.flag_word,16
+                        020000    7-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    7-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    7-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    7-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    7-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    7-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    7-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    7-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  7-33  
+                                  7-34  "
+                                  7-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  7-36  "
+                                    49  "
+                                    50  	include	toehold_save_dcls_
+                                   8-1  
+                                   8-2  
+                                   8-3       "BEGIN INCLUDE FILE toehold_save_dcls_.incl.alm
+                                   8-4  
+                                   8-5  
+                                   8-6  " HISTORY COMMENTS:
+                                   8-7  "  1) change(83-08-01,Margulies), approve(), audit(), install():
+                                   8-8  "      Initial coding by Margulies and Loepere.
+                                   8-9  "  2) change(85-01-09,Fawcett), approve(85-09-09,MCR6979),
+                                  8-10  "     audit(86-01-31,GDixon), install(86-03-21,MR12.0-1033):
+                                  8-11  "      Support of FIPS 3380 cylinder size.
+                                  8-12  "                                                      END HISTORY COMMENTS
+                                  8-13  
+                                  8-14  
+                                  8-15  	"Created 01/29/86  1201.9 mst Wed by convert_include_file,
+                                  8-16  	"   Version of 01/09/85  0754.4 mst Wed.
+                                  8-17  
+                                  8-18  	"Made from >dumps>old>dipper>audit_dipper>incl>toehold_save_dcls_.incl.pl1,
+                                  8-19  	"   modified 01/29/86  1201.6 mst Wed
+                                  8-20  
+                                  8-21  "
+                                  8-22  "	Structure toehold
+                                  8-23  "
+                        004000    8-24  	equ	toehold_size,2048
+                                  8-25  
+                                  8-26  
+                        000000    8-27  	equ	toehold.entry_sequences,0	" DOUBLE
+                        000040    8-28  	equ	toehold.flagbox,32
+                        000140    8-29  	equ	toehold.handler_mc,96	" LEVEL 2
+                                  8-30  
+                        000220    8-31  	equ	toehold.paths,144		" LEVEL 2
+                                  8-32  
+                        000240    8-33  	equ	toehold.n_paths_used,160
+                        000241    8-34  	equ	toehold.memory_state,161
+                        000242    8-35  	equ	toehold.bce_dbr,162		" DOUBLE
+                        000244    8-36  	equ	toehold.bce_mode_reg,164
+                        000245    8-37  	equ	toehold.bce_cache_mode_reg,165
+                        000246    8-38  	equ	toehold.esd_segnum,166
+                                  8-39  
+                        000247    8-40  	equ	toehold.dcw_list_size,167	" UPPER
+                        000247    8-41  	equ	toehold.dcws_per_cyl,167	" LOWER
+                                  8-42  
+                        000250    8-43  	equ	toehold.seeks_used,168
+                        000251    8-44  	equ	toehold.save_dcws,169
+                        000655    8-45  	equ	toehold.handler_dcws,429
+                        001660    8-46  	equ	toehold.handler_code,944	" DOUBLE
+                        002760    8-47  	equ	toehold.multics_state,1520	" LEVEL 2
+                                  8-48  
+                                  8-49  
+                                  8-50  "
+                                  8-51  "	Structure dcw_list
+                                  8-52  "
+                        000000    8-53  	equ	dcw_list.seek_addresses,0
+                        000001    8-54  	equ	dcw_list.seek_idcw,1
+                        000002    8-55  	equ	dcw_list.seek_dcw,2
+                        000003    8-56  	equ	dcw_list.data_idcw,3
+                        000004    8-57  	equ	dcw_list.data_dcws,4
+                                  8-58  
+                        004230    8-59  	equ	BCE_PART_LTH,2200		" MANIFEST
+                        000000    8-60  	equ	SAVED_IMAGE_RECORDX,0	" MANIFEST
+                        001000    8-61  	equ	CRASH_HANDLER_RECORDX,512	" MANIFEST
+                        002000    8-62  	equ	BCE_PAGING_AREA_RECORDX,1024	" MANIFEST
+                        000200    8-63  	equ	BCE_PAGING_AREA_LTH,128	" MANIFEST
+                        002200    8-64  	equ	MST_AREA_RECORDX,1152	" MANIFEST
+                                  8-65  
+                                  8-66  "
+                                  8-67  "	Structure toe_hold
+                                  8-68  "
+                        004000    8-69  	equ	toe_hold_size,2048
+                                  8-70  
+                        000000    8-71  	equ	toe_hold.entry_sequences,0	" DOUBLE
+                        000040    8-72  	equ	toe_hold.flagbox,32
+                        000220    8-73  	equ	toe_hold.paths,144		" LEVEL 2
+                                  8-74  
+                        000240    8-75  	equ	toe_hold.n_paths_used,160
+                        000241    8-76  	equ	toe_hold.memory_state,161
+                        000242    8-77  	equ	toe_hold.bce_dbr,162	" DOUBLE
+                        002760    8-78  	equ	toe_hold.multics_state,1520	" LEVEL 2
+                                  8-79  
+                                  8-80  
+                                  8-81  "
+                                  8-82  "	Structure io_path
+                                  8-83  "
+                        000004    8-84  	equ	io_path_size,4
+                                  8-85  
+                        000000    8-86  	equ	io_path.pcw,0		" DOUBLE
+                                  8-87  
+                        000002    8-88  	equ	io_path.port_number_word,2
+                        000041    8-89  	equ	io_path.port_number_shift,33
+                        000007    8-90  	bool	io_path.port_number_mask,000007
+                        000002    8-91  	equ	io_path.iom_number_word,2
+                        000022    8-92  	equ	io_path.iom_number_shift,18
+                        077777    8-93  	bool	io_path.iom_number_mask,077777
+                        000002    8-94  	equ	io_path.channel_number,2	" LOWER
+                                  8-95  
+                        000000    8-96  	equ	TOE_HOLD_CRASH_ENTRY,0	" MANIFEST
+                        000001    8-97  	equ	TOE_HOLD_ESD_ENTRY,1	" MANIFEST
+                        000002    8-98  	equ	TOE_HOLD_DUMP_ENTRY,2	" MANIFEST
+                        000003    8-99  	equ	TOE_HOLD_MULTICS_ENTRY,3	" MANIFEST
+                        000004   8-100  	equ	TOE_HOLD_RESTART_ENTRY,4	" MANIFEST
+                        000005   8-101  	equ	TOE_HOLD_BOOT_ENTRY,5	" MANIFEST
+                        000014   8-102  	equ	TOE_HOLD_BOS_ENTRY,12	" MANIFEST
+                        000015   8-103  	equ	TOE_HOLD_BOS_NO_SAVE_ENTRY,13	" MANIFEST
+                        000016   8-104  	equ	TOE_HOLD_BOS_MULTICS_ENTRY,14	" MANIFEST
+                                 8-105  
+                                 8-106  "
+                                 8-107  "	Structure mc_state
+                                 8-108  "
+                        001020   8-109  	equ	mc_state_size,528
+                                 8-110  
+                        000000   8-111  	equ	mc_state.mc_,0		" LEVEL 2
+                                 8-112  
+                        000060   8-113  	equ	mc_state.masks,48
+                        000100   8-114  	equ	mc_state.interrupt,64	" DOUBLE
+                        000102   8-115  	equ	mc_state.mode_reg,66
+                        000103   8-116  	equ	mc_state.cache_mode_reg,67
+                        000104   8-117  	equ	mc_state.dbr,68		" DOUBLE
+                        000106   8-118  	equ	mc_state.cfg,70		" DOUBLE
+                        000110   8-119  	equ	mc_state.bar,72
+                        000111   8-120  	equ	mc_state.old_memory_state,73
+                        000120   8-121  	equ	mc_state.ou_history_registers,80 " DOUBLE
+                        000160   8-122  	equ	mc_state.cu_history_registers,112 " DOUBLE
+                        000220   8-123  	equ	mc_state.du_history_registers,144 " DOUBLE
+                        000260   8-124  	equ	mc_state.apu_history_registers,176 " DOUBLE
+                        000320   8-125  	equ	mc_state.ptwam_ptrs,208
+                        000420   8-126  	equ	mc_state.ptwam_regs,272
+                        000520   8-127  	equ	mc_state.sdwam_ptrs,336
+                        000620   8-128  	equ	mc_state.sdwam_regs,400	" DOUBLE
+                                 8-129  
+                        000000   8-130  	equ	Initial_undefined,0		" MANIFEST
+                        000001   8-131  	equ	At_bce__early,1		" MANIFEST
+                        000002   8-132  	equ	At_bce__boot,2		" MANIFEST
+                        000003   8-133  	equ	Multics,3			" MANIFEST
+                        000004   8-134  	equ	Undefined_saving_state,4	" MANIFEST
+                        000005   8-135  	equ	Undefined_reading_bce,5	" MANIFEST
+                        000006   8-136  	equ	At_bce__crash,6		" MANIFEST
+                        000007   8-137  	equ	At_bce__shutdown,7		" MANIFEST
+                        000010   8-138  	equ	Undefined_continue,8	" MANIFEST
+                        000011   8-139  	equ	Undefined_saving_mem,9	" MANIFEST
+                                 8-140  
+                                 8-141  "
+                                 8-142  "	Structure mc
+                                 8-143  "
+                        000060   8-144  	equ	mc_size,48
+                                 8-145  
+                        000000   8-146  	equ	mc.prs,0
+                                 8-147  
+                        000020   8-148  	equ	mc.regs_word,16
+                        001532   8-149  	equ	mc.regs_shift,858
+                        000020   8-150  	equ	mc.x,16			" UPPER
+                                 8-151  
+                        000024   8-152  	equ	mc.a,20
+                        000025   8-153  	equ	mc.q,21
+                                 8-154  
+                        000026   8-155  	equ	mc.e_word,22
+                        000034   8-156  	equ	mc.e_shift,28
+                        000377   8-157  	bool	mc.e_mask,000377
+                                 8-158  
+                        000027   8-159  	equ	mc.t_word,23
+                        000011   8-160  	equ	mc.t_shift,9
+                        000027   8-161  	equ	mc.ralr_word,23
+                        000000   8-162  	equ	mc.ralr_shift,0
+                        000007   8-163  	bool	mc.ralr_mask,000007
+                                 8-164  
+                        000030   8-165  	equ	mc.scu,24
+                        000040   8-166  	equ	mc.mask,32		" DOUBLE
+                        000042   8-167  	equ	mc.ips_temp,34
+                                 8-168  
+                        000043   8-169  	equ	mc.errcode_word,35
+                        000000   8-170  	equ	mc.errcode_shift,0
+                                 8-171  
+                        000044   8-172  	equ	mc.fim_temp_word,36
+                        000000   8-173  	equ	mc.fim_temp_shift,0
+                        000044   8-174  	equ	mc.unique_index,36		" UPPER
+                        000044   8-175  	equ	mc.resignal_word,36
+                        400000   8-176  	bool	mc.resignal,400000		" DL
+                        000044   8-177  	equ	mc.fcode_word,36
+                        000000   8-178  	equ	mc.fcode_shift,0
+                        377777   8-179  	bool	mc.fcode_mask,377777
+                                 8-180  
+                        000045   8-181  	equ	mc.fault_reg,37
+                                 8-182  
+                        000046   8-183  	equ	mc.cpu_type_word,38
+                        000041   8-184  	equ	mc.cpu_type_shift,33
+                        000003   8-185  	bool	mc.cpu_type_mask,000003
+                        000046   8-186  	equ	mc.ext_fault_reg_word,38
+                        000022   8-187  	equ	mc.ext_fault_reg_shift,18
+                        077777   8-188  	bool	mc.ext_fault_reg_mask,077777
+                                 8-189  
+                        000046   8-190  	equ	mc.fault_time,38		" DOUBLE
+                        000050   8-191  	equ	mc.eis_info,40
+                                 8-192  
+                        000000   8-193  	equ	apx,0			" MANIFEST
+                        000001   8-194  	equ	abx,1			" MANIFEST
+                        000002   8-195  	equ	bpx,2			" MANIFEST
+                        000003   8-196  	equ	bbx,3			" MANIFEST
+                        000004   8-197  	equ	lpx,4			" MANIFEST
+                        000005   8-198  	equ	lbx,5			" MANIFEST
+                        000006   8-199  	equ	spx,6			" MANIFEST
+                        000007   8-200  	equ	sbx,7			" MANIFEST
+                                 8-201  
+                                 8-202  "
+                                 8-203  "	Structure scu
+                                 8-204  "
+                        000010   8-205  	equ	scu_size,8
+                                 8-206  
+                        000000   8-207  	equ	scu.ppr_word,0
+                        000021   8-208  	equ	scu.ppr_shift,17
+                        000041   8-209  	equ	scu.prr_shift,33
+                        000007   8-210  	bool	scu.prr_mask,000007
+                        000022   8-211  	equ	scu.psr_shift,18
+                        077777   8-212  	bool	scu.psr_mask,077777
+                        400000   8-213  	bool	scu.p,400000		" DL
+                        000000   8-214  	equ	scu.apu_word,0
+                        000003   8-215  	equ	scu.apu_shift,3
+                        037777   8-216  	bool	scu.apu_mask,037777
+                        200000   8-217  	bool	scu.xsf,200000		" DL
+                        100000   8-218  	bool	scu.sdwm,100000		" DL
+                        040000   8-219  	bool	scu.sd_on,040000		" DL
+                        020000   8-220  	bool	scu.ptwm,020000		" DL
+                        010000   8-221  	bool	scu.pt_on,010000		" DL
+                        004000   8-222  	bool	scu.pi_ap,004000		" DL
+                        002000   8-223  	bool	scu.dsptw,002000		" DL
+                        001000   8-224  	bool	scu.sdwnp,001000		" DL
+                        000400   8-225  	bool	scu.sdwp,000400		" DL
+                        000200   8-226  	bool	scu.ptw,000200		" DL
+                        000100   8-227  	bool	scu.ptw2,000100		" DL
+                        000040   8-228  	bool	scu.fap,000040		" DL
+                        000020   8-229  	bool	scu.fanp,000020		" DL
+                        000010   8-230  	bool	scu.fabs,000010		" DL
+                        000000   8-231  	equ	scu.fault_cntr_word,0
+                        000000   8-232  	equ	scu.fault_cntr_shift,0
+                        000007   8-233  	bool	scu.fault_cntr_mask,000007
+                                 8-234  
+                        000001   8-235  	equ	scu.fd_word,1
+                        000020   8-236  	equ	scu.fd_shift,16
+                        000001   8-237  	equ	scu.iro_word,1
+                        400000   8-238  	bool	scu.iro,400000		" DU
+                        000001   8-239  	equ	scu.oeb_word,1
+                        200000   8-240  	bool	scu.oeb,200000		" DU
+                        000001   8-241  	equ	scu.e_off_word,1
+                        100000   8-242  	bool	scu.e_off,100000		" DU
+                        000001   8-243  	equ	scu.orb_word,1
+                        040000   8-244  	bool	scu.orb,040000		" DU
+                        000001   8-245  	equ	scu.r_off_word,1
+                        020000   8-246  	bool	scu.r_off,020000		" DU
+                        000001   8-247  	equ	scu.owb_word,1
+                        010000   8-248  	bool	scu.owb,010000		" DU
+                        000001   8-249  	equ	scu.w_off_word,1
+                        004000   8-250  	bool	scu.w_off,004000		" DU
+                        000001   8-251  	equ	scu.no_ga_word,1
+                        002000   8-252  	bool	scu.no_ga,002000		" DU
+                        000001   8-253  	equ	scu.ocb_word,1
+                        001000   8-254  	bool	scu.ocb,001000		" DU
+                        000001   8-255  	equ	scu.ocall_word,1
+                        000400   8-256  	bool	scu.ocall,000400		" DU
+                        000001   8-257  	equ	scu.boc_word,1
+                        000200   8-258  	bool	scu.boc,000200		" DU
+                        000001   8-259  	equ	scu.inret_word,1
+                        000100   8-260  	bool	scu.inret,000100		" DU
+                        000001   8-261  	equ	scu.crt_word,1
+                        000040   8-262  	bool	scu.crt,000040		" DU
+                        000001   8-263  	equ	scu.ralr_word,1
+                        000020   8-264  	bool	scu.ralr,000020		" DU
+                        000001   8-265  	equ	scu.am_er_word,1
+                        000010   8-266  	bool	scu.am_er,000010		" DU
+                        000001   8-267  	equ	scu.oosb_word,1
+                        000004   8-268  	bool	scu.oosb,000004		" DU
+                        000001   8-269  	equ	scu.paru_word,1
+                        000002   8-270  	bool	scu.paru,000002		" DU
+                        000001   8-271  	equ	scu.parl_word,1
+                        000001   8-272  	bool	scu.parl,000001		" DU
+                        000001   8-273  	equ	scu.onc_1_word,1
+                        400000   8-274  	bool	scu.onc_1,400000		" DL
+                        000001   8-275  	equ	scu.onc_2_word,1
+                        200000   8-276  	bool	scu.onc_2,200000		" DL
+                        000001   8-277  	equ	scu.port_stat_word,1
+                        000006   8-278  	equ	scu.port_stat_shift,6
+                        001777   8-279  	bool	scu.port_stat_mask,001777
+                        000001   8-280  	equ	scu.ial_word,1
+                        000014   8-281  	equ	scu.ial_shift,12
+                        000017   8-282  	bool	scu.ial_mask,000017
+                        000001   8-283  	equ	scu.iac_word,1
+                        000011   8-284  	equ	scu.iac_shift,9
+                        000007   8-285  	bool	scu.iac_mask,000007
+                        000001   8-286  	equ	scu.con_chan_word,1
+                        000006   8-287  	equ	scu.con_chan_shift,6
+                        000007   8-288  	bool	scu.con_chan_mask,000007
+                        000001   8-289  	equ	scu.fi_num_word,1
+                        000001   8-290  	equ	scu.fi_num_shift,1
+                        000037   8-291  	bool	scu.fi_num_mask,000037
+                        000001   8-292  	equ	scu.fi_flag_word,1
+                        000001   8-293  	bool	scu.fi_flag,000001		" DL
+                                 8-294  
+                        000002   8-295  	equ	scu.tpr,2			" UPPER
+                        000002   8-296  	equ	scu.trr_word,2
+                        000041   8-297  	equ	scu.trr_shift,33
+                        000007   8-298  	bool	scu.trr_mask,000007
+                        000002   8-299  	equ	scu.tsr_word,2
+                        000022   8-300  	equ	scu.tsr_shift,18
+                        077777   8-301  	bool	scu.tsr_mask,077777
+                        000002   8-302  	equ	scu.cpu_no_word,2
+                        000006   8-303  	equ	scu.cpu_no_shift,6
+                        000007   8-304  	bool	scu.cpu_no_mask,000007
+                        000002   8-305  	equ	scu.delta_word,2
+                        000000   8-306  	equ	scu.delta_shift,0
+                        000077   8-307  	bool	scu.delta_mask,000077
+                                 8-308  
+                        000003   8-309  	equ	scu.word3,3		" UPPER
+                        000003   8-310  	equ	scu.tsr_stat_word,3
+                        000006   8-311  	equ	scu.tsr_stat_shift,6
+                        007777   8-312  	bool	scu.tsr_stat_mask,007777
+                        000003   8-313  	equ	scu.tsna_word,3
+                        000016   8-314  	equ	scu.tsna_shift,14
+                        000017   8-315  	bool	scu.tsna_mask,000017
+                        000003   8-316  	equ	scu.tsnb_word,3
+                        000012   8-317  	equ	scu.tsnb_shift,10
+                        000017   8-318  	bool	scu.tsnb_mask,000017
+                        000003   8-319  	equ	scu.tsnc_word,3
+                        000006   8-320  	equ	scu.tsnc_shift,6
+                        000017   8-321  	bool	scu.tsnc_mask,000017
+                        000003   8-322  	equ	scu.tpr_tbr_word,3
+                        000000   8-323  	equ	scu.tpr_tbr_shift,0
+                        000077   8-324  	bool	scu.tpr_tbr_mask,000077
+                                 8-325  
+                        000004   8-326  	equ	scu.ilc,4			" UPPER
+                        000004   8-327  	equ	scu.ir,4			" LOWER
+                        000004   8-328  	equ	scu.zero_word,4
+                        400000   8-329  	bool	scu.zero,400000		" DL
+                        000004   8-330  	equ	scu.neg_word,4
+                        200000   8-331  	bool	scu.neg,200000		" DL
+                        000004   8-332  	equ	scu.carry_word,4
+                        100000   8-333  	bool	scu.carry,100000		" DL
+                        000004   8-334  	equ	scu.ovfl_word,4
+                        040000   8-335  	bool	scu.ovfl,040000		" DL
+                        000004   8-336  	equ	scu.eovf_word,4
+                        020000   8-337  	bool	scu.eovf,020000		" DL
+                        000004   8-338  	equ	scu.eufl_word,4
+                        010000   8-339  	bool	scu.eufl,010000		" DL
+                        000004   8-340  	equ	scu.oflm_word,4
+                        004000   8-341  	bool	scu.oflm,004000		" DL
+                        000004   8-342  	equ	scu.tro_word,4
+                        002000   8-343  	bool	scu.tro,002000		" DL
+                        000004   8-344  	equ	scu.par_word,4
+                        001000   8-345  	bool	scu.par,001000		" DL
+                        000004   8-346  	equ	scu.parm_word,4
+                        000400   8-347  	bool	scu.parm,000400		" DL
+                        000004   8-348  	equ	scu.bm_word,4
+                        000200   8-349  	bool	scu.bm,000200		" DL
+                        000004   8-350  	equ	scu.tru_word,4
+                        000100   8-351  	bool	scu.tru,000100		" DL
+                        000004   8-352  	equ	scu.mif_word,4
+                        000040   8-353  	bool	scu.mif,000040		" DL
+                        000004   8-354  	equ	scu.abs_word,4
+                        000020   8-355  	bool	scu.abs,000020		" DL
+                        000004   8-356  	equ	scu.hex_word,4
+                        000010   8-357  	bool	scu.hex,000010		" DL
+                                 8-358  
+                        000005   8-359  	equ	scu.ca,5			" UPPER
+                        000005   8-360  	equ	scu.cu_word,5
+                        000006   8-361  	equ	scu.cu_shift,6
+                        007777   8-362  	bool	scu.cu_mask,007777
+                        000005   8-363  	equ	scu.rf_word,5
+                        400000   8-364  	bool	scu.rf,400000		" DL
+                        000005   8-365  	equ	scu.rpt_word,5
+                        200000   8-366  	bool	scu.rpt,200000		" DL
+                        000005   8-367  	equ	scu.rd_word,5
+                        100000   8-368  	bool	scu.rd,100000		" DL
+                        000005   8-369  	equ	scu.rl_word,5
+                        040000   8-370  	bool	scu.rl,040000		" DL
+                        000005   8-371  	equ	scu.pot_word,5
+                        020000   8-372  	bool	scu.pot,020000		" DL
+                        000005   8-373  	equ	scu.pon_word,5
+                        010000   8-374  	bool	scu.pon,010000		" DL
+                        000005   8-375  	equ	scu.xde_word,5
+                        004000   8-376  	bool	scu.xde,004000		" DL
+                        000005   8-377  	equ	scu.xdo_word,5
+                        002000   8-378  	bool	scu.xdo,002000		" DL
+                        000005   8-379  	equ	scu.poa_word,5
+                        001000   8-380  	bool	scu.poa,001000		" DL
+                        000005   8-381  	equ	scu.rfi_word,5
+                        000400   8-382  	bool	scu.rfi,000400		" DL
+                        000005   8-383  	equ	scu.its_word,5
+                        000200   8-384  	bool	scu.its,000200		" DL
+                        000005   8-385  	equ	scu.if_word,5
+                        000100   8-386  	bool	scu.if,000100		" DL
+                        000005   8-387  	equ	scu.cpu_tag_word,5
+                        000000   8-388  	equ	scu.cpu_tag_shift,0
+                        000077   8-389  	bool	scu.cpu_tag_mask,000077
+                                 8-390  
+                        000006   8-391  	equ	scu.even_inst,6
+                        000007   8-392  	equ	scu.odd_inst,7
+                                 8-393  
+                                 8-394  "
+                                 8-395  "	Structure scux
+                                 8-396  "
+                        000010   8-397  	equ	scux_size,8
+                                 8-398  
+                                 8-399  
+                        000001   8-400  	equ	scux.fd_word,1
+                        000000   8-401  	equ	scux.fd_shift,0
+                        000001   8-402  	equ	scux.isn_word,1
+                        400000   8-403  	bool	scux.isn,400000		" DU
+                        000001   8-404  	equ	scux.ioc_word,1
+                        200000   8-405  	bool	scux.ioc,200000		" DU
+                        000001   8-406  	equ	scux.ia_am_word,1
+                        100000   8-407  	bool	scux.ia_am,100000		" DU
+                        000001   8-408  	equ	scux.isp_word,1
+                        040000   8-409  	bool	scux.isp,040000		" DU
+                        000001   8-410  	equ	scux.ipr_word,1
+                        020000   8-411  	bool	scux.ipr,020000		" DU
+                        000001   8-412  	equ	scux.nea_word,1
+                        010000   8-413  	bool	scux.nea,010000		" DU
+                        000001   8-414  	equ	scux.oobb_word,1
+                        004000   8-415  	bool	scux.oobb,004000		" DU
+                                 8-416  
+                        000003   8-417  	equ	scux.tsr_stat_word,3
+                        000006   8-418  	equ	scux.tsr_stat_shift,6
+                        007777   8-419  	bool	scux.tsr_stat_mask,007777
+                                 8-420  
+                        000006   8-421  	equ	scux.instr,6
+                                 8-422  
+                                 8-423       "END INCLUDE FILE toehold_save_dcls_.incl.alm
+                                    51  
+                                    52  " *******************************************************************
+                                    53  " Enter at the following in ABSOLUTE MODE, via processor switches   *
+                                    54  " or derail.					        *
+                                    55  " *******************************************************************
+                                    56  
+    000000                          57  	inhibit	on			<><><>ON<><><>
+                                    58  
+                                    59  " Entry sequences: each one saves the machine state and then transfers to
+                                    60  " the correct code.  The ret instruction allows some indicators to be set
+                                    61  " at the same time so as to give us a flag saying what entry was made.
+                                    62  
+                        000000      63  	org	TOE_HOLD_CRASH_ENTRY*2
+    000000  0a   025720 6572 00     64  	scu	toe_absloc+temp_scu		" Operator Crash
+    000001  0a   025772 6302 00     65  	ret	toe_absloc+switch_entry
+                                    66  
+                        000002      67  	org	TOE_HOLD_ESD_ENTRY*2
+    000002  0a   025720 6572 00     68  	scu	toe_absloc+temp_scu		" ESD
+    000003  0a   025774 6302 00     69  	ret	toe_absloc+esd_entry
+                                    70  
+                        000004      71  	org	TOE_HOLD_DUMP_ENTRY*2
+    000004  0a   025720 6572 00     72  	scu	toe_absloc+temp_scu		" DUMP entry
+    000005  0a   025776 6302 00     73  	ret	toe_absloc+dump_entry
+                                    74  
+                        000006      75  	org	TOE_HOLD_MULTICS_ENTRY*2
+    000006  0a   025720 6572 00     76  	scu	toe_absloc+temp_scu		" Multics Crash
+    000007  0a   025773 6302 00     77  	ret	toe_absloc+multics_crash_entry
+                                    78  
+                        000010      79  	org	TOE_HOLD_RESTART_ENTRY*2
+    000010  0a   025720 6572 00     80  	scu	toe_absloc+temp_scu		" Multics restart point
+    000011  0a   025775 6302 00     81  	ret	toe_absloc+multics_restart_entry
+                                    82  
+                        000012      83  	org	TOE_HOLD_BOOT_ENTRY*2
+    000012  aa   000000 0112 00     84  	nop				" boot entry
+    000013  4a  4 00010 7103 20     85  	tra	bootload_abs_mode$0+toe_absloc
+                                    86  
+                        000040      87  	org	toehold.flagbox
+    000040                          88  flagbox:	bss	,64
+                                    89  
+                        000140      90  	org	toehold.handler_mc
+    000140                          91  handler_mc:
+    000140                          92  	bss	,48
+                                    93  
+                        000220      94  	org	toehold.paths		" io paths to use to save/
+                        000004      95  	equ	n_paths,4			" restore Multics memory
+    000220                          96  paths:	bss	,io_path_size*n_paths	" (and read us in)
+                                    97  
+                        000240      98  	org	toehold.n_paths_used
+    000240                          99  n_paths_used:
+    000240                         100  	bss	,1			" no of slots above used
+                                   101  
+                        000241     102  	org	toehold.memory_state
+    000241                         103  memory_state:				" key state of memory/Multics
+    000241  aa   000000 000000     104  	dec	0
+                                   105  
+                        000242     106  	org	toehold.bce_dbr
+    000242                         107  bce_dbr:	bss	,2			" used to restart bce
+                                   108  
+                        000244     109  	org	toehold.bce_mode_reg
+    000244                         110  bce_mode_reg:
+    000244                         111  	bss	,2			" and cache_mode reg
+                                   112  
+                        000246     113  	org	toehold.esd_segnum
+    000246                         114  esd_segnum:
+    000246                         115  	bss	,1
+                                   116  
+                        000247     117  	org	toehold.dcw_list_size
+    000247                         118  dcw_list_size:
+    000247                         119  	bss	,1			" dcw_list_size in upper
+                                   120  					" dcws_per_cly in lower
+                        000250     121  	org	toehold.seeks_used
+    000250                         122  seeks_used: 
+    000250                         123  	bss	,1
+                                   124  	
+                        000251     125  	org	toehold.save_dcws
+    000251                         126  save_dcws:
+    000251                         127  	bss	,260			" dcw lists for saving memory
+                                   128  
+                        000655     129  	org	toehold.handler_dcws
+    000655                         130  handler_dcws:
+    000655                         131  	bss	,260			" dcw lists for reading bce
+                                   132  "
+                        001660     133  	org	toehold.handler_code	" toehold code
+                                   134  	mod	16
+    001660                         135  status:	
+    001660                         136  	bss	,16			" iom status area
+    001700                         137  ignore_status:
+    001700                         138  	bss	,16			" undesired iom status area
+                                   139  
+    001720                         140  temp_scu:					" scu data saved before we
+    001720                         141  	bss	,8			" know if we want to save it
+    001730                         142  save_regs:				" regs saved before we have 
+    001730                         143  	bss	,8			" decided to save state
+    001740                         144  temp_mode_reg:
+    001740                         145  	bss	,2			" mode reg save
+    001742                         146  temp:	bss	,2
+                                   147  
+    001744                         148  pcw:	bss	,2			" for disk i/o
+                                   149  
+    001746                         150  new_cfg:	bss	,2			" scu config info
+                                   151  
+    001750                         152  cfg_mask_mask:
+    001750  aa   000777 777777     153  	oct	000777777777	Mask out Mask A and Mask B
+    001751  aa   000777 777777     154  	oct	000777777777
+                                   155  
+    001752                         156  status_mask:				" iom mask for finding good 
+    001752  aa   370000 770000     157  	vfd	o36/370000770000,36/0	" status
+    001753  aa   000000 000000 
+                                   158  
+    001754                         159  io_timer:	bss	,2			" clock timer for timout
+                                   160  
+    001756                         161  thirty_secs:
+    001756  aa   000000 000000     162  	dec	0,30000000		" in microseconds
+    001757  aa   000162 341600 
+                                   163  
+    001760  aa   000000 000000     164  cow:	oct	0			" connect operand word
+                                   165  
+    001761                         166  turn_off_hregs:
+    001761  aa   000000 000000     167  	oct	0
+    001762                         168  turn_off_cache:
+    001762  aa   000000 000003     169  	oct	3
+                                   170  
+    001763                         171  which_entry:
+    001763                         172  	bss	,1
+                                   173  
+    001764                         174  seeks_done:
+    001764                         175  	bss	,1			" in disk i/o
+                                   176  
+    001765                         177  operation_type:				" read/write disk i/o
+    001765                         178  	bss	,1
+                                   179  
+    001766                         180  operation_not_mask:				" for removing operation
+    001766  aa   007777 777777     181  	oct	007777777777		" code from idcw's
+                                   182  
+    001767                         183  low_memory_save_size_in_chars:
+    001767  aa   000000 020000     184  	vfd	36/4*2048
+                                   185  
+                                   186  	equ_o	mbx_absloc,1200
+                                   187  
+                        000002     188  	bool	scr_mr.id.4mw,000002	" id for a 4mw scu
+                                   189  
+                                   190  " Index register usage
+                                   191  
+                        000007     192  	equ	rscr_index,7
+                        000006     193  	equ	last_controller_mask,6	" for mask setting
+                        000005     194  	equ	zap_smcm_return_index,5
+                                   195  
+                                   196  				" for per cylinder i/o
+                        000006     197  	equ	iom,6		" Index Register to mailbox array
+                        000005     198  	equ	seek_dcws_index,5 " index off toehold for dcw_list for this seek
+                        000004     199  	equ	chn,4		" Index Register to channel_mailbox
+                        000003     200  	equ	dcws_index,3	" index off toehold for dcw_list
+                        000002     201  	equ	seek_return_index,2 " return from connect_timeout
+                        000001     202  	equ	io_return_index,1	" return from perform_io
+                        000000     203  	equ	io_path_index,0	" to io_path
+                                   204  "
+                                   205  	even
+                                   206  
+    001770  aa   000400 000043     207  bbl0_ptr:	its	bbl0_segno_,0	" for finding early dumper
+    001771  aa   000000 000000 
+                                   208  
+                                   209  " operands for return instructions in entry sequences
+                                   210  
+    001772                         211  switch_entry:
+    001772  0a   026001 200220     212  	vfd	18/toe_absloc+save_machine_conditions,18/scu.neg+scu.bm+scu.abs
+                                   213  
+    001773                         214  multics_crash_entry:
+    001773  0a   026001 000220     215  	vfd	18/toe_absloc+save_machine_conditions,18/scu.bm+scu.abs
+                                   216  
+    001774                         217  esd_entry:
+    001774  0a   026001 400220     218  	vfd	18/toe_absloc+save_machine_conditions,18/scu.zero+scu.bm+scu.abs
+                                   219  
+    001775                         220  multics_restart_entry:
+    001775  0a   026311 000220     221  	vfd	18/toe_absloc+restore_machine,18/scu.bm+scu.abs
+                                   222  
+    001776                         223  dump_entry:
+    001776  0a   025777 000220     224  	vfd	18/toe_absloc+go_to_dump,18/scu.bm+scu.abs
+                                   225  
+    001777                         226  go_to_dump:
+    001777  aa   777777 6372 03    227  	ldt	-1,du
+    002000  4a  4 00012 7103 20    228  	tra	bootload_early_dump$0+toe_absloc
+                                   229  "
+                                   230  " Main entry to toehold.  Temporarily save state.  See if we need to save this
+                                   231  " state.  If so, copy temporary state into machine state, continue saving.  
+                                   232  " Otherwise, throw away state and proceed to read in bce.
+                                   233  
+    002001                         234  save_machine_conditions:
+    002001  0a   025740 4522 06    235  	scpr	toe_absloc+temp_mode_reg,06
+    002002  0a   025761 6742 04    236  	lcpr	toe_absloc+turn_off_hregs,04
+    002003  0a   025762 6742 02    237  	lcpr	toe_absloc+turn_off_cache,02
+    002004  0a   025730 7532 00    238  	sreg	toe_absloc+save_regs
+    002005  0a   025742 7542 00    239  	sti	toe_absloc+temp
+    002006  aa   777777 6372 03    240  	ldt	-1,du			" no tro, please
+                                   241  
+    002007  0a   025742 2352 00    242  	lda	toe_absloc+temp		" extract indicators that
+    002010  aa   000014 7712 00    243  	arl	12			" say how we entered toehold
+    002011  aa   000077 3752 07    244  	ana	=o77,dl
+    002012  0a   025763 7552 00    245  	sta	toe_absloc+which_entry
+    002013  0a   026017 6012 00    246  	tnz	toe_absloc+no_ilc_bump
+    002014  aa   000001 2352 03    247  	lda	1,du		" if Multics entry, must skip drl
+    002015  0a   025724 0352 00    248  	adla	toe_absloc+temp_scu+scu.ilc
+    002016  0a   025724 7552 00    249  	sta	toe_absloc+temp_scu+scu.ilc
+    002017                         250  no_ilc_bump:
+                                   251  
+                                   252  " check to see if we should save memory (and state)
+                                   253  
+    002017  0a   024241 2352 00    254  	lda	toe_absloc+memory_state
+    002020  0a   026041 6002 00    255  	tze	toe_absloc+save_state   " will later go to early dump
+    002021  aa   000001 1152 07    256  	cmpa	At_bce__early,dl
+    002022  0a   026041 6002 00    257  	tze	toe_absloc+save_state	" early bce crash
+    002023  aa   000002 1152 07    258  	cmpa	At_bce__boot,dl
+    002024  0a   026041 6002 00    259  	tze	toe_absloc+save_state	" real bce crash
+    002025  aa   000003 1152 07    260  	cmpa	Multics,dl
+    002026  0a   026041 6002 00    261  	tze	toe_absloc+save_state	" service crash/shut
+    002027  aa   000004 1152 07    262  	cmpa	Undefined_saving_state,dl
+    002030  0a   026035 6002 00    263  	tze	toe_absloc+just_save_mbx	" forget state but save mem
+    002031  aa   000011 1152 07    264  	cmpa	Undefined_saving_mem,dl
+    002032  0a   026037 6002 00    265  	tze	toe_absloc+just_write_Multics " state saved
+                                   266  
+    002033  0a   026511 7052 00    267  	tsx	zap_smcm_return_index,toe_absloc+zap_smcm
+    002034  0a   026234 7102 00    268  	tra	toe_absloc+read_bce		" just_read_bce
+                                   269  
+    002035                         270  just_save_mbx:
+    002035  0a   026511 7052 00    271  	tsx	zap_smcm_return_index,toe_absloc+zap_smcm
+    002036  0a   026214 7102 00    272  	tra	toe_absloc+done_regs
+                                   273  
+    002037                         274  just_write_Multics:
+    002037  0a   026511 7052 00    275  	tsx	zap_smcm_return_index,toe_absloc+zap_smcm
+    002040  0a   026226 7102 00    276  	tra	toe_absloc+write_Multics
+                                   277  
+    002041                         278  save_state:				" save total state
+    002041  0a   024241 2352 00    279  	lda	toe_absloc+memory_state
+    002042  0a   027071 7552 00    280  	sta	toe_absloc+multics_state+mc_state.old_memory_state
+    002043  aa   000004 2352 07    281  	lda	Undefined_saving_state,dl
+    002044  0a   024241 7552 00    282  	sta	toe_absloc+memory_state
+                                   283  
+    002045  0a   026760 2542 00    284  	spri	toe_absloc+multics_state+mc_state.mc_+mc.prs
+    002046  0a   027030 4476 00    285  	spl	toe_absloc+multics_state+mc_state.mc_+mc.eis_info
+                                   286  
+    002047  0a   025763 2352 00    287  	lda	toe_absloc+which_entry
+    002050  0a   026053 6002 00    288  	tze	toe_absloc+non_manual_flag
+                                   289  
+    002051  aa   004000 2362 03    290  	ldq	fgbx.manual_crash,du	" manual entry
+    002052  aa   024043 2562 00    291  	orsq	fgbx_absloc+fgbx.rtb	" let bce know
+                                   292  
+    002053                         293  non_manual_flag:
+    002053  aa   024043 2552 00    294  	orsa	fgbx_absloc+fgbx.rtb	" bce_entry field
+                                   295  
+    002054  aa   000040 4132 00    296  	rscr	SC_ETC*8		" Read clock
+    002055  0a   027026 7572 00    297  	staq	toe_absloc+multics_state+mc_state.mc_+mc.fault_time
+                                   298  
+    002056  aa   000030 4132 00    299  	rscr	SC_IC*8		" Read interrupt cells
+    002057  0a   027060 7572 00    300  	staq	toe_absloc+multics_state+mc_state.interrupt
+                                   301  
+                                   302  " Next project is to grab an scu mask
+                                   303  
+    002060  aa   000700 6272 00    304  	eax	rscr_index,7*64
+    002061  aa   000016 6262 00    305  	eax	last_controller_mask,7*2	" for last controller mask
+                                   306  
+    002062                         307  smcm_loop:
+    002062  aa   000020 4132 17    308  	rscr	2*8,rscr_index	" Read mask
+    002063  0a   027040 7572 16    309  	staq	toe_absloc+multics_state+mc_state.masks,last_controller_mask " save it
+    002064  aa   000000 4312 07    310  	fld	0,dl		" ldaq 0,dl
+    002065  aa   000020 0572 17    311  	sscr	2*8,rscr_index	" zonk it
+    002066  aa   777700 6272 17    312  	eax	rscr_index,-64,rscr_index	" reduce
+    002067  aa   777776 6262 16    313  	eax	last_controller_mask,-2,last_controller_mask " reduce
+    002070  0a   026062 6052 00    314  	tpl	toe_absloc+smcm_loop
+                                   315  
+    002071                         316  	inhibit	off		<><><>OFF<><><>
+                                   317  				" Why not?  We're masked.
+                                   318  
+    002071  aa   000000 4310 07    319  	fld	0,dl
+    002072  0a   027066 7570 00    320  	staq	toe_absloc+multics_state+mc_state.cfg
+    002073  aa   000000 4130 00    321  	rscr	SC_MR*8
+    002074  aa   000002 3160 03    322  	canq	scr_mr.id.4mw,du	" we always have mask on 6000 sc
+    002075  0a   026111 6000 00    323  	tze	toe_absloc+skip_mask_set
+                                   324  
+    002076  aa   000010 4130 00    325  	rscr	SC_CFG*8		" proceed to set mask A to us, B off
+    002077  0a   027066 7570 00    326  	staq	toe_absloc+multics_state+mc_state.cfg
+    002100  0a   025750 3770 00    327  	anaq	toe_absloc+cfg_mask_mask
+    002101  0a   025746 7570 00    328  	staq	toe_absloc+new_cfg
+    002102  aa   000064 7730 00    329  	lrl	scr_cfg2.port_no_shift+36
+    002103  aa   000017 3760 07    330  	anq	scr_cfg2.port_no_mask,dl	" port no. to QL
+    002104  aa   400000 2350 03    331  	lda	=o400000,du		" Mask A to port 0
+    002105  aa   000000 7710 06    332  	arl	0,ql			" Mask A to our port
+    002106  aa   001000 2360 03    333  	ldq	=o001000,du		" Mask B off
+    002107  0a   025746 2770 00    334  	oraq	toe_absloc+new_cfg
+    002110  aa   000010 0570 00    335  	sscr	SC_CFG*8
+                                   336  
+    002111                         337  skip_mask_set:
+    002111  aa   000000 1004 00    338  	mlr	(),()			" copy temp save state
+    002112  0a   025720 000040     339  	desc9a	toe_absloc+temp_scu,8*4	" into real state
+    002113  0a   027010 000040     340  	desc9a	toe_absloc+multics_state+mc_state.mc_+mc.scu,8*4
+    002114  aa   000000 1004 00    341  	mlr	(),()
+    002115  0a   025730 000040     342  	desc9a	toe_absloc+save_regs,8*4
+    002116  0a   027000 000040     343  	desc9a	toe_absloc+multics_state+mc_state.mc_+mc.regs_word,8*4
+    002117  0a   025740 2370 00    344  	ldaq	toe_absloc+temp_mode_reg
+    002120  0a   027062 7570 00    345  	staq	toe_absloc+multics_state+mc_state.mode_reg
+                                   346  
+    002121  0a   027070 5500 00    347  	sbar	toe_absloc+multics_state+mc_state.bar
+    002122  0a   025742 4520 01    348  	scpr	toe_absloc+temp,01		" store two words
+    002123  0a   025742 2370 00    349  	ldaq	toe_absloc+temp
+    002124  0a   027025 7550 00    350  	sta	toe_absloc+multics_state+mc_state.mc_+mc.fault_reg
+    002125  aa   000002 2310 00    351  	rsw	2		" what kind of CPU?
+    002126  aa   000036 7710 00    352  	arl	30		" -- AL
+    002127  aa   000003 3750 07    353  	ana	=o000003,dl	" just type
+    002130  aa   000000 6240 05    354  	eax4	0,al		" following expects that in X4
+    002131  aa   000041 7730 00    355  	lrl	mc.cpu_type_shift
+    002132  0a   027026 7520 70    356  	stcq	toe_absloc+multics_state+mc_state.mc_+mc.cpu_type_word,70 " and store
+                                   357  
+                                   358  " Save history registers.
+                                   359  " The following is stolen from fim_util.
+                                   360  
+    002133  aa   000002 2360 03    361  	ldq	2,du			get a 2 for stepping address
+    002134  aa   000004 6260 00    362  	eax6	4			4 blocks of
+    002135  aa   000020 6270 00    363  scpr1:	eax7	16			16 history registers
+    002136  aa   000000 6230 00    364  	eax3	0			set up for L68 CPU type initally
+    002137  aa   000001 1040 03    365  	cmpx4	1,du			is this a DPS8/70M CPU?
+    002140  0a   026142 6010 00    366  	tnz	toe_absloc+scpr2		xfer if no, it is L68
+    002141  aa   000060 6230 00    367  	eax3	48			yes, set up to skip first 48 hregs
+    002142  0a   026165 2350 16    368  scpr2:	lda	toe_absloc+scpr-1,6		get correct instruction
+    002143  0a   025742 7550 00    369  	sta	toe_absloc+temp		save in stack
+    002144  0a   025742 7160 00    370  scpr3:	xec	toe_absloc+temp		execute the instruction
+    002145  aa   000000 1030 03    371  	cmpx3	0,du			are we through skipping hregs?
+    002146  0a   026151 6000 00    372  	tze	toe_absloc+scpr5		yes, go increment address
+    002147  aa   777777 6230 13    373  	eax3	-1,3			no, skip another
+    002150  0a   026144 7100 00    374  	tra	toe_absloc+scpr3		and go execute scpr again
+                                   375  
+    002151  0a   025742 0560 00    376  scpr5:	asq	toe_absloc+temp		increment address of instruction
+    002152  aa   777777 6270 17    377  	eax7	-1,7			count down
+    002153  0a   026144 6010 00    378  	tnz	toe_absloc+scpr3		more of this 16 double word block
+    002154  aa   777777 6260 16    379  	eax6	-1,6			count down
+    002155  0a   026135 6010 00    380  	tnz	toe_absloc+scpr1		another kind of hreg
+                                   381  
+    002156  aa   000100 6270 00    382  	eax7	64			initially set clear count to 64
+    002157  aa   000001 1040 03    383  	cmpx4	1,du			is this a DPS8/70M CPU?
+    002160  aa   000002 6000 04    384  	tze	2,ic			yes, clear all 64 hregs
+    002161  aa   000020 6270 00    385  	eax7	16			no, clear only 16 hregs
+    002162  aa   000000 6740 03    386  	lcpr	0,03			set all history regs to zero
+    002163  aa   777777 6270 17    387  	eax7	-1,7			count down
+    002164  aa   777776 6054 04    388  	tpnz	-2,ic			xfer if more to do
+    002165  0a   026172 7100 00    389  	tra	toe_absloc+do_ams
+                                   390  
+    002166  0a   027100 4520 40    391  scpr:	scpr	toe_absloc+multics_state+mc_state.ou_history_registers,40
+                                   392  "				OU History Regs for L68, OU/DU for DPS8
+    002167  0a   027140 4520 20    393  	scpr	toe_absloc+multics_state+mc_state.cu_history_registers,20
+                                   394  "					CU History Regs
+    002170  0a   027200 4520 10    395  	scpr	toe_absloc+multics_state+mc_state.du_history_registers,10
+                                   396  "			DU History Regs for L68, extended APU for DPS8
+    002171  0a   027240 4520 00    397  	scpr	toe_absloc+multics_state+mc_state.apu_history_registers,00
+                                   398  "					APU History Regs
+                                   399  
+    002172  0a   027300 5574 00    400  do_ams:	sptp	toe_absloc+multics_state+mc_state.ptwam_ptrs	" associative memories
+    002173  0a   027400 1544 00    401  	sptr	toe_absloc+multics_state+mc_state.ptwam_regs
+    002174  0a   027500 5570 00    402  	ssdp	toe_absloc+multics_state+mc_state.sdwam_ptrs
+    002175  0a   027600 2544 00    403  	ssdr	toe_absloc+multics_state+mc_state.sdwam_regs
+    002176  aa   000001 1040 03    404  	cmpx4	1,du
+    002177  0a   026214 6010 00    405  	tnz	toe_absloc+done_regs		for dps8, we must save other three banks
+    002200  0a   027320 5574 00    406  	sptp	toe_absloc+multics_state+mc_state.ptwam_ptrs+16
+    002201  0a   027340 5574 00    407  	sptp	toe_absloc+multics_state+mc_state.ptwam_ptrs+32
+    002202  0a   027360 5574 00    408  	sptp	toe_absloc+multics_state+mc_state.ptwam_ptrs+48
+                                   409  
+    002203  0a   027420 1544 00    410  	sptr	toe_absloc+multics_state+mc_state.ptwam_regs+16
+    002204  0a   027440 1544 00    411  	sptr	toe_absloc+multics_state+mc_state.ptwam_regs+32
+    002205  0a   027460 1544 00    412  	sptr	toe_absloc+multics_state+mc_state.ptwam_regs+48
+                                   413  
+    002206  0a   027520 5570 00    414  	ssdp	toe_absloc+multics_state+mc_state.sdwam_ptrs+16
+    002207  0a   027540 5570 00    415  	ssdp	toe_absloc+multics_state+mc_state.sdwam_ptrs+32
+    002210  0a   027560 5570 00    416  	ssdp	toe_absloc+multics_state+mc_state.sdwam_ptrs+48
+                                   417  
+    002211  0a   027640 2544 00    418  	ssdr	toe_absloc+multics_state+mc_state.sdwam_regs+32
+    002212  0a   027700 2544 00    419  	ssdr	toe_absloc+multics_state+mc_state.sdwam_regs+64
+    002213  0a   027740 2544 00    420  	ssdr	toe_absloc+multics_state+mc_state.sdwam_regs+96
+                                   421  "
+                                   422  
+    002214                         423  done_regs:
+                                   424  
+                                   425  " A transfer here in the normal case means that we are done saving state.
+                                   426  " This is not strictly correct.  Normally, it would not matter (except for
+                                   427  " certain obvious exceptions) in what order we saved state.  However, in the 
+                                   428  " case in which the toehold itself is interrupted, we must be very careful.
+                                   429  " If the toehold is interrupted, in general, the state saved will not be 
+                                   430  " correct.  It will not be possible to perform a go.  We must ensure, however,
+                                   431  " that an esd is possible.  To this end, we save certain toehold invariant
+                                   432  " state (information which the toehold doesn't change for its own purposes (as
+                                   433  " opposed to index registers, for instance)) which must be saved and restored
+                                   434  " for a successful esd.
+                                   435  
+                                   436  " The idea is to first save the iom_mailbox (two pages containing)
+                                   437  " and then "fix" it for this program's needs. The saved ones
+                                   438  " can then be saved in the image.
+                                   439  
+    002214  0a   027064 1540 00    440  	sdbr	toe_absloc+multics_state+mc_state.dbr
+                                   441  
+    002215  0a   025767 2360 00    442  	ldq	toe_absloc+low_memory_save_size_in_chars
+    002216  aa   000040 1004 40    443  	mlr	(rl),(rl)
+    002217  aa   000000 000006     444  	desc9a	0,ql
+    002220  aa   046000 000006     445  	desc9a	toedata_absloc,ql
+                                   446  
+    002221  4a  4 00014 6201 20    447  	eax0	bootload_early_dump$0
+    002222  0a   027071 2350 00    448  	lda	toe_absloc+multics_state+mc_state.old_memory_state
+    002223  0a   025770 6000 70    449  	tze	toe_absloc+bbl0_ptr,*x0
+                                   450  				" not valid, perform an early
+                                   451  				" dump- re-enter appending mode
+                                   452  
+    002224  aa   000011 2350 07    453  	lda	Undefined_saving_mem,dl
+    002225  0a   024241 7550 00    454  	sta	toe_absloc+memory_state
+                                   455  
+    002226                         456  write_Multics:
+                                   457  
+                                   458  " write out Multics memory image
+                                   459  
+    002226  aa   310000 2350 03    460  	lda	=o310000,du		" write
+    002227  0a   025765 7550 00    461  	sta	toe_absloc+operation_type
+    002230  0a   000251 6230 00    462  	eax	dcws_index,save_dcws
+    002231  0a   026360 7010 00    463  	tsx	io_return_index,toe_absloc+perform_io
+                                   464  
+    002232  aa   000005 2350 07    465  	lda	Undefined_reading_bce,dl
+    002233  0a   024241 7550 00    466  	sta	toe_absloc+memory_state
+                                   467  
+    002234                         468  read_bce:
+    002234  0a   025763 2350 00    469  	lda	toe_absloc+which_entry
+    002235  aa   000014 7350 00    470  	als	12
+    002236  aa   400000 3750 07    471  	ana	scu.zero,dl
+    002237  0a   026277 6010 00    472  	tnz	toe_absloc+perform_esd
+                                   473  
+                                   474  " read in bootload Multics memory image
+                                   475  
+    002240  aa   250000 2350 03    476  	lda	=o250000,du		" read
+    002241  0a   025765 7550 00    477  	sta	toe_absloc+operation_type
+    002242  0a   000655 6230 00    478  	eax	dcws_index,handler_dcws
+    002243  0a   026360 7010 00    479  	tsx	io_return_index,toe_absloc+perform_io
+                                   480  
+                                   481  " now return to bootload Multics
+                                   482  
+    002244  aa   777777 6370 03    483  	ldt	-1,du
+                                   484  
+    002245  0a   025767 2360 00    485  	ldq	toe_absloc+low_memory_save_size_in_chars " restore fault_vector
+    002246  aa   000040 1004 40    486  	mlr	(rl),(rl)				" iom_mailbox from
+    002247  aa   046000 000006     487  	desc9a	toedata_absloc,ql			" toehold_data
+    002250  aa   000000 000006     488  	desc9a	0,ql
+                                   489  
+    002251  0a   024242 2320 00    490  	ldbr	toe_absloc+bce_dbr			" restore regs
+    002252  0a   024210 4674 00    491  	lpl	toe_absloc+handler_mc+mc.eis_info
+    002253  0a   024140 1730 00    492  	lpri	toe_absloc+handler_mc+mc.prs
+    002254  0a   024174 2370 00    493  	ldaq	toe_absloc+handler_mc+mc.scu+4
+    002255  aa  6 00024 7571 00    494  	staq	pr6|stack_frame.return_ptr	" save_handler_mc saved these
+                                   495  					" pointers here for us to
+                                   496  					" reload.  This was because
+                                   497  					" they were stored into the
+                                   498  					" stack after it was saved
+                                   499  					" to disk.
+    002256  0a   024176 2370 00    500  	ldaq	toe_absloc+handler_mc+mc.scu+6
+    002257  aa  6 00030 7571 00    501  	staq	pr6|stack_frame.operator_ptr
+                                   502  
+    002260  aa   000006 2360 07    503  	ldq	At_bce__crash,dl		" new state = crash
+    002261  0a   027071 2350 00    504  	lda	toe_absloc+multics_state+mc_state.old_memory_state
+    002262  aa   000003 1150 07    505  	cmpa	Multics,dl		" (will be refined during
+    002263  0a   026270 6010 00    506  	tnz	toe_absloc+set_new_state	" collection 1)
+    002264  aa   024043 2350 00    507  	lda	fgbx_absloc+fgbx.rtb
+    002265  aa   100000 3750 03    508  	ana	fgbx.shut,du		" = shutdown only if shut
+    002266  0a   026270 6000 00    509  	tze	toe_absloc+set_new_state	" and old state = Multics
+    002267  aa   000007 2360 07    510  	ldq	At_bce__shutdown,dl
+    002270                         511  set_new_state:
+    002270  0a   024241 7560 00    512  	stq	toe_absloc+memory_state
+                                   513  
+    002271  0a   024160 0730 00    514  	lreg	toe_absloc+handler_mc+mc.regs_word
+    002272  0a   024172 6340 00    515  	ldi	toe_absloc+handler_mc+mc.scu+2
+    002273  0a   024170 3500 20    516  	epp0	toe_absloc+handler_mc+mc.scu+0,*
+    002274  0a   024244 6740 04    517  	lcpr	toe_absloc+bce_mode_reg,04	" mode and cache mode reg
+    002275  0a   024245 6740 02    518  	lcpr	toe_absloc+bce_mode_reg+1,02
+    002276  aa  0 00001 7101 00    519  	tra	pr0|1			" go to short_return in
+                                   520  					" save_handler_mc
+                                   521  "
+                                   522  " esd from switches
+                                   523  
+    002277                         524  perform_esd:
+    002277  0a   024246 2350 00    525  	lda	toe_absloc+esd_segnum	" force to emergency_shutdown|0
+    002300  aa   000022 7350 00    526  	als	scu.psr_shift
+    002301  aa   400000 0750 07    527  	ada	scu.p,dl
+    002302  0a   027010 7550 00    528  	sta	toe_absloc+multics_state+mc_state.mc_+mc.scu+scu.ppr_word
+                                   529  
+    002303  aa   000200 2350 07    530  	lda	scu.bm,dl
+    002304  0a   027014 7550 00    531  	sta	toe_absloc+multics_state+mc_state.mc_+mc.scu+scu.ilc
+                                   532  
+    002305  aa   000000 4310 07    533  	fld	0,dl
+    002306  0a   027060 7570 00    534  	staq	toe_absloc+multics_state+mc_state.interrupt
+                                   535  
+    002307  0a   027066 7570 00    536  	staq	toe_absloc+multics_state+mc_state.cfg
+                                   537  
+    002310  0a   026311 7100 00    538  	tra	toe_absloc+restore_machine
+                                   539  "
+                                   540  " Restore the memory image
+                                   541  
+    002311                         542  	inhibit	on			<><><>ON<><><>
+                                   543  
+    002311                         544  restore_machine:
+    002311  aa   777777 6372 03    545  	ldt	-1,du			" no timer runout
+    002312  aa   000010 2352 07    546  	lda	Undefined_continue,dl
+    002313  0a   024241 7552 00    547  	sta	toe_absloc+memory_state
+                                   548  
+    002314  0a   026511 7052 00    549  	tsx	zap_smcm_return_index,toe_absloc+zap_smcm  "mask us
+                                   550  
+    002315                         551  	inhibit	off			<><><>OFF<><><>
+                                   552  
+                                   553  " Read back Multics
+                                   554  
+    002315  aa   250000 2350 03    555  	lda	=o250000,du		" read
+    002316  0a   025765 7550 00    556  	sta	toe_absloc+operation_type
+    002317  0a   000251 6230 00    557  	eax	dcws_index,save_dcws
+    002320  0a   026360 7010 00    558  	tsx	io_return_index,toe_absloc+perform_io
+                                   559  
+                                   560  " Restore the IOM Mailbox
+                                   561  
+    002321  0a   025767 2360 00    562  	ldq	toe_absloc+low_memory_save_size_in_chars
+    002322  aa   000040 1004 40    563  	mlr	(rl),(rl)
+    002323  aa   046000 000006     564  	desc9a	toedata_absloc,ql
+    002324  aa   000000 000006     565  	desc9a	0,ql
+                                   566  
+    002325  0a   027064 2320 00    567  	ldbr	toe_absloc+multics_state+mc_state.dbr	" restore regs
+                                   568  
+    002326  aa   777777 6370 03    569  	ldt	-1,du
+    002327  0a   027070 2300 00    570  	lbar	toe_absloc+multics_state+mc_state.bar
+                                   571  
+                                   572  " Turn on cache and hregs here
+                                   573  
+    002330  0a   027062 6740 04    574  	lcpr	toe_absloc+multics_state+mc_state.mode_reg,04
+    002331  0a   027063 6740 02    575  	lcpr	toe_absloc+multics_state+mc_state.mode_reg+1,02
+                                   576  
+                                   577  " Restore system controllers
+                                   578  
+    002332                         579  	inhibit	on			<><><>ON<><><>
+                                   580  
+    002332  0a   027066 2372 00    581  	ldaq	toe_absloc+multics_state+mc_state.cfg
+    002333  aa   000002 6002 04    582  	tze	2,ic
+    002334  aa   000010 0572 00    583  	sscr	SC_CFG*8
+                                   584  
+    002335  0a   027060 2372 00    585  	ldaq	toe_absloc+multics_state+mc_state.interrupt
+    002336  aa   000030 0572 00    586  	sscr	SC_IC*8		" restore interrupt cells
+                                   587  
+    002337  aa   000700 6272 00    588  	eax	rscr_index,7*64
+    002340  aa   000016 6262 00    589  	eax	last_controller_mask,7*2
+                                   590  
+    002341                         591  restore_mcm_loop:
+    002341  0a   027040 2372 16    592  	ldaq	toe_absloc+multics_state+mc_state.masks,last_controller_mask
+    002342  aa   000020 0572 17    593  	sscr	2*8,rscr_index
+    002343  aa   777700 6272 17    594  	eax	rscr_index,-64,rscr_index
+    002344  aa   777776 6262 16    595  	eax	last_controller_mask,-2,last_controller_mask
+    002345  0a   026341 6052 00    596  	tpl	toe_absloc+restore_mcm_loop
+                                   597  
+    002346  0a   027030 4676 00    598  	lpl	toe_absloc+multics_state+mc_state.mc_+mc.eis_info
+    002347  0a   026760 1732 00    599  	lpri	toe_absloc+multics_state+mc_state.mc_+mc.prs
+                                   600  
+    002350  0a   027071 2352 00    601  	lda	toe_absloc+multics_state+mc_state.old_memory_state
+    002351  0a   024241 7552 00    602  	sta	toe_absloc+memory_state
+                                   603  
+    002352  aa   000400 2352 07    604  	lda	scu.rfi,dl		refetch instruction interrupted
+    002353  0a   027015 7552 00    605  	sta	toe_absloc+multics_state+mc_state.mc_+mc.scu+scu.rfi_word
+                                   606  
+    002354  0a   027000 0732 00    607  	lreg	toe_absloc+multics_state+mc_state.mc_+mc.regs_word
+    002355  0a   027007 7746 00    608  	lra	toe_absloc+multics_state+mc_state.mc_+mc.regs_word+7
+    002356  aa   040000 6372 07    609  	ldt	=o40000,dl		wake up soon
+    002357  0a   027010 6132 00    610  	rcu	toe_absloc+multics_state+mc_state.mc_+mc.scu
+                                   611  
+    002360                         612  	inhibit	off			<><><>OFF<><><>
+                                   613  "
+    002360                         614  perform_io:
+                                   615  
+                                   616  " internal procedure to perform io given a dcw_list.
+                                   617  " inputs are operation_type and dcws_index
+                                   618  " For now there are a maximum of 4 paths to try to use to do I/O
+                                   619  
+    002360                         620  try_first_path:
+    002360  0a   025767 2350 00    621  	lda	toe_absloc+low_memory_save_size_in_chars
+    002361  aa   000040 1004 00    622  	mlr	(),(rl),fill(000)	" zero mailboxes
+    002362  aa   000000 000000     623  	desc9a	0,0
+    002363  aa   000000 000005     624  	desc9a	0,al
+                                   625  
+    002364  0a   024240 2360 00    626  	ldq	toe_absloc+n_paths_used
+    002365  aa   000001 1760 07    627  	sbq	1,dl
+    002366  aa   000004 4020 07    628  	mpy	io_path_size,dl
+    002367  aa   000000 6200 06    629  	eax	io_path_index,0,ql	" point to last io_path
+                                   630  
+    002370                         631  try_another_path:
+    002370  0a   024222 2350 10    632  	lda	toe_absloc+paths+io_path.port_number_word,io_path_index
+    002371  0a   026404 6000 00    633  	tze	toe_absloc+bad_path
+                                   634  
+    002372  aa   000000 6250 13    635  	eax	seek_dcws_index,dcw_list.seek_addresses,dcws_index " point into structure at first
+    002373  0a   025764 4500 00    636  	stz	toe_absloc+seeks_done	" remember the number we have done.
+                                   637  
+    002374                         638  next_seek:
+    002374  aa   024001 2340 15    639  	szn	toe_absloc+dcw_list.seek_idcw,seek_dcws_index " check for valid idcw
+    002375  aa   000000 6000 11    640  	tze	0,io_return_index		" must be done
+    002376  aa   777777 6370 03    641  	ldt	-1,du			" try i/o through a path
+    002377  0a   026416 7020 00    642  	tsx	seek_return_index,toe_absloc+connect_timeout
+                                   643  
+    002400  0a   025660 2370 00    644  	ldaq	toe_absloc+status		" check for error
+    002401  0a   026404 6000 00    645  	tze	toe_absloc+bad_path
+    002402  0a   025752 3770 00    646  	anaq	toe_absloc+status_mask
+    002403  0a   026407 6000 00    647  	tze	toe_absloc+done_seek
+                                   648  
+    002404                         649  bad_path:
+    002404  aa   777774 6200 10    650  	eax	io_path_index,-io_path_size,io_path_index " down
+    002405  0a   026370 6050 00    651  	tpl	toe_absloc+try_another_path
+    002406  0a   026360 7100 00    652  	tra	toe_absloc+try_first_path
+                                   653  
+    002407                         654  done_seek:
+    002407  0a   024247 0650 00    655  	adx	seek_dcws_index,toe_absloc+dcw_list_size " point to next list
+    002410  0a   025764 2350 00    656  	lda	toe_absloc+seeks_done
+    002411  aa   000001 0750 07    657  	ada	1,dl
+    002412  0a   025764 7550 00    658  	sta	toe_absloc+seeks_done
+    002413  0a   024250 1150 00    659  	cmpa	toe_absloc+seeks_used
+    002414  0a   026374 6040 00    660  	tmi	toe_absloc+next_seek
+    002415  aa   000000 7100 11    661  	tra	0,io_return_index		" finished  all seeks
+                                   662  "
+                                   663  " Subroutine to do the I/O
+                                   664  " inputs are operation type, io_path_index, seek_dcws_index
+                                   665  
+    002416                         666  connect_timeout:
+    002416  0a   024222 2350 10    667  	lda	toe_absloc+paths+io_path.iom_number_word,io_path_index	" IOM tag (1-4)
+    002417  aa   000022 7710 00    668  	arl	io_path.iom_number_shift	" upper half
+    002420  aa   077777 3750 07    669  	ana	io_path.iom_number_mask,dl	" mask out port num
+    002421  aa   000001 1750 07    670  	sba	1,dl		" (0-3)
+    002422  aa   000010 7350 00    671  	als	8		" 256 words/mailbox
+    002423  aa   000200 6260 05    672  	eax	iom,iom_mailbox_seg.iom_mailbox,al
+                                   673  
+    002424  0a   024222 2360 10    674  	ldq	toe_absloc+paths+io_path.channel_number,io_path_index " channel number
+    002425  aa   777777 3760 07    675  	anq	=o777777,dl	" lower half
+    002426  aa   000002 7360 00    676  	qls	2		" 4 words/channel
+    002427  aa   000000 6240 06    677  	eax	chn,0,ql
+    002430  0a   025744 7460 00    678  	stx	iom,toe_absloc+pcw	" (temp)
+    002431  0a   025744 0640 00    679  	adx	chn,toe_absloc+pcw	" point to the channel_mailbox
+                                   680  
+    002432  aa   000031 7360 00    681  	qls	27-2		" now in high byte (invent PCW w/chan)
+    002433  0a   024220 2350 10    682  	lda	toe_absloc+paths+io_path.pcw,io_path_index " get caller's PCW
+    002434  0a   025744 7570 00    683  	staq	toe_absloc+pcw	" save it
+                                   684  
+    002435  aa   024003 2350 15    685  	lda	toe_absloc+dcw_list.data_idcw,seek_dcws_index
+    002436  0a   025766 3750 00    686  	ana	toe_absloc+operation_not_mask
+    002437  0a   025765 2750 00    687  	ora	toe_absloc+operation_type	" make into appropriate idcw
+    002440  aa   024003 7550 15    688  	sta	toe_absloc+dcw_list.data_idcw,seek_dcws_index
+                                   689  
+    002441  aa   024001 2120 15    690  	absa	toe_absloc+dcw_list.seek_idcw,seek_dcws_index	 " get address of DCW list
+    002442  aa   000006 7350 00    691  	als	6		" in AU
+    002443  aa   001200 7550 14    692  	sta	mbx_absloc+channel_mailbox.lpw,chn	" set DCW addr, clear rest
+    002444  aa   001201 4500 14    693  	stz	mbx_absloc+channel_mailbox.lpw+1,chn	" Unused
+                                   694  				" store LPW
+                                   695  
+    002445  0a   025660 2120 00    696   	absa	toe_absloc+status	" get address of status area
+    002446  aa   000006 7350 00    697  	als	6		" in AU
+    002447  aa   001202 7550 14    698  	sta	mbx_absloc+channel_mailbox.scw,chn " status there
+                                   699  				" set SCW
+                                   700  
+    002450  0a   025744 2120 00    701  	absa	toe_absloc+pcw	" get address of PCW
+    002451  aa   000006 7350 00    702  	als	6		" in AU
+    002452  aa   020001 2750 07    703  	ora	=o020001,dl	" set bits for connect LPW
+    002453  aa   001210 7550 16    704  	sta	mbx_absloc+(connect_channel*4)+channel_mailbox.lpw,iom
+                                   705  
+    002454  0a   024222 2350 10    706  	lda	toe_absloc+paths+io_path.port_number_word,io_path_index
+    002455  aa   000041 7710 00    707  	arl	io_path.port_number_shift	" port number on scu of iom
+    002456  aa   000007 3750 07    708  	ana	io_path.port_number_mask,dl	" into cow
+    002457  0a   025760 7550 00    709  	sta	toe_absloc+cow
+                                   710  
+    002460  0a   025660 4500 00    711  	stz	toe_absloc+status
+    002461  0a   025760 0150 00    712  	cioc	toe_absloc+cow	" fire up the IOM
+                                   713  
+    002462  0a   025744 2350 00    714  	lda	toe_absloc+pcw	" look at the PCW
+    002463  aa   040000 3150 07    715  	cana	=o040000,dl	" was it a mask?
+    002464  0a   026475 6010 00    716  	tnz	toe_absloc+no_status " yes, no status
+                                   717  
+    002465  aa   000040 4130 00    718  	rscr	SC_ETC*8		" current time
+    002466  0a   025756 0770 00    719  	adaq	toe_absloc+thirty_secs
+    002467  0a   025754 7570 00    720  	staq	toe_absloc+io_timer	" timeout time
+                                   721  
+    002470                         722  status_wait:
+    002470  0a   025660 2370 00    723  	ldaq	toe_absloc+status	" status yet?
+    002471  0a   026476 6040 00    724  	tmi	toe_absloc+got_status
+                                   725  
+    002472  aa   000040 4130 00    726  	rscr	SC_ETC*8		" watch time go by
+    002473  0a   025754 1170 00    727  	cmpaq	toe_absloc+io_timer	" count down to timeout
+    002474  0a   026470 6040 00    728  	tmi	toe_absloc+status_wait " fall through on timeout
+                                   729  				" caller detects since status is 0
+    002475                         730  no_status:
+    002475  aa   000000 4310 07    731  	fld	0,dl		" make sure status is 0 on timeout
+    002476                         732  got_status:			" or mask PCW, for that matter
+    002476  0a   025660 7570 00    733  	staq	toe_absloc+status
+                                   734  
+    002477  0a   025700 2120 00    735  	absa	toe_absloc+ignore_status " make sure no more status arrives
+    002500  aa   000006 7350 00    736  	als	6
+    002501  aa   001202 7550 14    737  	sta	mbx_absloc+channel_mailbox.scw,chn
+                                   738  
+                                   739  " delay after status return so DAU/Dipper can reset themselves
+                                   740  
+    002502  aa   000040 4130 00    741  	rscr	SC_ETC*8		" current time
+    002503  0a   025754 7570 00    742  	staq	toe_absloc+io_timer
+                                   743  
+    002504                         744  status_delay:
+    002504  aa   000040 4130 00    745  	rscr	SC_ETC*8		" watch time go by
+    002505  0a   025754 1770 00    746  	sbaq	toe_absloc+io_timer	" time gone by
+    002506  aa   000226 1160 07    747  	cmpq	150,dl		" 150 usecs is good
+    002507  0a   026504 6040 00    748  	tmi	toe_absloc+status_delay
+                                   749  
+    002510  aa   000000 7100 12    750  	tra	0,seek_return_index
+                                   751  "
+    002511                         752  	inhibit	on			<><><>ON<><><>
+                                   753  
+    002511                         754  zap_smcm:					" mask all controllers
+    002511  aa   000700 6272 00    755  	eax	rscr_index,7*64
+    002512  aa   000016 6262 00    756  	eax	last_controller_mask,7*2	" for last controller mask
+                                   757  
+    002513                         758  zap_smcm_loop:				" mask us
+    002513  aa   000000 4312 07    759  	fld	0,dl			" ldaq 0,dl
+    002514  aa   000020 0572 17    760  	sscr	2*8,rscr_index		" zonk it
+    002515  aa   777700 6272 17    761  	eax	rscr_index,-64,rscr_index	" reduce
+    002516  aa   777776 6262 16    762  	eax	last_controller_mask,-2,last_controller_mask " reduce
+    002517  0a   026513 6052 00    763  	tpl	toe_absloc+zap_smcm_loop
+    002520  aa   000000 7102 15    764  	tra	0,zap_smcm_return_index
+                                   765  
+    002521                         766  	inhibit	off			<><><>OFF<><><>
+                                   767  	
+                        002760     768  	org	toehold.multics_state	" machine state of Multics
+    002760                         769  multics_state:
+    002760                         770  	bss	,mc_state_size
+                                   771  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    004000  5a   000003 000000 
+    004001  5a   000017 600000 
+    004002  aa   000000 000000 
+    004003  55   000010 000002 
+    004004  5a   000002 400003 
+    004005  55   000006 000010 
+    004006  aa  007 164 157 145
+    004007  aa  150 157 154 144
+    004010  55   000002 000003 
+    004011  6a   000000 400002 
+    004012  55   000013 000003 
+    004013  aa  014 163 171 155         symbol_table
+    004014  aa  142 157 154 137
+    004015  aa  164 141 142 154
+    004016  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    004017  aa   000000 000015 
+    004020  aa   000000 000000 
+    004021  aa   000000 000000 
+    004022  aa   000000 000000 
+    004023  aa   000000 000000 
+    004024  aa   000000 000000 
+    004025  aa   000000 000000 
+    004026  5a   000010 000000 
+    004027  aa   000000 000000 
+    004030  aa   000000 000000 
+    004031  aa   000000 000000 
+    004032  aa   000000 000000 
+    004033  aa   000000 000000 
+    004034  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    004035  aa  023 142 157 157         bootload_early_dump
+    004036  aa  164 154 157 141
+    004037  aa  144 137 145 141
+    004040  aa  162 154 171 137
+    004041  aa  144 165 155 160
+    004042  aa  021 142 157 157         bootload_abs_mode
+    004043  aa  164 154 157 141
+    004044  aa  144 137 141 142
+    004045  aa  163 137 155 157
+    004046  aa  144 145 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    004047  aa   000003 000000 
+    004050  5a   000035 000000 
+    004051  aa   000003 000000 
+    004052  5a   000042 000000 
+    004053  aa   000001 000000 
+    004054  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    004055  5a   000047 000000 
+    004056  5a   000047 024000 
+    004057  5a   000051 024000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   004000 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000016 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_abs_mode|       
+    000011  5a   000057 0000 00
+    000012  9a   777766 0000 46         bootload_early_dump|       
+    000013  5a   000056 0000 00
+    000014  9a   777764 0000 46         bootload_early_dump|       
+    000015  5a   000055 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   246433 050423 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000020 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000514 
+    000020  aa   000000 000252 
+    000021  aa   000471 000465 
+    000022  aa   000500 000252 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000011 
+    000066  aa   000132 000054 
+    000067  aa   175453 021721 
+    000070  aa   000000 117547 
+    000071  aa   211745 200000 
+    000072  aa   000145 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000156 000042 
+    000077  aa   127236 043504 
+    000100  aa   000000 112724 
+    000101  aa   701743 200000 
+    000102  aa   000167 000042 
+    000103  aa   101301 045475 
+    000104  aa   000000 110133 
+    000105  aa   352304 600000 
+    000106  aa   000200 000035 
+    000107  aa   153072 447700 
+    000110  aa   000000 115333 
+    000111  aa   300226 600000 
+    000112  aa   000210 000036 
+    000113  aa   134547 161111 
+    000114  aa   000000 113455 
+    000115  aa   515111 200000 
+    000116  aa   000220 000031 
+    000117  aa   113021 605124 
+    000120  aa   000000 111303 
+    000121  aa   067552 200000 
+    000122  aa   000227 000041 
+    000123  aa   052721 247134 
+    000124  aa   000000 105272 
+    000125  aa   317215 400000 
+    000126  aa   000240 000050 
+    000127  aa   143401 276640 
+    000130  aa   000000 114345 
+    000131  aa   407367 200000 
+    000132  aa   076163 160145          >special_ldd>install>MR12.3-1114>toehold.alm
+    000133  aa   143151 141154 
+    000134  aa   137154 144144 
+    000135  aa   076151 156163 
+    000136  aa   164141 154154 
+    000137  aa   076115 122061 
+    000140  aa   062056 063055 
+    000141  aa   061061 061064 
+    000142  aa   076164 157145 
+    000143  aa   150157 154144 
+    000144  aa   056141 154155 
+    000145  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000146  aa   076151 156143 
+    000147  aa   154165 144145 
+    000150  aa   076142 157157 
+    000151  aa   164154 157141 
+    000152  aa   144137 145161 
+    000153  aa   165163 056151 
+    000154  aa   156143 154056 
+    000155  aa   141154 155040 
+    000156  aa   076154 144144          >ldd>include>coll0_segnos.incl.alm
+    000157  aa   076151 156143 
+    000160  aa   154165 144145 
+    000161  aa   076143 157154 
+    000162  aa   154060 137163 
+    000163  aa   145147 156157 
+    000164  aa   163056 151156 
+    000165  aa   143154 056141 
+    000166  aa   154155 040040 
+    000167  aa   076154 144144          >ldd>include>fault_vector.incl.alm
+    000170  aa   076151 156143 
+    000171  aa   154165 144145 
+    000172  aa   076146 141165 
+    000173  aa   154164 137166 
+    000174  aa   145143 164157 
+    000175  aa   162056 151156 
+    000176  aa   143154 056141 
+    000177  aa   154155 040040 
+    000200  aa   076154 144144          >ldd>include>flagbox.incl.alm
+    000201  aa   076151 156143 
+    000202  aa   154165 144145 
+    000203  aa   076146 154141 
+    000204  aa   147142 157170 
+    000205  aa   056151 156143 
+    000206  aa   154056 141154 
+    000207  aa   155040 040040 
+    000210  aa   076154 144144          >ldd>include>iom_data.incl.alm
+    000211  aa   076151 156143 
+    000212  aa   154165 144145 
+    000213  aa   076151 157155 
+    000214  aa   137144 141164 
+    000215  aa   141056 151156 
+    000216  aa   143154 056141 
+    000217  aa   154155 040040 
+    000220  aa   076154 144144          >ldd>include>scr.incl.alm
+    000221  aa   076151 156143 
+    000222  aa   154165 144145 
+    000223  aa   076163 143162 
+    000224  aa   056151 156143 
+    000225  aa   154056 141154 
+    000226  aa   155040 040040 
+    000227  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000230  aa   076151 156143 
+    000231  aa   154165 144145 
+    000232  aa   076163 164141 
+    000233  aa   143153 137146 
+    000234  aa   162141 155145 
+    000235  aa   056151 156143 
+    000236  aa   154056 141154 
+    000237  aa   155040 040040 
+    000240  aa   076154 144144          >ldd>include>toehold_save_dcls_.incl.alm
+    000241  aa   076151 156143 
+    000242  aa   154165 144145 
+    000243  aa   076164 157145 
+    000244  aa   150157 154144 
+    000245  aa   137163 141166 
+    000246  aa   145137 144143 
+    000247  aa   154163 137056 
+    000250  aa   151156 143154 
+    000251  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+        1200    .._00022                 toehold:      186.
+         402    abs_seg0_segno_          coll0_segnos:        19.
+           1    abx                      toehold_save_dcls_:       194.
+           0    apx                      toehold_save_dcls_:       193.
+           2    At_bce__boot             toehold:      258,
+                                         toehold_save_dcls_:       132.
+           6    At_bce__crash            toehold:      503,
+                                         toehold_save_dcls_:       136.
+           1    At_bce__early            toehold:      256,
+                                         toehold_save_dcls_:       131.
+           7    At_bce__shutdown         toehold:      510,
+                                         toehold_save_dcls_:       137.
+        2404    bad_path                 toehold:      633,  645,  649.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+        1770    bbl0_ptr                 toehold:      207,  449.
+         400    bbl0_segno_              toehold:      207,
+                                         coll0_segnos:        17.
+           3    bbx                      toehold_save_dcls_:       196.
+         242    bce_dbr                  toehold:      107,  490.
+         244    bce_mode_reg             toehold:      110,  517,  518.
+         200    BCE_PAGING_AREA_LTH      toehold_save_dcls_:        63.
+        2000    BCE_PAGING_AREA_RECORDX  toehold_save_dcls_:        62.
+        4230    BCE_PART_LTH             toehold_save_dcls_:        59.
+       56000    bkpt_absloc              bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_abs_mode        toehold:       85.
+                bootload_early_dump      toehold:      228,  447.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+           2    bpx                      toehold_save_dcls_:       195.
+        1750    cfg_mask_mask            toehold:      152,  327.
+           3    channel_mailbox.dcw      iom_data:     123.
+           0    channel_mailbox.lpw      toehold:      692,  693,  704,
+                                         iom_data:     121.
+           2    channel_mailbox.scw      toehold:      698,  737,
+                                         iom_data:     122.
+           4    channel_mailbox_size     iom_data:     119.
+           4    chn                      toehold:      199,  677,  679,  692,  693,  698,  737.
+           2    config_segno_            coll0_segnos:         6.
+           2    connect_channel          toehold:      704,
+                                         iom_data:     126.
+        2416    connect_timeout          toehold:      642,  666.
+        1760    cow                      toehold:      164,  709,  712.
+        1000    CRASH_HANDLER_RECORDX    toehold_save_dcls_:        61.
+           3    dcws_index               toehold:      200,  462,  478,  557,  635.
+           4    dcw_list.data_dcws       toehold_save_dcls_:        57.
+           3    dcw_list.data_idcw       toehold:      685,  688,
+                                         toehold_save_dcls_:        56.
+           0    dcw_list.seek_addresses  toehold:      635,
+                                         toehold_save_dcls_:        53.
+           2    dcw_list.seek_dcw        toehold_save_dcls_:        55.
+           1    dcw_list.seek_idcw       toehold:      639,  690,
+                                         toehold_save_dcls_:        54.
+         247    dcw_list_size            toehold:      118,  655.
+           3    dn355_mbx_segno_         coll0_segnos:         7.
+        2214    done_regs                toehold:      272,  405,  423.
+        2407    done_seek                toehold:      647,  654.
+        2172    do_ams                   toehold:      389,  400.
+           0    ds                       bootload_equs:       12.
+           0    ds_segno_                coll0_segnos:         4.
+        1776    dump_entry               toehold:       73,  223.
+         404    ed_segno_                coll0_segnos:        21.
+        1774    esd_entry                toehold:       69,  217.
+         246    esd_segnum               toehold:      114,  525.
+          24    FAULT_NO_ACV             fault_vector:        46.
+           5    FAULT_NO_CMD             fault_vector:        31.
+          10    FAULT_NO_CON             fault_vector:        34.
+          20    FAULT_NO_DF0             fault_vector:        42.
+          21    FAULT_NO_DF1             fault_vector:        43.
+          22    FAULT_NO_DF2             fault_vector:        44.
+          23    FAULT_NO_DF3             fault_vector:        45.
+          16    FAULT_NO_DIV             fault_vector:        40.
+           6    FAULT_NO_DRL             fault_vector:        32.
+          17    FAULT_NO_EXF             fault_vector:        41.
+           3    FAULT_NO_F1              fault_vector:        29.
+          30    FAULT_NO_F2              fault_vector:        50.
+          31    FAULT_NO_F3              fault_vector:        51.
+          12    FAULT_NO_IPR             fault_vector:        36.
+           7    FAULT_NO_LUF             fault_vector:        33.
+           2    FAULT_NO_MME             fault_vector:        28.
+          25    FAULT_NO_MME2            fault_vector:        47.
+          26    FAULT_NO_MME3            fault_vector:        48.
+          27    FAULT_NO_MME4            fault_vector:        49.
+          15    FAULT_NO_OFL             fault_vector:        39.
+          13    FAULT_NO_ONC             fault_vector:        37.
+          11    FAULT_NO_PAR             fault_vector:        35.
+           0    FAULT_NO_SDF             fault_vector:        26.
+           1    FAULT_NO_STR             fault_vector:        27.
+          14    FAULT_NO_SUF             fault_vector:        38.
+          37    FAULT_NO_TRB             fault_vector:        53.
+           4    FAULT_NO_TRO             fault_vector:        30.
+       20000    fgbx.alert               flagbox:       41.
+          77    fgbx.bce_entry_mask      flagbox:       46.
+           1    fgbx.bce_entry_shift     flagbox:       45.
+       10000    fgbx.breakpoint          flagbox:       42.
+      200000    fgbx.call_bce            flagbox:       38.
+      400000    fgbx.flags               flagbox:       31.
+          40    fgbx.flags_word          flagbox:       30.
+          56    fgbx.hc_dbr              flagbox:       50.
+        2000    fgbx.io_reconfig         flagbox:       44.
+        4000    fgbx.manual_crash        toehold:      290,
+                                         flagbox:       43.
+       40000    fgbx.mess                flagbox:       40.
+          60    fgbx.message             flagbox:       51.
+         100    fgbx.return_to_bce_command     flagbox:       52.
+          43    fgbx.rtb                 toehold:      291,  294,  507,
+                                         flagbox:       35.
+          44    fgbx.sentinel            flagbox:       48.
+      100000    fgbx.shut                toehold:      508,
+                                         flagbox:       39.
+          41    fgbx.slt_segno           flagbox:       33.
+      400000    fgbx.ssenb               flagbox:       37.
+          54    fgbx.sst_sdw             flagbox:       49.
+           0    fgbx.toehold_used        flagbox:       28.
+       24000    fgbx_absloc              toehold:      291,  294,  507,
+                                         bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+           5    fgbx_segno_              coll0_segnos:         9.
+         140    fgbx_size                flagbox:       25.
+          40    flagbox                  toehold:       88.
+           7    fv                       bootload_equs:       19.
+         100    fv.fpair                 fault_vector:        17.
+         100    fv.fpair.scu             fault_vector:        19.
+         101    fv.fpair.tra             fault_vector:        20.
+         500    fv.f_scu_ptr             fault_vector:        24.
+         400    fv.f_tra_ptr             fault_vector:        23.
+           0    fv.ipair                 fault_vector:        13.
+           0    fv.ipair.scu             fault_vector:        15.
+           1    fv.ipair.tra             fault_vector:        16.
+         300    fv.i_scu_ptr             fault_vector:        22.
+         200    fv.i_tra_ptr             fault_vector:        21.
+           4    fv_segno_                coll0_segnos:         8.
+         600    fv_size                  fault_vector:        10.
+        2476    got_status               toehold:      724,  732.
+        1777    go_to_dump               toehold:      224,  226.
+         655    handler_dcws             toehold:      130,  478.
+         140    handler_mc               toehold:       91,  491,  492,  493,  500,  514,  515,  516.
+        1700    ignore_status            toehold:      137,  735.
+           0    Initial_undefined        toehold_save_dcls_:       130.
+           6    iom                      toehold:      197,  672,  678,  704.
+           4    iom_data.imw_lock        iom_data:      20.
+          35    iom_data.invalid_interrupts    iom_data:      25.
+          37    iom_data.multiple_interrupts   iom_data:      27.
+          36    iom_data.null_interrupts       iom_data:      26.
+           0    iom_data.n_devices       iom_data:      16.
+           5    iom_data.n_intr_procs    iom_data:      21.
+         240    iom_data.per_device      iom_data:      30.
+          40    iom_data.per_iom         iom_data:      28.
+          12    iom_data.rfh1            iom_data:      23.
+           2    iom_data.stop_dcw        iom_data:      18.
+          20    iom_data.stop_ext_status       iom_data:      24.
+           1    iom_data.stop_lpw        iom_data:      17.
+           3    iom_data.stop_scw        iom_data:      19.
+          10    iom_data.stop_status     iom_data:      22.
+           0    iom_mailbox.channel_mailbox    iom_data:     113.
+           4    iom_mailbox_seg.imw_array_shift      iom_data:      92.
+           0    iom_mailbox_seg.imw_array_word       iom_data:      91.
+         200    iom_mailbox_seg.iom_mailbox    toehold:      672,
+                                               iom_data:      98.
+         120    iom_mailbox_seg.special_status       iom_data:      96.
+          40    iom_mailbox_seg.system_fault   iom_data:      94.
+        2200    iom_mailbox_seg_size     iom_data:      89.
+         400    iom_mailbox_size         iom_data:     111.
+          11    iom_mbx_segno_           coll0_segnos:        13.
+           2    io_path.channel_number   toehold:      674,
+                                         toehold_save_dcls_:        94.
+       77777    io_path.iom_number_mask  toehold:      669,
+                                         toehold_save_dcls_:        93.
+          22    io_path.iom_number_shift       toehold:      668,
+                                               toehold_save_dcls_:        92.
+           2    io_path.iom_number_word  toehold:      667,
+                                         toehold_save_dcls_:        91.
+           0    io_path.pcw              toehold:      682,
+                                         toehold_save_dcls_:        86.
+           7    io_path.port_number_mask       toehold:      708,
+                                               toehold_save_dcls_:        90.
+          41    io_path.port_number_shift      toehold:      707,
+                                               toehold_save_dcls_:        89.
+           2    io_path.port_number_word       toehold:      632,  706,
+                                               toehold_save_dcls_:        88.
+           0    io_path_index            toehold:      203,  629,  632,  650,  667,  674,  682,  706.
+           4    io_path_size             toehold:       96,  628,  650,
+                                         toehold_save_dcls_:        84.
+           1    io_return_index          toehold:      202,  463,  479,  558,  640,  661.
+        1754    io_timer                 toehold:      159,  720,  727,  742,  746.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+         403    iupt_segno_              coll0_segnos:        20.
+        2035    just_save_mbx            toehold:      263,  270.
+        2037    just_write_Multics       toehold:      265,  274.
+           6    last_controller_mask     toehold:      193,  305,  309,  313,  589,  592,  595,  756,  762.
+           5    lbx                      toehold_save_dcls_:       198.
+        1767    low_memory_save_size_in_chars  toehold:      183,  442,  485,  562,  621.
+           4    lpx                      toehold_save_dcls_:       197.
+           2    mb                       bootload_equs:       14.
+        1200    mbx_absloc               toehold:      186,  692,  693,  698,  704,  737.
+          24    mc.a                     toehold_save_dcls_:       152.
+           3    mc.cpu_type_mask         toehold_save_dcls_:       185.
+          41    mc.cpu_type_shift        toehold:      355,
+                                         toehold_save_dcls_:       184.
+          46    mc.cpu_type_word         toehold:      356,
+                                         toehold_save_dcls_:       183.
+          50    mc.eis_info              toehold:      285,  491,  598,
+                                         toehold_save_dcls_:       191.
+           0    mc.errcode_shift         toehold_save_dcls_:       170.
+          43    mc.errcode_word          toehold_save_dcls_:       169.
+       77777    mc.ext_fault_reg_mask    toehold_save_dcls_:       188.
+          22    mc.ext_fault_reg_shift   toehold_save_dcls_:       187.
+          46    mc.ext_fault_reg_word    toehold_save_dcls_:       186.
+         377    mc.e_mask                toehold_save_dcls_:       157.
+          34    mc.e_shift               toehold_save_dcls_:       156.
+          26    mc.e_word                toehold_save_dcls_:       155.
+          45    mc.fault_reg             toehold:      350,
+                                         toehold_save_dcls_:       181.
+          46    mc.fault_time            toehold:      297,
+                                         toehold_save_dcls_:       190.
+      377777    mc.fcode_mask            toehold_save_dcls_:       179.
+           0    mc.fcode_shift           toehold_save_dcls_:       178.
+          44    mc.fcode_word            toehold_save_dcls_:       177.
+           0    mc.fim_temp_shift        toehold_save_dcls_:       173.
+          44    mc.fim_temp_word         toehold_save_dcls_:       172.
+          42    mc.ips_temp              toehold_save_dcls_:       167.
+          40    mc.mask                  toehold_save_dcls_:       166.
+           0    mc.prs                   toehold:      284,  492,  599,
+                                         toehold_save_dcls_:       146.
+          25    mc.q                     toehold_save_dcls_:       153.
+           7    mc.ralr_mask             toehold_save_dcls_:       163.
+           0    mc.ralr_shift            toehold_save_dcls_:       162.
+          27    mc.ralr_word             toehold_save_dcls_:       161.
+        1532    mc.regs_shift            toehold_save_dcls_:       149.
+          20    mc.regs_word             toehold:      343,  514,  607,  608,
+                                         toehold_save_dcls_:       148.
+      400000    mc.resignal              toehold_save_dcls_:       176.
+          44    mc.resignal_word         toehold_save_dcls_:       175.
+          30    mc.scu                   toehold:      340,  493,  500,  515,  516,  528,  531,  605,  610,
+                                         toehold_save_dcls_:       165.
+          11    mc.t_shift               toehold_save_dcls_:       160.
+          27    mc.t_word                toehold_save_dcls_:       159.
+          44    mc.unique_index          toehold_save_dcls_:       174.
+          20    mc.x                     toehold_save_dcls_:       150.
+          60    mc_size                  toehold_save_dcls_:       144.
+         260    mc_state.apu_history_registers       toehold:      397,
+                                                     toehold_save_dcls_:       124.
+         110    mc_state.bar             toehold:      347,  570,
+                                         toehold_save_dcls_:       119.
+         103    mc_state.cache_mode_reg  toehold_save_dcls_:       116.
+         106    mc_state.cfg             toehold:      320,  326,  536,  581,
+                                         toehold_save_dcls_:       118.
+         160    mc_state.cu_history_registers  toehold:      393,
+                                               toehold_save_dcls_:       122.
+         104    mc_state.dbr             toehold:      440,  567,
+                                         toehold_save_dcls_:       117.
+         220    mc_state.du_history_registers  toehold:      395,
+                                               toehold_save_dcls_:       123.
+         100    mc_state.interrupt       toehold:      300,  534,  585,
+                                         toehold_save_dcls_:       114.
+          60    mc_state.masks           toehold:      309,  592,
+                                         toehold_save_dcls_:       113.
+           0    mc_state.mc_             toehold:      284,  285,  297,  340,  343,  350,  356,  528,  531,  598,  599,  605,
+                                                       607,  608,  610,
+                                         toehold_save_dcls_:       111.
+         102    mc_state.mode_reg        toehold:      345,  574,  575,
+                                         toehold_save_dcls_:       115.
+         111    mc_state.old_memory_state      toehold:      280,  448,  504,  601,
+                                               toehold_save_dcls_:       120.
+         120    mc_state.ou_history_registers  toehold:      391,
+                                               toehold_save_dcls_:       121.
+         320    mc_state.ptwam_ptrs      toehold:      400,  406,  407,  408,
+                                         toehold_save_dcls_:       125.
+         420    mc_state.ptwam_regs      toehold:      401,  410,  411,  412,
+                                         toehold_save_dcls_:       126.
+         520    mc_state.sdwam_ptrs      toehold:      402,  414,  415,  416,
+                                         toehold_save_dcls_:       127.
+         620    mc_state.sdwam_regs      toehold:      403,  418,  419,  420,
+                                         toehold_save_dcls_:       128.
+        1020    mc_state_size            toehold:      770,
+                                         toehold_save_dcls_:       109.
+         241    memory_state             toehold:      103,  254,  279,  282,  454,  466,  512,  547,  602.
+        2200    MST_AREA_RECORDX         toehold_save_dcls_:        64.
+           3    Multics                  toehold:      260,  505,
+                                         toehold_save_dcls_:       133.
+        1773    multics_crash_entry      toehold:       77,  214.
+        1775    multics_restart_entry    toehold:       81,  220.
+        2760    multics_state            toehold:      280,  284,  285,  297,  300,  309,  320,  326,  340,  343,  345,  347,
+                                                       350,  356,  391,  393,  395,  397,  400,  401,  402,  403,  406,  407,
+                                                       408,  410,  411,  412,  414,  415,  416,  418,  419,  420,  440,  448,
+                                                       504,  528,  531,  534,  536,  567,  570,  574,  575,  581,  585,  592,
+                                                       598,  599,  601,  605,  607,  608,  610,  769.
+        1746    new_cfg                  toehold:      150,  328,  334.
+        2374    next_seek                toehold:      638,  660.
+        2053    non_manual_flag          toehold:      288,  293.
+        2017    no_ilc_bump              toehold:      246,  250.
+        2475    no_status                toehold:      716,  730.
+           4    nt                       bootload_equs:       16.
+           6    nt_segno_                coll0_segnos:        10.
+           4    n_paths                  toehold:       95,   96.
+         240    n_paths_used             toehold:       99,  626.
+        1766    operation_not_mask       toehold:      180,  686.
+        1765    operation_type           toehold:      177,  461,  477,  556,  687.
+         220    paths                    toehold:       96,  632,  667,  674,  682,  706.
+        1744    pcw                      toehold:      148,  678,  679,  683,  701,  714.
+        2277    perform_esd              toehold:      472,  524.
+        2360    perform_io               toehold:      463,  479,  558,  614.
+          21    per_device.channel       iom_data:      68.
+          42    per_device.connects      iom_data:      82.
+          40    per_device.connect_time  iom_data:      81.
+          10    per_device.ext_status    iom_data:      66.
+          26    per_device.flags         iom_data:      70.
+          22    per_device.handler       iom_data:      69.
+          27    per_device.index         iom_data:      76.
+          44    per_device.interrupts    iom_data:      83.
+          46    per_device.interrupt_time      iom_data:      84.
+      400000    per_device.in_use        iom_data:      72.
+          20    per_device.iom           iom_data:      67.
+          32    per_device.lpw           iom_data:      78.
+      100000    per_device.on_line       iom_data:      74.
+          30    per_device.pcw           iom_data:      77.
+      200000    per_device.queue_status  iom_data:      73.
+           2    per_device.rfh1          iom_data:      65.
+          34    per_device.scw           iom_data:      79.
+           0    per_device.status        iom_data:      64.
+          36    per_device.status_queue_ptr    iom_data:      80.
+          50    per_device_size          iom_data:      61.
+          16    per_iom.abandoned_connects     iom_data:      51.
+         777    per_iom.chantab_mask     iom_data:      56.
+          33    per_iom.chantab_shift    iom_data:      55.
+          20    per_iom.chantab_word     iom_data:      54.
+      400000    per_iom.configured       iom_data:      41.
+           6    per_iom.connect_lpw      iom_data:      47.
+           4    per_iom.connect_time     iom_data:      46.
+           7    per_iom.cow              iom_data:      48.
+          11    per_iom.fault_chx        iom_data:      50.
+           1    per_iom.flags            iom_data:      39.
+           0    per_iom.lock             iom_data:      38.
+           2    per_iom.model            iom_data:      44.
+      200000    per_iom.on_line          iom_data:      42.
+           3    per_iom.port             iom_data:      45.
+          17    per_iom.reconnects       iom_data:      52.
+          10    per_iom.special_chx      iom_data:      49.
+          40    per_iom_size             iom_data:      36.
+           5    prb                      bootload_equs:       17.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+         401    prb_segno_               coll0_segnos:        18.
+        2234    read_bce                 toehold:      268,  468.
+        2311    restore_machine          toehold:      221,  538,  544.
+        2341    restore_mcm_loop         toehold:      591,  596.
+           7    rscr_index               toehold:      192,  304,  308,  311,  312,  588,  593,  594,  755,  760,  761.
+           0    SAVED_IMAGE_RECORDX      toehold_save_dcls_:        60.
+         251    save_dcws                toehold:      126,  462,  557.
+        2001    save_machine_conditions  toehold:      212,  215,  218,  234.
+        1730    save_regs                toehold:      142,  238,  342.
+        2041    save_state               toehold:      255,  257,  259,  261,  278.
+           7    sbx                      toehold_save_dcls_:       200.
+        2166    scpr                     toehold:      368,  391.
+        2135    scpr1                    toehold:      363,  380.
+        2142    scpr2                    toehold:      366,  368.
+        2144    scpr3                    toehold:      370,  374,  378.
+        2151    scpr5                    toehold:      372,  376.
+           3    scr_cfg1.addr_offset_mask      scr:           43.
+          24    scr_cfg1.addr_offset_shift     scr:           42.
+           0    scr_cfg1.addr_offset_word      scr:           41.
+           7    scr_cfg1.bdry_a_mask     scr:           30.
+          36    scr_cfg1.bdry_a_shift    scr:           29.
+           0    scr_cfg1.bdry_a_word     scr:           28.
+           7    scr_cfg1.bdry_b_mask     scr:           36.
+          30    scr_cfg1.bdry_b_shift    scr:           35.
+           0    scr_cfg1.bdry_b_word     scr:           34.
+          40    scr_cfg1.int             scr:           38.
+           0    scr_cfg1.int_word        scr:           37.
+          20    scr_cfg1.lwr             scr:           40.
+           0    scr_cfg1.lwr_word        scr:           39.
+           7    scr_cfg1.mode_a_mask     scr:           27.
+          41    scr_cfg1.mode_a_shift    scr:           26.
+           0    scr_cfg1.mode_a_word     scr:           25.
+           7    scr_cfg1.mode_b_mask     scr:           33.
+          33    scr_cfg1.mode_b_shift    scr:           32.
+           0    scr_cfg1.mode_b_word     scr:           31.
+         777    scr_cfg1.pima_mask       scr:           53.
+          33    scr_cfg1.pima_shift      scr:           52.
+           1    scr_cfg1.pima_word       scr:           51.
+           3    scr_cfg1.port_enable_mask      scr:           49.
+          16    scr_cfg1.port_enable_shift     scr:           48.
+           0    scr_cfg1.port_enable_word      scr:           47.
+          17    scr_cfg1.port_no_mask    scr:           46.
+          20    scr_cfg1.port_no_shift   scr:           45.
+           0    scr_cfg1.port_no_word    scr:           44.
+           2    scr_cfg1_size            scr:           23.
+          20    scr_cfg2.a1_online       scr:           69.
+           0    scr_cfg2.a1_online_word  scr:           68.
+          40    scr_cfg2.a_online        scr:           67.
+           0    scr_cfg2.a_online_word   scr:           66.
+           4    scr_cfg2.b1_online       scr:           73.
+           0    scr_cfg2.b1_online_word  scr:           72.
+          10    scr_cfg2.b_online        scr:           71.
+           0    scr_cfg2.b_online_word   scr:           70.
+         177    scr_cfg2.cyclic_prior_mask     scr:           97.
+          10    scr_cfg2.cyclic_prior_shift    scr:           96.
+           1    scr_cfg2.cyclic_prior_word     scr:           95.
+          40    scr_cfg2.int             scr:           85.
+           0    scr_cfg2.int_word        scr:           84.
+          20    scr_cfg2.lwr             scr:           87.
+           0    scr_cfg2.lwr_word        scr:           86.
+         777    scr_cfg2.mask_a_assign_mask    scr:           62.
+          33    scr_cfg2.mask_a_assign_shift   scr:           61.
+           0    scr_cfg2.mask_a_assign_word    scr:           60.
+         777    scr_cfg2.mask_b_assign_mask    scr:           94.
+          33    scr_cfg2.mask_b_assign_shift   scr:           93.
+           1    scr_cfg2.mask_b_assign_word    scr:           92.
+       40000    scr_cfg2.mode            scr:           78.
+           0    scr_cfg2.mode_word       scr:           77.
+       20000    scr_cfg2.nea_enabled     scr:           80.
+           0    scr_cfg2.nea_enabled_word      scr:           79.
+         177    scr_cfg2.nea_mask        scr:           83.
+           6    scr_cfg2.nea_shift       scr:           82.
+           0    scr_cfg2.nea_word        scr:           81.
+          17    scr_cfg2.port_mask_0_3_mask    scr:           90.
+           0    scr_cfg2.port_mask_0_3_shift   scr:           89.
+           0    scr_cfg2.port_mask_0_3_word    scr:           88.
+          17    scr_cfg2.port_mask_4_7_mask    scr:          100.
+           0    scr_cfg2.port_mask_4_7_shift   scr:           99.
+           1    scr_cfg2.port_mask_4_7_word    scr:           98.
+          17    scr_cfg2.port_no_mask    toehold:      330,
+                                         scr:           76.
+          20    scr_cfg2.port_no_shift   toehold:      329,
+                                         scr:           75.
+           0    scr_cfg2.port_no_word    scr:           74.
+           7    scr_cfg2.size_mask       scr:           65.
+          30    scr_cfg2.size_shift      scr:           64.
+           0    scr_cfg2.size_word       scr:           63.
+           2    scr_cfg2_size            scr:           58.
+           3    scr_mr.DA_strobe_margin_mask   scr:          122.
+          12    scr_mr.DA_strobe_margin_shift  scr:          121.
+           1    scr_mr.DA_strobe_margin_word   scr:          120.
+           3    scr_mr.EOC_strobe_margin_mask  scr:          125.
+          10    scr_mr.EOC_strobe_margin_shift       scr:          124.
+           1    scr_mr.EOC_strobe_margin_word  scr:          123.
+           3    scr_mr.G0_strobe_margin_mask   scr:          116.
+          16    scr_mr.G0_strobe_margin_shift  scr:          115.
+           1    scr_mr.G0_strobe_margin_word   scr:          114.
+           2    scr_mr.id.4mw            toehold:      188,  322.
+          17    scr_mr.identification_mask     scr:          110.
+          22    scr_mr.identification_shift    scr:          109.
+           1    scr_mr.identification_word     scr:          108.
+          20    scr_mr.parity_disable    scr:          132.
+           1    scr_mr.parity_disable_word     scr:          131.
+          40    scr_mr.parity_override   scr:          130.
+           1    scr_mr.parity_override_word    scr:          129.
+           3    scr_mr.PLUS_5_VOLT_margin_mask       scr:          128.
+           6    scr_mr.PLUS_5_VOLT_margin_shift      scr:          127.
+           1    scr_mr.PLUS_5_VOLT_margin_word       scr:          126.
+           2    scr_mr.SGR_accepted      scr:          138.
+           1    scr_mr.SGR_accepted_word       scr:          137.
+          10    scr_mr.store_IA_disable  scr:          134.
+           1    scr_mr.store_IA_disable_word   scr:          133.
+           3    scr_mr.TS_strobe_margin_mask   scr:          113.
+          20    scr_mr.TS_strobe_margin_shift  scr:          112.
+           1    scr_mr.TS_strobe_margin_word   scr:          111.
+           4    scr_mr.ZAC_parity_error  scr:          136.
+           1    scr_mr.ZAC_parity_error_word   scr:          135.
+           2    scr_mr_size              scr:          105.
+      177777    scr_msk.interrupt_mask_1_mask  scr:          147.
+          24    scr_msk.interrupt_mask_1_shift       scr:          146.
+           0    scr_msk.interrupt_mask_1_word  scr:          145.
+      177777    scr_msk.interrupt_mask_2_mask  scr:          154.
+          24    scr_msk.interrupt_mask_2_shift       scr:          153.
+           1    scr_msk.interrupt_mask_2_word  scr:          152.
+          17    scr_msk.port_mask_1_mask       scr:          150.
+           0    scr_msk.port_mask_1_shift      scr:          149.
+           0    scr_msk.port_mask_1_word       scr:          148.
+          17    scr_msk.port_mask_2_mask       scr:          157.
+           0    scr_msk.port_mask_2_shift      scr:          156.
+           1    scr_msk.port_mask_2_word       scr:          155.
+           2    scr_msk_size             scr:          143.
+      400000    scr_su.EDAC_disabled     scr:          175.
+           1    scr_su.EDAC_disabled_word      scr:          174.
+          17    scr_su.identification_mask     scr:          173.
+          22    scr_su.identification_shift    scr:          172.
+           1    scr_su.identification_word     scr:          171.
+           1    scr_su.maint_functions_enabled       scr:          192.
+           3    scr_su.MINUS_5_VOLT_margin_mask      scr:          178.
+           1    scr_su.MINUS_5_VOLT_margin_word      scr:          176.
+           3    scr_su.PLUS_19_VOLT_margin_mask      scr:          187.
+           1    scr_su.PLUS_19_VOLT_margin_word      scr:          185.
+           3    scr_su.PLUS_5_VOLT_margin_mask       scr:          181.
+          11    scr_su.PLUS_5_VOLT_margin_shift      scr:          180.
+           1    scr_su.PLUS_5_VOLT_margin_word       scr:          179.
+           3    scr_su.SENSE_strobe_margin_mask      scr:          190.
+           1    scr_su.SENSE_strobe_margin_word      scr:          188.
+           3    scr_su.spare_margin_mask       scr:          184.
+           7    scr_su.spare_margin_shift      scr:          183.
+           1    scr_su.spare_margin_word       scr:          182.
+         377    scr_su.syndrome_mask     scr:          170.
+          26    scr_su.syndrome_shift    scr:          169.
+           1    scr_su.syndrome_word     scr:          168.
+          77    scr_su.ZAC_line_mask     scr:          167.
+          36    scr_su.ZAC_line_shift    scr:          166.
+           1    scr_su.ZAC_line_word     scr:          165.
+           2    scr_su_size              scr:          162.
+          20    scu.abs                  toehold:      212,  215,  218,  221,  224,
+                                         toehold_save_dcls_:       355.
+           4    scu.abs_word             toehold_save_dcls_:       354.
+          10    scu.am_er                toehold_save_dcls_:       266.
+           1    scu.am_er_word           toehold_save_dcls_:       265.
+       37777    scu.apu_mask             toehold_save_dcls_:       216.
+           3    scu.apu_shift            toehold_save_dcls_:       215.
+           0    scu.apu_word             toehold_save_dcls_:       214.
+         200    scu.bm                   toehold:      212,  215,  218,  221,  224,  530,
+                                         toehold_save_dcls_:       349.
+           4    scu.bm_word              toehold_save_dcls_:       348.
+         200    scu.boc                  toehold_save_dcls_:       258.
+           1    scu.boc_word             toehold_save_dcls_:       257.
+           5    scu.ca                   toehold_save_dcls_:       359.
+      100000    scu.carry                toehold_save_dcls_:       333.
+           4    scu.carry_word           toehold_save_dcls_:       332.
+           7    scu.con_chan_mask        toehold_save_dcls_:       288.
+           6    scu.con_chan_shift       toehold_save_dcls_:       287.
+           1    scu.con_chan_word        toehold_save_dcls_:       286.
+           7    scu.cpu_no_mask          toehold_save_dcls_:       304.
+           6    scu.cpu_no_shift         toehold_save_dcls_:       303.
+           2    scu.cpu_no_word          toehold_save_dcls_:       302.
+          77    scu.cpu_tag_mask         toehold_save_dcls_:       389.
+           0    scu.cpu_tag_shift        toehold_save_dcls_:       388.
+           5    scu.cpu_tag_word         toehold_save_dcls_:       387.
+          40    scu.crt                  toehold_save_dcls_:       262.
+           1    scu.crt_word             toehold_save_dcls_:       261.
+        7777    scu.cu_mask              toehold_save_dcls_:       362.
+           6    scu.cu_shift             toehold_save_dcls_:       361.
+           5    scu.cu_word              toehold_save_dcls_:       360.
+          77    scu.delta_mask           toehold_save_dcls_:       307.
+           0    scu.delta_shift          toehold_save_dcls_:       306.
+           2    scu.delta_word           toehold_save_dcls_:       305.
+        2000    scu.dsptw                toehold_save_dcls_:       223.
+       20000    scu.eovf                 toehold_save_dcls_:       337.
+           4    scu.eovf_word            toehold_save_dcls_:       336.
+       10000    scu.eufl                 toehold_save_dcls_:       339.
+           4    scu.eufl_word            toehold_save_dcls_:       338.
+           6    scu.even_inst            toehold_save_dcls_:       391.
+      100000    scu.e_off                toehold_save_dcls_:       242.
+           1    scu.e_off_word           toehold_save_dcls_:       241.
+          10    scu.fabs                 toehold_save_dcls_:       230.
+          20    scu.fanp                 toehold_save_dcls_:       229.
+          40    scu.fap                  toehold_save_dcls_:       228.
+           7    scu.fault_cntr_mask      toehold_save_dcls_:       233.
+           0    scu.fault_cntr_shift     toehold_save_dcls_:       232.
+           0    scu.fault_cntr_word      toehold_save_dcls_:       231.
+          20    scu.fd_shift             toehold_save_dcls_:       236.
+           1    scu.fd_word              toehold_save_dcls_:       235.
+           1    scu.fi_flag              toehold_save_dcls_:       293.
+           1    scu.fi_flag_word         toehold_save_dcls_:       292.
+          37    scu.fi_num_mask          toehold_save_dcls_:       291.
+           1    scu.fi_num_shift         toehold_save_dcls_:       290.
+           1    scu.fi_num_word          toehold_save_dcls_:       289.
+          10    scu.hex                  toehold_save_dcls_:       357.
+           4    scu.hex_word             toehold_save_dcls_:       356.
+           7    scu.iac_mask             toehold_save_dcls_:       285.
+          11    scu.iac_shift            toehold_save_dcls_:       284.
+           1    scu.iac_word             toehold_save_dcls_:       283.
+          17    scu.ial_mask             toehold_save_dcls_:       282.
+          14    scu.ial_shift            toehold_save_dcls_:       281.
+           1    scu.ial_word             toehold_save_dcls_:       280.
+         100    scu.if                   toehold_save_dcls_:       386.
+           5    scu.if_word              toehold_save_dcls_:       385.
+           4    scu.ilc                  toehold:      248,  249,  531,
+                                         toehold_save_dcls_:       326.
+         100    scu.inret                toehold_save_dcls_:       260.
+           1    scu.inret_word           toehold_save_dcls_:       259.
+           4    scu.ir                   toehold_save_dcls_:       327.
+      400000    scu.iro                  toehold_save_dcls_:       238.
+           1    scu.iro_word             toehold_save_dcls_:       237.
+         200    scu.its                  toehold_save_dcls_:       384.
+           5    scu.its_word             toehold_save_dcls_:       383.
+          40    scu.mif                  toehold_save_dcls_:       353.
+           4    scu.mif_word             toehold_save_dcls_:       352.
+      200000    scu.neg                  toehold:      212,
+                                         toehold_save_dcls_:       331.
+           4    scu.neg_word             toehold_save_dcls_:       330.
+        2000    scu.no_ga                toehold_save_dcls_:       252.
+           1    scu.no_ga_word           toehold_save_dcls_:       251.
+         400    scu.ocall                toehold_save_dcls_:       256.
+           1    scu.ocall_word           toehold_save_dcls_:       255.
+        1000    scu.ocb                  toehold_save_dcls_:       254.
+           1    scu.ocb_word             toehold_save_dcls_:       253.
+           7    scu.odd_inst             toehold_save_dcls_:       392.
+      200000    scu.oeb                  toehold_save_dcls_:       240.
+           1    scu.oeb_word             toehold_save_dcls_:       239.
+        4000    scu.oflm                 toehold_save_dcls_:       341.
+           4    scu.oflm_word            toehold_save_dcls_:       340.
+      400000    scu.onc_1                toehold_save_dcls_:       274.
+           1    scu.onc_1_word           toehold_save_dcls_:       273.
+      200000    scu.onc_2                toehold_save_dcls_:       276.
+           1    scu.onc_2_word           toehold_save_dcls_:       275.
+           4    scu.oosb                 toehold_save_dcls_:       268.
+           1    scu.oosb_word            toehold_save_dcls_:       267.
+       40000    scu.orb                  toehold_save_dcls_:       244.
+           1    scu.orb_word             toehold_save_dcls_:       243.
+       40000    scu.ovfl                 toehold_save_dcls_:       335.
+           4    scu.ovfl_word            toehold_save_dcls_:       334.
+       10000    scu.owb                  toehold_save_dcls_:       248.
+           1    scu.owb_word             toehold_save_dcls_:       247.
+      400000    scu.p                    toehold:      527,
+                                         toehold_save_dcls_:       213.
+        1000    scu.par                  toehold_save_dcls_:       345.
+           1    scu.parl                 toehold_save_dcls_:       272.
+           1    scu.parl_word            toehold_save_dcls_:       271.
+         400    scu.parm                 toehold_save_dcls_:       347.
+           4    scu.parm_word            toehold_save_dcls_:       346.
+           2    scu.paru                 toehold_save_dcls_:       270.
+           1    scu.paru_word            toehold_save_dcls_:       269.
+           4    scu.par_word             toehold_save_dcls_:       344.
+        4000    scu.pi_ap                toehold_save_dcls_:       222.
+        1000    scu.poa                  toehold_save_dcls_:       380.
+           5    scu.poa_word             toehold_save_dcls_:       379.
+       10000    scu.pon                  toehold_save_dcls_:       374.
+           5    scu.pon_word             toehold_save_dcls_:       373.
+        1777    scu.port_stat_mask       toehold_save_dcls_:       279.
+           6    scu.port_stat_shift      toehold_save_dcls_:       278.
+           1    scu.port_stat_word       toehold_save_dcls_:       277.
+       20000    scu.pot                  toehold_save_dcls_:       372.
+           5    scu.pot_word             toehold_save_dcls_:       371.
+          21    scu.ppr_shift            toehold_save_dcls_:       208.
+           0    scu.ppr_word             toehold:      528,
+                                         toehold_save_dcls_:       207.
+           7    scu.prr_mask             toehold_save_dcls_:       210.
+          41    scu.prr_shift            toehold_save_dcls_:       209.
+       77777    scu.psr_mask             toehold_save_dcls_:       212.
+          22    scu.psr_shift            toehold:      526,
+                                         toehold_save_dcls_:       211.
+         200    scu.ptw                  toehold_save_dcls_:       226.
+         100    scu.ptw2                 toehold_save_dcls_:       227.
+       20000    scu.ptwm                 toehold_save_dcls_:       220.
+       10000    scu.pt_on                toehold_save_dcls_:       221.
+          20    scu.ralr                 toehold_save_dcls_:       264.
+           1    scu.ralr_word            toehold_save_dcls_:       263.
+      100000    scu.rd                   toehold_save_dcls_:       368.
+           5    scu.rd_word              toehold_save_dcls_:       367.
+      400000    scu.rf                   toehold_save_dcls_:       364.
+         400    scu.rfi                  toehold:      604,
+                                         toehold_save_dcls_:       382.
+           5    scu.rfi_word             toehold:      605,
+                                         toehold_save_dcls_:       381.
+           5    scu.rf_word              toehold_save_dcls_:       363.
+       40000    scu.rl                   toehold_save_dcls_:       370.
+           5    scu.rl_word              toehold_save_dcls_:       369.
+      200000    scu.rpt                  toehold_save_dcls_:       366.
+           5    scu.rpt_word             toehold_save_dcls_:       365.
+       20000    scu.r_off                toehold_save_dcls_:       246.
+           1    scu.r_off_word           toehold_save_dcls_:       245.
+      100000    scu.sdwm                 toehold_save_dcls_:       218.
+        1000    scu.sdwnp                toehold_save_dcls_:       224.
+         400    scu.sdwp                 toehold_save_dcls_:       225.
+       40000    scu.sd_on                toehold_save_dcls_:       219.
+           2    scu.tpr                  toehold_save_dcls_:       295.
+          77    scu.tpr_tbr_mask         toehold_save_dcls_:       324.
+           0    scu.tpr_tbr_shift        toehold_save_dcls_:       323.
+           3    scu.tpr_tbr_word         toehold_save_dcls_:       322.
+        2000    scu.tro                  toehold_save_dcls_:       343.
+           4    scu.tro_word             toehold_save_dcls_:       342.
+           7    scu.trr_mask             toehold_save_dcls_:       298.
+          41    scu.trr_shift            toehold_save_dcls_:       297.
+           2    scu.trr_word             toehold_save_dcls_:       296.
+         100    scu.tru                  toehold_save_dcls_:       351.
+           4    scu.tru_word             toehold_save_dcls_:       350.
+          17    scu.tsna_mask            toehold_save_dcls_:       315.
+          16    scu.tsna_shift           toehold_save_dcls_:       314.
+           3    scu.tsna_word            toehold_save_dcls_:       313.
+          17    scu.tsnb_mask            toehold_save_dcls_:       318.
+          12    scu.tsnb_shift           toehold_save_dcls_:       317.
+           3    scu.tsnb_word            toehold_save_dcls_:       316.
+          17    scu.tsnc_mask            toehold_save_dcls_:       321.
+           6    scu.tsnc_shift           toehold_save_dcls_:       320.
+           3    scu.tsnc_word            toehold_save_dcls_:       319.
+       77777    scu.tsr_mask             toehold_save_dcls_:       301.
+          22    scu.tsr_shift            toehold_save_dcls_:       300.
+        7777    scu.tsr_stat_mask        toehold_save_dcls_:       312.
+           6    scu.tsr_stat_shift       toehold_save_dcls_:       311.
+           3    scu.tsr_stat_word        toehold_save_dcls_:       310.
+           2    scu.tsr_word             toehold_save_dcls_:       299.
+           3    scu.word3                toehold_save_dcls_:       309.
+        4000    scu.w_off                toehold_save_dcls_:       250.
+           1    scu.w_off_word           toehold_save_dcls_:       249.
+        4000    scu.xde                  toehold_save_dcls_:       376.
+           5    scu.xde_word             toehold_save_dcls_:       375.
+        2000    scu.xdo                  toehold_save_dcls_:       378.
+           5    scu.xdo_word             toehold_save_dcls_:       377.
+      200000    scu.xsf                  toehold_save_dcls_:       217.
+      400000    scu.zero                 toehold:      218,  471,
+                                         toehold_save_dcls_:       329.
+           4    scu.zero_word            toehold_save_dcls_:       328.
+           0    scux.fd_shift            toehold_save_dcls_:       401.
+           1    scux.fd_word             toehold_save_dcls_:       400.
+      100000    scux.ia_am               toehold_save_dcls_:       407.
+           1    scux.ia_am_word          toehold_save_dcls_:       406.
+           6    scux.instr               toehold_save_dcls_:       421.
+      200000    scux.ioc                 toehold_save_dcls_:       405.
+           1    scux.ioc_word            toehold_save_dcls_:       404.
+       20000    scux.ipr                 toehold_save_dcls_:       411.
+           1    scux.ipr_word            toehold_save_dcls_:       410.
+      400000    scux.isn                 toehold_save_dcls_:       403.
+           1    scux.isn_word            toehold_save_dcls_:       402.
+       40000    scux.isp                 toehold_save_dcls_:       409.
+           1    scux.isp_word            toehold_save_dcls_:       408.
+       10000    scux.nea                 toehold_save_dcls_:       413.
+           1    scux.nea_word            toehold_save_dcls_:       412.
+        4000    scux.oobb                toehold_save_dcls_:       415.
+           1    scux.oobb_word           toehold_save_dcls_:       414.
+        7777    scux.tsr_stat_mask       toehold_save_dcls_:       419.
+           6    scux.tsr_stat_shift      toehold_save_dcls_:       418.
+           3    scux.tsr_stat_word       toehold_save_dcls_:       417.
+          10    scux_size                toehold_save_dcls_:       397.
+          10    scu_size                 toehold_save_dcls_:       205.
+           1    SC_CFG                   toehold:      325,  335,  583,
+                                         scr:           14.
+           4    SC_ETC                   toehold:      296,  718,  726,  741,  745,
+                                         scr:           17.
+           3    SC_IC                    toehold:      299,  586,
+                                         scr:           16.
+           0    SC_MR                    toehold:      321,
+                                         scr:           13.
+           2    SC_MSK                   scr:           15.
+           6    SC_SU                    scr:           18.
+        1764    seeks_done               toehold:      174,  636,  656,  658.
+         250    seeks_used               toehold:      122,  659.
+           5    seek_dcws_index          toehold:      198,  635,  639,  655,  685,  688,  690.
+           2    seek_return_index        toehold:      201,  642,  750.
+           6    seg                      bootload_equs:       18.
+           1    seg2                     bootload_equs:       13.
+        2270    set_new_state            toehold:      506,  509,  511.
+        2111    skip_mask_set            toehold:      323,  337.
+           3    slt                      bootload_equs:       15.
+           7    slt_segno_               coll0_segnos:        11.
+        2062    smcm_loop                toehold:      307,  314.
+           6    special_status_channel   iom_data:     127.
+           6    spx                      toehold_save_dcls_:       199.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       toehold:      501,
+                                               stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   toehold:      494,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+        1660    status                   toehold:      135,  644,  696,  711,  723,  733.
+        2504    status_delay             toehold:      744,  748.
+        1752    status_mask              toehold:      156,  646.
+           0    status_queue.status      iom_data:     106.
+          14    status_queue_size        iom_data:     104.
+        2470    status_wait              toehold:      722,  728.
+        1772    switch_entry             toehold:       65,  211.
+           1    system_fault_channel     iom_data:     125.
+        1742    temp                     toehold:      146,  239,  242,  348,  349,  369,  370,  376.
+        1740    temp_mode_reg            toehold:      144,  235,  344.
+        1720    temp_scu                 toehold:       64,   68,   72,   76,   80,  140,  248,  249,  339.
+        1756    thirty_secs              toehold:      161,  719.
+       46000    toedata_absloc           toehold:      445,  487,  564,
+                                         bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+         245    toehold.bce_cache_mode_reg     toehold_save_dcls_:        37.
+         242    toehold.bce_dbr          toehold:      106,
+                                         toehold_save_dcls_:        35.
+         244    toehold.bce_mode_reg     toehold:      109,
+                                         toehold_save_dcls_:        36.
+         247    toehold.dcws_per_cyl     toehold_save_dcls_:        41.
+         247    toehold.dcw_list_size    toehold:      117,
+                                         toehold_save_dcls_:        40.
+           0    toehold.entry_sequences  toehold_save_dcls_:        27.
+         246    toehold.esd_segnum       toehold:      113,
+                                         toehold_save_dcls_:        38.
+          40    toehold.flagbox          toehold:       87,
+                                         toehold_save_dcls_:        28.
+        1660    toehold.handler_code     toehold:      133,
+                                         toehold_save_dcls_:        46.
+         655    toehold.handler_dcws     toehold:      129,
+                                         toehold_save_dcls_:        45.
+         140    toehold.handler_mc       toehold:       90,
+                                         toehold_save_dcls_:        29.
+         241    toehold.memory_state     toehold:      102,
+                                         toehold_save_dcls_:        34.
+        2760    toehold.multics_state    toehold:      768,
+                                         toehold_save_dcls_:        47.
+         240    toehold.n_paths_used     toehold:       98,
+                                         toehold_save_dcls_:        33.
+         220    toehold.paths            toehold:       94,
+                                         toehold_save_dcls_:        31.
+         251    toehold.save_dcws        toehold:      125,
+                                         toehold_save_dcls_:        44.
+         250    toehold.seeks_used       toehold:      121,
+                                         toehold_save_dcls_:        43.
+          10    toehold_data_segno_      coll0_segnos:        12.
+           1    toehold_segno_           coll0_segnos:         5.
+        4000    toehold_size             toehold_save_dcls_:        24.
+       24000    toe_absloc               toehold:       64,   65,   68,   69,   72,   73,   76,   77,   80,   81,   85,  212,
+                                                       215,  218,  221,  224,  228,  235,  236,  237,  238,  239,  242,  245,
+                                                       246,  248,  249,  254,  255,  257,  259,  261,  263,  265,  267,  268,
+                                                       271,  272,  275,  276,  279,  280,  282,  284,  285,  287,  288,  297,
+                                                       300,  309,  314,  320,  323,  326,  327,  328,  334,  339,  340,  342,
+                                                       343,  344,  345,  347,  348,  349,  350,  356,  366,  368,  369,  370,
+                                                       372,  374,  376,  378,  380,  389,  391,  393,  395,  397,  400,  401,
+                                                       402,  403,  405,  406,  407,  408,  410,  411,  412,  414,  415,  416,
+                                                       418,  419,  420,  440,  442,  448,  449,  454,  461,  463,  466,  469,
+                                                       472,  477,  479,  485,  490,  491,  492,  493,  500,  504,  506,  509,
+                                                       512,  514,  515,  516,  517,  518,  525,  528,  531,  534,  536,  538,
+                                                       547,  549,  556,  558,  562,  567,  570,  574,  575,  581,  585,  592,
+                                                       596,  598,  599,  601,  602,  605,  607,  608,  610,  621,  626,  632,
+                                                       633,  636,  639,  642,  644,  645,  646,  647,  651,  652,  655,  656,
+                                                       658,  659,  660,  667,  674,  678,  679,  682,  683,  685,  686,  687,
+                                                       688,  690,  696,  701,  706,  709,  711,  712,  714,  716,  719,  720,
+                                                       723,  724,  727,  728,  733,  735,  742,  746,  748,  763,
+                                         bootload_equs:       81.
+         242    toe_hold.bce_dbr         toehold_save_dcls_:        77.
+           0    toe_hold.entry_sequences       toehold_save_dcls_:        71.
+          40    toe_hold.flagbox         toehold_save_dcls_:        72.
+         241    toe_hold.memory_state    toehold_save_dcls_:        76.
+        2760    toe_hold.multics_state   toehold_save_dcls_:        78.
+         240    toe_hold.n_paths_used    toehold_save_dcls_:        75.
+         220    toe_hold.paths           toehold_save_dcls_:        73.
+           5    TOE_HOLD_BOOT_ENTRY      toehold:       83,
+                                         toehold_save_dcls_:       101.
+          14    TOE_HOLD_BOS_ENTRY       toehold_save_dcls_:       102.
+          16    TOE_HOLD_BOS_MULTICS_ENTRY     toehold_save_dcls_:       104.
+          15    TOE_HOLD_BOS_NO_SAVE_ENTRY     toehold_save_dcls_:       103.
+           0    TOE_HOLD_CRASH_ENTRY     toehold:       63,
+                                         toehold_save_dcls_:        96.
+           2    TOE_HOLD_DUMP_ENTRY      toehold:       71,
+                                         toehold_save_dcls_:        98.
+           1    TOE_HOLD_ESD_ENTRY       toehold:       67,
+                                         toehold_save_dcls_:        97.
+           3    TOE_HOLD_MULTICS_ENTRY   toehold:       75,
+                                         toehold_save_dcls_:        99.
+           4    TOE_HOLD_RESTART_ENTRY   toehold:       79,
+                                         toehold_save_dcls_:       100.
+        4000    toe_hold_size            toehold_save_dcls_:        69.
+        4000    toe_lth                  bootload_equs:       82.
+          13    toe_segno_               coll0_segnos:        15.
+        2370    try_another_path         toehold:      631,  651.
+        2360    try_first_path           toehold:      620,  652.
+        1762    turn_off_cache           toehold:      168,  237.
+        1761    turn_off_hregs           toehold:      166,  236.
+          10    Undefined_continue       toehold:      546,
+                                         toehold_save_dcls_:       138.
+           5    Undefined_reading_bce    toehold:      465,
+                                         toehold_save_dcls_:       135.
+          11    Undefined_saving_mem     toehold:      264,  453,
+                                         toehold_save_dcls_:       139.
+           4    Undefined_saving_state   toehold:      262,  281,
+                                         toehold_save_dcls_:       134.
+       52000    upt_absloc               bootload_equs:       93.
+        2000    upt_lth                  bootload_equs:       94.
+          12    upt_segno_               coll0_segnos:        14.
+        1763    which_entry              toehold:      171,  245,  287,  469.
+        2226    write_Multics            toehold:      276,  456.
+        2511    zap_smcm                 toehold:      267,  271,  275,  549,  754.
+        2513    zap_smcm_loop            toehold:      758,  763.
+           5    zap_smcm_return_index    toehold:      194,  267,  271,  275,  549,  764.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

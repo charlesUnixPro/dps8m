@@ -1,0 +1,1111 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>record_io_.alm                                                                                                                                       
+ASSEMBLED ON:	11/11/89  0940.5 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  "	Operator to interface with record I/O programs. Entered with job in register a.
+                                    13  "	Bulk of code is to handle quick record i/o.
+    000000                          14  	name 	record_io_
+                                    15  	include	stack_frame
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   1-3  "
+                                   1-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   1-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   1-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   1-7  "
+                        000020     1-8  	equ	stack_frame.prev_sp,16
+                        000020     1-9  	equ	stack_frame.condition_word,16
+                        000022    1-10  	equ	stack_frame.next_sp,18
+                        000022    1-11  	equ	stack_frame.signaller_word,18
+                        000024    1-12  	equ	stack_frame.return_ptr,20
+                        000026    1-13  	equ	stack_frame.entry_ptr,22
+                        000030    1-14  	equ	stack_frame.operator_ptr,24
+                        000030    1-15  	equ	stack_frame.lp_ptr,24
+                        000032    1-16  	equ	stack_frame.arg_ptr,26
+                        000034    1-17  	equ	stack_frame.static_ptr,28
+                        000035    1-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    1-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    1-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    1-21  	equ	stack_frame.translator_id,31
+                        000040    1-22  	equ	stack_frame.regs,32
+                        000060    1-23  	equ	stack_frame.min_length,48
+                        000020    1-24  	equ	stack_frame.flag_word,16
+                        020000    1-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    1-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    1-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    1-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    1-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    1-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    1-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    1-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  1-33  
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  1-36  "
+                                    16  	include	iocbx
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE iocbx.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 01/28/83  1429.8 est Fri by convert_include_file,
+                                   2-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   2-8  
+                                   2-9  	"Made from >user_dir_dir>Multics>SKrupp>work>s>iocbx.incl.pl1,
+                                  2-10  	"   modified 01/28/83  1427.0 est Fri
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure iocb
+                                  2-14  "
+                        000156    2-15  	equ	iocb_size,110
+                                  2-16  
+                                  2-17  
+                        000000    2-18  	equ	iocb.version,0
+                        000001    2-19  	equ	iocb.name,1
+                        000012    2-20  	equ	iocb.actual_iocb_ptr,10
+                        000014    2-21  	equ	iocb.attach_descrip_ptr,12
+                        000016    2-22  	equ	iocb.attach_data_ptr,14
+                        000020    2-23  	equ	iocb.open_descrip_ptr,16
+                        000022    2-24  	equ	iocb.open_data_ptr,18
+                        000024    2-25  	equ	iocb.event_channel,20	" DOUBLE
+                        000026    2-26  	equ	iocb.detach_iocb,22
+                        000032    2-27  	equ	iocb.open,26
+                        000036    2-28  	equ	iocb.close,30
+                        000042    2-29  	equ	iocb.get_line,34
+                        000046    2-30  	equ	iocb.get_chars,38
+                        000052    2-31  	equ	iocb.put_chars,42
+                        000056    2-32  	equ	iocb.modes,46
+                        000062    2-33  	equ	iocb.position,50
+                        000066    2-34  	equ	iocb.control,54
+                        000072    2-35  	equ	iocb.read_record,58
+                        000076    2-36  	equ	iocb.write_record,62
+                        000102    2-37  	equ	iocb.rewrite_record,66
+                        000106    2-38  	equ	iocb.delete_record,70
+                        000112    2-39  	equ	iocb.seek_key,74
+                        000116    2-40  	equ	iocb.read_key,78
+                        000122    2-41  	equ	iocb.read_length,82
+                        000126    2-42  	equ	iocb.open_file,86
+                        000132    2-43  	equ	iocb.close_file,90
+                        000136    2-44  	equ	iocb.detach,94
+                        000142    2-45  	equ	iocb.ios_compatibility,98
+                        000144    2-46  	equ	iocb.syn_inhibits,100
+                        000146    2-47  	equ	iocb.syn_father,102
+                        000150    2-48  	equ	iocb.syn_brother,104
+                        000152    2-49  	equ	iocb.syn_son,106
+                        000154    2-50  	equ	iocb.hash_chain_ptr,108
+                                  2-51  
+                                  2-52       "END INCLUDE FILE iocbx.incl.alm
+                                    17  	include	plio2_psr
+                                   3-1  
+                                   3-2  
+                                   3-3       "BEGIN INCLUDE FILE plio2_psr.incl.alm
+                                   3-4  
+                                   3-5  	"Created 07/08/77  1415.7 edt Fri by convert_include_file,
+                                   3-6  	"   Version of 03/21/77  1355.7 edt Mon.
+                                   3-7  
+                                   3-8  	"Made from >exl>include>plio2_psr.incl.pl1,
+                                   3-9  	"   modified 07/08/77  1415.7 edt Fri
+                                  3-10  
+                                  3-11  "
+                                  3-12  "	Structure psr
+                                  3-13  "
+                        000161    3-14  	equ	psr_size,113
+                                  3-15  
+                                  3-16  
+                        000012    3-17  	equ	psr.ab_return,10		"LEVEL 2
+                                  3-18  
+                        000012    3-19  	equ	psr.abret,10
+                        000020    3-20  	equ	psr.source_p,16
+                        000022    3-21  	equ	psr.set_p_p,18
+                        000025    3-22  	equ	psr.variable_bitlen,21
+                        000026    3-23  	equ	psr.job,22		"LEVEL 2
+                                  3-24  
+                        400000    3-25  	bool	psr.explicit_file,400000	"DU
+                        200000    3-26  	bool	psr.string,200000		"DU
+                        100000    3-27  	bool	psr.varying_string,100000	"DU
+                        040000    3-28  	bool	psr.data,040000		"DU
+                        020000    3-29  	bool	psr.edit,020000		"DU
+                        010000    3-30  	bool	psr.list,010000		"DU
+                        004000    3-31  	bool	psr.get,004000		"DU
+                        002000    3-32  	bool	psr.put,002000		"DU
+                        001000    3-33  	bool	psr.page,001000		"DU
+                        000400    3-34  	bool	psr.line,000400		"DU
+                        000200    3-35  	bool	psr.skip,000200		"DU
+                        000100    3-36  	bool	psr.copy,000100		"DU
+                        000040    3-37  	bool	psr.p1p2,000040		"DU
+                        000020    3-38  	bool	psr.bit_string,000020	"DU
+                        000010    3-39  	bool	psr.char_string,000010	"DU
+                        000004    3-40  	bool	psr.read,000004		"DU
+                        000002    3-41  	bool	psr.write,000002		"DU
+                        000001    3-42  	bool	psr.rewrite,000001		"DU
+                        400000    3-43  	bool	psr.delete,400000		"DL
+                        200000    3-44  	bool	psr.locate,200000		"DL
+                        100000    3-45  	bool	psr.key,100000		"DL
+                        040000    3-46  	bool	psr.keyto,040000		"DL
+                        020000    3-47  	bool	psr.keyfrom,020000		"DL
+                        010000    3-48  	bool	psr.set,010000		"DL
+                        004000    3-49  	bool	psr.into,004000		"DL
+                        002000    3-50  	bool	psr.ignore,002000		"DL
+                        001000    3-51  	bool	psr.from,001000		"DL
+                        000003    3-52  	equ	psr.version_shift,3
+                        000077    3-53  	bool	psr.version_mask,000077
+                        000004    3-54  	bool	psr.not_bytebuffer,000004	"DL
+                        000002    3-55  	bool	psr.varying_array,000002	"DL
+                        000001    3-56  	bool	psr.packedptr,000001	"DL
+                                  3-57  
+                        000027    3-58  	equ	psr.number,23
+                        000030    3-59  	equ	psr.variable_p,24
+                        000035    3-60  	equ	psr.locking_switch,29
+                        000036    3-61  	equ	psr.new_format,30
+                        000040    3-62  	equ	psr.file_p,32
+                        000042    3-63  	equ	psr.fsbp,34
+                        000044    3-64  	equ	psr.auxp,36
+                        000046    3-65  	equ	psr.fabp,38
+                        000050    3-66  	equ	psr.fab2p,40
+                        000057    3-67  	equ	psr.pl1_ops_flags,47	"LEVEL 2
+                                  3-68  
+                        400000    3-69  	bool	psr.keyto_keyset,400000	"DU
+                                  3-70  
+                        000060    3-71  	equ	psr.keytemp,48		"DOUBLE
+                                  3-72  
+                                  3-73  "	The following declaration was not created by cif:
+                        000770    3-74  	bool	psr.version_mask_inplace,000770	"don't shift with this mask
+                                  3-75  
+                                  3-76       "END INCLUDE FILE plio2_psr.incl.alm
+                                    18  	include	plio2_fsb
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE plio2_fsb.incl.alm
+                                   4-4  
+                                   4-5  	"Created 06/27/77  1703.1 edt Mon by convert_include_file,
+                                   4-6  	"   Version of 03/21/77  1355.7 edt Mon.
+                                   4-7  
+                                   4-8  	"Made from >exl>include>plio2_fsb.incl.pl1,
+                                   4-9  	"   modified 05/19/77  1743.9 edt Thu
+                                  4-10  
+                                  4-11  "
+                                  4-12  "	Structure fsb
+                                  4-13  "
+                        000442    4-14  	equ	fsb_size,290
+                                  4-15  
+                                  4-16  
+                        000000    4-17  	equ	fsb.switch,0		"LEVEL 2
+                                  4-18  
+                        400000    4-19  	bool	fsb.zot,400000		"DU
+                        100000    4-20  	bool	fsb.version_2,100000	"DU
+                        040000    4-21  	bool	fsb.open,040000		"DU
+                        020000    4-22  	bool	fsb.print,020000		"DU
+                        010000    4-23  	bool	fsb.input,010000		"DU
+                        004000    4-24  	bool	fsb.output,004000		"DU
+                        002000    4-25  	bool	fsb.update,002000		"DU
+                        001000    4-26  	bool	fsb.stream,001000		"DU
+                        000400    4-27  	bool	fsb.notkeyed,000400		"DU
+                        000200    4-28  	bool	fsb.record,000200		"DU
+                        000100    4-29  	bool	fsb.sequential,000100	"DU
+                        000040    4-30  	bool	fsb.direct,000040		"DU
+                        000020    4-31  	bool	fsb.interactive,000020	"DU
+                        000010    4-32  	bool	fsb.not_used_1,000010	"DU
+                        000004    4-33  	bool	fsb.not_used_2,000004	"DU
+                        000002    4-34  	bool	fsb.stringvalue,000002	"DU
+                        000001    4-35  	bool	fsb.keyed,000001		"DU
+                        400000    4-36  	bool	fsb.namelist,400000		"DL
+                        200000    4-37  	bool	fsb.implementation,200000	"DL
+                        100000    4-38  	bool	fsb.not_used_4,100000	"DL
+                        040000    4-39  	bool	fsb.transmit_error,040000	"DL
+                        020000    4-40  	bool	fsb.buffer_in_use,020000	"DL
+                        010000    4-41  	bool	fsb.copy,010000		"DL
+                        004000    4-42  	bool	fsb.detach,004000		"DL
+                        002000    4-43  	bool	fsb.te_hold,002000		"DL
+                        001000    4-44  	bool	fsb.not_used_5,001000	"DL
+                        000400    4-45  	bool	fsb.internal,000400		"DL
+                        000200    4-46  	bool	fsb.threaded,000200		"DL
+                        000100    4-47  	bool	fsb.fsb_in_use,000100	"DL
+                        000040    4-48  	bool	fsb.console,000040		"DL
+                        000020    4-49  	bool	fsb.emptyline,000020	"DL
+                        000010    4-50  	bool	fsb.iox_close,000010	"DL
+                        000004    4-51  	bool	fsb.xxx4,000004		"DL
+                        000002    4-52  	bool	fsb.xxx5,000002		"DL
+                        000001    4-53  	bool	fsb.xxx6,000001		"DL
+                                  4-54  
+                        000001    4-55  	equ	fsb.nono,1		"LEVEL 2
+                                  4-56  
+                        400000    4-57  	bool	fsb.bit_string,400000	"DU
+                        200000    4-58  	bool	fsb.not_used_3,200000	"DU
+                        100000    4-59  	bool	fsb.read,100000		"DU
+                        040000    4-60  	bool	fsb.write,040000		"DU
+                        020000    4-61  	bool	fsb.rewrite,020000		"DU
+                        010000    4-62  	bool	fsb.delete,010000		"DU
+                        004000    4-63  	bool	fsb.locate,004000		"DU
+                        002000    4-64  	bool	fsb.key,002000		"DU
+                        001000    4-65  	bool	fsb.keyto,001000		"DU
+                        000400    4-66  	bool	fsb.keyfrom,000400		"DU
+                        000200    4-67  	bool	fsb.set,000200		"DU
+                        000100    4-68  	bool	fsb.into,000100		"DU
+                        000040    4-69  	bool	fsb.ignore,000040		"DU
+                        000020    4-70  	bool	fsb.from,000020		"DU
+                        000010    4-71  	bool	fsb.nofrom,000010		"DU
+                        000004    4-72  	bool	fsb.nokey,000004		"DU
+                        000002    4-73  	bool	fsb.nokeyfrom,000002	"DU
+                        000001    4-74  	bool	fsb.nolock,000001		"DU
+                                  4-75  
+                        000002    4-76  	equ	fsb.lsep,2
+                        000003    4-77  	equ	fsb.iocb_p,3
+                        000004    4-78  	equ	fsb.blc,4
+                        000005    4-79  	equ	fsb.bsize,5
+                        000006    4-80  	equ	fsb.bptr,6
+                        000010    4-81  	equ	fsb.bnc,8
+                        000011    4-82  	equ	fsb.kol,9
+                        000012    4-83  	equ	fsb.lsize,10
+                        000013    4-84  	equ	fsb.lineno,11
+                        000014    4-85  	equ	fsb.psize,12
+                        000015    4-86  	equ	fsb.pageno,13
+                        000016    4-87  	equ	fsb.limit,14
+                        000017    4-88  	equ	fsb.lnzc,15
+                        000020    4-89  	equ	fsb.filename,16		"DOUBLE
+                        000030    4-90  	equ	fsb.title,24		"DOUBLE
+                        000040    4-91  	equ	fsb.fsb_thread,32
+                        000042    4-92  	equ	fsb.buffer,34
+                        000366    4-93  	equ	fsb.path_name,246		"DOUBLE
+                        000440    4-94  	equ	fsb.declared_attributes,288
+                                  4-95  
+                                  4-96  "	The following declarations were not created by cif:
+                        400000    4-97  	bool	fsb.zot1,400000		"DU
+                        200000    4-98  	bool	fsb.zot2,200000		"DU
+                                  4-99  
+                                 4-100       "END INCLUDE FILE plio2_fsb.incl.alm
+                        000064      19  	equ	io_arg_list,52	all equ's in this program come from pl1_operators_
+                        000046      20  	equ	tbp,38		loc of ptr to base of text
+                        000052      21  	equ	ps_ptr,42		loc of ptr to PS
+                        000054      22  	equ	t6,44
+                        000055      23  	equ	t7,45
+                        000056      24  	equ	double_temp,46
+                        000063      25  	equ	t3,51
+                                    26  "
+                                    27  "	The following declarations may be removed when a
+                                    28  "	fsbr include file is generated.
+                                    29  "
+                        000002      30  	equ	fsbr.recio,fsb.lsep	these overlay same word
+                        200000      31  	bool	fsbr.rec_valid,200000
+                                    32  "
+                        000000      33  	segdef	record_io
+                                    34  "
+                                    35  "	Program to filter "quick" record I/O operations from "slow" ones.
+                                    36  "	Calling sequence:
+                                    37  "		lda	job_bits
+                                    38  "		tsx0	ap|record_io_op
+                                    39  "
+    000000                          40  record_io:
+    000000  aa  6 00052 3501 20     41  	eppap	sp|ps_ptr,*
+    000001  aa  0 00012 2521 00     42  	spribp	ap|psr.ab_return
+    000002  aa  0 00014 6521 00     43  	sprisp	ap|psr.ab_return+2
+    000003  aa  0 00026 7551 00     44  	sta	ap|psr.job		save the job bits
+    000004  aa   000770 3150 07     45  	cana	psr.version_mask_inplace,dl	check version
+    000005  0a   000174 6000 00     46  	tze	slow		we only handle version>0
+    000006  0a   000304 3750 00     47  	ana	=v18/-1-psr.explicit_file-psr.varying_string,18/-1-psr.key-psr.keyto-psr.keyfrom-psr.version_mask_inplace
+    000007  0a   000305 1150 00     48  	cmpa	=v18/psr.read,18/psr.into
+    000010  aa   000003 6010 04     49  	tnz	3,ic
+    000011  aa   000000 6210 00     50  	eax1	0		= read stmnt
+    000012  0a   000026 7100 00     51  	tra	quick
+    000013  0a   000306 1150 00     52  	cmpa	=v18/psr.write,18/psr.from
+    000014  aa   000003 6010 04     53  	tnz	3,ic
+    000015  aa   000001 6210 00     54  	eax1	1		= write stmnt
+    000016  0a   000026 7100 00     55  	tra	quick
+    000017  0a   000307 1150 00     56  	cmpa	=v18/psr.rewrite,18/psr.from
+    000020  aa   000003 6010 04     57  	tnz	3,ic
+    000021  aa   000002 6210 00     58  	eax1	2		= rewrite stmnt
+    000022  0a   000026 7100 00     59  	tra	quick
+    000023  aa   400000 1150 07     60  	cmpa	psr.delete,dl
+    000024  0a   000174 6010 00     61  	tnz	slow
+    000025  aa   000003 6210 00     62  	eax1	3		= delete stmnt
+                                    63  "
+    000026  aa  0 00020 3701 20     64  quick:	epp4	ap|psr.source_p,*	now to get fsb bits
+    000027  aa  4 00002 3701 20     65  	epp4	pr4|2,*		fsb ptr is 2 wds up
+    000030  aa  0 00042 6501 00     66  	spri4	ap|psr.fsbp
+    000031  aa  4 00000 2351 00     67  	lda	pr4|fsb.switch
+    000032  0a   000310 3750 00     68  	ana	=v18/-1-fsb.zot1-fsb.zot2-fsb.not_used_1,18/-1-fsb.detach-fsb.iox_close
+    000033  aa  0 00026 2361 00     69  	ldq	ap|psr.job		we need unclobbered job bits
+    000034  aa   160000 3160 07     70  	canq	psr.key+psr.keyto+psr.keyfrom,dl
+    000035  0a   000176 6010 00     71  	tnz	keyed_job
+                                    72  "
+    000036                          73  good_key:
+    000036  aa   000000 6260 00     74  	eax6	0		x6=1 if stringvalue
+    000037  aa   100000 3160 03     75  	canq	psr.varying_string,du
+    000040  0a   000044 6000 00     76  	tze	not_var
+    000041  aa   000002 3150 03     77  	cana	fsb.stringvalue,du
+    000042  0a   000174 6000 00     78  	tze	slow
+    000043  aa   000001 6260 00     79  	eax6	1		stringvalue
+                                    80  "
+    000044  0a   000311 3750 00     81  not_var:	ana	=v18/-1-fsb.version_2-fsb.stringvalue,18/-1-fsb.implementation-fsb.internal-fsb.threaded
+    000045  0a   000054 1150 11     82  	cmpa	fsb_masks,1
+    000046  0a   000060 6000 11     83  	tze	action,1
+    000047  aa   000002 1010 03     84  	cmpx1	2,du		still could be read/update or write/update
+    000050  0a   000174 6050 00     85  	tpl	slow
+    000051  0a   000056 1150 00     86  	cmpa	fsb_masks+2	is it read or write update?
+    000052  0a   000060 6000 11     87  	tze	action,1
+    000053  0a   000174 7100 00     88  	tra	slow
+                                    89  "
+    000054                          90  fsb_masks:
+    000054  aa   050700 000020      91  	zero	fsb.open+fsb.input+fsb.notkeyed+fsb.record+fsb.sequential,fsb.emptyline
+    000055  aa   044700 000020      92  	zero	fsb.open+fsb.output+fsb.notkeyed+fsb.record+fsb.sequential,fsb.emptyline
+    000056  aa   042700 000020      93  	zero	fsb.open+fsb.update+fsb.notkeyed+fsb.record+fsb.sequential,fsb.emptyline
+    000057  aa   042700 000020      94  	oct	042700000020	open/update/threaded/emptyline	(NU)
+                                    95  "
+    000060  0a   000076 7100 00     96  action:	tra	quick_read
+    000061  0a   000067 7100 00     97  	tra	quick_write
+    000062  0a   000067 7100 00     98  	tra	quick_write
+                                    99  "
+    000063                         100  quick_delete:
+    000063  aa   010000 4310 07    101  	fld	2048*2,dl
+    000064  aa  6 00064 7571 00    102  	staq	sp|io_arg_list
+    000065  aa  6 00063 3535 00    103  	epp3	sp|t3
+    000066  0a   000112 7100 00    104  	tra	dl_too
+                                   105  "
+    000067                         106  quick_write:
+    000067  aa   020000 4310 07    107  	fld	2*1024*4,dl
+    000070  aa  6 00064 7571 00    108  	staq	sp|io_arg_list
+    000071  aa   000000 1060 03    109  	cmpx6	0,du		stringvalue?
+    000072  0a   000102 6000 00    110  	tze	simple_length
+    000073  aa  0 00030 3535 20    111  	epp3	ap|psr.variable_p,*		
+    000074  aa  3 77777 2361 00    112  	ldq	pr3|-1		length field
+    000075  0a   000104 7100 00    113  	tra	make_call
+                                   114  "
+    000076                         115  quick_read:
+    000076  aa   024000 4310 07    116  	fld	2*1024*5,dl	arg_list header = 2*number of args
+    000077  aa  6 00064 7571 00    117  	staq	sp|io_arg_list
+    000100  aa  6 00055 3535 00    118  	epp3	sp|t7		t7 = status code of read stmnt
+    000101  aa  6 00076 2535 00    119  	spri3	sp|io_arg_list+10
+                                   120  "
+    000102                         121  simple_length:
+    000102  aa  0 00025 2361 00    122  	ldq	ap|psr.variable_bitlen		
+    000103  aa   000011 5060 07    123  	div	9,dl		byte_length
+                                   124  "
+    000104                         125  make_call:
+    000104  aa  6 00054 7561 00    126  	stq	sp|t6		t6 = length (output to iox_)
+    000105  aa  6 00063 3535 00    127  	epp3	sp|t3		t3 = length(read stmnt),status(other)
+    000106  aa  6 00074 2535 00    128  	spri3	sp|io_arg_list+8
+    000107  aa  6 00054 3535 00    129  	epp3	sp|t6
+    000110  aa  6 00072 2535 00    130  	spri3	sp|io_arg_list+6
+    000111  aa  0 00030 3535 00    131  	epp3	ap|psr.variable_p		
+                                   132  "
+    000112  aa  6 00070 2535 00    133  dl_too:	spri3	sp|io_arg_list+4
+    000113  aa  4 00003 7651 00    134  	lprp5	pr4|fsb.iocb_p	p4->fsb, offset iocb_p (packed ptr)
+    000114  aa  6 00056 6515 00    135  	spri5	sp|double_temp	packed ptr must become unpacked
+    000115  aa  6 00056 3535 00    136  	epp3	sp|double_temp
+    000116  aa  6 00066 2535 00    137  	spri3	sp|io_arg_list+2
+    000117  aa   000000 6350 11    138  	eaa	0,1
+    000120  aa   000002 7350 00    139  	als	2		to multiply x1*4(4 words per entry var)
+    000121  aa  5 00072 3521 21    140  	eppbp	pr5|iocb.read_record,au*	bp -> the correct entry var. in iocb
+    000122  aa  6 00010 7531 00    141  	sreg	sp|8
+    000123  aa  6 00064 3501 00    142  	eppap	sp|io_arg_list
+    000124  aa  6 00024 3571 00    143  	stcd	sp|stack_frame.return_ptr
+    000125  aa  2 00000 7131 00    144  	callsp	bp|0
+    000126  aa  6 00010 0731 00    145  	lreg	sp|8
+    000127  aa   000000 1010 03    146  	cmpx1	0,du		read?
+    000130  0a   000150 6000 00    147  	tze	read_rtn
+    000131  aa  6 00063 2351 00    148  	lda	sp|t3		check status code(not read stmnt)
+    000132  0a   000164 6000 00    149  	tze	ret_to_caller
+    000133  aa  6 00063 3535 00    150  	epp3	sp|t3		get ptr to status for error call
+                                   151  "
+    000134                         152  error_call:
+    000134  aa  6 00070 2535 00    153  	spri3	sp|io_arg_list+4	2nd arg is status code
+    000135  aa  6 00010 7531 00    154  	sreg	sp|8		be prepared for a return from error
+    000136  aa   010000 4310 07    155  	fld	2*1024*2,dl
+    000137  aa  6 00064 7571 00    156  	staq	sp|io_arg_list
+    000140  aa  6 00052 3521 00    157  	eppbp	sp|ps_ptr		1st arg is ptr to ps
+    000141  aa  6 00066 2521 00    158  	spribp	sp|io_arg_list+2
+    000142  aa  6 00064 3501 00    159  	eppap	sp|io_arg_list
+    000143  4a  4 00010 7011 20    160  	tsx1	<pl1_operators_>|[get_our_lp]
+    000144  aa  6 00024 3571 00    161  	stcd	sp|stack_frame.return_ptr
+    000145  4a  4 00012 7131 20    162  	callsp	<plio2_recio_>|[error]
+    000146  aa  6 00010 0731 00    163  	lreg	sp|8
+    000147  0a   000164 7100 00    164  	tra	ret_to_caller
+                                   165  "
+    000150                         166  read_rtn:	
+    000150  aa  6 00055 2351 00    167  	lda	sp|t7
+    000151  0a   000172 6010 00    168  	tnz	read_error	if status^=0 its an error
+    000152  aa  6 00052 3701 20    169  	epp4	sp|ps_ptr,*	ap has been clobbered & we must get ps
+    000153  aa  4 00042 3701 20    170  	epp4	pr4|psr.fsbp,*
+    000154  aa   200000 2350 03    171  	lda	fsbr.rec_valid,du		since it was a successful read, set flag
+    000155  aa  4 00002 2551 00    172  	orsa	pr4|fsbr.recio
+    000156  aa  6 00063 2351 00    173  	lda	sp|t3		get returned length
+    000157  aa   000001 1060 03    174  	cmpx6	1,du		stringvalue?
+    000160  0a   000170 6010 00    175  	tnz	check_len
+    000161  aa  6 00070 3535 20    176  	epp3	sp|io_arg_list+4,*	get ptr to target variable
+    000162  aa  3 00000 3535 20    177  	epp3	pr3|0,*
+    000163  aa  3 77777 7551 00    178  	sta	pr3|-1		put returned length in length field of target var
+                                   179  "
+    000164                         180  ret_to_caller:
+    000164  aa  6 00046 3501 70    181  	eppap	sp|tbp,*0
+    000165  aa  6 00024 2501 00    182  	spriap	sp|stack_frame.return_ptr
+    000166  4a  4 00014 3501 20    183  	eppap	<pl1_operators_>|[operator_table]
+    000167  aa  6 00046 7101 70    184  	tra	sp|tbp,*0
+                                   185  "
+    000170                         186  check_len:
+    000170  aa  6 00054 1151 00    187  	cmpa	sp|t6		targ.len.=returned length?
+    000171  0a   000164 6000 00    188  	tze	ret_to_caller	if they're equal we're through
+                                   189  "
+    000172                         190  read_error:
+    000172  aa  6 00055 3535 00    191  	epp3	sp|t7		get ptr to status for error call
+    000173  0a   000134 7100 00    192  	tra	error_call
+                                   193  "
+    000174  aa   000007 6260 00    194  slow:	eax6	7
+    000175  4a  4 00016 7101 20    195  	tra	<pl1_operators_>|[plio4]
+                                   196  "
+    000176                         197  keyed_job:
+    000176  0a   000312 3750 00    198  	ana	=o077625573567	zero zots,v2,seq,dir,buf'd,str_val,env,threaded,detach,iox_closeHELP!!!
+    000177  aa   040000 3160 07    199  	canq	psr.keyto,dl
+    000200  0a   000206 6000 00    200  	tze	seek_key_call	cant be a read keyto
+    000201  aa   000004 6210 00    201  	eax1	4		table lookup for a read_keyto job string
+    000202  aa   000005 6260 00    202  	eax6	5		will be a call to read_key
+    000203  0a   000313 2360 00    203  	ldq	=v18/-1-psr.keyto_keyset,18/-1	turn keyset flag OFF
+    000204  aa  0 00057 3561 00    204  	ansq	ap|psr.pl1_ops_flags	keyset is zero till keytemp is filled
+    000205  0a   000207 7100 00    205  	tra	seek_key_call+1
+                                   206  "
+    000206                         207  seek_key_call:
+    000206  aa   000004 6260 00    208  	eax6	4		will be a call to seek_key
+    000207  0a   000220 1150 11    209  	cmpa	fsb_key_masks,1
+    000210  0a   000225 6000 00    210  	tze	key_call
+    000211  aa   000002 1010 03    211  	cmpx1	2,du		could be read/key or write/keyfrom on update file
+    000212  aa   000003 6040 04    212  	tmi	3,ic		
+    000213  aa   000004 1010 03    213  	cmpx1	4,du		could be read/keyto on update file
+    000214  0a   000174 6010 00    214  	tnz	slow
+    000215  0a   000222 1150 00    215  	cmpa	fsb_key_masks+2
+    000216  0a   000225 6000 00    216  	tze	key_call
+    000217  0a   000174 7100 00    217  	tra 	slow		give up
+                                   218  "
+    000220                         219  fsb_key_masks:
+    000220  aa   050201 000020     220  	zero	fsb.open+fsb.input+fsb.record+fsb.keyed,fsb.emptyline	READ KEY
+    000221  aa   044201 000020     221  	zero	fsb.open+fsb.output+fsb.record+fsb.keyed,fsb.emptyline	WRITE KEY
+    000222  aa   042201 000020     222  	zero	fsb.open+fsb.update+fsb.record+fsb.keyed,fsb.emptyline	REWRITE KEY
+    000223  aa   042201 000020     223  	zero	fsb.open+fsb.update+fsb.record+fsb.keyed,fsb.emptyline	DELETE KEY
+    000224  aa   050201 000020     224  	zero	fsb.open+fsb.input+fsb.record+fsb.keyed,fsb.emptyline	READ KEYTO
+                                   225  "
+    000225                         226  key_call:
+    000225  aa   020000 4310 07    227  	fld	2*1024*4,dl	4 arguments for seek_ or read_key
+    000226  aa  6 00064 7571 00    228  	staq	sp|io_arg_list
+    000227  aa  0 00061 3535 00    229  	epp3	ap|psr.keytemp+1	the addr of a var str is not its start
+    000230  aa  6 00070 2535 00    230  	spri3	sp|io_arg_list+4	arg2 is the key
+    000231  aa  6 00054 3535 00    231  	epp3	sp|t6
+    000232  aa  6 00072 2535 00    232  	spri3	sp|io_arg_list+6	arg3 is rtned length,we ignore
+    000233  aa  4 00003 7651 00    233  	lprp5	pr4|fsb.iocb_p	p4->fsb, offset iocb_p (packed ptr)
+    000234  aa  6 00056 6515 00    234  	spri5	sp|double_temp	packed ptr must become unpacked
+    000235  aa  6 00056 3535 00    235  	epp3	sp|double_temp
+    000236  aa  6 00066 2535 00    236  	spri3	sp|io_arg_list+2	arg1 \is iocb_ptr
+    000237  aa   000000 6350 16    237  	eaa	0,6		use x6 to get right entry var.
+    000240  aa   000002 7350 00    238  	als	2		to multiply x6*4(4 words per entry var)
+    000241  aa  5 00072 3521 21    239  	eppbp	pr5|iocb.read_record,au*	bp -> the correct entry var. in iocb
+    000242  aa  6 00063 3535 00    240  	epp3	sp|t3		status code
+    000243  aa  6 00074 2535 00    241  	spri3	sp|io_arg_list+8	arg4is of course status code
+    000244  aa  6 00010 7531 00    242  	sreg	sp|8
+    000245  aa  6 00064 3501 00    243  	eppap	sp|io_arg_list
+    000246  aa  6 00024 3571 00    244  	stcd	sp|stack_frame.return_ptr
+    000247  aa  2 00000 7131 00    245  	callsp	bp|0
+    000250  aa  6 00010 0731 00    246  	lreg	sp|8
+    000251  aa   000001 1010 03    247  	cmpx1	1,du		fancy  stuff only if a write
+    000252  0a   000261 6010 00    248  	tnz	not_key_write	handle non-writes differently
+    000253  4a  4 00010 7011 20    249  	tsx1	<pl1_operators_>|[get_our_lp]
+    000254  4a  4 00020 2361 20    250  	ldq	<error_table_>|[no_record]
+    000255  aa  6 00063 1161 00    251  	cmpq	sp|t3		must be new key to be right
+    000256  0a   000301 6010 00    252  	tnz	key_error		if key was there its an error
+    000257  aa   000001 6210 00    253  	eax1	1		restore x1 to 1 for write
+    000260  0a   000265 7100 00    254  	tra	key_ok
+                                   255  "
+    000261                         256  not_key_write:
+    000261  aa  6 00063 2361 00    257  	ldq	sp|t3		returned status code
+    000262  0a   000301 6010 00    258  	tnz	key_error		if not zero its an error
+    000263  aa   000004 1010 03    259  	cmpx1	4,du		read keyto?
+    000264  0a   000274 6000 00    260  	tze	keyto_done
+                                   261  "
+    000265  aa  6 00052 3501 20    262  key_ok:	eppap	sp|ps_ptr,*	restore the stuff we clobbered
+    000266  aa  0 00026 2361 00    263  	ldq	ap|psr.job
+    000267  aa  0 00042 3701 20    264  	epp4	ap|psr.fsbp,*	get fsbp again
+    000270  aa  4 00000 2351 00    265  	lda	pr4|fsb.switch
+    000271  0a   000314 3750 00    266  	ana	=o177726773767	zero zots,n_used1,dir,key,detach,iox_close	HELP!!!
+    000272  aa   000500 2750 03    267  	ora	fsb.notkeyed+fsb.sequential,du
+    000273  0a   000036 7100 00    268  	tra	good_key		now its looks like a unkeyed io op
+                                   269  "
+    000274                         270  keyto_done:
+    000274  aa   000000 6210 00    271  	eax1	0		if read-keyto restore x1 to 0 for read
+    000275  aa   400000 2350 03    272  	lda	psr.keyto_keyset,du
+    000276  aa  6 00052 3501 20    273  	eppap	sp|ps_ptr,*	ap has been clobbered,need to get at ps
+    000277  aa  0 00057 2551 00    274  	orsa	ap|psr.pl1_ops_flags	set keyset bit on, assgnmt has been made
+    000300  0a   000266 7100 00    275  	tra	key_ok+1
+                                   276  "
+    000301                         277  key_error:
+    000301  aa  6 00063 3535 00    278  	epp3	sp|t3		get ptr to status for error call
+    000302  0a   000134 7100 00    279  	tra	error_call
+                                   280  	end
+LITERALS
+     
+    000304  aa   277777 617007 
+    000305  aa   000004 004000 
+    000306  aa   000002 001000 
+    000307  aa   000001 001000 
+    000310  aa   177767 773767 
+    000311  aa   677775 577177 
+    000312  aa   077625 573567 
+    000313  aa   377777 777777 
+    000314  aa   177726 773767 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000315  5a   000003 000000 
+    000316  5a   000026 600000 
+    000317  aa   000000 000000 
+    000320  55   000011 000002 
+    000321  5a   000002 400003 
+    000322  55   000006 000011 
+    000323  aa  012 162 145 143
+    000324  aa  157 162 144 137
+    000325  aa  151 157 137 000
+    000326  55   000017 000003 
+    000327  0a   000000 400000 
+    000330  55   000014 000003 
+    000331  aa  011 162 145 143         record_io
+    000332  aa  157 162 144 137
+    000333  aa  151 157 000 000
+    000334  55   000002 000011 
+    000335  6a   000000 400002 
+    000336  55   000022 000003 
+    000337  aa  014 163 171 155         symbol_table
+    000340  aa  142 157 154 137
+    000341  aa  164 141 142 154
+    000342  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000343  aa   000000 000015 
+    000344  aa   000000 000000 
+    000345  aa   000000 000000 
+    000346  aa   000000 000000 
+    000347  5a   000011 000000 
+    000350  aa   000000 000000 
+    000351  aa   000000 000000 
+    000352  5a   000017 000000 
+    000353  aa   000000 000000 
+    000354  aa   000000 000000 
+    000355  aa   000000 000000 
+    000356  aa   000000 000000 
+    000357  aa   000000 000000 
+    000360  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000361  aa  011 156 157 137         no_record
+    000362  aa  162 145 143 157
+    000363  aa  162 144 000 000
+    000364  aa  014 145 162 162         error_table_
+    000365  aa  157 162 137 164
+    000366  aa  141 142 154 145
+    000367  aa  137 000 000 000
+    000370  aa  005 160 154 151         plio4
+    000371  aa  157 064 000 000
+    000372  aa  016 157 160 145         operator_table
+    000373  aa  162 141 164 157
+    000374  aa  162 137 164 141
+    000375  aa  142 154 145 000
+    000376  aa  005 145 162 162         error
+    000377  aa  157 162 000 000
+    000400  aa  014 160 154 151         plio2_recio_
+    000401  aa  157 062 137 162
+    000402  aa  145 143 151 157
+    000403  aa  137 000 000 000
+    000404  aa  012 147 145 164         get_our_lp
+    000405  aa  137 157 165 162
+    000406  aa  137 154 160 000
+    000407  aa  016 160 154 061         pl1_operators_
+    000410  aa  137 157 160 145
+    000411  aa  162 141 164 157
+    000412  aa  162 163 137 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000413  aa   000004 000000 
+    000414  55   000047 000044 
+    000415  aa   000004 000000 
+    000416  55   000072 000053 
+    000417  aa   000004 000000 
+    000420  55   000072 000055 
+    000421  aa   000004 000000 
+    000422  55   000063 000061 
+    000423  aa   000004 000000 
+    000424  55   000072 000067 
+    000425  aa   000001 000000 
+    000426  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000427  5a   000076 000000 
+    000430  5a   000100 000000 
+    000431  5a   000102 000000 
+    000432  5a   000104 000000 
+    000433  5a   000106 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000315 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000022 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         pl1_operators_|get_our_lp
+    000011  5a   000116 0000 00
+    000012  9a   777766 0000 46         plio2_recio_|error
+    000013  5a   000115 0000 00
+    000014  9a   777764 0000 46         pl1_operators_|operator_table
+    000015  5a   000114 0000 00
+    000016  9a   777762 0000 46         pl1_operators_|plio4
+    000017  5a   000113 0000 00
+    000020  9a   777760 0000 46         error_table_|no_record
+    000021  5a   000112 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   251354 115511 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000240 
+    000020  aa   000000 000163 
+    000021  aa   000214 000207 
+    000022  aa   000227 000163 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000005 
+    000066  aa   000112 000041 
+    000067  aa   175453 020027 
+    000070  aa   000000 117547 
+    000071  aa   176212 600000 
+    000072  aa   000123 000041 
+    000073  aa   052721 247134 
+    000074  aa   000000 105272 
+    000075  aa   317215 400000 
+    000076  aa   000134 000033 
+    000077  aa   117041 401314 
+    000100  aa   000000 111707 
+    000101  aa   640170 400000 
+    000102  aa   000143 000037 
+    000103  aa   045741 160636 
+    000104  aa   000000 104574 
+    000105  aa   400471 200000 
+    000106  aa   000153 000037 
+    000107  aa   045741 160634 
+    000110  aa   000000 104574 
+    000111  aa   400471 200000 
+    000112  aa   076163 160145          >spec>install>1110>record_io_.alm
+    000113  aa   143076 151156 
+    000114  aa   163164 141154 
+    000115  aa   154076 061061 
+    000116  aa   061060 076162 
+    000117  aa   145143 157162 
+    000120  aa   144137 151157 
+    000121  aa   137056 141154 
+    000122  aa   155040 040040 
+    000123  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000124  aa   076151 156143 
+    000125  aa   154165 144145 
+    000126  aa   076163 164141 
+    000127  aa   143153 137146 
+    000130  aa   162141 155145 
+    000131  aa   056151 156143 
+    000132  aa   154056 141154 
+    000133  aa   155040 040040 
+    000134  aa   076154 144144          >ldd>include>iocbx.incl.alm
+    000135  aa   076151 156143 
+    000136  aa   154165 144145 
+    000137  aa   076151 157143 
+    000140  aa   142170 056151 
+    000141  aa   156143 154056 
+    000142  aa   141154 155040 
+    000143  aa   076154 144144          >ldd>include>plio2_psr.incl.alm
+    000144  aa   076151 156143 
+    000145  aa   154165 144145 
+    000146  aa   076160 154151 
+    000147  aa   157062 137160 
+    000150  aa   163162 056151 
+    000151  aa   156143 154056 
+    000152  aa   141154 155040 
+    000153  aa   076154 144144          >ldd>include>plio2_fsb.incl.alm
+    000154  aa   076151 156143 
+    000155  aa   154165 144145 
+    000156  aa   076160 154151 
+    000157  aa   157062 137146 
+    000160  aa   163142 056151 
+    000161  aa   156143 154056 
+    000162  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          60    action                   record_io_:    83,   87,   96.
+         170    check_len                record_io_:   175,  186.
+         112    dl_too                   record_io_:   104,  133.
+          56    double_temp              record_io_:    24,  135,  136,  234,  235.
+                error                    record_io_:   162.
+         134    error_call               record_io_:   152,  192,  279.
+                error_table_             record_io_:   250.
+      400000    fsb.bit_string           plio2_fsb:     57.
+           4    fsb.blc                  plio2_fsb:     78.
+          10    fsb.bnc                  plio2_fsb:     81.
+           6    fsb.bptr                 plio2_fsb:     80.
+           5    fsb.bsize                plio2_fsb:     79.
+          42    fsb.buffer               plio2_fsb:     92.
+       20000    fsb.buffer_in_use        plio2_fsb:     40.
+          40    fsb.console              plio2_fsb:     48.
+       10000    fsb.copy                 plio2_fsb:     41.
+         440    fsb.declared_attributes  plio2_fsb:     94.
+       10000    fsb.delete               plio2_fsb:     62.
+        4000    fsb.detach               record_io_:    68,
+                                         plio2_fsb:     42.
+          40    fsb.direct               plio2_fsb:     30.
+          20    fsb.emptyline            record_io_:    91,   92,   93,  220,  221,  222,  223,  224,
+                                         plio2_fsb:     49.
+          20    fsb.filename             plio2_fsb:     89.
+          20    fsb.from                 plio2_fsb:     70.
+         100    fsb.fsb_in_use           plio2_fsb:     47.
+          40    fsb.fsb_thread           plio2_fsb:     91.
+          40    fsb.ignore               plio2_fsb:     69.
+      200000    fsb.implementation       record_io_:    81,
+                                         plio2_fsb:     37.
+       10000    fsb.input                record_io_:    91,  220,  224,
+                                         plio2_fsb:     23.
+          20    fsb.interactive          plio2_fsb:     31.
+         400    fsb.internal             record_io_:    81,
+                                         plio2_fsb:     45.
+         100    fsb.into                 plio2_fsb:     68.
+           3    fsb.iocb_p               record_io_:   134,  233,
+                                         plio2_fsb:     77.
+          10    fsb.iox_close            record_io_:    68,
+                                         plio2_fsb:     50.
+        2000    fsb.key                  plio2_fsb:     64.
+           1    fsb.keyed                record_io_:   220,  221,  222,  223,  224,
+                                         plio2_fsb:     35.
+         400    fsb.keyfrom              plio2_fsb:     66.
+        1000    fsb.keyto                plio2_fsb:     65.
+          11    fsb.kol                  plio2_fsb:     82.
+          16    fsb.limit                plio2_fsb:     87.
+          13    fsb.lineno               plio2_fsb:     84.
+          17    fsb.lnzc                 plio2_fsb:     88.
+        4000    fsb.locate               plio2_fsb:     63.
+           2    fsb.lsep                 record_io_:    30,
+                                         plio2_fsb:     76.
+          12    fsb.lsize                plio2_fsb:     83.
+      400000    fsb.namelist             plio2_fsb:     36.
+          10    fsb.nofrom               plio2_fsb:     71.
+           4    fsb.nokey                plio2_fsb:     72.
+           2    fsb.nokeyfrom            plio2_fsb:     73.
+           1    fsb.nolock               plio2_fsb:     74.
+           1    fsb.nono                 plio2_fsb:     55.
+         400    fsb.notkeyed             record_io_:    91,   92,   93,  267,
+                                         plio2_fsb:     27.
+          10    fsb.not_used_1           record_io_:    68,
+                                         plio2_fsb:     32.
+           4    fsb.not_used_2           plio2_fsb:     33.
+      200000    fsb.not_used_3           plio2_fsb:     58.
+      100000    fsb.not_used_4           plio2_fsb:     38.
+        1000    fsb.not_used_5           plio2_fsb:     44.
+       40000    fsb.open                 record_io_:    91,   92,   93,  220,  221,  222,  223,  224,
+                                         plio2_fsb:     21.
+        4000    fsb.output               record_io_:    92,  221,
+                                         plio2_fsb:     24.
+          15    fsb.pageno               plio2_fsb:     86.
+         366    fsb.path_name            plio2_fsb:     93.
+       20000    fsb.print                plio2_fsb:     22.
+          14    fsb.psize                plio2_fsb:     85.
+      100000    fsb.read                 plio2_fsb:     59.
+         200    fsb.record               record_io_:    91,   92,   93,  220,  221,  222,  223,  224,
+                                         plio2_fsb:     28.
+       20000    fsb.rewrite              plio2_fsb:     61.
+         100    fsb.sequential           record_io_:    91,   92,   93,  267,
+                                         plio2_fsb:     29.
+         200    fsb.set                  plio2_fsb:     67.
+        1000    fsb.stream               plio2_fsb:     26.
+           2    fsb.stringvalue          record_io_:    77,   81,
+                                         plio2_fsb:     34.
+           0    fsb.switch               record_io_:    67,  265,
+                                         plio2_fsb:     17.
+        2000    fsb.te_hold              plio2_fsb:     43.
+         200    fsb.threaded             record_io_:    81,
+                                         plio2_fsb:     46.
+          30    fsb.title                plio2_fsb:     90.
+       40000    fsb.transmit_error       plio2_fsb:     39.
+        2000    fsb.update               record_io_:    93,  222,  223,
+                                         plio2_fsb:     25.
+      100000    fsb.version_2            record_io_:    81,
+                                         plio2_fsb:     20.
+       40000    fsb.write                plio2_fsb:     60.
+           4    fsb.xxx4                 plio2_fsb:     51.
+           2    fsb.xxx5                 plio2_fsb:     52.
+           1    fsb.xxx6                 plio2_fsb:     53.
+      400000    fsb.zot                  plio2_fsb:     19.
+      400000    fsb.zot1                 record_io_:    68,
+                                         plio2_fsb:     97.
+      200000    fsb.zot2                 record_io_:    68,
+                                         plio2_fsb:     98.
+           2    fsbr.recio               record_io_:    30,  172.
+      200000    fsbr.rec_valid           record_io_:    31,  171.
+         220    fsb_key_masks            record_io_:   209,  215,  219.
+          54    fsb_masks                record_io_:    82,   86,   90.
+         442    fsb_size                 plio2_fsb:     14.
+                get_our_lp               record_io_:   160,  249.
+          36    good_key                 record_io_:    73,  268.
+          12    iocb.actual_iocb_ptr     iocbx:         20.
+          16    iocb.attach_data_ptr     iocbx:         22.
+          14    iocb.attach_descrip_ptr  iocbx:         21.
+          36    iocb.close               iocbx:         28.
+         132    iocb.close_file          iocbx:         43.
+          66    iocb.control             iocbx:         34.
+         106    iocb.delete_record       iocbx:         38.
+         136    iocb.detach              iocbx:         44.
+          26    iocb.detach_iocb         iocbx:         26.
+          24    iocb.event_channel       iocbx:         25.
+          46    iocb.get_chars           iocbx:         30.
+          42    iocb.get_line            iocbx:         29.
+         154    iocb.hash_chain_ptr      iocbx:         50.
+         142    iocb.ios_compatibility   iocbx:         45.
+          56    iocb.modes               iocbx:         32.
+           1    iocb.name                iocbx:         19.
+          32    iocb.open                iocbx:         27.
+          22    iocb.open_data_ptr       iocbx:         24.
+          20    iocb.open_descrip_ptr    iocbx:         23.
+         126    iocb.open_file           iocbx:         42.
+          62    iocb.position            iocbx:         33.
+          52    iocb.put_chars           iocbx:         31.
+         116    iocb.read_key            iocbx:         40.
+         122    iocb.read_length         iocbx:         41.
+          72    iocb.read_record         record_io_:   140,  239,
+                                         iocbx:         35.
+         102    iocb.rewrite_record      iocbx:         37.
+         112    iocb.seek_key            iocbx:         39.
+         150    iocb.syn_brother         iocbx:         48.
+         146    iocb.syn_father          iocbx:         47.
+         144    iocb.syn_inhibits        iocbx:         46.
+         152    iocb.syn_son             iocbx:         49.
+           0    iocb.version             iocbx:         18.
+          76    iocb.write_record        iocbx:         36.
+         156    iocb_size                iocbx:         15.
+          64    io_arg_list              record_io_:    19,  102,  108,  117,  119,  128,  130,  133,  137,  142,  153,  156,
+                                                       158,  159,  176,  228,  230,  232,  236,  241,  243.
+         176    keyed_job                record_io_:    71,  197.
+         274    keyto_done               record_io_:   260,  270.
+         225    key_call                 record_io_:   210,  216,  226.
+         301    key_error                record_io_:   252,  258,  277.
+         265    key_ok                   record_io_:   254,  262,  275.
+         104    make_call                record_io_:   113,  125.
+         261    not_key_write            record_io_:   248,  256.
+          44    not_var                  record_io_:    76,   81.
+                no_record                record_io_:   250.
+                operator_table           record_io_:   183.
+                pl1_operators_           record_io_:   160,  183,  195,  249.
+                plio2_recio_             record_io_:   162.
+                plio4                    record_io_:   195.
+          12    psr.abret                plio2_psr:     19.
+          12    psr.ab_return            record_io_:    42,   43,
+                                         plio2_psr:     17.
+          44    psr.auxp                 plio2_psr:     64.
+          20    psr.bit_string           plio2_psr:     38.
+          10    psr.char_string          plio2_psr:     39.
+         100    psr.copy                 plio2_psr:     36.
+       40000    psr.data                 plio2_psr:     28.
+      400000    psr.delete               record_io_:    60,
+                                         plio2_psr:     43.
+       20000    psr.edit                 plio2_psr:     29.
+      400000    psr.explicit_file        record_io_:    47,
+                                         plio2_psr:     25.
+          50    psr.fab2p                plio2_psr:     66.
+          46    psr.fabp                 plio2_psr:     65.
+          40    psr.file_p               plio2_psr:     62.
+        1000    psr.from                 record_io_:    52,   56,
+                                         plio2_psr:     51.
+          42    psr.fsbp                 record_io_:    66,  170,  264,
+                                         plio2_psr:     63.
+        4000    psr.get                  plio2_psr:     31.
+        2000    psr.ignore               plio2_psr:     50.
+        4000    psr.into                 record_io_:    48,
+                                         plio2_psr:     49.
+          26    psr.job                  record_io_:    44,   69,  263,
+                                         plio2_psr:     23.
+      100000    psr.key                  record_io_:    47,   70,
+                                         plio2_psr:     45.
+       20000    psr.keyfrom              record_io_:    47,   70,
+                                         plio2_psr:     47.
+          60    psr.keytemp              record_io_:   229,
+                                         plio2_psr:     71.
+       40000    psr.keyto                record_io_:    47,   70,  199,
+                                         plio2_psr:     46.
+      400000    psr.keyto_keyset         record_io_:   203,  272,
+                                         plio2_psr:     69.
+         400    psr.line                 plio2_psr:     34.
+       10000    psr.list                 plio2_psr:     30.
+      200000    psr.locate               plio2_psr:     44.
+          35    psr.locking_switch       plio2_psr:     60.
+          36    psr.new_format           plio2_psr:     61.
+           4    psr.not_bytebuffer       plio2_psr:     54.
+          27    psr.number               plio2_psr:     58.
+          40    psr.p1p2                 plio2_psr:     37.
+           1    psr.packedptr            plio2_psr:     56.
+        1000    psr.page                 plio2_psr:     33.
+          57    psr.pl1_ops_flags        record_io_:   204,  274,
+                                         plio2_psr:     67.
+        2000    psr.put                  plio2_psr:     32.
+           4    psr.read                 record_io_:    48,
+                                         plio2_psr:     40.
+           1    psr.rewrite              record_io_:    56,
+                                         plio2_psr:     42.
+       10000    psr.set                  plio2_psr:     48.
+          22    psr.set_p_p              plio2_psr:     21.
+         200    psr.skip                 plio2_psr:     35.
+          20    psr.source_p             record_io_:    64,
+                                         plio2_psr:     20.
+      200000    psr.string               plio2_psr:     26.
+          25    psr.variable_bitlen      record_io_:   122,
+                                         plio2_psr:     22.
+          30    psr.variable_p           record_io_:   111,  131,
+                                         plio2_psr:     59.
+           2    psr.varying_array        plio2_psr:     55.
+      100000    psr.varying_string       record_io_:    47,   75,
+                                         plio2_psr:     27.
+          77    psr.version_mask         plio2_psr:     53.
+         770    psr.version_mask_inplace       record_io_:    45,   47,
+                                               plio2_psr:     74.
+           3    psr.version_shift        plio2_psr:     52.
+           2    psr.write                record_io_:    52,
+                                         plio2_psr:     41.
+         161    psr_size                 plio2_psr:     14.
+          52    ps_ptr                   record_io_:    21,   41,  157,  169,  262,  273.
+          26    quick                    record_io_:    51,   55,   59,   64.
+          63    quick_delete             record_io_:   100.
+          76    quick_read               record_io_:    96,  115.
+          67    quick_write              record_io_:    97,   98,  106.
+         172    read_error               record_io_:   168,  190.
+         150    read_rtn                 record_io_:   147,  166.
+           0    record_io                record_io_:    33,   40.
+         164    ret_to_caller            record_io_:   149,  164,  180,  188.
+         206    seek_key_call            record_io_:   200,  205,  207.
+         102    simple_length            record_io_:   110,  121.
+         174    slow                     record_io_:    46,   61,   78,   85,   88,  194,  214,  217.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   record_io_:   143,  161,  182,  244,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          63    t3                       record_io_:    25,  103,  127,  148,  150,  173,  240,  251,  257,  278.
+          54    t6                       record_io_:    22,  126,  129,  187,  231.
+          55    t7                       record_io_:    23,  118,  167,  191.
+          46    tbp                      record_io_:    20,  181,  184.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

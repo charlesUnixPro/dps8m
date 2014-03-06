@@ -1,0 +1,1544 @@
+	COMPILATION LISTING OF SEGMENT object_info_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /* object_info_ - procedure to return structural control information
+       15*   extracted from an object segment. Coded for compatibility with obsolete
+       16*   procedure decode_object_.
+       17*
+       18*   Designed and coded February 8, 1972 by Michael J. Spier		*/
+       19 /* modified 5/75 and 6/75  by M. Weaver for version 2 structure */
+       20 /* modified 1/77 by M. Weaver to initialize rel ptrs in non-standard object case */
+       21 /* modified 5/77 by M. Weaver to set perprocess_static flag */
+       22 /* modified 9/81 by M. Weaver to correct userid offset and check for not_in_read_bracket */
+       23 
+       24 object_info_$long: procedure (seg_ptr, bitcount, arg_ptr, code);
+       25 
+       26 declare (seg_ptr, arg_ptr) pointer, bitcount fixed bin (24), code fixed bin (35);
+       27 
+       28 /* DECLARATION OF EXTERNAL SYMBOLS */
+       29 
+       30 declare (error_table_$bad_segment, error_table_$zero_length_seg, error_table_$bad_ring_brackets) external fixed bin (35);
+       31 declare  decode_definition_$init external entry (pointer, fixed bin (24));
+       32 declare  decode_definition_ external entry (pointer, pointer) returns (bit (1) aligned);
+       33 
+       34 /* DECLARATION OF AUTOMATIC STORAGE VARIABLES */
+       35 
+       36 declare (p, mapp, segp, oip, lastword, sblkp) pointer;
+       37 declare (i, lng, defcount) fixed bin;
+       38 declare (wordcount, len, base18) fixed bin (18);
+       39 declare  base21 fixed bin (21);
+       40 declare  bitlng fixed bin (24);
+       41 declare  entrypoint char (8) aligned;
+       42 
+       43 declare 1 dd aligned,
+       44         2 next_def pointer,
+       45         2 dum1 pointer,
+       46         2 dum2 pointer,
+       47         2 section char (4) aligned,
+       48         2 offset fixed bin,
+       49         2 entrypoint fixed bin,
+       50         2 defname char (32) aligned;
+       51 
+       52 
+       53 /* DECLARATION OF BUILTIN FUNCTIONS */
+       54 
+       55 declare (addr, addrel, bin, bit, divide, fixed, mod, null, substr, unspec) builtin;
+       56 declare  not_in_read_bracket condition;
+       57 
+       58 /* DECLARATION OF BASED STRUCTURES */
+       59 
+  1     1 /* BEGIN INCLUDE FILE ... object_info.incl.pl1
+  1     2*coded February 8, 1972 by Michael J. Spier	*/
+  1     3 /* modified May 26, 1972 by M. Weaver */
+  1     4 /* modified 15 April, 1975 by M. Weaver */
+  1     5 
+  1     6 declare	1 object_info aligned based,		/* structure containing object info based, returned by object_info_ */
+  1     7 	2 version_number fixed bin,		/* version number of current structure format (=2) */
+  1     8 	2 textp pointer,			/* pointer to beginning of text section */
+  1     9 	2 defp pointer,			/* pointer to beginning of definition section */
+  1    10 	2 linkp pointer,			/* pointer to beginning of linkage section */
+  1    11 	2 statp pointer,			/* pointer to beginning of static section */
+  1    12 	2 symbp pointer,			/* pointer to beginning of symbol section */
+  1    13 	2 bmapp pointer,			/* pointer to beginning of break map (may be null) */
+  1    14 	2 tlng fixed bin,			/* length in words of text section */
+  1    15 	2 dlng fixed bin,			/* length in words of definition section */
+  1    16 	2 llng fixed bin,			/* length in words of linkage section */
+  1    17 	2 ilng fixed bin,			/* length in words of static section */
+  1    18 	2 slng fixed bin,			/* length in words of symbol section */
+  1    19 	2 blng fixed bin,			/* length in words of break map */
+  1    20 	2 format,				/* word containing bit flags about object type */
+  1    21 	  3 old_format bit(1) unaligned,	/* on if segment isn't in new format, i.e. has old style object map */
+  1    22 	  3 bound bit(1) unaligned,		/* on if segment is bound */
+  1    23 	  3 relocatable bit(1) unaligned,	/* on if seg has relocation info in its first symbol block */
+  1    24 	  3 procedure bit(1) unaligned,	/* on if segment is an executable object program */
+  1    25 	  3 standard bit(1) unaligned,	/* on if seg is in standard format (more than just standard map) */
+  1    26 	  3 gate bit(1) unaligned,		/* on if segment is a gate */
+  1    27 	  3 separate_static bit(1) unaligned,	/* on if static not in linkage */
+  1    28 	  3 links_in_text bit(1) unaligned,	/* on if there are threaded links in text */
+  1    29 	  3 perprocess_static bit (1) unaligned, /* on if static is not to be per run unit */
+  1    30 	  3 pad bit(27) unaligned,
+  1    31 	2 entry_bound fixed bin,		/* entry bound if segment is a gate */
+  1    32 	2 textlinkp pointer,		/* ptr to first link in text */
+  1    33 
+  1    34 	/* LIMIT OF BRIEF STRUCTURE */
+  1    35 
+  1    36 	2 compiler char(8) aligned,		/* name of processor which generated segment */
+  1    37 	2 compile_time fixed bin(71),		/* clock reading of date/time object was generated */
+  1    38 	2 userid char(32) aligned,		/* standard Multics id of creator of object segment */
+  1    39 	2 cvers aligned,			/* generator version name in printable char string form */
+  1    40 	  3 offset bit(18) unaligned,		/* offset of name in words relative to base of symbol section */
+  1    41 	  3 length bit(18) unaligned,		/* length of name in characters */
+  1    42 	2 comment aligned,			/* printable comment concerning generator or generation of segment */
+  1    43 	  3 offset bit(18) unaligned,		/* offset of comment in words relative to base of symbol section */
+  1    44 	  3 length bit(18) unaligned,		/* length of comment in characters */
+  1    45 	2 source_map fixed bin,		/* offset, relative to base of symbol section, of source map structure */
+  1    46 
+  1    47 	/* LIMIT OF DISPLAY STRUCTURE */
+  1    48 
+  1    49 	2 rel_text pointer,			/* pointer to text section relocation info */
+  1    50 	2 rel_def pointer,			/* pointer to definition section relocation info */
+  1    51 	2 rel_link pointer,			/* pointer to linkage section relocation info */
+  1    52 	2 rel_static pointer,		/* pointer to static section relocation info */
+  1    53 	2 rel_symbol pointer,		/* pointer to symbol section relocation info */
+  1    54 	2 text_boundary fixed bin,		/* specifies mod  of text section base boundary */
+  1    55 	2 static_boundary fixed bin,		/* specifies mod of internal static base boundary */
+  1    56 					/* currently not used by system */
+  1    57 	2 default_truncate fixed bin,		/* offset rel to symbp for binder to automatically trunc. symb sect. */
+  1    58 	2 optional_truncate fixed bin;	/* offset rel to symbp for binder to optionally trunc. symb sect. */
+  1    59 
+  1    60 declare	object_info_version_2 fixed bin int static init(2);
+  1    61 
+  1    62 /* END INCLUDE FILE ... object_info.incl.pl1 */
+       60 
+       61 
+       62 declare 1 oi aligned based (oip) like object_info;
+       63 
+       64 /* version 1 structure for object_info_ */
+       65 
+       66 declare 1 old_oi aligned based (oip),			/* structure containing object info, returned by object_info_ */
+       67         2 version_number fixed bin,			/* version number of current structure format */
+       68         2 textp pointer,				/* pointer to beginning of text section */
+       69         2 defp pointer,				/* pointer to beginning of definition section */
+       70         2 linkp pointer,				/* pointer to beginning of linkage section */
+       71         2 symbp pointer,				/* pointer to beginning of symbol section */
+       72         2 bmapp pointer,				/* pointer to beginning of break map (may be null) */
+       73         2 tlng fixed bin,				/* length in words of text section */
+       74         2 dlng fixed bin,				/* length in words of definition section */
+       75         2 llng fixed bin,				/* length in words of linkage section */
+       76         2 slng fixed bin,				/* length in words of symbol section */
+       77         2 blng fixed bin,				/* length in words of break map */
+       78         2 format,					/* word containing bit flags about object type */
+       79 	3 old_format bit (1) unaligned,		/* on if segment isn't in new format, i.e. has old style object map */
+       80 	3 bound bit (1) unaligned,			/* on if segment is bound */
+       81 	3 relocatable bit (1) unaligned,		/* on if seg has relocation info in its first symbol block */
+       82 	3 procedure bit (1) unaligned,		/* on if segment is an executable object program */
+       83 	3 standard bit (1) unaligned,			/* on if seg is in standard format (more than just standard map) */
+       84 	3 gate bit (1) unaligned,			/* on if segment is a gate */
+       85         2 call_delimiter fixed bin,			/* call delimiter if segment is a gate */
+       86 
+       87 /* LIMIT OF BRIEF STRUCTURE */
+       88 
+       89         2 compiler char (8) aligned,			/* name of processor which generated segment */
+       90         2 compile_time fixed bin (71),			/* clock reading of date/time object was generated */
+       91         2 userid char (32) aligned,			/* standard Multics id of creator of object segment */
+       92         2 cvers aligned,				/* generator version name in printable char string form */
+       93 	3 offset bit (18) unaligned,			/* offset of name in words relative to base of symbol section */
+       94 	3 length bit (18) unaligned,			/* length of name in characters */
+       95         2 comment aligned,				/* printable comment concerning generator or generation of seg */
+       96 	3 offset bit (18) unaligned,			/* offset of comment in words rel to base of symbol section */
+       97 	3 length bit (18) unaligned,			/* length of comment in characters */
+       98         2 source_map fixed bin,			/* offset, rel to base of symbol section, of source map structure */
+       99 
+      100 /* LIMIT OF DISPLAY STRUCTURE */
+      101 
+      102         2 rel_text pointer,				/* offset rel to base of symbol section of text sect. relocation info */
+      103         2 rel_def pointer,				/* offset relative to symbp of definition section relocation info */
+      104         2 rel_link pointer,				/* offset relative to symbp of linkage section relocation info */
+      105         2 rel_symbol pointer,				/* offset relative to symbp of symbol section relocation info */
+      106         2 text_boundary fixed bin,			/* specifies mod  of text section base boundary */
+      107         2 static_boundary fixed bin,			/* specifies mod of internal static base boundary */
+      108         2 default_truncate fixed bin,			/* offset rel to symbp for binder to automatically trunc. symb sect. */
+      109         2 optional_truncate fixed bin;			/* offset rel to symbp for binder to optionally trunc. symb sect. */
+      110 
+  2     1 /* BEGIN INCLUDE FILE ... object_map.incl.pl1 */
+  2     2 /* coded February 8, 1972 by Michael J. Spier */
+  2     3 /* Last modified on 05/20/72 at 13:29:38 by R F Mabee. */
+  2     4 /* Made to agree with Spier's document on 20 May 1972 by R F Mabee. */
+  2     5 /* modified on 6 May 1972 by R F Mabee to add map_ptr at end of object map. */
+  2     6 /* modified May, 1972 by M. Weaver */
+  2     7 /* modified 5/75 by E. Wiatrowski and 6/75 by M. Weaver */
+  2     8 /* modified 5/77 by M. Weaver to add perprocess_static bit */
+  2     9 
+  2    10  declare	1 object_map aligned based,		/* Structure describing standard object map */
+  2    11 
+  2    12 	  2 decl_vers fixed bin,		/* Version number of current structure format */
+  2    13 	  2 identifier char (8) aligned,	/* Must be the constant "obj_map" */
+  2    14 	  2 text_offset bit (18) unaligned,	/* Offset relative to base of object segment of base of text section */
+  2    15 	  2 text_length bit (18) unaligned,	/* Length in words of text section */
+  2    16 	  2 definition_offset bit (18) unaligned, /* Offset relative to base of object seg of base of definition section */
+  2    17 	  2 definition_length bit (18) unaligned, /* Length in words of definition section */
+  2    18 	  2 linkage_offset bit (18) unaligned,	/* Offset relative to base of object seg of base of linkage section */
+  2    19 	  2 linkage_length bit (18) unaligned,	/* Length in words of linkage section */
+  2    20 	  2 static_offset bit (18) unaligned,   /* Offset relative to base of obj seg of static section */
+  2    21 	  2 static_length bit (18) unaligned,   /* Length in words of static section */
+  2    22 	  2 symbol_offset bit (18) unaligned,	/* Offset relative to base of object seg of base of symbol section */
+  2    23 	  2 symbol_length bit (18) unaligned,	/* Length in words of symbol section */
+  2    24 	  2 break_map_offset bit (18) unaligned, /* Offset relative to base of object seg of base of break map */
+  2    25 	  2 break_map_length bit (18) unaligned, /* Length in words of break map */
+  2    26 	  2 entry_bound bit (18) unaligned,	/* Offset in text of last gate entry */
+  2    27 	  2 text_link_offset bit (18) unaligned, /* Offset of first text-embedded link */
+  2    28 	  2 format aligned,			/* Word containing bit flags about object type */
+  2    29 	    3 bound bit (1) unaligned,	/* On if segment is bound */
+  2    30 	    3 relocatable bit (1) unaligned,	/* On if segment has relocation info in its first symbol block */
+  2    31 	    3 procedure bit (1) unaligned,	/* On if segment is an executable object program */
+  2    32 	    3 standard bit (1) unaligned,	/* On if segment is in standard format (more than just standard map) */
+  2    33 	    3 separate_static bit(1) unaligned, /* On if static is a separate section from linkage */
+  2    34 	    3 links_in_text bit (1) unaligned,	/* On if there are text-embedded links */
+  2    35 	    3 perprocess_static bit (1) unaligned, /* On if static is not to be per run unit */
+  2    36 	    3 unused bit (29) unaligned;        /* Reserved */
+  2    37 
+  2    38 declare	map_ptr bit(18) aligned based;	/* Last word of the segment. It points to the base of the object map. */
+  2    39 
+  2    40 declare	object_map_version_2 fixed bin static init(2);
+  2    41 
+  2    42 /* END INCLUDE FILE ... object_map.incl.pl1 */
+      111 
+      112 
+      113 /* version 1 object map structure */
+      114 
+      115 declare 1 map1 aligned based (mapp),			/* structure describing version 1 standard object map */
+      116         2 decl_vers fixed bin,			/* version number of current structure format */
+      117         2 identifier char (8) aligned,			/* must be the constant "obj_map" */
+      118         2 text_offset bit (18) unaligned,		/* offset rel to base of object segment of base of text section */
+      119         2 text_length bit (18) unaligned,		/* length in words of text section */
+      120         2 def_offset bit (18) unaligned,		/* offset rel to base of object seg of base of definition section */
+      121         2 def_length bit (18) unaligned,		/* length in words of definition section */
+      122         2 link_offset bit (18) unaligned,		/* offset rel to base of object seg of base of linkage section */
+      123         2 link_length bit (18) unaligned,		/* length in words of linkage section */
+      124         2 symb_offset bit (18) unaligned,		/* offset rel to base of object seg of base of symbol section */
+      125         2 symb_length bit (18) unaligned,		/* length in words of symbol section */
+      126         2 bmap_offset bit (18) unaligned,		/* offset rel to base of object seg of base of break map */
+      127         2 bmap_length bit (18) unaligned,		/* length in words of break map */
+      128         2 format aligned,				/* word containing bit flags about object type */
+      129 	3 bound bit (1) unaligned,			/* on if segment is bound */
+      130 	3 relocatable bit (1) unaligned,		/* on if seg has relocation info in its first symbol block */
+      131 	3 procedure bit (1) unaligned,		/* on if segment is an executable object program */
+      132 	3 standard bit (1) unaligned,			/* on if seg is in standard format (more than just standard map) */
+      133 	3 unused bit (14) unaligned;			/* not currently used */
+      134 
+      135 
+      136 declare 1 old_map aligned based (mapp),
+      137         2 sentinel1 bit (72) aligned,
+      138         2 sentinel2 bit (72) aligned,
+      139         2 info (4),
+      140 	3 offset fixed bin,
+      141 	3 length fixed bin (24);
+      142 
+  3     1 /* BEGIN INCLUDE SEGMENT ... symbol_block.incl.pl1
+  3     2*coded February 8, 1972 by Michael J. Spier	*/
+  3     3 
+  3     4 /* last modified may 3, 1972  by M. Weaver */
+  3     5 
+  3     6 declare	1 sb aligned based(sblkp),		/* structure describing a standard symbol block */
+  3     7 	2 decl_vers fixed bin,		/* version number of current structure format */
+  3     8 	2 identifier char(8) aligned,		/* symbolic code to define purpose of this symb block */
+  3     9 	2 gen_version_number fixed bin,	/* positive integer designating version of object generator */
+  3    10 	2 gen_creation_time fixed bin(71),	/* clock reading of date/time generator was created */
+  3    11 	2 obj_creation_time fixed bin(71),	/* clock reading of date/time object was generated */
+  3    12 	2 generator char(8) aligned,		/* name of processor which generated segment */
+  3    13 	2 gen_name_offset bit(18) unaligned,	/* offset of generator name in words rel to base of symbol block */
+  3    14 	2 gen_name_length bit(18) unaligned,	/* length of printable generator version name in characters */
+  3    15 	2 uid_offset bit(18) unaligned,	/* offset of creator id in words rel to base of symbol block */
+  3    16 	2 uid_length bit(18) unaligned,	/* length of standard Multics id of object creator in characters */
+  3    17 	2 comment_offset bit(18) unaligned,	/* offset of comment in words relative to base of symbol block */
+  3    18 	2 comment_length bit(18) unaligned,	/* length of printable generator comment in characters */
+  3    19 	2 tbound bit(18) unaligned,		/* specifies mod of text section base boundary */
+  3    20 	2 stat_bound bit(18) unaligned,	/* specifies mod of internal static base boundary */
+  3    21 	2 source_map bit(18) unaligned,	/* offset relative to base of symbol block of source map structure */
+  3    22 	2 area_ptr bit(18) unaligned,		/* offset of block info in words relative to base of symbol block */
+  3    23 	2 symb_base bit(18) unaligned,	/* back pointer (rel to base of symb block) to base of symb section */
+  3    24 	2 block_size bit(18) unaligned,	/* size in words of entire symbol block */
+  3    25 	2 next_block bit(18) unaligned,	/* if ^= "0"b, is thread (rel to base of symb section) to next symb block */
+  3    26 	2 rel_text bit(18) unaligned,		/* offset rel to base of symbol block of text sect relocation info */
+  3    27 	2 rel_def bit(18) unaligned,		/* offset rel to base of symb block of def section relocation info */
+  3    28 	2 rel_link bit(18) unaligned,		/* offset rel to base of symb block of link sect relocation info */
+  3    29 	2 rel_symb bit(18) unaligned,		/* offset rel to base of symb block of symb sect relocation info */
+  3    30 	2 default_truncate bit(18) unaligned,	/* offset RTBOSB for binder to automatically trunc. symb sect. */
+  3    31 	2 optional_truncate bit(18) unaligned;	/* offset RTBOSB for binder to optionally truncate symb section */
+  3    32 
+  3    33 /* END INCLUDE SEGMENT ... symbol_block.incl.pl1 */
+      143 
+      144 
+      145 
+      146 declare 1 osb aligned based (sblkp),
+      147         2 gen_name_boff fixed bin,
+      148         2 dum1 bit (18) unaligned,
+      149         2 gen_name_blength bit (18) unaligned,
+      150         2 gen_vers_boff fixed bin,
+      151         2 dum2 bit (18) unaligned,
+      152         2 gen_vers_blength bit (18) unaligned,
+      153         2 gen_creation_time fixed bin (71),
+      154         2 obj_creation_time fixed bin (71),
+      155         2 symb_tree bit (18) unaligned,
+      156         2 extension bit (18) unaligned,
+      157         2 hmap bit (18) unaligned,
+      158         2 n bit (18) unaligned,
+      159         2 next_header bit (18) unaligned,
+      160         2 bind_flag bit (18) unaligned,
+      161         2 text_lng bit (18) unaligned,
+      162         2 link_lng bit (18) unaligned,
+      163         2 obj_name_boff fixed bin,
+      164         2 dum3 bit (18) unaligned,
+      165         2 obj_name_blength bit (18) unaligned;
+      166 
+      167 declare  old_map_ptr fixed bin (18) based (lastword);
+      168 declare  string char (1048576) based (sblkp);
+      169 
+  4     1 /* BEGIN INCLUDE FILE linkdcl.incl.pl1 --- last modified 15 Nov 1971 by C Garman */
+  4     2 
+  4     3 /* Last Modified (Date and Reason):
+  4     4*   6/75 by M.Weaver to add virgin_linkage_header declaration
+  4     5*   6/75 by S.Webber to comment existing structures better
+  4     6*   9/77 by M. Weaver to add run_depth to link
+  4     7*   2/83 by M. Weaver to add linkage header flags and change run_depth precision
+  4     8**/
+  4     9 
+  4    10 /* format: style3 */
+  4    11 dcl	1 link		based aligned,		/* link pair in linkage section */
+  4    12 	  2 head_ptr	bit (18) unal,		/* rel pointer to beginning of linkage section */
+  4    13 	  2 ringno	bit (3) unal,
+  4    14 	  2 mbz		bit (6) unal,
+  4    15 	  2 run_depth	fixed bin (2) unal,		/* run unit depth, filled when link is snapped */
+  4    16 	  2 ft2		bit (6) unal,		/* fault tag. 46(8) if not snapped, 43(8) if snapped */
+  4    17 	  2 exp_ptr	bit (18) unal,		/* pointer (rel to defs) of expression word */
+  4    18 	  2 mbz2		bit (12) unal,
+  4    19 	  2 modifier	bit (6) unal;		/* modifier to be left in snapped link */
+  4    20 
+  4    21 dcl	1 exp_word	based aligned,		/* expression word in link definition */
+  4    22 	  2 type_ptr	bit (18) unal,		/* pointer (rel to defs) of type pair structure */
+  4    23 	  2 exp		bit (18) unal;		/* constant expression to be added in when snapping link */
+  4    24 
+  4    25 dcl	1 type_pair	based aligned,		/* type pair in link definition */
+  4    26 	  2 type		bit (18) unal,		/* type of link. may be 1,2,3,4,5, or 6 */
+  4    27 	  2 trap_ptr	bit (18) unal,		/* pointer (rel to defs) to the trap word */
+  4    28 	  2 seg_ptr	bit (18) unal,		/* pointer to ACC reference name for segment referenced */
+  4    29 	  2 ext_ptr	bit (18) unal;		/* pointer (rel to defs)  of ACC segdef name */
+  4    30 
+  4    31 dcl	1 header		based aligned,		/* linkage block header */
+  4    32 	  2 def_ptr	ptr,			/* pointer to definition section */
+  4    33 	  2 symbol_ptr	ptr unal,			/* pointer to symbol section in object segment */
+  4    34 	  2 original_linkage_ptr
+  4    35 			ptr unal,			/* pointer to linkage section in object segment */
+  4    36 	  2 unused	bit (72),
+  4    37 	  2 stats,
+  4    38 	    3 begin_links	bit (18) unal,		/* offset (rel to this section) of first link */
+  4    39 	    3 block_length	bit (18) unal,		/* number of words in this linkage section */
+  4    40 	    3 segment_number
+  4    41 			bit (18) unal,		/* text segment number associated with this section */
+  4    42 	    3 static_length bit (18) unal;		/* number of words of static for this segment */
+  4    43 
+  4    44 dcl	1 linkage_header_flags
+  4    45 			aligned based,		/* overlay of def_ptr for flags */
+  4    46 	  2 pad1		bit (28) unaligned,		/* flags are in first word */
+  4    47 	  2 static_vlas	bit (1) unaligned,		/* static section "owns" some LA/VLA segments */
+  4    48 	  2 perprocess_static
+  4    49 			bit (1) unaligned,		/* 1 copy of static section is used by all tasks/run units */
+  4    50 	  2 pad2		bit (6) unaligned;
+  4    51 
+  4    52 dcl	1 virgin_linkage_header
+  4    53 			aligned based,		/* template for linkage header in object segment */
+  4    54 	  2 pad		bit (30) unaligned,		/* is filled in by linker */
+  4    55 	  2 defs_in_link	bit (6) unaligned,		/* =o20 if defs in linkage (nonstandard) */
+  4    56 	  2 def_offset	bit (18) unaligned,		/* offset of definition section */
+  4    57 	  2 first_ref_relp	bit (18) unaligned,		/* offset of trap-at-first-reference offset array */
+  4    58 	  2 filled_in_later bit (144),
+  4    59 	  2 link_begin	bit (18) unaligned,		/* offset of first link */
+  4    60 	  2 linkage_section_lng
+  4    61 			bit (18) unaligned,		/* length of linkage section */
+  4    62 	  2 segno_pad	bit (18) unaligned,		/* will be segment number of copied linkage */
+  4    63 	  2 static_length	bit (18) unaligned;		/* length of static section */
+  4    64 
+  4    65 
+  4    66 dcl	1 trap_word	based aligned,		/* trap word in link definition */
+  4    67 	  2 call_ptr	bit (18) unal,		/* pointer (rel to link) of link to trap procedure */
+  4    68 	  2 arg_ptr	bit (18) unal;		/* pointer (rel to link) of link to arg info for trap proc */
+  4    69 
+  4    70 dcl	1 name		based aligned,		/* storage of ASCII names in definitions */
+  4    71 	  2 nchars	bit (9) unaligned,		/* number of characters in name */
+  4    72 	  2 char_string	char (31) unaligned;	/* 31-character name */
+  4    73 
+  4    74 /* END INCLUDE FILE linkdcl.incl.pl1 */
+      170 
+      171 
+      172 
+      173 /*  */
+      174 
+      175 	entrypoint = "long    ";
+      176 	goto start;
+      177 
+      178 object_info_$display: entry (seg_ptr, bitcount, arg_ptr, code);
+      179 
+      180 	entrypoint = "display ";
+      181 	goto start;
+      182 
+      183 object_info_$brief: entry (seg_ptr, bitcount, arg_ptr, code);
+      184 
+      185 	entrypoint = "brief   ";
+      186 start:
+      187 	if bitcount = 0 then do;			/* if bitcount is 0 we have nothing */
+      188 	     code = error_table_$zero_length_seg;
+      189 	     return;
+      190 	end;
+      191 
+      192 	segp = seg_ptr;
+      193 	oip = arg_ptr;
+      194 	code = 0;
+      195 	wordcount = divide (bitcount+35, 36, 18, 0);
+      196 	if oi.version_number = 2 then unspec (oi.format) = "0"b;
+      197 						/* reset indicators and entry bound */
+      198 	else unspec (old_oi.format) = "0"b;
+      199 
+      200 	on not_in_read_bracket go to access_error_return;
+      201 
+      202 	lastword = addrel (segp, wordcount-1);
+      203 	i = fixed (lastword -> map_ptr, 18);		/* will want to see if value is in reasonable range */
+      204 
+      205 	revert not_in_read_bracket;
+      206 
+      207 	if i <= 0 then go to old_format;		/* last word won't point to new format map */
+      208 	if i >= wordcount then go to old_format;
+      209 	mapp = addrel (segp, lastword -> map_ptr);	/* get ptr to map */
+      210 	if mapp -> object_map.identifier ^= "obj_map " then goto old_format;
+      211 
+      212 	if oi.version_number = 2 then do;		/* fill in version 2 structure */
+      213 	     if mapp -> object_map.decl_vers = 2 then do; /* have version 2 object map */
+      214 		oi.textp = addrel (segp, mapp -> object_map.text_offset);
+      215 		oi.defp = addrel (segp, mapp -> object_map.definition_offset);
+      216 		oi.linkp = addrel (segp, mapp -> object_map.linkage_offset);
+      217 		oi.statp = addrel (segp, mapp -> object_map.static_offset);
+      218 		oi.symbp = addrel (segp, mapp -> object_map.symbol_offset);
+      219 		if mapp -> object_map.break_map_offset then oi.bmapp = addrel (segp, mapp -> object_map.break_map_offset);
+      220 		else oi.bmapp = null;		/* don't have break map & don't want ptr to beg */
+      221 		oi.tlng = fixed (mapp -> object_map.text_length, 18);
+      222 		oi.dlng = fixed (mapp -> object_map.definition_length, 18);
+      223 		oi.llng = fixed (mapp -> object_map.linkage_length, 18);
+      224 		oi.ilng = fixed (mapp -> object_map.static_length, 18);
+      225 		oi.slng = fixed (mapp -> object_map.symbol_length, 18);
+      226 		oi.blng = fixed (mapp -> object_map.break_map_length, 18);
+      227 		oi.format.old_format = "0"b;		/* at least we seem to have standard obj. map */
+      228 		oi.format.procedure = mapp -> object_map.format.procedure;
+      229 		oi.format.bound = mapp -> object_map.format.bound;
+      230 		oi.format.relocatable = mapp -> object_map.format.relocatable;
+      231 		oi.format.standard = mapp -> object_map.format.standard; /* could have standard obj. map but not std. seg. */
+      232 		oi.format.gate = (mapp -> object_map.entry_bound ^= "0"b);
+      233 		oi.format.separate_static = mapp -> object_map.format.separate_static;
+      234 		oi.format.links_in_text = mapp -> object_map.format.links_in_text;
+      235 		oi.format.perprocess_static = mapp -> object_map.format.perprocess_static;
+      236 		oi.entry_bound = fixed (mapp -> object_map.entry_bound, 18);
+      237 		oi.textlinkp = addrel (segp, mapp -> object_map.text_link_offset);
+      238 	     end;
+      239 	     else do;				/* have version 1 map */
+      240 		oi.textp = addrel (segp, map1.text_offset);
+      241 		oi.defp = addrel (segp, map1.def_offset);
+      242 		oi.linkp = addrel (segp, map1.link_offset);
+      243 		oi.symbp = addrel (segp, map1.symb_offset);
+      244 		if map1.bmap_offset then oi.bmapp = addrel (segp, map1.bmap_offset);
+      245 		else oi.bmapp = null;		/* don't have break map & don't want ptr to beg */
+      246 		oi.tlng = fixed (map1.text_length, 18);
+      247 		oi.dlng = fixed (map1.def_length, 18);
+      248 		oi.llng = fixed (map1.link_length, 18);
+      249 		oi.slng = fixed (map1.symb_length, 18);
+      250 		oi.blng = fixed (map1.bmap_length, 18);
+      251 		oi.format.old_format = "0"b;		/* at least we seem to have standard obj. map */
+      252 		oi.format.procedure = map1.format.procedure;
+      253 		oi.format.bound = map1.format.bound;
+      254 		oi.format.relocatable = map1.format.relocatable;
+      255 		oi.format.standard = map1.format.standard; /* could have standard obj. map but not std. seg. */
+      256 		call fill_in_new_items (oi.linkp, oi.llng); /* fill in items not directly available from obj seg */
+      257 	     end;
+      258 	end;					/* end of section for version 2 oi structure */
+      259 
+      260 	else do;					/* fill in version 1 structure */
+      261 	     if mapp -> object_map.decl_vers = 2 then do; /*   have version 2 object map */
+      262 		old_oi.textp = addrel (segp, mapp -> object_map.text_offset);
+      263 		old_oi.defp = addrel (segp, mapp -> object_map.definition_offset);
+      264 		old_oi.linkp = addrel (segp, mapp -> object_map.linkage_offset);
+      265 		old_oi.symbp = addrel (segp, mapp -> object_map.symbol_offset);
+      266 		if mapp -> object_map.break_map_offset then old_oi.bmapp = addrel (segp, mapp -> object_map.break_map_offset);
+      267 		else old_oi.bmapp = null;		/* don't have break map & don't want ptr to beg */
+      268 		old_oi.tlng = fixed (mapp -> object_map.text_length, 18);
+      269 		old_oi.dlng = fixed (mapp -> object_map.definition_length, 18);
+      270 		old_oi.llng = fixed (mapp -> object_map.linkage_length, 18);
+      271 		old_oi.slng = fixed (mapp -> object_map.symbol_length, 18);
+      272 		old_oi.blng = fixed (mapp -> object_map.break_map_length, 18);
+      273 		old_oi.format.old_format = "0"b;	/* at least we seem to have standard obj. map */
+      274 		old_oi.format.procedure = mapp -> object_map.format.procedure;
+      275 		old_oi.format.bound = mapp -> object_map.format.bound;
+      276 		old_oi.format.relocatable = mapp -> object_map.format.relocatable;
+      277 		old_oi.format.standard = mapp -> object_map.format.standard; /* could have standard obj. map but not std. seg. */
+      278 		old_oi.format.gate = (mapp -> object_map.entry_bound ^= "0"b);
+      279 		old_oi.call_delimiter = fixed (mapp -> object_map.entry_bound, 18);
+      280 	     end;
+      281 	     else do;				/* have version 1 object map */
+      282 		old_oi.textp = addrel (segp, map1.text_offset);
+      283 		old_oi.defp = addrel (segp, map1.def_offset);
+      284 		old_oi.linkp = addrel (segp, map1.link_offset);
+      285 		old_oi.symbp = addrel (segp, map1.symb_offset);
+      286 		if map1.bmap_offset then old_oi.bmapp = addrel (segp, map1.bmap_offset);
+      287 		else old_oi.bmapp = null;		/* don't have break map & don't want ptr to beg */
+      288 		old_oi.tlng = fixed (map1.text_length, 18);
+      289 		old_oi.dlng = fixed (map1.def_length, 18);
+      290 		old_oi.llng = fixed (map1.link_length, 18);
+      291 		old_oi.slng = fixed (map1.symb_length, 18);
+      292 		old_oi.blng = fixed (map1.bmap_length, 18);
+      293 		old_oi.format.old_format = "0"b;	/* at least we seem to have standard obj. map */
+      294 		old_oi.format.procedure = map1.format.procedure;
+      295 		old_oi.format.bound = map1.format.bound;
+      296 		old_oi.format.relocatable = map1.format.relocatable;
+      297 		old_oi.format.standard = map1.format.standard; /* could have standard obj. map but not std. seg. */
+      298 	     end;
+      299 	end;
+      300 
+      301 	if entrypoint = "brief   " then goto return;
+      302 
+      303 /* The following section has only 2 versions because it copies stuff from
+      304*   the symbol section, which has not been changed along with the mapp->object_map. */
+      305 
+      306 	if oi.version_number = 2 then do;		/* fill in version 2 structure */
+      307 	     sblkp = oi.symbp;
+      308 	     oi.compiler = sb.generator;
+      309 	     oi.compile_time = fixed (unspec (sb.obj_creation_time), 71); /* if archived, may not be on double word */
+      310 	     base21 = fixed (sb.uid_offset, 18) * 4 + 1;	/* get offset in terms of characters */
+      311 	     len = fixed (sb.uid_length, 18);
+      312 	     oi.userid = substr (string, base21, len);	/* copy userid */
+      313 	     oi.cvers.offset = bit (fixed (sb.gen_name_offset, 18), 18); /* first symbol block is at beg of symbol section */
+      314 	     oi.cvers.length = sb.gen_name_length;
+      315 	     oi.comment.offset = bit (fixed (sb.comment_offset, 18), 18);
+      316 	     oi.comment.length = sb.comment_length;
+      317 	     oi.source_map = fixed (sb.source_map, 18);
+      318 	     if entrypoint = "display " then goto return;
+      319 
+      320 	     if oi.format.relocatable = "1"b then
+      321 		do;
+      322 		oi.rel_text = addrel (sblkp, sb.rel_text);
+      323 		oi.rel_def = addrel (sblkp, sb.rel_def);
+      324 		oi.rel_link = addrel (sblkp, sb.rel_link);
+      325 		oi.rel_symbol = addrel (sblkp, sb.rel_symb);
+      326 	     end;
+      327 	     else do;
+      328 		oi.rel_text,
+      329 		     oi.rel_def,
+      330 		     oi.rel_link,
+      331 		     oi.rel_symbol = null;
+      332 	     end;
+      333 	     oi.rel_static = null;			/* there aren't ant rel bits for static yet */
+      334 	     oi.text_boundary = fixed (sb.tbound, 18);
+      335 	     oi.static_boundary = fixed (sb.stat_bound, 18);
+      336 	     oi.default_truncate = fixed (sb.default_truncate, 18);
+      337 	     oi.optional_truncate = fixed (sb.optional_truncate, 18);
+      338 	end;
+      339 
+      340 	else do;					/* fill in version 1 structure */
+      341 	     sblkp = old_oi.symbp;
+      342 	     old_oi.compiler = sb.generator;
+      343 	     old_oi.compile_time = fixed (unspec (sb.obj_creation_time), 71);
+      344 						/* if archived, may not be on double word */
+      345 	     base21 = fixed (sb.uid_offset, 18) * 4 + 1;	/* get offset in terms of characters */
+      346 	     len = fixed (sb.uid_length, 18);
+      347 	     old_oi.userid = substr (string, base21, len);	/* copy userid */
+      348 	     old_oi.cvers.offset = bit (fixed (sb.gen_name_offset, 18), 18);
+      349 						/* first symbol block is at beg of symbol section */
+      350 	     old_oi.cvers.length = sb.gen_name_length;
+      351 	     old_oi.comment.offset = bit (fixed (sb.comment_offset, 18), 18);
+      352 	     old_oi.comment.length = sb.comment_length;
+      353 	     old_oi.source_map = fixed (sb.source_map, 18);
+      354 	     if entrypoint = "display " then goto return;
+      355 
+      356 	     if old_oi.format.relocatable = "1"b then
+      357 		do;
+      358 		old_oi.rel_text = addrel (sblkp, sb.rel_text);
+      359 		old_oi.rel_def = addrel (sblkp, sb.rel_def);
+      360 		old_oi.rel_link = addrel (sblkp, sb.rel_link);
+      361 		old_oi.rel_symbol = addrel (sblkp, sb.rel_symb);
+      362 	     end;
+      363 	     else do;
+      364 		old_oi.rel_text,
+      365 		     old_oi.rel_def,
+      366 		     old_oi.rel_link,
+      367 		     old_oi.rel_symbol = null;
+      368 	     end;
+      369 	     old_oi.text_boundary = fixed (sb.tbound, 18);
+      370 	     old_oi.static_boundary = fixed (sb.stat_bound, 18);
+      371 	     old_oi.default_truncate = fixed (sb.default_truncate, 18);
+      372 	     old_oi.optional_truncate = fixed (sb.optional_truncate, 18);
+      373 	end;
+      374 
+      375 return:
+      376 	return;
+      377 
+      378 access_error_return:
+      379 	code = error_table_$bad_ring_brackets;
+      380 	return;
+      381 
+      382 /*  */
+      383 
+      384 /* object_info_ was called for a non-standard object segment */
+      385 
+      386 old_format:
+      387 	if old_map_ptr <= 0 then go to bad_obj_map;	/* last word can't point to map */
+      388 	if old_map_ptr >= wordcount then go to bad_obj_map;
+      389 	mapp = addrel (segp, old_map_ptr);		/* get ptr to object map */
+      390 	if old_map.sentinel1 ^= (36)"10"b then goto bad_obj_map;
+      391 	if old_map.sentinel2 ^= (36)"10"b then
+      392 	     if old_map.sentinel2 ^= (36)"01"b then
+      393 		do;
+      394 bad_obj_map:
+      395 		code = error_table_$bad_segment;
+      396 		return;
+      397 	     end;
+      398 
+      399 	if oi.version_number = 2 then do;		/* fill in version 2 structure */
+      400 	     oi.textp = addrel (segp, old_map.info (1).offset);
+      401 	     p,
+      402 		oi.linkp = addrel (segp, old_map.info (2).offset);
+      403 	     oi.symbp = addrel (segp, old_map.info (3).offset);
+      404 	     lng = old_map.info (2).offset;
+      405 	     oi.llng = old_map.info (3).offset - lng;
+      406 	     oi.slng = divide (old_map.info (3).length+35, 36, 17, 0);
+      407 	     oi.tlng = fixed (p -> virgin_linkage_header.def_offset, 18);
+      408 	     if p -> virgin_linkage_header.defs_in_link = "010000"b then do; /* defs in linkage section */
+      409 		oi.dlng = old_map.info (3).offset - lng - oi.tlng;
+      410 						/* length of defs is length of linkage - defoffset */
+      411 		oi.defp = addrel (p, oi.tlng);
+      412 		oi.tlng = lng;
+      413 	     end;
+      414 	     else do;				/* defs in text section, separate */
+      415 		oi.defp = addrel (segp, oi.tlng);
+      416 		oi.dlng = lng - oi.tlng;
+      417 	     end;
+      418 	     if old_map.info (4).offset ^= old_map_ptr then do; /* break map has been added */
+      419 		oi.bmapp = addrel (segp, old_map.info (4).offset);
+      420 		oi.blng = divide (old_map.info (4).length, 76, 17, 0);
+      421 	     end;
+      422 	     else do;				/* there is no break map */
+      423 		oi.bmapp = null;
+      424 		oi.blng = 0;
+      425 	     end;
+      426 	     sblkp = oi.symbp;			/* pointer to symbol section header */
+      427 	     oi.old_format = "1"b;			/* segment has old style object map */
+      428 	     base18 = divide (osb.gen_name_boff, 9, 18, 0) +1;
+      429 	     lng = divide (fixed (osb.gen_name_blength, 18), 9, 17, 0);
+      430 
+      431 	     if substr (string, base18, lng) = "binder" then oi.format.bound = "1"b;
+      432 
+      433 	     call fill_in_new_items (oi.linkp, oi.llng);	/* fill in items not directly available from obj seg */
+      434 
+      435 	     if entrypoint = "brief   " then goto return; /* relocatable flag only set for $long */
+      436 
+      437 	     oi.compiler = substr (string, base18, lng);
+      438 	     oi.compile_time = fixed (unspec (osb.obj_creation_time), 71); /* if archived, may not be on double word */
+      439 	     oi.userid = "";
+      440 	     base18 = divide (osb.gen_vers_boff, 36, 17, 0);
+      441 	     oi.cvers.offset = bit (fixed (base18, 18), 18);
+      442 	     oi.cvers.length = bit (bin (divide (fixed (osb.gen_vers_blength, 18), 9, 18, 0), 18), 18);
+      443 	     oi.comment.offset,
+      444 		oi.comment.length = ""b;
+      445 	     oi.source_map = 0;
+      446 	     if entrypoint = "display " then goto return;
+      447 
+      448 	     oi.text_boundary,
+      449 		oi.static_boundary = 2;
+      450 	     unspec (oi.default_truncate) = ""b;
+      451 	     oi.rel_text,				/* initialize rel ptrs to null in case seg is bound */
+      452 		oi.rel_def,
+      453 		oi.rel_link,
+      454 		oi.rel_symbol = null;
+      455 	     call decode_definition_$init (segp, bitcount);
+      456 	     dd.next_def = oi.defp;			/* initialize decode_definition_ calls */
+      457 	     defcount = 0;				/* count relevant defs, for acceleration */
+      458 follow_defs:
+      459 	     if decode_definition_ (dd.next_def, addr (dd)) = "1"b then goto return;
+      460 	     if dd.section ^= "symb" then goto follow_defs;
+      461 	     if dd.defname = "rel_text" then
+      462 		do;
+      463 		oi.rel_text = addrel (oi.symbp, dd.offset);
+      464 		oi.default_truncate,
+      465 		     oi.optional_truncate = dd.offset;
+      466 		defcount = defcount +1;
+      467 	     end;
+      468 	     else if dd.defname = "rel_link" then
+      469 		do;
+      470 		oi.rel_link = addrel (oi.symbp, dd.offset);
+      471 		defcount = defcount +1;
+      472 	     end;
+      473 	     else if dd.defname = "rel_symbol" then
+      474 		do;
+      475 		oi.rel_symbol = addrel (oi.symbp, dd.offset);
+      476 		defcount = defcount +1;
+      477 	     end;
+      478 	     if defcount = 3 then do;
+      479 		oi.format.relocatable = "1"b;		/* at least this might help the binder */
+      480 		go to table_check;
+      481 	     end;
+      482 	     goto follow_defs;
+      483 
+      484 table_check:
+      485 	     if oi.compiler = "PL/I"
+      486 	     | oi.compiler = "v2pl1"
+      487 	     | oi.compiler = "fortran"
+      488 	     | oi.compiler = "pl1"
+      489 	     then do;				/* may have a symbol table which can be truncated */
+      490 		base18 = bin (sblkp -> osb.symb_tree, 18); /* get rel ptr to symbol table */
+      491 						/* assume that these segs have only 1 symbol block */
+      492 		if base18 ^= 0 then oi.optional_truncate = base18;
+      493 	     end;
+      494 	     oi.rel_static = null;			/* there are no rel bits for static */
+      495 	end;
+      496 
+      497 
+      498 
+      499 	else do;					/* fill in version 1 structure */
+      500 	     old_oi.textp = addrel (segp, old_map.info (1).offset);
+      501 	     p,
+      502 		old_oi.linkp = addrel (segp, old_map.info (2).offset);
+      503 	     old_oi.symbp = addrel (segp, old_map.info (3).offset);
+      504 	     lng = old_map.info (2).offset;
+      505 	     old_oi.llng = old_map.info (3).offset - lng;
+      506 	     old_oi.slng = divide (old_map.info (3).length+35, 36, 17, 0);
+      507 	     old_oi.tlng = fixed (p -> virgin_linkage_header.def_offset, 18);
+      508 	     if p -> virgin_linkage_header.defs_in_link = "010000"b then do; /* defs in linkage section */
+      509 		old_oi.dlng = old_map.info (3).offset - lng - old_oi.tlng;
+      510 						/* length of defs is length of linkage - defoffset */
+      511 		old_oi.defp = addrel (p, old_oi.tlng);
+      512 		old_oi.tlng = lng;
+      513 	     end;
+      514 	     else do;				/* defs in text section, separate */
+      515 		old_oi.defp = addrel (segp, old_oi.tlng);
+      516 		old_oi.dlng = lng - old_oi.tlng;
+      517 	     end;
+      518 	     if old_map.info (4).offset ^= old_map_ptr then do; /* break map has been added */
+      519 		old_oi.bmapp = addrel (segp, old_map.info (4).offset);
+      520 		old_oi.blng = divide (old_map.info (4).length, 76, 17, 0);
+      521 	     end;
+      522 	     else do;				/* there is no break map */
+      523 		old_oi.bmapp = null;
+      524 		old_oi.blng = 0;
+      525 	     end;
+      526 	     sblkp = old_oi.symbp;			/* pointer to symbol section header */
+      527 	     old_oi.old_format = "1"b;		/* segment has old style object map */
+      528 	     base18 = divide (osb.gen_name_boff, 9, 18, 0) +1;
+      529 	     lng = divide (fixed (osb.gen_name_blength, 18), 9, 17, 0);
+      530 
+      531 	     if substr (string, base18, lng) = "binder" then old_oi.format.bound = "1"b;
+      532 	     if entrypoint = "brief   " then goto return; /* relocatable flag only set for $long */
+      533 
+      534 	     old_oi.compiler = substr (string, base18, lng);
+      535 	     old_oi.compile_time = fixed (unspec (osb.obj_creation_time), 71);
+      536 						/* if archived, may not be on double word */
+      537 	     old_oi.userid = " ";
+      538 	     base18 = divide (osb.gen_vers_boff, 36, 17, 0);
+      539 	     old_oi.cvers.offset = bit (fixed (base18, 18), 18);
+      540 	     old_oi.cvers.length = bit (bin (divide (fixed (osb.gen_vers_blength, 18), 9, 18, 0), 18), 18);
+      541 	     old_oi.comment.offset,
+      542 		old_oi.comment.length = "0"b;
+      543 	     old_oi.source_map = 0;
+      544 	     if entrypoint = "display " then goto return;
+      545 
+      546 	     old_oi.text_boundary,
+      547 		old_oi.static_boundary = 2;
+      548 	     unspec (old_oi.default_truncate) = "0"b;
+      549 	     old_oi.rel_text,			/* initialize rel ptrs to null in case seg is bound */
+      550 		old_oi.rel_def,
+      551 		old_oi.rel_link,
+      552 		old_oi.rel_symbol = null;
+      553 	     call decode_definition_$init (segp, bitcount);
+      554 	     dd.next_def = old_oi.defp;		/* initialize decode_definition_ calls */
+      555 	     defcount = 0;				/* count relevant defs, for acceleration */
+      556 follow_defs_2:
+      557 	     if decode_definition_ (dd.next_def, addr (dd)) = "1"b then goto return;
+      558 	     if dd.section ^= "symb" then goto follow_defs_2;
+      559 	     if dd.defname = "rel_text" then
+      560 		do;
+      561 		old_oi.rel_text = addrel (old_oi.symbp, dd.offset);
+      562 		old_oi.default_truncate,
+      563 		     old_oi.optional_truncate = dd.offset;
+      564 		defcount = defcount +1;
+      565 	     end;
+      566 	     else if dd.defname = "rel_link" then
+      567 		do;
+      568 		old_oi.rel_link = addrel (old_oi.symbp, dd.offset);
+      569 		defcount = defcount +1;
+      570 	     end;
+      571 	     else if dd.defname = "rel_symbol" then
+      572 		do;
+      573 		old_oi.rel_symbol = addrel (old_oi.symbp, dd.offset);
+      574 		defcount = defcount +1;
+      575 	     end;
+      576 	     if defcount = 3 then do;
+      577 		old_oi.format.relocatable = "1"b;	/* at least this might help the binder */
+      578 		go to table_check_2;
+      579 	     end;
+      580 	     goto follow_defs_2;
+      581 
+      582 table_check_2:
+      583 	     if old_oi.compiler = "PL/I"
+      584 	     | old_oi.compiler = "v2pl1"
+      585 	     | old_oi.compiler = "fortran"
+      586 	     | old_oi.compiler = "pl1"
+      587 	     then do;				/* may have a symbol table which can be truncated */
+      588 		base18 = bin (sblkp -> osb.symb_tree, 18); /* get rel ptr to symbol table */
+      589 						/* assume that these segs have only 1 symbol block */
+      590 		if base18 ^= 0 then old_oi.optional_truncate = base18;
+      591 	     end;
+      592 	end;
+      593 	go to return;
+      594 
+      595 /*  */
+      596 fill_in_new_items: proc (link_ptr, link_len);
+      597 
+      598 /* This procedure fills in items in the version 2 oi structure which
+      599*   are not available from the object segment. */
+      600 
+      601 declare  link_ptr ptr;
+      602 declare  link_len fixed bin;
+      603 
+      604 	     if fixed (link_ptr -> virgin_linkage_header.link_begin, 18) <= 8 then do; /* no static section */
+      605 		oi.statp = null;
+      606 		oi.ilng = 0;
+      607 	     end;
+      608 	     else do;
+      609 		oi.statp = addrel (link_ptr, 8);
+      610 		oi.ilng = fixed (link_ptr -> virgin_linkage_header.link_begin, 18) - 8;
+      611 	     end;
+      612 	     oi.entry_bound = 0;
+      613 	     oi.textlinkp = null;
+      614 
+      615 	     return;
+      616 	end;
+      617 						/*  */
+      618 
+      619 decode_object_: entry (seg_ptr, bitcount, index, sect_ptr, sect_lng, sect_bc);
+      620 
+      621 declare (index, sect_lng) fixed bin, sect_ptr pointer;
+      622 declare  sect_bc fixed bin (24);
+      623 
+      624 	sect_ptr = null;				/* preset error return */
+      625 	i = index;				/* copy section index into stack);
+      626*						   if i <= 0 then return;
+      627*						   if i > 3 then return;	/* index out og bounds */
+      628 
+      629 	segp = seg_ptr;
+      630 	if bitcount <= 287 then return;		/* absolute minimum for a 1-component, 1-word object */
+      631 	if mod (bitcount, 18) ^= 0 then return;		/* want bitcount to include map pointer */
+      632 	wordcount = divide (bitcount+35, 36, 18, 0);
+      633 	lastword = addrel (segp, wordcount-1);
+      634 	if old_map_ptr <= 0 then go to new_format;	/* out of range */
+      635 	if old_map_ptr >= wordcount then go to new_format; /* also out of range */
+      636 	mapp = addrel (segp, old_map_ptr);		/* get ptr to object map */
+      637 	if old_map.sentinel1 ^= (36)"10"b then goto new_format;
+      638 	if old_map.sentinel2 ^= (36)"10"b then
+      639 	     if old_map.sentinel2 ^= (36)"01"b then goto new_format; /* this is acceptable too */
+      640 
+      641 /* perform some more consistency checks */
+      642 	base18 = old_map.info (i).offset;
+      643 	if base18  < 0 then go to new_format;		/* section not within object */
+      644 	if base18 >= old_map_ptr then go to new_format;	/*  "  */
+      645 
+      646 	bitlng = old_map.info (i).length;
+      647 	if bitlng < 0 then go to new_format;
+      648 	len = old_map.info (i+1).offset - base18;		/* this method is more accurate for word length */
+      649 	if len < 0 then go to new_format;
+      650 
+      651 	sect_ptr = addrel (segp, old_map.info (i).offset); /* pointer to specified section */
+      652 	sect_bc = bitlng;
+      653 	sect_lng = len;
+      654 	return;
+      655 
+      656 
+      657 new_format:
+      658 	len = fixed (lastword -> map_ptr, 18);		/* find "offset" of obj map */
+      659 	if len <= 0 then return;			/* map ptr is out of bounds */
+      660 	if len >= wordcount then return;		/*     "   */
+      661 	mapp = addrel (segp, lastword -> map_ptr);
+      662 	if mapp -> object_map.identifier ^= "obj_map " then return;
+      663 
+      664 	if mapp -> object_map.decl_vers = 2 then do;	/* have version 2 map */
+      665 	     if i = 1 then
+      666 		do;				/* text section */
+      667 		sect_ptr = addrel (segp, mapp -> object_map.text_offset);
+      668 		sect_lng = fixed (mapp -> object_map.text_length, 18) + fixed (mapp -> object_map.definition_length, 18);
+      669 	     end;
+      670 	     else if i = 2 then
+      671 		do;				/* linkage section */
+      672 		sect_ptr = addrel (segp, mapp -> object_map.linkage_offset);
+      673 		sect_lng = fixed (mapp -> object_map.linkage_length, 18);
+      674 	     end;
+      675 	     else if i = 3 then
+      676 		do;				/* symbol section */
+      677 		sect_ptr = addrel (segp, mapp -> object_map.symbol_offset);
+      678 		sect_lng = fixed (mapp -> object_map.symbol_length, 18);
+      679 	     end;
+      680 	     sect_bc = sect_lng * 36;
+      681 	end;
+      682 	else do;					/* have version 1 map */
+      683 	     if i = 1 then
+      684 		do;				/* text section */
+      685 		sect_ptr = addrel (segp, map1.text_offset);
+      686 		sect_lng = fixed (map1.text_length, 18) + fixed (map1.def_length, 18);
+      687 	     end;
+      688 	     else if i = 2 then
+      689 		do;				/* linkage section */
+      690 		sect_ptr = addrel (segp, map1.link_offset);
+      691 		sect_lng = fixed (map1.link_length, 18);
+      692 	     end;
+      693 	     else if i = 3 then
+      694 		do;				/* symbol section */
+      695 		sect_ptr = addrel (segp, map1.symb_offset);
+      696 		sect_lng = fixed (map1.symb_length, 18);
+      697 	     end;
+      698 	     sect_bc = sect_lng * 36;
+      699 	end;
+      700 
+      701 
+      702 
+      703      end object_info_$long;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.9  object_info_.pl1                  >spec>install>1110>object_info_.pl1
+60           1    08/05/77  1022.5  object_info.incl.pl1              >ldd>include>object_info.incl.pl1
+111          2    08/05/77  1022.5  object_map.incl.pl1               >ldd>include>object_map.incl.pl1
+143          3    05/06/74  1752.6  symbol_block.incl.pl1             >ldd>include>symbol_block.incl.pl1
+170          4    07/27/83  0910.0  linkdcl.incl.pl1                  >ldd>include>linkdcl.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 55 ref 458 458 556 556
+addrel                                                 builtin function         dcl 55 ref 202 209 214 215 216 217 218 219 237 240
+                                                                                  241 242 243 244 262 263 264 265 266 282 283 284
+                                                                                  285 286 322 323 324 325 358 359 360 361 389 400
+                                                                                  401 403 411 415 419 463 470 475 500 501 503 511
+                                                                                  515 519 561 568 573 609 633 636 651 661 667 672
+                                                                                  677 685 690 695
+arg_ptr                                parameter       pointer                  dcl 26 ref 24 178 183 193
+base18                          000121 automatic       fixed bin(18,0)          dcl 38 set ref 428* 431 437 440* 441 490* 492 492
+                                                                                  528* 531 534 538* 539 588* 590 590 642* 643 644
+                                                                                  648
+base21                          000122 automatic       fixed bin(21,0)          dcl 39 set ref 310* 312 345* 347
+bin                                                    builtin function         dcl 55 ref 442 490 540 588
+bit                                                    builtin function         dcl 55 ref 313 315 348 351 441 442 539 540
+bitcount                               parameter       fixed bin(24,0)          dcl 26 set ref 24 178 183 186 195 455* 553* 619 630
+                                                                                  631 632
+bitlng                          000123 automatic       fixed bin(24,0)          dcl 40 set ref 646* 647 652
+blng                     23            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 226* 250* 420* 424*
+blng                     20            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 272* 292* 520* 524*
+bmap_length               7(18)        based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 250 292
+bmap_offset               7            based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 244 244
+                                                                                  286 286
+bmapp                    12            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 266* 267* 286* 287*
+                                                                                  519* 523*
+bmapp                    14            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 219* 220* 244* 245*
+                                                                                  419* 423*
+bound                    12            based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 229 275
+bound                    21(01)        based           bit(1)                   level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 275* 295* 531*
+bound                    10            based           bit(1)                   level 3 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 253
+                                                                                  295
+bound                    24(01)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  229* 253* 431*
+break_map_length         10(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 226 272
+break_map_offset         10            based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 219 219
+                                                                                  266 266
+call_delimiter           22            based           fixed bin(17,0)          level 2 dcl 66 set ref 279*
+code                                   parameter       fixed bin(35,0)          dcl 26 set ref 24 178 183 188* 194* 378* 394*
+comment                  41            based           structure                level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long"
+comment                  45            based           structure                level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long"
+comment_length           14(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 316 352
+comment_offset           14            based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 315 351
+compile_time             32            based           fixed bin(71,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 309* 438*
+compile_time             26            based           fixed bin(71,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 343* 535*
+compiler                 23            based           char(8)                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 342* 534* 582 582 582
+                                                                                  582
+compiler                 30            based           char(8)                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 308* 437* 484 484 484
+                                                                                  484
+cvers                    40            based           structure                level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long"
+cvers                    44            based           structure                level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long"
+dd                              000126 automatic       structure                level 1 dcl 43 set ref 458 458 556 556
+decl_vers                              based           fixed bin(17,0)          level 2 dcl 2-10 ref 213 261 664
+decode_definition_              000020 constant        entry                    external dcl 32 ref 458 556
+decode_definition_$init         000016 constant        entry                    external dcl 31 ref 455 553
+def_length                4(18)        based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 247 289
+                                                                                  686
+def_offset                4            based           bit(18)                  level 2 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 241
+                                                                                  283
+def_offset                1            based           bit(18)                  level 2 in structure "virgin_linkage_header" packed
+                                                                                  packed unaligned dcl 4-52 in procedure
+                                                                                  "object_info_$long" ref 407 507
+default_truncate         56            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 371* 548* 562*
+default_truncate         22(18)        based           bit(18)                  level 2 in structure "sb" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "object_info_$long" ref 336
+                                                                                  371
+default_truncate         64            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 336* 450* 464*
+defcount                        000116 automatic       fixed bin(17,0)          dcl 37 set ref 457* 466* 466 471* 471 476* 476 478
+                                                                                  555* 564* 564 569* 569 574* 574 576
+definition_length         4(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 222 269
+                                                                                  668
+definition_offset         4            based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 215 263
+defname                  11     000126 automatic       char(32)                 level 2 dcl 43 set ref 461 468 473 559 566 571
+defp                      4            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 215* 241* 411* 415*
+                                                                                  456
+defp                      4            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 263* 283* 511* 515*
+                                                                                  554
+defs_in_link              0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 4-52 ref 408 508
+divide                                                 builtin function         dcl 55 ref 195 406 420 428 429 440 442 506 520 528
+                                                                                  529 538 540 632
+dlng                     17            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 222* 247* 409* 416*
+dlng                     15            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 269* 289* 509* 516*
+entry_bound              11            based           bit(18)                  level 2 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 232 236 278 279
+entry_bound              25            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 236* 612*
+entrypoint                      000124 automatic       char(8)                  dcl 41 set ref 175* 180* 185* 301 318 354 435 446
+                                                                                  532 544
+error_table_$bad_ring_brackets  000014 external static fixed bin(35,0)          dcl 30 ref 378
+error_table_$bad_segment        000010 external static fixed bin(35,0)          dcl 30 ref 394
+error_table_$zero_length_seg    000012 external static fixed bin(35,0)          dcl 30 ref 188
+fixed                                                  builtin function         dcl 55 ref 203 221 222 223 224 225 226 236 246 247
+                                                                                  248 249 250 268 269 270 271 272 279 288 289 290
+                                                                                  291 292 309 310 311 313 315 317 334 335 336 337
+                                                                                  343 345 346 348 351 353 369 370 371 372 407 429
+                                                                                  438 441 442 507 529 535 539 540 604 610 657 668
+                                                                                  668 673 678 686 686 691 696
+format                   12            based           structure                level 2 in structure "object_map" dcl 2-10
+                                                                                  in procedure "object_info_$long"
+format                   21            based           structure                level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 198*
+format                   10            based           structure                level 2 in structure "map1" dcl 115 in procedure
+                                                                                  "object_info_$long"
+format                   24            based           structure                level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 196*
+gate                     21(05)        based           bit(1)                   level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 278*
+gate                     24(05)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  232*
+gen_name_blength          1(18)        based           bit(18)                  level 2 packed packed unaligned dcl 146 ref 429 529
+gen_name_boff                          based           fixed bin(17,0)          level 2 dcl 146 ref 428 528
+gen_name_length          12(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 314 350
+gen_name_offset          12            based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 313 348
+gen_vers_blength          3(18)        based           bit(18)                  level 2 packed packed unaligned dcl 146 ref 442 540
+gen_vers_boff             2            based           fixed bin(17,0)          level 2 dcl 146 ref 440 538
+generator                10            based           char(8)                  level 2 dcl 3-6 ref 308 342
+i                               000114 automatic       fixed bin(17,0)          dcl 37 set ref 203* 207 208 625* 642 646 648 651 665
+                                                                                  670 675 683 688 693
+identifier                1            based           char(8)                  level 2 dcl 2-10 ref 210 662
+ilng                     21            based           fixed bin(17,0)          level 2 dcl 62 set ref 224* 606* 610*
+index                                  parameter       fixed bin(17,0)          dcl 621 ref 619 625
+info                      4            based           structure                array level 2 dcl 136
+lastword                        000110 automatic       pointer                  dcl 36 set ref 202* 203 209 386 388 389 418 518 633*
+                                                                                  634 635 636 644 657 661
+len                             000120 automatic       fixed bin(18,0)          dcl 38 set ref 311* 312 346* 347 648* 649 653 657*
+                                                                                  659 660
+length                   45(18)        based           bit(18)                  level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  316* 443*
+length                    5            based           fixed bin(24,0)          array level 3 in structure "old_map" dcl 136
+                                                                                  in procedure "object_info_$long" ref 406 420 506
+                                                                                  520 646
+length                   41(18)        based           bit(18)                  level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 352* 541*
+length                   40(18)        based           bit(18)                  level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 350* 540*
+length                   44(18)        based           bit(18)                  level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  314* 442*
+link_begin                6            based           bit(18)                  level 2 packed packed unaligned dcl 4-52 ref 604 610
+link_len                               parameter       fixed bin(17,0)          dcl 602 ref 596
+link_length               5(18)        based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 248 290
+                                                                                  691
+link_offset               5            based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 242 284
+                                                                                  690
+link_ptr                               parameter       pointer                  dcl 601 ref 596 604 609 610
+linkage_length            5(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 223 270
+                                                                                  673
+linkage_offset            5            based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 216 264
+                                                                                  672
+linkp                     6            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 264* 284* 501*
+linkp                     6            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 216* 242* 256* 401*
+                                                                                  433*
+links_in_text            24(07)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  234*
+links_in_text            12(05)        based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 234
+llng                     20            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 223* 248* 256* 405*
+                                                                                  433*
+llng                     16            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 270* 290* 505*
+lng                             000115 automatic       fixed bin(17,0)          dcl 37 set ref 404* 405 409 412 416 429* 431 437
+                                                                                  504* 505 509 512 516 529* 531 534
+map1                                   based           structure                level 1 dcl 115
+map_ptr                                based           bit(18)                  dcl 2-38 ref 203 209 657 661
+mapp                            000102 automatic       pointer                  dcl 36 set ref 209* 210 213 214 215 216 217 218 219
+                                                                                  219 221 222 223 224 225 226 228 229 230 231 232
+                                                                                  233 234 235 236 237 240 241 242 243 244 244 246
+                                                                                  247 248 249 250 252 253 254 255 261 262 263 264
+                                                                                  265 266 266 268 269 270 271 272 274 275 276 277
+                                                                                  278 279 282 283 284 285 286 286 288 289 290 291
+                                                                                  292 294 295 296 297 389* 390 391 391 400 401 403
+                                                                                  404 405 406 409 418 419 420 500 501 503 504 505
+                                                                                  506 509 518 519 520 636* 637 638 638 642 646 648
+                                                                                  651 661* 662 664 667 668 668 672 673 677 678 685
+                                                                                  686 686 690 691 695 696
+mod                                                    builtin function         dcl 55 ref 631
+next_def                        000126 automatic       pointer                  level 2 dcl 43 set ref 456* 458* 554* 556*
+not_in_read_bracket             000150 stack reference condition                dcl 56 ref 200 205
+null                                                   builtin function         dcl 55 ref 220 245 267 287 328 333 364 423 451 494
+                                                                                  523 549 605 613 624
+obj_creation_time         6            based           fixed bin(71,0)          level 2 in structure "sb" dcl 3-6 in procedure
+                                                                                  "object_info_$long" ref 309 343
+obj_creation_time         6            based           fixed bin(71,0)          level 2 in structure "osb" dcl 146 in procedure
+                                                                                  "object_info_$long" ref 438 535
+object_info                            based           structure                level 1 dcl 1-6
+object_map                             based           structure                level 1 dcl 2-10
+offset                    7     000126 automatic       fixed bin(17,0)          level 2 in structure "dd" dcl 43 in procedure
+                                                                                  "object_info_$long" set ref 463 464 470 475 561
+                                                                                  562 568 573
+offset                   40            based           bit(18)                  level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 348* 539*
+offset                   44            based           bit(18)                  level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  313* 441*
+offset                   45            based           bit(18)                  level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  315* 443*
+offset                    4            based           fixed bin(17,0)          array level 3 in structure "old_map" dcl 136
+                                                                                  in procedure "object_info_$long" ref 400 401 403
+                                                                                  404 405 409 418 419 500 501 503 504 505 509 518
+                                                                                  519 642 648 651
+offset                   41            based           bit(18)                  level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 351* 541*
+oi                                     based           structure                level 1 dcl 62
+oip                             000106 automatic       pointer                  dcl 36 set ref 193* 196 196 198 212 214 215 216 217
+                                                                                  218 219 220 221 222 223 224 225 226 227 228 229
+                                                                                  230 231 232 233 234 235 236 237 240 241 242 243
+                                                                                  244 245 246 247 248 249 250 251 252 253 254 255
+                                                                                  256 256 262 263 264 265 266 267 268 269 270 271
+                                                                                  272 273 274 275 276 277 278 279 282 283 284 285
+                                                                                  286 287 288 289 290 291 292 293 294 295 296 297
+                                                                                  306 307 308 309 312 313 314 315 316 317 320 322
+                                                                                  323 324 325 328 328 328 328 333 334 335 336 337
+                                                                                  341 342 343 347 348 350 351 352 353 356 358 359
+                                                                                  360 361 364 364 364 364 369 370 371 372 399 400
+                                                                                  401 403 405 406 407 409 409 411 411 412 415 415
+                                                                                  416 416 419 420 423 424 426 427 431 433 433 437
+                                                                                  438 439 441 442 443 443 445 448 448 450 451 451
+                                                                                  451 451 456 463 463 464 464 470 470 475 475 479
+                                                                                  484 484 484 484 492 494 500 501 503 505 506 507
+                                                                                  509 509 511 511 512 515 515 516 516 519 520 523
+                                                                                  524 526 527 531 534 535 537 539 540 541 541 543
+                                                                                  546 546 548 549 549 549 549 554 561 561 562 562
+                                                                                  568 568 573 573 577 582 582 582 582 590 605 606
+                                                                                  609 610 612 613
+old_format               24            based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  227* 251* 427*
+old_format               21            based           bit(1)                   level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 273* 293* 527*
+old_map                                based           structure                level 1 dcl 136
+old_map_ptr                            based           fixed bin(18,0)          dcl 167 ref 386 388 389 418 518 634 635 636 644
+old_oi                                 based           structure                level 1 dcl 66
+optional_truncate        65            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 337* 464* 492*
+optional_truncate        57            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 372* 562* 590*
+optional_truncate        23            based           bit(18)                  level 2 in structure "sb" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "object_info_$long" ref 337
+                                                                                  372
+osb                                    based           structure                level 1 dcl 146
+p                               000100 automatic       pointer                  dcl 36 set ref 401* 407 408 411 501* 507 508 511
+perprocess_static        24(08)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  235*
+perprocess_static        12(06)        based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 235
+procedure                24(03)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  228* 252*
+procedure                21(03)        based           bit(1)                   level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 274* 294*
+procedure                12(02)        based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 228 274
+procedure                10(02)        based           bit(1)                   level 3 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 252
+                                                                                  294
+rel_def                  46            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 359* 364* 549*
+rel_def                  21            based           bit(18)                  level 2 in structure "sb" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "object_info_$long" ref 323
+                                                                                  359
+rel_def                  52            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 323* 328* 451*
+rel_link                 21(18)        based           bit(18)                  level 2 in structure "sb" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "object_info_$long" ref 324
+                                                                                  360
+rel_link                 50            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 360* 364* 549* 568*
+rel_link                 54            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 324* 328* 451* 470*
+rel_static               56            based           pointer                  level 2 dcl 62 set ref 333* 494*
+rel_symb                 22            based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 325 361
+rel_symbol               52            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 361* 364* 549* 573*
+rel_symbol               60            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 325* 328* 451* 475*
+rel_text                 20(18)        based           bit(18)                  level 2 in structure "sb" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "object_info_$long" ref 322
+                                                                                  358
+rel_text                 50            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 322* 328* 451* 463*
+rel_text                 44            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 358* 364* 549* 561*
+relocatable              12(01)        based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 230 276
+relocatable              21(02)        based           bit(1)                   level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 276* 296* 356 577*
+relocatable              24(02)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  230* 254* 320 479*
+relocatable              10(01)        based           bit(1)                   level 3 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 254
+                                                                                  296
+sb                                     based           structure                level 1 dcl 3-6
+sblkp                           000112 automatic       pointer                  dcl 36 set ref 307* 308 309 310 311 312 313 314 315
+                                                                                  316 317 322 322 323 323 324 324 325 325 334 335
+                                                                                  336 337 341* 342 343 345 346 347 348 350 351 352
+                                                                                  353 358 358 359 359 360 360 361 361 369 370 371
+                                                                                  372 426* 428 429 431 437 438 440 442 490 526* 528
+                                                                                  529 531 534 535 538 540 588
+sect_bc                                parameter       fixed bin(24,0)          dcl 622 set ref 619 652* 680* 698*
+sect_lng                               parameter       fixed bin(17,0)          dcl 621 set ref 619 653* 668* 673* 678* 680 686*
+                                                                                  691* 696* 698
+sect_ptr                               parameter       pointer                  dcl 621 set ref 619 624* 651* 667* 672* 677* 685*
+                                                                                  690* 695*
+section                   6     000126 automatic       char(4)                  level 2 dcl 43 set ref 460 558
+seg_ptr                                parameter       pointer                  dcl 26 ref 24 178 183 192 619 629
+segp                            000104 automatic       pointer                  dcl 36 set ref 192* 202 209 214 215 216 217 218 219
+                                                                                  237 240 241 242 243 244 262 263 264 265 266 282
+                                                                                  283 284 285 286 389 400 401 403 415 419 455* 500
+                                                                                  501 503 515 519 553* 629* 633 636 651 661 667 672
+                                                                                  677 685 690 695
+sentinel1                              based           bit(72)                  level 2 dcl 136 ref 390 637
+sentinel2                 2            based           bit(72)                  level 2 dcl 136 ref 391 391 638 638
+separate_static          12(04)        based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 233
+separate_static          24(06)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  233*
+slng                     22            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 225* 249* 406*
+slng                     17            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 271* 291* 506*
+source_map               16            based           bit(18)                  level 2 in structure "sb" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "object_info_$long" ref 317
+                                                                                  353
+source_map               46            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 317* 445*
+source_map               42            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 353* 543*
+standard                 24(04)        based           bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 62 in procedure "object_info_$long" set ref
+                                                                                  231* 255*
+standard                 10(03)        based           bit(1)                   level 3 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 255
+                                                                                  297
+standard                 12(03)        based           bit(1)                   level 3 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 231 277
+standard                 21(04)        based           bit(1)                   level 3 in structure "old_oi" packed packed
+                                                                                  unaligned dcl 66 in procedure "object_info_$long"
+                                                                                  set ref 277* 297*
+stat_bound               15(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 335 370
+static_boundary          63            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 335* 448*
+static_boundary          55            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 370* 546*
+static_length             6(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 224
+static_offset             6            based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 217
+statp                    10            based           pointer                  level 2 dcl 62 set ref 217* 605* 609*
+string                                 based           char(1048576)            packed unaligned dcl 168 ref 312 347 431 437 531 534
+substr                                                 builtin function         dcl 55 ref 312 347 431 437 531 534
+symb_length               6(18)        based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 249 291
+                                                                                  696
+symb_offset               6            based           bit(18)                  level 2 packed packed unaligned dcl 115 ref 243 285
+                                                                                  695
+symb_tree                10            based           bit(18)                  level 2 packed packed unaligned dcl 146 ref 490 588
+symbol_length             7(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 225 271
+                                                                                  678
+symbol_offset             7            based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 218 265
+                                                                                  677
+symbp                    12            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 218* 243* 307 403* 426
+                                                                                  463 470 475
+symbp                    10            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 265* 285* 341 503* 526
+                                                                                  561 568 573
+tbound                   15            based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 334 369
+text_boundary            54            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 369* 546*
+text_boundary            62            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 334* 448*
+text_length               3(18)        based           bit(18)                  level 2 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 246
+                                                                                  288 686
+text_length               3(18)        based           bit(18)                  level 2 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 221 268 668
+text_link_offset         11(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-10 ref 237
+text_offset               3            based           bit(18)                  level 2 in structure "map1" packed packed unaligned
+                                                                                  dcl 115 in procedure "object_info_$long" ref 240
+                                                                                  282 685
+text_offset               3            based           bit(18)                  level 2 in structure "object_map" packed packed
+                                                                                  unaligned dcl 2-10 in procedure
+                                                                                  "object_info_$long" ref 214 262 667
+textlinkp                26            based           pointer                  level 2 dcl 62 set ref 237* 613*
+textp                     2            based           pointer                  level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 214* 240* 400*
+textp                     2            based           pointer                  level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 262* 282* 500*
+tlng                     14            based           fixed bin(17,0)          level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 268* 288* 507* 509 511
+                                                                                  512* 515 516
+tlng                     16            based           fixed bin(17,0)          level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 221* 246* 407* 409 411
+                                                                                  412* 415 416
+uid_length               13(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 311 346
+uid_offset               13            based           bit(18)                  level 2 packed packed unaligned dcl 3-6 ref 310 345
+unspec                                                 builtin function         dcl 55 set ref 196* 198* 309 343 438 450* 535 548*
+userid                   30            based           char(32)                 level 2 in structure "old_oi" dcl 66 in procedure
+                                                                                  "object_info_$long" set ref 347* 537*
+userid                   34            based           char(32)                 level 2 in structure "oi" dcl 62 in procedure
+                                                                                  "object_info_$long" set ref 312* 439*
+version_number                         based           fixed bin(17,0)          level 2 dcl 62 ref 196 212 306 399
+virgin_linkage_header                  based           structure                level 1 dcl 4-52
+wordcount                       000117 automatic       fixed bin(18,0)          dcl 38 set ref 195* 202 208 388 632* 633 635 660
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exp_word                               based           structure                level 1 dcl 4-21
+header                                 based           structure                level 1 dcl 4-31
+link                                   based           structure                level 1 dcl 4-11
+linkage_header_flags                   based           structure                level 1 dcl 4-44
+name                                   based           structure                level 1 dcl 4-70
+object_info_version_2                  internal static fixed bin(17,0)          initial dcl 1-60
+object_map_version_2                   internal static fixed bin(17,0)          initial dcl 2-40
+trap_word                              based           structure                level 1 dcl 4-66
+type_pair                              based           structure                level 1 dcl 4-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+access_error_return             001233 constant        label                    dcl 378 ref 200
+bad_obj_map                     001261 constant        label                    dcl 394 ref 386 388 390
+decode_object_                  002250 constant        entry                    external dcl 619
+fill_in_new_items               002521 constant        entry                    internal dcl 596 ref 256 433
+follow_defs                     001522 constant        label                    dcl 458 ref 460 482
+follow_defs_2                   002102 constant        label                    dcl 556 ref 558 580
+new_format                      002355 constant        label                    dcl 657 ref 634 635 637 638 643 644 647 649
+object_info_$brief              000101 constant        entry                    external dcl 183
+object_info_$display            000067 constant        entry                    external dcl 178
+object_info_$long               000055 constant        entry                    external dcl 24
+old_format                      001240 constant        label                    dcl 386 ref 207 208 210
+return                          001232 constant        label                    dcl 375 ref 301 318 354 435 446 458 532 544 556 593
+start                           000110 constant        label                    dcl 186 ref 176 181
+table_check                     001620 constant        label                    dcl 484 ref 480
+table_check_2                   002200 constant        label                    dcl 582 ref 578
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2736        2760    2555        2746
+Length      3226    2555        22         232     160           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+object_info_$long                   128 external procedure  is an external procedure.  
+on unit on line 200                  64 on unit               
+fill_in_new_items                       internal procedure  shares stack frame of external procedure object_info_$long.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+object_info_$long        000100 p                           object_info_$long
+                         000102 mapp                        object_info_$long
+                         000104 segp                        object_info_$long
+                         000106 oip                         object_info_$long
+                         000110 lastword                    object_info_$long
+                         000112 sblkp                       object_info_$long
+                         000114 i                           object_info_$long
+                         000115 lng                         object_info_$long
+                         000116 defcount                    object_info_$long
+                         000117 wordcount                   object_info_$long
+                         000120 len                         object_info_$long
+                         000121 base18                      object_info_$long
+                         000122 base21                      object_info_$long
+                         000123 bitlng                      object_info_$long
+                         000124 entrypoint                  object_info_$long
+                         000126 dd                          object_info_$long
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             call_ext_out        return_mac          tra_ext_1           mdfx1               enable_op
+ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+decode_definition_            decode_definition_$init
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_ring_brackets                              error_table_$bad_segment      error_table_$zero_length_seg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     24 000050       175 000062       176 000064       178 000065       180 000074       181 000076       183 000077
+    185 000106       186 000110       188 000113       189 000116       192 000117       193 000122       194 000125
+    195 000126       196 000131       198 000136       200 000137       202 000156       203 000163       205 000166
+    207 000167       208 000171       209 000173       210 000177       212 000203       213 000206       214 000211
+    215 000217       216 000224       217 000231       218 000236       219 000243       220 000253       221 000255
+    222 000260       223 000263       224 000266       225 000271       226 000274       227 000277       228 000301
+    229 000306       230 000313       231 000320       232 000325       233 000334       234 000341       235 000346
+    236 000353       237 000356       238 000363       240 000364       241 000372       242 000377       243 000404
+    244 000411       245 000421       246 000423       247 000426       248 000431       249 000434       250 000437
+    251 000442       252 000444       253 000451       254 000456       255 000463       256 000470       258 000500
+    261 000501       262 000504       263 000512       264 000517       265 000524       266 000531       267 000541
+    268 000543       269 000546       270 000551       271 000554       272 000557       273 000562       274 000564
+    275 000571       276 000576       277 000603       278 000610       279 000617       280 000622       282 000623
+    283 000631       284 000636       285 000643       286 000650       287 000660       288 000662       289 000665
+    290 000670       291 000673       292 000676       293 000701       294 000703       295 000710       296 000715
+    297 000722       301 000727       306 000732       307 000735       308 000740       309 000745       310 000750
+    311 000755       312 000760       313 000765       314 000775       315 000777       316 001007       317 001011
+    318 001014       320 001017       322 001024       323 001031       324 001036       325 001043       326 001050
+    328 001051       333 001056       334 001060       335 001063       336 001066       337 001071       338 001074
+    341 001075       342 001100       343 001105       345 001110       346 001115       347 001120       348 001125
+    350 001135       351 001137       352 001147       353 001151       354 001154       356 001157       358 001164
+    359 001171       360 001176       361 001203       362 001210       364 001211       369 001216       370 001221
+    371 001224       372 001227       375 001232       378 001233       380 001237       386 001240       388 001242
+    389 001244       390 001247       391 001253       394 001261       396 001265       399 001266       400 001271
+    401 001276       403 001304       404 001310       405 001312       406 001315       407 001321       408 001325
+    409 001331       411 001335       412 001341       413 001343       415 001344       416 001347       418 001352
+    419 001355       420 001360       421 001363       423 001364       424 001366       426 001367       427 001371
+    428 001373       429 001377       431 001403       433 001412       435 001422       437 001425       438 001434
+    439 001437       440 001442       441 001445       442 001452       443 001463       445 001467       446 001470
+    448 001473       450 001476       451 001477       455 001504       456 001516       457 001521       458 001522
+    460 001543       461 001546       463 001552       464 001557       466 001561       467 001562       468 001563
+    470 001567       471 001574       472 001575       473 001576       475 001602       476 001607       478 001610
+    479 001613       480 001616       482 001617       484 001620       490 001652       492 001656       494 001661
+    495 001663       500 001664       501 001671       503 001677       504 001703       505 001705       506 001710
+    507 001714       508 001720       509 001724       511 001730       512 001734       513 001736       515 001737
+    516 001742       518 001745       519 001750       520 001753       521 001756       523 001757       524 001761
+    526 001762       527 001764       528 001766       529 001772       531 001776       532 002005       534 002010
+    535 002014       537 002017       538 002022       539 002025       540 002032       541 002043       543 002047
+    544 002050       546 002053       548 002056       549 002057       553 002064       554 002076       555 002101
+    556 002102       558 002123       559 002126       561 002132       562 002137       564 002141       565 002142
+    566 002143       568 002147       569 002154       570 002155       571 002156       573 002162       574 002167
+    576 002170       577 002173       578 002176       580 002177       582 002200       588 002232       590 002236
+    593 002241       619 002242       624 002255       625 002260       629 002262       630 002265       631 002270
+    632 002273       633 002277       634 002303       635 002305       636 002307       637 002312       638 002316
+    642 002324       643 002331       644 002332       646 002334       647 002337       648 002340       649 002343
+    651 002344       652 002350       653 002352       654 002354       657 002355       659 002360       660 002362
+    661 002364       662 002370       664 002374       665 002377       667 002402       668 002407       669 002416
+    670 002417       672 002421       673 002426       674 002431       675 002432       677 002434       678 002441
+    680 002444       681 002447       683 002450       685 002453       686 002460       687 002467       688 002470
+    690 002472       691 002477       692 002502       693 002503       695 002505       696 002512       698 002515
+    703 002520       596 002521       604 002523       605 002531       606 002534       607 002535       609 002536
+    610 002541       612 002547       613 002550       615 002552
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

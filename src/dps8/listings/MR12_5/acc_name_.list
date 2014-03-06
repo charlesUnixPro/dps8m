@@ -1,0 +1,788 @@
+	COMPILATION LISTING OF SEGMENT acc_name_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1011.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 acc_name_: proc;
+       14 
+       15 /* Modified 1/14/83 Jay Pattin to make $elements reject null access name components */
+       16 /* Modified 07/77 by THVV for bad_dir_ check */
+       17 /* Modified by E. Stone April 1974 - re-written with v2 EIS compiler in mind */
+       18 
+       19 /*
+       20*   entry:
+       21*   get(stg_ptr, char_name_ptr, code) 		given addr of name ptrs, return a 32 char access name
+       22*   delete(stg_ptr, code)			givin addr of name ptrs, delete the names if this is
+       23*   .					is the last reference to the name, else decrement usage count.
+       24*   encode(stg_ptr, acl_entry_ptr, code)		given an access str addr and addr of where rel name ptrs go,
+       25*   .					insert rel ptrs and tag char, and encode name.
+       26*   elements(char_name_ptr, acl_entry_ptr, code)	given a 32 char access name, break it up into its 3
+       27*   .					components, check if all chars are valid ascii,
+       28*   .					and put into acl structure. The directory need not be
+       29*   .					locked for this operation.
+       30*
+       31*   1. stg_ptr ptr	pts to the representation of an access name in a directory,
+       32*   .		as defined by the structure acl_name.
+       33*   2. char_name_ptr ptr pts to a 32 char access name.
+       34*   3. acl_entry_ptr ptr pts to the structure defined by acl_info.
+       35*   4. code fixed bin(35) is a standard error code .
+       36*   */
+       37 dcl  char_name_ptr ptr;				/* points to 32 char access name of the form pers.proj.tag */
+       38 						/* (Input) */
+       39 dcl  stg_ptr ptr;					/* points to the structure defined by acl_name */
+       40 						/* i.e. the representation of an access name in a directory */
+       41 						/* (Input) */
+       42 dcl  acl_entry_ptr ptr;				/* points to the structure defined by acl_info */
+       43 						/* i.e. to the structure used as input to the utility acl_ */
+       44 						/* or the access name already parsed into per, proj and tag */
+       45 						/* (Input) */
+       46 dcl  fp ptr;					/* points to the head of a list of access names */
+       47 dcl  bp ptr;					/* points to the tail of a list of access names */
+       48 dcl  anp ptr;					/* points to the access name to be deleted, */
+       49 						/* or to the access name a new name is to be inserted before, */
+       50 						/* or to the access name at the end of a list */
+       51 dcl  name_rp bit (18) aligned;			/* rel pointer to access name to be deleted or which was inserted */
+       52 dcl  rp bit (18) aligned;				/* rel pointer used in looping thru list while adding a name */
+       53 dcl  thread bit (18) unaligned based;			/* used to obtain value of head or tail of access name list */
+       54 dcl  len_pers fixed bin;				/* length of person name */
+       55 dcl  len_proj fixed bin;				/* length of project name */
+       56 dcl  len fixed bin;					/* length of access name */
+       57 dcl  start fixed bin;				/* character position of first non blank in access name */
+       58 
+       59 dcl  acc_name char (32) aligned based;			/* overlay of access name */
+       60 
+       61 dcl  access_id char (32) varying;			/* used to construct concatenated access name */
+       62 
+       63 dcl 1 acl_name based,				/* the encoded form of an access name, author, bit count author */
+       64     2 pers_rp bit (18) unaligned,			/* rel pointer to person name */
+       65     2 proj_rp bit (18) unaligned,			/* rel pointer to project name */
+       66     2 tag char (1) unaligned;				/* instance tag */
+       67 
+       68 dcl 1 acl_info based aligned,				/* form of access name already parsed into three components */
+       69     2 person char (32),
+       70     2 project char (32),
+       71     2 tag char (1);
+       72 
+       73 dcl  code fixed bin (35);				/* storage system status */
+       74 
+       75 dcl  person char (32) aligned;			/* person name in an access name */
+       76 dcl  project char (32) aligned;			/* project name in an access name */
+       77 dcl  name char (32) aligned;				/* access name to be parsed into three elements */
+       78 						/* or a person or project name to be added to a list */
+       79 dcl  name_in_list char (32) aligned;			/* access name in a list to be compared with new name */
+       80 
+       81 dcl  proj_rp bit (18) aligned;			/* rel pointer to project access name */
+       82 dcl  pers_rp bit (18) aligned;			/* rel pointer to person access name */
+       83 
+       84 dcl  np ptr;					/* pointer to access name entry newly allocated */
+       85 dcl  area_ptr ptr;					/* pointer to start of directory allocation area */
+       86 
+       87 dcl 1 check_for_ascii aligned static options (constant),	/* bit string to be used to check access names for non-ascii */
+       88     2 part1 bit (9 * 16) init ((16)"110000000"b),
+       89     2 part2 bit (9 * 16) init ((16)"110000000"b);
+       90 
+       91 dcl (addr, index, null, ptr, rel, substr, ltrim, rtrim, unspec) builtin;
+       92 dcl  bad_dir_ condition;
+       93 
+       94 dcl (fs_alloc$alloc, fs_alloc$free) ext entry (ptr, fixed bin (17), ptr);
+       95 
+       96 dcl error_table_$notalloc ext fixed bin (35);
+       97 dcl (error_table_$bad_name, error_table_$invalid_ascii) ext fixed bin (35);
+       98 
+       99 dcl  active_hardcore_data$ensize ext fixed bin;
+      100 
+      101 dcl 1 pds$access_name aligned ext,			/* current user's access name */
+      102     2 person char (32),
+      103     2 project char (32),
+      104     2 tag char (1) unaligned,
+      105     2 pad char (3) unaligned;
+      106 
+  1     1 /* BEGIN INCLUDE FILE ... fs_types.incl.pl1 */
+  1     2 
+  1     3 dcl  ACCESS_NAME_TYPE bit (18) static options (constant) init ("000001"b3);
+  1     4 dcl  ACLE_TYPE bit (18) static options (constant) init ("000002"b3);
+  1     5 dcl  DIR_HEADER_TYPE bit (18) static options (constant) init ("000003"b3);
+  1     6 dcl  DIR_TYPE bit (18) static options (constant) init ("000004"b3);
+  1     7 dcl  LINK_TYPE bit (18) static options (constant) init ("000005"b3);
+  1     8 dcl  NAME_TYPE bit (18) static options (constant) init ("000006"b3);
+  1     9 dcl  SEG_TYPE bit (18) static options (constant) init ("000007"b3);
+  1    10 dcl  HASH_TABLE_TYPE bit (18) static options (constant) init ("000013"b3);
+  1    11 
+  1    12 dcl  access_name_type fixed bin static options (constant) init (1);
+  1    13 dcl  acle_type fixed bin static options (constant) init (2);
+  1    14 dcl  dir_header_type fixed bin static options (constant) init (3);
+  1    15 dcl  dir_type fixed bin static options (constant) init (4);
+  1    16 dcl  link_type fixed bin static options (constant) init (5);
+  1    17 dcl  name_type fixed bin static options (constant) init (6);
+  1    18 dcl  seg_type fixed bin static options (constant) init (7);
+  1    19 dcl  hash_table_type fixed bin static options (constant) init (11);
+  1    20 
+  1    21 /* END INCLUDE FILE ... fs_types.incl.pl1 */
+      107 
+  2     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  2     2 /* Modified 8/74 for NSS */
+  2     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  2     4 /* Modified 3/82 BIM for change pclock */
+  2     5 /* format: style3 */
+  2     6 
+  2     7 /* Template for the directory header. Length = 64 words. */
+  2     8 
+  2     9 dcl  dp ptr;
+  2    10 
+  2    11 dcl 1 dir based (dp) aligned,
+  2    12 
+  2    13    2 modify bit (36),				/* Process ID of last modifier */
+  2    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  2    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  2    16     2 dtc (3),					/* date-time checked by salvager array */
+  2    17       3 date bit (36),				/* the date */
+  2    18       3 error bit (36),				/* what errors were discovered */
+  2    19 
+  2    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  2    21 
+  2    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  2    23 
+  2    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  2    25 
+  2    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  2    27 
+  2    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  2    29     2 version_number fixed bin (17),			/* version number of header */
+  2    30 
+  2    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  2    32     2 pad2 bit (18),
+  2    33 
+  2    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  2    35     2 pad3 bit (18),
+  2    36 
+  2    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  2    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  2    39 
+  2    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  2    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  2    42 
+  2    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  2    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  2    45 
+  2    46     2 lcount fixed bin (17),				/* number of links */
+  2    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  2    48 
+  2    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  2    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  2    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  2    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  2    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  2    54     2 pad4 bit (14),
+  2    55 
+  2    56     2 iacl_count (0:7),
+  2    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  2    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  2    59 
+  2    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  2    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  2    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  2    63 
+  2    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  2    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  2    66 
+  2    67     2 htsize fixed bin (17),				/* size of hash table */
+  2    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  2    69 
+  2    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  2    71     2 pad6 fixed bin (17),
+  2    72 
+  2    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  2    74     2 pad7 bit (18)) unaligned,
+  2    75 
+  2    76     2 dts bit (36),					/* date-time directory last salvaged */
+  2    77 
+  2    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  2    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  2    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  2    81     2 checksum bit (36),				/* checksummed from uid on */
+  2    82     2 owner bit (36);				/* uid of parent dir */
+  2    83 
+  2    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  2    85 
+  2    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      108 
+  3     1 /*     BEGIN INCLUDE FILE ... dir_acl.incl.pl1 ... last modified Nov 1975 for nss */
+  3     2 
+  3     3 /* Template for an ACL entry. Length = 8 words */
+  3     4 
+  3     5 dcl aclep ptr;
+  3     6 
+  3     7 dcl 1 acl_entry based (aclep) aligned,			/* length is 8 words */
+  3     8     2 frp bit(18) unaligned,				/* rel ptr to next entry */
+  3     9     2 brp bit(18) unaligned,				/* rel ptr to previous entry */
+  3    10 
+  3    11     2 type bit (18) unaligned,			/* type = dir acl */
+  3    12     2 size fixed bin (17) unaligned,			/* size of acl entry */
+  3    13 
+  3    14 
+  3    15     2 name unaligned,				/* user name associated with this ACL entry */
+  3    16         3 pers_rp bit(18) unaligned,			/* name of user */
+  3    17         3 proj_rp bit(18) unaligned,			/* project of user */
+  3    18         3 tag char(1) unaligned,			/* tag of user */
+  3    19     2 mode bit (3) unaligned,				/* mode for userid */
+  3    20     2 pad24 bit(24) unaligned,
+  3    21 
+  3    22     2 ex_mode bit(36),				/* extended access modes */
+  3    23 
+  3    24     2 checksum bit (36),				/* checksum from acl_entry.name */
+  3    25     2  owner bit (36);				/* uid of owning entry */
+  3    26 
+  3    27 /* Template for a person or project name on ACL. Length = 14 words. */
+  3    28 
+  3    29 dcl 1 access_name aligned based,			/* person or project name */
+  3    30     2 frp bit(18) unaligned,				/* rel ptr to next name structure */
+  3    31     2 brp bit(18) unaligned,				/* rel ptr to prev name structure */
+  3    32 
+  3    33     2 type bit (18) unaligned,			/* type = access name */
+  3    34     2 size fixed bin (17) unaligned,			/* size of access name */
+  3    35 
+  3    36     2 salv_flag fixed bin(17) unaligned,		/* used by salvager to check for ascii names */
+  3    37     2 usage fixed bin(17) unaligned,			/* number of ACL entries that refer to this name */
+  3    38 
+  3    39     2 pad1 bit (36),
+  3    40 
+  3    41     2 name char(32) aligned,				/* person or project name itself */
+  3    42 
+  3    43     2 checksum bit (36),				/* checksum from salv_flag */
+  3    44 
+  3    45     2 owner bit (36);				/* uid of containing directory */
+  3    46 
+  3    47 /*     END INCLUDE FILE ... dir_acl.incl.pl1 */
+      109 
+      110 
+      111 
+      112 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      113 
+      114 get:	entry (stg_ptr, char_name_ptr);		/* given rel ptrs, return char name */
+      115 
+      116 
+      117 	dp = ptr (stg_ptr, 0);			/* get ptr to directory in which rel ptrs are stored */
+      118 
+      119 	pers_rp = stg_ptr -> acl_name.pers_rp;		/* pick up rel ptr to person name */
+      120 
+      121 	if pers_rp then do;				/* If name is not "*" */
+      122 	     anp = ptr (dp, pers_rp);
+      123 	     if anp -> access_name.type ^= ACCESS_NAME_TYPE
+      124 	     | anp -> access_name.owner ^= dir.uid then signal bad_dir_;
+      125 	     person = anp -> access_name.name;		/* get name and find its length */
+      126 	end;
+      127 	else do;					/* special case name = "*" */
+      128 	     person = "*";
+      129 	end;
+      130 
+      131 	proj_rp = stg_ptr -> acl_name.proj_rp;		/* pick up rel ptr to project name */
+      132 
+      133 	if proj_rp then do;				/* If name is not "*" */
+      134 	     anp = ptr (dp, proj_rp);
+      135 	     if anp -> access_name.type ^= ACCESS_NAME_TYPE
+      136 	     | anp -> access_name.owner ^= dir.uid then signal bad_dir_;
+      137 	     project = anp -> access_name.name;		/* get name and find its length */
+      138 	end;
+      139 	else do;					/* special case name = "*" */
+      140 	     project = "*";
+      141 	end;
+      142 
+      143 	access_id = rtrim (person) || ".";
+      144 	access_id = access_id || rtrim (project);
+      145 	access_id = access_id || ".";
+      146 	access_id = access_id || stg_ptr -> acl_name.tag;
+      147 	char_name_ptr -> acc_name = access_id;		/* return constructed access name to caller */
+      148 
+      149 	return;
+      150 
+      151 /*  *  *  *  *  *  *  *  *  *  *  *  *  */
+      152 
+      153 delete:	entry (stg_ptr);				/* given ptrs, remove name or decrement name count */
+      154 						/* if more than one reference to name */
+      155 
+      156 	dp = ptr (stg_ptr, 0);			/* get ptr to directory where name is stored */
+      157 	area_ptr = ptr (dp, dp -> dir.arearp);		/* get ptr to directory allocation area */
+      158 
+      159 	name_rp = stg_ptr -> acl_name.pers_rp;		/* get rel ptr to person name  */
+      160 
+      161 	if name_rp then do;				/* if person not "*", update person person list */
+      162 	     fp = addr (dp -> dir.pers_frp);
+      163 	     bp = addr (dp -> dir.pers_brp);
+      164 	     call delete_name;
+      165 	end;
+      166 
+      167 	name_rp = stg_ptr -> acl_name.proj_rp;		/* get rel ptr to project name */
+      168 
+      169 	if name_rp then do;				/* if project not "*", update project project list */
+      170 	     fp = addr (dp -> dir.proj_frp);
+      171 	     bp = addr (dp -> dir.proj_brp);
+      172 	     call delete_name;
+      173 	end;
+      174 
+      175 	return;
+      176 
+      177 
+      178 
+      179 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      180 
+      181 encode:	entry (stg_ptr, acl_entry_ptr, code);		/* given name, return rptrs and update count */
+      182 
+      183 /* code is returned 0 or error_table_$notalloc */
+      184 
+      185 	code = 0;
+      186 
+      187 
+      188 	dp = ptr (stg_ptr, 0);			/* get start of dir */
+      189 	area_ptr = ptr (dp, dp -> dir.arearp);		/* start of allocations */
+      190 
+      191 	name = acl_entry_ptr -> acl_info.person;	/* pick up person name */
+      192 	fp = addr (dp -> dir.pers_frp);
+      193 	bp = addr (dp -> dir.pers_brp);
+      194 	call add_name;				/* add to person name list */
+      195 
+      196 	stg_ptr -> acl_name.pers_rp = name_rp;		/* return rel ptr to person name */
+      197 
+      198 	name = acl_entry_ptr -> acl_info.project;	/* pick up project name */
+      199 	fp = addr (dp -> dir.proj_frp);
+      200 	bp = addr (dp -> dir.proj_brp);
+      201 	call add_name;				/* add to project name list */
+      202 
+      203 	stg_ptr -> acl_name.proj_rp = name_rp;		/* return rel ptr to project name */
+      204 						/* copy tag into access name */
+      205 	stg_ptr -> acl_name.tag = acl_entry_ptr -> acl_info.tag;
+      206 
+      207 	return;
+      208 
+      209 
+      210 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      211 
+      212 elements:	entry (char_name_ptr, acl_entry_ptr, code);	/* given a 32 char ac-name, break up into components */
+      213 
+      214 /* code is returned 0 if successful
+      215*   .	error_table_$bad_name if invalid syntax
+      216*   .	error_table_$invalid_ascii if non-ascii chars */
+      217 
+      218 	code = 0;
+      219 	name = char_name_ptr -> acc_name;		/* local store for fast compare */
+      220 
+      221 	if name = "" then do;			/* if given a null name, return current user's access name */
+      222 	     acl_entry_ptr -> acl_info.person = pds$access_name.person;
+      223 	     acl_entry_ptr -> acl_info.project = pds$access_name.project;
+      224 	     acl_entry_ptr -> acl_info.tag = pds$access_name.tag;
+      225 	end;
+      226 
+      227 	else do;					/* make sure name contains ascii chars */
+      228 	     if (unspec (name) & unspec (check_for_ascii)) then go to not_ascii;
+      229 
+      230 	     name = ltrim (name);			/* strip leading blanks */
+      231 
+      232 	     len = length (rtrim (name));		/* find length of access name */
+      233 
+      234 	     len_pers = index (name, ".") - 1;		/* find length of person name */
+      235 	     if len_pers < 0 then go to nam_err;
+      236 						/* leave room for tag and two "."s */
+      237 	     len_proj = index (substr (name, len_pers + 2), ".") - 1; /* ditto for project name */
+      238 	     if len_proj < 1 then go to nam_err;	/* no null project-ids */
+      239 	     if (len_proj + len_pers + 3) ^= len then go to nam_err;
+      240 						/* allow blank person name for ".sys_control" */
+      241 	     if len_pers = 0 then
+      242 		if name ^= ".sys_control.a" then go to nam_err;
+      243 		else acl_entry_ptr -> acl_info.person = "";
+      244 	     else acl_entry_ptr -> acl_info.person = substr (name, 1, len_pers);
+      245 
+      246 	     acl_entry_ptr -> acl_info.project = substr (name, len_pers + 2, len_proj);
+      247 
+      248 	     acl_entry_ptr -> acl_info.tag = substr (name, len, 1);
+      249 	end;
+      250 
+      251 	return;
+      252 
+      253 /*  *  *  *  *  *  *  *  *  *  *  */
+      254 
+      255 alloc_err: code = error_table_$notalloc;
+      256 	return;
+      257 
+      258 nam_err:	code = error_table_$bad_name;
+      259 	return;
+      260 
+      261 not_ascii: code = error_table_$invalid_ascii;
+      262 	return;
+      263 
+      264 
+      265 
+      266 /*  *  *  *  *  *  *  *  *  *  */
+      267 
+      268 delete_name: proc;
+      269 
+      270 	     anp = ptr (dp, name_rp);			/* get pointer to access name */
+      271 	     if anp -> access_name.type ^= ACCESS_NAME_TYPE
+      272 	     | anp -> access_name.owner ^= dir.uid
+      273 	     | anp -> access_name.usage < 1 then signal bad_dir_;
+      274 
+      275 	     if anp -> access_name.usage > 1 then	/* just decrement count */
+      276 		anp -> access_name.usage = anp -> access_name.usage - 1;
+      277 
+      278 	     else do;				/* thread out name and free it */
+      279 		if anp -> access_name.brp then
+      280 		     ptr (anp, anp -> access_name.brp) -> access_name.frp = anp -> access_name.frp;
+      281 
+      282 		if anp -> access_name.frp then
+      283 		     ptr (anp, anp -> access_name.frp) -> access_name.brp = anp -> access_name.brp;
+      284 
+      285 		if name_rp = fp -> thread then
+      286 		     fp -> thread = anp -> access_name.frp;
+      287 
+      288 		if name_rp = bp -> thread then
+      289 		     bp -> thread = anp -> access_name.brp;
+      290 
+      291 		call fs_alloc$free (area_ptr, active_hardcore_data$ensize, anp);
+      292 
+      293 	     end;
+      294 
+      295 	end delete_name;
+      296 
+      297 add_name:	proc;
+      298 
+      299 dcl  i fixed bin;
+      300 dcl  max_acl_names fixed bin;
+      301 
+      302 	     if name = "*" then name_rp = "0"b;
+      303 	     else do;
+      304 		i = 0;
+      305 		max_acl_names = 4681;		/* 64K dir. use dir.access_name_total when avail */
+      306 		do rp = fp -> thread repeat anp -> access_name.frp while (rp);
+      307 		     anp = ptr (dp, rp);
+      308 		     i = i + 1;
+      309 		     if i > max_acl_names
+      310 		     | anp -> access_name.type ^= ACCESS_NAME_TYPE
+      311 		     | anp -> access_name.owner ^= dir.uid then signal bad_dir_;
+      312 		     name_in_list = anp -> access_name.name;
+      313 
+      314 		     if name < name_in_list then do;
+      315 			call new;			/* insert name entry before name in access list */
+      316 			return;
+      317 		     end;
+      318 
+      319 		     else if name = name_in_list then do; /* just increment usage count */
+      320 			name_rp = rel (anp);
+      321 			anp -> access_name.usage = anp -> access_name.usage + 1;
+      322 			return;
+      323 		     end;
+      324 
+      325 		end;
+      326 		call new;				/* insert name entry after last entry in list */
+      327 	     end;
+      328 
+      329 	end add_name;
+      330 
+      331 new:	proc;
+      332 						/* allocate space for access name in directory */
+      333 	     call fs_alloc$alloc (area_ptr, active_hardcore_data$ensize, np);
+      334 	     if np = null then go to alloc_err;
+      335 
+      336 	     np -> access_name.name = name;		/* fill in standard things */
+      337 	     np -> access_name.usage = 1;
+      338 	     np -> access_name.type = ACCESS_NAME_TYPE;
+      339 	     np -> access_name.size = active_hardcore_data$ensize;
+      340 	     np -> access_name.owner = dir.uid;
+      341 
+      342 	     name_rp = rel (np);			/* save rel ptr to new name */
+      343 
+      344 	     if fp -> thread = "0"b then do;		/* list was empty */
+      345 		fp -> thread,
+      346 		     bp -> thread = name_rp;
+      347 	     end;
+      348 
+      349 	     else if rp = "0"b then do;		/* adding to end of list */
+      350 		np -> access_name.brp = rel (anp);
+      351 		anp -> access_name.frp,
+      352 		     bp -> thread = name_rp;
+      353 	     end;
+      354 
+      355 	     else do;				/* thread new name entry in */
+      356 		np -> access_name.frp = rel (anp);
+      357 		np -> access_name.brp = anp -> access_name.brp;
+      358 		if fp -> thread = rel (anp) then
+      359 		     fp -> thread = name_rp;
+      360 		else ptr (anp, anp -> access_name.brp) -> access_name.frp = name_rp;
+      361 		anp -> access_name.brp = name_rp;
+      362 	     end;
+      363 
+      364 	end new;
+      365 
+      366      end acc_name_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.4  acc_name_.pl1                     >special_ldd>install>MR12.3-1114>acc_name_.pl1
+107          1    05/26/77  0922.2  fs_types.incl.pl1                 >ldd>include>fs_types.incl.pl1
+108          2    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+109          3    04/29/76  1048.9  dir_acl.incl.pl1                  >ldd>include>dir_acl.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACCESS_NAME_TYPE                       constant        bit(18)                  initial packed unaligned dcl 1-3 ref 123 135 271 309
+                                                                                  338
+acc_name                               based           char(32)                 dcl 59 set ref 147* 219
+access_id                       000113 automatic       varying char(32)         dcl 61 set ref 143* 144* 144 145* 145 146* 146 147
+access_name                            based           structure                level 1 dcl 3-29
+acl_entry_ptr                          parameter       pointer                  dcl 42 ref 181 191 198 205 212 222 223 224 243 244
+                                                                                  246 248
+acl_info                               based           structure                level 1 dcl 68
+acl_name                               based           structure                level 1 packed packed unaligned dcl 63
+active_hardcore_data$ensize     000022 external static fixed bin(17,0)          dcl 99 set ref 291* 333* 339
+addr                                                   builtin function         dcl 91 ref 162 163 170 171 192 193 199 200
+anp                             000104 automatic       pointer                  dcl 48 set ref 122* 123 123 125 134* 135 135 137
+                                                                                  270* 271 271 271 275 275 275 279 279 279 279 282
+                                                                                  282 282 282 285 288 291* 307* 309 309 312 320 321
+                                                                                  321 325 350 351 356 357 358 360 360 361
+area_ptr                        000170 automatic       pointer                  dcl 85 set ref 157* 189* 291* 333*
+arearp                   24            based           bit(18)                  level 2 packed packed unaligned dcl 2-11 ref 157 189
+bad_dir_                        000172 stack reference condition                dcl 92 ref 123 135 271 309
+bp                              000102 automatic       pointer                  dcl 47 set ref 163* 171* 193* 200* 288 288 345 351
+brp                       0(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-29 set ref 279
+                                                                                  279 282* 282 288 350* 357* 357 360 361*
+char_name_ptr                          parameter       pointer                  dcl 37 ref 114 147 212 219
+check_for_ascii                 000000 constant        structure                level 1 dcl 87 ref 228
+code                                   parameter       fixed bin(35,0)          dcl 73 set ref 181 185* 212 218* 255* 258* 261*
+dir                                    based           structure                level 1 dcl 2-11
+dp                              000200 automatic       pointer                  dcl 2-9 set ref 117* 122 123 134 135 156* 157 157
+                                                                                  162 163 170 171 188* 189 189 192 193 199 200 270
+                                                                                  271 307 309 340
+error_table_$bad_name           000016 external static fixed bin(35,0)          dcl 97 ref 258
+error_table_$invalid_ascii      000020 external static fixed bin(35,0)          dcl 97 ref 261
+error_table_$notalloc           000014 external static fixed bin(35,0)          dcl 96 ref 255
+fp                              000100 automatic       pointer                  dcl 46 set ref 162* 170* 192* 199* 285 285 306 344
+                                                                                  345 358 358
+frp                                    based           bit(18)                  level 2 packed packed unaligned dcl 3-29 set ref
+                                                                                  279* 279 282 282 285 325 351* 356* 360*
+fs_alloc$alloc                  000010 constant        entry                    external dcl 94 ref 333
+fs_alloc$free                   000012 constant        entry                    external dcl 94 ref 291
+i                               000226 automatic       fixed bin(17,0)          dcl 299 set ref 304* 308* 308 309
+index                                                  builtin function         dcl 91 ref 234 237
+len                             000112 automatic       fixed bin(17,0)          dcl 56 set ref 232* 239 248
+len_pers                        000110 automatic       fixed bin(17,0)          dcl 54 set ref 234* 235 237 239 241 244 246
+len_proj                        000111 automatic       fixed bin(17,0)          dcl 55 set ref 237* 238 239 246
+ltrim                                                  builtin function         dcl 91 ref 230
+max_acl_names                   000227 automatic       fixed bin(17,0)          dcl 300 set ref 305* 309
+name                            000144 automatic       char(32)                 dcl 77 in procedure "acc_name_" set ref 191* 198*
+                                                                                  219* 221 228 230* 230 232 234 237 241 244 246 248
+                                                                                  302 314 319 336
+name                      4            based           char(32)                 level 2 in structure "access_name" dcl 3-29
+                                                                                  in procedure "acc_name_" set ref 125 137 312 336*
+name_in_list                    000154 automatic       char(32)                 dcl 79 set ref 312* 314 319
+name_rp                         000106 automatic       bit(18)                  dcl 51 set ref 159* 161 167* 169 196 203 270 285 288
+                                                                                  302* 320* 342* 345 351 358 360 361
+np                              000166 automatic       pointer                  dcl 84 set ref 333* 334 336 337 338 339 340 342 350
+                                                                                  356 357
+null                                                   builtin function         dcl 91 ref 334
+owner                    15            based           bit(36)                  level 2 dcl 3-29 set ref 123 135 271 309 340*
+pds$access_name                 000024 external static structure                level 1 dcl 101
+pers_brp                 21            based           bit(18)                  level 2 packed packed unaligned dcl 2-11 set ref 163
+                                                                                  193
+pers_frp                 20            based           bit(18)                  level 2 packed packed unaligned dcl 2-11 set ref 162
+                                                                                  192
+pers_rp                         000165 automatic       bit(18)                  dcl 82 in procedure "acc_name_" set ref 119* 121 122
+pers_rp                                based           bit(18)                  level 2 in structure "acl_name" packed packed
+                                                                                  unaligned dcl 63 in procedure "acc_name_" set ref
+                                                                                  119 159 196*
+person                          000124 automatic       char(32)                 dcl 75 in procedure "acc_name_" set ref 125* 128*
+                                                                                  143
+person                          000024 external static char(32)                 level 2 in structure "pds$access_name" dcl 101
+                                                                                  in procedure "acc_name_" ref 222
+person                                 based           char(32)                 level 2 in structure "acl_info" dcl 68 in procedure
+                                                                                  "acc_name_" set ref 191 222* 243* 244*
+proj_brp                 21(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-11 set ref 171
+                                                                                  200
+proj_frp                 20(18)        based           bit(18)                  level 2 packed packed unaligned dcl 2-11 set ref 170
+                                                                                  199
+proj_rp                   0(18)        based           bit(18)                  level 2 in structure "acl_name" packed packed
+                                                                                  unaligned dcl 63 in procedure "acc_name_" set ref
+                                                                                  131 167 203*
+proj_rp                         000164 automatic       bit(18)                  dcl 81 in procedure "acc_name_" set ref 131* 133 134
+project                         000134 automatic       char(32)                 dcl 76 in procedure "acc_name_" set ref 137* 140*
+                                                                                  144
+project                  10     000024 external static char(32)                 level 2 in structure "pds$access_name" dcl 101
+                                                                                  in procedure "acc_name_" ref 223
+project                  10            based           char(32)                 level 2 in structure "acl_info" dcl 68 in procedure
+                                                                                  "acc_name_" set ref 198 223* 246*
+ptr                                                    builtin function         dcl 91 ref 117 122 134 156 157 188 189 270 279 282
+                                                                                  307 360
+rel                                                    builtin function         dcl 91 ref 320 342 350 356 358
+rp                              000107 automatic       bit(18)                  dcl 52 set ref 306* 306* 307* 349
+rtrim                                                  builtin function         dcl 91 ref 143 144 232
+size                      1(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-29 set ref
+                                                                                  339*
+stg_ptr                                parameter       pointer                  dcl 39 ref 114 117 119 131 146 153 156 159 167 181
+                                                                                  188 196 203 205
+substr                                                 builtin function         dcl 91 ref 237 244 246 248
+tag                       1            based           char(1)                  level 2 in structure "acl_name" packed packed
+                                                                                  unaligned dcl 63 in procedure "acc_name_" set ref
+                                                                                  146 205*
+tag                      20            based           char(1)                  level 2 in structure "acl_info" dcl 68 in procedure
+                                                                                  "acc_name_" set ref 205 224* 248*
+tag                      20     000024 external static char(1)                  level 2 in structure "pds$access_name" packed packed
+                                                                                  unaligned dcl 101 in procedure "acc_name_" ref 224
+thread                                 based           bit(18)                  packed unaligned dcl 53 set ref 285 285* 288 288*
+                                                                                  306 344 345* 345* 351* 358 358*
+type                      1            based           bit(18)                  level 2 packed packed unaligned dcl 3-29 set ref 123
+                                                                                  135 271 309 338*
+uid                      10            based           bit(36)                  level 2 dcl 2-11 ref 123 135 271 309 340
+unspec                                                 builtin function         dcl 91 ref 228 228
+usage                     2(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-29 set ref 271
+                                                                                  275 275* 275 321* 321 337*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACLE_TYPE                              internal static bit(18)                  initial packed unaligned dcl 1-4
+DIR_HEADER_TYPE                        internal static bit(18)                  initial packed unaligned dcl 1-5
+DIR_TYPE                               internal static bit(18)                  initial packed unaligned dcl 1-6
+HASH_TABLE_TYPE                        internal static bit(18)                  initial packed unaligned dcl 1-10
+LINK_TYPE                              internal static bit(18)                  initial packed unaligned dcl 1-7
+NAME_TYPE                              internal static bit(18)                  initial packed unaligned dcl 1-8
+SEG_TYPE                               internal static bit(18)                  initial packed unaligned dcl 1-9
+access_name_type                       internal static fixed bin(17,0)          initial dcl 1-12
+acl_entry                              based           structure                level 1 dcl 3-7
+acle_type                              internal static fixed bin(17,0)          initial dcl 1-13
+aclep                                  automatic       pointer                  dcl 3-5
+dir_header_type                        internal static fixed bin(17,0)          initial dcl 1-14
+dir_type                               internal static fixed bin(17,0)          initial dcl 1-15
+hash_table_type                        internal static fixed bin(17,0)          initial dcl 1-19
+link_type                              internal static fixed bin(17,0)          initial dcl 1-16
+name_type                              internal static fixed bin(17,0)          initial dcl 1-17
+seg_type                               internal static fixed bin(17,0)          initial dcl 1-18
+start                                  automatic       fixed bin(17,0)          dcl 57
+version_number_2                       internal static fixed bin(17,0)          initial dcl 2-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+acc_name_                       000023 constant        entry                    external dcl 13
+add_name                        000750 constant        entry                    internal dcl 297 ref 194 201
+alloc_err                       000622 constant        label                    dcl 255 ref 334
+delete                          000257 constant        entry                    external dcl 153
+delete_name                     000637 constant        entry                    internal dcl 268 ref 164 172
+elements                        000434 constant        entry                    external dcl 212
+encode                          000341 constant        entry                    external dcl 181
+get                             000035 constant        entry                    external dcl 114
+nam_err                         000627 constant        label                    dcl 258 ref 235 238 239 241
+new                             001045 constant        entry                    internal dcl 331 ref 315 326
+not_ascii                       000633 constant        label                    dcl 261 ref 228
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+length                                                 builtin function         ref 232
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1332        1360    1174        1342
+Length      1612    1174        26         215     136           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+acc_name_                           183 external procedure  is an external procedure.  
+delete_name                             internal procedure  shares stack frame of external procedure acc_name_.  
+add_name                                internal procedure  shares stack frame of external procedure acc_name_.  
+new                                     internal procedure  shares stack frame of external procedure acc_name_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+acc_name_                000100 fp                          acc_name_
+                         000102 bp                          acc_name_
+                         000104 anp                         acc_name_
+                         000106 name_rp                     acc_name_
+                         000107 rp                          acc_name_
+                         000110 len_pers                    acc_name_
+                         000111 len_proj                    acc_name_
+                         000112 len                         acc_name_
+                         000113 access_id                   acc_name_
+                         000124 person                      acc_name_
+                         000134 project                     acc_name_
+                         000144 name                        acc_name_
+                         000154 name_in_list                acc_name_
+                         000164 proj_rp                     acc_name_
+                         000165 pers_rp                     acc_name_
+                         000166 np                          acc_name_
+                         000170 area_ptr                    acc_name_
+                         000200 dp                          acc_name_
+                         000226 i                           add_name
+                         000227 max_acl_names               add_name
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out        return_mac          signal_op           shorten_stack       ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+fs_alloc$alloc                fs_alloc$free
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_hardcore_data$ensize   error_table_$bad_name         error_table_$invalid_ascii    error_table_$notalloc
+pds$access_name
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000022       114 000030       117 000045       119 000051       121 000057       122 000061       123 000064
+    125 000076       126 000102       128 000103       131 000106       133 000115       134 000117       135 000122
+    137 000135       138 000141       140 000142       143 000145       144 000177       145 000224       146 000233
+    147 000245       149 000253       153 000254       156 000264       157 000270       159 000275       161 000303
+    162 000305       163 000307       164 000311       167 000312       169 000321       170 000323       171 000330
+    172 000333       175 000334       181 000335       185 000346       188 000350       189 000353       191 000360
+    192 000365       193 000367       194 000371       196 000372       198 000400       199 000405       200 000412
+    201 000415       203 000416       205 000424       207 000431       212 000432       218 000444       219 000446
+    221 000453       222 000457       223 000466       224 000472       225 000475       228 000476       230 000502
+    232 000517       234 000531       235 000541       237 000542       238 000557       239 000561       241 000565
+    243 000573       244 000601       246 000606       248 000614       251 000621       255 000622       256 000626
+    258 000627       259 000632       261 000633       262 000636       268 000637       270 000640       271 000644
+    275 000664       279 000676       282 000705       285 000714       288 000724       291 000734       295 000747
+    297 000750       302 000751       304 000757       305 000760       306 000762       307 000772       308 000775
+    309 000776       312 001014       314 001020       315 001024       316 001025       319 001026       320 001027
+    321 001031       322 001036       325 001037       326 001043       329 001044       331 001045       333 001046
+    334 001061       336 001065       337 001071       338 001073       339 001075       340 001100       342 001103
+    344 001105       345 001112       347 001122       349 001123       350 001125       351 001130       353 001140
+    356 001141       357 001143       358 001145       360 001157       361 001165       364 001171
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

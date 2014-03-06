@@ -10,6 +10,7 @@
 
 #include "dps8.h"
 #include "dps8_iom.h"
+#include "dps8_scu.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
@@ -35,6 +36,15 @@ stats_t sys_stats;
 
 static t_stat sys_cable (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
+static t_stat loadSystemBook (int32 arg, char * buf);
+static t_stat lookupSystemBook (int32 arg, char * buf);
+static t_stat absAddr (int32 arg, char * buf);
+static t_stat setSearchPath (int32 arg, char * buf);
+static t_stat absAddrN (int segno, int offset);
+static t_stat test (int32 arg, char * buf);
+static t_stat virtAddrN (int address);
+static t_stat virtAddr (int32 arg, char * buf);
+static t_stat sbreak (int32 arg, char * buf);
 
 CTAB dps8_cmds[] =
 {
@@ -45,6 +55,14 @@ CTAB dps8_cmds[] =
     {"CABLE",    sys_cable,       0, "cable String a cable\n" },
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
+    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
+    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
+    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n"},
+    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
+    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n"},
+    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n"},
+    {"TEST", test, 0, "test: internal testing\n"},
+    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n"},
     { NULL, NULL, 0, NULL}
 };
 
@@ -156,11 +174,10 @@ static t_stat sys_cable (int32 arg, char * buf)
       {
         rc = cable_mt (n1, n2, n3, n4);
       }
-// XXX not yet
-//    else if (strcasecmp (name, "DISK") == 0)
-//      {
-//        rc = cable_disk (n1, n2, n3, n4);
-//      }
+    else if (strcasecmp (name, "DISK") == 0)
+      {
+        rc = cable_disk (n1, n2, n3, n4);
+      }
     else if (strcasecmp (name, "OPCON") == 0)
       {
         rc = cable_opcon (n1, n2);
@@ -191,6 +208,882 @@ static t_stat dps_debug_start (int32 arg, char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
+    return SCPE_OK;
+  }
+
+// LOAD_SYSTEM_BOOK <filename>
+#define bookSegmentsMax 1024
+#define bookComponentsMax 4096
+#define bookSegmentNameLen 33
+struct bookSegment
+  {
+    char * segname;
+    int segno;
+  } bookSegments [bookSegmentsMax];
+
+static int nBookSegments = 0;
+
+struct bookComponent
+  {
+    char * compname;
+    int bookSegmentNum;
+    int txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length;
+  } bookComponents [bookComponentsMax];
+
+static int nBookComponents = 0;
+
+static int lookupBookSegment (char * name)
+  {
+    for (int i = 0; i < nBookSegments; i ++)
+      if (strcmp (name, bookSegments [i] . segname) == 0)
+        return i;
+    return -1;
+  }
+
+static int addBookSegment (char * name, int segno)
+  {
+    int n = lookupBookSegment (name);
+    if (n >= 0)
+      return n;
+    if (nBookSegments >= bookSegmentsMax)
+      return -1;
+    bookSegments [nBookSegments] . segname = strdup (name);
+    bookSegments [nBookSegments] . segno = segno;
+    n = nBookSegments;
+    nBookSegments ++;
+    return n;
+  }
+ 
+static int addBookComponent (int segnum, char * name, int txt_start, int txt_length, int intstat_start, int intstat_length, int symbol_start, int symbol_length)
+  {
+    if (nBookComponents >= bookComponentsMax)
+      return -1;
+    bookComponents [nBookComponents] . compname = strdup (name);
+    bookComponents [nBookComponents] . bookSegmentNum = segnum;
+    bookComponents [nBookComponents] . txt_start = txt_start;
+    bookComponents [nBookComponents] . txt_length = txt_length;
+    bookComponents [nBookComponents] . intstat_start = intstat_start;
+    bookComponents [nBookComponents] . intstat_length = intstat_length;
+    bookComponents [nBookComponents] . symbol_start = symbol_start;
+    bookComponents [nBookComponents] . symbol_length = symbol_length;
+    int n = nBookComponents;
+    nBookComponents ++;
+    return n;
+  }
+ 
+
+char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
+  {
+    char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
+    if (ret)
+      return ret;
+    ret = lookupSegmentAddress (segno, offset, compname, compoffset);
+    return ret;
+  }
+
+// Warning: returns ptr to static buffer
+char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
+  {
+    static char buf [129];
+    int i;
+    if (compname)
+      * compname = NULL;
+    if (compoffset)
+      * compoffset = 0;
+    for (i = 0; i < nBookSegments; i ++)
+      if (bookSegments [i] . segno == segno)
+        break;
+    if (i >= nBookSegments)
+      return NULL;
+
+    int best = -1;
+    int bestoffset = 0;
+
+    for (int j = 0; j < nBookComponents; j ++)
+      {
+        if (bookComponents [j] . bookSegmentNum != i)
+          continue;
+        if (bookComponents [j] . txt_start <= offset &&
+            bookComponents [j] . txt_start + bookComponents [j] . txt_length > offset)
+          {
+            sprintf (buf, "%s:%s+0%0o", bookSegments [i] . segname,
+              bookComponents [j].compname,
+              offset - bookComponents [j] . txt_start);
+            if (compname)
+              * compname = bookComponents [j].compname;
+            if (compoffset)
+              * compoffset = offset - bookComponents [j] . txt_start;
+            return buf;
+          }
+        if (bookComponents [j] . txt_start <= offset &&
+            bookComponents [j] . txt_start > bestoffset)
+          {
+            best = j;
+            bestoffset = bookComponents [j] . txt_start;
+          }
+      }
+
+    if (best != -1)
+      {
+        // Didn't find a component track bracketed the offset; return the
+        // component that was before the offset
+        if (compname)
+          * compname = bookComponents [best].compname;
+        if (compoffset)
+          * compoffset = offset - bookComponents [best] . txt_start;
+        sprintf (buf, "%s:%s+0%0o", bookSegments [i] . segname,
+          bookComponents [best].compname,
+          offset - bookComponents [best] . txt_start);
+        return buf;
+      }
+
+    // Found a segment, but it had no components. Return the segment name
+    // as the component name
+
+    if (compname)
+      * compname = bookSegments [i] . segname;
+    if (compoffset)
+      * compoffset = offset;
+    sprintf (buf, "%s:+0%0o", bookSegments [i] . segname,
+             offset);
+    return buf;
+ }
+
+// Warning: returns ptr to static buffer
+int lookupSystemBookName (char * segname, char * compname, long * segno, long * offset)
+  {
+    int i;
+    for (i = 0; i < nBookSegments; i ++)
+      if (strcmp (bookSegments [i] . segname, segname) == 0)
+        break;
+    if (i >= nBookSegments)
+      return -1;
+
+    for (int j = 0; j < nBookComponents; j ++)
+      {
+        if (bookComponents [j] . bookSegmentNum != i)
+          continue;
+        if (strcmp (bookComponents [j] . compname, compname) == 0)
+          {
+            * segno = bookSegments [i] . segno;
+            * offset = bookComponents [j] . txt_start;
+            return 0;
+          }
+      }
+
+   return -1;
+ }
+
+static char * sourceSearchPath = NULL;
+
+// search path is path:path:path....
+
+static t_stat setSearchPath (int32 arg, char * buf)
+  {
+    if (sourceSearchPath)
+      free (sourceSearchPath);
+    sourceSearchPath = strdup (buf);
+    return SCPE_OK;
+  }
+
+static t_stat test (int32 arg, char * buf)
+  {
+    listSource (buf, 0);
+    return SCPE_OK;
+  }
+
+void listSource (char * compname, word18 offset)
+  {
+    const int offset_str_len = 10;
+    //char offset_str [offset_str_len + 1];
+    char offset_str [17];
+    sprintf (offset_str, "    %06o", offset);
+
+    char path [(sourceSearchPath ? strlen (sourceSearchPath) : 1) + 
+               1 + // "/"
+               (compname ? strlen (compname) : 1) +
+                1 + strlen (".list") + 1];
+    char * searchp = sourceSearchPath ? sourceSearchPath : ".";
+    // find <search path>/<compname>.list
+    while (* searchp)
+      {
+        size_t pathlen = strcspn (searchp, ":");
+        strncpy (path, searchp, pathlen);
+        path [pathlen] = '\0';
+        if (searchp [pathlen] == ':')
+          searchp += pathlen + 1;
+        else
+          searchp += pathlen;
+
+        if (compname)
+          {
+            strcat (path, "/");
+            strcat (path, compname);
+          }
+        strcat (path, ".list");
+        //sim_printf ("<%s>\n", path);
+        FILE * listing = fopen (path, "r");
+        if (listing)
+          {
+            char line [133];
+            if (feof (listing))
+              goto fileDone;
+            fgets (line, 132, listing);
+            if (strncmp (line, "ASSEMBLY LISTING", 16) == 0)
+              {
+                // Search ALM listing file
+                // sim_printf ("found <%s>\n", path);
+
+                // ALM listing files look like:
+                //     000226  4a  4 00010 7421 20  \tstx2]tbootload_0$entry_stack_ptr,id
+                while (! feof (listing))
+                  {
+                    fgets (line, 132, listing);
+                    if (strncmp (line, offset_str, offset_str_len) == 0)
+                      {
+                        sim_printf ("%s", line);
+                        //break;
+                      }
+                    if (strcmp (line, "\fLITERALS\n") == 0)
+                      break;
+                  }
+              } // if assembly listing
+            else if (strncmp (line, "\tCOMPILATION LISTING", 20) == 0)
+              {
+                // Search PL/I listing file
+
+                // PL/I files have a line location table
+                //     "   LINE    LOC      LINE    LOC ...."
+
+                bool foundTable = false;
+                while (! feof (listing))
+                  {
+                    fgets (line, 132, listing);
+                    if (strncmp (line, "   LINE    LOC", 14) != 0)
+                      continue;
+                    foundTable = true;
+                    // Found the table
+                    // Table lines look like
+                    //     "     13 000705       275 000713  ...
+                    int best = -1;
+                    int bestLine = -1;
+                    while (! feof (listing))
+                      {
+                        int lineno [7], loc [7];
+                        fgets (line, 132, listing);
+                        int cnt = sscanf (line,
+                          " %d %o %d %o %d %o %d %o %d %o %d %o %d %o", 
+                          & lineno [0], & loc [0], 
+                          & lineno [1], & loc [1], 
+                          & lineno [2], & loc [2], 
+                          & lineno [3], & loc [3], 
+                          & lineno [4], & loc [4], 
+                          & lineno [5], & loc [5], 
+                          & lineno [6], & loc [6]);
+                        if (! (cnt == 2 || cnt == 4 || cnt == 6 ||
+                               cnt == 8 || cnt == 10 || cnt == 12 ||
+                               cnt == 14))
+                          break; // end of table
+                        int n;
+                        for (n = 0; n < cnt / 2; n ++)
+                          {
+                            if (loc [n] > best && loc [n] <= offset)
+                              {
+                                best = loc [n];
+                                bestLine = lineno [n];
+                              }
+                          }
+                        if (best == offset)
+                          break;
+                      }
+                    if (best == -1)
+                      goto fileDone; // Not found in table
+
+                    // Look for the line in the listing
+                    rewind (listing);
+                    while (! feof (listing))
+                      {
+                        fgets (line, 132, listing);
+                        if (strncmp (line, "\f\tSOURCE", 8) == 0)
+                          goto fileDone; // end of source code listing
+                        char prefix [10];
+                        strncpy (prefix, line, 9);
+                        prefix [9] = '\0';
+                        char * endptr;
+                        long lno = strtol (prefix, & endptr, 10);
+                        if (endptr != prefix + 9)
+                          continue;
+                        if (lno > bestLine)
+                          break;
+                        if (lno != bestLine)
+                          continue;
+                        // Got it
+                        sim_printf ("%s", line);
+                        break;
+                      }
+                    goto fileDone;
+                  } // if table start
+                if (! foundTable)
+                  {
+                    // Can't find the LINE/LOC table; look for listing
+                    rewind (listing);
+                    while (! feof (listing))
+                      {
+                        fgets (line, 132, listing);
+                        if (strncmp (line, offset_str + 4, offset_str_len - 4) == 0)
+                          {
+                            sim_printf ("%s", line);
+                            //break;
+                          }
+                        //if (strcmp (line, "\fLITERALS\n") == 0)
+                          //break;
+                      }
+                  } // if ! tableFound
+              } // if PL/I listing
+                        
+fileDone:
+            fclose (listing);
+          } // if (listing)
+      }
+  }
+
+// ABS segno:offset
+
+static t_stat absAddr (int32 arg, char * buf)
+  {
+    int segno, offset;
+    if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
+      return SCPE_ARG;
+    return absAddrN (segno, offset);
+  }
+
+t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset)
+  {
+    word24 res;
+
+    if (get_addr_mode () != APPEND_mode)
+      {
+        sim_printf ("CPU not in append mode\n");
+        return SCPE_ARG;
+      }
+
+    if (DSBR.U == 1) // Unpaged
+      {
+        if (2 * (uint) /*TPR . TSR*/ segno >= 16 * ((uint) DSBR . BND + 1))
+          {
+            sim_printf ("DSBR boundary violation.\n");
+            return SCPE_ARG;
+          }
+
+        // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
+
+        word36 SDWe, SDWo;
+        core_read (DSBR . ADDR + 2 * /*TPR . TSR*/ segno, & SDWe);
+        core_read (DSBR . ADDR + 2 * /*TPR . TSR*/ segno  + 1, & SDWo);
+
+        // 3. If SDW.F = 0, then generate directed fault n where n is given in
+        // SDW.FC. The value of n used here is the value assigned to define a
+        // missing segment fault or, simply, a segment fault.
+
+        // absAddr doesn't care if the page isn't resident
+
+
+        // 4. If offset >= 16 * (SDW.BOUND + 1), then generate an access violation, out of segment bounds, fault.
+
+        word14 BOUND = (SDWo >> (35 - 14)) & 037777;
+        if (/*TPR . CA*/ offset >= 16 * (BOUND + 1))
+          {
+            sim_printf ("SDW boundary violation.\n");
+            return SCPE_ARG;
+          }
+
+        // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
+
+        // absAddr doesn't care
+
+        // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
+
+        word24 ADDR = (SDWe >> 12) & 077777760;
+        res = (word24) ADDR + (word24) /*TPR.CA*/ offset;
+        res &= PAMASK; //24 bit math
+        //res <<= 12; // 24:12 format
+
+      }
+    else
+      {
+        //word15 segno = TPR . TSR;
+        //word18 offset = TPR . CA;
+
+        // 1. If 2 * segno >= 16 * (DSBR.BND + 1), then generate an access 
+        // violation, out of segment bounds, fault.
+
+        if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
+          {
+            sim_printf ("DSBR boundary violation.\n");
+            return SCPE_ARG;
+          }
+
+        // 2. Form the quantities:
+        //       y1 = (2 * segno) modulo 1024
+        //       x1 = (2 * segno ­ y1) / 1024
+
+        word24 y1 = (2 * segno) % 1024;
+        word24 x1 = (2 * segno - y1) / 1024;
+
+        // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
+
+        word36 PTWx1;
+        core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+
+        struct _ptw0 PTW1;
+        PTW1.ADDR = GETHI(PTWx1);
+        PTW1.U = TSTBIT(PTWx1, 9);
+        PTW1.M = TSTBIT(PTWx1, 6);
+        PTW1.F = TSTBIT(PTWx1, 2);
+        PTW1.FC = PTWx1 & 3;
+
+        // 4. If PTW(x1).F = 0, then generate directed fault n where n is 
+        // given in PTW(x1).FC. The value of n used here is the value 
+        // assigned to define a missing page fault or, simply, a
+        // page fault.
+
+        if (!PTW1.F)
+          {
+            sim_printf ("!PTW1.F\n");
+            return SCPE_ARG;
+          }
+
+        // 5. Fetch the target segment SDW, SDW(segno), from the 
+        // descriptor segment page at PTW(x1).ADDR + y1.
+
+        word36 SDWeven, SDWodd;
+        core_read2(((PTW1 . ADDR << 6) + y1) & PAMASK, & SDWeven, & SDWodd);
+
+        struct _sdw0 SDW0; 
+        // even word
+        SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+        SDW0.R1 = (SDWeven >> 9) & 7;
+        SDW0.R2 = (SDWeven >> 6) & 7;
+        SDW0.R3 = (SDWeven >> 3) & 7;
+        SDW0.F = TSTBIT(SDWeven, 2);
+        SDW0.FC = SDWeven & 3;
+
+        // odd word
+        SDW0.BOUND = (SDWodd >> 21) & 037777;
+        SDW0.R = TSTBIT(SDWodd, 20);
+        SDW0.E = TSTBIT(SDWodd, 19);
+        SDW0.W = TSTBIT(SDWodd, 18);
+        SDW0.P = TSTBIT(SDWodd, 17);
+        SDW0.U = TSTBIT(SDWodd, 16);
+        SDW0.G = TSTBIT(SDWodd, 15);
+        SDW0.C = TSTBIT(SDWodd, 14);
+        SDW0.EB = SDWodd & 037777;
+
+        // 6. If SDW(segno).F = 0, then generate directed fault n where 
+        // n is given in SDW(segno).FC.
+        // This is a segment fault as discussed earlier in this section.
+
+        if (!SDW0.F)
+          {
+            sim_printf ("!SDW0.F\n");
+            return SCPE_ARG;
+          }
+
+        // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an 
+        // access violation, out of segment bounds, fault.
+
+        if (((offset >> 4) & 037777) > SDW0 . BOUND)
+          {
+            sim_printf ("SDW boundary violation\n");
+            return SCPE_ARG;
+          }
+
+        // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the 
+        // segment are incompatible with the reference, generate the 
+        // appropriate access violation fault.
+
+        // Only the address is wanted, so no check
+
+        if (SDW0.U == 0)
+          {
+            // Segment is paged
+            // 9. Form the quantities:
+            //    y2 = offset modulo 1024
+            //    x2 = (offset - y2) / 1024
+
+            word24 y2 = offset % 1024;
+            word24 x2 = (offset - y2) / 1024;
+    
+            // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+
+            word36 PTWx2;
+            core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+    
+            struct _ptw0 PTW2;
+            PTW2.ADDR = GETHI(PTWx2);
+            PTW2.U = TSTBIT(PTWx2, 9);
+            PTW2.M = TSTBIT(PTWx2, 6);
+            PTW2.F = TSTBIT(PTWx2, 2);
+            PTW2.FC = PTWx2 & 3;
+
+            // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
+            // given in PTW(x2).FC. This is a page fault as in Step 4 above.
+
+            // absAddr only wants the address; it doesn't care if the page is
+            // resident
+
+            // if (!PTW2.F)
+            //   {
+            //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
+            //     // initiate a directed fault
+            //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+            //   }
+
+            // 12. Generate the 24-bit absolute main memory address 
+            // PTW(x2).ADDR + y2.
+
+            res = (((word24) PTW2 . ADDR) << 6)  + (word24) y2;
+            res &= PAMASK; //24 bit math
+            //res <<= 12; // 24:12 format
+          }
+        else
+          {
+            // Segment is unpaged
+            // SDW0.ADDR is the base address of the segment
+            res = (word24) SDW0 . ADDR + offset;
+            res &= PAMASK; //24 bit math
+            res <<= 12; // 24:12 format
+          }
+      }
+
+    * absAddr = res;
+    return SCPE_OK;
+  }
+
+static t_stat absAddrN (int segno, int offset)
+  {
+    word24 res;
+
+    t_stat rc = computeAbsAddrN (& res, segno, offset);
+
+    if (rc)
+      return rc;
+
+    sim_printf ("Address is %08o\n", res);
+    return SCPE_OK;
+  }
+
+// SBREAK segno:offset
+
+static t_stat sbreak (int32 arg, char * buf)
+  {
+    //printf (">> <%s>\n", buf);
+    int segno, offset;
+    int where;
+    int cnt = sscanf (buf, "%i:%i%n", & segno, & offset, & where);
+    if (cnt != 2)
+      {
+        return SCPE_ARG;
+      }
+    char reformatted [strlen (buf) + 20];
+    sprintf (reformatted, "0%04o%06o%s", segno, offset, buf + where);
+    //printf (">> <%s>\n", reformatted);
+    t_stat rc = brk_cmd (arg, reformatted);
+    return rc;
+  }
+
+
+// VIRTUAL address
+
+static t_stat virtAddr (int32 arg, char * buf)
+  {
+    int address;
+    if (sscanf (buf, "%i", & address) != 1)
+      return SCPE_ARG;
+    return virtAddrN (address);
+  }
+
+static t_stat virtAddrN (int address)
+  {
+    if (DSBR.U) {
+        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
+        {
+            _sdw0 *s = fetchSDW(segno);
+            if (address >= s -> ADDR && address < s -> ADDR + s -> BOUND * 16)
+              sim_printf ("  %06o:%06o\n", segno, address - s -> ADDR);
+        }
+    } else {
+        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 512)
+        {
+            word24 y1 = (2 * segno) % 1024;
+            word24 x1 = (2 * segno - y1) / 1024;
+            word36 PTWx1;
+            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+
+            struct _ptw0 PTW1;
+            PTW1.ADDR = GETHI(PTWx1);
+            PTW1.U = TSTBIT(PTWx1, 9);
+            PTW1.M = TSTBIT(PTWx1, 6);
+            PTW1.F = TSTBIT(PTWx1, 2);
+            PTW1.FC = PTWx1 & 3;
+           
+            if (PTW1.F == 0)
+                continue;
+            //sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
+            //            segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
+            //sim_printf ("    Target segment page table\n");
+            for (word15 tspt = 0; tspt < 512; tspt ++)
+            {
+                word36 SDWeven, SDWodd;
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd);
+                struct _sdw0 SDW0;
+                // even word
+                SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+                SDW0.R1 = (SDWeven >> 9) & 7;
+                SDW0.R2 = (SDWeven >> 6) & 7;
+                SDW0.R3 = (SDWeven >> 3) & 7;
+                SDW0.F = TSTBIT(SDWeven, 2);
+                SDW0.FC = SDWeven & 3;
+
+                // odd word
+                SDW0.BOUND = (SDWodd >> 21) & 037777;
+                SDW0.R = TSTBIT(SDWodd, 20);
+                SDW0.E = TSTBIT(SDWodd, 19);
+                SDW0.W = TSTBIT(SDWodd, 18);
+                SDW0.P = TSTBIT(SDWodd, 17);
+                SDW0.U = TSTBIT(SDWodd, 16);
+                SDW0.G = TSTBIT(SDWodd, 15);
+                SDW0.C = TSTBIT(SDWodd, 14);
+                SDW0.EB = SDWodd & 037777;
+
+                if (SDW0.F == 0)
+                    continue;
+                //sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
+                //          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
+                if (SDW0.U == 0)
+                {
+                    for (word18 offset = 0; offset < 16 * (SDW0.BOUND + 1); offset += 1024)
+                    {
+                        word24 y2 = offset % 1024;
+                        word24 x2 = (offset - y2) / 1024;
+
+                        // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+
+                        word36 PTWx2;
+                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+
+                        struct _ptw0 PTW2;
+                        PTW2.ADDR = GETHI(PTWx2);
+                        PTW2.U = TSTBIT(PTWx2, 9);
+                        PTW2.M = TSTBIT(PTWx2, 6);
+                        PTW2.F = TSTBIT(PTWx2, 2);
+                        PTW2.FC = PTWx2 & 3;
+
+                        //sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 
+                        //             offset, PTW2.ADDR, PTW2.U, PTW2.M, PTW2.F, PTW2.FC);
+                        if (address >= PTW2.ADDR + offset && address < PTW2.ADDR + offset + 1024)
+                          sim_printf ("  %06o:%06o\n", tspt, (address - offset) - PTW2.ADDR);
+
+                      }
+                  }
+                else
+                  {
+                    if (address >= SDW0.ADDR && address < SDW0.ADDR + SDW0.BOUND * 16)
+                      sim_printf ("  %06o:%06o\n", tspt, address - SDW0.ADDR);
+                  }
+            }
+        }
+    }
+
+    return SCPE_OK;
+
+  }
+
+// LSB n:n   given a segment number and offset, return a segment name,
+//           component and offset in that component
+//     sname:cname+offset
+//           given a segment name, component name and offset, return
+//           the segment number and offset
+   
+static t_stat lookupSystemBook (int32 arg, char * buf)
+  {
+    char w1 [strlen (buf)];
+    char w2 [strlen (buf)];
+    char w3 [strlen (buf)];
+    long segno, offset;
+
+    size_t colon = strcspn (buf, ":");
+    if (buf [colon] != ':')
+      return SCPE_ARG;
+
+    strncpy (w1, buf, colon);
+    w1 [colon] = '\0';
+    //sim_printf ("w1 <%s>\n", w1);
+
+    size_t plus = strcspn (buf + colon + 1, "+");
+    if (buf [colon + 1 + plus] == '+')
+      {
+        strncpy (w2, buf + colon + 1, plus);
+        w2 [plus] = '\0';
+        strcpy (w3, buf + colon + 1 + plus + 1);
+      }
+    else
+      {
+        strcpy (w2, buf + colon + 1);
+        strcpy (w3, "");
+      }
+    //sim_printf ("w1 <%s>\n", w1);
+    //sim_printf ("w2 <%s>\n", w2);
+    //sim_printf ("w3 <%s>\n", w3);
+
+    char * end1;
+    segno = strtol (w1, & end1, 0);
+    char * end2;
+    offset = strtol (w2, & end2, 0);
+
+    if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
+      { 
+        // n:n
+        char * ans = lookupAddress (segno, offset, NULL, NULL);
+        sim_printf ("%s\n", ans ? ans : "not found");
+      }
+    else
+      {
+        if (* w3)
+          {
+            char * end3;
+            offset = strtol (w3, & end3, 0);
+            if (* end3 != '\0')
+              return SCPE_ARG;
+          }
+        else
+          offset = 0;
+        long comp_offset;
+        int rc = lookupSystemBookName (w1, w2, & segno, & comp_offset);
+        if (rc)
+          {
+            sim_printf ("not found\n");
+            return SCPE_OK;
+          }
+        sim_printf ("0%o:0%o\n", (uint) segno, (uint) (comp_offset + offset));
+        absAddrN  (segno, comp_offset + offset);
+      }
+/*
+    if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
+      return SCPE_ARG;
+    char * ans = lookupAddress (segno, offset);
+    sim_printf ("%s\n", ans ? ans : "not found");
+*/
+    return SCPE_OK;
+  }
+
+static t_stat loadSystemBook (int32 arg, char * buf)
+  {
+  
+#define bufSz 257
+    char filebuf [bufSz];
+    int current = -1;
+
+    FILE * fp = fopen (buf, "r");
+    if (! fp)
+      {
+        sim_printf ("error opening file %s\n", buf);
+        return SCPE_ARG;
+      }
+    for (;;)
+      {
+        char * bufp = fgets (filebuf, bufSz, fp);
+        if (! bufp)
+          break;
+        //sim_printf ("<%s\n>", filebuf);
+        char name [bookSegmentNameLen];
+        int segno, p0, p1, p2;
+
+        // 32 is bookSegmentNameLen - 1
+        int cnt = sscanf (filebuf, "%32s %o  (%o, %o, %o)", name, & segno, 
+          & p0, & p1, & p2);
+        if (filebuf [0] != '\t' && cnt == 5)
+          {
+            //sim_printf ("A: %s %d\n", name, segno);
+            int rc = addBookSegment (name, segno);
+            if (rc < 0)
+              {
+                sim_printf ("error adding segment name\n");
+                return SCPE_ARG;
+              }
+            continue;
+          }
+
+        cnt = sscanf (filebuf, "Bindmap for >ldd>h>e>%32s", name);
+        if (cnt == 1)
+          {
+            //sim_printf ("B: %s\n", name);
+            //int rc = addBookSegment (name);
+            int rc = lookupBookSegment (name);
+            if (rc < 0)
+              {
+                // The collection 3.0 segments do not have segment numbers,
+                // and the 1st digit of the 3-tuple is 1, not 0. Ignore
+                // them for now.
+                current = -1;
+                continue;
+                //sim_printf ("error adding segment name\n");
+                //return SCPE_ARG;
+              }
+            current = rc;
+            continue;
+          }
+
+        int txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length;
+        cnt = sscanf (filebuf, "%32s %o %o %o %o %o %o", name, & txt_start, & txt_length, & intstat_start, & intstat_length, & symbol_start, & symbol_length);
+
+        if (cnt == 7)
+          {
+            //sim_printf ("C: %s\n", name);
+            if (current >= 0)
+              {
+                addBookComponent (current, name, txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length);
+              }
+            continue;
+          }
+
+        cnt = sscanf (filebuf, "%32s %o  (%o, %o, %o)", name, & segno, 
+          & p0, & p1, & p2);
+        if (filebuf [0] == '\t' && cnt == 5)
+          {
+            //sim_printf ("D: %s %d\n", name, segno);
+            int rc = addBookSegment (name, segno);
+            if (rc < 0)
+              {
+                sim_printf ("error adding segment name\n");
+                return SCPE_ARG;
+              }
+            continue;
+          }
+
+      }
+
+#if 0
+    for (int i = 0; i < nBookSegments; i ++)
+      { 
+        sim_printf ("  %-32s %6o\n", bookSegments [i] . segname, bookSegments [i] . segno);
+        for (int j = 0; j < nBookComponents; j ++)
+          {
+            if (bookComponents [j] . bookSegmentNum == i)
+              {
+                printf ("    %-32s %6o %6o %6o %6o %6o %6o\n",
+                  bookComponents [j] . compname, 
+                  bookComponents [j] . txt_start, 
+                  bookComponents [j] . txt_length, 
+                  bookComponents [j] . intstat_start, 
+                  bookComponents [j] . intstat_length, 
+                  bookComponents [j] . symbol_start, 
+                  bookComponents [j] . symbol_length);
+              }
+          }
+      }
+#endif
+
     return SCPE_OK;
   }
 
@@ -382,17 +1275,17 @@ t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
         DCDstruct *p = decodeInstruction(word1, NULL);
         
         // MW EIS?
-        if (p->iwb->ndes > 1)
+        if (p->info->ndes > 1)
         {
             // Yup, just output word values (for now)
             
             // XXX Need to complete MW EIS support in disAssemble()
             
-            for(int n = 0 ; n < p->iwb->ndes; n += 1)
+            for(int n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012llo", val[n + 1]);
           
             freeDCDstruct(p);
-            return -p->iwb->ndes;
+            return -p->info->ndes;
         }
         
         freeDCDstruct(p);
@@ -584,10 +1477,11 @@ DEVICE * sim_devices [] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
+    & disk_dev,
     & scu_dev,
     & clk_dev,
     // & mpc_dev,
-//    & opcon_dev, // Not hooked up yet
+    & opcon_dev, // Not hooked up yet
 //    & disk_dev, // Not hooked up yet
     & sys_dev,
 

@@ -1,0 +1,271 @@
+	COMPILATION LISTING OF SEGMENT tty_area_manager
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1021.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* format: style4,delnl,insnl,^ifthendo */
+        9 tty_area_manager:
+       10      procedure ();
+       11 
+       12 /* Set of entries for allocating and freeing in tty_area under control of a
+       13*   lock, kept in tty_buf. The lock_fast mechanism is used.
+       14**/
+       15 
+       16 /* Written November 1984 by Robert Coren */
+       17 
+       18 dcl  Size fixed bin parameter;
+       19 dcl  Result_ptr pointer parameter;
+       20 dcl  Free_ptr pointer parameter;
+       21 
+       22 dcl  locked bit (1);
+       23 dcl  alloc_size fixed bin;
+       24 dcl  alloc_ptr pointer;
+       25 
+       26 dcl  tty_area$ area external static;
+       27 dcl  1 tty_buf$tty_area_lock like hc_fast_lock external static;
+       28 
+       29 dcl  words (alloc_size) based (alloc_ptr);
+       30 
+       31 dcl  lock$lock_fast entry (pointer);
+       32 dcl  lock$unlock_fast entry (pointer);
+       33 
+       34 dcl  cleanup condition;
+       35 
+       36 dcl  (addr, null) builtin;
+       37 
+       38 
+       39 /* allocate: allocates space of a specified size in tty_area */
+       40 /* it's up to the caller to handle area conditions */
+       41 
+       42 allocate:
+       43      entry (Size, Result_ptr);
+       44 
+       45 	locked = "0"b;
+       46 	on cleanup call UNLOCK (locked);
+       47 	call LOCK (locked);
+       48 
+       49 	alloc_size = Size;
+       50 	allocate words in (tty_area$) set (alloc_ptr);
+       51 
+       52 	call UNLOCK (locked);
+       53 	Result_ptr = alloc_ptr;
+       54 
+       55 	return;
+       56 
+       57 
+       58 /* free: frees the specified number of words in tty_area */
+       59 
+       60 free:
+       61      entry (Size, Free_ptr);
+       62 
+       63 	locked = "0"b;
+       64 	on cleanup call UNLOCK (locked);
+       65 	call LOCK (locked);
+       66 
+       67 	alloc_size = Size;
+       68 	alloc_ptr = Free_ptr;
+       69 	free words in (tty_area$);
+       70 
+       71 	call UNLOCK (locked);
+       72 	Free_ptr = null ();
+       73 	return;
+       74 
+       75 
+       76 /* lock_area and unlock_area: called by programs that aren't just doing a single
+       77*   allocate or free operation (e.g., sty_mpx, whose allocations are done within
+       78*   calls to mode_string_$parse)
+       79**/
+       80 
+       81 lock_area:
+       82      entry ();
+       83 
+       84 	locked = "0"b;
+       85 	call LOCK (locked);
+       86 	return;
+       87 
+       88 
+       89 unlock_area:
+       90      entry ();
+       91 
+       92 	locked = "1"b;
+       93 	call UNLOCK (locked);
+       94 	return;
+       95 
+       96 
+       97 /* LOCK and UNLOCK: the internal procedures that actually call the hc_lock entries */
+       98 
+       99 LOCK:
+      100      procedure (locked);
+      101 
+      102 dcl  locked bit (1) parameter;
+      103 
+      104 	call lock$lock_fast (addr (tty_buf$tty_area_lock));
+      105 	locked = "1"b;
+      106 	return;					/* short and sweet */
+      107 
+      108      end LOCK;
+      109 
+      110 
+      111 
+      112 UNLOCK:
+      113      procedure (locked);
+      114 
+      115 dcl  locked bit (1) parameter;
+      116 
+      117 	if locked
+      118 	then do;					/* this test is in case the cleanup handler ran when we weren't locked */
+      119 	     call lock$unlock_fast (addr (tty_buf$tty_area_lock));
+      120 	     locked = "0"b;
+      121 	end;
+      122 
+      123 	return;
+      124 
+      125      end UNLOCK;
+      126 
+  1     1 /* BEGIN INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  1     2 
+  1     3 /* Created November 1984 by Robert Coren to replace hc_lock.incl.pl1 */
+  1     4 
+  1     5 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  1     6 
+  1     7 /* format: style3 */
+  1     8 
+  1     9 declare	lock_ptr		pointer;
+  1    10 declare	1 hc_fast_lock	aligned based (lock_ptr),
+  1    11 	  2 pid		bit (36) aligned,		/* holder of lock */
+  1    12 	  2 event		bit (36) aligned,		/* event associated with lock */
+  1    13 	  2 flags		aligned,
+  1    14 	    3 notify_sw	bit (1) unaligned,
+  1    15 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  1    16 
+  1    17 /* END INCLUDE FILE...hc_fast_lock.incl.pl1 */
+      127 
+      128 
+      129      end tty_area_manager;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.3  tty_area_manager.pl1              >spec>install>1111>tty_area_manager.pl1
+127          1    01/06/85  1422.1  hc_fast_lock.incl.pl1             >ldd>include>hc_fast_lock.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Free_ptr                               parameter       pointer                  dcl 20 set ref 60 68 72*
+Result_ptr                             parameter       pointer                  dcl 19 set ref 42 53*
+Size                                   parameter       fixed bin(17,0)          dcl 18 ref 42 49 60 67
+addr                                                   builtin function         dcl 36 ref 104 104 119 119
+alloc_ptr                       000102 automatic       pointer                  dcl 24 set ref 50* 53 68* 69
+alloc_size                      000101 automatic       fixed bin(17,0)          dcl 23 set ref 49* 50 67* 69
+cleanup                         000104 stack reference condition                dcl 34 ref 46 64
+hc_fast_lock                           based           structure                level 1 dcl 1-10
+lock$lock_fast                  000014 constant        entry                    external dcl 31 ref 104
+lock$unlock_fast                000016 constant        entry                    external dcl 32 ref 119
+locked                                 parameter       bit(1)                   packed unaligned dcl 102 in procedure "LOCK" set ref
+                                                                                  99 105*
+locked                                 parameter       bit(1)                   packed unaligned dcl 115 in procedure "UNLOCK" set
+                                                                                  ref 112 117 120*
+locked                          000100 automatic       bit(1)                   packed unaligned dcl 22 in procedure
+                                                                                  "tty_area_manager" set ref 45* 46* 47* 52* 63* 64*
+                                                                                  65* 71* 84* 85* 92* 93*
+null                                                   builtin function         dcl 36 ref 72
+tty_area$                       000010 external static area(1024)               dcl 26 ref 50 69
+tty_buf$tty_area_lock           000012 external static structure                level 1 unaligned dcl 27 set ref 104 104 119 119
+words                                  based           fixed bin(17,0)          array dcl 29 ref 50 69
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+lock_ptr                               automatic       pointer                  dcl 1-9
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+LOCK                            000217 constant        entry                    internal dcl 99 ref 47 65 85
+UNLOCK                          000241 constant        entry                    internal dcl 112 ref 46 52 64 71 93
+allocate                        000023 constant        entry                    external dcl 42
+free                            000105 constant        entry                    external dcl 60
+lock_area                       000166 constant        entry                    external dcl 81
+tty_area_manager                000011 constant        entry                    external dcl 9
+unlock_area                     000201 constant        entry                    external dcl 89
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       434         454     300         444
+Length       654     300        20         164     133           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+tty_area_manager                     92 external procedure  is an external procedure.  
+on unit on line 46                   70 on unit               
+on unit on line 64                   70 on unit               
+LOCK                                    internal procedure  shares stack frame of external procedure tty_area_manager.  
+UNLOCK                               70 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+tty_area_manager         000100 locked                      tty_area_manager
+                         000101 alloc_size                  tty_area_manager
+                         000102 alloc_ptr                   tty_area_manager
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        call_int_this       call_int_other      return_mac          enable_op           ext_entry
+int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+lock$lock_fast                lock$unlock_fast
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+tty_area$                     tty_buf$tty_area_lock
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      9 000010        42 000016        45 000030        46 000031        47 000056        49 000060        50 000063
+     52 000071        53 000077        55 000102        60 000103        63 000112        64 000114        65 000141
+     67 000143        68 000146        69 000151        71 000153        72 000161        73 000164        81 000165
+     84 000173        85 000175        86 000177        89 000200        92 000206        93 000210        94 000216
+     99 000217       104 000221       105 000232       106 000237       112 000240       117 000246       119 000254
+    120 000264       123 000271
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -7,3 +7,9 @@ pack
 disasm
 unpack
 extract_bound_bootload_0
+mxarc
+pack9
+print_bind_map
+dumpFile
+restore_tape
+restore_toc

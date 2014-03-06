@@ -1,5 +1,8 @@
-The ini files were rename to .ini files 
+4Jan14: The ini files were rename to .ini files 
     dps8.ini.20184.tap -> 20184.ini
     dps8.ini.base_system -> base_system.ini
     dps8.ini.t4d_b.2.tap -> t4d_b.2.ini
+
+16Feb14: Many simulator commands have been added or enhanced. The file
+         'docs/ImplementationNotes.ps' has been updated to reflect the changes.
 

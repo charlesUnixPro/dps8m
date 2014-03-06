@@ -1,0 +1,754 @@
+	COMPILATION LISTING OF SEGMENT tape_ioi_buffer_man
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1008.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* tape_ioi_ buffer management entries */
+       10 /* Written May 1982 by Chris Jones */
+       11 /* Modified 14 January 1983 by Chris Jones to add reserve_buffer and release_buffer entries. */
+       12 /* Modified 2 February 1983 by Chris Jones to add READY_AND_RESERVED distinction to list_buffers. */
+       13 /* Modified 9 February 1983 by Chris Jones to improve interaction between reserved buffers and deallocate_buffers. */
+       14 
+       15 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+       16 tape_ioi_buffer_man:
+       17      proc;
+       18 
+       19 dcl	p_buffer_data_ptr	   ptr parameter;		/* (I) pointer to the data area of a buffer */
+       20 dcl	p_buffer_ptr	   ptr parameter;		/* (I) pointer to a buffer header */
+       21 dcl	p_buffer_ptrs	   (*) ptr parameter;	/* (O) array of buffer data area pointers */
+       22 dcl	p_code		   fixed bin (35) parameter;	/* (O) standard system status code */
+       23 dcl	p_num_bufs	   fixed bin parameter;	/* (O) count of buffers in a given state */
+       24 dcl	p_state		   fixed bin parameter;	/* (I) state of buffers we're interested in */
+       25 dcl	p_tbs_ptr		   ptr parameter;		/* (I) pointer to a buffer status structure */
+       26 dcl	p_tioi_id		   bit (36) aligned parameter;/* (I) tape_ioi_ activation ID */
+       27 dcl	p_wksp		   ptr parameter;		/* (I) pointer to the tape_ioi_ workspace */
+       28 
+       29 /* Automatic variables */
+       30 
+       31 dcl	buffer_ptr	   ptr;
+       32 dcl	num_bufs		   fixed bin;
+       33 dcl	state		   fixed bin;
+       34 
+       35 /* Externals */
+       36 
+       37 dcl	tape_ioi_utils$get_buffer_ptr
+       38 			   entry (ptr, ptr) returns (ptr);
+       39 dcl	tape_ioi_utils$get_workspace_ptr
+       40 			   entry (bit (36) aligned, ptr);
+       41 
+       42 dcl	error_table_$action_not_performed
+       43 			   fixed bin (35) ext static;
+       44 dcl	error_table_$bad_arg   fixed bin (35) ext static;
+       45 dcl	error_table_$device_active
+       46 			   fixed bin (35) ext static;
+       47 dcl	error_table_$unimplemented_version
+       48 			   fixed bin (35) ext static;
+       49 
+       50 /* Builtins */
+       51 
+       52 dcl	(addr, bin, dim, lbound, null, ptr, rel)
+       53 			   builtin;
+       54 
+       55 /* entry to return the status of a specified buffer */
+       56 buffer_status:
+       57      entry (p_tioi_id, p_buffer_data_ptr, p_tbs_ptr, p_code);
+       58 
+       59 	call setup;
+       60 	buffer_ptr = tape_ioi_utils$get_buffer_ptr (wksp, p_buffer_data_ptr);
+       61 	if buffer_ptr = null () then
+       62 	     call quit (error_table_$bad_arg);
+       63 
+       64 	tbs_ptr = p_tbs_ptr;
+       65 	if tbs.version ^= TBS_VERSION then
+       66 	     call quit (error_table_$unimplemented_version);
+       67 
+       68 	tbs.state = buffer_ptr -> tbi.state;
+       69 	tbs.buffer_len = buffer_ptr -> tbi.buffer_len;
+       70 	tbs.data_len = buffer_ptr -> tbi.data_len;
+       71 	tbs.bit_count = buffer_ptr -> tbi.bit_len;
+       72 	tbs.channel_inst = buffer_ptr -> tbi.cif_code;
+       73 	if buffer_ptr -> tbi.modes.data_code = "05"b3 then
+       74 	     tbs.data_mode = "bin";
+       75 	else if buffer_ptr -> tbi.modes.data_code = "04"b3 then
+       76 	     tbs.data_mode = "bcd";
+       77 	else if buffer_ptr -> tbi.modes.data_code = "03"b3 then
+       78 	     tbs.data_mode = "tap9";
+       79 	else if buffer_ptr -> tbi.modes.data_code = "27"b3 then
+       80 	     tbs.data_mode = "asc";
+       81 	else if buffer_ptr -> tbi.modes.data_code = "24"b3 then
+       82 	     tbs.data_mode = "ebc";
+       83 	else if buffer_ptr -> tbi.modes.data_code = "25"b3 then
+       84 	     tbs.data_mode = "a/e";
+       85 	else tbs.data_mode = "****";			/* we'll get an error later if we try to use this */
+       86 	tbs.align_mode = buffer_ptr -> tbi.modes.align;
+       87 	tbs.length_mode = buffer_ptr -> tbi.modes.length;
+       88 	tbs.recovery_mode = buffer_ptr -> tbi.modes.recovery;
+       89 	tbs.reserved = buffer_ptr -> tbi.reserved;
+       90 
+       91 	p_code = 0;
+       92 	return;
+       93 
+       94 /* entry to return an array of all buffers, or all buffers in a specified state */
+       95 list_buffers:
+       96      entry (p_tioi_id, p_state, p_buffer_ptrs, p_num_bufs, p_code);
+       97 
+       98 	call setup;
+       99 	state = p_state;
+      100 	if state = 0 then
+      101 	     buffer_ptr = ptr (wksp, tai.buffer_list_offset);
+      102 	else if (state = READY_STATE) | (state = READY_AND_RESERVED_STATE) then
+      103 	     buffer_ptr = ptr (wksp, tai.free_list_offset);
+      104 	else if state = QUEUED_STATE then
+      105 	     buffer_ptr = ptr (wksp, tai.queue_list_offset);
+      106 	else if state = SUSPENDED_STATE then
+      107 	     buffer_ptr = ptr (wksp, tai.susp_list_offset);
+      108 	else call quit (error_table_$bad_arg);
+      109 
+      110 /* Now loop thru the appropriate buffer list.  If rel (buffer_ptr) = ""b, then the offset in the ptr expression
+      111*   above must be 0, which means there are no buffers of the appropriate state, so skip the following loop. */
+      112 
+      113 	num_bufs = 0;				/* none seen so far */
+      114 	do while (rel (buffer_ptr));
+      115 	     if ^((state = READY_STATE) & (buffer_ptr -> tbi.reserved)) then do;
+      116 		if num_bufs < dim (p_buffer_ptrs, 1) then
+      117 		     p_buffer_ptrs (lbound (p_buffer_ptrs, 1) + num_bufs) = ptr (wksp, buffer_ptr -> tbi.data_offset);
+      118 		num_bufs = num_bufs + 1;
+      119 	     end;
+      120 	     if state = 0 then
+      121 		buffer_ptr = ptr (wksp, buffer_ptr -> tbi.next_buf_offset);
+      122 	     else buffer_ptr = ptr (wksp, buffer_ptr -> tbi.next_state_offset);
+      123 	end;
+      124 
+      125 	p_num_bufs = num_bufs;
+      126 	p_code = 0;
+      127 	return;
+      128 
+      129 /* Entry to set a suspended buffer's state to ready. */
+      130 
+      131 set_buffer_ready:
+      132      entry (p_tioi_id, p_buffer_data_ptr, p_code);
+      133 
+      134 	call setup;
+      135 	buffer_ptr = tape_ioi_utils$get_buffer_ptr (wksp, p_buffer_data_ptr);
+      136 	if buffer_ptr = null () then
+      137 	     call quit (error_table_$bad_arg);
+      138 
+      139 	if buffer_ptr -> tbi.state = QUEUED_STATE then
+      140 	     call quit (error_table_$device_active);
+      141 	else if buffer_ptr -> tbi.state = READY_STATE then
+      142 	     call quit (error_table_$action_not_performed);
+      143 
+      144 	call set_buffer_ready_proc (buffer_ptr);
+      145 	p_code = 0;
+      146 	return;
+      147 
+      148 /* Internal entry (not retained) to set a buffer's state to ready. */
+      149 
+      150 internal_set_buffer_ready:
+      151      entry (p_wksp, p_buffer_ptr);
+      152 
+      153 	wksp = p_wksp;
+      154 	call set_buffer_ready_proc (p_buffer_ptr);
+      155 	return;
+      156 
+      157 /* Procedure which actually sets a buffer's state to ready.  It insists that the state be either queued or suspended. */
+      158 
+      159 set_buffer_ready_proc:
+      160      proc (buffer_ptr);
+      161 
+      162 dcl	buffer_ptr	   ptr parameter;
+      163 
+      164 dcl	cbufp		   ptr;
+      165 dcl	last_offset_ptr	   ptr;
+      166 
+      167 dcl	last_offset	   fixed bin (18) unsigned unaligned based (last_offset_ptr);
+      168 
+      169 	if buffer_ptr -> tbi.state = QUEUED_STATE then do;
+      170 	     cbufp = ptr (wksp, tai.queue_list_offset);
+      171 	     last_offset_ptr = addr (tai.queue_list_offset);
+      172 	end;
+      173 	else if buffer_ptr -> tbi.state = SUSPENDED_STATE then do;
+      174 	     cbufp = ptr (wksp, tai.susp_list_offset);
+      175 	     last_offset_ptr = addr (tai.susp_list_offset);
+      176 	end;
+      177 	else return;
+      178 
+      179 	do while ((cbufp ^= buffer_ptr) & (cbufp ^= wksp));
+      180 	     last_offset_ptr = addr (cbufp -> tbi.next_state_offset);
+      181 	     cbufp = ptr (wksp, cbufp -> tbi.next_state_offset);
+      182 	end;
+      183 	if cbufp = wksp then
+      184 	     return;
+      185 
+      186 	last_offset = buffer_ptr -> tbi.next_state_offset;/* cbupf = buffer_ptr */
+      187 	buffer_ptr -> tbi.state = READY_STATE;
+      188 	buffer_ptr -> tbi.next_state_offset = 0;
+      189 
+      190 	if tai.free_list_offset = 0 then
+      191 	     tai.free_list_offset = bin (rel (buffer_ptr));
+      192 	else do;
+      193 	     cbufp = ptr (wksp, tai.free_list_offset);
+      194 	     do while (cbufp -> tbi.next_state_offset ^= 0);
+      195 		cbufp = ptr (wksp, cbufp -> tbi.next_state_offset);
+      196 	     end;
+      197 	     cbufp -> tbi.next_state_offset = bin (rel (buffer_ptr));
+      198 	end;
+      199 
+      200      end set_buffer_ready_proc;
+      201 
+      202 /* Entry to reserve a buffer.  A reserved buffer will not have a read done into it unless an explicit
+      203*   queue_read call is made with it as an argument.  A reserved buffer may not lie above a buffer which is
+      204*   not reserved (so that deallocate_buffers can keep the reserved buffers still allocated). */
+      205 
+      206 reserve_buffer:
+      207      entry (p_tioi_id, p_buffer_data_ptr, p_code);
+      208 
+      209 	call setup;
+      210 	buffer_ptr = tape_ioi_utils$get_buffer_ptr (wksp, p_buffer_data_ptr);
+      211 	if buffer_ptr = null () then
+      212 	     call quit (error_table_$bad_arg);
+      213 
+      214 	begin;
+      215 dcl	bufp		   ptr;
+      216 
+      217 	     do bufp = ptr (wksp, tai.buffer_list_offset) repeat ptr (wksp, bufp -> tbi.next_state_offset)
+      218 		while (rel (bufp));
+      219 		if ((bufp -> tbi.data_offset) < (buffer_ptr -> tbi.data_offset)) & ^(bufp -> tbi.reserved) then
+      220 		     call quit (error_table_$action_not_performed);
+      221 	     end;
+      222 	end;
+      223 
+      224 	buffer_ptr -> tbi.reserved = "1"b;
+      225 	return;
+      226 
+      227 /* Entry to release a buffer from its reserved state. */
+      228 
+      229 release_buffer:
+      230      entry (p_tioi_id, p_buffer_data_ptr, p_code);
+      231 
+      232 	call setup;
+      233 	buffer_ptr = tape_ioi_utils$get_buffer_ptr (wksp, p_buffer_data_ptr);
+      234 	if buffer_ptr = null () then
+      235 	     call quit (error_table_$bad_arg);
+      236 
+      237 	begin;
+      238 dcl	bufp		   ptr;
+      239 
+      240 	     do bufp = ptr (wksp, tai.buffer_list_offset) repeat ptr (wksp, bufp -> tbi.next_state_offset)
+      241 		while (rel (bufp));
+      242 		if ((bufp -> tbi.data_offset) > (buffer_ptr -> tbi.data_offset)) & (bufp -> tbi.reserved) then
+      243 		     call quit (error_table_$action_not_performed);
+      244 	     end;
+      245 	end;
+      246 
+      247 	buffer_ptr -> tbi.reserved = "0"b;
+      248 	return;
+      249 
+      250 setup:
+      251      proc;
+      252 
+      253 	call tape_ioi_utils$get_workspace_ptr (p_tioi_id, wksp);
+      254 	if wksp = null () then
+      255 	     call quit (error_table_$bad_arg);
+      256 
+      257      end setup;
+      258 
+      259 quit:
+      260      proc (code);
+      261 
+      262 dcl	code		   fixed bin (35);
+      263 
+      264 	p_code = code;
+      265 	goto ERROR_RETURN;
+      266 
+      267      end quit;
+      268 
+      269 ERROR_RETURN:
+      270 	return;
+      271 
+  1     1 /*  START OF:	tape_ioi_workspace.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(87-07-06,Hartogs), approve(87-07-06,MCR7726),
+  1     7*     audit(87-08-27,GWMay), install(87-08-27,MR12.1-1094):
+  1     8*     A) Added variable at_bot to structure tai.
+  1     9*     B) Added density_command to tai structure for use by error_retry.
+  1    10*                                                   END HISTORY COMMENTS */
+  1    11 
+  1    12 
+  1    13 /*
+  1    14*   *	     This include file describes the workspace maintained by tape_ioi_.
+  1    15*   *	No programs other than tape_ioi_ programs should need to use this include file.
+  1    16*   *
+  1    17*   *	This workspace is the ioi_ workspace.
+  1    18**/
+  1    19 /* Written 8/78 by R.J.C. Kissel. */
+  1    20 /* Modified April-May 1982 by Chris Jones for installation. */
+  1    21 /* Modified 2/4/83 by Chris Jones to add last_terminate_time */
+  1    22 
+  1    23 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  1    24 
+  1    25 dcl	wksp		   ptr;
+  1    26 
+  1    27 dcl	1 tai		   based (wksp) aligned,	/* Activation info and order buffer. */
+  1    28 	  2 ioi_index	   fixed bin,		/* For communication with ioi. */
+  1    29 	  2 tioi_id	   unal,			/* 36 bit activation identifier. */
+  1    30 	    3 segno	   bit (18),		/* Segment number of the workspace. */
+  1    31 	    3 actid	   fixed bin (18) unsigned,	/* Per process, per activation number. */
+  1    32 	  2 event_id	   fixed bin (71),		/* All ipc done on this channel. */
+  1    33 	  2 max_timeout	   fixed bin (71),		/* maximum timeout value */
+  1    34 	  2 cur_timeout	   fixed bin (71),		/* current timeout value */
+  1    35 	  2 last_terminate_time
+  1    36 			   fixed bin (71),		/* when the last terminate interrupt was received */
+  1    37 	  (
+  1    38 	  2 workspace_max	   fixed bin (18) unsigned,	/* max_len-1 to fit in 18 bits. */
+  1    39 	  2 workspace_len	   fixed bin (18) unsigned,	/* len-1 to fit in 18 bits. */
+  1    40 	  2 buffer_list_offset fixed bin (18) unsigned,	/* to list of all buffers */
+  1    41 	  2 free_list_offset   fixed bin (18) unsigned,	/* to list of free buffers */
+  1    42 	  2 queue_list_offset  fixed bin (18) unsigned,	/* to list of buffers which are queued */
+  1    43 	  2 susp_list_offset   fixed bin (18) unsigned,	/* to list of suspended buffers */
+  1    44 	  2 retry_count	   fixed bin (9) unsigned,	/* number of times we've retried this operation */
+  1    45 	  2 buffer_count	   fixed bin (9) unsigned,	/* Number of I/O buffers allocated. */
+  1    46 	  2 status_entry_count fixed bin (9) unsigned,	/* Number of status queue entries. */
+  1    47 	  2 status_entry_idx   fixed bin (9) unsigned,	/* index of next status entry to be used */
+  1    48 	  2 status_queue_offset
+  1    49 			   fixed bin (18) unsigned,	/* Status queue offset. */
+  1    50 	  2 pad1               bit (12),
+  1    51 	  2 density_command    bit (6),                   /* density of data on storage */
+  1    52 	  2 workarea_len	   fixed bin (18) unsigned,	/* len-1 to fit in 18 bits. */
+  1    53 	  2 workarea_offset	   fixed bin (18) unsigned	/* Workarea offset. */
+  1    54 	  )		   unal,
+  1    55 	  2 modes		   unal,			/* tape_ioi_ modes settings. */
+  1    56 	    3 data_code	   bit (6),		/* Encoded representation of data mode. */
+  1    57 	    3 cif_code	   bit (6),		/* CIF field for channel instructions. */
+  1    58 	    3 align	   bit (1),		/* "0"b--left aligned, "1"b--right aligned. */
+  1    59 	    3 length	   bit (1),		/* "0"b--normal, "1"b--special. */
+  1    60 	    3 recovery	   bit (1),		/* "0"b--no error recovery, "1"b--error recovery. */
+  1    61 	    3 wait	   bit (1),		/* "0"b--simplex, "1"b--multiplex. */
+  1    62 	    3 req_len	   bit (1),		/* "0"b--don't need to know record length, "1"b--do need it */
+  1    63 	  2 flags		   unal,			/* Used internally by tape_ioi_. */
+  1    64 	    3 order_queued	   bit (1),		/* "0"b--no order queued, "1"b--order queued. */
+  1    65 	    3 read_queued	   bit (1),		/* "0"b--no read queued, "1"b--read queued. */
+  1    66 	    3 write_queued	   bit (1),		/* "0"b--no write queued, "1"b--write queued. */
+  1    67 	    3 order_done	   bit (1),		/* "1"b--the queue_order entry finished the order */
+  1    68 	    3 workarea_last	   bit (1),		/* "1"b--user workarea at end of workspace */
+  1    69 	    3 special_status_expected
+  1    70 			   bit (1),		/* set if we're waiting for a special interrupt */
+  1    71 	    3 retry_in_progress
+  1    72 			   bit (1),
+  1    73 	    3 suspect_short_record bit (1),		/* "1"b--got invalid DCW on list service last */
+  1    74 	    3 at_bot	   bit (1),		/* "1"b-- tape is positioned to BOT. */
+  1    75 	  2 pad2		   bit (1) unal,
+  1    76 	  2 order_idx	   fixed bin (9) unsigned unaligned,
+  1    77 						/* encoding of last order queued */
+  1    78 	  2 counts	   aligned,		/* error and operation counts */
+  1    79 	    3 total_reads	   fixed bin (35),
+  1    80 	    3 read_errors	   fixed bin (35),
+  1    81 	    3 total_writes	   fixed bin (35),
+  1    82 	    3 write_errors	   fixed bin (35),
+  1    83 	    3 total_orders	   fixed bin (35),
+  1    84 	    3 order_errors	   fixed bin (35),
+  1    85 	    3 times_status_lost
+  1    86 			   fixed bin (35),
+  1    87 	    3 extra_statuses   fixed bin (35),
+  1    88 	    3 times_tape_stopped
+  1    89 			   fixed bin (35),
+  1    90 	    3 recovery_succeeded
+  1    91 			   (7) fixed bin (35),	/* meters which kind of recovery worked */
+  1    92 	  2 order_count_requested
+  1    93 			   fixed bin (18) unsigned unaligned,
+  1    94 	  2 order_count_done   fixed bin (18) unsigned unaligned,
+  1    95 	  2 saved_special_status
+  1    96 			   bit (36),
+  1    97 	  2 order_data_ptr	   ptr,
+  1    98 	  2 order_idcw	   bit (36) aligned,
+  1    99 	  2 order_dcw	   bit (36) aligned,
+  1   100 	  2 order_data	   (1:8) bit (36) aligned;
+  1   101 /**** The buffers go here, followed by the status queue entries.  There are min (1, tai.nbufs) status queue entries. */
+  1   102 /**** It is considered a good idea to have the length of the previous structure b an even number of words long.  This
+  1   103*      is accomplished by the aligned pointer "order_data_ptr" being followed by an even number of words. */
+  1   104 
+  1   105 /* Tape buffer overlay.  Each tape buffer consists of a variable length header followed by the data area.
+  1   106*   Whenever a buffer pointer is returned to a caller of tape_ioi_, it points to the data area. */
+  1   107 
+  1   108 dcl	1 tbi		   based aligned,		/* I/O buffer overlay. */
+  1   109 	( 2 data_offset	   fixed bin (18) unsigned,	/* to the data portion of the buffer */
+  1   110 	  2 next_buf_offset	   fixed bin (18) unsigned,	/* to the next buffer in list of all buffers */
+  1   111 	  2 next_state_offset  fixed bin (18) unsigned,	/* to the next buffer in the same state */
+  1   112 	  2 state		   fixed bin (9) unsigned,	/* buffer state */
+  1   113 	  2 ndcws		   fixed bin (9) unsigned	/* number of DCWs necessary to fill buffer */
+  1   114 	  )		   unal,
+  1   115 	  2 modes		   unal like tai.modes,	/* mode settings when buffer was queued */
+  1   116 	  2 reserved	   bit (1) unal,		/* "1"b=>won't be used for reads unless explicitly asked */
+  1   117 	  2 buffer_len	   fixed bin (21),		/* length of buffer in 9-bit bytes */
+  1   118 	  2 data_len	   fixed bin (21),		/* length of data in buffer in 9-bit bytes */
+  1   119 	  2 bit_len	   fixed bin (24),		/* length of data in buffer in bits */
+  1   120 	  2 idcw_word	   bit (36),		/* holds IDCW */
+  1   121 	  2 dcw_words	   (1 refer (tbi.ndcws)) bit (36),
+  1   122 						/* data DCWs */
+  1   123 	  2 tdcw_word	   bit (36);		/* transfer to the next buffer */
+  1   124 						/* This header is followed by the actual buffer area. */
+  1   125 
+  1   126 /*
+  1   127*   *	N__o_t_e_s
+  1   128*   *
+  1   129*   *	     Both structures are carefully packed into words, so care should be
+  1   130*   *	taken when modifying them.
+  1   131*   *
+  1   132*   *	     The workspace_max, workspace_len, and workarea_len must be at least one long.
+  1   133*   *	This allows us to store the value-1 and thus fit into 18 bits.
+  1   134*   *
+  1   135*   *	     None of the offsets (first_buf_off, statq_off, etc.) can be zero since the first
+  1   136*   *	word in the workspace contains the ioi_index.  This allows a zero offset
+  1   137*   *	to be used as a null offset indication.
+  1   138*   *
+  1   139*   *	     The data_code, cif_code, and tbi.state are encoded as follows:
+  1   140*   *
+  1   141*   *	data mode |                                                     buffer |
+  1   142*   *	setting   | data_code     cif_code |    Meaning		    state  | Meaning
+  1   143*   *	__________|__________     _________|_______________________     _______|________
+  1   144*   *	  bin     |   05            20     | no retry, high                1   | ready
+  1   145*   *	  bcd     |   04            21     | no retry, low                 2   | busy
+  1   146*   *	  tap9    |   03            22     | no retry, high, deskew        3   | suspended
+  1   147*   *	  asc     |   27            23     | no retry, low, deskew
+  1   148*   *	  ebc     |   24            30     | retry, high
+  1   149*   *	  a/e     |   25            31     | retry, low
+  1   150*   *			        32     | retry, high, deskew
+  1   151*   *			        33     | retry, low, deskew
+  1   152*   *
+  1   153*   *
+  1   154*   *	     Before data_code can be used for the command field in the IDCW the fourth
+  1   155*   *	bit (from the right) must be set to "0"b for read commands and to "1"b for write commands.
+  1   156*   *
+  1   157*   *	     The general layout of the workspace maintained by tape_ioi_ is as follows:
+  1   158*   *
+  1   159*   *			_________________________
+  1   160*   *			|                       |
+  1   161*   *			|  General Information  |
+  1   162*   *			|       (see tai)       |
+  1   163*   *			|_______________________|
+  1   164*   *			|______O____r__d__e__r_I_D_C_W________|
+  1   165*   *			|______O____r__d__e__r_D_C_W_________|
+  1   166*   *			|                       |
+  1   167*   *			|   Order data buffer   |
+  1   168*   *			|       (8 words)       |
+  1   169*   *			|_______________________|
+  1   170*   *			|                       |
+  1   171*   *			|   Optional workarea   |
+  1   172*   *			|      (unlimited)      |
+  1   173*   *			|_______________________|
+  1   174*   *			|________I__O___I_D_C_W_________|
+  1   175*   *			|                       |
+  1   176*   *			|      IO DCW list      |
+  1   177*   *			|_______________________|
+  1   178*   *			|________I__O___T_D_C_W_________|
+  1   179*   *			|                       |
+  1   180*   *			|       IO buffer       |
+  1   181*   *			|   (user specified)    |
+  1   182*   *			|_______________________|
+  1   183*   *			            .
+  1   184*   *			            .
+  1   185*   *			            .
+  1   186*   *			_________________________
+  1   187*   *			|________I__O___I_D_C_W_________|
+  1   188*   *			|                       |
+  1   189*   *			|      IO DCW list      |
+  1   190*   *			|_______________________|
+  1   191*   *			|__________z_e_r_o_s_________|
+  1   192*   *			|                       |
+  1   193*   *			|       IO buffer       |
+  1   194*   *			|    (user specified)   |
+  1   195*   *			|_______________________|
+  1   196*   *			|                       |
+  1   197*   *			|     Status queue      |
+  1   198*   *			| (at least one entry)  |
+  1   199*   *			|_______________________|
+  1   200*   *			|                       |
+  1   201*   *			|   Optional workarea   |
+  1   202*   *			|       (limited)       |
+  1   203*   *			|_______________________|
+  1   204**/
+  1   205 
+  1   206 /*  END OF:	tape_ioi_workspace.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      272 
+      273 
+  2     1 /* Begin include file ..... tape_ioi_buffer_status.incl.pl1 */
+  2     2 
+  2     3 /* This structure defines the data returned by tape_ioi_$buffer_status */
+  2     4 /* Modified April 1982 by Chris Jones */
+  2     5 /* Modified 2 February 1983 by Chris Jones to add support for reserved buffers. */
+  2     6 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  2     7 dcl	tbs_ptr		   ptr;
+  2     8 
+  2     9 dcl	1 tbs		   aligned based (tbs_ptr),
+  2    10 	  2 version	   fixed bin,
+  2    11 	  2 state		   fixed bin,
+  2    12 	  2 buffer_len	   fixed bin (21),
+  2    13 	  2 data_len	   fixed bin (21),
+  2    14 	  2 bit_count	   fixed bin (24),
+  2    15 	  2 channel_inst	   bit (6),
+  2    16 	  2 data_mode	   char (4),
+  2    17 	  (
+  2    18 	  2 align_mode	   bit (1),
+  2    19 	  2 length_mode	   bit (1),
+  2    20 	  2 recovery_mode	   bit (1),
+  2    21 	  2 reserved bit (1),
+  2    22 	  2 pad		   bit (32)
+  2    23 	  )		   unal;
+  2    24 
+  2    25 dcl	TBS_VERSION_1	   fixed bin internal static init (1) options (constant);
+  2    26 
+  2    27 dcl	TBS_VERSION	   fixed bin internal static init (1) options (constant);
+  2    28 
+  2    29 dcl	READY_STATE	   fixed bin internal static options (constant) init (1);
+  2    30 dcl	QUEUED_STATE	   fixed bin internal static options (constant) init (2);
+  2    31 dcl	SUSPENDED_STATE	   fixed bin internal static options (constant) init (3);
+  2    32 dcl READY_AND_RESERVED_STATE fixed bin internal static options (constant) init (4);
+  2    33 
+  2    34 /* End include file ..... tape_ioi_buffer_status.incl.pl1 */
+      274 
+      275 
+      276      end tape_ioi_buffer_man;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0811.3  tape_ioi_buffer_man.pl1           >spec>install>1112>tape_ioi_buffer_man.pl1
+272          1    08/27/87  1445.9  tape_ioi_workspace.incl.pl1       >ldd>include>tape_ioi_workspace.incl.pl1
+274          2    09/16/83  1110.4  tape_ioi_buffer_status.incl.pl1   >ldd>include>tape_ioi_buffer_status.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+QUEUED_STATE                           constant        fixed bin(17,0)          initial dcl 2-30 ref 104 139 169
+READY_AND_RESERVED_STATE               constant        fixed bin(17,0)          initial dcl 2-32 ref 102
+READY_STATE                            constant        fixed bin(17,0)          initial dcl 2-29 ref 102 115 141 187
+SUSPENDED_STATE                        constant        fixed bin(17,0)          initial dcl 2-31 ref 106 173
+TBS_VERSION                            constant        fixed bin(17,0)          initial dcl 2-27 ref 65
+addr                                                   builtin function         dcl 52 ref 171 175 180
+align                     2(12)        based           bit(1)                   level 3 packed packed unaligned dcl 1-108 ref 86
+align_mode                7            based           bit(1)                   level 2 packed packed unaligned dcl 2-9 set ref 86*
+bin                                                    builtin function         dcl 52 ref 190 197
+bit_count                 4            based           fixed bin(24,0)          level 2 dcl 2-9 set ref 71*
+bit_len                   5            based           fixed bin(24,0)          level 2 dcl 1-108 ref 71
+buffer_len                3            based           fixed bin(21,0)          level 2 in structure "tbi" dcl 1-108 in procedure
+                                                                                  "tape_ioi_buffer_man" ref 69
+buffer_len                2            based           fixed bin(21,0)          level 2 in structure "tbs" dcl 2-9 in procedure
+                                                                                  "tape_ioi_buffer_man" set ref 69*
+buffer_list_offset       13            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  ref 100 217 240
+buffer_ptr                      000100 automatic       pointer                  dcl 31 in procedure "tape_ioi_buffer_man" set ref
+                                                                                  60* 61 68 69 70 71 72 73 75 77 79 81 83 86 87 88
+                                                                                  89 100* 102* 104* 106* 114 115 116 120* 120 122*
+                                                                                  122 135* 136 139 141 144* 210* 211 219 224 233*
+                                                                                  234 242 247
+buffer_ptr                             parameter       pointer                  dcl 162 in procedure "set_buffer_ready_proc" ref 159
+                                                                                  169 173 179 186 187 188 190 197
+bufp                            000126 automatic       pointer                  dcl 238 in begin block on line 237 set ref 240* 240*
+                                                                                  242 242* 244
+bufp                            000124 automatic       pointer                  dcl 215 in begin block on line 214 set ref 217* 217*
+                                                                                  219 219* 221
+cbufp                           000120 automatic       pointer                  dcl 164 set ref 170* 174* 179 179 180 181* 181 183
+                                                                                  193* 194 195* 195 197
+channel_inst              5            based           bit(6)                   level 2 dcl 2-9 set ref 72*
+cif_code                  2(06)        based           bit(6)                   level 3 packed packed unaligned dcl 1-108 ref 72
+code                                   parameter       fixed bin(35,0)          dcl 262 ref 259 264
+data_code                 2            based           bit(6)                   level 3 packed packed unaligned dcl 1-108 ref 73 75
+                                                                                  77 79 81 83
+data_len                  4            based           fixed bin(21,0)          level 2 in structure "tbi" dcl 1-108 in procedure
+                                                                                  "tape_ioi_buffer_man" ref 70
+data_len                  3            based           fixed bin(21,0)          level 2 in structure "tbs" dcl 2-9 in procedure
+                                                                                  "tape_ioi_buffer_man" set ref 70*
+data_mode                 6            based           char(4)                  level 2 dcl 2-9 set ref 73* 75* 77* 79* 81* 83* 85*
+data_offset                            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  ref 116 219 219 242 242
+dim                                                    builtin function         dcl 52 ref 116
+error_table_$action_not_performed
+                                000014 external static fixed bin(35,0)          dcl 42 set ref 141* 219* 242*
+error_table_$bad_arg            000016 external static fixed bin(35,0)          dcl 44 set ref 61* 108* 136* 211* 234* 254*
+error_table_$device_active      000020 external static fixed bin(35,0)          dcl 45 set ref 139*
+error_table_$unimplemented_version
+                                000022 external static fixed bin(35,0)          dcl 47 set ref 65*
+free_list_offset         13(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 102 190 190* 193
+last_offset                            based           fixed bin(18,0)          packed unsigned unaligned dcl 167 set ref 186*
+last_offset_ptr                 000122 automatic       pointer                  dcl 165 set ref 171* 175* 180* 186
+lbound                                                 builtin function         dcl 52 ref 116
+length                    2(13)        based           bit(1)                   level 3 packed packed unaligned dcl 1-108 ref 87
+length_mode               7(01)        based           bit(1)                   level 2 packed packed unaligned dcl 2-9 set ref 87*
+modes                     2            based           structure                level 2 in structure "tbi" packed packed unaligned
+                                                                                  dcl 1-108 in procedure "tape_ioi_buffer_man"
+modes                    20            based           structure                level 2 in structure "tai" packed packed unaligned
+                                                                                  dcl 1-27 in procedure "tape_ioi_buffer_man"
+next_buf_offset           0(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  ref 120
+next_state_offset         1            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  set ref 122 180 181 186 188* 194 195 197* 221 244
+null                                                   builtin function         dcl 52 ref 61 136 211 234 254
+num_bufs                        000102 automatic       fixed bin(17,0)          dcl 32 set ref 113* 116 116 118* 118 125
+p_buffer_data_ptr                      parameter       pointer                  dcl 19 set ref 56 60* 131 135* 206 210* 229 233*
+p_buffer_ptr                           parameter       pointer                  dcl 20 set ref 150 154*
+p_buffer_ptrs                          parameter       pointer                  array dcl 21 set ref 95 116 116* 116
+p_code                                 parameter       fixed bin(35,0)          dcl 22 set ref 56 91* 95 126* 131 145* 206 229 264*
+p_num_bufs                             parameter       fixed bin(17,0)          dcl 23 set ref 95 125*
+p_state                                parameter       fixed bin(17,0)          dcl 24 ref 95 99
+p_tbs_ptr                              parameter       pointer                  dcl 25 ref 56 64
+p_tioi_id                              parameter       bit(36)                  dcl 26 set ref 56 95 131 206 229 253*
+p_wksp                                 parameter       pointer                  dcl 27 ref 150 153
+ptr                                                    builtin function         dcl 52 ref 100 102 104 106 116 120 122 170 174 181
+                                                                                  193 195 217 221 240 244
+queue_list_offset        14            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 104 170 171
+recovery                  2(14)        based           bit(1)                   level 3 packed packed unaligned dcl 1-108 ref 88
+recovery_mode             7(02)        based           bit(1)                   level 2 packed packed unaligned dcl 2-9 set ref 88*
+rel                                                    builtin function         dcl 52 ref 114 190 197 217 240
+reserved                  2(17)        based           bit(1)                   level 2 in structure "tbi" packed packed unaligned
+                                                                                  dcl 1-108 in procedure "tape_ioi_buffer_man" set
+                                                                                  ref 89 115 219 224* 242 247*
+reserved                  7(03)        based           bit(1)                   level 2 in structure "tbs" packed packed unaligned
+                                                                                  dcl 2-9 in procedure "tape_ioi_buffer_man" set ref
+                                                                                  89*
+state                     1(18)        based           fixed bin(9,0)           level 2 in structure "tbi" packed packed unsigned
+                                                                                  unaligned dcl 1-108 in procedure
+                                                                                  "tape_ioi_buffer_man" set ref 68 139 141 169 173
+                                                                                  187*
+state                           000103 automatic       fixed bin(17,0)          dcl 33 in procedure "tape_ioi_buffer_man" set ref
+                                                                                  99* 100 102 102 104 106 115 120
+state                     1            based           fixed bin(17,0)          level 2 in structure "tbs" dcl 2-9 in procedure
+                                                                                  "tape_ioi_buffer_man" set ref 68*
+susp_list_offset         14(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 106 174 175
+tai                                    based           structure                level 1 dcl 1-27
+tape_ioi_utils$get_buffer_ptr   000010 constant        entry                    external dcl 37 ref 60 135 210 233
+tape_ioi_utils$get_workspace_ptr
+                                000012 constant        entry                    external dcl 39 ref 253
+tbi                                    based           structure                level 1 dcl 1-108
+tbs                                    based           structure                level 1 dcl 2-9
+tbs_ptr                         000106 automatic       pointer                  dcl 2-7 set ref 64* 65 68 69 70 71 72 73 75 77 79 81
+                                                                                  83 85 86 87 88 89
+version                                based           fixed bin(17,0)          level 2 dcl 2-9 ref 65
+wksp                            000104 automatic       pointer                  dcl 1-25 set ref 60* 100 100 102 102 104 104 106 106
+                                                                                  116 120 122 135* 153* 170 170 171 174 174 175 179
+                                                                                  181 183 190 190 193 193 195 210* 217 217 221 233*
+                                                                                  240 240 244 253* 254
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+TBS_VERSION_1                          internal static fixed bin(17,0)          initial dcl 2-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ERROR_RETURN                    000755 constant        label                    dcl 269 ref 265
+buffer_status                   000036 constant        entry                    external dcl 56
+internal_set_buffer_ready       000515 constant        entry                    external dcl 150
+list_buffers                    000232 constant        entry                    external dcl 95
+quit                            001146 constant        entry                    internal dcl 259 ref 61 65 108 136 139 141 211 219
+                                                                                  234 242 254
+release_buffer                  000647 constant        entry                    external dcl 229
+reserve_buffer                  000537 constant        entry                    external dcl 206
+set_buffer_ready                000415 constant        entry                    external dcl 131
+set_buffer_ready_proc           000756 constant        entry                    internal dcl 159 ref 144 154
+setup                           001117 constant        entry                    internal dcl 250 ref 59 98 134 209 232
+tape_ioi_buffer_man             000023 constant        entry                    external dcl 16
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1352        1376    1160        1362
+Length      1632    1160        24         217     171           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+tape_ioi_buffer_man                 132 external procedure  is an external procedure.  
+set_buffer_ready_proc                   internal procedure  shares stack frame of external procedure tape_ioi_buffer_man.  
+begin block on line 214                 begin block         shares stack frame of external procedure tape_ioi_buffer_man.  
+begin block on line 237                 begin block         shares stack frame of external procedure tape_ioi_buffer_man.  
+setup                                   internal procedure  shares stack frame of external procedure tape_ioi_buffer_man.  
+quit                                    internal procedure  shares stack frame of external procedure tape_ioi_buffer_man.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+tape_ioi_buffer_man      000100 buffer_ptr                  tape_ioi_buffer_man
+                         000102 num_bufs                    tape_ioi_buffer_man
+                         000103 state                       tape_ioi_buffer_man
+                         000104 wksp                        tape_ioi_buffer_man
+                         000106 tbs_ptr                     tape_ioi_buffer_man
+                         000120 cbufp                       set_buffer_ready_proc
+                         000122 last_offset_ptr             set_buffer_ready_proc
+                         000124 bufp                        begin block on line 214
+                         000126 bufp                        begin block on line 237
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+tape_ioi_utils$get_buffer_ptr tape_ioi_utils$get_workspace_ptr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$bad_arg          error_table_$device_active
+error_table_$unimplemented_version
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     16 000022        56 000030        59 000046        60 000047        61 000063        64 000076        65 000102
+     68 000114        69 000122        70 000124        71 000126        72 000130        73 000134        75 000144
+     77 000151        79 000156        81 000163        83 000170        85 000175        86 000177        87 000204
+     88 000211        89 000216        91 000223        92 000224        95 000225        98 000242        99 000243
+    100 000246       102 000256       104 000271       106 000302       108 000313       113 000322       114 000323
+    115 000326       116 000335       118 000364       120 000365       122 000375       123 000403       125 000404
+    126 000407       127 000410       131 000411       134 000425       135 000426       136 000442       139 000455
+    141 000474       144 000505       145 000507       146 000510       150 000511       153 000522       154 000526
+    155 000534       206 000535       209 000547       210 000550       211 000564       217 000577       219 000610
+    221 000632       224 000641       225 000644       229 000645       232 000657       233 000660       234 000674
+    240 000707       242 000720       244 000742       247 000751       248 000754       269 000755       159 000756
+    169 000760       170 000770       171 000776       172 001000       173 001001       174 001003       175 001011
+    176 001015       177 001016       179 001017       180 001031       181 001034       182 001042       183 001043
+    186 001050       187 001056       188 001060       190 001062       193 001073       194 001076       195 001103
+    196 001106       197 001107       200 001116       250 001117       253 001120       254 001132       257 001145
+    259 001146       264 001150       265 001152
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1797 @@
+	COMPILATION LISTING OF SEGMENT initialize_faults
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1021.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* This procedure is called three times by the Multics initializer.
+       14*   It initializes the fault and interrupt mechanism by setting pointers
+       15*   in the fim, the wired_fim, the iom_interrupt, the pds, the prds, and the fault vector.
+       16*   The procedures restart_fault, and emergency_shutdown
+       17*   are also initialized.
+       18*
+       19*   Last Modified: (Date and reason)
+       20*
+       21*   01/06/84 by Keith Loepere for drl special drls in bce (breakpoints) and for pmut$cam_both.
+       22*   10/21/83 by Keith Loepere for hardcore_sct_seg$hardcore_sct_seg (in bound seg).
+       23*   05/17/83 by E. N. Kittlitz for drl_entry.
+       24*   09/22/82 by BIM to reorganize to signal in collection 1.
+       25*   08/10/82 by BIM to eliminate the zero out entirely.
+       26*   07/14/82 by BIM to change bootstrap1 to bound_bootload_1.
+       27*   06/25/82 by E. N. Kittlitz to move core map.
+       28*   03/19/81 by J. A. Bush during DPS8/70M debug to 0 out bootstrap1's SDW
+       29*   02/23/81 by J. Bongiovanni for fast connect code
+       30*   12/01/80 by C. Hornig for new interrupt mechanism.
+       31*   08/27/80 by J. A. Bush for  DPS8/70M
+       32*   08/13/79 by J. A. Bush for new signal_entry & parity_entry of fim
+       33*   05/10/79 by BSG for shared stack_0's.
+       34*   08/09/77 by Bernard Greenberg to reinstate derail fault  vector
+       35*   06/10/77 by Melanie Weaver to set up signaller and sct handler
+       36*   2/08/76 by Noel I. Morris for new reconfig
+       37*   01/06/75 at 21:07:50 by R F Mabee.  Removed crock setting signal_ptr in stack.
+       38*   4/25/74 by B. Greenberg for cache system
+       39*   2/74 by S. Webber for privileged-mode page control
+       40*   8/10/73 by R.Snyder to read switches to get bootload memory rather than believe MEM card.
+       41*   5/18/73 by R.Snyder to cause initialize interrupts to be ignored in general.
+       42*   7/26/71 by rhg to divert sys_trouble interrupts to special ii entry
+       43*   7/26/71 by RHG to make cell number reading off config deck be mod 64
+       44*   rather than pds$page_fault_data+32
+       45*   7/24/71 by RHG to use ii$paging_interrupt_entry, ii$pageable_interrupt_entry, scs$interrupt_state
+       46*   7/16/71 by Richard H. Gumpertz to fix initialization of pointers in prds, pds
+       47*   coded May 1970 by Roger R. Schell
+       48**/
+       49 
+       50 
+       51 /* format: style2,^indattr */
+       52 initialize_faults:
+       53      procedure;
+       54 
+       55 /* Declaration of external references we want to get pointers to */
+       56 
+       57 	dcl     sctptr ptr;
+       58 	dcl     sctp (0:1023) ptr unal based;
+       59 
+       60 	dcl     core_map$ ext bit (36);
+       61 	dcl     copy_on_write_handler_$copy_on_write_handler_ ext entry;
+       62 	dcl     dseg$ (0:4095) fixed bin (71) ext;
+       63 	dcl     emergency_shutdown$ ext bit (36);
+       64 	dcl     fault_vector$ ext bit (36);
+       65 	dcl     fim$drl_entry entry ext;
+       66 	dcl     fim$onc_start_shut_entry entry ext;
+       67 	dcl     fim$parity_entry entry ext;
+       68 	dcl     fim$signal_entry entry ext;
+       69 	dcl     fim$access_violation_entry entry ext;
+       70 	dcl     fim$primary_fault_entry entry ext;
+       71 	dcl     hardcore_sct_seg$hardcore_sct_seg ext fixed bin;
+       72 	dcl     iom_interrupt$interrupt_entry entry ext;
+       73 	dcl     isot_fault_handler_$isot_fault_handler_ ext entry;
+       74 	dcl     lot_fault_handler_$lot_fault_handler_ ext entry;
+       75 	dcl     pds$stack_0_ptr ptr ext;
+       76 	dcl     1 pds$fim_data aligned like mc external;
+       77 	dcl     1 pds$page_fault_data aligned like mc external;
+       78 	dcl     1 pds$signal_data aligned like mc external;
+       79 	dcl     1 prds$fim_data aligned like mc external;
+       80 	dcl     prds$fast_connect_code entry external;
+       81 	dcl     1 prds$ignore_data aligned like scu external;
+       82           dcl     prds$ignore_pl (8) bit (36) aligned external;
+       83 	dcl     1 prds$interrupt_data aligned like mc external;
+       84 	dcl     1 prds$sys_trouble_data aligned like mc external;
+       85 	dcl     return_to_ring_0_$restart_fault_ptr ptr ext;
+       86 	dcl     signal_$signal_ entry external;
+       87 	dcl     tc_data$ bit (36) aligned external;
+       88 	dcl     wired_fim$xec_fault entry external;
+       89 	dcl     wired_fim$unexp_fault entry external;
+       90 	dcl     wired_fim$ignore entry external;
+       91 	dcl     page_fault$fault entry external;
+       92 	dcl     wired_fim$timer_runout entry external;
+       93 
+       94 	dcl     (
+       95 	        emergency_shutdown$lp,
+       96 	        emergency_shutdown$pp,
+       97 	        fim$prs,
+       98 	        fim$scu,
+       99 	        fim$sig_prs,
+      100 	        fim$sig_scu,
+      101 	        fim$lp,
+      102 	        iom_interrupt$iilink,
+      103 	        iom_interrupt$prds_prs,
+      104 	        iom_interrupt$prds_scu,
+      105 	        page_fault$my_lp,
+      106 	        pds$apt_ptr,
+      107 	        restart_fault$,
+      108 	        restart_fault$lp,
+      109 	        restart_fault$scu,
+      110 	        wired_fim$prs,
+      111 	        wired_fim$scuinfo,
+      112 	        wired_fim$trouble_prs,
+      113 	        wired_fim$trouble_scuinfo,
+      114 	        wired_fim$int_scuinfo,
+      115 	        wired_fim$ignore_pl,
+      116 	        wired_fim$ignore_scuinfo,
+      117 	        wired_fim$my_linkage_ptr,
+      118 	        page_fault$cme_offsets,
+      119 	        page_fault$pf_prs,
+      120 	        page_fault$pf_scuinfo
+      121 	        ) pointer external;
+      122 
+      123 
+      124 	dcl     cme_offsets (0:size (cme) - 1) ptr based (addr (page_fault$cme_offsets));
+      125 
+      126 	dcl     lot$ (0:1023) pointer unaligned external static;
+      127 
+      128 	dcl     privileged_mode_ut$cam_both ext entry,	/* to clear our associative memory */
+      129 	        privileged_mode_ut$set_mask entry (bit (72) aligned, fixed bin (71)),
+      130 						/* to set memory controller masks */
+      131 	        privileged_mode_ut$ldt ext entry (fixed bin);
+      132 						/* to load timer register */
+      133 	dcl     sdw_util_$get_access entry (ptr, bit (4) unaligned);
+      134 	dcl     sdw_util_$set_access entry (ptr, bit (4) unaligned);
+      135 
+      136 
+      137 	dcl     (
+      138 	        ignore_ptr,				/* pointer to FIM entry to ignore */
+      139 	        ignore_d_ptr,			/* pointer to place in PRDS for ignored SCU data */
+      140 	        primary_trap,
+      141 	        primary_scup,
+      142 	        signal_trap,
+      143 	        signal_scup,
+      144 	        onc_trap,
+      145 	        onc_scup,
+      146 	        unexp_trap,
+      147 	        unexp_scup,
+      148 	        p
+      149 	        ) ptr;
+      150 
+      151 	dcl     i fixed bin (5);			/* loop index */
+      152 	dcl     access bit (4);			/* saved access of procedure segment */
+      153 
+      154 	dcl     (addr, baseno, baseptr, codeptr, fixed, null, ptr, size) builtin;
+      155 
+      156 	declare (
+      157 	        initialize_faults_data$primary_one,
+      158 	        initialize_faults_data$primary_two,
+      159 	        initialize_faults_data$signal_one,
+      160 	        initialize_faults_data$signal_two,
+      161 	        initialize_faults_data$onc_one,
+      162 	        initialize_faults_data$onc_two
+      163 	        ) (0:31) bit (1) unaligned ext static;
+      164 
+      165 
+      166 
+      167 /* FAULT_INIT_ONE - Initialize Fault and Interrupt Mechanism
+      168*   and Set Up Fault Vector for Remainder of Initialization */
+      169 
+      170 fault_init_one:
+      171      entry;
+      172 
+      173 /* initialize pointers that we will need */
+      174 
+      175 	call GET_STANDARD_POINTERS;
+      176 
+      177 
+      178 	do i = 0 to 31;				/* first set up all faults and interrupts the same */
+      179 
+      180 	     if initialize_faults_data$primary_one (i)
+      181 	     then do;
+      182 		     fv.f_tra_ptr (i) = primary_trap;
+      183 		     fv.f_scu_ptr (i) = primary_scup;
+      184 		end;
+      185 	     else if initialize_faults_data$signal_one (i)
+      186 	     then do;
+      187 		     fv.f_tra_ptr (i) = signal_trap;
+      188 		     fv.f_scu_ptr (i) = signal_scup;
+      189 		end;
+      190 	     else if initialize_faults_data$onc_one (i)
+      191 	     then do;
+      192 		     fv.f_tra_ptr (i) = onc_trap;
+      193 		     fv.f_scu_ptr (i) = onc_scup;
+      194 		end;
+      195 	     else do;				/* otherwise unaccounted for */
+      196 		     fv.f_tra_ptr (i) = unexp_trap;
+      197 		     fv.f_scu_ptr (i) = unexp_scup;
+      198 		end;
+      199 
+      200 
+      201 	     fv.i_tra_ptr (i) = ignore_ptr;		/* ignore all interrupts */
+      202 	     fv.i_scu_ptr (i) = ignore_d_ptr;		/* put SCU data where we can find it */
+      203 
+      204 	end;
+      205 
+      206 	fv.f_tra_ptr (FAULT_NO_LUF) = ignore_ptr;	/* ignore lockup faults */
+      207 	fv.f_scu_ptr (FAULT_NO_LUF) = ignore_d_ptr;	/* put SCU data where we can find it */
+      208 
+      209 	fv.f_tra_ptr (FAULT_NO_TRO) = ignore_ptr;
+      210 	fv.f_scu_ptr (FAULT_NO_TRO) = ignore_d_ptr;
+      211 
+      212 /* Execute faults have special meaning. */
+      213 	fv.f_tra_ptr (FAULT_NO_EXF) = codeptr (wired_fim$xec_fault);
+      214 	fv.f_scu_ptr (FAULT_NO_EXF) = addr (prds$sys_trouble_data.scu);
+      215 
+      216 /* set up for page faults */
+      217 	fv.f_tra_ptr (FAULT_NO_DF1) = codeptr (page_fault$fault);
+      218 	fv.f_scu_ptr (FAULT_NO_DF1) = addr (pds$page_fault_data.scu);
+      219 
+      220 /* set up for df0 (seg faults) */
+      221 	fv.f_tra_ptr (FAULT_NO_DF0) = codeptr (fim$primary_fault_entry);
+      222 	fv.f_scu_ptr (FAULT_NO_DF0) = addr (addr (pds$fim_data) -> mc.scu (0));
+      223 
+      224 /* entry for connect faults */
+      225 	fv.f_tra_ptr (FAULT_NO_CON) = codeptr (prds$fast_connect_code);
+      226 	fv.f_scu_ptr (FAULT_NO_CON) = addr (prds$fim_data.scu);
+      227 
+      228 /* direct derail faults to a special entry */
+      229 
+      230 	fv.f_tra_ptr (FAULT_NO_DRL) = addr (fim$drl_entry);
+      231 
+      232 /* initialize the FIM */
+      233 
+      234 	call set_access (fim$prs);
+      235 	fim$prs = addr (pds$fim_data);		/* Set pointer to place for pointer regs. */
+      236 	fim$scu = addr (pds$fim_data.scu);		/* Set pointer to place for SCU data. */
+      237 	fim$sig_prs = addr (pds$signal_data);		/* Set ptr for signal_data ptr regs. */
+      238 	fim$sig_scu = addr (pds$signal_data.scu);	/* Set ptr for signal_data SCU data. */
+      239 	call set_lp (fim$lp);			/* Store linkage pointer and set access. */
+      240 
+      241 /* initialize the Interrupt Interceptor */
+      242 
+      243 	call set_access (iom_interrupt$prds_prs);
+      244 
+      245 	iom_interrupt$prds_prs = addr (prds$interrupt_data);
+      246 						/* Set pointer for SPRI in the PRDS */
+      247 	iom_interrupt$prds_scu = addr (prds$interrupt_data.scu);
+      248 						/* Set pointer for SCU in the PRDS */
+      249 	call set_lp (iom_interrupt$iilink);		/* Store linkage ptr. */
+      250 
+      251 /* initialize wired_fim */
+      252 
+      253 	call set_access (wired_fim$prs);
+      254 
+      255 	wired_fim$prs = addr (prds$fim_data);		/* Set pointer to place for pointer registers. */
+      256 	wired_fim$scuinfo = addr (prds$fim_data.scu);	/* Set pointer to place for SCU data. */
+      257 
+      258 /* Set machine condition pointer for wired_sys_trouble. */
+      259 	wired_fim$trouble_prs = addr (prds$sys_trouble_data);
+      260 						/* Set pointer to place for pointer registers. */
+      261 	wired_fim$trouble_scuinfo = addr (prds$sys_trouble_data.scu);
+      262 						/* Set pointer to place for SCU data. */
+      263 
+      264 	wired_fim$int_scuinfo = addr (pds$page_fault_data.scu);
+      265 						/* Set pointer in wired_fim. */
+      266 
+      267 	wired_fim$ignore_pl = addr (prds$ignore_pl);
+      268 	wired_fim$ignore_scuinfo = ignore_d_ptr;	/* Set pointer for ignoring faults. */
+      269 
+      270 	call set_lp (wired_fim$my_linkage_ptr);		/* store linkage pointer */
+      271 
+      272 /* initialize Page Fault Handler */
+      273 
+      274 	call set_access (page_fault$my_lp);
+      275 
+      276 	page_fault$pf_prs = addr (pds$page_fault_data);	/* save pointer to place for pointer registers */
+      277 	page_fault$pf_scuinfo = addr (pds$page_fault_data.scu);
+      278 						/* save pointer to place for SCU data */
+      279 	cmep = null;
+      280 	do i = 0 to size (cme) - 1;			/* set up C.M. ITS pointers */
+      281 	     cme_offsets (i) = ptr (addr (core_map$), i);
+      282 	end;
+      283 	call set_lp (page_fault$my_lp);		/* store linkage pointer for page */
+      284 
+      285 /* initialize restart_fault */
+      286 
+      287 	call set_access (restart_fault$scu);
+      288 	restart_fault$scu = addr (pds$signal_data.scu);	/* Set RCU pointer for restart_fault. */
+      289 	call set_lp (restart_fault$lp);		/* store linkage pointer */
+      290 
+      291 /* initialize emergency_shutdown */
+      292 
+      293 	call set_access (emergency_shutdown$lp);
+      294 	emergency_shutdown$pp = addr (emergency_shutdown$);
+      295 						/* save pointer to itself */
+      296 	call set_lp (emergency_shutdown$lp);		/* store linkage pointer */
+      297 
+      298 	pds$apt_ptr = addr (tc_data$);		/* set pointer so that pxss can work */
+      299 
+      300 
+      301 /* Initialize return_to_ring_0_$restart_fault_ptr for returns to ring zero */
+      302 
+      303 	call set_access (return_to_ring_0_$restart_fault_ptr);
+      304 						/* allow stores to rr0_ */
+      305 	return_to_ring_0_$restart_fault_ptr = addr (restart_fault$);
+      306 						/* store pointer to restart_fault */
+      307 	call restore_access;			/* restore old rr0_ access */
+      308 
+      309 /* What follows used to be signal_init */
+      310 
+      311 /* Fill in inzr_stk0 stack base. init_stack_0 will fill in others */
+      312 
+      313 	pds$stack_0_ptr = stackbaseptr ();		/* Allow fim to work, interim. */
+      314 	stackbaseptr () -> stack_header.signal_ptr = codeptr (signal_$signal_);
+      315 	stackbaseptr () -> stack_header.unwinder_ptr = null;
+      316 						/* take a fault */
+      317 	stackbaseptr () -> stack_header.sct_ptr = addr (hardcore_sct_seg$hardcore_sct_seg);
+      318 
+      319 /* Put a standard for scu/tra pair in the vector for derail. Bootstrap1 has been leaving it lying around
+      320*   as an immediate RTB up till now for clean crashes. */
+      321 
+      322 	fv.fpair (FAULT_NO_DRL).scu = rel (addr (fv.f_scu_ptr (FAULT_NO_DRL))) || "657220"b3;
+      323 						/* fv seg is at 0 abs. */
+      324 	fv.fpair (FAULT_NO_DRL).tra = rel (addr (fv.f_tra_ptr (FAULT_NO_DRL))) || "710220"b3;
+      325 
+      326 	scs$faults_initialized = "1"b;		/* Mark faults as initialized. */
+      327 	return;
+      328 
+      329 
+      330 /* INTERRUPT_INIT - Set Up Interrupt Vector for Multics Operation. */
+      331 
+      332 interrupt_init:
+      333      entry;
+      334 
+      335 /* initialize pointers */
+      336 
+      337 	fvp = addr (fault_vector$);			/* Get pointer to fault vector. */
+      338 
+      339 /* turn off all interrupts */
+      340 
+      341 	call privileged_mode_ut$set_mask (scs$sys_level, 0);
+      342 						/* Make sure no interrupts come in. */
+      343 						/* set up SCU pointer for the PRDS */
+      344 	fv.i_tra_ptr (*) = codeptr (iom_interrupt$interrupt_entry);
+      345 	fv.i_scu_ptr (*) = addr (prds$interrupt_data.scu);
+      346 
+      347 /* Open the memory controller mask */
+      348 
+      349 	call privileged_mode_ut$set_mask (scs$open_level, 0);
+      350 						/* Open mask for all interrupts. */
+      351 
+      352 	return;					/* Interrupts are under weigh. */
+      353 
+      354 
+      355 /* FAULT_INIT_TWO -- reset some fault vector assignments for file system */
+      356 /*	           operations */
+      357 
+      358 fault_init_two:
+      359      entry;
+      360 
+      361 
+      362 	call GET_STANDARD_POINTERS;
+      363 
+      364 /* set the timer to give us time to change fault vector */
+      365 
+      366 	call privileged_mode_ut$ldt (-1);		/* Load the timer register. */
+      367 
+      368 /* Direct most faults to the FIM. */
+      369 
+      370 	do i = 0 to 31;				/* Loop. */
+      371 
+      372 	     if initialize_faults_data$primary_two (i)
+      373 	     then do;
+      374 		     fv.f_tra_ptr (i) = primary_trap;
+      375 		     fv.f_scu_ptr (i) = primary_scup;
+      376 		end;
+      377 	     else if initialize_faults_data$signal_two (i)
+      378 	     then do;
+      379 		     fv.f_tra_ptr (i) = signal_trap;
+      380 		     fv.f_scu_ptr (i) = signal_scup;
+      381 		end;
+      382 	     else if initialize_faults_data$onc_two (i)
+      383 	     then do;
+      384 		     fv.f_tra_ptr (i) = onc_trap;
+      385 		     fv.f_scu_ptr (i) = onc_scup;
+      386 		end;
+      387 		else if i > 25 & i < 31
+      388 		then do;
+      389 			fv.f_tra_ptr (i) = unexp_trap;
+      390 			fv.f_scu_ptr (i) = unexp_scup;
+      391 		     end;		     
+      392 	end;
+      393 
+      394 /* direct access violations to a special entry */
+      395 
+      396 	fv.f_tra_ptr (FAULT_NO_ACV) = codeptr (fim$access_violation_entry);
+      397 	fv.f_scu_ptr (FAULT_NO_ACV) = primary_scup;
+      398 
+      399 /* direct derail faults to a special entry */
+      400 
+      401 	fv.f_tra_ptr (FAULT_NO_DRL) = addr (fim$drl_entry);
+      402 
+      403 /* Direct timer runouts to special handler. */
+      404 
+      405 	fv.f_tra_ptr (FAULT_NO_TRO) = codeptr (wired_fim$timer_runout);
+      406 	fv.f_scu_ptr (FAULT_NO_TRO) = addr (prds$fim_data.scu);
+      407 
+      408 /* direct parity errors to a special entry */
+      409 
+      410 	fv.f_tra_ptr (FAULT_NO_PAR) = codeptr (fim$parity_entry);
+      411 	fv.f_scu_ptr (FAULT_NO_PAR) = primary_scup;
+      412 
+      413 /* Fill in the ring zero static handlers. This can only be called after */
+      414 /* collection 2 is loaded */
+      415 
+      416 	sctptr = addr (hardcore_sct_seg$hardcore_sct_seg);
+      417 
+      418 	sctptr -> sctp (no_write_permission_sct_index) = codeptr (copy_on_write_handler_$copy_on_write_handler_);
+      419 	sctptr -> sctp (isot_fault_sct_index) = codeptr (isot_fault_handler_$isot_fault_handler_);
+      420 	sctptr -> sctp (lot_fault_sct_index) = codeptr (lot_fault_handler_$lot_fault_handler_);
+      421 
+      422 	return;
+      423 
+      424 /* SET_LP - Store Linkage Pointer and Set Proper Access. */
+      425 
+      426 set_lp:
+      427      proc (link_ptr);				/* Entry to set text-embedded linkage pointers */
+      428 
+      429 	dcl     link_ptr ptr;			/* cell to contain linkage pointer */
+      430 
+      431 	dcl     segno fixed bin (15);			/* segment number of segment */
+      432 	dcl     target_ptr ptr;			/* pointer to segment whose linkage we want */
+      433 
+      434 	target_ptr = addr (link_ptr);			/* for set_lp we want our own linkage */
+      435 
+      436 	segno = fixed (baseno (target_ptr), 18);	/* compute segment number */
+      437 	link_ptr = lot$ (segno);			/* Generate pointer to linkage section. */
+      438 
+      439 
+      440 	call restore_access;			/* restore proper seg access */
+      441 
+      442 	return;
+      443 
+      444      end set_lp;
+      445 
+      446 
+      447 
+      448 /* SET_ACCESS/RESTORE_ACCESS - Set Write Access to Procedure and Reset Later. */
+      449 
+      450 set_access:
+      451      procedure (textp);				/* proc to set write access */
+      452 
+      453 	dcl     segno fixed bin (15);
+      454 	dcl     textp ptr;				/* any pointer residing in text segment */
+      455 
+      456 	segno = fixed (baseno (addr (textp)), 18);	/* get segment number */
+      457 	call sdw_util_$get_access (addr (dseg$ (segno)), access);
+      458 						/* save old access */
+      459 	call sdw_util_$set_access (addr (dseg$ (segno)), access | RW_ACCESS);
+      460 						/* allow writing */
+      461 	call privileged_mode_ut$cam_both;		/* make sure it takes */
+      462 
+      463 	return;
+      464 
+      465 
+      466 restore_access:
+      467      entry;					/* to be called after set_access has been called */
+      468 
+      469 	call sdw_util_$set_access (addr (dseg$ (segno)), access);
+      470 						/* restore old access */
+      471 	call privileged_mode_ut$cam_both;		/* make sure that takes */
+      472 
+      473 	return;
+      474 
+      475 
+      476      end set_access;
+      477 
+      478 
+      479 GET_STANDARD_POINTERS:
+      480      procedure;
+      481 
+      482 	fvp = addr (fault_vector$);
+      483 	ignore_ptr = codeptr (wired_fim$ignore);
+      484 	ignore_d_ptr = addr (prds$ignore_data);
+      485 
+      486 /* initialize SCU and TRA pointers for faults and interrupts */
+      487 
+      488 	primary_trap = codeptr (fim$primary_fault_entry);
+      489 	primary_scup = addr (pds$fim_data.scu);
+      490 	signal_trap = codeptr (fim$signal_entry);
+      491 	signal_scup = addr (pds$signal_data.scu);
+      492 	onc_trap = codeptr (fim$onc_start_shut_entry);
+      493 	onc_scup = primary_scup;
+      494 	unexp_trap = codeptr (wired_fim$unexp_fault);
+      495 	unexp_scup = addr (prds$sys_trouble_data.scu);
+      496      end;
+      497 
+      498 
+  1     1 /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  1     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  1     3 
+  1     4 dcl  cmep ptr;					/* pointer to core map entry */
+  1     5 
+  1     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  1     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  1     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  1     9 
+  1    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  1    11     2 pad5 bit (1) unaligned,
+  1    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  1    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  1    14     2 pad2 bit (1) unaligned,
+  1    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  1    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  1    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  1    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  1    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  1    20     2 pad3 bit (1) unaligned,
+  1    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  1    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  1    23 
+  1    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  1    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  1    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  1    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  1    28 
+  1    29 
+  1    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  1    31 
+  1    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  1    33     2 pad bit (36) unaligned,
+  1    34     2 record_no bit (18) unaligned,			/* record number of device */
+  1    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  1    36     2 flags bit (14) unal,
+  1    37     2 pad1 bit (18) unal;
+  1    38 
+  1    39 
+  1    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      499 
+  2     1 
+  2     2 /* BEGIN INCLUDE FILE ... fault_vector.incl.pl1 ... last modified February 1981 */
+  2     3 
+  2     4 dcl  fvp ptr;					/* pointer to the fault and interrupt vectors */
+  2     5 
+  2     6 dcl 1 fv based (fvp) aligned,				/* fault and interrupt vectors */
+  2     7     2 ipair (0: 31),				/* interrupt pairs */
+  2     8       3 scu bit (36),				/* SCU instruction */
+  2     9       3 tra bit (36),				/* TRA instruction */
+  2    10     2 fpair (0: 31),				/* fault pairs */
+  2    11       3 scu bit (36),				/* SCU instruction */
+  2    12       3 tra bit (36),				/* TRA instruction */
+  2    13     2 i_tra_ptr (0: 31) ptr,				/* ITS pair for interrupt TRA instruction */
+  2    14     2 i_scu_ptr (0: 31) ptr,				/* ITS pair for interrupt SCU instruction */
+  2    15     2 f_tra_ptr (0: 31) ptr,				/* ITS pairs for fault TRA instruction */
+  2    16     2 f_scu_ptr (0: 31) ptr;				/* ITS pairs for fault SCU instruction */
+  2    17 
+  2    18 /* Fault Types by fault number								*/
+  2    19 	
+  2    20    dcl (FAULT_NO_SDF  init (0),			/* Shutdown 				*/
+  2    21         FAULT_NO_STR  init (1),			/* Store 				*/
+  2    22         FAULT_NO_MME  init (2),			/* Master Mode Entry 1			*/
+  2    23         FAULT_NO_F1   init (3),			/* Fault Tag 1				*/
+  2    24         FAULT_NO_TRO  init (4),			/* Timer Runout				*/
+  2    25         FAULT_NO_CMD  init (5),			/* Command				*/
+  2    26         FAULT_NO_DRL  init (6),			/* Derail					*/
+  2    27         FAULT_NO_LUF  init (7),			/* Lockup					*/
+  2    28         FAULT_NO_CON  init (8),			/* Connect				*/
+  2    29         FAULT_NO_PAR  init (9),			/* Parity					*/
+  2    30         FAULT_NO_IPR  init (10),			/* Illegal Procedure			*/
+  2    31         FAULT_NO_ONC  init (11),			/* Operation Not Complete			*/
+  2    32         FAULT_NO_SUF  init (12),			/* Startup				*/
+  2    33         FAULT_NO_OFL  init (13),			/* Overflow				*/
+  2    34         FAULT_NO_DIV  init (14),			/* Divide Check				*/
+  2    35         FAULT_NO_EXF  init (15),			/* Execute				*/
+  2    36         FAULT_NO_DF0  init (16),			/* Directed Fault 0 (Segment Fault)		*/
+  2    37         FAULT_NO_DF1  init (17),			/* Directed Fault 1 (Page Fault)		*/
+  2    38         FAULT_NO_DF2  init (18),			/* Directed Fault 2				*/
+  2    39         FAULT_NO_DF3  init (19),			/* Directed Fault 3				*/
+  2    40         FAULT_NO_ACV  init (20),			/* Access Violation				*/
+  2    41         FAULT_NO_MME2 init (21),			/* Master Mode Entry 2			*/
+  2    42         FAULT_NO_MME3 init (22),			/* Master Mode Entry 3			*/
+  2    43         FAULT_NO_MME4 init (23),			/* Master Mode Entry 4			*/
+  2    44         FAULT_NO_F2   init (24),			/* Fault Tag 2 (Linkage Fault)		*/
+  2    45         FAULT_NO_F3   init (25),			/* Fault Tag 3				*/
+  2    46 						/* Fault Numbers 26-30 unassigned 		*/
+  2    47         FAULT_NO_TRB  init (31)			/* Trouble				*/
+  2    48 	
+  2    49                                 ) fixed bin (17) int static options (constant);
+  2    50 	
+  2    51 
+  2    52 
+  2    53 /* END INCLUDE FILE ... fault_vector.incl.pl1 */
+  2    54 
+      500 
+  3     1 /*  */
+  3     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+  3     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+  3     4 /* Modified 07/07/76 by Morris for fault register data */
+  3     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+  3     6 /* Modified '82 to make values constant */
+  3     7 
+  3     8 /* words 0-15 pointer registers */
+  3     9 
+  3    10 dcl  mcp ptr;
+  3    11 
+  3    12 dcl 1 mc based (mcp) aligned,
+  3    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+  3    14    (2 regs,					/* registers */
+  3    15       3 x (0:7) bit (18),				/* index registers */
+  3    16       3 a bit (36),					/* accumulator */
+  3    17       3 q bit (36),					/* q-register */
+  3    18       3 e bit (8),					/* exponent */
+  3    19       3 pad1 bit (28),
+  3    20       3 t bit (27),					/* timer register */
+  3    21       3 pad2 bit (6),
+  3    22       3 ralr bit (3),				/* ring alarm register */
+  3    23 
+  3    24     2 scu (0:7) bit (36),
+  3    25 
+  3    26     2 mask bit (72),				/* mem controller mask at time of fault */
+  3    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+  3    28     2 errcode fixed bin (35),				/* fault handler's error code */
+  3    29     2 fim_temp,
+  3    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+  3    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+  3    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+  3    33     2 fault_reg bit (36),				/* fault register */
+  3    34     2 pad2 bit (1),
+  3    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+  3    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+  3    37     2 fault_time bit (54),				/* time of fault */
+  3    38 
+  3    39     2 eis_info (0:7) bit (36)) unaligned;
+  3    40 
+  3    41 
+  3    42 dcl (apx fixed bin init (0),
+  3    43      abx fixed bin init (1),
+  3    44      bpx fixed bin init (2),
+  3    45      bbx fixed bin init (3),
+  3    46      lpx fixed bin init (4),
+  3    47      lbx fixed bin init (5),
+  3    48      spx fixed bin init (6),
+  3    49      sbx fixed bin init (7)) internal static options (constant);
+  3    50 
+  3    51 
+  3    52 
+  3    53 
+  3    54 dcl  scup ptr;
+  3    55 
+  3    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+  3    57 
+  3    58 
+  3    59 /*	WORD (0)		*/
+  3    60 
+  3    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+  3    62       3 prr bit (3),				/* procedure ring register */
+  3    63       3 psr bit (15),				/* procedure segment register */
+  3    64       3 p bit (1),					/* procedure privileged bit */
+  3    65 
+  3    66     2 apu,					/* APPENDING UNIT STATUS */
+  3    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+  3    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+  3    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+  3    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+  3    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+  3    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+  3    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+  3    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+  3    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+  3    76       3 ptw bit (1),				/* Fetch of PTW */
+  3    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+  3    78       3 fap bit (1),				/* Fetch of final address paged */
+  3    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+  3    80       3 fabs bit (1),				/* Fetch of final address absolute */
+  3    81 
+  3    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+  3    83 
+  3    84 
+  3    85 /*	WORD (1)		*/
+  3    86 
+  3    87     2 fd,						/* FAULT  DATA */
+  3    88       3 iro bit (1),				/* illegal ring order */
+  3    89       3 oeb bit (1),				/* out of execute bracket */
+  3    90       3 e_off bit (1),				/* no execute */
+  3    91       3 orb bit (1),				/* out of read bracket */
+  3    92       3 r_off bit (1),				/* no read */
+  3    93       3 owb bit (1),				/* out of write bracket */
+  3    94       3 w_off bit (1),				/* no write */
+  3    95       3 no_ga bit (1),				/* not a gate */
+  3    96       3 ocb bit (1),				/* out of call bracket */
+  3    97       3 ocall bit (1),				/* outward call */
+  3    98       3 boc bit (1),				/* bad outward call */
+  3    99       3 inret bit (1),				/* inward return */
+  3   100       3 crt bit (1),				/* cross ring transfer */
+  3   101       3 ralr bit (1),				/* ring alarm register */
+  3   102       3 am_er bit (1),				/* associative memory fault */
+  3   103       3 oosb bit (1),				/* out of segment bounds */
+  3   104       3 paru bit (1),				/* processor parity upper */
+  3   105       3 parl bit (1),				/* processor parity lower */
+  3   106       3 onc_1 bit (1),				/* op not complete type 1 */
+  3   107       3 onc_2 bit (1),				/* op not complete type 2 */
+  3   108 
+  3   109     2 port_stat,					/* PORT  STATUS */
+  3   110       3 ial bit (4),				/* illegal action lines */
+  3   111       3 iac bit (3),				/* illegal action channel */
+  3   112       3 con_chan bit (3),				/* connect channel */
+  3   113 
+  3   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+  3   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+  3   116 
+  3   117 
+  3   118 /*	WORD (2)		*/
+  3   119 
+  3   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+  3   121       3 trr bit (3),				/* temporary ring register */
+  3   122       3 tsr bit (15),				/* temporary segment register */
+  3   123 
+  3   124     2 pad2 bit (9),
+  3   125 
+  3   126     2 cpu_no bit (3),				/* CPU number */
+  3   127 
+  3   128     2 delta bit (6),				/* tally modification DELTA */
+  3   129 
+  3   130 
+  3   131 /*	WORD (3)		*/
+  3   132 
+  3   133     2 word3 bit (18),
+  3   134 
+  3   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+  3   136       3 tsna,					/* Word 1 status */
+  3   137         4 prn bit (3),				/* Word 1  PR  number */
+  3   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+  3   139       3 tsnb,					/* Word 2  status */
+  3   140         4 prn bit (3),				/* Word 2  PR  number */
+  3   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+  3   142       3 tsnc,					/* Word 3  status */
+  3   143         4 prn bit (3),				/* Word 3  PR  number */
+  3   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+  3   145 
+  3   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+  3   147 
+  3   148 
+  3   149 /* 	WORD (4)		*/
+  3   150 
+  3   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+  3   152 
+  3   153     2 ir,						/* INDICATOR  REGISTERS */
+  3   154       3 zero bit (1),				/* zero indicator */
+  3   155       3 neg bit (1),				/* negative indicator */
+  3   156       3 carry bit (1),				/* carryry indicator */
+  3   157       3 ovfl bit (1),				/* overflow indicator */
+  3   158       3 eovf bit (1),				/* eponent overflow */
+  3   159       3 eufl bit (1),				/* exponent underflow */
+  3   160       3 oflm bit (1),				/* overflow mask */
+  3   161       3 tro bit (1),				/* tally runout */
+  3   162       3 par bit (1),				/* parity error */
+  3   163       3 parm bit (1),				/* parity mask */
+  3   164       3 bm bit (1),					/* ^bar mode */
+  3   165       3 tru bit (1),				/* truncation mode */
+  3   166       3 mif bit (1),				/* multi-word instruction mode */
+  3   167       3 abs bit (1),				/* absolute mode */
+  3   168       3 hex bit (1),				/* hexadecimal exponent mode */
+  3   169       3 pad bit (3),
+  3   170 
+  3   171 
+  3   172 /*	WORD (5)		*/
+  3   173 
+  3   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+  3   175 
+  3   176     2 cu,						/* CONTROL UNIT STATUS */
+  3   177       3 rf bit (1),					/* on first cycle of repeat instr */
+  3   178       3 rpt bit (1),				/* repeat instruction */
+  3   179       3 rd bit (1),					/* repeat double instruction */
+  3   180       3 rl bit (1),					/* repeat link instruciton */
+  3   181       3 pot bit (1),				/* IT  modification */
+  3   182       3 pon bit (1),				/* return type instruction */
+  3   183       3 xde bit (1),				/* XDE from Even location */
+  3   184       3 xdo bit (1),				/* XDE from Odd  location */
+  3   185       3 poa bit (1),				/* operation preparation */
+  3   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+  3   187       3 its bit (1),				/* ITS modification */
+  3   188       3 if bit (1),					/* fault occured during instruction fetch */
+  3   189 
+  3   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+  3   191 
+  3   192 
+  3   193 /*	WORDS (6,7)	*/
+  3   194 
+  3   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+  3   196 
+  3   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+  3   198 
+  3   199 
+  3   200 
+  3   201 
+  3   202 
+  3   203 
+  3   204 /*	ALTERNATE   SCU  DECLARATION		*/
+  3   205 
+  3   206 
+  3   207 dcl 1 scux based (scup) aligned,
+  3   208 
+  3   209    (2 pad0 bit (36),
+  3   210 
+  3   211     2 fd,						/* GROUP II  FAULT DATA */
+  3   212       3 isn bit (1),				/* illegal segment number */
+  3   213       3 ioc bit (1),				/* illegal op  code  */
+  3   214       3 ia_am bit (1),				/* illegal address - modifier */
+  3   215       3 isp bit (1),				/* illegal slave  procedure */
+  3   216       3 ipr bit (1),				/* illegal procedure */
+  3   217       3 nea bit (1),				/* non existent address */
+  3   218       3 oobb bit (1),				/* out of bounds */
+  3   219       3 pad bit (29),
+  3   220 
+  3   221     2 pad2 bit (36),
+  3   222 
+  3   223     2 pad3a bit (18),
+  3   224 
+  3   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+  3   226       3 prn bit (3),				/* PR  number */
+  3   227       3 prv bit (1),				/* PR  valid bit */
+  3   228 
+  3   229     2 pad3b bit (6)) unaligned,
+  3   230 
+  3   231     2 pad45 (0:1) bit (36),
+  3   232 
+  3   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+  3   234 
+  3   235 
+  3   236 
+  3   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+      501 
+  4     1 /* BEGIN INCLUDE FILE scs.incl.pl1 ... March 1983 */
+  4     2 /* format: style4 */
+  4     3 
+  4     4 /* Information about system controllers */
+  4     5 
+  4     6 dcl  1 scs$controller_data (0:7) aligned ext,		/* per-controller info */
+  4     7        2 size fixed bin (17) unaligned,			/* size (in 1024 word blocks) of this controller */
+  4     8        2 base fixed bin (17) unaligned,			/* abs address (0 mod 1024) for base of this controller */
+  4     9        2 eima_data (4) unaligned,			/* EIMA information for this controller */
+  4    10          3 mask_available bit (1) unaligned,		/* ON if corresponding mask exists */
+  4    11          3 mask_assigned bit (1) unaligned,		/* ON if mask assigned to a port */
+  4    12          3 mbz bit (3) unaligned,
+  4    13          3 mask_assignment fixed bin (3) unaligned,	/* port to which mask is assigned */
+  4    14        2 info aligned,
+  4    15          3 online bit (1) unaligned,			/* ON if controller is online */
+  4    16          3 offline bit (1) unaligned,			/* ON if controller is offline but can be added */
+  4    17          3 store_a_online bit (1) unaligned,		/* ON if store A is online */
+  4    18          3 store_a1_online bit (1) unaligned,		/* ON if store A1 is online */
+  4    19          3 store_b_online bit (1) unaligned,		/* ON if store B is online */
+  4    20          3 store_b1_online bit (1) unaligned,		/* ON if store B1 is online */
+  4    21          3 store_b_is_lower bit (1) unaligned,		/* ON if store B is lower */
+  4    22          3 ext_interlaced bit (1) unaligned,		/* ON if this SCU is interlaced with other SCU */
+  4    23          3 int_interlaced bit (1) unaligned,		/* ON if this SCU is internally interlaced */
+  4    24          3 four_word bit (1) unaligned,			/* ON if external interlace is 4-word */
+  4    25          3 cyclic_priority (7) bit (1) unaligned,		/* Cyclic priority for adjacent ports */
+  4    26          3 type bit (4) unaligned,			/* Model number for this controller */
+  4    27          3 abs_wired bit (1) unaligned,			/* ON if controller can have abs_wired pages */
+  4    28          3 program bit (1) unaligned,			/* PROGRAM/MANUAL switch setting */
+  4    29          3 mbz bit (13) unaligned,
+  4    30        2 lower_store_size fixed bin (17) unaligned,	/* size (in 1024 word blocks) of lower store */
+  4    31        2 upper_store_size fixed bin (17) unaligned;	/* size (in 1024 word blocks) of upper store */
+  4    32 
+  4    33 /* Information about CPUs */
+  4    34 
+  4    35 dcl  1 scs$processor_data (0:7) aligned ext,		/* information about CPUs in the system */
+  4    36        (
+  4    37        2 online bit (1),				/* "1"b if CPU is online */
+  4    38        2 offline bit (1),				/* "1"b if CPU is offline but can be added */
+  4    39        2 release_mask bit (1),			/* "1"b is this CPU is to give up its mask */
+  4    40        2 accept_mask bit (1),				/* "1"b if this CPU is to grap mask in idle loop */
+  4    41        2 delete_cpu bit (1),				/* "1"b if this CPU is to delete itself */
+  4    42        2 interrupt_cpu bit (1),			/* "1"b if this CPU takes hardware interrupts */
+  4    43        2 halted_cpu bit (1),				/* "1"b if this CPU has stopped itself (going to BOS) */
+  4    44        2 cpu_type fixed bin (2) unsigned,		/*  0 => DPS or L68, 1 => DPS8 */
+  4    45        2 mbz1 bit (6),
+  4    46        2 cache_size fixed bin (3) unsigned,		/* 0 = No cache; 1 = L68 2K cache;
+  4    47*						   2 = DPS8 8K cache; 3 = DPS8 VS&SC 8K cache;
+  4    48*						   4 = DPS8 VS&SC 16K cache; 5 = DPS8 VS&SC 32K cache
+  4    49*						   7 = ignore cache size (set by ISOLTS reconfig) */
+  4    50        2 mbz2 bit (12),
+  4    51        2 expanded_port bit (1),			/* "1"b = on expanded port */
+  4    52        2 expander_port fixed bin (2) unsigned,		/* The actual expander port */
+  4    53        2 controller_port fixed bin (3) unsigned
+  4    54        ) unaligned;					/* Port on controller */
+  4    55 
+  4    56 dcl  1 scs$port_data (0:7) aligned external static,	/* Info about what is connected to each SCU port */
+  4    57        2 assigned fixed bin (4) unsigned unaligned,	/* Type of device on this port		*/
+  4    58        2 expander_port bit (1) unaligned,		/* "1"b => this port has a port expander */
+  4    59        2 expanded_cpu (0:3) bit (1) unaligned,		/* "1"b => this expander port has a CPU attached */
+  4    60        2 iom_number fixed bin (3) unsigned unaligned,	/* IOM number of IOM attached to this port */
+  4    61        2 cpu_number (0:3) fixed bin (3) unsigned unaligned, /* CPU number of CPU(s) attached to this port */
+  4    62 						/* cpu_number (0) is only one if expander_port is "0"b */
+  4    63        2 pad bit (12) unaligned;
+  4    64 
+  4    65 dcl  1 scs$cow (0:7) aligned external,			/* Actual connect words */
+  4    66        2 pad bit (36) aligned,			/* Expander COW's must be odd-word */
+  4    67        2 cow,
+  4    68          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  4    69          3 mbz1 bit (13) unaligned,
+  4    70          3 expander_command bit (3) unaligned,		/* Expander command. */
+  4    71          3 mbz2 bit (2) unaligned,
+  4    72          3 expanded_port bit (1) unaligned,		/* "1"b = on expanded port */
+  4    73          3 expander_port fixed bin (3) unsigned unaligned,	/* Port on expander for cioc */
+  4    74          3 mbz3 bit (3) unaligned,
+  4    75          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  4    76 
+  4    77 dcl  1 scs$cow_ptrs (0:7) external aligned,		/* Pointers to COW's */
+  4    78        2 rel_cow_ptr bit (18) unal,			/* Relative pointer to COW */
+  4    79        2 pad bit (12) unal,
+  4    80        2 tag bit (6) unal;				/* Better be zero. */
+  4    81 
+  4    82 dcl  1 scs$reconfig_general_cow aligned external,		/* Used during reconfig ops. */
+  4    83        2 pad bit (36) aligned,
+  4    84        2 cow,					/* Connect operand word, in odd location. */
+  4    85          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  4    86          3 mbz1 bit (13) unaligned,
+  4    87          3 expander_command bit (3) unaligned,		/* Expander command. */
+  4    88          3 mbz2 bit (9) unaligned,
+  4    89          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  4    90 
+  4    91 /* MASKS and PATTERNS */
+  4    92 
+  4    93 dcl  scs$sys_level bit (72) aligned ext;		/* mask used while handling I/O interrupts */
+  4    94 dcl  scs$open_level bit (72) aligned ext;		/* mask used during normal operation */
+  4    95 dcl  scs$processor_start_mask bit (72) aligned ext;	/* mask used when starting up a CPU */
+  4    96 dcl  scs$cpu_test_mask bit (72) aligned ext;		/* mask used for ISOLTS CPU testing */
+  4    97 dcl  scs$number_of_masks fixed bin ext;			/* number of masks (starting at sys_level) */
+  4    98 dcl  scs$processor_start_pattern bit (36) aligned ext;	/* SMIC pattern used to send processor start interrupt */
+  4    99 dcl  scs$cpu_test_pattern bit (36) aligned ext;		/* SMIC pattern used for ISOLTS processor testing */
+  4   100 
+  4   101 /* CAM and CACHE clear info */
+  4   102 
+  4   103 dcl  scs$cam_pair fixed bin (71) ext;			/* instructions XEDd when CAMing and clearing CACHE */
+  4   104 dcl  scs$cam_wait bit (8) aligned ext;			/* Used when evicting pages from main memory */
+  4   105 
+  4   106 /* MASKING INSTRUCTIONS & POINTERS */
+  4   107 
+  4   108 dcl  scs$set_mask (0:7) bit (36) aligned ext;		/* instructions to set mask (STAQ or SMCM) */
+  4   109 dcl  scs$read_mask (0:7) bit (36) aligned ext;		/* instructions to read mask (LDAQ or RMCM) */
+  4   110 dcl  scs$mask_ptr (0:7) ptr unaligned ext;		/* pointers for real or simulated masks */
+  4   111 
+  4   112 /* MISCELLANEOUS */
+  4   113 
+  4   114 dcl  1 scs$processor_test_data aligned ext,		/* info used for cpu testing */
+  4   115        (
+  4   116        2 active bit (1),				/* = "1"b if cpu currently under test */
+  4   117        2 scu_state bit (2),				/* state of scu being used for testing (see definition below) */
+  4   118        2 pad1 bit (4),
+  4   119        2 req_mem fixed bin (10),			/* dedicated memory required to test this cpu */
+  4   120        2 cpu_tag fixed bin (5),			/* tag of cpu under test */
+  4   121        2 scu_tag fixed bin (5),			/* tag of scu being used for cpu testing */
+  4   122        2 mask_cpu fixed bin (5)
+  4   123        ) unaligned;					/* tag of active cpu that has mask asigned to above scu */
+  4   124 
+  4   125 /* scu_state = "00"b => SCU defined by scs$processor_test_data.scu_tag not yet effected */
+  4   126 /* scu_state = "01"b => all core removed from SCU, port mask not yet changed */
+  4   127 /* scu_state = "10"b => all core removed from SCU, port mask changed */
+  4   128 /* scu_state = "11"b => only 64k at base of SCU being used for testing, original port mask restored */
+  4   129 
+  4   130 dcl  scs$idle_aptep (0:7) ptr unaligned ext;		/* pointer to idle process APTE for each processor */
+  4   131 
+  4   132 dcl  scs$connect_lock bit (36) aligned ext;		/* lock for sending connects */
+  4   133 dcl  scs$reconfig_lock bit (36) aligned ext;		/* Lock used during reconfiguration */
+  4   134 dcl  scs$trouble_flags bit (8) aligned ext;		/* checkoff flags for sys_trouble stopping */
+  4   135 dcl  scs$bos_restart_flags bit (8) aligned ext;		/* checkoff flags for restarting after sys_trouble */
+  4   136 dcl  scs$nprocessors fixed bin ext;			/* number of runnung processors */
+  4   137 dcl  scs$bos_processor_tag fixed bin (3) ext;		/* CPU tag of processor running BOS */
+  4   138 dcl  scs$faults_initialized bit (1) aligned ext;		/* ON after faults have been enabled */
+  4   139 dcl  scs$sys_trouble_pending bit (1) aligned ext;		/* sys_trouble event is pending in the system */
+  4   140 dcl  scs$fast_cam_pending (0:7) bit (36) aligned ext;	/* checkoff cells for cam connect		*/
+  4   141 dcl  scs$interrupt_controller fixed bin (3) ext;		/* port number of low order controller */
+  4   142 dcl  scs$processor_start_int_no fixed bin (5) ext;	/* interrupt cell for starting a processor */
+  4   143 dcl  scs$processor bit (8) aligned ext;			/* bits ON for online CPUs */
+  4   144 dcl  scs$processor_start_wait bit (8) aligned ext;	/* checkoff flags for waiting for new processor */
+  4   145 
+  4   146 dcl  scs$trouble_dbrs (0:7) fixed bin (71);		/* DBR values at system crash time */
+  4   147 
+  4   148 dcl  scs$port_addressing_word (0:7) bit (3) aligned ext;	/* active module port number for each controller */
+  4   149 
+  4   150 dcl  scs$cfg_data (0:7) fixed bin (71) aligned ext;	/* RSCR-CFG data from each controller */
+  4   151 
+  4   152 dcl  scs$cfg_data_save fixed bin (71) aligned ext;	/* RSCR-CFG save area for ISOLTS CPU testing */
+  4   153 
+  4   154 dcl  scs$expanded_ports bit (1) unaligned dim (0:7) external;
+  4   155 						/* Which ports have expanders */
+  4   156 
+  4   157 dcl  scs$processor_switch_data (0:4) bit (36) aligned ext;	/* raw data from RSW 0 thru 4 */
+  4   158 dcl  scs$processor_switch_template (0:4) bit (36) aligned ext; /* expected data from RSW 0 thru 4 */
+  4   159 dcl  scs$processor_switch_compare (0:4) bit (36) aligned ext; /* discrepancies from expected data */
+  4   160 dcl  scs$processor_switch_mask (0:4) bit (36) aligned ext;	/* masks for comparing switch data */
+  4   161 
+  4   162 dcl  scs$processor_data_switch_value bit (36) aligned ext;	/* Correct value for CPU data switches */
+  4   163 
+  4   164 dcl  scs$controller_config_size (0:7) fixed bin (14) aligned ext;
+  4   165 						/* Controller size on config card */
+  4   166 
+  4   167 dcl  scs$reconfig_locker_id char (32) aligned ext;	/* process group ID of process doing reconfiguration */
+  4   168 
+  4   169 dcl  scs$scas_page_table (0:31) bit (36) aligned external static;
+  4   170 						/* PTWs for SCAS pages */
+  4   171 
+  4   172 dcl  scs$cycle_priority_template bit (7) aligned ext;	/* template for setting anti-hog switches	*/
+  4   173 dcl  scs$set_cycle_switches bit (1) aligned ext;		/* flag to set ant-hog switches		*/
+  4   174 
+  4   175 
+  4   176 dcl  (
+  4   177      IOM_PORT init (1),
+  4   178      CPU_PORT init (2),
+  4   179      BULK_PORT init (3)
+  4   180      ) fixed bin int static options (constant);		/* values for scs$port_data.assigned		*/
+  4   181 
+  4   182 
+  4   183 /* END INCLUDE FILE scs.incl.pl1 */
+      502 
+  5     1 /* BEGIN INCLUDE FILE  static_handlers.incl.pl1  */
+  5     2 
+  5     3 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  5     4 
+  5     5 /* HISTORY:
+  5     6*Written by S. H. Webber, 06/20/75.
+  5     7*Modified:
+  5     8*12/15/83 by Benson Margulies:  added undefined_pointer_sct_index and
+  5     9*	  pgt_sct_index.
+  5    10*06/11/84 by Lee A. Newcomb:  added dm_shutdown_warning_sct_index and
+  5    11*            dm_user_shutdown_sct_index for handling of Data Management
+  5    12*            shutdown.
+  5    13*08/22/84 by R. Michael Tague:  Removed dm_shutdown_warning_sct_index and
+  5    14*            dm_user_shutdown_sct_index.  Added
+  5    15*            system_shutdown_scheduled_sct_index and
+  5    16*            dm_shutdown_scheduled_sct_index.
+  5    17**/
+  5    18 
+  5    19 
+  5    20 /****^  HISTORY COMMENTS:
+  5    21*  1) change(85-11-13,Herbst), approve(87-07-21,MCR7697),
+  5    22*     audit(87-07-21,GDixon), install(87-08-04,MR12.1-1056):
+  5    23*     Add system_message_sct_index.
+  5    24*                                                   END HISTORY COMMENTS */
+  5    25 
+  5    26 
+  5    27 dcl  (
+  5    28      shutdown_sct_index	        init (0),
+  5    29      store_sct_index	        init (1),
+  5    30      mme1_sct_index		        init (2),
+  5    31      fault_tag_1_sct_index	        init (3),
+  5    32      timer_runout_sct_index	        init (4),
+  5    33      command_sct_index	        init (5),
+  5    34      derail_sct_index	        init (6),
+  5    35      lockup_sct_index	        init (7),
+  5    36      connect_sct_index	        init (8),
+  5    37      parity_sct_index	        init (9),
+  5    38      illegal_procedure_sct_index      init (10),
+  5    39      op_not_complete_sct_index        init (11),
+  5    40      startup_sct_index	        init (12),
+  5    41      ovrflo_sct_index	        init (13),
+  5    42      zerodivide_sct_index	        init (14),
+  5    43      execute_sct_index	        init (15),
+  5    44      seg_fault_error_sct_index        init (16),
+  5    45      page_fault_error_sct_index       init (17),
+  5    46      directed_fault_2_sct_index       init (18),
+  5    47      directed_fault_3_sct_index       init (19),
+  5    48      accessviolation_sct_index        init (20),
+  5    49      mme2_sct_index		        init (21),
+  5    50      mme3_sct_index		        init (22),
+  5    51      mme4_sct_index		        init (23),
+  5    52      linkage_error_sct_index	        init (24),
+  5    53      fault_tag_3_sct_index	        init (25),
+  5    54      undefined_fault_sct_index        init (26),
+  5    55      trouble_sct_index	        init (31),
+  5    56      illegal_opcode_sct_index	        init (32),
+  5    57      simfault_000000_sct_index        init (33),
+  5    58      illegal_modifier_sct_index       init (34),
+  5    59      illegal_ring_order_sct_index     init (35),
+  5    60      not_in_execute_bracket_sct_index init (36),
+  5    61      no_execute_permission_sct_index  init (37),
+  5    62      not_in_read_bracket_sct_index    init (38),
+  5    63      no_read_permission_sct_index     init (39),
+  5    64      not_in_write_bracket_sct_index   init (40),
+  5    65      no_write_permission_sct_index    init (41),
+  5    66      not_a_gate_sct_index	        init (42),
+  5    67      not_in_call_bracket_sct_index    init (43),
+  5    68      outward_call_sct_index	        init (44),
+  5    69      bad_outward_call_sct_index       init (45),
+  5    70      inward_return_sct_index	        init (46),
+  5    71      cross_ring_transfer_sct_index    init (47),
+  5    72      ring_alarm_fault_sct_index       init (48),
+  5    73      am_fault_sct_index	        init (49),
+  5    74      out_of_bounds_sct_index	        init (50),
+  5    75      fixedoverflow_sct_index	        init (51),
+  5    76      overflow_sct_index	        init (52),
+  5    77      underflow_sct_index	        init (53),
+  5    78      stringsize_sct_index	        init (54),
+  5    79      other_illegal_proc_sct_index     init (55),
+  5    80      storage_sct_index	        init (56),
+  5    81      packed_pointer_fault_sct_index   init (57),
+  5    82      lot_fault_sct_index	        init (58),
+  5    83      isot_fault_sct_index	        init (59),
+  5    84      system_packed_pointer_sct_index  init (60),
+  5    85      quit_sct_index		        init (61),
+  5    86      alrm_sct_index		        init (62),
+  5    87      cput_sct_index		        init (63),
+  5    88      record_quota_overflow_sct_index  init (64),
+  5    89      size_sct_index		        init (65),
+  5    90      neti_sct_index		        init (66),
+  5    91      other_command_sct_index	        init (67),
+  5    92      susp_sct_index		        init (68),
+  5    93      term_sct_index		        init (69),
+  5    94      wkp_sct_index		        init (70),
+  5    95      undefined_pointer_sct_index      init (71),
+  5    96      pgt_sct_index		        init (72),
+  5    97      system_shutdown_scheduled_sct_index
+  5    98 	                            init (73),
+  5    99      dm_shutdown_scheduled_sct_index  init (74),
+  5   100      system_message_sct_index	        init (75)
+  5   101      )			        fixed bin (17) int static options (constant);
+  5   102 
+  5   103 /* END INCLUDE FILE  static_handlers.incl.pl1 */
+      503 
+  6     1 /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  6     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  6     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  6     4 /*	Modified April 1983 by C. Hornig for tasking */
+  6     5 
+  6     6 /****^  HISTORY COMMENTS:
+  6     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  6     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  6     9*     added the heap_header_ptr definition.
+  6    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  6    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  6    12*     Modified to support control point management.  These changes were actually
+  6    13*     made in February 1985 by G. Palter.
+  6    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  6    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  6    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  6    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  6    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  6    19*     (ITS pair).
+  6    20*                                                   END HISTORY COMMENTS */
+  6    21 
+  6    22 /* format: style2 */
+  6    23 
+  6    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  6    25 
+  6    26      dcl	   1 stack_header	      based (sb) aligned,
+  6    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  6    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  6    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  6    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  6    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  6    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  6    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  6    34 	     2 pad4	      bit (2) unal,
+  6    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  6    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  6    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  6    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  6    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  6    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  6    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  6    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  6    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  6    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  6    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  6    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  6    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  6    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  6    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  6    50 	     2 return_no_pop_op_ptr
+  6    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  6    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  6    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  6    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  6    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  6    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  6    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  6    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  6    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  6    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  6    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  6    62 	     2 trace,
+  6    63 	       3 frames,
+  6    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  6    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  6    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  6    67 	     2 pad2	      bit (36),		/*  (61) */
+  6    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  6    69 
+  6    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  6    71 
+  6    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  6    73 						/* (551) octal */
+  6    74 
+  6    75 
+  6    76 /*	The following constants are offsets within this transfer vector table.  */
+  6    77 
+  6    78      dcl	   (
+  6    79 	   call_offset	      fixed bin init (271),
+  6    80 	   push_offset	      fixed bin init (272),
+  6    81 	   return_offset	      fixed bin init (273),
+  6    82 	   return_no_pop_offset   fixed bin init (274),
+  6    83 	   entry_offset	      fixed bin init (275)
+  6    84 	   )		      internal static;
+  6    85 
+  6    86 
+  6    87 
+  6    88 
+  6    89 
+  6    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  6    91*	move the whole stack header should use this overlay.
+  6    92**/
+  6    93 
+  6    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  6    95 
+  6    96 
+  6    97 
+  6    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      504 
+  7     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  7     2*
+  7     3*   Values for the "access mode" argument so often used in hardcore
+  7     4*   James R. Davis 26 Jan 81  MCR 4844
+  7     5*   Added constants for SM access 4/28/82 Jay Pattin
+  7     6*   Added text strings 03/19/85 Chris Jones
+  7     7**/
+  7     8 
+  7     9 
+  7    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  7    11 dcl	(
+  7    12 	N_ACCESS		   init ("000"b),
+  7    13 	R_ACCESS		   init ("100"b),
+  7    14 	E_ACCESS		   init ("010"b),
+  7    15 	W_ACCESS		   init ("001"b),
+  7    16 	RE_ACCESS		   init ("110"b),
+  7    17 	REW_ACCESS	   init ("111"b),
+  7    18 	RW_ACCESS		   init ("101"b),
+  7    19 	S_ACCESS		   init ("100"b),
+  7    20 	M_ACCESS		   init ("010"b),
+  7    21 	A_ACCESS		   init ("001"b),
+  7    22 	SA_ACCESS		   init ("101"b),
+  7    23 	SM_ACCESS		   init ("110"b),
+  7    24 	SMA_ACCESS	   init ("111"b)
+  7    25 	)		   bit (3) internal static options (constant);
+  7    26 
+  7    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  7    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  7    29 
+  7    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  7    31 			   static options (constant);
+  7    32 
+  7    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  7    34 			   static options (constant);
+  7    35 
+  7    36 dcl	(
+  7    37 	N_ACCESS_BIN	   init (00000b),
+  7    38 	R_ACCESS_BIN	   init (01000b),
+  7    39 	E_ACCESS_BIN	   init (00100b),
+  7    40 	W_ACCESS_BIN	   init (00010b),
+  7    41 	RW_ACCESS_BIN	   init (01010b),
+  7    42 	RE_ACCESS_BIN	   init (01100b),
+  7    43 	REW_ACCESS_BIN	   init (01110b),
+  7    44 	S_ACCESS_BIN	   init (01000b),
+  7    45 	M_ACCESS_BIN	   init (00010b),
+  7    46 	A_ACCESS_BIN	   init (00001b),
+  7    47 	SA_ACCESS_BIN	   init (01001b),
+  7    48 	SM_ACCESS_BIN	   init (01010b),
+  7    49 	SMA_ACCESS_BIN	   init (01011b)
+  7    50 	)		   fixed bin (5) internal static options (constant);
+  7    51 
+  7    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      505 
+      506      end initialize_faults;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  initialize_faults.pl1             >spec>install>1110>initialize_faults.pl1
+499          1    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+500          2    06/22/81  1815.3  fault_vector.incl.pl1             >ldd>include>fault_vector.incl.pl1
+501          3    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+502          4    10/12/83  0943.5  scs.incl.pl1                      >ldd>include>scs.incl.pl1
+503          5    08/06/87  0913.5  static_handlers.incl.pl1          >ldd>include>static_handlers.incl.pl1
+504          6    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+505          7    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+FAULT_NO_ACV                           constant        fixed bin(17,0)          initial dcl 2-20 ref 396 397
+FAULT_NO_CON                           constant        fixed bin(17,0)          initial dcl 2-20 ref 225 226
+FAULT_NO_DF0                           constant        fixed bin(17,0)          initial dcl 2-20 ref 221 222
+FAULT_NO_DF1                           constant        fixed bin(17,0)          initial dcl 2-20 ref 217 218
+FAULT_NO_DRL                           constant        fixed bin(17,0)          initial dcl 2-20 ref 230 322 322 324 324 401
+FAULT_NO_EXF                           constant        fixed bin(17,0)          initial dcl 2-20 ref 213 214
+FAULT_NO_LUF                           constant        fixed bin(17,0)          initial dcl 2-20 ref 206 207
+FAULT_NO_PAR                           constant        fixed bin(17,0)          initial dcl 2-20 ref 410 411
+FAULT_NO_TRO                           constant        fixed bin(17,0)          initial dcl 2-20 ref 209 210 405 406
+RW_ACCESS                              constant        bit(3)                   initial packed unaligned dcl 7-11 ref 459
+access                          000127 automatic       bit(4)                   packed unaligned dcl 152 set ref 457* 459 469*
+addr                                                   builtin function         dcl 154 ref 214 218 222 222 226 230 235 236 237 238
+                                                                                  245 247 255 256 259 261 264 267 276 277 281 281
+                                                                                  288 294 298 305 317 322 324 337 345 401 406 416
+                                                                                  434 456 457 457 459 459 469 469 482 484 489 491
+                                                                                  495
+baseno                                                 builtin function         dcl 154 ref 436 456
+cme                                    based           structure                level 1 dcl 1-6 ref 280
+cme_offsets                            based           pointer                  array dcl 124 set ref 281*
+cmep                            000130 automatic       pointer                  dcl 1-4 set ref 279* 280
+codeptr                                                builtin function         dcl 154 ref 213 217 221 225 314 344 396 405 410 418
+                                                                                  419 420 483 488 490 492 494
+copy_on_write_handler_$copy_on_write_handler_
+                                000012 constant        entry                    external dcl 61 ref 418
+core_map$                       000010 external static bit(36)                  packed unaligned dcl 60 set ref 281
+dseg$                           000014 external static fixed bin(71,0)          array dcl 62 set ref 457 457 459 459 469 469
+emergency_shutdown$             000016 external static bit(36)                  packed unaligned dcl 63 set ref 294
+emergency_shutdown$lp           000112 external static pointer                  dcl 94 set ref 293* 296*
+emergency_shutdown$pp           000114 external static pointer                  dcl 94 set ref 294*
+f_scu_ptr               500            based           pointer                  array level 2 dcl 2-6 set ref 183* 188* 193* 197*
+                                                                                  207* 210* 214* 218* 222* 226* 322 375* 380* 385*
+                                                                                  390* 397* 406* 411*
+f_tra_ptr               400            based           pointer                  array level 2 dcl 2-6 set ref 182* 187* 192* 196*
+                                                                                  206* 209* 213* 217* 221* 225* 230* 324 374* 379*
+                                                                                  384* 389* 396* 401* 405* 410*
+fault_vector$                   000020 external static bit(36)                  packed unaligned dcl 64 set ref 337 482
+fim$access_violation_entry      000032 constant        entry                    external dcl 69 ref 396
+fim$drl_entry                   000022 constant        entry                    external dcl 65 set ref 230 401
+fim$lp                          000126 external static pointer                  dcl 94 set ref 239*
+fim$onc_start_shut_entry        000024 constant        entry                    external dcl 66 ref 492
+fim$parity_entry                000026 constant        entry                    external dcl 67 ref 410
+fim$primary_fault_entry         000034 constant        entry                    external dcl 70 ref 221 488
+fim$prs                         000116 external static pointer                  dcl 94 set ref 234* 235*
+fim$scu                         000120 external static pointer                  dcl 94 set ref 236*
+fim$sig_prs                     000122 external static pointer                  dcl 94 set ref 237*
+fim$sig_scu                     000124 external static pointer                  dcl 94 set ref 238*
+fim$signal_entry                000030 constant        entry                    external dcl 68 ref 490
+fixed                                                  builtin function         dcl 154 ref 436 456
+fpair                   100            based           structure                array level 2 dcl 2-6
+fv                                     based           structure                level 1 dcl 2-6
+fvp                             000132 automatic       pointer                  dcl 2-4 set ref 182 183 187 188 192 193 196 197 201
+                                                                                  202 206 207 209 210 213 214 217 218 221 222 225
+                                                                                  226 230 322 322 324 324 337* 344 345 374 375 379
+                                                                                  380 384 385 389 390 396 397 401 405 406 410 411
+                                                                                  482*
+hardcore_sct_seg$hardcore_sct_seg
+                                000036 external static fixed bin(17,0)          dcl 71 set ref 317 416
+i                               000126 automatic       fixed bin(5,0)           dcl 151 set ref 178* 180 182 183 185 187 188 190 192
+                                                                                  193 196 197 201 202* 280* 281 281* 370* 372 374
+                                                                                  375 377 379 380 382 384 385 387 387 389 390*
+i_scu_ptr               300            based           pointer                  array level 2 dcl 2-6 set ref 202* 345*
+i_tra_ptr               200            based           pointer                  array level 2 dcl 2-6 set ref 201* 344*
+ignore_d_ptr                    000104 automatic       pointer                  dcl 137 set ref 202 207 210 268 484*
+ignore_ptr                      000102 automatic       pointer                  dcl 137 set ref 201 206 209 483*
+initialize_faults_data$onc_one  000222 external static bit(1)                   array packed unaligned dcl 156 ref 190
+initialize_faults_data$onc_two  000224 external static bit(1)                   array packed unaligned dcl 156 ref 382
+initialize_faults_data$primary_one
+                                000212 external static bit(1)                   array packed unaligned dcl 156 ref 180
+initialize_faults_data$primary_two
+                                000214 external static bit(1)                   array packed unaligned dcl 156 ref 372
+initialize_faults_data$signal_one
+                                000216 external static bit(1)                   array packed unaligned dcl 156 ref 185
+initialize_faults_data$signal_two
+                                000220 external static bit(1)                   array packed unaligned dcl 156 ref 377
+iom_interrupt$iilink            000130 external static pointer                  dcl 94 set ref 249*
+iom_interrupt$interrupt_entry   000040 constant        entry                    external dcl 72 ref 344
+iom_interrupt$prds_prs          000132 external static pointer                  dcl 94 set ref 243* 245*
+iom_interrupt$prds_scu          000134 external static pointer                  dcl 94 set ref 247*
+isot_fault_handler_$isot_fault_handler_
+                                000042 constant        entry                    external dcl 73 ref 419
+isot_fault_sct_index                   constant        fixed bin(17,0)          initial dcl 5-27 ref 419
+link_ptr                               parameter       pointer                  dcl 429 set ref 426 434 437*
+lot$                            000176 external static pointer                  array packed unaligned dcl 126 ref 437
+lot_fault_handler_$lot_fault_handler_
+                                000044 constant        entry                    external dcl 74 ref 420
+lot_fault_sct_index                    constant        fixed bin(17,0)          initial dcl 5-27 ref 420
+mc                                     based           structure                level 1 dcl 3-12
+no_write_permission_sct_index          constant        fixed bin(17,0)          initial dcl 5-27 ref 418
+null                                                   builtin function         dcl 154 ref 279 315
+onc_scup                        000120 automatic       pointer                  dcl 137 set ref 193 385 493*
+onc_trap                        000116 automatic       pointer                  dcl 137 set ref 192 384 492*
+page_fault$cme_offsets          000170 external static pointer                  dcl 94 set ref 281
+page_fault$fault                000106 constant        entry                    external dcl 91 ref 217
+page_fault$my_lp                000136 external static pointer                  dcl 94 set ref 274* 283*
+page_fault$pf_prs               000172 external static pointer                  dcl 94 set ref 276*
+page_fault$pf_scuinfo           000174 external static pointer                  dcl 94 set ref 277*
+pds$apt_ptr                     000140 external static pointer                  dcl 94 set ref 298*
+pds$fim_data                    000050 external static structure                level 1 dcl 76 set ref 222 235
+pds$page_fault_data             000052 external static structure                level 1 dcl 77 set ref 276
+pds$signal_data                 000054 external static structure                level 1 dcl 78 set ref 237
+pds$stack_0_ptr                 000046 external static pointer                  dcl 75 set ref 313*
+prds$fast_connect_code          000060 constant        entry                    external dcl 80 ref 225
+prds$fim_data                   000056 external static structure                level 1 dcl 79 set ref 255
+prds$ignore_data                000062 external static structure                level 1 dcl 81 set ref 484
+prds$ignore_pl                  000064 external static bit(36)                  array dcl 82 set ref 267
+prds$interrupt_data             000066 external static structure                level 1 dcl 83 set ref 245
+prds$sys_trouble_data           000070 external static structure                level 1 dcl 84 set ref 259
+primary_scup                    000110 automatic       pointer                  dcl 137 set ref 183 375 397 411 489* 493
+primary_trap                    000106 automatic       pointer                  dcl 137 set ref 182 374 488*
+privileged_mode_ut$cam_both     000200 constant        entry                    external dcl 128 ref 461 471
+privileged_mode_ut$ldt          000204 constant        entry                    external dcl 128 ref 366
+privileged_mode_ut$set_mask     000202 constant        entry                    external dcl 128 ref 341 349
+ptr                                                    builtin function         dcl 154 ref 281
+restart_fault$                  000142 external static pointer                  dcl 94 set ref 305
+restart_fault$lp                000144 external static pointer                  dcl 94 set ref 289*
+restart_fault$scu               000146 external static pointer                  dcl 94 set ref 287* 288*
+return_to_ring_0_$restart_fault_ptr
+                                000072 external static pointer                  dcl 85 set ref 303* 305*
+scs$faults_initialized          000232 external static bit(1)                   dcl 4-138 set ref 326*
+scs$open_level                  000230 external static bit(72)                  dcl 4-94 set ref 349*
+scs$sys_level                   000226 external static bit(72)                  dcl 4-93 set ref 341*
+sct_ptr                  54            based           pointer                  level 2 dcl 6-26 set ref 317*
+sctp                                   based           pointer                  array packed unaligned dcl 58 set ref 418* 419* 420*
+sctptr                          000100 automatic       pointer                  dcl 57 set ref 416* 418 419 420
+scu                      30     000066 external static bit(36)                  array level 2 in structure "prds$interrupt_data"
+                                                                                  packed packed unaligned dcl 83 in procedure
+                                                                                  "initialize_faults" set ref 247 345
+scu                      30     000070 external static bit(36)                  array level 2 in structure "prds$sys_trouble_data"
+                                                                                  packed packed unaligned dcl 84 in procedure
+                                                                                  "initialize_faults" set ref 214 261 495
+scu                     100            based           bit(36)                  array level 3 in structure "fv" dcl 2-6 in procedure
+                                                                                  "initialize_faults" set ref 322*
+scu                      30            based           bit(36)                  array level 2 in structure "mc" packed packed
+                                                                                  unaligned dcl 3-12 in procedure
+                                                                                  "initialize_faults" set ref 222
+scu                      30     000052 external static bit(36)                  array level 2 in structure "pds$page_fault_data"
+                                                                                  packed packed unaligned dcl 77 in procedure
+                                                                                  "initialize_faults" set ref 218 264 277
+scu                                    based           structure                level 1 dcl 3-56 in procedure "initialize_faults"
+scu                      30     000056 external static bit(36)                  array level 2 in structure "prds$fim_data" packed
+                                                                                  packed unaligned dcl 79 in procedure
+                                                                                  "initialize_faults" set ref 226 256 406
+scu                      30     000054 external static bit(36)                  array level 2 in structure "pds$signal_data" packed
+                                                                                  packed unaligned dcl 78 in procedure
+                                                                                  "initialize_faults" set ref 238 288 491
+scu                      30     000050 external static bit(36)                  array level 2 in structure "pds$fim_data" packed
+                                                                                  packed unaligned dcl 76 in procedure
+                                                                                  "initialize_faults" set ref 236 489
+sdw_util_$get_access            000206 constant        entry                    external dcl 133 ref 457
+sdw_util_$set_access            000210 constant        entry                    external dcl 134 ref 459 469
+segno                           000156 automatic       fixed bin(15,0)          dcl 453 in procedure "set_access" set ref 456* 457
+                                                                                  457 459 459 469 469
+segno                           000144 automatic       fixed bin(15,0)          dcl 431 in procedure "set_lp" set ref 436* 437
+signal_$signal_                 000074 constant        entry                    external dcl 86 ref 314
+signal_ptr               30            based           pointer                  level 2 dcl 6-26 set ref 314*
+signal_scup                     000114 automatic       pointer                  dcl 137 set ref 188 380 491*
+signal_trap                     000112 automatic       pointer                  dcl 137 set ref 187 379 490*
+size                                                   builtin function         dcl 154 ref 280
+stack_header                           based           structure                level 1 dcl 6-26
+target_ptr                      000146 automatic       pointer                  dcl 432 set ref 434* 436
+tc_data$                        000076 external static bit(36)                  dcl 87 set ref 298
+textp                                  parameter       pointer                  dcl 454 set ref 450 456
+tra                     101            based           bit(36)                  array level 3 dcl 2-6 set ref 324*
+unexp_scup                      000124 automatic       pointer                  dcl 137 set ref 197 390 495*
+unexp_trap                      000122 automatic       pointer                  dcl 137 set ref 196 389 494*
+unwinder_ptr             56            based           pointer                  level 2 dcl 6-26 set ref 315*
+wired_fim$ignore                000104 constant        entry                    external dcl 90 ref 483
+wired_fim$ignore_pl             000162 external static pointer                  dcl 94 set ref 267*
+wired_fim$ignore_scuinfo        000164 external static pointer                  dcl 94 set ref 268*
+wired_fim$int_scuinfo           000160 external static pointer                  dcl 94 set ref 264*
+wired_fim$my_linkage_ptr        000166 external static pointer                  dcl 94 set ref 270*
+wired_fim$prs                   000150 external static pointer                  dcl 94 set ref 253* 255*
+wired_fim$scuinfo               000152 external static pointer                  dcl 94 set ref 256*
+wired_fim$timer_runout          000110 constant        entry                    external dcl 92 ref 405
+wired_fim$trouble_prs           000154 external static pointer                  dcl 94 set ref 259*
+wired_fim$trouble_scuinfo       000156 external static pointer                  dcl 94 set ref 261*
+wired_fim$unexp_fault           000102 constant        entry                    external dcl 89 ref 494
+wired_fim$xec_fault             000100 constant        entry                    external dcl 88 ref 213
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+BULK_PORT                              internal static fixed bin(17,0)          initial dcl 4-176
+CPU_PORT                               internal static fixed bin(17,0)          initial dcl 4-176
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 7-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+FAULT_NO_CMD                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_DF2                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_DF3                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_DIV                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_F1                            internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_F2                            internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_F3                            internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_IPR                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_MME                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_MME2                          internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_MME3                          internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_MME4                          internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_OFL                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_ONC                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_SDF                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_STR                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_SUF                           internal static fixed bin(17,0)          initial dcl 2-20
+FAULT_NO_TRB                           internal static fixed bin(17,0)          initial dcl 2-20
+IOM_PORT                               internal static fixed bin(17,0)          initial dcl 4-176
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 7-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 7-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 7-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 7-36
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 7-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 7-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 7-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 7-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 7-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 7-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 7-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 7-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 7-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 7-36
+abx                                    internal static fixed bin(17,0)          initial dcl 3-42
+accessviolation_sct_index              internal static fixed bin(17,0)          initial dcl 5-27
+alrm_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+am_fault_sct_index                     internal static fixed bin(17,0)          initial dcl 5-27
+apx                                    internal static fixed bin(17,0)          initial dcl 3-42
+bad_outward_call_sct_index             internal static fixed bin(17,0)          initial dcl 5-27
+baseptr                                                builtin function         dcl 154
+bbx                                    internal static fixed bin(17,0)          initial dcl 3-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 3-42
+call_offset                            internal static fixed bin(17,0)          initial dcl 6-78
+cma                                    based           structure                array level 1 dcl 1-30
+command_sct_index                      internal static fixed bin(17,0)          initial dcl 5-27
+connect_sct_index                      internal static fixed bin(17,0)          initial dcl 5-27
+cput_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+cross_ring_transfer_sct_index          internal static fixed bin(17,0)          initial dcl 5-27
+derail_sct_index                       internal static fixed bin(17,0)          initial dcl 5-27
+directed_fault_2_sct_index             internal static fixed bin(17,0)          initial dcl 5-27
+directed_fault_3_sct_index             internal static fixed bin(17,0)          initial dcl 5-27
+dm_shutdown_scheduled_sct_index        internal static fixed bin(17,0)          initial dcl 5-27
+entry_offset                           internal static fixed bin(17,0)          initial dcl 6-78
+execute_sct_index                      internal static fixed bin(17,0)          initial dcl 5-27
+fault_tag_1_sct_index                  internal static fixed bin(17,0)          initial dcl 5-27
+fault_tag_3_sct_index                  internal static fixed bin(17,0)          initial dcl 5-27
+fixedoverflow_sct_index                internal static fixed bin(17,0)          initial dcl 5-27
+illegal_modifier_sct_index             internal static fixed bin(17,0)          initial dcl 5-27
+illegal_opcode_sct_index               internal static fixed bin(17,0)          initial dcl 5-27
+illegal_procedure_sct_index            internal static fixed bin(17,0)          initial dcl 5-27
+illegal_ring_order_sct_index           internal static fixed bin(17,0)          initial dcl 5-27
+inward_return_sct_index                internal static fixed bin(17,0)          initial dcl 5-27
+lbx                                    internal static fixed bin(17,0)          initial dcl 3-42
+linkage_error_sct_index                internal static fixed bin(17,0)          initial dcl 5-27
+lockup_sct_index                       internal static fixed bin(17,0)          initial dcl 5-27
+lpx                                    internal static fixed bin(17,0)          initial dcl 3-42
+mcme                                   based           structure                level 1 dcl 1-32
+mcp                                    automatic       pointer                  dcl 3-10
+mme1_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+mme2_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+mme3_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+mme4_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+neti_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+no_execute_permission_sct_index        internal static fixed bin(17,0)          initial dcl 5-27
+no_read_permission_sct_index           internal static fixed bin(17,0)          initial dcl 5-27
+not_a_gate_sct_index                   internal static fixed bin(17,0)          initial dcl 5-27
+not_in_call_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 5-27
+not_in_execute_bracket_sct_index       internal static fixed bin(17,0)          initial dcl 5-27
+not_in_read_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 5-27
+not_in_write_bracket_sct_index         internal static fixed bin(17,0)          initial dcl 5-27
+op_not_complete_sct_index              internal static fixed bin(17,0)          initial dcl 5-27
+other_command_sct_index                internal static fixed bin(17,0)          initial dcl 5-27
+other_illegal_proc_sct_index           internal static fixed bin(17,0)          initial dcl 5-27
+out_of_bounds_sct_index                internal static fixed bin(17,0)          initial dcl 5-27
+outward_call_sct_index                 internal static fixed bin(17,0)          initial dcl 5-27
+overflow_sct_index                     internal static fixed bin(17,0)          initial dcl 5-27
+ovrflo_sct_index                       internal static fixed bin(17,0)          initial dcl 5-27
+p                                      automatic       pointer                  dcl 137
+packed_pointer_fault_sct_index         internal static fixed bin(17,0)          initial dcl 5-27
+page_fault_error_sct_index             internal static fixed bin(17,0)          initial dcl 5-27
+parity_sct_index                       internal static fixed bin(17,0)          initial dcl 5-27
+pgt_sct_index                          internal static fixed bin(17,0)          initial dcl 5-27
+push_offset                            internal static fixed bin(17,0)          initial dcl 6-78
+quit_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+record_quota_overflow_sct_index        internal static fixed bin(17,0)          initial dcl 5-27
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 6-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 6-78
+ring_alarm_fault_sct_index             internal static fixed bin(17,0)          initial dcl 5-27
+sb                                     automatic       pointer                  dcl 6-24
+sbx                                    internal static fixed bin(17,0)          initial dcl 3-42
+scs$bos_processor_tag                  external static fixed bin(3,0)           dcl 4-137
+scs$bos_restart_flags                  external static bit(8)                   dcl 4-135
+scs$cam_pair                           external static fixed bin(71,0)          dcl 4-103
+scs$cam_wait                           external static bit(8)                   dcl 4-104
+scs$cfg_data                           external static fixed bin(71,0)          array dcl 4-150
+scs$cfg_data_save                      external static fixed bin(71,0)          dcl 4-152
+scs$connect_lock                       external static bit(36)                  dcl 4-132
+scs$controller_config_size             external static fixed bin(14,0)          array dcl 4-164
+scs$controller_data                    external static structure                array level 1 dcl 4-6
+scs$cow                                external static structure                array level 1 dcl 4-65
+scs$cow_ptrs                           external static structure                array level 1 dcl 4-77
+scs$cpu_test_mask                      external static bit(72)                  dcl 4-96
+scs$cpu_test_pattern                   external static bit(36)                  dcl 4-99
+scs$cycle_priority_template            external static bit(7)                   dcl 4-172
+scs$expanded_ports                     external static bit(1)                   array packed unaligned dcl 4-154
+scs$fast_cam_pending                   external static bit(36)                  array dcl 4-140
+scs$idle_aptep                         external static pointer                  array packed unaligned dcl 4-130
+scs$interrupt_controller               external static fixed bin(3,0)           dcl 4-141
+scs$mask_ptr                           external static pointer                  array packed unaligned dcl 4-110
+scs$nprocessors                        external static fixed bin(17,0)          dcl 4-136
+scs$number_of_masks                    external static fixed bin(17,0)          dcl 4-97
+scs$port_addressing_word               external static bit(3)                   array dcl 4-148
+scs$port_data                          external static structure                array level 1 dcl 4-56
+scs$processor                          external static bit(8)                   dcl 4-143
+scs$processor_data                     external static structure                array level 1 dcl 4-35
+scs$processor_data_switch_value        external static bit(36)                  dcl 4-162
+scs$processor_start_int_no             external static fixed bin(5,0)           dcl 4-142
+scs$processor_start_mask               external static bit(72)                  dcl 4-95
+scs$processor_start_pattern            external static bit(36)                  dcl 4-98
+scs$processor_start_wait               external static bit(8)                   dcl 4-144
+scs$processor_switch_compare           external static bit(36)                  array dcl 4-159
+scs$processor_switch_data              external static bit(36)                  array dcl 4-157
+scs$processor_switch_mask              external static bit(36)                  array dcl 4-160
+scs$processor_switch_template          external static bit(36)                  array dcl 4-158
+scs$processor_test_data                external static structure                level 1 dcl 4-114
+scs$read_mask                          external static bit(36)                  array dcl 4-109
+scs$reconfig_general_cow               external static structure                level 1 dcl 4-82
+scs$reconfig_lock                      external static bit(36)                  dcl 4-133
+scs$reconfig_locker_id                 external static char(32)                 dcl 4-167
+scs$scas_page_table                    external static bit(36)                  array dcl 4-169
+scs$set_cycle_switches                 external static bit(1)                   dcl 4-173
+scs$set_mask                           external static bit(36)                  array dcl 4-108
+scs$sys_trouble_pending                external static bit(1)                   dcl 4-139
+scs$trouble_dbrs                       automatic       fixed bin(71,0)          array dcl 4-146
+scs$trouble_flags                      external static bit(8)                   dcl 4-134
+scup                                   automatic       pointer                  dcl 3-54
+scux                                   based           structure                level 1 dcl 3-207
+seg_fault_error_sct_index              internal static fixed bin(17,0)          initial dcl 5-27
+shutdown_sct_index                     internal static fixed bin(17,0)          initial dcl 5-27
+simfault_000000_sct_index              internal static fixed bin(17,0)          initial dcl 5-27
+size_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+spx                                    internal static fixed bin(17,0)          initial dcl 3-42
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 6-94
+startup_sct_index                      internal static fixed bin(17,0)          initial dcl 5-27
+storage_sct_index                      internal static fixed bin(17,0)          initial dcl 5-27
+store_sct_index                        internal static fixed bin(17,0)          initial dcl 5-27
+stringsize_sct_index                   internal static fixed bin(17,0)          initial dcl 5-27
+susp_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+system_message_sct_index               internal static fixed bin(17,0)          initial dcl 5-27
+system_packed_pointer_sct_index        internal static fixed bin(17,0)          initial dcl 5-27
+system_shutdown_scheduled_sct_index    internal static fixed bin(17,0)          initial dcl 5-27
+term_sct_index                         internal static fixed bin(17,0)          initial dcl 5-27
+timer_runout_sct_index                 internal static fixed bin(17,0)          initial dcl 5-27
+trouble_sct_index                      internal static fixed bin(17,0)          initial dcl 5-27
+tv_offset                              internal static fixed bin(17,0)          initial dcl 6-72
+undefined_fault_sct_index              internal static fixed bin(17,0)          initial dcl 5-27
+undefined_pointer_sct_index            internal static fixed bin(17,0)          initial dcl 5-27
+underflow_sct_index                    internal static fixed bin(17,0)          initial dcl 5-27
+wkp_sct_index                          internal static fixed bin(17,0)          initial dcl 5-27
+zerodivide_sct_index                   internal static fixed bin(17,0)          initial dcl 5-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+GET_STANDARD_POINTERS           001046 constant        entry                    internal dcl 479 ref 175 362
+fault_init_one                  000016 constant        entry                    external dcl 170
+fault_init_two                  000552 constant        entry                    external dcl 358
+initialize_faults               000007 constant        entry                    external dcl 52
+interrupt_init                  000455 constant        entry                    external dcl 332
+restore_access                  001022 constant        entry                    internal dcl 466 ref 307 440
+set_access                      000747 constant        entry                    internal dcl 450 ref 234 243 253 274 287 293 303
+set_lp                          000732 constant        entry                    internal dcl 426 ref 239 249 270 283 289 296
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+rel                                                    builtin function         ref 322 324
+stackbaseptr                                           builtin function         ref 313 314 315 317
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2104        2340    1101        2114
+Length      3014    1101       234         437    1003           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+initialize_faults                   144 external procedure  is an external procedure.  
+set_lp                                  internal procedure  shares stack frame of external procedure initialize_faults.  
+set_access                              internal procedure  shares stack frame of external procedure initialize_faults.  
+GET_STANDARD_POINTERS                   internal procedure  shares stack frame of external procedure initialize_faults.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+initialize_faults        000100 sctptr                      initialize_faults
+                         000102 ignore_ptr                  initialize_faults
+                         000104 ignore_d_ptr                initialize_faults
+                         000106 primary_trap                initialize_faults
+                         000110 primary_scup                initialize_faults
+                         000112 signal_trap                 initialize_faults
+                         000114 signal_scup                 initialize_faults
+                         000116 onc_trap                    initialize_faults
+                         000120 onc_scup                    initialize_faults
+                         000122 unexp_trap                  initialize_faults
+                         000124 unexp_scup                  initialize_faults
+                         000126 i                           initialize_faults
+                         000127 access                      initialize_faults
+                         000130 cmep                        initialize_faults
+                         000132 fvp                         initialize_faults
+                         000144 segno                       set_lp
+                         000146 target_ptr                  set_lp
+                         000156 segno                       set_access
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+copy_on_write_handler_$copy_on_write_handler_               fim$access_violation_entry    fim$drl_entry
+fim$onc_start_shut_entry      fim$parity_entry              fim$primary_fault_entry       fim$signal_entry
+iom_interrupt$interrupt_entry isot_fault_handler_$isot_fault_handler_
+lot_fault_handler_$lot_fault_handler_                       page_fault$fault              prds$fast_connect_code
+privileged_mode_ut$cam_both   privileged_mode_ut$ldt        privileged_mode_ut$set_mask   sdw_util_$get_access
+sdw_util_$set_access          signal_$signal_               wired_fim$ignore              wired_fim$timer_runout
+wired_fim$unexp_fault         wired_fim$xec_fault
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+core_map$                     dseg$                         emergency_shutdown$           emergency_shutdown$lp
+emergency_shutdown$pp         fault_vector$                 fim$lp                        fim$prs
+fim$scu                       fim$sig_prs                   fim$sig_scu
+hardcore_sct_seg$hardcore_sct_seg                           initialize_faults_data$onc_one
+initialize_faults_data$onc_two                              initialize_faults_data$primary_one
+initialize_faults_data$primary_two                          initialize_faults_data$signal_one
+initialize_faults_data$signal_two                           iom_interrupt$iilink          iom_interrupt$prds_prs
+iom_interrupt$prds_scu        lot$                          page_fault$cme_offsets        page_fault$my_lp
+page_fault$pf_prs             page_fault$pf_scuinfo         pds$apt_ptr                   pds$fim_data
+pds$page_fault_data           pds$signal_data               pds$stack_0_ptr               prds$fim_data
+prds$ignore_data              prds$ignore_pl                prds$interrupt_data           prds$sys_trouble_data
+restart_fault$                restart_fault$lp              restart_fault$scu
+return_to_ring_0_$restart_fault_ptr                         scs$faults_initialized        scs$open_level
+scs$sys_level                 tc_data$                      wired_fim$ignore_pl           wired_fim$ignore_scuinfo
+wired_fim$int_scuinfo         wired_fim$my_linkage_ptr      wired_fim$prs                 wired_fim$scuinfo
+wired_fim$trouble_prs         wired_fim$trouble_scuinfo
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     52 000006       170 000014       175 000023       178 000024       180 000031       182 000037       183 000043
+    184 000045       185 000046       187 000053       188 000057       189 000061       190 000062       192 000067
+    193 000073       194 000075       196 000076       197 000102       201 000104       202 000111       204 000113
+    206 000115       207 000121       209 000123       210 000125       213 000126       214 000132       217 000135
+    218 000140       221 000143       222 000146       225 000151       226 000154       230 000157       234 000162
+    235 000170       236 000173       237 000176       238 000200       239 000203       243 000211       245 000220
+    247 000223       249 000226       253 000234       255 000243       256 000246       259 000251       261 000253
+    264 000256       267 000261       268 000263       270 000265       274 000273       276 000302       277 000305
+    279 000310       280 000312       281 000321       282 000331       283 000333       287 000342       288 000351
+    289 000355       293 000363       294 000372       296 000375       298 000403       303 000406       305 000414
+    307 000417       313 000420       314 000423       315 000426       317 000430       322 000432       324 000443
+    326 000451       327 000453       332 000454       337 000462       341 000465       344 000477       345 000515
+    349 000535       352 000550       358 000551       362 000557       366 000560       370 000571       372 000575
+    374 000603       375 000607       376 000611       377 000612       379 000617       380 000623       381 000625
+    382 000626       384 000633       385 000637       386 000641       387 000642       389 000646       390 000652
+    392 000654       396 000656       397 000663       401 000665       405 000670       406 000673       410 000676
+    411 000701       416 000702       418 000704       419 000713       420 000722       422 000731       426 000732
+    434 000734       436 000736       437 000742       440 000745       442 000746       450 000747       456 000751
+    457 000756       459 000774       461 001014       463 001021       466 001022       469 001023       471 001040
+    473 001045       479 001046       482 001047       483 001052       484 001054       488 001056       489 001060
+    490 001063       491 001065       492 001070       493 001072       494 001073       495 001075       496 001100
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

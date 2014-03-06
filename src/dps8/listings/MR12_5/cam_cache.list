@@ -1,0 +1,985 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>cam_cache.alm                                                                                                                                        
+ASSEMBLED ON:	11/11/89  0932.3 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                                    13  "                                                                    "
+                                    14  "	cam_cache					         "
+                                    15  "                                                                    "
+                                    16  "	Subroutine to clear ptw associative memory and (optionally)"
+                                    17  "	cache memory on this and all other processors.	         "
+                                    18  "	The subroutine will not return until this has been         "
+                                    19  "	accomplished.                                              "
+                                    20  "                                                                    "
+                                    21  "	This subroutine has two sets of entry points.  One set     "
+                                    22  "	consists of entry points callable only from within         "
+                                    23  "	bound_page_control (via tsx7).  For these, arguments are   "
+                                    24  "	passed via the pxss/page_fault stack frame.  The other     "
+                                    25  "	set consists of entry points callable externally (via      "
+                                    26  "	the transfer-module page.  For these, arguments are        "
+                                    27  "	passed in the usual (PL/1) manner.                         "
+                                    28  "                                                                    "
+                                    29  "	The only possible parameter to cam_cache entry points is   "
+                                    30  "	an absolute memory address for selective cache clearing    "
+                                    31  "	For calls from within bound_page_control, this address is  "
+                                    32  "	passed in cell core_add in the stack frame.  For external  "
+                                    33  "	calls, the PTW of the page containing the target address   "
+                                    34  "	for selective clearing is passed in Argument 1.            "
+                                    35  "                                                                    "
+                                    36  "	The functions performed by the subroutine are as follows,  "
+                                    37  "	with the internal and external entry points:               "
+                                    38  "                                                                    "
+                                    39  "	Clear all ptw associative memory, selectively clear cache  "
+                                    40  "		cam_cache	(internal)                             "
+                                    41  "		cam_cache_ext (external)                         "
+                                    42  "                                                                    "
+                                    43  "	Clear all ptw associative memory, clear all cache          "
+                                    44  "		cam (internal)                                   "
+                                    45  "		cam_ext (external)                               "
+                                    46  "                                                                    "
+                                    47  "	Clear all ptw associative memory                           "
+                                    48  "		cam_ptws (internal)	                             "
+                                    49  "		cam_ptws_ext (external)                          "
+                                    50  "                                                                    "
+                                    51  "	Clear all ptw associative memory, selectively clear cache, "
+                                    52  "	     set scs$cam_wait so that all other processors wait    "
+                                    53  "	     for scs$cam_wait to be cleared before resuming.       "
+                                    54  "		cam_with_wait (internal)                         "
+                                    55  "		cam_with_wait_ext (external)		         "
+                                    56  "                                                                    "
+                                    57  "
+                                    58  "                                                                    "
+                                    59  "	The protocol for multi-processor clearing is as follows:   "
+                                    60  "                                                                    "
+                                    61  "		This processor obtains the connect lock.         "
+                                    62  "                                                                    "
+                                    63  "		Under the connect lock, the processor            "
+                                    64  "		   1. sets scs$cam_pair to the instructions      "
+                                    65  "		      which do the clearing                      "
+                                    66  "		   2. sets the scs$fast_cam_pending cell         "
+                                    67  "		      non-zero for all other processors          "
+                                    68  "		   3. if this is a cam-with-wait call, sets      "
+                                    69  "		      the appropriate bit in scs$cam_wait for    "
+                                    70  "		      all other processors                       "
+                                    71  "		   4. sends a connect to all other processors    "
+                                    72  "		   5. XED's the code in scs$cam_pair             "
+                                    73  "		   6. waits for all scs$fast_cam_pending cells   "
+                                    74  "		      to clear (indicating clearing done by      "
+                                    75  "		      all other processors).                     "
+                                    76  "		   7. releases the connect lock and returns      "
+                                    77  "		Note - if only one processor is active, most     "
+                                    78  "		   of this is skipped.                           "
+                                    79  "                                                                    "
+                                    80  "		Upon receipt of a connect, all other processors  "
+                                    81  "		   1. if its scs$fast_cam_pending cell is set,   "
+                                    82  "		      XED the code in scs$cam_pending and        "
+                                    83  "		      clear it scs$fast_cam_pending cell         "
+                                    84  "		   2. if its bit in scs$cam_wait is set, wait    "
+                                    85  "		      for that bit to clear (this clearing is    "
+                                    86  "		      done by the caller of cam_cache on the     "
+                                    87  "		      originating processor).                    "
+                                    88  "                                                                    "
+                                    89  "                                                                    "
+                                    90  "	There are only two ways a conect fired to another          "
+                                    91  "	processor can be lost.  One is hardware failure, and the   "
+                                    92  "	other is a processor put into step mode before the connect "
+                                    93  "	and taken out of step mode after the connect.  There is    "
+                                    94  "	a hedge against the latter here.  If all processors have   "
+                                    95  "	not responded within an unreasonable amount of time, the   "
+                                    96  "	connects are re-issued, and the waiting begins anew.       "
+                                    97  "	This hedge should not be construed as implicitly condoning "
+                                    98  "	putting a cpu on a multi-processor in step mode.  It may   "
+                                    99  "	help in truly strange circumstances.                       "
+                                   100  "                                                                    "
+                                   101  "                                                                    "
+                                   102  "	This code was copied from page_fault and modified for      "
+                                   103  "	fast connects by J. Bongiovanni in February 1981.          "
+                                   104  "	Modified September 1983, E. N. Kittlitz per S. Harris      "
+                                   105  "	  (UNCA) to not destroy temp_2/x0 if lock contention       "
+                                   106  "                                                                    "
+                                   107  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                                   108  
+    000000                         109  	name	cam_cache
+                        000002     110  	segdef	cam_cache,cam_cache_ext
+                        000015     111  	segdef	cam,cam_ext
+                        000047     112  	segdef	cam_ptws,cam_ptws_ext
+                        000041     113  	segdef	cam_with_wait,cam_with_wait_ext
+                                   114  
+                                   115  	iftarget	adp
+                                        "	  warn	(WARNING: cam_cache has not been converted for the ADP.)
+                                        "	ifend
+                                   118  
+    000000                         119  channel_mask_set:
+    000000  aa   000000 000017     120  	oct	17,17
+    000001  aa   000000 000017 
+                                   121  
+                                   122  "
+    000002                         123  cam_cache_ext:			" external entry for coreadd cache clear
+    000002  4a  4 00010 4501 20    124  	stz	pds$temp_2		turn off wait flag
+    000003  aa  0 00002 2351 20    125  	lda	ap|2,*		PTW is passed in
+    000004  0a   000011 7070 00    126  	tsx7	cj1b		merge with common code
+    000005  aa  7 00044 7101 20    127  .rt:	short_return		" exit
+                                   128  
+    000006                         129  cam_cache:			" entry to cam and clear cache
+    000006  4a  4 00010 4501 20    130  	stz	pds$temp_2		turn off wait flag
+    000007  aa  6 00173 2351 00    131  cj1a:	lda	core_add		put core_add in pds
+    000010  aa   000014 7350 00    132  	als	coreadd_to_ptw.ls	shift to AU
+    000011  aa   777760 3750 03    133  cj1b:	ana	ptw_add_mask,du	mask extraneous bits
+    000012  4a  4 00012 7551 20    134  	sta	pds$temp_1
+    000013  aa   000000 6200 00    135  	eax0	0		set flag for PTW clear with cache
+    000014  0a   000052 7100 00    136  	tra 	cam_join_1	join common code
+                                   137  
+    000015  aa   000300 6270 00    138  cam_ext:	push
+    000016  aa  7 00040 2721 20
+                                   139  
+    000017                         140  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+    000017  4a  4 00014 7213 20    141  	lxl1	prds$processor_tag	get set for masking
+    000020  4a  4 00016 7613 20    142  	lprpab	scs$mask_ptr,1
+    000021  4a  4 00020 7163 20    143  	xec	scs$read_mask,1
+    000022  aa  6 00134 7573 00    144  	staq	temp	
+    000023  4a  4 00014 7213 20    145  	lxl1	prds$processor_tag	we may have lost the processor
+    000024  4a  4 00016 7613 20    146  	lprpab	scs$mask_ptr,1
+    000025  4a  4 00022 2373 20    147  	ldaq	scs$sys_level
+    000026  4a  4 00024 7163 20    148  	xec	scs$set_mask,1
+                                   149  
+    000027  0a   000037 7072 00    150  	tsx7	cam		join common code
+                                   151  
+    000030  aa  6 00134 2373 00    152  	ldaq	temp		retrieve previous mask
+    000031  0a   000000 2772 00    153  	oraq	channel_mask_set	turn on all channel mask
+    000032  4a  4 00026 3773 20    154  	anaq	scs$open_level	turn off unconfigured channel mask bits
+    000033  4a  4 00014 7213 20    155  	lxl1	prds$processor_tag
+    000034  4a  4 00016 7613 20    156  	lprpab	scs$mask_ptr,1
+    000035  4a  4 00024 7163 20    157  	xec	scs$set_mask,1
+    000036                         158  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   159  
+    000036  aa  7 00042 7101 20    160  	return
+                                   161  
+    000037                         162  cam:				"camp and cams, clear all cache
+    000037  aa   000004 6200 00    163  	eax0	4
+    000040  0a   000051 7100 00    164  	tra	cam_join_0	set switch not to full Cam
+                                   165  
+    000041                         166  cam_with_wait_ext:
+    000041  4a  4 00010 5541 20    167  	stc1	pds$temp_2	" external entry issue a cam 
+                                   168  				" and set scs$cam_wait
+    000042  0a   000005 6270 00    169  	eax7	.rt
+    000043  aa  0 00002 2351 20    170  	lda	ap|2,*
+    000044  0a   000011 7100 00    171  	tra	cj1b
+                                   172  
+    000045                         173  cam_with_wait:			" entry from evict_page
+    000045  4a  4 00010 5541 20    174  	stc1	pds$temp_2		set wait flag
+    000046  0a   000007 7100 00    175  	tra	cj1a
+                                   176  
+    000047                         177  cam_ptws_ext:			" remove only PTWs from AMs
+    000047  0a   000005 6270 00    178  	eax7	.rt
+    000050                         179  cam_ptws:
+    000050  aa   000002 6200 00    180  	eax0	2
+                                   181  
+    000051                         182  cam_join_0:
+    000051  4a  4 00010 4501 20    183  	stz	pds$temp_2		set no wait sw
+    000052                         184  cam_join_1:
+    000052  aa   000000 0110 03    185  	nop	0,du		allow for lockup fault reset, other CPU connect
+    000053  aa   000000 0110 03    186  	nop	0,du		ditto
+    000054                         187  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+    000054  4a  4 00030 2353 20    188  	lda	prds$processor_pattern  exclude this processor
+    000055  0a   000146 6752 00    189  	era	=-1		..
+    000056  4a  4 00032 3753 20    190  	ana	scs$processor	find which processors are running
+    000057  0a   000063 6012 00    191  	tnz	hard_cam		hard case, multiple processors
+                                   192  
+    000060  4a  4 00012 2213 20    193  	ldx1	pds$temp_1		prepare for cache selective cam, if needed
+    000061  0a   000136 7172 10    194  	xed	cam_table,0	execute proper type of cam
+    000062  aa   000000 7102 17    195  	tra	0,7
+                                   196  
+    000063                         197  hard_cam:
+    000063  4a  4 00034 2353 20    198  	lda	pds$processid	lock the connect lock
+    000064  4a  4 00036 3543 20    199  	stac	scs$connect_lock	..
+    000065  0a   000052 6012 00    200  	tnz	cam_join_1	wait on other CPU without destroying x0, temp_2
+    000066  4a  4 00010 2343 20    201  	szn	pds$temp_2		see if waiting case
+    000067  0a   000074 6002 00    202  	tze	wait_join		tra if no
+    000070  4a  4 00030 2353 20    203  	lda	prds$processor_pattern  set flags for other processor(s)
+    000071  0a   000146 6752 00    204  	era	=-1		..
+    000072  4a  4 00032 3753 20    205  	ana	scs$processor	but not for this processor
+    000073  4a  4 00040 7553 20    206  	sta	scs$cam_wait	set key word in scs
+                                   207  
+    000074                         208  wait_join: 
+    000074  aa   000000 6202 10    209  	eax0	0,0		test xr0 for coreadd case
+    000075  0a   000100 6002 00    210  	tze	hard_cam_with_coreadd
+    000076  0a   000136 2372 10    211  	ldaq	cam_table,0	access proper cams
+    000077  0a   000102 7102 00    212  	tra	cam_join_2
+                                   213  
+    000100                         214  hard_cam_with_coreadd:
+    000100  0a   000144 2372 00    215  	ldaq	cam_other_for_cache	get instructions for relocation
+    000101  4a  4 00012 2753 20    216  	ora	pds$temp_1		insert selective clear addr
+    000102                         217  cam_join_2:
+    000102  4a  4 00042 7573 20    218  	staq	scs$cam_pair	set up for all cpu's
+    000103                         219  repeat:
+    000103  aa   000000 6202 00    220  	eax0	0		start counting with 0
+    000104  aa   000000 2362 07    221  	ldq	0,dl		keep track of array size
+    000105  4a  4 00030 2353 20    222  	lda	prds$processor_pattern   set up for all processors
+    000106  0a   000146 6752 00    223  	era	=-1		except us
+    000107  4a  4 00032 3753 20    224  	ana	scs$processor	which are running
+    000110  4a  4 00044 4503 20    225  nextp:	stz	scs$fast_cam_pending,0  clear cell just in case
+    000111  0a   000114 6052 00    226  	tpl	missing		processor not running or am us
+    000112  4a  4 00044 5543 20    227  	stc1	scs$fast_cam_pending,0  flag for cam/cache clear
+    000113  4a  4 00046 0153 20    228  	cioc	scs$cow_ptrs,0*	send connect
+    000114  aa   000001 6202 10    229  missing:	eax0	1,0		bump to next processor
+    000115  aa   000004 0762 07    230  	adq	4,dl		bump array size in chars
+    000116  aa   000001 7352 00    231  	als	1		shift bit pattern to next cpu high
+    000117  0a   000110 6012 00    232  	tnz	nextp		more processors running
+    000120  4a  4 00042 7173 20    233  	xed	scs$cam_pair	clear our own
+                                   234  
+    000121                         235  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+    000121  aa   001750 2350 07    236  	lda	1000,dl		bail-out of loop limit
+    000122  4a  4 00050 3715 20    237  	epplb	scs$fast_cam_pending array of check-off cells
+    000123  aa   000001 1750 07    238  wait:	sba	1,dl		one more loop
+    000124  0a   000103 6040 00    239  	tmi	repeat		try entire cycle again
+    000125  aa   000140 1064 00    240  	cmpc	(),(pr,rl),fill(0)	check entire array clear
+    000126  aa   000000 000000     241  	desc9a	0,0
+    000127  aa   500000 000006     242  	desc9a	lb|0,ql
+    000130  aa   000000 0110 00    243  	nop
+    000131  aa   000000 0110 00    244  	nop
+    000132  0a   000123 6010 00    245  	tnz	wait		all cells haven't cleared
+                                   246  
+    000133  aa   000000 2350 07    247  	lda	0,dl		clear the connect lock now
+    000134  4a  4 00036 3551 20    248  	ansa	scs$connect_lock	..
+    000135  aa   000000 7100 17    249  	tra	0,7
+                                   250  
+                                   251  	even
+    000136                         252  cam_table:			"table of appropriate CAM pairs
+    000136  aa   000004 5324 11    253  	camp	4,1		"clear selective cache and ptws
+    000137  aa   000000 0110 00    254  	nop
+                                   255  
+    000140  aa   000000 5324 00    256  	camp			"clear just ptws
+    000141  aa   000000 0110 00    257  	nop
+                                   258  
+    000142  aa   000000 5324 00    259  	camp			"clear ptws
+    000143  aa   000004 5320 00    260  	cams	4		"and all cache
+                                   261  
+    000144                         262  cam_other_for_cache:
+    000144  aa   000004 5324 00    263  	camp	4		"clear selective cache and ptws
+    000145  aa   000000 0110 03    264  	nop	0,du
+                                   265  
+                                   266  "
+                                   267  	include	pxss_page_stack
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   1-3  "
+                                   1-4  
+                        000006     1-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     1-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   1-7  
+                                   1-8  	temp8	notify_regs
+                                   1-9  	temp	save_stack(stack_size),stackp
+                                  1-10  	tempd	pre_time,pre_temp(3)
+                                  1-11  	tempd	arg(11),temp
+                                  1-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  1-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  1-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  1-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  1-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  1-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  1-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  1-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  1-20  	temp	lock_volmap_temp
+                                  1-21  	temp	volmap_page_temp
+                                  1-22  	tempd	free_store_start_time,post_io_start_time
+                                  1-23  
+                                  1-24  	temp	done_astep,volmap_page_temp_1
+                                  1-25  	temp	vtocx,pageno
+                                  1-26  
+                                  1-27  	tempd	page_synch_temp,page_synch_time
+                                  1-28  	temp	page_synch_index
+                                  1-29  
+                                  1-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  1-31  	tempd	pf_sdw
+                                  1-32  
+                                  1-33  	temp	pad(22)		" to grow compatibly
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  1-36  "
+                                   268  	include	page_info
+                                   2-1  "	BEGIN INCLUDE FILE page_info.incl.alm  --  6/72
+                                   2-2  "
+                                   2-3  " Modified 02/22/81, W. Olin Sibert, for ADP conversion
+                                   2-4  " Modified 06/23/82, E. N. Kittlitz, to move core map.
+                                   2-5  "
+                        000012     2-6  	equ	page_power,10		" 2**10 = size of page
+                        000001     2-7  	bool	df1,000001		" directed fault 1 on page fault
+                                   2-8  
+                 777777 740000     2-9  	bool	address_mask,777777740000	" Mask for PTW add, add_type compares
+                                  2-10  					" Use as =v36/address_mask
+                                  2-11  
+                        400000    2-12  	bool	ptw.nulled,400000		" flag for testing addresses
+                                  2-13  
+                        100000    2-14  	bool	int,100000		" Disk dim flags
+                        000020    2-15  	bool	pri,000020
+                        000004    2-16  	bool	no_post,000004
+                                  2-17  
+                        000003    2-18  	equ	sst,3			" Standard pointer and index
+                        000003    2-19  	equ	pdm,sst			" register usage
+                        000003    2-20  	equ	ast,sst
+                        000002    2-21  	equ	ptw,2
+                                  2-22  
+                                  2-23  "	Various AST masks which are not
+                                  2-24  "	expressible in standard notation
+                                  2-25  "
+                        777000    2-26  	bool	aste.csl_mask_inner,777000
+                        777000    2-27  	bool	aste.records_mask_inner,777000
+                                  2-28  
+                        000000    2-29  	equ	fault_entry,0		" Flags indicating how we
+                        000001    2-30  	equ	read_entry,1		" were entered
+                        000002    2-31  	equ	write_entry,2
+                        000003    2-32  	equ	pre_page_entry,3
+                        000004    2-33  	equ	post_purge_entry,4
+                        000005    2-34  	equ	pd_flush_entry,5
+                        000006    2-35  	equ	evict_entry,6
+                        000007    2-36  	equ	abs_wire_entry,7
+                        000010    2-37  	equ	cleanup_entry,8
+                                  2-38  
+                                  2-39  " Constants for manipulating core addresses and PTWs. The core address
+                                  2-40  " is a fixed bin (35) aligned, and must be moved to/from the appropriate
+                                  2-41  " field in the SDW or PTW.
+                                  2-42  "
+                                  2-43  	iftarget	l68
+                        777760          	   bool	ptw_add_mask,777760 " Page number
+                        777760          	   bool	sdw_add_mask,777760 " Page number
+                 000077 777777          	   bool	coreadd_mask,000077777777 " Mask for coreadd in AL
+                                        
+                        000014          	   equ	coreadd_to_ptw.ls,12
+                        000014          	   equ	coreadd_to_sdw.ls,12
+                        000014          	   equ	ptw_to_coreadd.rl,12
+                        000014          	   equ	sdw_to_coreadd.rl,12
+                        000002          	   equ	cmep_to_ptw.ls,2
+                        000002          	   equ	cmep_to_sdw.ls,2
+                        000002          	   equ	ptw_to_cmep.rl,2
+                        000024          	   equ	ptw_to_cmep_lower.rl,20
+                        000002          	   equ	sdw_to_cmep.rl,2
+                                        "	ifend
+                                  2-58  
+                                  2-59  	iftarget	adp
+                                        "	   bool	ptw_add_mask,177777 " Page number
+                                        "	   bool	sdw_add_mask,777774 " Page number
+                                        "	   bool	coreadd_mask,000377777777 " Mask for coreadd in AL
+                                        "
+                                        "	   equ	coreadd_to_ptw.ls,8
+                                        "	   equ	coreadd_to_sdw.ls,10
+                                        "	   equ	ptw_to_coreadd.rl,8
+                                        "	   equ	sdw_to_coreadd.rl,10
+                                        "	   equ	cmep_to_ptw.rl,2	" Must shift backwards
+                                        "	   equ	cmep_to_sdw.ls,0
+                                        "	   equ	ptw_to_cmep.ls,2	" Must shift backwards
+                                        "	   equ	ptw_to_cmep_lower.rl,16
+                                        "	   equ	sdw_to_cmep.rl,0
+                                        "	ifend
+                                  2-74  
+                        000012    2-75  	equ	cmep_to_coreadd.rl,10	.cmep to coreadd
+                        000012    2-76  	equ	coreadd_to_cmep.ls,10	coreadd to .cmep
+                                  2-77  
+                                  2-78  " 
+                                  2-79  "
+                                  2-80  " Assorted general purpose macros used in PC. These will be changed
+                                  2-81  " when address types are changed for 20 bit addresses. Additionally,
+                                  2-82  " for more accurate metering on the ADP, the metering macros should
+                                  2-83  " modified to update the metering cells uninterruptably.
+                                  2-84  "
+                                  2-85  
+                                  2-86  	macro	missing
+                              1   2-87  	ife	&2,()
+                              2   2-88  	  warn	(&1: Argument missing.)
+                              3   2-89  	ifend
+                              4   2-90  	&end
+                                  2-91  "
+                                  2-92  " staddra and staddrq store the address portion (upper 22 bits) of the A or Q
+                                  2-93  " into the specified location.
+                                  2-94  "
+                                  2-95  	macro	staddra
+                              1   2-96  	missing	staddra,&1
+                              2   2-97  	era	&F1
+                              3   2-98  	ana	=v36/address_mask
+                              4   2-99  	ersa	&F1
+                              5  2-100  	&end
+                                 2-101  
+                                 2-102  	macro	staddrq
+                              1  2-103  	missing	staddrq,&1
+                              2  2-104  	erq	&F1
+                              3  2-105  	anq	=v36/address_mask
+                              4  2-106  	ersq	&F1
+                              5  2-107  	&end
+                                 2-108  
+                                 2-109  "	Macros for metering 6/23/80
+                                 2-110  
+                                 2-111  	macro	read_clock
+                              1  2-112  	iftarget	l68
+                              2  2-113  	  rccl	sys_info$clock_,*
+                              3  2-114  	ifend
+                              4  2-115  	iftarget adp
+                              5  2-116  	  rccl	0
+                              6  2-117  	ifend
+                              7  2-118  	&end
+                                 2-119  
+                                 2-120  	macro	increment
+                              1  2-121  	missing	increment,&1
+                              2  2-122  	aos	&1
+                              3  2-123  	&end
+                                 2-124  
+                                 2-125  	macro	store_clock
+                              1  2-126  	missing	store_clock,&1
+                              2  2-127  	read_clock
+                              3  2-128  	staq	&1
+                              4  2-129  	&end
+                                 2-130  
+                                 2-131  	macro	meter_time
+                              1  2-132  	missing	meter_time,&3
+                              2  2-133  	increment &3
+                              3  2-134  	read_clock
+                              4  2-135  	sbaq	&1
+                              5  2-136  	adaq	&2
+                              6  2-137  	staq	&2
+                              7  2-138  	&end
+                                 2-139  
+                                 2-140  "	END INCLUDE FILE  page_info.incl.alm
+                                   269  
+                                   270  	end
+LITERALS
+     
+    000146  aa   777777 777777 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000147  5a   000003 000000 
+    000150  5a   000102 600000 
+    000151  aa   000000 000000 
+    000152  55   000011 000002 
+    000153  5a   000002 400003 
+    000154  55   000006 000011 
+    000155  aa  011 143 141 155
+    000156  aa  137 143 141 143
+    000157  aa  150 145 000 000
+    000160  55   000021 000003 
+    000161  0a   000041 400000 
+    000162  55   000014 000003 
+    000163  aa  021 143 141 155         cam_with_wait_ext
+    000164  aa  137 167 151 164
+    000165  aa  150 137 167 141
+    000166  aa  151 164 137 145
+    000167  aa  170 164 000 000
+    000170  55   000030 000011 
+    000171  0a   000045 400000 
+    000172  55   000024 000003 
+    000173  aa  015 143 141 155         cam_with_wait
+    000174  aa  137 167 151 164
+    000175  aa  150 137 167 141
+    000176  aa  151 164 000 000
+    000177  55   000037 000021 
+    000200  0a   000047 400000 
+    000201  55   000033 000003 
+    000202  aa  014 143 141 155         cam_ptws_ext
+    000203  aa  137 160 164 167
+    000204  aa  163 137 145 170
+    000205  aa  164 000 000 000
+    000206  55   000045 000030 
+    000207  0a   000050 400000 
+    000210  55   000042 000003 
+    000211  aa  010 143 141 155         cam_ptws
+    000212  aa  137 160 164 167
+    000213  aa  163 000 000 000
+    000214  55   000052 000037 
+    000215  0a   000015 400000 
+    000216  55   000050 000003 
+    000217  aa  007 143 141 155         cam_ext
+    000220  aa  137 145 170 164
+    000221  55   000056 000045 
+    000222  0a   000037 400000 
+    000223  55   000055 000003 
+    000224  aa  003 143 141 155         cam
+    000225  55   000065 000052 
+    000226  0a   000002 400000 
+    000227  55   000061 000003 
+    000230  aa  015 143 141 155         cam_cache_ext
+    000231  aa  137 143 141 143
+    000232  aa  150 145 137 145
+    000233  aa  170 164 000 000
+    000234  55   000073 000056 
+    000235  0a   000006 400000 
+    000236  55   000070 000003 
+    000237  aa  011 143 141 155         cam_cache
+    000240  aa  137 143 141 143
+    000241  aa  150 145 000 000
+    000242  55   000002 000065 
+    000243  6a   000000 400002 
+    000244  55   000076 000003 
+    000245  aa  014 163 171 155         symbol_table
+    000246  aa  142 157 154 137
+    000247  aa  164 141 142 154
+    000250  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000251  aa   000000 000015 
+    000252  5a   000037 000000 
+    000253  5a   000021 000000 
+    000254  5a   000056 000000 
+    000255  aa   000000 000000 
+    000256  aa   000000 000000 
+    000257  5a   000045 000000 
+    000260  5a   000030 000000 
+    000261  5a   000011 000000 
+    000262  5a   000065 000000 
+    000263  5a   000073 000000 
+    000264  aa   000000 000000 
+    000265  aa   000000 000000 
+    000266  5a   000052 000000 
+
+EXTERNAL NAMES
+
+    000267  aa  010 143 157 167         cow_ptrs
+    000270  aa  137 160 164 162
+    000271  aa  163 000 000 000
+    000272  aa  020 146 141 163         fast_cam_pending
+    000273  aa  164 137 143 141
+    000274  aa  155 137 160 145
+    000275  aa  156 144 151 156
+    000276  aa  147 000 000 000
+    000277  aa  010 143 141 155         cam_pair
+    000300  aa  137 160 141 151
+    000301  aa  162 000 000 000
+    000302  aa  010 143 141 155         cam_wait
+    000303  aa  137 167 141 151
+    000304  aa  164 000 000 000
+    000305  aa  014 143 157 156         connect_lock
+    000306  aa  156 145 143 164
+    000307  aa  137 154 157 143
+    000310  aa  153 000 000 000
+    000311  aa  011 160 162 157         processid
+    000312  aa  143 145 163 163
+    000313  aa  151 144 000 000
+    000314  aa  011 160 162 157         processor
+    000315  aa  143 145 163 163
+    000316  aa  157 162 000 000
+    000317  aa  021 160 162 157         processor_pattern
+    000320  aa  143 145 163 163
+    000321  aa  157 162 137 160
+    000322  aa  141 164 164 145
+    000323  aa  162 156 000 000
+    000324  aa  012 157 160 145         open_level
+    000325  aa  156 137 154 145
+    000326  aa  166 145 154 000
+    000327  aa  010 163 145 164         set_mask
+    000330  aa  137 155 141 163
+    000331  aa  153 000 000 000
+    000332  aa  011 163 171 163         sys_level
+    000333  aa  137 154 145 166
+    000334  aa  145 154 000 000
+    000335  aa  011 162 145 141         read_mask
+    000336  aa  144 137 155 141
+    000337  aa  163 153 000 000
+    000340  aa  010 155 141 163         mask_ptr
+    000341  aa  153 137 160 164
+    000342  aa  162 000 000 000
+    000343  aa  003 163 143 163         scs
+    000344  aa  015 160 162 157         processor_tag
+    000345  aa  143 145 163 163
+    000346  aa  157 162 137 164
+    000347  aa  141 147 000 000
+    000350  aa  004 160 162 144         prds
+    000351  aa  163 000 000 000
+    000352  aa  006 164 145 155         temp_1
+    000353  aa  160 137 061 000
+    000354  aa  006 164 145 155         temp_2
+    000355  aa  160 137 062 000
+    000356  aa  003 160 144 163         pds
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000357  aa   000004 000000 
+    000360  55   000174 000120 
+    000361  aa   000004 000000 
+    000362  55   000174 000123 
+    000363  aa   000004 000000 
+    000364  55   000174 000130 
+    000365  aa   000004 000000 
+    000366  55   000174 000133 
+    000367  aa   000004 000000 
+    000370  55   000174 000136 
+    000371  aa   000004 000000 
+    000372  55   000207 000142 
+    000373  aa   000004 000000 
+    000374  55   000174 000145 
+    000375  aa   000004 000000 
+    000376  55   000201 000150 
+    000377  aa   000004 000000 
+    000400  55   000174 000155 
+    000401  aa   000004 000000 
+    000402  55   000174 000160 
+    000403  aa   000004 000000 
+    000404  55   000174 000163 
+    000405  aa   000004 000000 
+    000406  55   000174 000166 
+    000407  aa   000004 000000 
+    000410  55   000174 000171 
+    000411  aa   000004 000000 
+    000412  55   000201 000175 
+    000413  aa   000004 000000 
+    000414  55   000207 000203 
+    000415  aa   000004 000000 
+    000416  55   000207 000205 
+    000417  aa   000001 000000 
+    000420  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000421  5a   000210 000000 
+    000422  5a   000212 000000 
+    000423  5a   000214 000000 
+    000424  5a   000216 000000 
+    000425  5a   000220 000000 
+    000426  5a   000222 000000 
+    000427  5a   000224 000000 
+    000430  5a   000226 000000 
+    000431  5a   000230 000000 
+    000432  5a   000232 000000 
+    000433  5a   000234 000000 
+    000434  5a   000236 000000 
+    000435  5a   000240 000000 
+    000436  5a   000242 000000 
+    000437  5a   000244 000000 
+    000440  5a   000246 000000 
+    000441  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000147 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000052 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         pds|temp_2
+    000011  5a   000271 0000 00
+    000012  9a   777766 0000 46         pds|temp_1
+    000013  5a   000270 0000 00
+    000014  9a   777764 0000 46         prds|processor_tag
+    000015  5a   000267 0000 00
+    000016  9a   777762 0000 46         scs|mask_ptr
+    000017  5a   000266 0000 11
+    000020  9a   777760 0000 46         scs|read_mask
+    000021  5a   000265 0000 11
+    000022  9a   777756 0000 46         scs|sys_level
+    000023  5a   000264 0000 00
+    000024  9a   777754 0000 46         scs|set_mask
+    000025  5a   000263 0000 11
+    000026  9a   777752 0000 46         scs|open_level
+    000027  5a   000262 0000 00
+    000030  9a   777750 0000 46         prds|processor_pattern
+    000031  5a   000261 0000 00
+    000032  9a   777746 0000 46         scs|processor
+    000033  5a   000260 0000 00
+    000034  9a   777744 0000 46         pds|processid
+    000035  5a   000257 0000 00
+    000036  9a   777742 0000 46         scs|connect_lock
+    000037  5a   000256 0000 00
+    000040  9a   777740 0000 46         scs|cam_wait
+    000041  5a   000255 0000 00
+    000042  9a   777736 0000 46         scs|cam_pair
+    000043  5a   000254 0000 00
+    000044  9a   777734 0000 46         scs|fast_cam_pending
+    000045  5a   000253 0000 10
+    000046  9a   777732 0000 46         scs|cow_ptrs
+    000047  5a   000252 0000 30
+    000050  9a   777730 0000 46         scs|fast_cam_pending
+    000051  5a   000253 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   245646 004563 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000225 
+    000020  aa   000000 000134 
+    000021  aa   000164 000153 
+    000022  aa   000215 000134 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000040 
+    000067  aa   175453 017546 
+    000070  aa   000000 117547 
+    000071  aa   176235 000000 
+    000072  aa   000112 000045 
+    000073  aa   133234 136230 
+    000074  aa   000000 113324 
+    000075  aa   322064 400000 
+    000076  aa   000124 000037 
+    000077  aa   112456 132235 
+    000100  aa   000000 111250 
+    000101  aa   530556 400000 
+    000102  aa   076163 160145          >spec>install>1111>cam_cache.alm
+    000103  aa   143076 151156 
+    000104  aa   163164 141154 
+    000105  aa   154076 061061 
+    000106  aa   061061 076143 
+    000107  aa   141155 137143 
+    000110  aa   141143 150145 
+    000111  aa   056141 154155 
+    000112  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000113  aa   076151 156143 
+    000114  aa   154165 144145 
+    000115  aa   076160 170163 
+    000116  aa   163137 160141 
+    000117  aa   147145 137163 
+    000120  aa   164141 143153 
+    000121  aa   056151 156143 
+    000122  aa   154056 141154 
+    000123  aa   155040 040040 
+    000124  aa   076154 144144          >ldd>include>page_info.incl.alm
+    000125  aa   076151 156143 
+    000126  aa   154165 144145 
+    000127  aa   076160 141147 
+    000130  aa   145137 151156 
+    000131  aa   146157 056151 
+    000132  aa   156143 154056 
+    000133  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           5    .rt                      cam_cache:    127,  169,  178.
+           7    abs_wire_entry           page_info:     36.
+      740000    address_mask             page_info:      9.
+         150    apt_ptr                  pxss_page_stack:     13.
+         106    arg                      pxss_page_stack:     11.
+           3    ast                      page_info:     20.
+      777000    aste.csl_mask_inner      page_info:     26.
+      777000    aste.records_mask_inner  page_info:     27.
+         204    before                   pxss_page_stack:     17.
+          37    cam                      cam_cache:    111,  150,  162.
+           6    cam_cache                cam_cache:    110,  129.
+           2    cam_cache_ext            cam_cache:    110,  123.
+          15    cam_ext                  cam_cache:    111,  138.
+          51    cam_join_0               cam_cache:    164,  182.
+          52    cam_join_1               cam_cache:    136,  184,  200.
+         102    cam_join_2               cam_cache:    212,  217.
+         144    cam_other_for_cache      cam_cache:    215,  262.
+                cam_pair                 cam_cache:    218,  233.
+          50    cam_ptws                 cam_cache:    112,  179.
+          47    cam_ptws_ext             cam_cache:    112,  177.
+         136    cam_table                cam_cache:    194,  211,  252.
+                cam_wait                 cam_cache:    206.
+          45    cam_with_wait            cam_cache:    113,  173.
+          41    cam_with_wait_ext        cam_cache:    113,  166.
+           0    channel_mask_set         cam_cache:    119,  153.
+           7    cj1a                     cam_cache:    131,  175.
+          11    cj1b                     cam_cache:    126,  133,  171.
+          10    cleanup_entry            page_info:     37.
+         164    cmep                     pxss_page_stack:     15.
+          12    cmep_to_coreadd.rl       page_info:     75.
+           2    cmep_to_ptw.ls           page_info:     57.
+           2    cmep_to_sdw.ls           page_info:     57.
+                connect_lock             cam_cache:    199,  248.
+      777777    coreadd_mask             page_info:     57.
+          12    coreadd_to_cmep.ls       page_info:     76.
+          14    coreadd_to_ptw.ls        cam_cache:    132,
+                                         page_info:     57.
+          14    coreadd_to_sdw.ls        page_info:     57.
+         173    core_add                 cam_cache:    131,
+                                         pxss_page_stack:     16.
+         174    count                    pxss_page_stack:     16.
+                cow_ptrs                 cam_cache:    228.
+         154    delta_t                  pxss_page_stack:     13.
+         205    depth                    pxss_page_stack:     17.
+         200    devadd                   pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+           1    df1                      page_info:      7.
+         232    done_astep               pxss_page_stack:     24.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+           6    evict_entry              page_info:     35.
+                fast_cam_pending         cam_cache:    225,  227,  237.
+           0    fault_entry              page_info:     29.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         152    getwork_temp             pxss_page_stack:     13.
+          63    hard_cam                 cam_cache:    191,  197.
+         100    hard_cam_with_coreadd    cam_cache:    210,  214.
+      100000    int                      page_info:     14.
+         177    inter                    pxss_page_stack:     16.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+                mask_ptr                 cam_cache:    142,  146,  156.
+         114    missing                  cam_cache:    226,  229.
+         110    nextp                    cam_cache:    225,  232.
+          50    notify_regs              pxss_page_stack:      8.
+           4    no_post                  page_info:     16.
+                open_level               cam_cache:    154.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+          12    page_power               page_info:      6.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+           3    pdm                      page_info:     19.
+                pds                      cam_cache:    124,  130,  134,  167,  174,  183,  193,  198,  201,  216.
+           5    pd_flush_entry           page_info:     34.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+           4    post_purge_entry         page_info:     33.
+                prds                     cam_cache:    141,  145,  155,  188,  203,  222.
+           3    pre_page_entry           page_info:     32.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+          20    pri                      page_info:     15.
+                processid                cam_cache:    198.
+                processor                cam_cache:    190,  205,  224.
+                processor_pattern        cam_cache:    188,  203,  222.
+                processor_tag            cam_cache:    141,  145,  155.
+         176    ptp_astep                pxss_page_stack:     16.
+           2    ptw                      page_info:     21.
+      400000    ptw.nulled               page_info:     12.
+      777760    ptw_add_mask             cam_cache:    133,
+                                         page_info:     57.
+           2    ptw_to_cmep.rl           page_info:     57.
+          24    ptw_to_cmep_lower.rl     page_info:     57.
+          14    ptw_to_coreadd.rl        page_info:     57.
+         172    pvtx                     pxss_page_stack:     16.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+           1    read_entry               page_info:     30.
+                read_mask                cam_cache:    143.
+         103    repeat                   cam_cache:    219,  239.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+                scs                      cam_cache:    142,  143,  146,  147,  148,  154,  156,  157,  190,  199,  205,  206,
+                                                       218,  224,  225,  227,  228,  233,  237,  248.
+      777760    sdw_add_mask             page_info:     57.
+           2    sdw_to_cmep.rl           page_info:     57.
+          14    sdw_to_coreadd.rl        page_info:     57.
+                set_mask                 cam_cache:    148,  157.
+           3    sst                      page_info:     18,   19,   20.
+          75    stackp                   pxss_page_stack:      9.
+          15    stack_size               pxss_page_stack:      6,    9.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+                sys_level                cam_cache:    147.
+         134    temp                     cam_cache:    144,  152,
+                                         pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+                temp_1                   cam_cache:    134,  193,  216.
+                temp_2                   cam_cache:    124,  130,  167,  174,  183,  201.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+         234    vtocx                    pxss_page_stack:     25.
+         123    wait                     cam_cache:    238,  245.
+          74    wait_join                cam_cache:    202,  208.
+           2    write_entry              page_info:     31.
+         206    x5                       pxss_page_stack:     17.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

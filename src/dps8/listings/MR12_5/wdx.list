@@ -1,0 +1,854 @@
+	COMPILATION LISTING OF SEGMENT wdx
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1014.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 wdx$init: proc (a_evchn, a_ec);
+       14 	
+       15 
+       16 /* wdx - ring 1 lv_attach_table manager 
+       17*
+       18*   Runs in Initializer process, communicates lv_request_'s desires to table and user process. 
+       19*   Entries are accessible through initializer_mdc_
+       20*
+       21*
+       22*   Entry Points:
+       23*
+       24*   check_mount		issue syserr message for overdue mount 
+       25*   free_lvate		clear one out 
+       26*   init			set up for bootload 
+       27*   invalidate_lvate		cause process to give up lv 
+       28*   mhvmessage		issue syserr message for Operator  
+       29*   poll_mounts		check for overdue mounts 
+       30*   respond_mount_lv		set return state, code, and bit 
+       31*   retrieve_lvate		dredge entry out of lvat 
+       32*   scan_lv		find all lv occurences 
+       33*   scan_process		find all process occurrences 
+       34*   set_lvinfo		put lvid and stuff in lvate 
+       35*
+       36*   Bernard Greenberg 09/08/76   
+       37*   Modified December 1981 by J. Bongiovanni for poll_mounts, check_mount 
+       38*   Modified April 82 BIM for legal acls.
+       39**/
+       40 
+       41 /*  Parameter  */
+       42 
+       43 dcl  a_array (*) fixed bin;
+       44 dcl  a_code fixed bin (35);
+       45 dcl  a_ec fixed bin (35);
+       46 dcl  a_evchn fixed bin (71);
+       47 dcl  a_lvatep ptr;
+       48 dcl  a_lvax fixed bin (17);
+       49 dcl  a_lvid bit (36) aligned;
+       50 dcl  a_lvname char (*);
+       51 dcl  a_lvx fixed bin;
+       52 dcl  a_n fixed bin;
+       53 dcl  a_next_time fixed bin (71);
+       54 dcl  a_pid bit (36) aligned;
+       55 dcl  a_state fixed bin;
+       56 dcl  a_unit_string char (*) varying;
+       57 dcl  a_username char (*);
+       58 
+       59 /*  Automatic  */
+       60 
+       61 dcl  1 seg_acl (1) aligned like segment_acl_entry;
+       62 
+       63 dcl  ec fixed bin (35);
+       64 dcl  fixedipcmessage fixed bin (71);
+       65 dcl  lvax fixed bin;
+       66 dcl  lvname char (32);
+       67 dcl  n fixed bin;
+       68 dcl  next_time fixed bin (71);
+       69 dcl  pid bit (36) aligned;
+       70 dcl  save_lev fixed bin;
+       71 dcl  username char (32);
+       72 
+       73 /*  Static  */
+       74 
+       75 dcl  END_OF_TIME fixed bin (71) int static options (constant) init (1111111111111111111111111111111111111111111111111111b);
+       76 dcl  LVAT_NAME char (32) static init ("lv_attach_table") options (constant);
+       77 dcl  s_lvatp ptr static init (null);
+       78 dcl  SYSDIR char (168) static init (">lv");
+       79 dcl  TIMEOUT fixed bin (71) int static options (constant) init (240000000);	/* 4 minutes */
+       80 dcl  WDX_RING fixed bin init (1) static;
+       81 /*  Based  */
+       82 
+       83 dcl  ipcmessage char (8) based (addr (fixedipcmessage));
+       84 
+       85 /*  Entry  */
+       86 
+       87 dcl  admin_gate_$reclassify_sys_seg entry (char (*), char (*), bit (72) aligned, fixed bin (35));
+       88 dcl  admin_gate_$syserr entry options (variable);
+       89 dcl  admin_gate_$syserr_error_code entry options (variable);
+       90 dcl  cu_$level_get entry (fixed bin);
+       91 dcl  cu_$level_set entry (fixed bin);
+       92 dcl  get_max_authorization_ returns (bit (72) aligned);
+       93 dcl  get_process_id_ entry returns (bit (36) aligned);
+       94 dcl  get_ring_ entry returns (fixed bin);
+       95 dcl  hcs_$add_acl_entries entry (char (*), char (*), ptr, fixed bin, fixed bin (35));
+       96 dcl  hcs_$make_seg entry (char (*), char (*), char (*), fixed bin (5), ptr, fixed bin (35));
+       97 dcl  hcs_$truncate_seg entry (ptr, fixed bin, fixed bin (35));
+       98 dcl  hcs_$wakeup entry (bit (36) aligned, fixed bin (71), fixed bin (71), fixed bin (35));
+       99 
+      100 /*  Builtin  */
+      101 
+      102 dcl  clock builtin;
+      103 dcl  min builtin;
+      104 dcl  null builtin;
+      105 dcl  stacq builtin;
+      106 
+      107 /*  Condition  */
+      108 
+      109 dcl  cleanup condition;
+      110 /*  */
+      111 
+      112 	a_ec = 0;
+      113 
+      114 	call cu_$level_get (save_lev);
+      115 	on cleanup call cu_$level_set (save_lev);
+      116 	call cu_$level_set (WDX_RING);
+      117 	call hcs_$make_seg (SYSDIR, LVAT_NAME, "", 1011b, s_lvatp, ec);
+      118 	if s_lvatp = null then do;
+      119 init_lose:     call cu_$level_set (save_lev);
+      120 	     a_ec = ec;
+      121 	     return;
+      122 	end;
+      123 
+      124 	call hcs_$truncate_seg (s_lvatp, 0, ec);
+      125 	if ec ^= 0 then go to init_lose;
+      126 
+      127 	call admin_gate_$reclassify_sys_seg (SYSDIR, LVAT_NAME, get_max_authorization_ (), ec);
+      128 	if ec ^= 0 then go to init_lose;
+      129 
+      130 	seg_acl (1).access_name = "*.*.*";
+      131 	seg_acl (1).mode = RW_ACCESS;
+      132 	seg_acl (1).extended_mode = ""b;
+      133 	seg_acl (1).status_code = 0;
+      134 
+      135 	call hcs_$add_acl_entries (SYSDIR, LVAT_NAME, addr (seg_acl), 1, ec);
+      136 	if ec = 0 then if seg_acl (1).status_code ^= 0 then ec = seg_acl (1).status_code;
+      137 	if ec ^= 0 then go to init_lose;
+      138 
+      139 	call cu_$level_set (save_lev);
+      140 	lvatp = s_lvatp;
+      141 
+      142 	lvat.master_pid = get_process_id_ ();
+      143 	lvat.master_evchn = a_evchn;
+      144 
+      145 	lvat.max_n_entries = 10000;
+      146 	lvat.highest_used = 0;
+      147 	lvat.initialized = "1"b;
+      148 	return;
+      149 
+      150 /* --------------------------------------------------------- */
+      151 
+      152 retrieve_lvate: entry (a_lvax, a_lvatep, a_ec);
+      153 
+      154 	lvax = a_lvax;
+      155 
+      156 	lvatp = s_lvatp;
+      157 	if lvax > lvat.highest_used | lvax <= 0 then do;
+      158 	     a_ec = 5;
+      159 	     return;
+      160 	end;
+      161 
+      162 	lvatep = addr (lvat.array (lvax));
+      163 	a_lvatep -> lvate = lvate;
+      164 	a_ec = 0;
+      165 	return;
+      166 
+      167 /* --------------------------------------------------------- */
+      168 
+      169 free_lvate: entry (a_lvax);
+      170 
+      171 	lvatp = s_lvatp;
+      172 	lvatep = addr (lvat.array (a_lvax));
+      173 
+      174 	if stacq (lvate.pid, "0"b, (lvate.pid)) then;
+      175 	return;
+      176 
+      177 /* --------------------------------------------------------- */
+      178 
+      179 respond_mount_lv: entry (a_lvax, a_state, a_code, a_ec);
+      180 
+      181 
+      182 	lvatp = s_lvatp;
+      183 	lvatep = addr (lvat.array (a_lvax));
+      184 
+      185 	lvate.code = a_code;
+      186 	lvate.state = a_state;
+      187 	if lvate.state = 1 then do;
+      188 	     lvate.waiting = "0"b;
+      189 	     lvate.mounted = "1"b;
+      190 	end;
+      191 	else if lvate.state = 4 then do;
+      192 	     lvate.waiting = "1"b;
+      193 	     lvate.mount_request_timeout = clock () + TIMEOUT;
+      194 	     ipcmessage = "poll    ";
+      195 	     call hcs_$wakeup (lvat.master_pid, lvat.master_evchn, fixedipcmessage, ec);
+      196 	     if ec ^= 0
+      197 		then call admin_gate_$syserr_error_code (0, ec, "wdx: Unable to send wakeup on master channel");
+      198 	end;
+      199 	else lvate.waiting = "0"b;
+      200 	if lvate.state ^= 4 then lvate.pending_mount = "0"b;
+      201 	lvate.mount_req_answered = "1"b;
+      202 
+      203 	ipcmessage = "lv_mount";
+      204 
+      205 	call hcs_$wakeup (lvate.pid, lvate.evchn, fixedipcmessage, ec);
+      206 
+      207 	a_ec = ec;
+      208 	return;
+      209 
+      210 /* --------------------------------------------------------- */
+      211 
+      212 scan_process: entry (a_pid, a_array, a_n);
+      213 
+      214 	pid = a_pid;
+      215 	lvatp = s_lvatp;
+      216 
+      217 	n = 0;
+      218 
+      219 	do lvax = 1 to lvat.highest_used;
+      220 	     if lvat.array (lvax).pid = pid then do;
+      221 		n = n + 1;
+      222 		a_array (n) = lvax;
+      223 	     end;
+      224 	end;
+      225 	a_n = n;
+      226 
+      227 	return;
+      228 
+      229 /* --------------------------------------------------------- */
+      230 
+      231 scan_lv:	entry (a_lvname, a_array, a_n);
+      232 
+      233 	lvname = a_lvname;
+      234 	lvatp = s_lvatp;
+      235 
+      236 	n = 0;
+      237 
+      238 	do lvax = 1 to lvat.highest_used;
+      239 	     lvatep = addr (lvat.array (lvax));
+      240 	     if lvate.pid ^= "0"b then if lvate.pending_mount | lvate.mount_req_answered
+      241 		then if lvate.lvname = lvname & ^lvate.invalidated then do;
+      242 			n = n + 1;
+      243 			a_array (n) = lvax;
+      244 		     end;
+      245 	end;
+      246 	a_n = n;
+      247 	return;
+      248 
+      249 /* --------------------------------------------------------- */
+      250 
+      251 invalidate_lvate: entry (a_lvax);
+      252 
+      253 	lvatp = s_lvatp;
+      254 	lvatep = addr (lvat.array (a_lvax));
+      255 
+      256 	lvate.invalidated = "1"b;
+      257 	return;
+      258 
+      259 /* --------------------------------------------------------- */
+      260 
+      261 set_lvinfo: entry (a_lvax, a_lvid, a_lvx);
+      262 
+      263 	lvatp = s_lvatp;
+      264 	lvatep = addr (lvat.array (a_lvax));
+      265 
+      266 	lvate.lvid = a_lvid;
+      267 	lvate.lvx = a_lvx;
+      268 	return;
+      269 
+      270 /* --------------------------------------------------------- */
+      271 
+      272 mhvmessage: entry (a_lvax, a_username);
+      273 
+      274 	lvatp = s_lvatp;
+      275 	lvatep = addr (lvat.array (a_lvax));
+      276 
+      277 	username = a_username;
+      278 	call admin_gate_$syserr (3, "RCP: Mount logical volume ^a for ^a", lvate.lvname, username);
+      279 	return;
+      280 
+      281 /* --------------------------------------------------------- */
+      282 
+      283 poll_mounts:
+      284 	entry (a_array, a_n, a_next_time);
+      285 	
+      286 	lvatp = s_lvatp;
+      287 	next_time = END_OF_TIME;
+      288 	n = 0;
+      289 	do lvax = 1 to lvat.highest_used;
+      290 	     lvatep = addr (lvat.array (lvax));
+      291 	     if (lvate.pid ^= "0"b) & lvate.waiting & lvate.mount_req_answered & ^lvate.invalidated
+      292 		then do;
+      293 		if lvate.mount_request_timeout < clock () then do;
+      294 		     n = n + 1;
+      295 		     a_array (n) = lvax;
+      296 		     lvate.mount_request_timeout = clock () + TIMEOUT;
+      297 		end;
+      298 		next_time = min (next_time, lvate.mount_request_timeout);
+      299 	     end;
+      300 	end;
+      301 	a_n = n;
+      302 	if next_time = END_OF_TIME then a_next_time = -1;
+      303 	else a_next_time = next_time;
+      304 	return;
+      305 	
+      306 
+      307 /* --------------------------------------------------------- */
+      308 
+      309 check_mount:
+      310 	entry (a_lvax, a_username, a_unit_string);
+      311 	
+      312 	lvatp = s_lvatp;
+      313 	lvatep = addr (lvat.array (a_lvax));
+      314 	if lvate.pid ^= "0"b & lvate.waiting & lvate.mount_req_answered & ^lvate.invalidated
+      315 	     then call admin_gate_$syserr (3, "RCP: Check mount of logical volume ^a for ^a^/^15x^a",
+      316 	     lvate.lvname, (a_username), (a_unit_string));
+      317 	return;
+      318 	
+      319 
+      320 /* --------------------------------------------------------- */
+      321 test:	entry (testdir);
+      322 
+      323 dcl  testdir char (*);
+      324 	SYSDIR = testdir;
+      325 	WDX_RING = get_ring_ ();
+      326 	return;
+      327 						/*  */
+  1     1 /* Begin include file -- acl_structures.incl.pl1 BIM 3/82 */
+  1     2 /* format: style3,indcomtxt,idind30 */
+  1     3 
+  1     4 declare   acl_ptr                       pointer;
+  1     5 declare   acl_count                     fixed bin;
+  1     6 
+  1     7 declare 1 general_acl                   aligned based (acl_ptr), /* for fs_util_ */
+  1     8           2 version                     char (8) aligned,
+  1     9           2 count                       fixed bin,
+  1    10           2 entries                     (acl_count refer (general_acl.count)) aligned like general_acl_entry;
+  1    11 
+  1    12 declare 1 general_acl_entry             based,
+  1    13           2 access_name                 character (32) unaligned,
+  1    14           2 mode                        bit (36) aligned,
+  1    15           2 status_code                 fixed bin (35);
+  1    16 
+  1    17 
+  1    18 declare 1 general_extended_acl          aligned based (acl_ptr), /* for fs_util_ */
+  1    19           2 version                     char (8) aligned,
+  1    20           2 count                       fixed bin,
+  1    21           2 entries                     (acl_count refer (general_extended_acl.count)) aligned like general_extended_acl_entry;
+  1    22 
+  1    23 declare 1 general_extended_acl_entry    aligned based,
+  1    24           2 access_name                 character (32) unaligned,
+  1    25           2 mode                        bit (36) aligned,
+  1    26           2 extended_mode               bit (36) aligned,
+  1    27           2 status_code                 fixed bin (35);
+  1    28 
+  1    29 
+  1    30 declare 1 general_delete_acl            aligned based (acl_ptr), /* for file_system_ */
+  1    31           2 version                     char (8) aligned,
+  1    32           2 count                       fixed bin,
+  1    33           2 entries                     (acl_count refer (general_delete_acl.count)) aligned like delete_acl_entry;
+  1    34 
+  1    35 declare 1 general_delete_acl_entry      aligned based,
+  1    36           2 access_name                 character (32) unaligned,
+  1    37           2 status_code                 fixed bin (35);
+  1    38 
+  1    39 
+  1    40 declare 1 segment_acl                   aligned based (acl_ptr),
+  1    41           2 version                     fixed bin,
+  1    42           2 count                       fixed bin,
+  1    43           2 entries                     (acl_count refer (segment_acl.count)) aligned like segment_acl_entry;
+  1    44 
+  1    45 declare 1 segment_acl_entry             like general_extended_acl_entry aligned based;
+  1    46 declare 1 segment_acl_array             (acl_count) aligned like segment_acl_entry based (acl_ptr);
+  1    47 
+  1    48 
+  1    49 declare 1 directory_acl                 aligned based (acl_ptr),
+  1    50           2 version                     fixed bin,
+  1    51           2 count                       fixed bin,
+  1    52           2 entries                     (acl_count refer (directory_acl.count)) aligned like directory_acl_entry;
+  1    53 
+  1    54 declare 1 directory_acl_entry           like general_acl_entry aligned based;
+  1    55 declare 1 directory_acl_array           (acl_count) aligned like directory_acl_entry based (acl_ptr);
+  1    56 
+  1    57 
+  1    58 declare 1 delete_acl                    based (acl_ptr) aligned,
+  1    59           2 version                     fixed bin,
+  1    60           2 count                       fixed bin,
+  1    61           2 entries                     (acl_count refer (delete_acl.count)) aligned like delete_acl_entry;
+  1    62 
+  1    63 declare 1 delete_acl_entry              like general_delete_acl_entry aligned based;
+  1    64 declare 1 delete_acl_array              (acl_count) aligned like delete_acl_entry based (acl_ptr);
+  1    65 
+  1    66 
+  1    67 declare  (SEG_ACL_VERSION_1             init ("sga1"),
+  1    68           DIR_ACL_VERSION_1             init ("dra1"),
+  1    69           DELETE_ACL_VERSION_1          init ("dla1"))
+  1    70                                         char (4) int static options (constant);
+  1    71 
+  1    72 declare  (GENERAL_ACL_VERSION_1         init ("gacl001"),
+  1    73           GENERAL_EXTENDED_ACL_VERSION_1 init ("gxacl001"),
+  1    74           GENERAL_DELETE_ACL_VERSION_1  init ("gdacl001"))
+  1    75                                         char (8) internal static options (constant);
+  1    76 
+  1    77 declare   ACL_VERSION_1                 fixed bin init (1) int static options (constant);
+  1    78 
+  1    79 /* End include file acl_structures.incl.pl1 */
+      328 
+  2     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  2     2*
+  2     3*   Values for the "access mode" argument so often used in hardcore
+  2     4*   James R. Davis 26 Jan 81  MCR 4844
+  2     5*   Added constants for SM access 4/28/82 Jay Pattin
+  2     6*   Added text strings 03/19/85 Chris Jones
+  2     7**/
+  2     8 
+  2     9 
+  2    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2    11 dcl	(
+  2    12 	N_ACCESS		   init ("000"b),
+  2    13 	R_ACCESS		   init ("100"b),
+  2    14 	E_ACCESS		   init ("010"b),
+  2    15 	W_ACCESS		   init ("001"b),
+  2    16 	RE_ACCESS		   init ("110"b),
+  2    17 	REW_ACCESS	   init ("111"b),
+  2    18 	RW_ACCESS		   init ("101"b),
+  2    19 	S_ACCESS		   init ("100"b),
+  2    20 	M_ACCESS		   init ("010"b),
+  2    21 	A_ACCESS		   init ("001"b),
+  2    22 	SA_ACCESS		   init ("101"b),
+  2    23 	SM_ACCESS		   init ("110"b),
+  2    24 	SMA_ACCESS	   init ("111"b)
+  2    25 	)		   bit (3) internal static options (constant);
+  2    26 
+  2    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  2    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  2    29 
+  2    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  2    31 			   static options (constant);
+  2    32 
+  2    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  2    34 			   static options (constant);
+  2    35 
+  2    36 dcl	(
+  2    37 	N_ACCESS_BIN	   init (00000b),
+  2    38 	R_ACCESS_BIN	   init (01000b),
+  2    39 	E_ACCESS_BIN	   init (00100b),
+  2    40 	W_ACCESS_BIN	   init (00010b),
+  2    41 	RW_ACCESS_BIN	   init (01010b),
+  2    42 	RE_ACCESS_BIN	   init (01100b),
+  2    43 	REW_ACCESS_BIN	   init (01110b),
+  2    44 	S_ACCESS_BIN	   init (01000b),
+  2    45 	M_ACCESS_BIN	   init (00010b),
+  2    46 	A_ACCESS_BIN	   init (00001b),
+  2    47 	SA_ACCESS_BIN	   init (01001b),
+  2    48 	SM_ACCESS_BIN	   init (01010b),
+  2    49 	SMA_ACCESS_BIN	   init (01011b)
+  2    50 	)		   fixed bin (5) internal static options (constant);
+  2    51 
+  2    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      329 
+  3     1 /* BEGIN INCLUDE FILE lv_atttbl.incl.pl1 B. Greenberg 09/08/76 */
+  3     2 
+  3     3 /* This structure is used for communicating logical volume mount requests
+  3     4*   from RCP to mdxhdx */
+  3     5 
+  3     6 dcl  lvatp ptr;
+  3     7 
+  3     8 dcl 1 lvat based (lvatp) aligned,			/* Logical volume attach table */
+  3     9     2 master_pid bit (36) aligned,			/* Processid of mdxhdx process */
+  3    10     2 initialized bit (1) aligned,			/* Table has been initted */
+  3    11     2 master_evchn fixed bin (71) aligned,		/* Event channel for request wakeups */
+  3    12     2 max_n_entries fixed bin,			/* Number of entries  maximum */
+  3    13     2 highest_used fixed bin,				/* Highest number used */
+  3    14     2 pad(10) fixed bin,
+  3    15     2 array like lvate dim (0 refer (lvat.max_n_entries));
+  3    16 
+  3    17 dcl  lvatep ptr;
+  3    18 
+  3    19 dcl 1 lvate based (lvatep) aligned,			/* LVAT Entry */
+  3    20     2 pid bit (36) aligned,				/* LOCK/PROCESSID */
+  3    21     2 state fixed bin,				/* state of attachment */
+  3    22     2 code fixed bin (35),				/* error table code if appropriate */
+  3    23     2 lvname char (32),				/* Name involved */
+  3    24     2 evchn fixed bin (71),				/* Reply channel */
+  3    25     2 flags,					/* various flags */
+  3    26      3 pending_mount bit (1) unal,			/* Mount pending */
+  3    27      3 mount_req_answered bit (1) unal,			/* Inz has answered */
+  3    28      3 detach_requested bit (1) unal,			/* detach has been requested */
+  3    29      3 mounted bit (1) unal,				/* has been attached */
+  3    30      3 waiting bit (1) unal,				/* waiting for mount */
+  3    31      3 invalidated bit (1) unal,			/* entry invalidated by Inz */
+  3    32      3 pad bit  (30) unal,
+  3    33     2 lvx fixed bin,				/* Used when valid */
+  3    34     2 lvid bit (36) aligned,				/* Used to validate above */
+  3    35     2 mount_request_timeout fixed bin (71);		/* Time to repeat mount message */
+  3    36 	
+  3    37 
+  3    38 /* END INCLUDE FILE lv_atttbl.incl.pl1 */
+      330 
+      331 
+      332 
+      333 /*  BEGIN MESSAGE DOCUMENTATION
+      334*
+      335*   Message:
+      336*   RCP: Mount logical volume LVNAME for PROCESSNAME
+      337*
+      338*   S: $beep
+      339*
+      340*   T: $run
+      341*
+      342*   M: A user (PROCESSNAME) has requested the attachment
+      343*   of logical volume LVNAME. It is not now mounted.  The
+      344*   initializer will issue mount messages for all physical volumes needed.
+      345*
+      346*   A: Mount the required physical volumes, using the add_vol command
+      347*   to indicate when each has been made ready.  The user process will
+      348*   continue when the last volume has been mounted.  If the volume
+      349*   cannot be mounted, use the del_lv command to indicate this fact,
+      350*   and the user process will receive an error indication.
+      351*
+      352*
+      353*   Message:
+      354*   RCP: Check mount of logical volume LVNAME for PROCESSNAME
+      355*        PVNAME1(DRIVE1) ...
+      356*
+      357*   S: $beep
+      358*
+      359*   T: $run
+      360*
+      361*   M: A user (PROCESSNAME) previously requested the attachment of logical volume
+      362*   LVNAME.  The mount has not been accomplished in a 4 minutes.
+      363*   All required physical volumes are specified (PVNAMEi, DRIVEi).
+      364*
+      365*   A: Mount the required physical volumes, using the add_vol command
+      366*   to indicate when each has been made ready.  The user process will
+      367*   continue when the last volume has been mounted.  If the volume
+      368*   cannot be mounted, use the del_lv command to indicate this fact,
+      369*   and the user process will receive an error indication.
+      370*
+      371*  
+      372*   Message:
+      373*   wdx: ERRORCODE Unable to send wakeup on master channel.
+      374*
+      375*   S: $info
+      376*
+      377*   T: $run
+      378*
+      379*   M: The ring-1 logical volume mount software was unable to send a wakeup
+      380*   to the ring-4 software for the reason indicated.  Some mount requests
+      381*   may have been lost.
+      382*
+      383*   A: $contact_sa
+      384*
+      385*   END MESSAGE DOCUMENTATION */
+      386 
+      387      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.3  wdx.pl1                           >spec>install>1111>wdx.pl1
+328          1    10/14/83  1606.6  acl_structures.incl.pl1           >ldd>include>acl_structures.incl.pl1
+329          2    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+330          3    02/09/82  1152.3  lv_atttbl.incl.pl1                >ldd>include>lv_atttbl.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+END_OF_TIME                     000012 constant        fixed bin(71,0)          initial dcl 75 ref 287 302
+LVAT_NAME                       000002 constant        char(32)                 initial packed unaligned dcl 76 set ref 117* 127*
+                                                                                  135*
+RW_ACCESS                              constant        bit(3)                   initial packed unaligned dcl 2-11 ref 131
+SYSDIR                          000012 internal static char(168)                initial packed unaligned dcl 78 set ref 117* 127*
+                                                                                  135* 324*
+TIMEOUT                         000000 constant        fixed bin(71,0)          initial dcl 79 ref 193 296
+WDX_RING                        000064 internal static fixed bin(17,0)          initial dcl 80 set ref 116* 325*
+a_array                                parameter       fixed bin(17,0)          array dcl 43 set ref 212 222* 231 243* 283 295*
+a_code                                 parameter       fixed bin(35,0)          dcl 44 ref 179 185
+a_ec                                   parameter       fixed bin(35,0)          dcl 45 set ref 13 112* 120* 152 158* 164* 179 207*
+a_evchn                                parameter       fixed bin(71,0)          dcl 46 ref 13 143
+a_lvatep                               parameter       pointer                  dcl 47 ref 152 163
+a_lvax                                 parameter       fixed bin(17,0)          dcl 48 ref 152 154 169 172 179 183 251 254 261 264
+                                                                                  272 275 309 313
+a_lvid                                 parameter       bit(36)                  dcl 49 ref 261 266
+a_lvname                               parameter       char                     packed unaligned dcl 50 ref 231 233
+a_lvx                                  parameter       fixed bin(17,0)          dcl 51 ref 261 267
+a_n                                    parameter       fixed bin(17,0)          dcl 52 set ref 212 225* 231 246* 283 301*
+a_next_time                            parameter       fixed bin(71,0)          dcl 53 set ref 283 302* 303*
+a_pid                                  parameter       bit(36)                  dcl 54 ref 212 214
+a_state                                parameter       fixed bin(17,0)          dcl 55 ref 179 186
+a_unit_string                          parameter       varying char             dcl 56 ref 309 314
+a_username                             parameter       char                     packed unaligned dcl 57 ref 272 277 309 314
+access_name                     000100 automatic       char(32)                 array level 2 packed packed unaligned dcl 61 set ref
+                                                                                  130*
+admin_gate_$reclassify_sys_seg  000066 constant        entry                    external dcl 87 ref 127
+admin_gate_$syserr              000070 constant        entry                    external dcl 88 ref 278 314
+admin_gate_$syserr_error_code   000072 constant        entry                    external dcl 89 ref 196
+array                    20            based           structure                array level 2 dcl 3-8 set ref 162 172 183 239 254
+                                                                                  264 275 290 313
+cleanup                         000144 stack reference condition                dcl 109 ref 115
+clock                                                  builtin function         dcl 102 ref 193 293 296
+code                      2            based           fixed bin(35,0)          level 2 dcl 3-19 set ref 185*
+cu_$level_get                   000074 constant        entry                    external dcl 90 ref 114
+cu_$level_set                   000076 constant        entry                    external dcl 91 ref 115 116 119 139
+delete_acl_entry                       based           structure                level 1 dcl 1-63
+directory_acl_entry                    based           structure                level 1 dcl 1-54
+ec                              000113 automatic       fixed bin(35,0)          dcl 63 set ref 117* 120 124* 125 127* 128 135* 136
+                                                                                  136* 137 195* 196 196* 205* 207
+evchn                    14            based           fixed bin(71,0)          level 2 dcl 3-19 set ref 205*
+extended_mode            11     000100 automatic       bit(36)                  array level 2 dcl 61 set ref 132*
+fixedipcmessage                 000114 automatic       fixed bin(71,0)          dcl 64 set ref 194 195* 203 205*
+flags                    16            based           structure                level 2 dcl 3-19
+general_acl_entry                      based           structure                level 1 unaligned dcl 1-12
+general_delete_acl_entry               based           structure                level 1 dcl 1-35
+general_extended_acl_entry             based           structure                level 1 dcl 1-23
+get_max_authorization_          000100 constant        entry                    external dcl 92 ref 127 127
+get_process_id_                 000102 constant        entry                    external dcl 93 ref 142
+get_ring_                       000104 constant        entry                    external dcl 94 ref 325
+hcs_$add_acl_entries            000106 constant        entry                    external dcl 95 ref 135
+hcs_$make_seg                   000110 constant        entry                    external dcl 96 ref 117
+hcs_$truncate_seg               000112 constant        entry                    external dcl 97 ref 124
+hcs_$wakeup                     000114 constant        entry                    external dcl 98 ref 195 205
+highest_used              5            based           fixed bin(17,0)          level 2 dcl 3-8 set ref 146* 157 219 238 289
+initialized               1            based           bit(1)                   level 2 dcl 3-8 set ref 147*
+invalidated              16(05)        based           bit(1)                   level 3 packed packed unaligned dcl 3-19 set ref 240
+                                                                                  256* 291 314
+ipcmessage                             based           char(8)                  packed unaligned dcl 83 set ref 194* 203*
+lvat                                   based           structure                level 1 dcl 3-8
+lvate                                  based           structure                level 1 dcl 3-19 set ref 163* 163
+lvatep                          000154 automatic       pointer                  dcl 3-17 set ref 162* 163 172* 174 174 183* 185 186
+                                                                                  187 188 189 191 192 193 199 200 200 201 205 205
+                                                                                  239* 240 240 240 240 240 254* 256 264* 266 267
+                                                                                  275* 278 290* 291 291 291 291 293 296 298 313* 314
+                                                                                  314 314 314 314
+lvatp                           000152 automatic       pointer                  dcl 3-6 set ref 140* 142 143 145 146 147 156* 157
+                                                                                  162 171* 172 182* 183 195 195 215* 219 220 234*
+                                                                                  238 239 253* 254 263* 264 274* 275 286* 289 290
+                                                                                  312* 313
+lvax                            000116 automatic       fixed bin(17,0)          dcl 65 set ref 154* 157 157 162 219* 220 222* 238*
+                                                                                  239 243* 289* 290 295*
+lvid                     20            based           bit(36)                  level 2 dcl 3-19 set ref 266*
+lvname                          000117 automatic       char(32)                 packed unaligned dcl 66 in procedure "wdx$init" set
+                                                                                  ref 233* 240
+lvname                    3            based           char(32)                 level 2 in structure "lvate" dcl 3-19 in procedure
+                                                                                  "wdx$init" set ref 240 278* 314*
+lvx                      17            based           fixed bin(17,0)          level 2 dcl 3-19 set ref 267*
+master_evchn              2            based           fixed bin(71,0)          level 2 dcl 3-8 set ref 143* 195*
+master_pid                             based           bit(36)                  level 2 dcl 3-8 set ref 142* 195*
+max_n_entries             4            based           fixed bin(17,0)          level 2 dcl 3-8 set ref 145*
+min                                                    builtin function         dcl 103 ref 298
+mode                     10     000100 automatic       bit(36)                  array level 2 dcl 61 set ref 131*
+mount_req_answered       16(01)        based           bit(1)                   level 3 packed packed unaligned dcl 3-19 set ref
+                                                                                  201* 240 291 314
+mount_request_timeout
+                         22            based           fixed bin(71,0)          level 2 dcl 3-19 set ref 193* 293 296* 298
+mounted                  16(03)        based           bit(1)                   level 3 packed packed unaligned dcl 3-19 set ref
+                                                                                  189*
+n                               000127 automatic       fixed bin(17,0)          dcl 67 set ref 217* 221* 221 222 225 236* 242* 242
+                                                                                  243 246 288* 294* 294 295 301
+next_time                       000130 automatic       fixed bin(71,0)          dcl 68 set ref 287* 298* 298 302 303
+null                                                   builtin function         dcl 104 ref 118
+pending_mount            16            based           bit(1)                   level 3 packed packed unaligned dcl 3-19 set ref
+                                                                                  200* 240
+pid                      20            based           bit(36)                  array level 3 in structure "lvat" dcl 3-8
+                                                                                  in procedure "wdx$init" set ref 220
+pid                             000132 automatic       bit(36)                  dcl 69 in procedure "wdx$init" set ref 214* 220
+pid                                    based           bit(36)                  level 2 in structure "lvate" dcl 3-19 in procedure
+                                                                                  "wdx$init" set ref 174 174 205* 240 291 314
+s_lvatp                         000010 internal static pointer                  initial dcl 77 set ref 117* 118 124* 140 156 171 182
+                                                                                  215 234 253 263 274 286 312
+save_lev                        000133 automatic       fixed bin(17,0)          dcl 70 set ref 114* 115* 119* 139*
+seg_acl                         000100 automatic       structure                array level 1 dcl 61 set ref 135 135
+segment_acl_entry                      based           structure                level 1 dcl 1-45
+stacq                                                  builtin function         dcl 105 ref 174
+state                     1            based           fixed bin(17,0)          level 2 dcl 3-19 set ref 186* 187 191 200
+status_code              12     000100 automatic       fixed bin(35,0)          array level 2 dcl 61 set ref 133* 136 136
+testdir                                parameter       char                     packed unaligned dcl 323 ref 321 324
+username                        000134 automatic       char(32)                 packed unaligned dcl 71 set ref 277* 278*
+waiting                  16(04)        based           bit(1)                   level 3 packed packed unaligned dcl 3-19 set ref
+                                                                                  188* 192* 199* 291 314
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACL_VERSION_1                          internal static fixed bin(17,0)          initial dcl 1-77
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+DELETE_ACL_VERSION_1                   internal static char(4)                  initial packed unaligned dcl 1-67
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-33
+DIR_ACL_VERSION_1                      internal static char(4)                  initial packed unaligned dcl 1-67
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+GENERAL_ACL_VERSION_1                  internal static char(8)                  initial packed unaligned dcl 1-72
+GENERAL_DELETE_ACL_VERSION_1           internal static char(8)                  initial packed unaligned dcl 1-72
+GENERAL_EXTENDED_ACL_VERSION_1         internal static char(8)                  initial packed unaligned dcl 1-72
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-30
+SEG_ACL_VERSION_1                      internal static char(4)                  initial packed unaligned dcl 1-67
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+acl_count                              automatic       fixed bin(17,0)          dcl 1-5
+acl_ptr                                automatic       pointer                  dcl 1-4
+delete_acl                             based           structure                level 1 dcl 1-58
+delete_acl_array                       based           structure                array level 1 dcl 1-64
+directory_acl                          based           structure                level 1 dcl 1-49
+directory_acl_array                    based           structure                array level 1 dcl 1-55
+general_acl                            based           structure                level 1 dcl 1-7
+general_delete_acl                     based           structure                level 1 dcl 1-30
+general_extended_acl                   based           structure                level 1 dcl 1-18
+segment_acl                            based           structure                level 1 dcl 1-40
+segment_acl_array                      based           structure                array level 1 dcl 1-46
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+check_mount                     001377 constant        entry                    external dcl 309
+free_lvate                      000502 constant        entry                    external dcl 169
+init_lose                       000241 constant        label                    dcl 119 ref 125 128 137
+invalidate_lvate                001110 constant        entry                    external dcl 251
+mhvmessage                      001164 constant        entry                    external dcl 272
+poll_mounts                     001253 constant        entry                    external dcl 283
+respond_mount_lv                000535 constant        entry                    external dcl 179
+retrieve_lvate                  000437 constant        entry                    external dcl 152
+scan_lv                         001000 constant        entry                    external dcl 231
+scan_process                    000710 constant        entry                    external dcl 212
+set_lvinfo                      001135 constant        entry                    external dcl 261
+test                            001524 constant        entry                    external dcl 321
+wdx$init                        000123 constant        entry                    external dcl 13
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 135 135 162 172 183 194 203 239 254 264 275 290
+                                                                                  313
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2054        2172    1557        2064
+Length      2462    1557       116         254     274          56
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+wdx$init                            176 external procedure  is an external procedure.  
+on unit on line 115                  68 on unit               
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 s_lvatp                     wdx$init
+000012 SYSDIR                      wdx$init
+000064 WDX_RING                    wdx$init
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+wdx$init                 000100 seg_acl                     wdx$init
+                         000113 ec                          wdx$init
+                         000114 fixedipcmessage             wdx$init
+                         000116 lvax                        wdx$init
+                         000117 lvname                      wdx$init
+                         000127 n                           wdx$init
+                         000130 next_time                   wdx$init
+                         000132 pid                         wdx$init
+                         000133 save_lev                    wdx$init
+                         000134 username                    wdx$init
+                         000152 lvatp                       wdx$init
+                         000154 lvatep                      wdx$init
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          enable_op           shorten_stack
+ext_entry           ext_entry_desc      int_entry           stacq_mac           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$reclassify_sys_seg                              admin_gate_$syserr            admin_gate_$syserr_error_code
+cu_$level_get                 cu_$level_set                 get_max_authorization_        get_process_id_
+get_ring_                     hcs_$add_acl_entries          hcs_$make_seg                 hcs_$truncate_seg
+hcs_$wakeup
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000117       112 000133       114 000134       115 000142       116 000166       117 000175       118 000234
+    119 000241       120 000250       121 000252       124 000253       125 000266       127 000270       128 000324
+    130 000326       131 000331       132 000333       133 000334       135 000335       136 000372       137 000377
+    139 000401       140 000410       142 000413       143 000421       145 000425       146 000427       147 000430
+    148 000432       152 000433       154 000447       156 000452       157 000455       158 000462       159 000464
+    162 000465       163 000470       164 000475       165 000476       169 000477       171 000507       172 000512
+    174 000520       175 000527       179 000530       182 000545       183 000550       185 000556       186 000560
+    187 000562       188 000564       189 000566       190 000570       191 000571       192 000573       193 000575
+    194 000600       195 000602       196 000620       198 000647       199 000650       200 000652       201 000660
+    203 000662       205 000664       207 000701       208 000703       212 000704       214 000725       215 000730
+    217 000733       219 000734       220 000745       221 000753       222 000754       224 000767       225 000771
+    227 000773       231 000774       233 001022       234 001030       236 001033       238 001034       239 001045
+    240 001051       242 001065       243 001066       245 001101       246 001103       247 001105       251 001106
+    253 001115       254 001120       256 001126       257 001130       261 001131       263 001142       264 001145
+    266 001153       267 001155       268 001157       272 001160       274 001177       275 001202       277 001210
+    278 001215       279 001246       283 001247       286 001270       287 001273       288 001275       289 001276
+    290 001307       291 001313       293 001324       294 001330       295 001331       296 001344       298 001350
+    300 001355       301 001357       302 001361       303 001370       304 001372       309 001373       312 001417
+    313 001422       314 001430       317 001517       321 001521       324 001537       325 001546       326 001554
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

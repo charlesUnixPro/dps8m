@@ -1,0 +1,599 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXkmfQCpj
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1027.3 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*   *                                                         *
+        7*   *********************************************************** */
+        8 /* Hierarchy dumper/reloader subsystem static data */
+        9 
+       10 /* Created:  June 1982 by G. Palter from ALM source with modifications for true AIM support in IMFT */
+       11 /* Modified: August 1983 by Robert Coren to add minimum_access_class */
+       12 /* Modified: November 1983 by Robert Coren to add upgrade_to_user_auth */
+       13 
+       14 
+       15 /* HISTORY COMMENTS:
+       16*  1) change(87-03-03,GWMay), approve(87-03-03,MCR7627), audit(87-03-13,Farley),
+       17*     install(87-03-30,MR12.1-1018):
+       18*     added a switch, writing_map, to indicate when the dump map is
+       19*     being written.
+       20*                                                   END HISTORY COMMENTS */
+       21 
+       22 
+       23 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+       24 
+       25 
+       26 bk_ss_:
+       27      procedure () options (variable);
+       28 
+       29 
+       30 dcl  1 bk_static aligned,				/* static data */
+       31        2 allow_dir_overwrite bit (1),			/* ON => allows reloaded segment to replace a directory */
+       32        2 areap pointer,				/* -> directory list */
+       33        2 brief_mapsw bit (1),				/* ON => suppress form-feeds in maps */
+       34        2 caller_handles_conditions bit (1),		/* ON => caller traps errors for us */
+       35        2 control_name character (168) unaligned,		/* dump control segment pathname */
+       36        2 control_ptr pointer,				/* -> control structure for subroutine entries */
+       37        2 cross_retrievesw bit (1),			/* ON => cross retrieveing an entry */
+       38        2 data_iocb pointer,				/* -> I/O switch if preattached by caller */
+       39        2 date fixed binary (52),			/* dump anything modified after this date */
+       40        2 datesw bit (1),				/* ON => dump/reload by date/time modified */
+       41        2 debugsw bit (1),				/* ON => do not use privileged entries */
+       42        2 dir_trim bit (1),				/* ON => delete directories when trimming on reload */
+       43        2 dprint_destination character (24) unaligned,	/* destination for dprinting maps */
+       44        2 dprint_destination_setsw bit (1),		/* ON => destination (above) is set */
+       45        2 dprint_heading character (64) unaligned,		/* heading for dprinting maps */
+       46        2 dprint_heading_setsw bit (1),			/* ON => heading is set */
+       47        2 dprint_queue fixed binary,			/* queue for dprint requests */
+       48        2 dprint_request_type character (24) unaligned,	/* request type for dprint requests */
+       49        2 dprint_request_type_setsw bit (1),		/* ON => request type is set */
+       50        2 dprintsw bit (1),				/* ON => dprint maps */
+       51        2 dtdsw bit (1),				/* ON => dump by date/time dumped */
+       52        2 ename character (32),			/* name of branch to dump */
+       53        2 err_label label variable,			/* error recovery label */
+       54        2 err_onlinesw bit (1),			/* ON => print errors online */
+       55        2 error fixed binary,				/* indicates error recovery method */
+       56        2 holdsw bit (1),				/* ON => do not unmount tape when done */
+       57        2 hp pointer,				/* -> preamble segment */
+       58        2 ignore_dates bit (1),			/* ON => reload without checking dates */
+       59        2 mapsw bit (1),				/* ON => produce a map */
+       60        2 myname character (16) unaligned,		/* name of module invoked (backup_dump, reload, ...) */
+       61        2 namesw bit (1),				/* ON => dump only the named branch */
+       62        2 no_contin bit (1),				/* ON => stop dumping after a catchup dump */
+       63        2 no_output bit (1),				/* ON => do not actually make the tape */
+       64        2 no_primary bit (1),				/* ON => do not use primary pathnames */
+       65        2 no_reload bit (1),				/* ON => do not reload anything into storage system */
+       66        2 no_setlvid bit (1),				/* ON => do not set sons LVID when reloading */
+       67        2 ntapes fixed binary,				/* # of tapes to make (1 or 2) */
+       68        2 onlysw bit (1),				/* ON => do not dump subtree contents or stop on first match
+       69*						   on reload */
+       70        2 operator character (32) unaligned,		/* name of operator running dump/reload */
+       71        2 path_index fixed binary,			/* index in backup_control structure being processed */
+       72        2 pathsw bit (1),				/* ON => have starting directory for a dump */
+       73        2 preattached bit (1),				/* ON => use caller's I/O switch for I/O */
+       74        2 pvsw bit (1),				/* ON => reload only for given physical volume */
+       75        2 pvname character (32),			/* name of volume for reload */
+       76        2 qchecksw bit (1),				/* ON => do not suspend quota checking */
+       77        2 quotasw bit (1),				/* ON => restore quota from tape */
+       78        2 restart_dumpsw bit (1),			/* ON => restart dump from given directory */
+       79        2 restart_path character (168),			/* pathname of where to restart dump */
+       80        2 restart_plen fixed binary,			/* length of said pathname */
+       81        2 retrieval_index fixed binary,			/* index of object in bk_retrieve's table */
+       82        2 retrievesw bit (1),				/* ON => retrieval vs. reload */
+       83        2 rlen fixed binary,				/* length of current restart dirname */
+       84        2 rname character (168) unaligned,		/* pathname of retrieval control segment */
+       85        2 rsize fixed binary,				/* size of above pathname */
+       86        2 save_path character (168) unaligned,		/* saved pathname (for subtree dumping) */
+       87        2 save_plen fixed binary,			/* length of saved pathname */
+       88        2 save_time fixed binary (52),			/* starting time of dump/reload */
+       89        2 segptr pointer,				/* -> segment being dumper */
+       90        2 set_dtd bit (1),				/* ON => set date/time dumped */
+       91        2 set_dtd_explicit bit (1),			/* ON => above was set by user/operator */
+       92        2 sp pointer,				/* -> output buffer */
+       93        2 sub_entry bit (1),				/* ON => backup_dump_/backup_load_ */
+       94        2 sub_entry_errfile bit (1),			/* ON => produce error file even when subroutine call */
+       95        2 tapesw bit (1),				/* ON => produce output */
+       96        2 trimsw bit (1),				/* ON => trim contents when reloading */
+       97        2 volume_set_name character (32) unaligned,	/* tape volume name (unimplemented) */
+       98        2 wakeup_interval fixed binary (52),		/* wakeup interval for incremental dumps */
+       99        2 wasnt_known bit (1),				/* ON => must terminate segment being dumped */
+      100        2 enforce_max_access_class bit (1),		/* ON => don't dump anything above give access class */
+      101        2 maximum_access_class bit (72),			/* the maximum access class to enforce on all branches */
+      102        2 enforce_min_access_class bit (1),		/* ON => don't dump anything below give access class */
+      103        2 minimum_access_class bit (72),			/* the minimum access class to enforce on all branches */
+      104        2 dont_dump_upgraded_dirs bit (1),		/* ON => don't dump any directory above given access class */
+      105        2 maximum_dir_access_class bit (72),		/* the access class to enforce on directories */
+      106        2 check_effective_access bit (1),		/* ON => don't dump branches given user can't access */
+      107        2 upgrade_to_user_auth bit (1),			/* ON => set access class of branch being dumped to user's authorization */
+      108        2 user_id character (32) unaligned,		/* the user's Person.Project.tag */
+      109        2 user_authorization bit (72),			/* the user's process authorization */
+      110        2 user_ring fixed binary,			/* the user's ring of execution */
+      111        2 restore_access_class bit (1),			/* ON => restore access class even when debugging */
+      112        2 enforce_minimum_ring bit (1),			/* ON => don't give anything lower ring bracket */
+      113        2 minimum_ring fixed binary,			/* the minimum ring bracket to be used */
+      114        2 translate_access_class bit (1),		/* ON => translate access classes read from tape */
+      115        2 source_attributes_ptr pointer,			/* -> source system's AIM attributes */
+      116        2 target_attributes_ptr pointer,			/* -> target system's AIM attributes */
+      117        2 writing_map bit (1);				/* ON => in backup_map$try_write */
+      118 
+      119 dcl  1 err_label_structure aligned based (addr (bk_static.err_label)),
+      120        2 codeptr pointer,
+      121        2 environmentptr pointer;
+      122 
+      123 dcl  1 cds_control automatic aligned like cds_args;
+      124 
+      125 dcl  code fixed binary (35);
+      126 
+      127 dcl  BK_SS_ character (32) static options (constant) initial ("bk_ss_");
+      128 
+      129 dcl  com_err_ entry () options (variable);
+      130 dcl  create_data_segment_ entry (pointer, fixed binary (35));
+      131 
+      132 dcl  (addr, currentsize, null, string, unspec) builtin;
+      133 
+      134 /* Supply initial values for static data */
+      135 
+      136 	unspec (bk_static) = ""b;
+      137 
+      138 	err_label_structure = null ();
+      139 	bk_static.areap = null ();
+      140 	bk_static.hp = null ();
+      141 	bk_static.segptr = null ();
+      142 	bk_static.sp = null ();
+      143 	bk_static.control_ptr = null ();
+      144 	bk_static.data_iocb = null ();
+      145 	bk_static.date = 0;
+      146 	bk_static.save_time = 0;
+      147 	bk_static.wakeup_interval = 0;
+      148 	bk_static.cross_retrievesw = "0"b;
+      149 	bk_static.allow_dir_overwrite = "0"b;
+      150 	bk_static.control_name = "";
+      151 	bk_static.datesw = "0"b;
+      152 	bk_static.debugsw = "0"b;
+      153 	bk_static.dir_trim = "0"b;
+      154 	bk_static.dprint_destination = "";
+      155 	bk_static.dprint_destination_setsw = "0"b;
+      156 	bk_static.dprint_heading = "";
+      157 	bk_static.dprint_heading_setsw = "0"b;
+      158 	bk_static.dprint_queue = -1;
+      159 	bk_static.dprint_request_type = "";
+      160 	bk_static.dprint_request_type_setsw = "0"b;
+      161 	bk_static.dprintsw = "1"b;
+      162 	bk_static.dtdsw = "0"b;
+      163 	bk_static.ename = "";
+      164 	bk_static.err_onlinesw = "0"b;
+      165 	bk_static.error = 0;
+      166 	bk_static.holdsw = "0"b;
+      167 	bk_static.ignore_dates = "0"b;
+      168 	bk_static.mapsw = "1"b;
+      169 	bk_static.brief_mapsw = "0"b;
+      170 	bk_static.myname = "";
+      171 	bk_static.namesw = "0"b;
+      172 	bk_static.no_contin = "0"b;
+      173 	bk_static.no_output = "0"b;
+      174 	bk_static.no_primary = "0"b;
+      175 	bk_static.no_reload = "0"b;
+      176 	bk_static.no_setlvid = "0"b;
+      177 	bk_static.ntapes = 1;
+      178 	bk_static.onlysw = "0"b;
+      179 	bk_static.operator = "";
+      180 	bk_static.path_index = 1;
+      181 	bk_static.pathsw = "0"b;
+      182 	bk_static.pvsw = "0"b;
+      183 	bk_static.pvname = "";
+      184 	bk_static.qchecksw = "0"b;
+      185 	bk_static.quotasw = "0"b;
+      186 	bk_static.rlen = 0;
+      187 	bk_static.restart_dumpsw = "0"b;
+      188 	bk_static.restart_plen = 0;
+      189 	bk_static.restart_path = "";
+      190 	bk_static.retrieval_index = 1;
+      191 	bk_static.retrievesw = "0"b;
+      192 	bk_static.rsize = 0;
+      193 	bk_static.rname = "";
+      194 	bk_static.save_plen = 0;
+      195 	bk_static.save_path = "";
+      196 	bk_static.set_dtd = "0"b;
+      197 	bk_static.set_dtd_explicit = "0"b;
+      198 	bk_static.sub_entry = "0"b;
+      199 	bk_static.sub_entry_errfile = "0"b;
+      200 	bk_static.caller_handles_conditions = "0"b;
+      201 	bk_static.tapesw = "1"b;
+      202 	bk_static.trimsw = "0"b;
+      203 	bk_static.volume_set_name = "";
+      204 	bk_static.wasnt_known = "0"b;
+      205 	bk_static.preattached = "0"b;
+      206 	bk_static.enforce_max_access_class = "0"b;
+      207 	bk_static.maximum_access_class = ""b;
+      208 	bk_static.enforce_min_access_class = "0"b;
+      209 	bk_static.minimum_access_class = ""b;
+      210 	bk_static.dont_dump_upgraded_dirs = "0"b;
+      211 	bk_static.maximum_dir_access_class = ""b;
+      212 	bk_static.check_effective_access = "0"b;
+      213 	bk_static.upgrade_to_user_auth = "0"b;
+      214 	bk_static.user_id = "";
+      215 	bk_static.user_authorization = ""b;
+      216 	bk_static.user_ring = 0;
+      217 	bk_static.restore_access_class = "0"b;
+      218 	bk_static.enforce_minimum_ring = "0"b;
+      219 	bk_static.minimum_ring = 0;
+      220 	bk_static.translate_access_class = "0"b;
+      221 	bk_static.source_attributes_ptr = null ();
+      222 	bk_static.target_attributes_ptr = null ();
+      223 
+      224 
+      225 /* Fill in CDS description and create the data segment */
+      226 
+      227 	cds_control.sections (1).p = null ();
+      228 	cds_control.sections (1).len = 0;
+      229 	cds_control.sections (1).struct_name = "";
+      230 
+      231 	cds_control.sections (2).p = addr (bk_static);
+      232 	cds_control.sections (2).len = currentsize (bk_static);
+      233 	cds_control.sections (2).struct_name = "bk_static";
+      234 
+      235 	cds_control.seg_name = BK_SS_;
+      236 	cds_control.num_exclude_names = 0;
+      237 	cds_control.exclude_array_ptr = null ();
+      238 
+      239 	string (cds_control.switches) = ""b;
+      240 	cds_control.have_static = "1"b;
+      241 
+      242 	call create_data_segment_ (addr (cds_control), code);
+      243 	if code ^= 0 then call com_err_ (code, BK_SS_);
+      244 
+      245 	return;
+      246 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+      247 
+      248 
+      249      end bk_ss_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.8  !BBBJZjXkmfQCpj.pl1               >spec>install>1111>bk_ss_.cds
+247          1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BK_SS_                          000000 constant        char(32)                 initial packed unaligned dcl 127 set ref 235 243*
+addr                                                   builtin function         dcl 132 ref 119 119 119 138 231 242 242
+allow_dir_overwrite             000100 automatic       bit(1)                   level 2 dcl 30 set ref 149*
+areap                     2     000100 automatic       pointer                  level 2 dcl 30 set ref 139*
+bk_static                       000100 automatic       structure                level 1 dcl 30 set ref 136* 231 232
+brief_mapsw               4     000100 automatic       bit(1)                   level 2 dcl 30 set ref 169*
+caller_handles_conditions
+                          5     000100 automatic       bit(1)                   level 2 dcl 30 set ref 200*
+cds_args                               based           structure                level 1 dcl 1-3
+cds_control                     000622 automatic       structure                level 1 dcl 123 set ref 242 242
+check_effective_access
+                        472     000100 automatic       bit(1)                   level 2 dcl 30 set ref 212*
+code                            000667 automatic       fixed bin(35,0)          dcl 125 set ref 242* 243 243*
+com_err_                        000012 constant        entry                    external dcl 129 ref 243
+control_name              6     000100 automatic       char(168)                level 2 packed packed unaligned dcl 30 set ref 150*
+control_ptr              60     000100 automatic       pointer                  level 2 dcl 30 set ref 143*
+create_data_segment_            000014 constant        entry                    external dcl 130 ref 242
+cross_retrievesw         62     000100 automatic       bit(1)                   level 2 dcl 30 set ref 148*
+currentsize                                            builtin function         dcl 132 ref 232
+data_iocb                64     000100 automatic       pointer                  level 2 dcl 30 set ref 144*
+date                     66     000100 automatic       fixed bin(52,0)          level 2 dcl 30 set ref 145*
+datesw                   70     000100 automatic       bit(1)                   level 2 dcl 30 set ref 151*
+debugsw                  71     000100 automatic       bit(1)                   level 2 dcl 30 set ref 152*
+dir_trim                 72     000100 automatic       bit(1)                   level 2 dcl 30 set ref 153*
+dont_dump_upgraded_dirs
+                        467     000100 automatic       bit(1)                   level 2 dcl 30 set ref 210*
+dprint_destination       73     000100 automatic       char(24)                 level 2 packed packed unaligned dcl 30 set ref 154*
+dprint_destination_setsw
+                        101     000100 automatic       bit(1)                   level 2 dcl 30 set ref 155*
+dprint_heading          102     000100 automatic       char(64)                 level 2 packed packed unaligned dcl 30 set ref 156*
+dprint_heading_setsw    122     000100 automatic       bit(1)                   level 2 dcl 30 set ref 157*
+dprint_queue            123     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 158*
+dprint_request_type     124     000100 automatic       char(24)                 level 2 packed packed unaligned dcl 30 set ref 159*
+dprint_request_type_setsw
+                        132     000100 automatic       bit(1)                   level 2 dcl 30 set ref 160*
+dprintsw                133     000100 automatic       bit(1)                   level 2 dcl 30 set ref 161*
+dtdsw                   134     000100 automatic       bit(1)                   level 2 dcl 30 set ref 162*
+ename                   135     000100 automatic       char(32)                 level 2 dcl 30 set ref 163*
+enforce_max_access_class
+                        461     000100 automatic       bit(1)                   level 2 dcl 30 set ref 206*
+enforce_min_access_class
+                        464     000100 automatic       bit(1)                   level 2 dcl 30 set ref 208*
+enforce_minimum_ring    510     000100 automatic       bit(1)                   level 2 dcl 30 set ref 218*
+err_label               146     000100 automatic       label variable           level 2 dcl 30 set ref 119 119 119 138
+err_label_structure                    based           structure                level 1 dcl 119 set ref 138*
+err_onlinesw            152     000100 automatic       bit(1)                   level 2 dcl 30 set ref 164*
+error                   153     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 165*
+exclude_array_ptr        42     000622 automatic       pointer                  level 2 dcl 123 set ref 237*
+have_static              44(03) 000622 automatic       bit(1)                   level 3 packed packed unaligned dcl 123 set ref 240*
+holdsw                  154     000100 automatic       bit(1)                   level 2 dcl 30 set ref 166*
+hp                      156     000100 automatic       pointer                  level 2 dcl 30 set ref 140*
+ignore_dates            160     000100 automatic       bit(1)                   level 2 dcl 30 set ref 167*
+len                       2     000622 automatic       fixed bin(18,0)          array level 3 dcl 123 set ref 228* 232*
+mapsw                   161     000100 automatic       bit(1)                   level 2 dcl 30 set ref 168*
+maximum_access_class    462     000100 automatic       bit(72)                  level 2 dcl 30 set ref 207*
+maximum_dir_access_class
+                        470     000100 automatic       bit(72)                  level 2 dcl 30 set ref 211*
+minimum_access_class    465     000100 automatic       bit(72)                  level 2 dcl 30 set ref 209*
+minimum_ring            511     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 219*
+myname                  162     000100 automatic       char(16)                 level 2 packed packed unaligned dcl 30 set ref 170*
+namesw                  166     000100 automatic       bit(1)                   level 2 dcl 30 set ref 171*
+no_contin               167     000100 automatic       bit(1)                   level 2 dcl 30 set ref 172*
+no_output               170     000100 automatic       bit(1)                   level 2 dcl 30 set ref 173*
+no_primary              171     000100 automatic       bit(1)                   level 2 dcl 30 set ref 174*
+no_reload               172     000100 automatic       bit(1)                   level 2 dcl 30 set ref 175*
+no_setlvid              173     000100 automatic       bit(1)                   level 2 dcl 30 set ref 176*
+ntapes                  174     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 177*
+null                                                   builtin function         dcl 132 ref 138 139 140 141 142 143 144 221 222 227
+                                                                                  237
+num_exclude_names        40     000622 automatic       fixed bin(17,0)          level 2 dcl 123 set ref 236*
+onlysw                  175     000100 automatic       bit(1)                   level 2 dcl 30 set ref 178*
+operator                176     000100 automatic       char(32)                 level 2 packed packed unaligned dcl 30 set ref 179*
+p                               000622 automatic       pointer                  array level 3 dcl 123 set ref 227* 231*
+path_index              206     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 180*
+pathsw                  207     000100 automatic       bit(1)                   level 2 dcl 30 set ref 181*
+preattached             210     000100 automatic       bit(1)                   level 2 dcl 30 set ref 205*
+pvname                  212     000100 automatic       char(32)                 level 2 dcl 30 set ref 183*
+pvsw                    211     000100 automatic       bit(1)                   level 2 dcl 30 set ref 182*
+qchecksw                222     000100 automatic       bit(1)                   level 2 dcl 30 set ref 184*
+quotasw                 223     000100 automatic       bit(1)                   level 2 dcl 30 set ref 185*
+restart_dumpsw          224     000100 automatic       bit(1)                   level 2 dcl 30 set ref 187*
+restart_path            225     000100 automatic       char(168)                level 2 dcl 30 set ref 189*
+restart_plen            277     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 188*
+restore_access_class    507     000100 automatic       bit(1)                   level 2 dcl 30 set ref 217*
+retrieval_index         300     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 190*
+retrievesw              301     000100 automatic       bit(1)                   level 2 dcl 30 set ref 191*
+rlen                    302     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 186*
+rname                   303     000100 automatic       char(168)                level 2 packed packed unaligned dcl 30 set ref 193*
+rsize                   355     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 192*
+save_path               356     000100 automatic       char(168)                level 2 packed packed unaligned dcl 30 set ref 195*
+save_plen               430     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 194*
+save_time               432     000100 automatic       fixed bin(52,0)          level 2 dcl 30 set ref 146*
+sections                        000622 automatic       structure                array level 2 dcl 123
+seg_name                 30     000622 automatic       char(32)                 level 2 dcl 123 set ref 235*
+segptr                  434     000100 automatic       pointer                  level 2 dcl 30 set ref 141*
+set_dtd                 436     000100 automatic       bit(1)                   level 2 dcl 30 set ref 196*
+set_dtd_explicit        437     000100 automatic       bit(1)                   level 2 dcl 30 set ref 197*
+source_attributes_ptr
+                        514     000100 automatic       pointer                  level 2 dcl 30 set ref 221*
+sp                      440     000100 automatic       pointer                  level 2 dcl 30 set ref 142*
+string                                                 builtin function         dcl 132 set ref 239*
+struct_name               3     000622 automatic       char(32)                 array level 3 dcl 123 set ref 229* 233*
+sub_entry               442     000100 automatic       bit(1)                   level 2 dcl 30 set ref 198*
+sub_entry_errfile       443     000100 automatic       bit(1)                   level 2 dcl 30 set ref 199*
+switches                 44     000622 automatic       structure                level 2 dcl 123 set ref 239*
+tapesw                  444     000100 automatic       bit(1)                   level 2 dcl 30 set ref 201*
+target_attributes_ptr
+                        516     000100 automatic       pointer                  level 2 dcl 30 set ref 222*
+translate_access_class
+                        512     000100 automatic       bit(1)                   level 2 dcl 30 set ref 220*
+trimsw                  445     000100 automatic       bit(1)                   level 2 dcl 30 set ref 202*
+unspec                                                 builtin function         dcl 132 set ref 136*
+upgrade_to_user_auth    473     000100 automatic       bit(1)                   level 2 dcl 30 set ref 213*
+user_authorization      504     000100 automatic       bit(72)                  level 2 dcl 30 set ref 215*
+user_id                 474     000100 automatic       char(32)                 level 2 packed packed unaligned dcl 30 set ref 214*
+user_ring               506     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 216*
+volume_set_name         446     000100 automatic       char(32)                 level 2 packed packed unaligned dcl 30 set ref 203*
+wakeup_interval         456     000100 automatic       fixed bin(52,0)          level 2 dcl 30 set ref 147*
+wasnt_known             460     000100 automatic       bit(1)                   level 2 dcl 30 set ref 204*
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+bk_ss_                          000022 constant        entry                    external dcl 26
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       352         370     301         362
+Length      3462     301        16        3056      51           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bk_ss_                              458 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bk_ss_                   000100 bk_static                   bk_ss_
+                         000622 cds_control                 bk_ss_
+                         000667 code                        bk_ss_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000021       136 000027       138 000032       139 000035       140 000036       141 000037       142 000040
+    143 000041       144 000042       145 000043       146 000045       147 000046       148 000047       149 000050
+    150 000051       151 000054       152 000055       153 000056       154 000057       155 000062       156 000063
+    157 000066       158 000067       159 000071       160 000074       161 000075       162 000077       163 000100
+    164 000103       165 000104       166 000105       167 000106       168 000107       169 000110       170 000111
+    171 000114       172 000115       173 000116       174 000117       175 000120       176 000121       177 000122
+    178 000124       179 000125       180 000130       181 000131       182 000132       183 000133       184 000136
+    185 000137       186 000140       187 000141       188 000142       189 000143       190 000146       191 000147
+    192 000150       193 000151       194 000154       195 000155       196 000160       197 000161       198 000162
+    199 000163       200 000164       201 000165       202 000166       203 000167       204 000172       205 000173
+    206 000174       207 000175       208 000177       209 000200       210 000202       211 000203       212 000204
+    213 000205       214 000206       215 000211       216 000212       217 000213       218 000214       219 000215
+    220 000216       221 000217       222 000221       227 000222       228 000223       229 000224       231 000227
+    232 000231       233 000233       235 000236       236 000241       237 000242       239 000244       240 000245
+    242 000247       243 000261       245 000300
+
+
+Object Segment >spec>install>1111>bk_ss_
+Created on 11/11/89  1027.5 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0       0    1112    1644    1122
+Length    2141       0    1112     532     261     522
+
+
+88 Definitions:
+
+
+segname:    bk_ss_
+
+link|10         allow_dir_overwrite
+link|12         areap
+link|14         brief_mapsw
+link|15         caller_handles_conditions
+link|502        check_effective_access
+link|16         control_name
+link|70         control_ptr
+link|72         cross_retrievesw
+link|74         data_iocb
+link|76         date
+link|100        datesw
+link|101        debugsw
+link|102        dir_trim
+link|477        dont_dump_upgraded_dirs
+link|103        dprint_destination
+link|111        dprint_destination_setsw
+link|112        dprint_heading
+link|132        dprint_heading_setsw
+link|133        dprint_queue
+link|134        dprint_request_type
+link|142        dprint_request_type_setsw
+link|143        dprintsw
+link|144        dtdsw
+link|145        ename
+link|471        enforce_max_access_class
+link|474        enforce_min_access_class
+link|520        enforce_minimum_ring
+link|156        err_label
+link|162        err_onlinesw
+link|163        error
+link|164        holdsw
+link|166        hp
+link|170        ignore_dates
+link|171        mapsw
+link|472        maximum_access_class
+link|500        maximum_dir_access_class
+link|475        minimum_access_class
+link|521        minimum_ring
+link|172        myname
+link|176        namesw
+link|177        no_contin
+link|200        no_output
+link|201        no_primary
+link|202        no_reload
+link|203        no_setlvid
+link|204        ntapes
+link|205        onlysw
+link|206        operator
+link|216        path_index
+link|217        pathsw
+link|220        preattached
+link|222        pvname
+link|221        pvsw
+link|232        qchecksw
+link|233        quotasw
+link|234        restart_dumpsw
+link|235        restart_path
+link|307        restart_plen
+link|517        restore_access_class
+link|310        retrieval_index
+link|311        retrievesw
+link|312        rlen
+link|313        rname
+link|365        rsize
+link|366        save_path
+link|440        save_plen
+link|442        save_time
+link|444        segptr
+link|446        set_dtd
+link|447        set_dtd_explicit
+link|524        source_attributes_ptr
+link|450        sp
+link|452        sub_entry
+link|453        sub_entry_errfile
+symb|0          symbol_table
+link|454        tapesw
+link|526        target_attributes_ptr
+link|522        translate_access_class
+link|455        trimsw
+link|503        upgrade_to_user_auth
+link|514        user_authorization
+link|504        user_id
+link|516        user_ring
+link|456        volume_set_name
+link|466        wakeup_interval
+link|470        wasnt_known
+link|530        writing_map
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,230 @@
+	COMPILATION LISTING OF SEGMENT bce_query_af
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bce_query_af: proc (P_ss_info_ptr);
+        9 
+       10 /* Version of query and response active functions for bce.  
+       11*Keith Loepere, January 1984. */
+       12 
+       13 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       14 
+       15 dcl  P_ss_info_ptr		        ptr parameter;
+       16 dcl  active_fnc_err_	        entry options (variable);
+       17 dcl  active_function	        bit (1) aligned;	/* as opposed to command usage */
+       18 dcl  af_return		        char (af_return_len) based (af_return_ptr) var; /* return for active function */
+       19 dcl  af_return_len		        fixed bin (21);
+       20 dcl  af_return_ptr		        ptr;
+       21 dcl  arg			        char (arg_len) based (arg_ptr); /* command line arg */
+       22 dcl  arg_count		        fixed bin;
+       23 dcl  arg_len		        fixed bin (21);
+       24 dcl  arg_ptr		        ptr;
+       25 dcl  bce_query		        entry options (variable);
+       26 dcl  bce_query$yes_no	        entry options (variable);
+       27 dcl  code			        fixed bin (35);
+       28 dcl  com_err_		        entry options (variable);
+       29 dcl  cu_$af_return_arg_rel	        entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       30 dcl  cu_$arg_ptr_rel	        entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       31 dcl  error		        variable entry options (variable);
+       32 dcl  ioa_			        entry options (variable);
+       33 dcl  me			        char (11);		/* program name */
+       34 dcl  must_be_yes_no		        bit (1) aligned;
+       35 dcl  requote_string_	        entry (char (*)) returns (char (*));
+       36 dcl  response		        char (256);
+       37 dcl  rtrim		        builtin;
+       38 dcl  yes_no		        bit (1);
+       39 
+       40 	me = "query";
+       41 	must_be_yes_no = "1"b;
+       42 	go to join;
+       43 
+       44 bce_response_af: entry (P_ss_info_ptr);
+       45 
+       46 	me = "response";
+       47 	must_be_yes_no = "0"b;
+       48 
+       49 join:
+       50 	ss_info_ptr = P_ss_info_ptr;
+       51 	arg_list_ptr = ss_info.arg_list_ptr;
+       52 	call cu_$af_return_arg_rel (arg_count, af_return_ptr, af_return_len, code, arg_list_ptr);
+       53 	active_function = (code = 0);
+       54 	if active_function then error = active_fnc_err_;
+       55 	else error = com_err_;
+       56 
+       57 	if arg_count ^= 1 then do;
+       58 	     call error (0, me, "Usage is: ^a question", me);
+       59 	     return;
+       60 	end;
+       61 
+       62 	call cu_$arg_ptr_rel (1, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+       63 
+       64 	if must_be_yes_no then do;
+       65 	     call bce_query$yes_no (yes_no, "^a ", arg);
+       66 	     if yes_no then response = "true";
+       67 	     else response = "false";
+       68 	end;
+       69 	else call bce_query (response, "^a ", arg);
+       70 
+       71 	if active_function then af_return = requote_string_ (rtrim (response));
+       72 	else call ioa_ (rtrim (response));
+       73 	return;
+       74  /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+       74 
+       75      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.3  bce_query_af.pl1                  >special_ldd>install>MR12.3-1114>bce_query_af.pl1
+74           1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+P_ss_info_ptr                          parameter       pointer                  dcl 15 ref 8 44 49
+active_fnc_err_                 000010 constant        entry                    external dcl 16 ref 54
+active_function                 000100 automatic       bit(1)                   dcl 17 set ref 53* 54 71
+af_return                              based           varying char             dcl 18 set ref 71*
+af_return_len                   000101 automatic       fixed bin(21,0)          dcl 19 set ref 52* 71
+af_return_ptr                   000102 automatic       pointer                  dcl 20 set ref 52* 71
+arg                                    based           char                     packed unaligned dcl 21 set ref 65* 69*
+arg_count                       000104 automatic       fixed bin(17,0)          dcl 22 set ref 52* 57
+arg_len                         000105 automatic       fixed bin(21,0)          dcl 23 set ref 62* 65 65 69 69
+arg_list_ptr             16            based           pointer                  level 2 dcl 1-15 set ref 51* 51 52* 62*
+arg_ptr                         000106 automatic       pointer                  dcl 24 set ref 62* 65 69
+bce_query                       000012 constant        entry                    external dcl 25 ref 69
+bce_query$yes_no                000014 constant        entry                    external dcl 26 ref 65
+code                            000110 automatic       fixed bin(35,0)          dcl 27 set ref 52* 53 62*
+com_err_                        000016 constant        entry                    external dcl 28 ref 55
+cu_$af_return_arg_rel           000020 constant        entry                    external dcl 29 ref 52
+cu_$arg_ptr_rel                 000022 constant        entry                    external dcl 30 ref 62
+error                           000112 automatic       entry variable           dcl 31 set ref 54* 55* 58
+ioa_                            000024 constant        entry                    external dcl 32 ref 72
+me                              000116 automatic       char(11)                 packed unaligned dcl 33 set ref 40* 46* 58* 58*
+must_be_yes_no                  000121 automatic       bit(1)                   dcl 34 set ref 41* 47* 64
+requote_string_                 000026 constant        entry                    external dcl 35 ref 71
+response                        000122 automatic       char(256)                packed unaligned dcl 36 set ref 66* 67* 69* 71 71 72
+                                                                                  72
+rtrim                                                  builtin function         dcl 37 ref 71 71 72 72
+ss_info                                based           structure                level 1 dcl 1-15
+ss_info_ptr                     000224 automatic       pointer                  dcl 1-14 set ref 49* 51 51 52 62
+yes_no                          000222 automatic       bit(1)                   packed unaligned dcl 38 set ref 65* 66
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bce_query_af                    000033 constant        entry                    external dcl 8
+bce_response_af                 000050 constant        entry                    external dcl 44
+join                            000061 constant        label                    dcl 49 ref 42
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       530         560     410         540
+Length       762     410        30         165     117           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_query_af                        189 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_query_af             000100 active_function             bce_query_af
+                         000101 af_return_len               bce_query_af
+                         000102 af_return_ptr               bce_query_af
+                         000104 arg_count                   bce_query_af
+                         000105 arg_len                     bce_query_af
+                         000106 arg_ptr                     bce_query_af
+                         000110 code                        bce_query_af
+                         000112 error                       bce_query_af
+                         000116 me                          bce_query_af
+                         000121 must_be_yes_no              bce_query_af
+                         000122 response                    bce_query_af
+                         000222 yes_no                      bce_query_af
+                         000224 ss_info_ptr                 bce_query_af
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     call_ent_var_desc   call_ext_out_desc   call_ext_out        return_mac
+shorten_stack       ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+active_fnc_err_               bce_query                     bce_query$yes_no              com_err_
+cu_$af_return_arg_rel         cu_$arg_ptr_rel               ioa_                          requote_string_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000030        40 000040        41 000043        42 000045        44 000046        46 000055        47 000060
+     49 000061        51 000065        52 000067        53 000106        54 000111        55 000120        57 000125
+     58 000130        59 000162        62 000163        64 000204        65 000206        66 000234        67 000243
+     68 000246        69 000247        71 000275        72 000352        73 000404
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

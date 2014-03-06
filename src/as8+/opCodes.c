@@ -132,6 +132,79 @@ void doOpcode(struct opnd *o)
     addr += 1;
 }
 
+void doOpcodeX(struct opnd *opnd, expr *e)
+{
+    if (nPass == 1)
+    {
+        //if (debug) printf("doOpcode(1):addr=%06o\n", addr);
+        addr += 1;      // just bump address counter
+        return;
+    }
+    if (nPass != 2)     // only pass 1 | 2 allowed
+        return;
+    
+    if (e->type != eExprAbsolute)
+    {
+        yyerror("only absolute index-register specifiers allowed");
+        return;
+    }
+    
+    if (e->value > 7)
+    {
+        yyprintf("index-register out-of-range 0..7 (%d)", e->value);
+        return;
+    }
+
+    /*
+     * reconstruct actual mnemonic/opcode and assemble that
+     */
+    char mne[256];
+    sprintf(mne, "%s%d", opnd->o->mne, (int)e->value & 07);
+    
+    // look for mnemonic
+    opCode *op = findOpcode(mne);
+    
+    opnd->o = op;
+    
+    doOpcode(opnd);
+}
+
+void doOpcodeR(struct opnd *opnd, expr *e)
+{
+    if (nPass == 1)
+    {
+        //if (debug) printf("doOpcode(1):addr=%06o\n", addr);
+        addr += 1;      // just bump address counter
+        return;
+    }
+    if (nPass != 2)     // only pass 1 | 2 allowed
+        return;
+    
+    if (e->type != eExprAbsolute)
+    {
+        yyerror("only absolute AR/PR specifiers allowed");
+        return;
+    }
+    
+    if (e->value > 7)
+    {
+        yyprintf("AR/PR specifier out-of-range 0..7 (%d)", e->value);
+        return;
+    }
+    /*
+     * reconstruct actual mnemonic/opcode and assemble that
+     */
+    char mne[256];
+    sprintf(mne, "%s%d", opnd->o->mne, (int)e->value & 07);
+    
+    // look for mnemonic
+    opCode *op = findOpcode(mne);
+    
+    opnd->o = op;
+    
+    doOpcode(opnd);
+}
+
 void doMWEis(opCode *op, tuple *head)
 {
     if (nPass == 1)
@@ -306,7 +379,7 @@ void doMWEis(opCode *op, tuple *head)
         case 0226:  ///< "mp3d (3)"
         case 0207:  ///< "dv2d (2)"
         case 0227:  ///< "dv3d (3)"
-        case 0300:  ///< "mvn (3)"
+        case 0300:  ///< "mvn (2)"
             
             if (bP || bAscii)
                 i |= (1LL << 35);    // P bit
@@ -642,6 +715,46 @@ outRec *outas8Direct(char *dir, ...)
         word18 goAddr = va_arg( argPointer, word18 );
        
         asprintf(&p->dirStr, "!GO %06o", goAddr);
+    }
+    else if (!strcasecmp(dir, "info"))
+    {
+        // write various bits of info to the output file
+        
+        // write time/date
+        struct tm *local;
+        time_t t;
+        
+        t = time(NULL);
+        //local = localtime(&t);
+        //printf("Local time and date: %s\n", asctime(local));
+        local = gmtime(&t);
+        //asprintf(&p->dirStr, "!INFO DATE %s", asctime(local));
+        
+        static const char wday_name[][4] = {
+            "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+        };
+        static const char mon_name[][4] = {
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+        };
+        asprintf(&p->dirStr, "!INFO date %.3s %.3s%3d %.2d:%.2d:%.2d %d UTC",
+                wday_name[local->tm_wday],
+                mon_name[local->tm_mon],
+                local->tm_mday, local->tm_hour,
+                local->tm_min, local->tm_sec,
+                1900 + local->tm_year);
+        
+        
+        DL_APPEND(as8output, p);
+
+        // write from where we came from ...
+        p = newoutRec();
+        p->recType = outRecDirective;
+        
+        p->direct = strdup(dir);
+
+        asprintf(&p->dirStr, "!INFO src %s", inFile);
+
     }
 
     else

@@ -1,0 +1,2147 @@
+	COMPILATION LISTING OF SEGMENT init_syserr_log
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0938.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4 */
+       10 
+       11 init_syserr_log:
+       12      procedure ();
+       13 
+       14 /* *	INIT_SYSERR_LOG
+       15*   *
+       16*   *	This procedure is called early in collection II initialization.
+       17*   *	It performs the following major initialization tasks:
+       18*   *	1.  Sets up the log partition so it can be referenced as paged segments.
+       19*   *	2.  If the version in the paged syserr_log_data segment is not
+       20*   *	    correct, then we initialize the paged syserr_log_data segment.
+       21*   *	3.  Initializes the wired log buffer in syserr_data$syserr_area
+       22*   *	4.  Creates the syserr HPROC.
+       23*   *
+       24*   *	Modification history:
+       25*   *	73-08-11, Bill Silver: Initial coding
+       26*   *	75-11-02, Larry Johnson: Modified for new log and message format
+       27*   *	76-03-23, Steve Webber: Modified to create HPROC for logging
+       28*   *	77-04-11, Bernard Greenberg: Modified for syserr_daemon segments
+       29*   *	79-05-26, Mike Grady: Modified for ring zero stack sharing
+       30*   *	81-07-09, Ellie Donner: Modified for new format of event channel names
+       31*   *	82-03-20, John Bongiovanni: Eliminated use of FSDCT
+       32*   *	84-08-24, W. Olin Sibert: Modifications (part 1) for new syserr log format:
+       33*   *	   Three segments in the partition, new log format, name changed from
+       34*   *	   syserr_log_init to init_syserr_log, diagnose no PART LOG card.
+       35*   *      84-11-16 by E. Swenson: Changed for new IPC validation.
+       36*   *      1984-12-03, BIM: change to a fast lock.
+       37*   *      1984-12-05 by E. Swenson:  Fixed to not use regular event channel.
+       38*   *	1984-12-10 by Keith Loepere: To force LOG part onto RPV until
+       39*   *	   init_branches becomes smarter.
+       40*   *	1985-03-03, EJ Sharpe: added check for service bit, format,
+       41*   *	   and set history_dir in log header at partition initialization
+       42*   *	1985-03-25, EJ Sharpe: fixed subscript error, cleanup syserr messages
+       43**/
+       44 
+       45 declare  code fixed bin (35);
+       46 declare  log_part_pvtx fixed bin;
+       47 declare  log_part_start fixed bin (18);
+       48 declare  log_part_size fixed bin (18);
+       49 declare  part_idx fixed bin;
+       50 declare  r_offset fixed bin (18);			/* used in IPC event channel creation and validation */
+       51 declare  r_factor fixed bin (35);			/* ditto */
+       52 declare  rpv_label bit (36 * 1024) aligned;
+       53 declare  special_channel fixed bin (71);		/* event channel for syserr copy wakeups */
+       54 
+       55 declare  initializing bit (1) aligned;			/* Set if we are reinitializing partition */
+       56 declare  test_mode bit (1) aligned;			/* Sets up a ring four test environment */
+       57 
+       58 declare  log_data_$syserr_log_dir char (32) external static;
+       59 declare  log_data_$syserr_log_history_dir char (168) external static;
+       60 declare  log_data_$syserr_log_partition char (4) external static;
+       61 declare  log_data_$syserr_log_daemon char (32) external static;
+       62 declare  pds$process_id bit (36) aligned external static;
+       63 declare  pds$process_group_id char (32) external static;
+       64 declare  pvt$root_pvtx fixed bin external static;
+       65 declare  sys_info$page_size fixed bin external static;
+       66 declare  syserr_data$log_meters fixed bin external static;
+       67 declare  syserr_data$wired_log_size fixed bin external static;
+       68 declare  syserr_data$logger_proc_id bit (36) aligned external static;
+       69 declare  syserr_data$logger_ec fixed bin (71) external static;
+       70 
+       71 declare  syserr_log_laurel$ fixed bin external static;
+       72 declare  syserr_log_hardy$ fixed bin external static;
+       73 
+       74 declare  create_hproc$early_hproc entry (char (*),
+       75 	    bit (1) aligned, pointer, pointer, pointer, pointer, pointer, fixed bin (35));
+       76 declare  ipc_validate_$encode_event_channel_name entry (fixed bin (18), fixed bin (35), bit (3) aligned, fixed bin (15), fixed bin (3), bit (1) aligned, fixed bin (18), fixed bin (71));
+       77 declare  log_initialize_ entry (pointer, pointer, fixed bin (18), char (*), fixed bin (35));
+       78 declare  log_segment_$create_message entry (pointer, fixed bin, fixed bin, char (10) varying, pointer, fixed bin (35));
+       79 declare  log_segment_$finish_message entry (pointer, pointer, fixed bin (35));
+       80 declare  log_segment_$get_service_bit entry (ptr, bit (1) aligned, fixed bin (35));
+       81 declare  log_segment_$last_message_info entry (pointer, fixed bin (35), fixed bin (18), fixed bin (35));
+       82 declare  log_segment_$place_in_service entry (pointer, fixed bin (35));
+       83 declare  log_segment_$remove_from_service entry (pointer, fixed bin (35));
+       84 declare  map_onto_disk entry (fixed bin, fixed bin (20), fixed bin, pointer, bit (1) aligned);
+       85 declare  read_disk entry (fixed bin, fixed bin (18), ptr, fixed bin (35));
+       86 declare  syserr entry options (variable);
+       87 declare  syserr$error_code entry options (variable);
+       88 declare  syserr_log_daemon entry ();
+       89 declare  tc_util$get_ipc_operands_priv entry (bit (36) aligned, fixed bin (18), fixed bin (35), fixed bin (35));
+       90 
+       91 declare  FAST_CHANNEL_TYPE bit (1) aligned internal static options (constant) initial ("0"b);
+       92 declare  WHOAMI char (32) internal static options (constant) init ("init_syserr_log");
+       93 
+       94 declare  (abs, addr, baseno, binary, clock, codeptr, copy, dimension, divide, length, null, rel, sign, size, sum, unspec) builtin;
+       95 
+       96 
+       97 	test_mode = "0"b;
+       98 	goto BEGIN_INITIALIZATION;
+       99 
+      100 
+      101 
+      102 init_syserr_log$test:
+      103      entry ();
+      104 
+      105 	test_mode = "1"b;				/* This entrypoint sets up a ring four test environment */
+      106 
+      107 /* First, locate and check out the wired data area. */
+      108 /* NOTE: THIS CHANGES WHEN THE WIRED AREA IS CONVERTED TO LOG SEGMENTS */
+      109 
+      110 BEGIN_INITIALIZATION:
+      111 	wlog_ptr = addr (syserr_data$wired_log_area);
+      112 	sd_ptr = addr (syserr_data$syserr_area);
+      113 	if (size (wlog) > syserr_data$wired_log_size) then
+      114 	     call syserr (SYSERR_CRASH_SYSTEM, "^a: Size of wired log is inconsistent.", WHOAMI);
+      115 
+      116 /* Next, locate the LOG partition. If none, we do no logging, but we
+      117*   say so (a new message) because it's almost sure to be a mistake. */
+      118 
+      119 	if ^test_mode then do;			/* Don't play with the partition in test mode */
+      120 
+      121 /*	     call partition_io$find_partition (log_data_$syserr_log_partition,
+      122*   log_part_pvtx, (""b), log_part_start, log_part_size, code); */
+      123 	     labelp = addr (rpv_label);
+      124 	     log_part_pvtx = pvt$root_pvtx;
+      125 	     call read_disk (log_part_pvtx, 0, labelp, code);
+      126 	     if code ^= 0 then go to log_part_error;
+      127 	     do part_idx = 1 to label.nparts while (label.parts (part_idx).part ^= log_data_$syserr_log_partition);
+      128 	     end;
+      129 	     if part_idx > dimension (label.parts, 1) then do;
+      130 log_part_error:	call syserr (SYSERR_CRASH_SYSTEM, "^a: No LOG partition found, syserr logging disabled.", WHOAMI);
+      131 		return;
+      132 	     end;
+      133 	     log_part_start = label.parts (part_idx).frec;
+      134 	     log_part_size = label.parts (part_idx).nrec;
+      135 	end;
+      136 
+      137 	else log_part_size = 3;			/* Give each segment 1 record */
+      138 
+      139 /* Next, setup the syserr_log_data segment. It is always one page long,
+      140*   and located in the first record of the partition. */
+      141 
+      142 	syserr_log_data_ptr = addr (syserr_log_data$);
+      143 	call setup_segment (syserr_log_data_ptr, 0, 1);
+      144 
+      145 /* See if it has valid contents. If not, reinitialize it; if so, re-use it */
+      146 
+      147 	initializing = ^syserr_data_valid ();		/* See if there's anything useful there now */
+      148 	if initializing then			/* If not, rebuild syserr_dta first */
+      149 	     call initialize_syserr_data ();
+      150 
+      151 /* Set up the two alternating buffer segments; their locations may have been
+      152*   remembered, or set up by initialize_syserr_data if we reinitialize */
+      153 
+      154 	syserr_log_data.log_ptr (1) = addr (syserr_log_laurel$);
+      155 	syserr_log_data.log_ptr (2) = addr (syserr_log_hardy$);
+      156 
+      157 	syserr_log_data.log_name (1) = "syserr_log_laurel";
+      158 	syserr_log_data.log_name (2) = "syserr_log_hardy";
+      159 	syserr_log_data.log_dir = log_data_$syserr_log_dir;
+      160 	call setup_segment (syserr_log_data.log_ptr (1), syserr_log_data.log_start (1), syserr_log_data.log_size (1));
+      161 	call setup_segment (syserr_log_data.log_ptr (2), syserr_log_data.log_start (2), syserr_log_data.log_size (2));
+      162 
+      163 	unspec (syserr_log_data.lock) = ""b;
+      164 	syserr_log_data.lock.event_id = binary ("105"b3); /* Initialize per-bootload items */
+      165 
+      166 	if initializing then			/* If we are rebuilding, re-set the log segments */
+      167 	     call initialize_log_segments ();		/* In both cases, these set wlog.seq_num appropriately */
+      168 	else call check_log_segments ();		/* Otherwise, just check the contents */
+      169 
+      170 	wlog.next = rel (addr (wlog.buffer));		/* Also set some other variables in the wired buffer */
+      171 	wlog.count = 0;
+      172 	addr (syserr_data$log_meters) -> olm.last_time = clock ();
+      173 
+      174 	if test_mode then				/* Set up IPC event-call kludge */
+      175 	     call create_ring_four_test_logger ();
+      176 	else call create_syserr_daemon ();		/* Create the daemon, and, if we make it this far, */
+      177 	syserr_log_data.test_mode = test_mode;		/* Keep track of test mode operation */
+      178 
+      179 	if initializing then			/* If we are rebuilding, make it be finally valid */
+      180 	     syserr_log_data.version = SYSERR_LOG_DATA_V1;
+      181 
+      182 	sd.log_flag = "1"b;				/* tell the daemon to start logging messages. */
+      183 
+      184 MAIN_RETURN:
+      185 	return;
+      186 
+      187 
+      188 setup_segment:
+      189      procedure (P_seg_ptr, P_first_rec, P_seg_lth);
+      190 
+      191 declare  P_seg_ptr pointer parameter;
+      192 declare  P_first_rec fixed bin parameter;
+      193 declare  P_seg_lth fixed bin parameter;
+      194 
+      195 declare  segno fixed bin;
+      196 
+      197 declare  slt$ fixed bin external static;
+      198 
+      199 /* This procedure is used to set up an ASTE for the specified hardcore
+      200*   segment (P_seg_ptr), the pages of which map onto a particular portion
+      201*   of the LOG partition. */
+      202 
+      203 
+      204 	if test_mode then				/* This has no meaning in test mode */
+      205 	     return;
+      206 
+      207 	segno = binary (baseno (P_seg_ptr));
+      208 
+      209 	sltp = addr (slt$);				/* Check to see that the resulting page table will */
+      210 	sltep = addr (slt.seg (segno));		/* be large enough; that is, was declared large */
+      211 	if (P_seg_lth > binary (slte.max_length)) then	/* enough in the header. */
+      212 	     call syserr (SYSERR_CRASH_SYSTEM, "^a: Size of ^p larger on disk than in header.", WHOAMI, P_seg_ptr);
+      213 
+      214 	call map_onto_disk				/* Pop the abs-seg onto the right place in the partition */
+      215 	     (log_part_pvtx, (log_part_start + P_first_rec), P_seg_lth, P_seg_ptr, "1"b);
+      216 
+      217 	return;
+      218      end setup_segment;
+      219 
+      220 
+      221 syserr_data_valid:
+      222      procedure () returns (bit (1) aligned);
+      223 
+      224 declare  allocation_error bit (1) aligned;
+      225 
+      226 
+      227 	if (syserr_log_data.version ^= SYSERR_LOG_DATA_V1) then
+      228 	     return ("0"b);
+      229 
+      230 /* These tests verify that the first log segment thinks it starts immediately
+      231*   after the one-page header, that the second starts immediately after that,
+      232*   that no values are negative, that they don't overflow the partition, and
+      233*   that they are evenly balanced */
+      234 
+      235 	if (syserr_log_data.log_start (1) ^= 1) then
+      236 	     allocation_error = "1"b;
+      237 	else if (syserr_log_data.log_start (2) ^= (1 + syserr_log_data.log_size (1))) then
+      238 	     allocation_error = "1"b;
+      239 	else if (sum (sign (syserr_log_data.log_start)) ^= 2) then
+      240 	     allocation_error = "1"b;
+      241 	else if (sum (sign (syserr_log_data.log_size)) ^= 2) then
+      242 	     allocation_error = "1"b;
+      243 	else if ((sum (syserr_log_data.log_size) + 1) > log_part_size) then
+      244 	     allocation_error = "1"b;
+      245 	else if (abs (syserr_log_data.log_size (1) - syserr_log_data.log_size (2)) > 2) then
+      246 	     allocation_error = "1"b;
+      247 	else if (syserr_log_data.live_log ^= 1) & (syserr_log_data.live_log ^= 2) then
+      248 	     allocation_error = "1"b;
+      249 	else allocation_error = "0"b;
+      250 
+      251 	if allocation_error then do;
+      252 	     call syserr (SYSERR_PRINT_WITH_ALARM, "^a: LOG partition damaged. Reinitializing.", WHOAMI);
+      253 	     return ("0"b);
+      254 	end;
+      255 
+      256 /* If the syserr_log_data appears to be valid, then we reinitialize the
+      257*   per-bootload values before returning; if not, this job will be taken
+      258*   care of by initialize_syserr_data. */
+      259 
+      260 	unspec (syserr_log_data.per_bootload) = ""b;
+      261 	syserr_log_data.log_ptr (*) = null ();
+      262 
+      263 	return ("1"b);
+      264      end syserr_data_valid;
+      265 
+      266 
+      267 initialize_syserr_data:
+      268      procedure ();
+      269 
+      270 declare  segment_size fixed bin;
+      271 
+      272 /* This procedure reinitializes the contents of the partition, splitting it
+      273*   as evenly as possible between the two segments. It initializes all the
+      274*   permanent information in syserr_log_data EXCEPT the version number,
+      275*   which gets set after everything else is correct. */
+      276 
+      277 
+      278 	if (syserr_log_data.old_init_word = "INIT") then
+      279 	     call syserr (SYSERR_PRINT_ON_CONSOLE, "^a: Converting MR10.2 syserr partition", WHOAMI);
+      280 
+      281 	unspec (syserr_log_data) = ""b;		/* Clean it out */
+      282 
+      283 	segment_size = divide ((log_part_size - 1), 2, 17, 0); /* Remember a page for the header */
+      284 
+      285 	syserr_log_data.log_start (1) = 1;
+      286 	syserr_log_data.log_start (2) = 1 + segment_size;
+      287 	syserr_log_data.log_size (*) = segment_size;
+      288 
+      289 	syserr_log_data.old_init_word = "*NEW";
+      290 
+      291 	syserr_log_data.live_log = 1;
+      292 	syserr_log_data.swap_time = 0;		/* This marks the other log as empty */
+      293 
+      294 	syserr_log_data.log_ptr (*) = null ();		/* Just to catch errors */
+      295 
+      296 	return;
+      297      end initialize_syserr_data;
+      298 
+      299 
+      300 initialize_log_segments:
+      301      procedure ();
+      302 
+      303 declare  log_idx fixed bin;
+      304 declare  sys_log_ptr pointer;
+      305 declare  log_size fixed bin (18);
+      306 declare  INITIAL_MESSAGE char (100) varying internal static options (constant) init
+      307 	    ("init_syserr_log: Syserr LOG partition reinitialized.");
+      308 
+      309 
+      310 	do log_idx = 1, 2;				/* Two segments */
+      311 	     sys_log_ptr = syserr_log_data.log_ptr (log_idx);
+      312 	     log_size = syserr_log_data.log_size (log_idx) * sys_info$page_size;
+      313 
+      314 	     call log_initialize_ (null (), sys_log_ptr, log_size, "", code);
+      315 	     if (code ^= 0) then
+      316 		call syserr (SYSERR_CRASH_SYSTEM, "^a: Cannot initialize paged syserr log ^p", WHOAMI, sys_log_ptr);
+      317 	     call log_segment_$remove_from_service (sys_log_ptr, (0));
+      318 	end;
+      319 
+      320 	sys_log_ptr = syserr_log_data.log_ptr (syserr_log_data.live_log);
+      321 	call log_segment_$place_in_service (sys_log_ptr, (0));
+      322 	sys_log_ptr -> log_segment.previous_log_dir = log_data_$syserr_log_history_dir;
+      323 	call log_segment_$create_message (sys_log_ptr, length (INITIAL_MESSAGE), 0, "", log_message_ptr, code);
+      324 	if (code ^= 0) then
+      325 	     call syserr (SYSERR_CRASH_SYSTEM, "^a: Cannot write initial message to paged syserr log ^p", WHOAMI, sys_log_ptr);
+      326 
+      327 	log_message.time = clock ();
+      328 	log_message.severity = 0;
+      329 	log_message.process_id = pds$process_id;
+      330 	log_message.text = INITIAL_MESSAGE;
+      331 
+      332 	call log_segment_$finish_message (sys_log_ptr, log_message_ptr, (0));
+      333 
+      334 	wlog.seq_num = log_message.sequence;
+      335 
+      336 	call syserr (SYSERR_PRINT_ON_CONSOLE, log_message.text);
+      337 
+      338 	return;
+      339      end initialize_log_segments;
+      340 
+      341 
+      342 check_log_segments:
+      343      procedure ();
+      344 
+      345 declare  last_log_ptr pointer;
+      346 declare  last_message_number fixed bin (35);
+      347 declare  service_bit bit (1) aligned;
+      348 
+      349 	last_log_ptr = syserr_log_data.log_ptr (syserr_log_data.live_log);
+      350 	call log_segment_$last_message_info (last_log_ptr, last_message_number, (0), code);
+      351 	if (code ^= 0) then do;
+      352 	     call syserr$error_code (SYSERR_PRINT_ON_CONSOLE, code,
+      353 		"^a: Cannot get last message info from paged syserr log ^p", WHOAMI, last_log_ptr);
+      354 
+      355 	     initializing = "1"b;
+      356 	     call initialize_log_segments ();
+      357 
+      358 	     return;
+      359 	end;
+      360 
+      361 	call log_segment_$get_service_bit (last_log_ptr, service_bit, code);
+      362 	if (code ^= 0) then do;
+      363 	     call syserr$error_code (SYSERR_PRINT_ON_CONSOLE, code,
+      364 		"^a: Cannot get service bit from paged syserr log ^p", WHOAMI, last_log_ptr);
+      365 	     initializing = "1"b;
+      366 	     call initialize_log_segments ();
+      367 	     return;
+      368 	end;
+      369 
+      370 	if (service_bit ^= "1"b) then do;
+      371 	     call syserr (SYSERR_PRINT_ON_CONSOLE, "^a: Service bit off for live paged syserr log ^p.", WHOAMI, last_log_ptr);
+      372 	     initializing = "1"b;
+      373 	     call initialize_log_segments ();
+      374 	     return;
+      375 	end;
+      376 
+      377 	wlog.seq_num = last_message_number;
+      378 
+      379 	return;
+      380      end check_log_segments;
+      381 
+      382 
+      383 create_syserr_daemon:
+      384      procedure ();
+      385 
+      386 /* This procedure creates the HPROC and fills in variables so syserr_real knows
+      387*   how to call upon it. Note that its stack, PDS, and DSEG are defined in the header  */
+      388 
+      389 declare  1 syserr_stk aligned based (sb),		/* Overlay for initializing daemon's stack */
+      390 	 2 header like stack_header,
+      391 	 2 frame like stack_frame;
+      392 
+      393 declare  syserr_daemon_dseg$ fixed bin external static;
+      394 declare  syserr_daemon_pds$ fixed bin external static;
+      395 declare  syserr_daemon_stack$ fixed bin external static;
+      396 declare  pds$stack_0_ptr pointer external static;
+      397 
+      398 
+      399 	sb = addr (syserr_daemon_stack$);		/* base of syserr's ring 0 stack */
+      400 	stack_header_overlay = pds$stack_0_ptr -> stack_header_overlay; /* copy the stack header */
+      401 
+      402 	stack_header.stack_begin_ptr = addr (syserr_stk.frame); /* setup first frame ptrs */
+      403 	stack_header.stack_end_ptr = addr (syserr_stk.frame);
+      404 
+      405 	call create_hproc$early_hproc (log_data_$syserr_log_daemon, "0"b, aptep, codeptr (syserr_log_daemon),
+      406 	     addr (syserr_daemon_dseg$), addr (syserr_daemon_pds$), addr (syserr_daemon_stack$), code);
+      407 	if code ^= 0 then do;
+      408 	     call syserr (SYSERR_PRINT_ON_CONSOLE, "^a: Cannot create logger process.", WHOAMI);
+      409 	     goto MAIN_RETURN;
+      410 	end;
+      411 
+      412 	syserr_data$logger_proc_id = apte.processid;	/* for use by syserr_real */
+      413 
+      414 /**** In order to create an event channel, a process must know its values
+      415*      of R-Offset and R-Factor.  These were set up when the process was
+      416*      created. Retrieve then now from the APTE.  create_hproc set them. */
+      417 
+      418 	call tc_util$get_ipc_operands_priv (apte.processid, r_offset, r_factor, code);
+      419 	if code ^= 0 then do;
+      420 	     call syserr (SYSERR_PRINT_ON_CONSOLE, "^a: Unable to retrieve IPC operands from APTE.  Syserr log copying disabled.", WHOAMI);
+      421 	     goto MAIN_RETURN;
+      422 	end;
+      423 
+      424 /**** Create a valid (encoded) event channel name. */
+      425 
+      426 	call ipc_validate_$encode_event_channel_name (r_offset, r_factor, "000"b /* flags */, 1 /* index */, 0 /* ring */, FAST_CHANNEL_TYPE, 1 /* unique id */, special_channel);
+      427 
+      428 	syserr_data$logger_ec = special_channel;
+      429 
+      430 	return;
+      431      end create_syserr_daemon;
+      432 
+      433 
+      434 create_ring_four_test_logger:
+      435      procedure ();
+      436 
+      437 /* This procedure causes all sorts of nasty error messages if it is included
+      438*   as-is on the system tape, because it goes in a temp-seg, yet contains
+      439*   links to things not in ring zero. So, we have a nasty kludge to avoid it,
+      440*   using comments instead of pl1_macro just to make the thing easier to
+      441*   compile.  The real (external) entry declarations are commented out in
+      442*   the installed version, and replaced by entry variable declarations that
+      443*   all turn into calls to pxss$block (no special reason, save that it's
+      444*   guaranteed not to be found).
+      445*
+      446*   To run this in the outer ring, just un-comment the first set of
+      447*   declarations, and comment out the second. */
+      448 
+      449 /* COMMENTED OUT FOR RING ZERO INSTALLED VERSION
+      450*
+      451*   declare	com_err_ entry options (variable);
+      452*   declare	get_group_id_ entry () returns (char (32) aligned);
+      453*   declare	get_lock_id_ entry () returns (bit (36) aligned);
+      454*   declare	get_process_id_ entry () returns (bit (36) aligned);
+      455*   declare	ioa_ entry options (variable);
+      456*   declare	ipc_$create_ev_chn entry (fixed bin (71), fixed bin (35));
+      457*   declare	ipc_$decl_event_call_chn entry (fixed bin(71), entry, pointer, fixed bin, fixed bin (35));
+      458*
+      459*   COMMENTED OUT FOR RING ZERO INSTALLED VERSION */
+      460 
+      461 /* KLUDGE DECLARATIONS LEFT IN RING ZERO INSTALLED VERSION */
+      462 
+      463 declare  1 kludge_entries variable automatic,
+      464 	 2 com_err_ entry options (variable),
+      465 	 2 get_group_id_ entry () returns (char (32) aligned),
+      466 	 2 get_lock_id_ entry () returns (bit (36) aligned),
+      467 	 2 get_process_id_ entry () returns (bit (36) aligned),
+      468 	 2 ioa_ entry options (variable),
+      469 	 2 ipc_$create_ev_chn entry (fixed bin (71), fixed bin (35)),
+      470 	 2 ipc_$decl_event_call_chn entry (fixed bin (71), entry, pointer, fixed bin, fixed bin (35));
+      471 
+      472 	unspec (kludge_entries) = copy ("040"b3, (4 * size (kludge_entries))); /* Force fault_tag_1 */
+      473 
+      474 /* KLUDGE DECLARATIONS LEFT IN RING ZERO INSTALLED VERSION */
+      475 
+      476 declare  pds$processid bit (36) aligned external static;
+      477 
+      478 
+      479 	call ipc_$create_ev_chn (syserr_data$logger_ec, code);
+      480 	if (code ^= 0) then goto IPC_ERROR;
+      481 
+      482 	call ipc_$decl_event_call_chn (syserr_data$logger_ec, syserr_log_daemon, null (), 0, code);
+      483 	if (code ^= 0) then do;
+      484 IPC_ERROR:     call com_err_ (code, WHOAMI, "Cannot create IPC channel for test logger.");
+      485 	     return;
+      486 	end;
+      487 
+      488 	syserr_data$logger_proc_id = get_process_id_ ();
+      489 	pds$processid = get_lock_id_ ();
+      490 	pds$process_group_id = get_group_id_ ();
+      491 	sd.ocdcm_init_flag = "1"b;			/* Let's claim that ocdcm_ works, too */
+      492 						/* syserr message MUST come BEFORE the log flag is turned on
+      493*						   because logging is not really operational until after
+      494*						   collection 1 is done */
+      495 
+      496 	call ioa_ ("^a: Syserr log test environment initialized", WHOAMI);
+      497 
+      498 	return;
+      499      end create_ring_four_test_logger;
+      500 
+      501 /* format: off */
+      502  
+  1     2 	/* BEGIN INCLUDE FILE add_type.incl.pl1 */
+  1     3 	/* 02/26/75 by Bernard S. Greenberg */
+  1     4 
+  1     5 	/* This file provides a structure for checking
+  1     6*		PTW/CME address type fields in PL/I */
+  1     7 
+  1     8 dcl 1 add_type unaligned static internal,
+  1     9 	2 core bit (4) init ("1000"b),		/* in core- S/B only in PTW */
+  1    10 	2 disk bit (4) init ("0100"b),		/* Disk address */
+  1    11 	2 pd   bit (4) init ("0010"b),		/* Paging Device */
+  1    12 	2 reserved bit (4) init ("0001"b),		/* Reserved */
+  1    13 	2 non_null bit (4) init ("1111"b);		/* Not null address */
+  1    14 
+  1    15 dcl 1 badd_type unaligned based,
+  1    16     2 (core, disk, pd, reserved) bit (1) unaligned;
+  1    17 
+  1    18 	/* END INCLUDE FILE add_type.incl.pl1 */
+      502 
+      503  /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  2     2 
+  2     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  2     4 
+  2     5 dcl  aptep pointer;
+  2     6 
+  2     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  2     8     2 thread unaligned,				/* List thread */
+  2     9       3 fp bit (18),				/* Forward pointer */
+  2    10       3 bp bit (18),				/* Backward pointer */
+  2    11     2 flags unaligned,				/* Flags and miscellaneous */
+  2    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  2    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  2    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  2    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  2    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  2    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  2    18       3 eligible bit (1),				/* ON if process is eligible */
+  2    19       3 idle bit (1),				/* ON if  this is an idle process */
+  2    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  2    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  2    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  2    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  2    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  2    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  2    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  2    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  2    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  2    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  2    30       3 state bit (18),				/* execution state */
+  2    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  2    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  2    33 						/* bit 18-35: sequential number */
+  2    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  2    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  2    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  2    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  2    38 
+  2    39 /* * * * * * * * */
+  2    40 
+  2    41     2 ipc_pointers unaligned,
+  2    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  2    43       3 pad3 bit (18),
+  2    44     2 ips_message bit (36),				/* IPS signals pending */
+  2    45     2 asteps unaligned,				/* relative ASTE pointers */
+  2    46       3 pds bit (18),				/* PDS (per-process) */
+  2    47       3 dseg bit (18),				/* DSEG (per-process) */
+  2    48       3 prds bit (18),				/* PRDS (per-processor) */
+  2    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  2    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  2    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  2    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  2    53 
+  2    54 /* * * * * * * * */
+  2    55 
+  2    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  2    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  2    58     2 flags2 unaligned,
+  2    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  2    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  2    61       3 pad7 bit (7),
+  2    62       3 batch bit (1),				/* ON if absentee */
+  2    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  2    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  2    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  2    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  2    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  2    68 
+  2    69 /* * * * * * */
+  2    70 
+  2    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  2    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  2    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  2    74     2 deadline fixed bin (71),			/* time of next run */
+  2    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  2    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  2    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  2    78*						/* reaches this (units = 1/1024 sec) */
+  2    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  2    80     2 access_authorization bit (72),			/* authorization of this process */
+  2    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  2    82 
+  2    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  2    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  2    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  2    86 
+  2    87 /*  Cells used to drive and instrument finite-state model for response time
+  2    88*    measurement. Maintained by meter_response_time */
+  2    89 
+  2    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  2    91     2 pad18 bit (18) unaligned,
+  2    92     2 number_processing fixed bin (35),			/* Number interactions */
+  2    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  2    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  2    95 
+  2    96 /* * * * * * */
+  2    97 
+  2    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  2    99 
+  2   100 /*  End of cells for finite-state model */
+  2   101 
+  2   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  2   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  2   104     2 pad4 bit (28) unaligned,
+  2   105     2 ipc_r_offset fixed bin (18) unsigned,
+  2   106     2 ipc_r_factor fixed bin (35) unsigned,
+  2   107     2 apad (10) fixed bin (35);
+  2   108 
+  2   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      503 
+      504  /*	BEGIN INCLUDE FILE ... ect_structures.incl.pl1 ... Jan 1981 */
+  3     2 
+  3     3 /* Modified 1984-10-28 by E. Swenson for new ipc validation and to move
+  3     4*   event_channel_name declarations from here to event_channel_name.incl.pl1 */
+  3     5 
+  3     6 
+  3     7 /****^  HISTORY COMMENTS:
+  3     8*  1) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  3     9*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  3    10*     Changed to support control point management.  These changes were actually
+  3    11*     done in February 1985 by G. Palter.
+  3    12*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7479),
+  3    13*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  3    14*     Modified to eke out some flag bits by making the type fixed bin (8) in
+  3    15*     order to support async event channels.
+  3    16*                                                   END HISTORY COMMENTS */
+  3    17 
+  3    18 
+  3    19 /* format: style3 */
+  3    20 
+  3    21 
+  3    22 /* Definition of the Event Channel Table (ECT) header */
+  3    23 
+  3    24 dcl	1 ect_header	aligned based (ect_ptr),
+  3    25 	  2 ect_areap	ptr,			/* pointer to area in which ECT entries are allocated */
+  3    26 	  2 ect_area_size	fixed bin (19),		/* number of words in ECT area */
+  3    27 	  2 count		(-1:5) fixed bin,		/* totals of entries allocated */
+  3    28 						/* -1 = waiting control points */
+  3    29 						/* 0 = total entries, 1 = wait channels */
+  3    30 						/* 2 = call channels, 3 = call channel messages */
+  3    31 						/* 4 = ITT messages, 5 = wait channel messages */
+  3    32 	  2 entry_list_ptrs (5),			/* head and tail of lists in ECT */
+  3    33 						/* 1 = wait channels, 2 = call channels */
+  3    34 						/* 3 = call channel messages, 4 = ITT messages */
+  3    35 						/* 5 = wait channel messages */
+  3    36 	    3 firstp	ptr,			/* head of list */
+  3    37 	    3 lastp	ptr,			/* tail of list */
+  3    38 	  2 meters,
+  3    39 	    3 total_wakeups fixed bin (33),		/* total wakeups sent on all channels */
+  3    40 	    3 total_wait_wakeups
+  3    41 			fixed bin (33),		/* wakeups sent on wait channels */
+  3    42 	    3 total_call_wakeups
+  3    43 			fixed bin (33),		/* wakeups sent on call channels */
+  3    44 	    3 ittes_tossed	fixed bin (33),		/* number invalid ITT messages received, ignored */
+  3    45 	  2 seed		fixed bin (33),		/* used to generate uid portion of channel name */
+  3    46 	  2 flags,
+  3    47 	    3 call_priority bit (1) unal,		/* = "0"b if wait chns have priority - default */
+  3    48 						/* = "1"b if call chans have priority */
+  3    49 	    3 wakeup_control_points			/** ON => we must wakeup other control points before */
+  3    50 			bit (1) unaligned,		/* ... processing any event messages */
+  3    51 	    3 unused1	bit (16) unaligned,
+  3    52 	    3 mask_call_count
+  3    53 			fixed bin (17) unal,	/* number times event call chans masked */
+  3    54 	  2 ecit_ptr	ptr,			/* pointer to the ECIT */
+  3    55 	  2 ecit_lth	fixed bin (17),		/* length of the ECIT (see below) */
+  3    56 	  2 r_offset	fixed bin (18),		/* operand used to encode/decode channel names */
+  3    57 	  2 r_factor	fixed bin (35),		/* operand used to encode/decode channel names */
+  3    58 	  2 last_fast_channel_events			/** prior fast channel settings */
+  3    59 			bit (36) aligned;
+  3    60 
+  3    61 dcl	ect_ptr		pointer;
+  3    62 
+  3    63 dcl	TOTAL		fixed bin (8) static options (constant) init (0);
+  3    64 dcl	WAIT		fixed bin (8) static options (constant) init (1);
+  3    65 dcl	CALL		fixed bin (8) static options (constant) init (2);
+  3    66 dcl	EV_CALL_MESSAGE	fixed bin (8) static options (constant) init (3);
+  3    67 dcl	ITT_MESSAGE	fixed bin (8) static options (constant) init (4);
+  3    68 dcl	EV_WAIT_MESSAGE	fixed bin (8) static options (constant) init (5);
+  3    69 dcl	WAITING_CP	fixed bin (8) static options (constant) init (-1);
+  3    70 						/* used to index count and entry_list_ptrs arrays */
+  3    71 
+  3    72 
+  3    73 /* Definition of the Event Channel Index Table (ECIT) -- Given an event channel
+  3    74*   name, ipc_validate_$decode_event_channel_name will yield an index into this
+  3    75*   table which contains a pointer to the definition of the channel (its ECT) */
+  3    76 
+  3    77 dcl	1 ecit		aligned based (ecit_ptr),
+  3    78 	  2 ecte_ptr	(ecit_lth) pointer unaligned;
+  3    79 
+  3    80 dcl	ecit_ptr		pointer;
+  3    81 dcl	ecit_lth		fixed binary (17);
+  3    82 
+  3    83 
+  3    84 /* Definition of an event wait channel */
+  3    85 
+  3    86 dcl	1 wait_channel	aligned based (ectep),
+  3    87 	  2 word_0,
+  3    88 	    3 unused1	fixed bin (17) unal,
+  3    89 	    3 flags	unal,
+  3    90 	      4 async_call	bit (1) unal,		/* Only checked for call channels. */
+  3    91 	      4 pad	bit (8) unal,
+  3    92 	    3 type	fixed bin (8) unal,		/* = WAIT */
+  3    93 	  2 next_chanp	ptr unal,			/* pointer to next wait channel */
+  3    94 	  2 prev_chanp	ptr unal,			/* pointer to previous wait channel */
+  3    95 	  2 word_3,
+  3    96 	    3 fast_channel	bit (1) unal,		/* ON => this is a fast channel */
+  3    97 	    3 inhibit_count fixed bin (16) unal,	/* number of times message reception has been inhibited */
+  3    98 	    3 wakeup_control_points			/** ON => wakeup the control points waiting on this channel */
+  3    99 			bit (1) unaligned,
+  3   100 	    3 wakeup_count	fixed bin (17) unal unsigned, /* number of wakeups received over this channel */
+  3   101 	  2 name		bit (72),			/* event channel name associated with this channel */
+  3   102 	  2 first_ev_msgp	ptr unal,			/* pointer to first message in queue */
+  3   103 	  2 last_ev_msgp	ptr unal,			/* pointer to last message in queue */
+  3   104 	  2 first_wcpp	ptr unal,			/* pointer to first control point waiting on this channel */
+  3   105 	  2 last_wcpp	ptr unal,			/* pointer to last control point waiting on this channel */
+  3   106 	  2 fast_channel_id fixed binary,		/* index into ipc_data_$fast_channel_events */
+  3   107 	  2 unused2	fixed binary;		/* pad to 12 words */
+  3   108 
+  3   109 
+  3   110 /* Definition of an event call channel */
+  3   111 
+  3   112 dcl	1 call_channel	aligned based (ectep),
+  3   113 	  2 word_0,
+  3   114 	    3 priority	fixed bin (17) unal,	/* indicated priority relative to other call chns */
+  3   115 	    3 flags	unal,
+  3   116 	      4 async_call	bit (1) unal,		/* Send IPS "wkp_" on wakeup. */
+  3   117 	      4 pad	bit (8) unal,
+  3   118 	    3 type	fixed bin (8) unal,		/* = CALL */
+  3   119 	  2 next_chanp	ptr unal,			/* pointer to next call channel */
+  3   120 	  2 prev_chanp	ptr unal,			/* pointer to prev call channel */
+  3   121 	  2 word_3,
+  3   122 	    3 call_inhibit	bit (1) unal,		/* = "1"b if call to associated proc in progress */
+  3   123 	    3 inhibit_count fixed bin (16) unal,	/* number of times message reception has been inhibited */
+  3   124 	    3 wakeup_control_points			/** ON => wakeup the control point waiting on this channel */
+  3   125 			bit (1) unaligned,
+  3   126 	    3 wakeup_count	fixed bin (17) unal unsigned, /* number of wakeups received over this channel */
+  3   127 	  2 name		bit (72),			/* event channel name associated with this channel */
+  3   128 	  2 first_ev_msgp	ptr unal,			/* pointer to first message in queue */
+  3   129 	  2 last_ev_msgp	ptr unal,			/* pointer to last message in queue */
+  3   130 	  2 data_ptr	ptr unal,			/* pointer to associated data base */
+  3   131 	  2 procedure_value,			/* procedure to call when message arrives */
+  3   132 	    3 procedure_ptr ptr unal,			/* pointer to entry point */
+  3   133 	    3 environment_ptr
+  3   134 			ptr unal,			/* pointer to stack frame */
+  3   135 	  2 control_point_id			/** ID of control point which "owns" this channel */
+  3   136 			bit (36) aligned;
+  3   137 
+  3   138 dcl	ectep		pointer;
+  3   139 
+  3   140 
+  3   141 /* Definition of a message for either an event wait or an event call channel */
+  3   142 
+  3   143 dcl	1 event_message	aligned based,
+  3   144 	  2 word_0,
+  3   145 	    3 priority	fixed bin (17) unal,	/* priority of call channel */
+  3   146 	    3 type	fixed bin (17) unal,	/* = EV_CALL_MESSAGE or EV_WAIT_MESSAGE */
+  3   147 	  2 chanp		ptr unal,			/* pointer to associated event channel */
+  3   148 	  2 message_data	like event_message_data aligned,
+  3   149 						/* event message as returned from ipc_$block */
+  3   150 	  2 next_ev_msgp	ptr unal,			/* pointer to next event call/wait channel message */
+  3   151 	  2 prev_ev_msgp	ptr unal,			/* pointer to previous event call/wait channel message */
+  3   152 	  2 next_chan_msgp	ptr unal,			/* pointer to next message for this channel */
+  3   153 	  2 prev_chan_msgp	ptr unal;			/* pointer to previous message for this channel */
+  3   154 
+  3   155 
+  3   156 /* Definition of an ITT message as returned from ring 0 */
+  3   157 
+  3   158 dcl	1 itt_message	aligned based,
+  3   159 	  2 word_0,
+  3   160 	    3 unused1	fixed bin (17) unal,
+  3   161 	    3 type	fixed bin (17) unal,
+  3   162 	  2 next_itt_msgp	ptr unal,			/* pointer to next itt message entry in ECT currently */
+  3   163 	  2 message_data	like event_message_data aligned,
+  3   164 	  2 unused2	(4) fixed bin;		/* pad to 12 words */
+  3   165 
+  3   166 
+  3   167 /* Definition of an event message as returned from ring 0 */
+  3   168 
+  3   169 dcl	1 event_message_data
+  3   170 			aligned based,
+  3   171 	  2 channel_id	fixed bin (71),		/* event channel name */
+  3   172 	  2 message	fixed bin (71),		/* 72 bit message associated with wakeup */
+  3   173 	  2 sender	bit (36),			/* process ID of sender */
+  3   174 	  2 origin,
+  3   175 	    3 dev_signal	bit (18) unal,		/* "1"b if device signal */
+  3   176 						/* "0"b if user event */
+  3   177 	    3 ring	fixed bin (17) unal;	/* ring of sending process */
+  3   178 
+  3   179 
+  3   180 /* Definition of a control point which is blocked on a channel */
+  3   181 
+  3   182 dcl	1 waiting_control_point
+  3   183 			aligned based (wcpp),
+  3   184 	  2 word_0,
+  3   185 	    3 block_count	fixed binary (17) unaligned,	/* # of in-progress ipc_$block calls by this control point */
+  3   186 	    3 type	fixed binary (17) unaligned,	/* = WAITING_CP */
+  3   187 	  2 control_point_id			/** ID of the waiting control point */
+  3   188 			bit (36) aligned,
+  3   189 	  2 chain,
+  3   190 	    3 next_wcpp	pointer,			/* pointer to previous waiting control point */
+  3   191 	    3 prev_wcpp	pointer,			/* pointer to next waiting control point */
+  3   192 	  2 unused	(6) bit (36) aligned;	/* pad to 12 words */
+  3   193 
+  3   194 dcl	wcpp		pointer;
+  3   195 
+  3   196 /* 	END INCLUDE file ... ect_structures.incl.pl1 */
+      504 
+      505  /*	Begin  include file ... oc_log_meters.incl.pl1
+  4     2**
+  4     3**	Created by  Bill Silver  on 08/11/73
+  4     4**	This include file defines the meter areas used by the operator's console
+  4     5**	software.  These meter areas are used to keep statistics about the wired
+  4     6**	buffers listed below.  If this include files is changed the size of all
+  4     7**	of these areas may also have to be changed.
+  4     8**
+  4     9**	METER AREA		WIRED BUFFER
+  4    10**	----------		------------
+  4    11**	oc_data$sys_meters		syserr write buffer
+  4    12**	oc_data$dim_meters		dim write buffer
+  4    13**	wired_log_data$log_meters	wired syserr log buffer
+  4    14**/
+  4    15 
+  4    16 dcl	olm_ptr		ptr;		/* Pointer to an oc or log meter area. */
+  4    17 
+  4    18 
+  4    19 dcl    1	olm	based(olm_ptr)    aligned,
+  4    20 
+  4    21 	2  totl_time	fixed bin(71),	/* Time elapsed since meters initialized. */
+  4    22 	2  last_time	fixed bin(71),	/* Time metering last performed. */
+  4    23 	2  full_time	fixed bin(71),	/* Total time buffer was full. */
+  4    24 	2  empt_time	fixed bin(71),	/* Total time buffer was empty. */
+  4    25 
+  4    26 	2  tw_ave		fixed bin(71),	/* Time weighted average number of entries
+  4    27*					*  in the buffer.   Actually this is just
+  4    28*					*  a total.  To get the average just divide
+  4    29*					*  by  olm.totl_time. */
+  4    30 	2  len_ave	fixed bin(71),	/* Average length of message texts.  Actually
+  4    31*					*  this is just the total.  To get the average
+  4    32*					*  just divide by  olm.tot_num. */
+  4    33 
+  4    34 	2  tot_num	fixed bin,	/* Total number of entries put into buffer. */
+  4    35 	2  max_num	fixed bin,	/* Maximum number of entries ever in buffer. */
+  4    36 	2  full_num	fixed bin,	/* Total number of times buffer was full. */
+  4    37 	2  full_flag	bit(1);		/* ON => buffer is now full. */
+  4    38 
+  4    39 
+  4    40 /*	End of include file ... oc_log_meters.incl.pl1		*/
+      505 
+      506  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  5     2 
+  5     3 /* Declarations for Segment Loading Table header and array.
+  5     4*
+  5     5*   Used by Initialization and MST Checker subroutines */
+  5     6 
+  5     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  5     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  5     9     namep ptr,					/* pointer to segment name list block */
+  5    10     pathp ptr,					/* pointer to segment's directory path name */
+  5    11     aclp ptr;					/* pointer to acl structure */
+  5    12 
+  5    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  5    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  5    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  5    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  5    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  5    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  5    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  5    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  5    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  5    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  5    23 
+  5    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  5    25 
+  5    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  5    27 	2 pad bit (18) unal,
+  5    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  5    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  5    30 
+  5    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  5    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  5    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  5    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  5    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  5    36 	  3 pad bit (5) unal,
+  5    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  5    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  5    39 
+  5    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  5    41 	2 size fixed bin (17),			/* length of pathname */
+  5    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  5    43 	2 acls fixed bin;				/* ACL list starts here */
+  5    44 
+  5    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  5    46 	2 count fixed bin,				/* number of entries in acl list */
+  5    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  5    48 	  3 userid char (32),			/* user specification */
+  5    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  5    50 	  3 pad bit (36) aligned,
+  5    51 	  3 code fixed bin;
+  5    52 
+  5    53 
+  5    54 /* END INCLUDE FILE slt.incl.pl1 */
+      506 
+      507  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  6     2 /* Declaration for Segment Loading Table Entry structure.
+  6     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  6     4 /* modified 5/4/76 by Noel I. Morris	*/
+  6     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  6     6 /* format: style3 */
+  6     7 
+  6     8 dcl	sltep		ptr;
+  6     9 
+  6    10 dcl	1 slte_uns	based (sltep) aligned,
+  6    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  6    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  6    13 /**** End of word 1 */
+  6    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  6    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  6    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  6    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  6    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  6    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  6    20 	  2 pad1		bit (3),			/* unused */
+  6    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  6    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  6    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  6    24 	  2 pad3		bit (2),
+  6    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  6    26 /**** End of 1st half of word 2 */
+  6    27 	  2 pad4		bit (3),
+  6    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  6    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  6    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  6    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  6    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  6    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  6    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  6    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  6    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  6    37 /***** End of word 2 */
+  6    38 	  2 pad5		bit (6),
+  6    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  6    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  6    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  6    42 /***** End of word 3 */
+  6    43 	  2 pad7		bit (3),
+  6    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  6    45 	  2 bit_count	fixed bin (24) uns
+  6    46 	  )		unaligned;		/* bitcount of segment */
+  6    47 
+  6    48 dcl	1 slte		based (sltep) aligned,
+  6    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  6    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  6    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  6    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  6    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  6    54 	  2 firmware_seg    bit (1),
+  6    55 	  2 layout_seg      bit (1),
+  6    56 	  2 breakpointable  bit (1),
+  6    57 	  2 pad2		bit (3),
+  6    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  6    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  6    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  6    61 	  2 pad3		bit (2),
+  6    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  6    63 	  2 pad4		bit (3),
+  6    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  6    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  6    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  6    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  6    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  6    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  6    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  6    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  6    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  6    73 	  2 pad5		bit (6),
+  6    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  6    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  6    76 	  2 segno		bit (18),			/* text/link segment number */
+  6    77 	  2 pad6		bit (3),
+  6    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  6    79 	  2 bit_count	bit (24)
+  6    80 	  )		unaligned;		/* bitcount of segment */
+  6    81 
+  6    82 /* END INCLUDE FILE slte.incl.pl1 */
+      507 
+      508  /* 	BEGIN INCLUDE FILE ... stack_frame.incl.pl1 ... */
+  7     2 
+  7     3 /* format: off */
+  7     4 
+  7     5 /* Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr and pl1_ps_ptr */
+  7     6 /* Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager bit & main_proc bit */
+  7     7 /* Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr */
+  7     8 /* Modified: 03/01/84, S. Herbst - Added RETURN_PTR_MASK */
+  7     9 
+  7    10 
+  7    11 /****^  HISTORY COMMENTS:
+  7    12*  1) change(86-09-15,Kissel), approve(86-09-15,MCR7473),
+  7    13*     audit(86-10-01,Fawcett), install(86-11-03,MR12.0-1206):
+  7    14*     Modified to add constants for the translator_id field in the stack_frame
+  7    15*     structure.
+  7    16*                                                   END HISTORY COMMENTS */
+  7    17 
+  7    18 
+  7    19 dcl RETURN_PTR_MASK bit (72) int static options (constant)  /* mask to be AND'd with stack_frame.return_ptr */
+  7    20 	init ("777777777777777777000000"b3);		/* when copying, to ignore bits that a call fills */
+  7    21 						/* with indicators (nonzero for Fortran hexfp caller) */
+  7    22 			/* say: unspec(ptr) = unspec(stack_frame.return_ptr) & RETURN_PTR_MASK; */
+  7    23 
+  7    24 dcl TRANSLATOR_ID_PL1V2 bit (18) internal static options (constant) init ("000000"b3);
+  7    25 dcl TRANSLATOR_ID_ALM bit (18) internal static options (constant) init ("000001"b3);
+  7    26 dcl TRANSLATOR_ID_PL1V1 bit (18) internal static options (constant) init ("000002"b3);
+  7    27 dcl TRANSLATOR_ID_SIGNAL_CALLER bit (18) internal static options (constant) init ("000003"b3);
+  7    28 dcl TRANSLATOR_ID_SIGNALLER bit (18) internal static options (constant) init ("000004"b3);
+  7    29 
+  7    30 
+  7    31 dcl  sp pointer;					/* pointer to beginning of stack frame */
+  7    32 
+  7    33 dcl  stack_frame_min_length fixed bin static init(48);
+  7    34 
+  7    35 
+  7    36 dcl 1 stack_frame based(sp) aligned,
+  7    37     2 pointer_registers(0 : 7) ptr,
+  7    38     2 prev_sp pointer,
+  7    39     2 next_sp pointer,
+  7    40     2 return_ptr pointer,
+  7    41     2 entry_ptr pointer,
+  7    42     2 operator_and_lp_ptr ptr,			/* serves as both */
+  7    43     2 arg_ptr pointer,
+  7    44     2 static_ptr ptr unaligned,
+  7    45     2 support_ptr ptr unal, /* only used by fortran I/O */
+  7    46     2 on_unit_relp1 bit(18) unaligned,
+  7    47     2 on_unit_relp2 bit(18) unaligned,
+  7    48     2 translator_id bit(18) unaligned,			/* Translator ID (see constants above)
+  7    49*						   0 => PL/I version II
+  7    50*						   1 => ALM
+  7    51*						   2 => PL/I version I   
+  7    52*						   3 => signal caller frame
+  7    53*						   4 => signaller frame */
+  7    54     2 operator_return_offset bit(18) unaligned,
+  7    55     2 x(0: 7) bit(18) unaligned,			/* index registers */
+  7    56     2 a bit(36),					/* accumulator */
+  7    57     2 q bit(36),					/* q-register */
+  7    58     2 e bit(36),					/* exponent */
+  7    59     2 timer bit(27) unaligned,				/* timer */
+  7    60     2 pad bit(6) unaligned,
+  7    61     2 ring_alarm_reg bit(3) unaligned;
+  7    62 
+  7    63 
+  7    64 dcl 1 stack_frame_flags based(sp) aligned,
+  7    65     2 pad(0 : 7) bit(72),				/* skip over prs */
+  7    66     2 xx0 bit(22) unal,
+  7    67     2 main_proc bit(1) unal,				/* on if frame belongs to a main procedure */
+  7    68     2 run_unit_manager bit(1) unal,			/* on if frame belongs to run unit manager */
+  7    69     2 signal bit(1) unal,				/* on if frame belongs to logical signal_ */
+  7    70     2 crawl_out bit(1) unal,				/* on if this is a signal caller frame */
+  7    71     2 signaller bit(1) unal,				/* on if next frame is signaller's */
+  7    72     2 link_trap bit(1) unal,				/* on if this frame was made by the linker */
+  7    73     2 support bit(1) unal,				/* on if frame belongs to a support proc */
+  7    74     2 condition bit(1) unal,				/* on if condition established in this frame */
+  7    75     2 xx0a bit(6) unal,
+  7    76     2 xx1 fixed bin,
+  7    77     2 xx2 fixed bin,
+  7    78     2 xx3 bit(25) unal,
+  7    79     2 old_crawl_out bit (1) unal,			/* on if this is a signal caller frame */
+  7    80     2 old_signaller bit(1) unal,			/* on if next frame is signaller's */
+  7    81     2 xx3a bit(9) unaligned,
+  7    82     2 xx4(9) bit(72) aligned,
+  7    83     2 v2_pl1_op_ret_base ptr,				/* When a V2 PL/I program calls an operator the
+  7    84*						*  operator puts a pointer to the base of
+  7    85*						*  the calling procedure here. (text base ptr)  */
+  7    86     2 xx5 bit(72) aligned,
+  7    87     2 pl1_ps_ptr ptr;				/* ptr to ps for this frame; also used by fio. */
+  7    88 
+  7    89 /* format: on */
+  7    90 
+  7    91 /* 	END INCLUDE FILE ... stack_frame.incl.pl1 */
+      508 
+      509  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  8     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  8     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  8     4 /*	Modified April 1983 by C. Hornig for tasking */
+  8     5 
+  8     6 /****^  HISTORY COMMENTS:
+  8     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  8     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  8     9*     added the heap_header_ptr definition.
+  8    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  8    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  8    12*     Modified to support control point management.  These changes were actually
+  8    13*     made in February 1985 by G. Palter.
+  8    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  8    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  8    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  8    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  8    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  8    19*     (ITS pair).
+  8    20*                                                   END HISTORY COMMENTS */
+  8    21 
+  8    22 /* format: style2 */
+  8    23 
+  8    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  8    25 
+  8    26      dcl	   1 stack_header	      based (sb) aligned,
+  8    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  8    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  8    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  8    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  8    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  8    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  8    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  8    34 	     2 pad4	      bit (2) unal,
+  8    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  8    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  8    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  8    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  8    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  8    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  8    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  8    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  8    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  8    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  8    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  8    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  8    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  8    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  8    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  8    50 	     2 return_no_pop_op_ptr
+  8    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  8    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  8    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  8    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  8    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  8    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  8    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  8    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  8    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  8    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  8    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  8    62 	     2 trace,
+  8    63 	       3 frames,
+  8    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  8    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  8    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  8    67 	     2 pad2	      bit (36),		/*  (61) */
+  8    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  8    69 
+  8    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  8    71 
+  8    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  8    73 						/* (551) octal */
+  8    74 
+  8    75 
+  8    76 /*	The following constants are offsets within this transfer vector table.  */
+  8    77 
+  8    78      dcl	   (
+  8    79 	   call_offset	      fixed bin init (271),
+  8    80 	   push_offset	      fixed bin init (272),
+  8    81 	   return_offset	      fixed bin init (273),
+  8    82 	   return_no_pop_offset   fixed bin init (274),
+  8    83 	   entry_offset	      fixed bin init (275)
+  8    84 	   )		      internal static;
+  8    85 
+  8    86 
+  8    87 
+  8    88 
+  8    89 
+  8    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  8    91*	move the whole stack header should use this overlay.
+  8    92**/
+  8    93 
+  8    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  8    95 
+  8    96 
+  8    97 
+  8    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      509 
+      510  /* BEGIN INCLUDE FILE  syserr_data.incl.pl1 */
+  9     2 
+  9     3 /* Created by  Bill Silver  on 01/03/73. */
+  9     4 /* Modified September 1975 by Larry Johnson to add binary data */
+  9     5 /* Modified March 1976 by Steve Webber for use with cds */
+  9     6 /* Modified 1985-01-21 by EJ Sharpe: added wmess.process_id */
+  9     7 /* Modified 1985-02-18 by Keith Loepere to break out headers. */
+  9     8 
+  9     9 /* This include file defines the syserr and log areas found in  syserr_data.cds
+  9    10*   There is one lock that coordinates the use of all the data found in
+  9    11*   syserr_data.cds.  NOTE, if this include file changes, syserr_data.cds
+  9    12*   may also have to be changed. */
+  9    13 
+  9    14 dcl  syserr_data$syserr_area char (1) aligned external,
+  9    15      syserr_data$wired_log_area char (1) aligned external;
+  9    16 
+  9    17 dcl  sd_ptr ptr,					/* Pointer to beginning of syserr_area. */
+  9    18      wlog_ptr ptr,					/* Pointer to beginning of wired_log_area. */
+  9    19      wmess_ptr ptr;					/* Pointer to a message entry in the wired log. */
+  9    20 
+  9    21 dcl 1 sd based (sd_ptr) aligned,			/* Overlay of syserr_data$syserr_area. */
+  9    22     2 lock bit (36),				/* Locks all the data in syserr_data. */
+  9    23     2 log_flag bit (1) unal,				/* ON => logging mechanism enabled. */
+  9    24     2 char_type_flag bit (1) unal,			/* ON => ASCII,  OFF => BCD. */
+  9    25     2 ocdcm_init_flag bit (1) unal,			/* ON => ocdcm_ has been initialized. */
+  9    26     2 pad bit (33) unal,
+  9    27     2 prev_text_written char (80);			/* Text of last message written */
+  9    28 
+  9    29 dcl 1 wlog based (wlog_ptr) aligned,			/* Overlay of syserr_data$wired_log_area. */
+  9    30     2 head like wlog_header,				/* Wired log header. */
+  9    31     2 buffer (wlog.head.bsize) bit (36);		/* Wired log buffer. */
+  9    32 
+  9    33 dcl 1 wlog_header based aligned,			/* WIRED LOG HEADER */
+  9    34     2 bsize fixed bin,				/* Size of the wired log buffer in words.
+  9    35*						   Defined in syserr_data.cds. */
+  9    36     2 count fixed bin,				/* Num of message entries in wired log. */
+  9    37     2 slog_ptr ptr,					/* Pointer to the paged log segment: syserr_log. */
+  9    38     2 seq_num fixed bin (35),				/* Sequence number of last message logged. */
+  9    39     2 next bit (18) unal,				/* Offset relative to base syserr_data */
+  9    40 						/* Where next entry will go in wired log. */
+  9    41     2 pad bit (18) unal;
+  9    42 
+  9    43 
+  9    44 /* This is an overlay of a message entry that goes into the wired log.  Each message
+  9    45*   entry corresponds to one syserr message. */
+  9    46 
+  9    47 dcl 1 wmess based (wmess_ptr) aligned,
+  9    48     2 header aligned like wmess_header,
+  9    49     2 text char (0 refer (wmess.text_len)),		/* Text of expanded message - kept in ASCII. */
+  9    50     2 data (0 refer (wmess.data_size)) bit (36);		/* Binary data area */
+  9    51 
+  9    52 dcl 1 wmess_header based aligned,
+  9    53     2 seq_num fixed bin (35),				/* Sequence number of this message. */
+  9    54     2 time fixed bin (71) unal,			/* Time message logged at */
+  9    55     2 code fixed bin (11) unal,			/* Syserr code associated with this message. */
+  9    56     2 text_len fixed bin (11) unal,			/* Length of message text in ASCII characters. */
+  9    57     2 data_size fixed bin (11) unal,			/* Size of binary data */
+  9    58     2 data_code fixed bin (11) unal,			/* Data code */
+  9    59     2 pad bit (24) unal,
+  9    60     2 process_id bit (36);				/* ID of process which wrote message */
+  9    61 
+  9    62 /* END INCLUDE FILE syserr_data.incl.pl1 */
+      510 
+      511  /* BEGIN INCLUDE FILE ... syserr_log_dcls.incl.pl1 ... 84-08-17 ... W. Olin Sibert */
+ 10     2 /* Modified 1984-12-10, BIM: changed to a fast lock, added error count. */
+ 10     3 
+ 10     4 /* The syserr_log_data segment, made reverse-deciduous in >sl1, overlays the
+ 10     5*   first page of the LOG partition, and contains control information about
+ 10     6*   the other syserr_log segments. */
+ 10     7 
+ 10     8 declare   syserr_log_data$    fixed bin external static;
+ 10     9 declare   syserr_log_data_ptr pointer;
+ 10    10 
+ 10    11 declare 1 syserr_log_data     aligned based (syserr_log_data_ptr),
+ 10    12           2 version           char (8) unaligned,           /* SYSERR_LOG_DATA_V1 */
+ 10    13           2 old_init_word     char (4) unaligned,           /* Overlays slog.head.init_word ("INIT") */
+ 10    14 	2 pad003    	bit (1) aligned,
+ 10    15 
+ 10    16           2 live_log          fixed bin,                    /* Identifier of live log (#1 or #2) */
+ 10    17 	2 pad001		bit (1) aligned,
+ 10    18           2 error_count       fixed bin (35),               /* errors copying the log */
+ 10    19           2 swap_time         fixed bin (71),               /* Time of last log swap; zero if other_log_empty */
+ 10    20 
+ 10    21           2 messages_copied   fixed bin (35),               /* A meter */
+ 10    22           2 messages_lost     fixed bin (35),               /* Messages not copied because logs full */
+ 10    23 
+ 10    24           2 log_start (2)     fixed bin,                    /* Offset of each log segment in the partition */
+ 10    25           2 log_size (2)      fixed bin,                    /* Number of pages in each log segment */
+ 10    26 
+ 10    27           2 per_bootload,                                   /* Ramaining structure is reinitialized at each boot */
+ 10    28             3 log_ptr (2) pointer,                          /* Pointer to the three segments in the partition */
+ 10    29 
+ 10    30             3 log_name (2) char (32) unaligned,             /* Current names of log segments (by syserr_seg_manager) */
+ 10    31             3 log_dir char (168) unaligned,                 /* Parent directory */
+ 10    32 
+ 10    33             3 lock		aligned,
+ 10    34 	    4 pid		bit (36) aligned,             /* Standard format wait lock, used when updating log */
+ 10    35               4 event_id      fixed bin (35),
+ 10    36               4 notify_requested 
+ 10    37 	                    bit (1) unaligned,
+ 10    38 	    4 pad           bit (35) unaligned,
+ 10    39             3 take_a_fault    bit (1) aligned,              /* Forces a fault if on, for testing fault recovery */
+ 10    40             3 test_mode       bit (1) aligned,              /* Running in outer-ring test mode */
+ 10    41 
+ 10    42             3 copy_disabled   bit (1) aligned,              /* No more messages being copied into live log */
+ 10    43             3 drop_severity_5 bit (1) aligned,              /* No more severity 5 messages (log is 3/4 full) */
+ 10    44 	  3 wakeup_on_printable bit (1) aligned,	/* Console recovery: send wakeup for printable message */
+ 10    45 
+ 10    46             3 copy_threshold  fixed bin (18),               /* How often to copy to outer ring log segments */
+ 10    47             3 copy_channel    fixed bin (71),
+ 10    48             3 copy_process_id bit (36) aligned,
+ 10    49 
+ 10    50           2 pad fixed bin (71);                             /* Anything goes, as long as it's under a page */
+ 10    51 
+ 10    52 declare   SYSERR_LOG_DATA_V1 char (8) internal static options (constant) init ("syserr01");
+ 10    53 
+ 10    54 /* END INCLUDE FILE ... syserr_log_dcls.incl.p1l */
+      511 
+      512  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 11     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 11     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 11     4 
+ 11     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 11     6 
+ 11     7 dcl (
+ 11     8 
+ 11     9 /* The following constants define the message action codes.  This indicates
+ 11    10*how a message is to be handled.  */
+ 11    11 
+ 11    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 11    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 11    14 
+ 11    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 11    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 11    17 
+ 11    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 11    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 11    20 
+ 11    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 11    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 11    23 
+ 11    24      SYSERR_LOG_OR_PRINT	init (4),
+ 11    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 11    26 
+ 11    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 11    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 11    29 
+ 11    30 
+ 11    31 /* The following constants are added to the normal severities to indicate
+ 11    32*different sorting classes of messages.  */
+ 11    33 
+ 11    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 11    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 11    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 11    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 11    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 11    39 	) fixed bin internal static options (constant);
+ 11    40 
+ 11    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      512 
+      513  /* BEGIN INCLUDE FILE ... log_segment.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+ 12     2 
+ 12     3 declare   log_segment_ptr               pointer;
+ 12     4 declare   log_segment_max_size          fixed bin (18);
+ 12     5 declare   LOG_SEGMENT_VERSION_1         char (8) internal static options (constant) init ("SysLog01");
+ 12     6 
+ 12     7 
+ 12     8 declare 1 log_segment                   aligned based (log_segment_ptr),
+ 12     9           2 header                      aligned like log_segment_header,
+ 12    10           2 data                        dim (log_segment_max_size refer (log_segment.max_size)) bit (36) aligned;
+ 12    11 
+ 12    12 
+ 12    13 declare 1 log_segment_header            aligned based,
+ 12    14           2 version                     char (8) unaligned, /* LOG_SEGMENT_VERSION_1 */
+ 12    15           2 time_created                fixed bin (71),     /* When the segment header was initialized */
+ 12    16           2 previous_log_dir            char (168) unaligned, /* Directory containing previous log segment */
+ 12    17 
+ 12    18           2 limits,
+ 12    19             3 first_sequence            fixed bin (35),     /* First and last sequence numbers / time stamps */
+ 12    20             3 last_sequence             fixed bin (35),     /* of messages in the log. These may be slightly */
+ 12    21             3 first_time                fixed bin (71),     /* incorrect due to lockless updating strategy */
+ 12    22             3 last_time                 fixed bin (71),
+ 12    23 
+ 12    24           2 alloc_info,                                     /* Complex STACQ hack for allocating and assigning */
+ 12    25             3 word_1                    fixed bin (18),     /* sequence numbers locklessly. See log_segment_ */
+ 12    26             3 word_2                    bit (36) aligned,   /* for details of strategy */
+ 12    27           2 max_size                    fixed bin (18),     /* Total words in data area */
+ 12    28 
+ 12    29           2 listeners_registered        bit (1) aligned,    /* Set if ANY processes were ever registered-- it's only */
+ 12    30           2 listener_bootload_time      fixed bin (71),     /* kept here for efficiency. The bootload time is used to */
+ 12    31                                                             /* detect all the dead listeners after a reboot */
+ 12    32           2 listener (25),                                  /* Processes waiting for messages in the log */
+ 12    33             3 process_id                bit (36) aligned,
+ 12    34             3 event_channel             fixed bin (71) unaligned, /* Saves space-- allows 3-word entries */
+ 12    35 
+ 12    36           2 last_wakeup_time            fixed bin (71),     /* When last wakeup was sent */
+ 12    37           2 wakeup_delta                fixed bin (71),     /* Wakeups sent no more than once per this interval */
+ 12    38 
+ 12    39           2 pad (6)                     fixed bin (71);     /* Pad header to 150 words */
+ 12    40 
+ 12    41 
+ 12    42 declare   LOG_SEGMENT_NEW_MESSAGE           init ("777111555333"b3) bit (36) aligned internal static options (constant);
+ 12    43 declare   LOG_SEGMENT_COMPLETE_MESSAGE      init ("666000444222"b3) bit (36) aligned internal static options (constant);
+ 12    44 
+ 12    45 /* END INCLUDE FILE ... log_segment.incl.pl1 */
+      513 
+      514  /* BEGIN INCLUDE FILE ... log_message.incl.pl1 ... 84-04-25 ... W. Olin Sibert */
+ 13     2 
+ 13     3 declare 1 log_message_header  aligned based,                /* Items marked "(SET)" are set by $create_message */
+ 13     4           2 sentinel          bit (36) aligned,             /* Proper value declared in log_segment.incl.pl1 */
+ 13     5           2 sequence          fixed bin (35),               /* Sequence number for this message (SET) */
+ 13     6           2 severity          fixed bin (8) unaligned,      /* Severity of message */
+ 13     7           2 data_class_lth    fixed bin (9) unaligned unsigned, /* Length of data class-- 0 to 16 (SET) */
+ 13     8           2 time              fixed bin (53) unaligned,     /* Time message originated */
+ 13     9           2 text_lth          fixed bin (17) unaligned,     /* Length of message text. Must be nonzero (SET) */
+ 13    10           2 data_lth          fixed bin (17) unaligned,     /* Length of binary data. May be zero (SET) */
+ 13    11           2 process_id        bit (36) aligned;             /* Process id of process writing message */
+ 13    12 
+ 13    13 declare 1 log_message         aligned based (log_message_ptr),
+ 13    14           2 header            aligned like log_message_header,
+ 13    15           2 text              char (log_message_text_lth         refer (log_message.text_lth)) unaligned,
+ 13    16           2 data_class        char (log_message_data_class_lth   refer (log_message.data_class_lth)) unaligned,
+ 13    17           2 data              dim (log_message_data_lth          refer (log_message.data_lth)) bit (36) aligned;
+ 13    18 
+ 13    19 declare   log_message_ptr pointer;
+ 13    20 declare   log_message_text_lth fixed bin;
+ 13    21 declare   log_message_data_class_lth fixed bin;
+ 13    22 declare   log_message_data_lth fixed bin;
+ 13    23 
+ 13    24 /* END INCLUDE FILE ... log_message.incl.pl1 */
+      514 
+      515  /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+ 14     2 
+ 14     3 /****^  HISTORY COMMENTS:
+ 14     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+ 14     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+ 14     6*     Add the subvolume info.
+ 14     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+ 14     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+ 14     9*     Added inconsistent_dbm bit used to determine consistency of volume
+ 14    10*     dumper bit maps.
+ 14    11*                                                   END HISTORY COMMENTS */
+ 14    12 
+ 14    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+ 14    14 /* Note: fsout_vol clears pad fields before writing the label */
+ 14    15 
+ 14    16 dcl  labelp ptr;
+ 14    17 
+ 14    18 dcl 1 label based (labelp) aligned,
+ 14    19 
+ 14    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+ 14    21 
+ 14    22     2 gcos (5*64) fixed bin,
+ 14    23 
+ 14    24 /* Now we have the Multics label */
+ 14    25 
+ 14    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+ 14    27     2 version fixed bin,				/* Version 1 */
+ 14    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+ 14    29     2 pv_name char (32),				/* Physical volume name. */
+ 14    30     2 lv_name char (32),				/* Name of logical volume for pack */
+ 14    31     2 pvid bit (36),				/* Unique ID of this pack */
+ 14    32     2 lvid bit (36),				/* unique ID of its logical vol */
+ 14    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+ 14    34     2 time_registered fixed bin (71),			/* time imported to system */
+ 14    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+ 14    36     2 vol_size fixed bin,				/* total size of volume, in records */
+ 14    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+ 14    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+ 14    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+ 14    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+ 14    41     2 flagpad bit (33) unal,
+ 14    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+ 14    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+ 14    44     2 password bit (72),				/* not yet used */
+ 14    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+ 14    46     2 this_sv fixed bin,				/* what subvolume number it is */
+ 14    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+ 14    48     2 pad1 (13) fixed bin,
+ 14    49     2 time_mounted fixed bin (71),			/* time mounted */
+ 14    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+ 14    51 
+ 14    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+ 14    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+ 14    54* */
+ 14    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+ 14    56     2 pad6 fixed bin,				
+ 14    57 
+ 14    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+ 14    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+ 14    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+ 14    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+ 14    62     2 pad1a (2) fixed bin,
+ 14    63     2 err_hist_size fixed bin,			/* size of pack error history */
+ 14    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+ 14    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+ 14    66     2 pad2 (40) fixed bin,
+ 14    67     2 root,
+ 14    68       3 here bit (1),				/* TRUE if the root is on this pack */
+ 14    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+ 14    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+ 14    71       3 pad7 bit (1) aligned,				
+ 14    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+ 14    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+ 14    74       3 esd_state fixed bin,				/* State of esd */
+ 14    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+ 14    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+ 14    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+ 14    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+ 14    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+ 14    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+ 14    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+ 14    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+ 14    83     2 pad3 (52) fixed bin,
+ 14    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+ 14    85     2 parts (47),
+ 14    86       3 part char (4),				/* Name of partition */
+ 14    87       3 frec fixed bin,				/* First record */
+ 14    88       3 nrec fixed bin,				/* Number of records */
+ 14    89       3 pad5 fixed bin,
+ 14    90     2 pad4 (5*64) fixed bin;
+ 14    91 
+ 14    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+ 14    93 
+ 14    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+      515 
+      516 
+      517 
+      518 /* BEGIN MESSAGE DOCUMENTATION
+      519*
+      520*   Message:
+      521*   init_syserr_log: Size of wired log is inconsistent.
+      522*
+      523*   S:     $crash
+      524*
+      525*   T:     $init
+      526*
+      527*   M:     The definitions in syserr_data.cds are inconsistent with those
+      528*in syserr_data.incl.pl1.  This indicates a programming error.
+      529*
+      530*   A:     $recover
+      531*
+      532*
+      533*   Message:
+      534*   init_syserr_log: No LOG partition found, syserr logging disabled.
+      535*
+      536*   S:     $crash
+      537*
+      538*   T:     $init
+      539*
+      540*   M:     The system requires a LOG partition on the RPV disk to hold
+      541*syserr messages before they are copied into >sc1>syserr_log. This partition
+      542*must exist on the volume, and be defined by a "PART LOG" card in the config deck.
+      543*
+      544*   A:     Create a LOG partition on the RPV and define it in the config
+      545*deck, then re-boot. The LOG partition should be at least 200 records long,
+      546*and may be as large as 513.
+      547*
+      548*
+      549*   Message:
+      550*   init_syserr_log: Size of PTR larger on disk than in header.
+      551*
+      552*   S:     $crash
+      553*
+      554*   T:     $init
+      555*
+      556*   M:     The LOG partition has been damaged. Some messages may be lost
+      557*if the previous shutdown was caused by a crash.
+      558*
+      559*   A:     Reinitialize the LOG partition with the BCE test_disk command and re-boot.
+      560*
+      561*
+      562*   Message:
+      563*   init_syserr_log: LOG partition damaged. Reinitializing.
+      564*
+      565*   S:     $beep
+      566*
+      567*   T:     $init
+      568*
+      569*   M:     The LOG partition has been damaged. Some messages may be lost
+      570*if the previous shutdown was caused by a crash. The partition is automatically
+      571*reinitialized.
+      572*
+      573*   A:     $recover
+      574*
+      575*
+      576*   Message:
+      577*   init_syserr_log: Converting MR10.2 syserr partition.
+      578*
+      579*   S:     $info
+      580*
+      581*   T:     $init
+      582*
+      583*   M:     This message occurs during the first bootload with an MR11.0 system
+      584*tape, and indicates that the LOG partition is now in the new format.
+      585*
+      586*   A:     $ignore
+      587*
+      588*
+      589*   Message:
+      590*   init_syserr_log: Cannot initialize paged syserr log PTR.
+      591*
+      592*   S:     $crash
+      593*
+      594*   T:     $init
+      595*
+      596*   M:     $err
+      597*
+      598*   A:     $recover
+      599*
+      600*
+      601*   Message:
+      602*   init_syserr_log: Cannot write initial message to paged syserr log PTR.  ERROR-MESSAGE
+      603*
+      604*   S:     $crash
+      605*
+      606*   T:     $init
+      607*
+      608*   M:     $err
+      609*
+      610*   A:     $recover
+      611*It may be necessary to reinitialize the LOG partition with the BCE
+      612*test_disk command after this error.
+      613*
+      614*
+      615*   Message:
+      616*   init_syserr_log: Cannot get last message info from paged syserr log PTR.  ERROR-MESSAGE
+      617*
+      618*   S:     $info
+      619*
+      620*   T:     $init
+      621*
+      622*   M:     $err
+      623*
+      624*   A:     $recover
+      625*It may be necessary to reinitialize the LOG partition with the BCE
+      626*test_disk command after this error.
+      627*
+      628*
+      629*   Message:
+      630*   init_syserr_log: Cannot create logger process. ERROR-MESSAGE
+      631*
+      632*   S:     $info
+      633*
+      634*   T:     $init
+      635*
+      636*   M:     $err
+      637*No syserr messages will be logged during this bootload.
+      638*
+      639*   A:     $recover
+      640*
+      641*
+      642*   Message:
+      643*   init_syserr_log: Unable to retrieve IPC operands from APTE.  Syserr log copying disabled.
+      644*
+      645*   S:	$info
+      646*
+      647*   T:	$init
+      648*
+      649*   M:	$err
+      650*No syserr messages will be logged during this bootload.
+      651*
+      652*   A:	$recover
+      653*
+      654*
+      655*   Message:
+      656*   init_syserr_log: Cannot get service bit from paged syserr log PTR.  MESSAGE
+      657*
+      658*   S:	$info
+      659*
+      660*   T:	$init
+      661*
+      662*   M:	$err
+      663*	Some error occurred when attempting to check the in service bit
+      664*	for the specified ring 0 paged log segment.
+      665*
+      666*   A:	$ignore
+      667*	The log partition will be automatically reinitialized.
+      668*
+      669*
+      670*   Message:
+      671*   init_syserr_log: Service bit off for live paged syserr log PTR.
+      672*
+      673*   S:	$info
+      674*
+      675*   T:	$init
+      676*
+      677*   M:	The in service flag for the specified ring 0 paged log segment
+      678*	was found off.  Being this is supposed to be the live log, an
+      679*	error is indicated.  This may occur when booting after a system
+      680*	crash.
+      681*
+      682*   A:	$ignore
+      683*	The syserr log partition will be automatically reinitialized.
+      684*
+      685*
+      686*   END MESSAGE DOCUMENTATION
+      687*   */
+      688 
+      689           end init_syserr_log;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.9  init_syserr_log.pl1               >spec>install>1112>init_syserr_log.pl1
+502          1    09/29/77  1502.7  add_type.incl.pl1                 >ldd>include>add_type.incl.pl1
+503          2    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+504          3    11/07/86  1550.3  ect_structures.incl.pl1           >ldd>include>ect_structures.incl.pl1
+505          4    07/02/74  1712.7  oc_log_meters.incl.pl1            >ldd>include>oc_log_meters.incl.pl1
+506          5    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+507          6    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+508          7    11/07/86  1550.3  stack_frame.incl.pl1              >ldd>include>stack_frame.incl.pl1
+509          8    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+510          9    03/08/85  0852.7  syserr_data.incl.pl1              >ldd>include>syserr_data.incl.pl1
+511         10    01/06/85  1422.2  syserr_log_dcls.incl.pl1          >ldd>include>syserr_log_dcls.incl.pl1
+512         11    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+513         12    12/04/84  2124.9  log_segment.incl.pl1              >ldd>include>log_segment.incl.pl1
+514         13    01/21/85  0912.2  log_message.incl.pl1              >ldd>include>log_message.incl.pl1
+515         14    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+FAST_CHANNEL_TYPE               000073 constant        bit(1)                   initial dcl 91 set ref 426*
+INITIAL_MESSAGE                 000000 constant        varying char(100)        initial dcl 306 ref 323 323 330
+P_first_rec                            parameter       fixed bin(17,0)          dcl 192 ref 188 214
+P_seg_lth                              parameter       fixed bin(17,0)          dcl 193 set ref 188 211 214*
+P_seg_ptr                              parameter       pointer                  dcl 191 set ref 188 207 211* 214*
+SYSERR_CRASH_SYSTEM             000075 constant        fixed bin(17,0)          initial dcl 11-7 set ref 113* 130* 211* 315* 324*
+SYSERR_LOG_DATA_V1              000032 constant        char(8)                  initial packed unaligned dcl 10-52 ref 179 227
+SYSERR_PRINT_ON_CONSOLE         000073 constant        fixed bin(17,0)          initial dcl 11-7 set ref 278* 336* 352* 363* 371*
+                                                                                  408* 420*
+SYSERR_PRINT_WITH_ALARM         000074 constant        fixed bin(17,0)          initial dcl 11-7 set ref 252*
+WHOAMI                          000034 constant        char(32)                 initial packed unaligned dcl 92 set ref 113* 130*
+                                                                                  211* 252* 278* 315* 324* 352* 363* 371* 408* 420*
+                                                                                  484* 496*
+abs                                                    builtin function         dcl 94 ref 245
+addr                                                   builtin function         dcl 94 ref 110 112 123 142 154 155 170 172 209 210
+                                                                                  399 402 403 405 405 405 405 405 405
+allocation_error                002156 automatic       bit(1)                   dcl 224 set ref 235* 237* 239* 241* 243* 245* 247*
+                                                                                  249* 251
+apte                                   based           structure                level 1 dcl 2-7
+aptep                           002114 automatic       pointer                  dcl 2-5 set ref 405* 412 418
+baseno                                                 builtin function         dcl 94 ref 207
+binary                                                 builtin function         dcl 94 ref 164 207 211
+bsize                                  based           fixed bin(17,0)          level 3 dcl 9-29 ref 113
+buffer                    6            based           bit(36)                  array level 2 dcl 9-29 set ref 170
+clock                                                  builtin function         dcl 94 ref 172 327
+code                            000100 automatic       fixed bin(35,0)          dcl 45 set ref 125* 126 314* 315 323* 324 350* 351
+                                                                                  352* 361* 362 363* 405* 407 418* 419 479* 480 482*
+                                                                                  483 484*
+codeptr                                                builtin function         dcl 94 ref 405 405
+com_err_                        002242 automatic       entry variable           level 2 dcl 463 set ref 484
+copy                                                   builtin function         dcl 94 ref 472
+count                     1            based           fixed bin(17,0)          level 3 dcl 9-29 set ref 171*
+create_hproc$early_hproc        000044 constant        entry                    external dcl 74 ref 405
+dimension                                              builtin function         dcl 94 ref 129
+divide                                                 builtin function         dcl 94 ref 283
+event_id                117            based           fixed bin(35,0)          level 4 dcl 10-11 set ref 164*
+event_message_data                     based           structure                level 1 dcl 3-169
+frame                   100            based           structure                level 2 dcl 389 set ref 402 403
+frec                   1005            based           fixed bin(17,0)          array level 3 dcl 14-18 ref 133
+get_group_id_             4     002242 automatic       entry variable           level 2 dcl 463 set ref 490
+get_lock_id_             10     002242 automatic       entry variable           level 2 dcl 463 set ref 489
+get_process_id_          14     002242 automatic       entry variable           level 2 dcl 463 set ref 488
+head                                   based           structure                level 2 dcl 9-29
+header                                 based           structure                level 2 in structure "log_message" dcl 13-13
+                                                                                  in procedure "init_syserr_log"
+header                                 based           structure                level 2 in structure "log_segment" dcl 12-8
+                                                                                  in procedure "init_syserr_log"
+initializing                    002112 automatic       bit(1)                   dcl 55 set ref 147* 148 166 179 355* 365* 372*
+ioa_                     20     002242 automatic       entry variable           level 2 dcl 463 set ref 496
+ipc_$create_ev_chn       24     002242 automatic       entry variable           level 2 dcl 463 set ref 479
+ipc_$decl_event_call_chn
+                         30     002242 automatic       entry variable           level 2 dcl 463 set ref 482
+ipc_validate_$encode_event_channel_name
+                                000046 constant        entry                    external dcl 76 ref 426
+kludge_entries                  002242 automatic       structure                level 1 unaligned dcl 463 set ref 472* 472
+label                                  based           structure                level 1 dcl 14-18
+labelp                          002134 automatic       pointer                  dcl 14-16 set ref 123* 125* 127 127 129 133 134
+last_log_ptr                    002222 automatic       pointer                  dcl 345 set ref 349* 350* 352* 361* 363* 371*
+last_message_number             002224 automatic       fixed bin(35,0)          dcl 346 set ref 350* 377
+last_time                 2            based           fixed bin(71,0)          level 2 dcl 4-19 set ref 172*
+length                                                 builtin function         dcl 94 ref 323 323
+live_log                  4            based           fixed bin(17,0)          level 2 dcl 10-11 set ref 247 247 291* 320 349
+lock                    116            based           structure                level 3 dcl 10-11 set ref 163*
+log_data_$syserr_log_daemon     000016 external static char(32)                 packed unaligned dcl 61 set ref 405*
+log_data_$syserr_log_dir        000010 external static char(32)                 packed unaligned dcl 58 ref 159
+log_data_$syserr_log_history_dir
+                                000012 external static char(168)                packed unaligned dcl 59 ref 322
+log_data_$syserr_log_partition  000014 external static char(4)                  packed unaligned dcl 60 ref 127
+log_dir                  44            based           char(168)                level 3 packed packed unaligned dcl 10-11 set ref
+                                                                                  159*
+log_flag                  1            based           bit(1)                   level 2 packed packed unaligned dcl 9-21 set ref
+                                                                                  182*
+log_idx                         002204 automatic       fixed bin(17,0)          dcl 303 set ref 310* 311 312*
+log_initialize_                 000050 constant        entry                    external dcl 77 ref 314
+log_message                            based           structure                level 1 dcl 13-13
+log_message_header                     based           structure                level 1 dcl 13-3
+log_message_ptr                 002132 automatic       pointer                  dcl 13-19 set ref 323* 327 328 329 330 332* 334 336
+log_name                 24            based           char(32)                 array level 3 packed packed unaligned dcl 10-11 set
+                                                                                  ref 157* 158*
+log_part_pvtx                   000101 automatic       fixed bin(17,0)          dcl 46 set ref 124* 125* 214*
+log_part_size                   000103 automatic       fixed bin(18,0)          dcl 48 set ref 134* 137* 243 283
+log_part_start                  000102 automatic       fixed bin(18,0)          dcl 47 set ref 133* 214
+log_ptr                  20            based           pointer                  array level 3 dcl 10-11 set ref 154* 155* 160* 161*
+                                                                                  261* 294* 311 320 349
+log_segment                            based           structure                level 1 dcl 12-8
+log_segment_$create_message     000052 constant        entry                    external dcl 78 ref 323
+log_segment_$finish_message     000054 constant        entry                    external dcl 79 ref 332
+log_segment_$get_service_bit    000056 constant        entry                    external dcl 80 ref 361
+log_segment_$last_message_info  000060 constant        entry                    external dcl 81 ref 350
+log_segment_$place_in_service   000062 constant        entry                    external dcl 82 ref 321
+log_segment_$remove_from_service
+                                000064 constant        entry                    external dcl 83 ref 317
+log_segment_header                     based           structure                level 1 dcl 12-13
+log_size                        002210 automatic       fixed bin(18,0)          dcl 305 in procedure "initialize_log_segments" set
+                                                                                  ref 312* 314*
+log_size                 16            based           fixed bin(17,0)          array level 2 in structure "syserr_log_data"
+                                                                                  dcl 10-11 in procedure "init_syserr_log" set ref
+                                                                                  160* 161* 237 241 243 245 245 287* 312
+log_start                14            based           fixed bin(17,0)          array level 2 dcl 10-11 set ref 160* 161* 235 237
+                                                                                  239 285* 286*
+map_onto_disk                   000066 constant        entry                    external dcl 84 ref 214
+max_length                3(03)        based           bit(9)                   level 2 packed packed unaligned dcl 6-48 ref 211
+next                      5            based           bit(18)                  level 3 packed packed unaligned dcl 9-29 set ref
+                                                                                  170*
+nparts                 1003            based           fixed bin(17,0)          level 2 dcl 14-18 ref 127
+nrec                   1006            based           fixed bin(17,0)          array level 3 dcl 14-18 ref 134
+null                                                   builtin function         dcl 94 ref 261 294 314 314 482 482
+ocdcm_init_flag           1(02)        based           bit(1)                   level 2 packed packed unaligned dcl 9-21 set ref
+                                                                                  491*
+old_init_word             2            based           char(4)                  level 2 packed packed unaligned dcl 10-11 set ref
+                                                                                  278 289*
+olm                                    based           structure                level 1 dcl 4-19
+part                   1004            based           char(4)                  array level 3 dcl 14-18 ref 127
+part_idx                        000104 automatic       fixed bin(17,0)          dcl 49 set ref 127* 127* 129 133 134
+parts                  1004            based           structure                array level 2 dcl 14-18 ref 129
+pds$process_group_id            000022 external static char(32)                 packed unaligned dcl 63 set ref 490*
+pds$process_id                  000020 external static bit(36)                  dcl 62 ref 329
+pds$processid                   000122 external static bit(36)                  dcl 476 set ref 489*
+pds$stack_0_ptr                 000120 external static pointer                  dcl 396 ref 400
+per_bootload             20            based           structure                level 2 dcl 10-11 set ref 260*
+previous_log_dir          4            based           char(168)                level 3 packed packed unaligned dcl 12-8 set ref
+                                                                                  322*
+process_id                5            based           bit(36)                  level 3 dcl 13-13 set ref 329*
+processid                 3            based           bit(36)                  level 2 dcl 2-7 set ref 412 418*
+pvt$root_pvtx                   000024 external static fixed bin(17,0)          dcl 64 ref 124
+r_factor                        000106 automatic       fixed bin(35,0)          dcl 51 set ref 418* 426*
+r_offset                        000105 automatic       fixed bin(18,0)          dcl 50 set ref 418* 426*
+read_disk                       000070 constant        entry                    external dcl 85 ref 125
+rel                                                    builtin function         dcl 94 ref 170
+rpv_label                       000107 automatic       bit(36864)               dcl 52 set ref 123
+sb                              002122 automatic       pointer                  dcl 8-24 set ref 399* 400 400 402 402 403 403
+sd                                     based           structure                level 1 dcl 9-21
+sd_ptr                          002124 automatic       pointer                  dcl 9-17 set ref 112* 182 491
+seg                      10            based           structure                array level 2 dcl 5-13 set ref 210
+segment_size                    002174 automatic       fixed bin(17,0)          dcl 270 set ref 283* 286 287
+segno                           002146 automatic       fixed bin(17,0)          dcl 195 set ref 207* 210
+seq_num                   4            based           fixed bin(35,0)          level 3 dcl 9-29 set ref 334* 377*
+sequence                  1            based           fixed bin(35,0)          level 3 dcl 13-13 ref 334
+service_bit                     002225 automatic       bit(1)                   dcl 347 set ref 361* 370
+severity                  2            based           fixed bin(8,0)           level 3 packed packed unaligned dcl 13-13 set ref
+                                                                                  328*
+sign                                                   builtin function         dcl 94 ref 239 241
+size                                                   builtin function         dcl 94 ref 113 400 472
+slt                                    based           structure                level 1 dcl 5-13
+slt$                            000110 external static fixed bin(17,0)          dcl 197 set ref 209
+slte                                   based           structure                level 1 dcl 6-48
+sltep                           002120 automatic       pointer                  dcl 6-8 set ref 210* 211
+sltp                            002116 automatic       pointer                  dcl 5-7 set ref 209* 210
+special_channel                 002110 automatic       fixed bin(71,0)          dcl 53 set ref 426* 428
+stack_begin_ptr          22            based           pointer                  level 2 dcl 8-26 set ref 402*
+stack_end_ptr            24            based           pointer                  level 2 dcl 8-26 set ref 403*
+stack_frame                            based           structure                level 1 dcl 7-36
+stack_header                           based           structure                level 1 dcl 8-26 set ref 400
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 8-94 set ref 400* 400
+sum                                                    builtin function         dcl 94 ref 239 241 243
+swap_time                10            based           fixed bin(71,0)          level 2 dcl 10-11 set ref 292*
+sys_info$page_size              000026 external static fixed bin(17,0)          dcl 65 ref 312
+sys_log_ptr                     002206 automatic       pointer                  dcl 304 set ref 311* 314* 315* 317* 320* 321* 322
+                                                                                  323* 324* 332*
+syserr                          000072 constant        entry                    external dcl 86 ref 113 130 211 252 278 315 324 336
+                                                                                  371 408 420
+syserr$error_code               000074 constant        entry                    external dcl 87 ref 352 363
+syserr_daemon_dseg$             000112 external static fixed bin(17,0)          dcl 393 set ref 405 405
+syserr_daemon_pds$              000114 external static fixed bin(17,0)          dcl 394 set ref 405 405
+syserr_daemon_stack$            000116 external static fixed bin(17,0)          dcl 395 set ref 399 405 405
+syserr_data$log_meters          000030 external static fixed bin(17,0)          dcl 66 set ref 172
+syserr_data$logger_ec           000036 external static fixed bin(71,0)          dcl 69 set ref 428* 479* 482*
+syserr_data$logger_proc_id      000034 external static bit(36)                  dcl 68 set ref 412* 488*
+syserr_data$syserr_area         000102 external static char(1)                  dcl 9-14 set ref 112
+syserr_data$wired_log_area      000104 external static char(1)                  dcl 9-14 set ref 110
+syserr_data$wired_log_size      000032 external static fixed bin(17,0)          dcl 67 ref 113
+syserr_log_daemon               000076 constant        entry                    external dcl 88 ref 405 405 482 482
+syserr_log_data                        based           structure                level 1 dcl 10-11 set ref 281*
+syserr_log_data$                000106 external static fixed bin(17,0)          dcl 10-8 set ref 142
+syserr_log_data_ptr             002130 automatic       pointer                  dcl 10-9 set ref 142* 143* 154 155 157 158 159 160
+                                                                                  160 160 161 161 161 163 164 177 179 227 235 237
+                                                                                  237 239 241 243 245 245 247 247 260 261 278 281
+                                                                                  285 286 287 289 291 292 294 311 312 320 320 349
+                                                                                  349
+syserr_log_hardy$               000042 external static fixed bin(17,0)          dcl 72 set ref 155
+syserr_log_laurel$              000040 external static fixed bin(17,0)          dcl 71 set ref 154
+syserr_stk                             based           structure                level 1 dcl 389
+tc_util$get_ipc_operands_priv   000100 constant        entry                    external dcl 89 ref 418
+test_mode               122            based           bit(1)                   level 3 in structure "syserr_log_data" dcl 10-11
+                                                                                  in procedure "init_syserr_log" set ref 177*
+test_mode                       002113 automatic       bit(1)                   dcl 56 in procedure "init_syserr_log" set ref 97*
+                                                                                  105* 119 174 177 204
+text                      6            based           char                     level 2 packed packed unaligned dcl 13-13 set ref
+                                                                                  330* 336*
+text_lth                  4            based           fixed bin(17,0)          level 3 packed packed unaligned dcl 13-13 ref 330
+                                                                                  336 336
+time                      2(18)        based           fixed bin(53,0)          level 3 packed packed unaligned dcl 13-13 set ref
+                                                                                  327*
+unspec                                                 builtin function         dcl 94 set ref 163* 260* 281* 472*
+version                                based           char(8)                  level 2 packed packed unaligned dcl 10-11 set ref
+                                                                                  179* 227
+wlog                                   based           structure                level 1 dcl 9-29 set ref 113
+wlog_header                            based           structure                level 1 dcl 9-33
+wlog_ptr                        002126 automatic       pointer                  dcl 9-17 set ref 110* 113 113 170 170 171 334 377
+wmess_header                           based           structure                level 1 dcl 9-52
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 11-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 11-7
+CALL                                   internal static fixed bin(8,0)           initial dcl 3-65
+CRASH                                  internal static fixed bin(17,0)          initial dcl 11-7
+EV_CALL_MESSAGE                        internal static fixed bin(8,0)           initial dcl 3-66
+EV_WAIT_MESSAGE                        internal static fixed bin(8,0)           initial dcl 3-68
+ITT_MESSAGE                            internal static fixed bin(8,0)           initial dcl 3-67
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 11-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 11-7
+LOG_SEGMENT_COMPLETE_MESSAGE           internal static bit(36)                  initial dcl 12-43
+LOG_SEGMENT_NEW_MESSAGE                internal static bit(36)                  initial dcl 12-42
+LOG_SEGMENT_VERSION_1                  internal static char(8)                  initial packed unaligned dcl 12-5
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 14-92
+RETURN_PTR_MASK                        internal static bit(72)                  initial packed unaligned dcl 7-19
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 11-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 11-7
+TOTAL                                  internal static fixed bin(8,0)           initial dcl 3-63
+TRANSLATOR_ID_ALM                      internal static bit(18)                  initial packed unaligned dcl 7-25
+TRANSLATOR_ID_PL1V1                    internal static bit(18)                  initial packed unaligned dcl 7-26
+TRANSLATOR_ID_PL1V2                    internal static bit(18)                  initial packed unaligned dcl 7-24
+TRANSLATOR_ID_SIGNALLER                internal static bit(18)                  initial packed unaligned dcl 7-28
+TRANSLATOR_ID_SIGNAL_CALLER            internal static bit(18)                  initial packed unaligned dcl 7-27
+WAIT                                   internal static fixed bin(8,0)           initial dcl 3-64
+WAITING_CP                             internal static fixed bin(8,0)           initial dcl 3-69
+aclp                                   automatic       pointer                  dcl 5-7
+acls                                   based           structure                level 1 dcl 5-45
+add_type                               internal static structure                level 1 packed packed unaligned dcl 1-8
+badd_type                              based           structure                level 1 packed packed unaligned dcl 1-15
+call_channel                           based           structure                level 1 dcl 3-112
+call_offset                            internal static fixed bin(17,0)          initial dcl 8-78
+ecit                                   based           structure                level 1 dcl 3-77
+ecit_lth                               automatic       fixed bin(17,0)          dcl 3-81
+ecit_ptr                               automatic       pointer                  dcl 3-80
+ect_header                             based           structure                level 1 dcl 3-24
+ect_ptr                                automatic       pointer                  dcl 3-61
+ectep                                  automatic       pointer                  dcl 3-138
+entry_offset                           internal static fixed bin(17,0)          initial dcl 8-78
+event_message                          based           structure                level 1 dcl 3-143
+itt_message                            based           structure                level 1 dcl 3-158
+log_message_data_class_lth             automatic       fixed bin(17,0)          dcl 13-21
+log_message_data_lth                   automatic       fixed bin(17,0)          dcl 13-22
+log_message_text_lth                   automatic       fixed bin(17,0)          dcl 13-20
+log_segment_max_size                   automatic       fixed bin(18,0)          dcl 12-4
+log_segment_ptr                        automatic       pointer                  dcl 12-3
+name_seg                               based           structure                level 1 dcl 5-26
+namep                                  automatic       pointer                  dcl 5-7
+names_ptr                              automatic       pointer                  dcl 5-7
+olm_ptr                                automatic       pointer                  dcl 4-16
+path                                   based           structure                level 1 dcl 5-40
+pathp                                  automatic       pointer                  dcl 5-7
+push_offset                            internal static fixed bin(17,0)          initial dcl 8-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 8-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 8-78
+segnam                                 based           structure                level 1 dcl 5-31
+slte_uns                               based           structure                level 1 dcl 6-10
+sp                                     automatic       pointer                  dcl 7-31
+stack_frame_flags                      based           structure                level 1 dcl 7-64
+stack_frame_min_length                 internal static fixed bin(17,0)          initial dcl 7-33
+tv_offset                              internal static fixed bin(17,0)          initial dcl 8-72
+wait_channel                           based           structure                level 1 dcl 3-86
+waiting_control_point                  based           structure                level 1 dcl 3-182
+wcpp                                   automatic       pointer                  dcl 3-194
+wmess                                  based           structure                level 1 dcl 9-47
+wmess_ptr                              automatic       pointer                  dcl 9-17
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BEGIN_INITIALIZATION            000413 constant        label                    dcl 110 ref 98
+IPC_ERROR                       002404 constant        label                    dcl 484 ref 480
+MAIN_RETURN                     000712 constant        label                    dcl 184 ref 409 421
+check_log_segments              001671 constant        entry                    internal dcl 342 ref 168
+create_ring_four_test_logger    002325 constant        entry                    internal dcl 434 ref 174
+create_syserr_daemon            002100 constant        entry                    internal dcl 383 ref 176
+init_syserr_log                 000374 constant        entry                    external dcl 11
+init_syserr_log$test            000404 constant        entry                    external dcl 102
+initialize_log_segments         001363 constant        entry                    internal dcl 300 ref 166 356 366 373
+initialize_syserr_data          001256 constant        entry                    internal dcl 267 ref 148
+log_part_error                  000520 constant        label                    dcl 130 ref 126
+setup_segment                   000713 constant        entry                    internal dcl 188 ref 143 160 161
+syserr_data_valid               001022 constant        entry                    internal dcl 221 ref 147
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3230        3354    2523        3240
+Length      4106    2523       124         515     505           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_syserr_log                    1538 external procedure  is an external procedure.  
+setup_segment                           internal procedure  shares stack frame of external procedure init_syserr_log.  
+syserr_data_valid                       internal procedure  shares stack frame of external procedure init_syserr_log.  
+initialize_syserr_data                  internal procedure  shares stack frame of external procedure init_syserr_log.  
+initialize_log_segments                 internal procedure  shares stack frame of external procedure init_syserr_log.  
+check_log_segments                      internal procedure  shares stack frame of external procedure init_syserr_log.  
+create_syserr_daemon                    internal procedure  shares stack frame of external procedure init_syserr_log.  
+create_ring_four_test_logger            internal procedure  shares stack frame of external procedure init_syserr_log.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_syserr_log          000100 code                        init_syserr_log
+                         000101 log_part_pvtx               init_syserr_log
+                         000102 log_part_start              init_syserr_log
+                         000103 log_part_size               init_syserr_log
+                         000104 part_idx                    init_syserr_log
+                         000105 r_offset                    init_syserr_log
+                         000106 r_factor                    init_syserr_log
+                         000107 rpv_label                   init_syserr_log
+                         002110 special_channel             init_syserr_log
+                         002112 initializing                init_syserr_log
+                         002113 test_mode                   init_syserr_log
+                         002114 aptep                       init_syserr_log
+                         002116 sltp                        init_syserr_log
+                         002120 sltep                       init_syserr_log
+                         002122 sb                          init_syserr_log
+                         002124 sd_ptr                      init_syserr_log
+                         002126 wlog_ptr                    init_syserr_log
+                         002130 syserr_log_data_ptr         init_syserr_log
+                         002132 log_message_ptr             init_syserr_log
+                         002134 labelp                      init_syserr_log
+                         002146 segno                       setup_segment
+                         002156 allocation_error            syserr_data_valid
+                         002174 segment_size                initialize_syserr_data
+                         002204 log_idx                     initialize_log_segments
+                         002206 sys_log_ptr                 initialize_log_segments
+                         002210 log_size                    initialize_log_segments
+                         002222 last_log_ptr                check_log_segments
+                         002224 last_message_number         check_log_segments
+                         002225 service_bit                 check_log_segments
+                         002242 kludge_entries              create_ring_four_test_logger
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var_desc   call_ent_var        call_ext_out_desc   call_ext_out        return_mac          sign_mac
+shorten_stack       ext_entry           repeat              set_bits_eis        clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+create_hproc$early_hproc      ipc_validate_$encode_event_channel_name                     log_initialize_
+log_segment_$create_message   log_segment_$finish_message   log_segment_$get_service_bit
+log_segment_$last_message_info                              log_segment_$place_in_service
+log_segment_$remove_from_service                            map_onto_disk                 read_disk
+syserr                        syserr$error_code             syserr_log_daemon             tc_util$get_ipc_operands_priv
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+log_data_$syserr_log_daemon   log_data_$syserr_log_dir      log_data_$syserr_log_history_dir
+log_data_$syserr_log_partition                              pds$process_group_id          pds$process_id
+pds$processid                 pds$stack_0_ptr               pvt$root_pvtx                 slt$
+sys_info$page_size            syserr_daemon_dseg$           syserr_daemon_pds$            syserr_daemon_stack$
+syserr_data$log_meters        syserr_data$logger_ec         syserr_data$logger_proc_id    syserr_data$syserr_area
+syserr_data$wired_log_area    syserr_data$wired_log_size    syserr_log_data$              syserr_log_hardy$
+syserr_log_laurel$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000373        97 000401        98 000402       102 000403       105 000411       110 000413       112 000416
+    113 000420       119 000447       123 000451       124 000453       125 000456       126 000473       127 000475
+    128 000513       129 000515       130 000520       131 000544       133 000545       134 000552       135 000554
+    137 000555       142 000557       143 000562       147 000567       148 000575       154 000577       155 000603
+    157 000605       158 000610       159 000613       160 000617       161 000631       163 000644       164 000650
+    166 000652       168 000656       170 000657       171 000664       172 000665       174 000672       176 000676
+    177 000677       179 000702       182 000707       184 000712       188 000713       204 000715       207 000720
+    209 000726       210 000731       211 000734       214 000774       217 001021       221 001022       227 001024
+    235 001033       237 001041       239 001050       241 001077       243 001127       245 001157       247 001171
+    249 001201       251 001202       252 001204       253 001230       260 001233       261 001236       263 001252
+    267 001256       278 001257       281 001307       283 001313       285 001317       286 001321       287 001324
+    289 001340       291 001342       292 001344       294 001346       296 001362       300 001363       310 001364
+    311 001370       312 001375       314 001403       315 001434       317 001466       318 001500       320 001506
+    321 001513       322 001525       323 001533       324 001557       327 001611       328 001615       329 001617
+    330 001622       332 001627       334 001642       336 001646       338 001670       342 001671       349 001672
+    350 001677       351 001715       352 001717       355 001753       356 001755       358 001756       361 001757
+    362 001772       363 001774       365 002030       366 002032       367 002033       370 002034       371 002040
+    372 002070       373 002072       374 002073       377 002074       379 002077       383 002100       399 002101
+    400 002104       402 002111       403 002113       405 002115       407 002167       408 002171       409 002215
+    412 002216       418 002222       419 002236       420 002240       421 002264       426 002265       428 002321
+    430 002324       434 002325       472 002326       479 002340       480 002352       482 002354       483 002402
+    484 002404       485 002427       488 002430       489 002437       490 002446       491 002461       496 002464
+    498 002503
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,5 +1,6 @@
 \documentclass[notitlepage]{report}
 \usepackage {listings}
+\usepackage{ulem}
 \renewcommand{\thesection}{\arabic{part}.\arabic{section}}
 \makeatletter
 \@addtoreset{section}{part}
@@ -507,6 +508,38 @@ circa 1987.
 
 \end{verbatim}
 
+\paragraph{Addressing model notes}
+
+RJ78A00, pg 6-42:
+
+Interrupts are not received when the instruction is executed by the XEC or XED
+instructions, but only when no fault is present.
+
+RJ78A00, pg 6-44:
+
+6.5.3 Instruction Counter Value Stored At Interrupt
+
+The values of the Instruction Counter (IC) stored at interrupt are listed below: 
+
+• Single-word Instructions
+
+The address of the instruction to which processing is to be returned is stored.
+
+When an interrupt is received with the DIS instruction, the DIS instruction
+address + 1 is stored.
+
+• Multiword Instructions (excluding CLIMB Instructions)
+
+The address of the instruction to which processing is to be returned is stored. If
+interrupt occurs during execution of an interruptible multiword instruction, IC +
+
+0 is stored, and the IR bit 30 is stored as a one.
+
+• CLIMB Instruction
+
+Except when the data stack area is cleared with an OCLIMB, interrupt is not
+received during execution of a CLIMB instruction. If an interrupt occurs
+during the execution of an OCLIMB, IC + 0 is stored.
 \part {Unresolved questions}
 
 \section {Actual H/W behavior}
@@ -550,7 +583,7 @@ For numeric parameters (<n>), the value is interpreted in `C' style; i.e. leadin
 \paragraph{Base set of debug options} (Almost) all of the SIMH devices (clk, cpu, iom, scu, tape) support a base set of debug options. (The device SYS is an abstraction that does not currently have code paths that are part of the VM.)
 
 \begin{lstlisting}
-	set [clk|cpu|iom|scu|tape] debug=[notify|info|err|debug|all]
+	set [clk|cpu|iom|scu|tape|opcon] debug=[notify|info|err|warn|debug|all]
 \end{lstlisting}
 
 \paragraph{Number of CPUS} Some day we will support multiple cpus:
@@ -564,11 +597,11 @@ For numeric parameters (<n>), the value is interpreted in `C' style; i.e. leadin
 The following commands perform the functions of the CPU configuration switches:
 
 \begin{lstlisting}
-	set cpu config=faultbase=<n>
+	set cpu config=faultbase=[<n>|Multics]
 \end{lstlisting}
 
 \begin{lstlisting}
-	set cpu config=num=<n>
+	set cpu config=num=[0|1|on|off|enable|disable]
 \end{lstlisting}
 
 \begin{lstlisting}
@@ -576,14 +609,39 @@ The following commands perform the functions of the CPU configuration switches:
 \end{lstlisting}
 
 \begin{lstlisting}
-	set cpu config=mode=<GCOS|MULTICS>
+	set cpu config=mode=[0|1|GCOS|MULTICS]
 \end{lstlisting}
 
 \begin{lstlisting}
 	set cpu config=speed=<n>
 \end{lstlisting}
 
-TODO: port, assignment, interlace, enable, init\_enable
+\begin{lstlisting}
+	set cpu config=port=[0|1|2|3|A|B|C|D]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=assignment=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=interlace=[off|2|4]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=enable=[0|1|on|off|enable|disable]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=init_enable=[0|1|on|off|enable|disable]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set cpu config=store_size=[0|1|2|3|4|5|6|7|
+	                           32|64|128|256|512|1024|2048|4096|
+	                           32K|64|128K|256K|512K|1024K|2048K|4096K|
+	                           1M|2M|4M]
+\end{lstlisting}
 
 \paragraph{Set CPU VM runtime configuration} The following commands perform various internal configurations of the VM.
 
@@ -643,6 +701,27 @@ This switch addresses an unresolved issue with the sequence of events in the ins
 	set cpu config=append_after=[0|1|off|on]
 \end{lstlisting}
 
+\subparagraph{Super\_user}
+This switch is no longer in use.
+
+\begin{lstlisting}
+	set cpu config=super_user=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{EPP\_hack}
+This switch is no longer in use.
+
+\begin{lstlisting}
+	set cpu config=epp_hack=[0|1|off|on]
+\end{lstlisting}
+
+\subparagraph{Halt\_on\_unimplemented}
+This switch cause the emulator to halt the simulation on encountering an unimplemented instruction, rather then invoking fault handling.
+
+\begin{lstlisting}
+	set cpu config=halt_on_unimplmented=[0|1|off|on]
+\end{lstlisting}
+
 \paragraph{Show CPU config}
 This command will show the current configuration settings of the CPU.
 
@@ -669,13 +748,10 @@ Display the contents of the A, Q and IR registers after each execution execution
 Display the contents of the index registers after each execution execution.
 
 \subparagraph{Regdumppr}
-Display the contents of the AR register after each execution execution.
+Display the contents of the PR registers after each execution execution.
 
 \subparagraph{Regdumpadr}
-Display the contents of the AR register after each execution execution.
-
-\subparagraph{Regdumpadr}
-Display the contents of the AR register after each execution execution.
+Display the contents of the AR registers after each execution execution.
 
 \subparagraph{Regdumpppr}
 Display the contents of the PPR register after each execution execution.
@@ -723,7 +799,10 @@ This is a list of registers the SIMH examine and deposit commands work with.
 	     ppr.psr prr.p
 	     dsbr.addr dsbr.bnd dsbr.u dsbr.stack
 	     bar.base bar.bound
-	     faultbase
+	     pr0.snr pr1.snr pr2.snr pr3.snr pr4.snr pr5.snr pr6.snr pr7.snr
+	     pr0.rnr pr1.rnr pr2.rnr pr3.rnr pr4.rnr pr5.rnr pr6.rnr pr7.rnr
+	     pr0.wordno pr1.wordno pr2.wordno pr3.wordno
+	     pr4.wordno pr5.wordno pr6.wordno pr7.wordno
 \end{lstlisting}
 
 \paragraph{Number of IOMs}
@@ -735,7 +814,7 @@ These command set or show the number of IOMs in the system.
 \end{lstlisting}
 
 \paragraph{Show IOM mailbox}
-This command shows the contents of an IOM mailbox
+This command shows the contents of an IOM's mailboxes
 
 \begin{lstlisting}
 	show iom<n> mbx
@@ -745,7 +824,63 @@ This command shows the contents of an IOM mailbox
 	set iom<n> config=
 	    [os | boot | iom_base | multiplex_base |
 	     tapechan | cardchan | scuport | port | addr |
-	     interlace | enable | initenable | halfsize| bootskip]
+	     interlace | enable | initenable | halfsize| store_size |
+	     bootskip]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=boot=[card|tape]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=iombase=[<n>|Multics]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=multiplexbase=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=tapechan=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=cardchan=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=scuport=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=port=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=addr=<n>
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=interlace=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=enable=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=initenable=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=halfsize=[0|1]
+\end{lstlisting}
+
+\begin{lstlisting}
+	set iom<n> config=store_size=[0|1|2|3|4|5|6|7|
+		                          32|64|128|256|512|1024|2048|4096|
+		                          32K|64|128K|256K|512K|1024K|2048K|4096K|
+		                          1M|2M|4M]
 \end{lstlisting}
 
 \begin{lstlisting}
@@ -781,17 +916,33 @@ This command shows the contents of an IOM mailbox
 \end{lstlisting}
 
 \begin{lstlisting}
-	set scu<n> config=lwrstoresize=[32|64|128|256|512|1024|2048|4096]
+	set scu<n> config=lwrstore_size=[0|1|2|3|4|5|6|7|
+	                                 32|64|128|256|512|1024|2048|4096|
+	                                 32K|64|128K|256K|512K|1024K|2048K|4096K|
+	                                 1M|2M|4M]
 \end{lstlisting}
 
 \begin{lstlisting}
 	show scu<n> config
 \end{lstlisting}
 
+\paragraph{Operator console autoinput}
+
+These commands are currently unimplemented.
+
 \begin{lstlisting}
-	set sys config=[]connect_time|activate_time|
+	set opcon autoinput
+	show opcon autoinput
+\end{lstlisting}
+
+\begin{lstlisting}
+	show sys config
+\end{lstlisting}
+
+\begin{lstlisting}
+	set sys config=[connect_time|activate_time|
 	                mt_read_time|mt_xfer_time|
-	               iom_boot_time=[off|n] 
+	               iom_boot_time=[off|n]]
 \end{lstlisting}
 
 \begin{lstlisting}
@@ -882,5 +1033,276 @@ The file `20184.ini' is will set up the base system and boot the '20184.tap' tap
 \begin{lstlisting}
 	./dps8 20184.ini
 \end{lstlisting}
+
+\part{AL-39 errata}
+
+\section{\texttt{FRD} instruction.}
+
+In the description of the \texttt{FRD} instruction AL39 has these notes:
+
+\begin{verbatim}
+The frd instruction is executed as follows:
+C(AQ) + (11...1)29,71 → C(AQ)
+If C(AQ)0 = 0, then a carry is added at AQ71
+If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+If overflow does not occur, C(EAQ) is normalized.
+If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
+\end{verbatim}
+
+I believe this is wrong.
+
+
+Referring to my implementation notes of \texttt{FRD} in dps8\_math.c...
+
+\begin{verbatim}
+//! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 28 bits and a normalization on C(EAQ).
+//! A true round is a rounding operation such that the sum of the result of applying the operation to two numbers of
+//! equal magnitude but opposite sign is exactly zero.
+
+//! The frd instruction is executed as follows:
+//! C(AQ) + (11...1)29,71 → C(AQ)
+//! If C(AQ)0 = 0, then a carry is added at AQ71
+//! If overflow occurs, C(AQ) is shifted one place to the right and C(E) is increased by 1.
+//! If overflow does not occur, C(EAQ) is normalized.
+//! If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
+
+//! I believe AL39 is incorrect; bits 28-71 should be set to 0, not 29-71. DH02-01 & Bull RJ78 are correct.
+
+//! test case 15.5
+//!                 rE                     rA                                     rQ
+//! 014174000000 00000110 000111110000000000000000000000000000 000000000000000000000000000000000000
+//! +                                                  1111111 111111111111111111111111111111111111
+//! =            00000110 000111110000000000000000000001111111 111111111111111111111111111111111111
+//! If C(AQ)0 = 0, then a carry is added at AQ71
+//! =            00000110 000111110000000000000000000010000000 000000000000000000000000000000000000
+//! 0 → C(AQ)29,71
+//!              00000110 000111110000000000000000000010000000 000000000000000000000000000000000000
+//! after normalization .....
+//! 010760000002 00000100 011111000000000000000000001000000000 000000000000000000000000000000000000
+//! This is wrong
+
+//! 0 → C(AQ)28,71
+//!              00000110 000111110000000000000000000000000000 000000000000000000000000000000000000
+//! after normalization .....
+//! 010760000000 00000100 011111000000000000000000000000000000 000000000000000000000000000000000000
+//! This is correct
+
+//!
+//! GE CPB1004F, DH02-01 (DPS8/88) & Bull DPS9000 RJ78 ... have this ...
+
+//! The rounding operation is performed in the following way.
+//! -  a) A constant (all 1s) is added to bits 29-71 of the mantissa.
+//! -  b) If the number being rounded is positive, a carry is inserted into the least significant bit position of the adder.
+//! -  c) If the number being rounded is negative, the carry is not inserted.
+//! -  d) Bits 28-71 of C(AQ) are replaced by zeros.
+//! If the mantissa overflows upon rounding, it is shifted right one place and a corresponding correction is made to the exponent.
+//! If the mantissa does not overflow and is nonzero upon rounding, normalization is performed.
+
+//! If the resultant mantissa is all zeros, the exponent is forced to -128 and the zero indicator is set.
+//! If the exponent resulting from the operation is greater than +127, the exponent Overflow indicator is set.
+//! If the exponent resulting from the operation is less than -128, the exponent Underflow indicator is set.
+//! The definition of normalization is located under the description of the FNO instruction.
+
+//! So, Either AL39 is wrong or the DPS8m did it wrong. (Which was fixed in later models.) I'll assume AL39 is wrong.
+
+\end{verbatim}
+
+
+
+\section{\texttt{MVT instruction.}}
+
+20184 crashes in formatting first\_message; an index register is
+slightly negative, and an \texttt{MLR} instruction is (correctly) treating it
+as unsigned, and running off of the end of the segment, where
+appendCycle correctly slaps its hand for exceeding the segment
+boundary.
+
+The \texttt{X} register gets set negative here:
+
+\begin{verbatim}
+ascii.no_trim:
+        mvt     (pr,rl),(pr,rl),fill(040)     " we will do some useless filling
+        desc9a  pr1|0,al
+        desc9a  pr7|0,x4
+        arg     ascii.bad_char_trans
+        ttn     ascii.truncated
+
+        a9bd    7|0,al
+        als     18
+        sta     ascii.tct_count "  so we can subtract
+        sbx4    ascii.tct_count " cant be negative, since no truncation
+        tmoz    return_to_caller        " but be safe
+        tra     main_char_loop
+\end{verbatim}
+
+\texttt{X4} gets negative becuase \texttt{A} is $>$ \texttt{X4}; the \texttt{MVT} 
+instruction correctly detects this
+and sets the truncate bit. The code tests the TRO bit to prevent the
+underflow.
+
+Why, O Why, is the code using TTN and not TTRN? Why?
+
+Somebody is lying.
+
+
+In the description of the indicator register (c.f. AL39 Fig. 3-7) the tally runout indicator has this note. 
+
+\begin{quote}
+This indicator is set OFF at initialization of any tallying operation, that is, any repeat instruction or any indirect then 
+tally address modification. It is then set ON for any of the following conditions: ...
+(4) If an EIS string scanning instruction reaches the end of the string without finding a match condition.
+\end{quote}
+
+Apparently MVT also follows this pattern -- although AL-39, DH02-01 and Bull RJ78 REV02 make absolutely no mention of this behavior. 
+This is either a hack, bug or an undocumented feature. \texttt{MVT} instruction in dps8\_eis.c has been modified to set the TALLY bit as well as the TRUNC bituon overflow
+
+
+\section{\texttt{EPP} instruction.}
+
+The code in bootload\_formline has the line:
+
+\begin{verbatim}
+	epp1    0,x6*                   " pr1 -> word of chars
+\end{verbatim}
+
+which relies on the epp1 instruction setting the AR1.CHAR register to zero. Given the relationship between the AR and PR register sets, this is not an unreasonable behavior. AL-39 does not mention the CHAR registers in the EPPn instruction documentation. However, AL-39 does say (pg 317):
+
+\begin{quote}
+" The terms "pointer register" and "address register" both apply to the same physical hardware. The distinction arises from the manner in which the register is used and in the interpretation of the register contents."
+\end{quote}
+
+\sout{The emulator sets the corresponding CHAR register to zero for EPPn instructions.}
+The emulator uses a union of bitfields to map PR.BITNO on the AR.BITNO and AR.CHAR bits, so that the "same phyiscal hardware" behavior is matched.
+
+\section{\textbf{tss} instruction}
+
+Page 169, the \textbf{tss} instruction:
+
+\begin{quote}
+SUMMARY: \texttt{C(TPR.CA) + (BAR base) $\rightarrow$ C(PPR.IC)}
+\end{quote}
+
+The \textbf{tss} instruction should not add the \texttt{BAR} base to the \texttt{CA}; that is done during \texttt{CA} formation in the instruction fetch cycle. The line should read:
+
+\begin{quote}
+SUMMARY: \texttt{C(TPR.CA) $\rightarrow$ C(PPR.IC)}
+\end{quote}
+
+\section{\textbf{tsp\textit{n}} instruction}
+
+AL-39, Page 340, Figure 8-1 "Complete Appending Unit Operation Flowchart", step L, shows that if the opcode
+is \textbf{tsp\emph{n}} then set up the \texttt{PR\emph{n}} register.
+
+Page 168-169 \textbf{tsp\textit{n}} instruction shows the same \texttt{PR\emph{n}} register setup, but the value in \texttt{PPR.PSR} will have been changed by the Append Unit.
+
+\section{Left shifting and the carry bit}
+
+AL-39, pg. 27, Indicator Register, says this about the carry bit:
+
+\begin{verbatim}
+Carry   This indicator is set ON for....
+
+        (1) If a bit propagates leftward out of bit 0 ... for any binary or shifting instruction.
+\end{verbatim}
+
+Page 107, "als":
+
+\begin{verbatim}
+Carry    If C(A)0 changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+Page 108, "lls":
+
+\begin{verbatim}
+Carry    If C(AQ)0 changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+Page 109, "qls":
+
+\begin{verbatim}
+Carry    If C(Q)0 changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+But, CPB-1004F, GE-635 Pgm Ref says:
+
+Page 78, "als"
+
+\begin{verbatim}
+Carry    If C(Q)0 ever changes during the shift, then ON; otherwise OFF
+\end{verbatim}
+
+The wording is the same for "qls" and "lls".
+
+DH02-01 DPS8 Asm, pg 243, "ALS" says:
+
+\begin{verbatim}
+Carry    If C(Q)0 changes during the shift, then ON; otherwise OFF. When the Carry indicator is ON, the algebriac range of A had been exceeded.
+\end{verbatim}
+
+(LLS and QLS have similar wording.)
+
+The phrase about algebraic range supports the interpretation of checking the carry at each step; it the sign bit changes at any step of the shift, then information has been lost; right shifting the result will not recreate the original data.
+
+RJ78 has the same wording as DH02.
+
+\section{Minor typo in \texttt{div}}
+
+AL-39, page 124:
+
+\begin{verbatim}
+SUMMARY: C(Q) / (Y) integer quotient  C(Q)..
+\end{verbatim}
+
+should read:
+
+\begin{verbatim}
+SUMMARY: C(Q) / C(Y) integer quotient  C(Q)..
+\end{verbatim}
+
+\section{Minor typo in \texttt{s9bd}}
+
+AL-39, page 230:
+
+\begin{verbatim}
+MODIFICATIONS:       None except au, qu, al, qu, xn
+\end{verbatim}
+
+should read:
+
+\begin{verbatim}
+MODIFICATIONS:       None except au, qu, al, ql, xn
+\end{verbatim}
+
+\section{Illegal EIS MF fields in Multics}
+
+There are code sequences in the Multics source, generated by the PL/I compiler,
+which are MLR instructions with an MF1 containing RL:1 and REG:IC.
+
+AL-39 says that REG can be IC only if RL is 0; RJ-78 says that it is an illegal procedure fault.
+
+To make the DPS8M emulator work correctly, and apparently the multics-emul emulator as well, 
+the emulator must ignore the RL bit if REG is IC.
+
+\section{Interpretation of SDW in ITS/ITP processing}
+
+The multics-emul emulator has a different interpretation of the SDW in ITS and ITP 
+processing.
+
+An SDW is needed to calculate a new ring number; DPS8M was using the ring number of the segment that the ITS/ITP pair was in; multics-emul uses the SDW of the segment that the ITS/ITP points to.
+
+This makes sense; recalculating the ring would be done on segment crossing, and 
+one would want the ring of the target segment for the calculation.
+
+The difference in the emulators arose for the following instruction.
+
+\begin{verbatim}
+      eppbp   =its(-2,2),*
+\end{verbatim}
+
+The ITS points to a non-existent segment, which is okay since the instruction only needs the
+effective address of the pair. Multics-emul detects that missing segment and uses a ring
+number of seven for the ring calculation.
+
+
 
 \end{document}

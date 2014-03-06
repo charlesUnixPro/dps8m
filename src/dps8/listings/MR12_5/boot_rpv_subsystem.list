@@ -1,0 +1,333 @@
+	COMPILATION LISTING OF SEGMENT boot_rpv_subsystem
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* BOOT_RPV_SUBSYSTEM -- uses hc_load_mpc to load FW in the RPV MPC */
+        9 /*                       uses config_data_ and the slt to find the FW */
+       10 /*		     contract is to both print (bce_error) informative */
+       11 /*		     message on errors and return code */
+       12 
+       13 /* format: style2 */
+       14 
+       15 boot_rpv_subsystem:
+       16      procedure (FWid, Code);
+       17 
+       18 	declare FWid		 character (*);
+       19 	declare Code		 fixed bin (35);
+       20 
+       21 	declare hc_load_mpc		 entry (char (8) aligned, ptr, fixed bin (18), char (*), fixed bin (35));
+       22 	declare slt_manager$get_seg_ptr
+       23 				 entry (char (32) aligned) returns (ptr);
+       24           declare bce_error		 entry options (variable);
+       25 
+       26           declare slt$		 aligned external static;
+       27 
+       28 	declare sys_boot_info$disk_mpc_chanid
+       29 				 char (8) aligned external static;
+       30 	declare sys_boot_info$disk_mpc_model_number
+       31 				 fixed bin external static;
+       32 
+       33 	declare fw_seg_name		 char (32) aligned;
+       34 	declare fw_seg_ptr		 pointer;
+       35 	declare fw_seg_length	 fixed bin (18);
+       36 	declare x			 fixed bin;
+       37 	declare problem		 char (64);
+       38 	declare ME		 char (32) init ("boot_rpv_subsystem") int static options (constant);
+       39 
+       40 /* format: off */
+       41  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  1     2 /* Declaration for Segment Loading Table Entry structure.
+  1     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  1     4 /* modified 5/4/76 by Noel I. Morris	*/
+  1     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  1     6 /* format: style3 */
+  1     7 
+  1     8 dcl	sltep		ptr;
+  1     9 
+  1    10 dcl	1 slte_uns	based (sltep) aligned,
+  1    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  1    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  1    13 /**** End of word 1 */
+  1    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  1    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  1    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  1    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  1    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  1    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  1    20 	  2 pad1		bit (3),			/* unused */
+  1    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  1    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  1    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  1    24 	  2 pad3		bit (2),
+  1    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  1    26 /**** End of 1st half of word 2 */
+  1    27 	  2 pad4		bit (3),
+  1    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  1    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  1    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  1    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  1    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  1    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  1    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  1    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  1    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  1    37 /***** End of word 2 */
+  1    38 	  2 pad5		bit (6),
+  1    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  1    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  1    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  1    42 /***** End of word 3 */
+  1    43 	  2 pad7		bit (3),
+  1    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  1    45 	  2 bit_count	fixed bin (24) uns
+  1    46 	  )		unaligned;		/* bitcount of segment */
+  1    47 
+  1    48 dcl	1 slte		based (sltep) aligned,
+  1    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  1    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  1    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  1    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  1    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  1    54 	  2 firmware_seg    bit (1),
+  1    55 	  2 layout_seg      bit (1),
+  1    56 	  2 breakpointable  bit (1),
+  1    57 	  2 pad2		bit (3),
+  1    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  1    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  1    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  1    61 	  2 pad3		bit (2),
+  1    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  1    63 	  2 pad4		bit (3),
+  1    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  1    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  1    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  1    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  1    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  1    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  1    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  1    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  1    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  1    73 	  2 pad5		bit (6),
+  1    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  1    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  1    76 	  2 segno		bit (18),			/* text/link segment number */
+  1    77 	  2 pad6		bit (3),
+  1    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  1    79 	  2 bit_count	bit (24)
+  1    80 	  )		unaligned;		/* bitcount of segment */
+  1    81 
+  1    82 /* END INCLUDE FILE slte.incl.pl1 */
+       41 
+       42  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  2     2 
+  2     3 /* Declarations for Segment Loading Table header and array.
+  2     4*
+  2     5*   Used by Initialization and MST Checker subroutines */
+  2     6 
+  2     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  2     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  2     9     namep ptr,					/* pointer to segment name list block */
+  2    10     pathp ptr,					/* pointer to segment's directory path name */
+  2    11     aclp ptr;					/* pointer to acl structure */
+  2    12 
+  2    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  2    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  2    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  2    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  2    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  2    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  2    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  2    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  2    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  2    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  2    23 
+  2    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  2    25 
+  2    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  2    27 	2 pad bit (18) unal,
+  2    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  2    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  2    30 
+  2    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  2    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  2    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  2    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  2    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  2    36 	  3 pad bit (5) unal,
+  2    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  2    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  2    39 
+  2    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  2    41 	2 size fixed bin (17),			/* length of pathname */
+  2    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  2    43 	2 acls fixed bin;				/* ACL list starts here */
+  2    44 
+  2    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  2    46 	2 count fixed bin,				/* number of entries in acl list */
+  2    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  2    48 	  3 userid char (32),			/* user specification */
+  2    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  2    50 	  3 pad bit (36) aligned,
+  2    51 	  3 code fixed bin;
+  2    52 
+  2    53 
+  2    54 /* END INCLUDE FILE slt.incl.pl1 */
+       42 
+       43 
+       44 /* format: on */
+       45 
+       46 
+       47 	Code = 0;
+       48 	fw_seg_name = "fw." || FWid;
+       49 
+       50 	fw_seg_ptr = slt_manager$get_seg_ptr (fw_seg_name);
+       51 	if fw_seg_ptr = null ()
+       52 	then do;
+       53 		call bce_error (0, "^a: No firmware available for model ^d MPC.", ME,
+       54 		     sys_boot_info$disk_mpc_model_number);
+       55 		Code = 1;
+       56 		return;
+       57 	     end;
+       58 
+       59 	sltp = addr (slt$);
+       60 	sltep = addr (slt.seg (bin (baseno (fw_seg_ptr), 18)));
+       61 	fw_seg_length = divide (slte_uns.bit_count, 36, 24, 0) - 1;
+       62 
+       63 	call hc_load_mpc (sys_boot_info$disk_mpc_chanid, fw_seg_ptr, fw_seg_length, problem, Code);
+       64 
+       65 	if Code ^= 0
+       66 	then call bce_error (Code, "^a: ^a booting ^d disk MPC ^a.", ME, problem, sys_boot_info$disk_mpc_model_number,
+       67 		sys_boot_info$disk_mpc_chanid);
+       68 	return;
+       69      end boot_rpv_subsystem;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.4  boot_rpv_subsystem.pl1            >spec>install>1112>boot_rpv_subsystem.pl1
+41           1    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+42           2    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 19 set ref 15 47* 55* 63* 65 65*
+FWid                                   parameter       char                     packed unaligned dcl 18 ref 15 48
+ME                              000000 constant        char(32)                 initial packed unaligned dcl 38 set ref 53* 65*
+bce_error                       000014 constant        entry                    external dcl 24 ref 53 65
+bit_count                 3(12)        based           fixed bin(24,0)          level 2 packed packed unsigned unaligned dcl 1-10
+                                                                                  ref 61
+fw_seg_length                   000112 automatic       fixed bin(18,0)          dcl 35 set ref 61* 63*
+fw_seg_name                     000100 automatic       char(32)                 dcl 33 set ref 48* 50*
+fw_seg_ptr                      000110 automatic       pointer                  dcl 34 set ref 50* 51 60 63*
+hc_load_mpc                     000010 constant        entry                    external dcl 21 ref 63
+problem                         000113 automatic       char(64)                 packed unaligned dcl 37 set ref 63* 65*
+seg                      10            based           structure                array level 2 dcl 2-13 set ref 60
+slt                                    based           structure                level 1 dcl 2-13
+slt$                            000016 external static fixed bin(17,0)          dcl 26 set ref 59
+slt_manager$get_seg_ptr         000012 constant        entry                    external dcl 22 ref 50
+slte_uns                               based           structure                level 1 dcl 1-10
+sltep                           000134 automatic       pointer                  dcl 1-8 set ref 60* 61
+sltp                            000136 automatic       pointer                  dcl 2-7 set ref 59* 60
+sys_boot_info$disk_mpc_chanid   000020 external static char(8)                  dcl 28 set ref 63* 65*
+sys_boot_info$disk_mpc_model_number
+                                000022 external static fixed bin(17,0)          dcl 30 set ref 53* 65*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+aclp                                   automatic       pointer                  dcl 2-7
+acls                                   based           structure                level 1 dcl 2-45
+name_seg                               based           structure                level 1 dcl 2-26
+namep                                  automatic       pointer                  dcl 2-7
+names_ptr                              automatic       pointer                  dcl 2-7
+path                                   based           structure                level 1 dcl 2-40
+pathp                                  automatic       pointer                  dcl 2-7
+segnam                                 based           structure                level 1 dcl 2-31
+slte                                   based           structure                level 1 dcl 1-48
+x                                      automatic       fixed bin(17,0)          dcl 36
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+boot_rpv_subsystem              000055 constant        entry                    external dcl 15
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 59 60
+baseno                                                 builtin function         ref 60
+bin                                                    builtin function         ref 60
+divide                                                 builtin function         ref 61
+null                                                   builtin function         ref 51
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       400         424     274         410
+Length       630     274        24         170     103           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+boot_rpv_subsystem                  182 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+boot_rpv_subsystem       000100 fw_seg_name                 boot_rpv_subsystem
+                         000110 fw_seg_ptr                  boot_rpv_subsystem
+                         000112 fw_seg_length               boot_rpv_subsystem
+                         000113 problem                     boot_rpv_subsystem
+                         000134 sltep                       boot_rpv_subsystem
+                         000136 sltp                        boot_rpv_subsystem
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack       ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_error                     hc_load_mpc                   slt_manager$get_seg_ptr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+slt$                          sys_boot_info$disk_mpc_chanid sys_boot_info$disk_mpc_model_number
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000051        47 000070        48 000072        50 000107        51 000120        53 000124        55 000155
+     56 000160        59 000161        60 000164        61 000172        63 000177        65 000230        68 000273
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

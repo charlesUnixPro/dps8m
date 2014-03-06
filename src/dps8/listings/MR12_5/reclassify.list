@@ -1,0 +1,1626 @@
+	COMPILATION LISTING OF SEGMENT reclassify
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1043.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* Initial coding by Kobziar July 74 */
+       14 /* Modified 750523 by LJS to add protection auditing */
+       15 /* Modified June 1, 1976 by R. Bratt to call find_$finished */
+       16 /* Modified Nov 30 76 by B. Greenberg for setting dtem */
+       17 /* Modified September 1981 by J. Bongiovanni for better error codes */
+       18 /* Modified March 1983 by E. N. Kittlitz to not set dtem back */
+       19 /* Modified August 1983 by E. N. Kittlitz for setfaults$if_active pvid, vtocx args */
+       20 /* Modified 83-10-10 by E. N. Kittlitz to fix locking problems */
+       21 /* Modified 83-12-07 by E. N. Kittlitz to audit setting node oos */
+       22 /* Modified July 1984 by Keith Loepere to use the new dc_find.  Also to flush
+       23*   PAM on dir reclassify. */
+       24 /* Modified November 1984 by Keith Loepere for access_audit_ and for PAM using
+       25*   uid's. */
+       26 /* Modified 84-12-05 by EJ Sharpe to actually use access_audit_ (also new sys_seg_priv entry) */
+       27 /* Modified 85-04-01 by Keith Loepere for access_audit_check_ep_. */
+       28 
+       29 /* format: style4 */
+       30 reclassify: proc;
+       31 
+       32 /* Parameters */
+       33 
+       34 dcl  a_access_class bit (72) aligned;
+       35 dcl  a_code fixed bin (35);
+       36 dcl  a_dirname char (*);
+       37 dcl  a_ename char (*);
+       38 
+       39 /* Variables */
+       40 
+       41 dcl  access_class bit (72) aligned;
+       42 dcl  branch_name char (32);
+       43 dcl  branchp ptr;
+       44 dcl  code fixed bin (35);
+       45 dcl  dep ptr;
+       46 dcl  dep_locked bit (1) aligned;
+       47 dcl  dirname char (168);
+       48 dcl  dirpath char (168);
+       49 dcl  ename char (32);
+       50 dcl  ep_locked bit (1) aligned;
+       51 dcl  1 event_flags aligned like audit_event_flags;
+       52 dcl  has_zero_quota bit (1);
+       53 dcl  1 local_vtoce like vtoce aligned;
+       54 dcl  oosw_err bit (1) aligned;
+       55 dcl  parent_access_class bit (72) aligned;
+       56 dcl  pvtx fixed bin (17);
+       57 dcl  1 qcell like quota_cell aligned;
+       58 dcl  quota_err bit (1) aligned;
+       59 dcl  relp bit (18);
+       60 dcl  set_soos bit (1) aligned;
+       61 dcl  targp ptr;
+       62 dcl  targp_locked bit (1) aligned;
+       63 dcl  whoami char (24) aligned;
+       64 
+       65 /* Entries */
+       66 
+       67 dcl  access_audit_check_ep_$self entry (bit (36) aligned, bit (36) aligned, ptr) returns (bit (1));
+       68 dcl  access_audit_$log_entry_ptr entry options (variable);
+       69 dcl  access_audit_$log_obj_class entry options (variable);
+       70 dcl  aim_check_$equal entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned);
+       71 dcl  aim_check_$greater entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned);
+       72 dcl  aim_check_$greater_or_equal entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned);
+       73 dcl  change_dtem entry (ptr);
+       74 dcl  display_access_class_ entry (bit (72) aligned) returns (char (32) aligned);
+       75 dcl  get_pvtx entry (bit (36) unaligned, fixed bin (35)) returns (fixed bin (17));
+       76 dcl  level$get entry () returns (fixed bin);
+       77 dcl  lock$dir_unlock entry (ptr);
+       78 dcl  lock$lock_ast entry;
+       79 dcl  lock$unlock_ast entry;
+       80 dcl  logical_volume_manager$lvtep entry (bit (36) aligned, ptr, fixed bin (35));
+       81 dcl  pathname_am$flush entry (bit (36) aligned);
+       82 dcl  setfaults$if_active entry (bit (36) aligned, bit (36) aligned, fixed bin, bit (1) aligned);
+       83 dcl  sum$dirmod entry (ptr);
+       84 dcl  sum$getbranch entry (ptr, bit (36) aligned, ptr, fixed bin (35));
+       85 dcl  syserr$error_code entry options (variable);
+       86 dcl  vtoc_attributes$get_quota entry (bit (36) aligned, bit (36) aligned, fixed bin (17), ptr, fixed bin, fixed bin (35));
+       87 dcl  vtoc_man$get_vtoce entry (bit (36) aligned, fixed bin (17), fixed bin (17), bit (3) aligned, ptr, fixed bin (35));
+       88 dcl  vtoc_man$put_vtoce entry (bit (36) aligned, fixed bin (17), fixed bin (17), bit (3) aligned, ptr, fixed bin (35));
+       89 
+       90 /* External */
+       91 
+       92 dcl  access_operations_$fs_obj_reclassify bit (36) aligned ext static;
+       93 dcl  access_operations_$fs_obj_set_soos bit (36) aligned ext static;
+       94 dcl  error_table_$action_not_performed fixed bin (35) ext static;
+       95 dcl  error_table_$ai_out_range fixed bin (35) ext static;
+       96 dcl  error_table_$ai_parent_greater fixed bin (35) ext static;
+       97 dcl  error_table_$ai_son_less fixed bin (35) ext static;
+       98 dcl  error_table_$argerr fixed bin (35) ext static;
+       99 dcl  error_table_$bad_ring_brackets fixed bin (35) ext static;
+      100 dcl  error_table_$dirseg fixed bin (35) ext static;
+      101 dcl  error_table_$no_terminal_quota fixed bin (35) ext static;
+      102 dcl  error_table_$nondirseg fixed bin (35) ext static;
+      103 dcl  error_table_$not_a_branch fixed bin (35) ext static;
+      104 dcl  error_table_$rqover fixed bin (35) ext static;
+      105 dcl  error_table_$soos_set fixed bin (35) ext static;
+      106 dcl  error_table_$vtoce_connection_fail fixed bin (35) ext static;
+      107 dcl  pds$processid bit (36) aligned ext;
+      108 dcl  sys_info$access_class_ceiling bit (72) aligned ext static;
+      109 
+      110 /* Misc */
+      111 
+      112 dcl  (addr, fixed, null, ptr, rtrim, string) builtin;
+      113 
+      114 /* change branch's access_class to value of parent, called through system_privilege_ gate */
+      115 
+      116 branch: entry (a_dirname, a_ename, a_access_class, a_code);
+      117 
+      118 	whoami = "reclassify$branch";
+      119 	call setup;				/* process args and get ptrs */
+      120 	if ep -> entry.dirsw then do;
+      121 	     code = error_table_$dirseg;
+      122 	     go to unlock_all;
+      123 	end;
+      124 	dir.modify = pds$processid;
+      125 	call set_access_class (ep, parent_access_class, dirname, ename); /* Set the access class */
+      126 	if code = 0 then				/* Force ring 1 multiclass bit off */
+      127 	     call set_r1mc (ep -> entry.multiple_class, "0"b, dirname, ename);
+      128 	go to finish_seg;
+      129 
+      130 /* change seg to be multi class, called through system_privilege_ gate */
+      131 
+      132 sys_seg_priv: entry (a_dirname, a_ename, a_access_class, a_code);
+      133 
+      134 	whoami = "reclassify$sys_seg_priv";
+      135 	goto sys_seg_join;
+      136 
+      137 
+      138 /* change seg to be multi class, called through admin_gate_ from ring 1 */
+      139 
+      140 sys_seg: entry (a_dirname, a_ename, a_access_class, a_code);
+      141 
+      142 	whoami = "reclassify$sys_seg";
+      143 sys_seg_join:
+      144 	call setup;
+      145 	if ^aim_check_$greater (access_class, parent_access_class) then do; /* must be higher */
+      146 	     code = error_table_$action_not_performed;
+      147 	     go to unlock_all;
+      148 	end;
+      149 	if ep -> entry.dirsw then do;
+      150 	     code = error_table_$dirseg;
+      151 	     go to unlock_all;
+      152 	end;
+      153 	if ep -> entry.ring_brackets (3) ^= "001"b then do; /* must be ring 1 */
+      154 	     code = error_table_$bad_ring_brackets;
+      155 	     go to unlock_all;
+      156 	end;
+      157 	dir.modify = pds$processid;
+      158 	call set_access_class (ep, access_class, dirname, ename); /* Set the access class */
+      159 	if code = 0 then				/* Force ring 1 multiclass bit on */
+      160 	     call set_r1mc (ep -> entry.multiple_class, "1"b, dirname, ename);
+      161 finish_seg:
+      162 	call setfaults$if_active ((ep -> entry.uid),	/* be conservative, call even if code ^= 0 */
+      163 	     (ep -> entry.pvid), (ep -> entry.vtocx), "1"b);
+      164 	dir.modify = "0"b;
+      165 	if code = 0 then
+      166 	     call sum$dirmod (dp);			/* reflect modification up for backup to find */
+      167 						/* note: we don't soos parent if this failed */
+      168 	call dc_find$finished (dp, "1"b);		/* unlock and unuse */
+      169 	go to ret;
+      170 
+      171 /* change access class of directory and contents */
+      172 
+      173 node: entry (a_dirname, a_ename, a_access_class, a_code);
+      174 
+      175 	whoami = "reclassify$node";
+      176 	call setup;
+      177 	if ^ep -> entry.dirsw then do;
+      178 	     code = error_table_$nondirseg;
+      179 	     go to unlock_all;
+      180 	end;
+      181 
+      182 	call vtoc_attributes$get_quota (ep -> entry.uid, (ep -> entry.pvid), (ep -> entry.vtocx),
+      183 	     addr (qcell), 0, code);
+      184 	if code ^= 0 then go to unlock_all;
+      185 	has_zero_quota = ^qcell.terminal_quota_sw;
+      186 
+      187 	call lock$dir_unlock (dp);			/* all done with dp for now (will re-get via sum when done with node) */
+      188 						/* see if dir will be upgraded */
+      189 	ep_locked = "0"b;
+      190 
+      191 	if aim_check_$greater (access_class, parent_access_class) then
+      192 	     if has_zero_quota then do;		/* refuse to do operation */
+      193 		code = error_table_$no_terminal_quota;
+      194 		go to unlock_all;
+      195 	     end;
+      196 	     else ;				/* ok upgraded dir */
+      197 	else if ^aim_check_$equal (access_class, parent_access_class) then do; /* don't accept lower than parent */
+      198 	     code = error_table_$action_not_performed;
+      199 	     go to unlock_all;
+      200 	end;
+      201 
+      202 /* now reset access class and check multi class bit */
+      203 /* must go to completion in the following loop for a consistent directory */
+      204 
+      205 	targp -> dir.modify = pds$processid;
+      206 	relp = targp -> dir.entryfrp;
+      207 	do while (relp ^= "0"b);			/* reset access_class if necessary */
+      208 	     branchp = ptr (targp, relp);
+      209 	     branch_name = ptr (targp, branchp -> entry.name_frp) -> names.name;
+      210 	     if ^branchp -> entry.dirsw then if branchp -> entry.bs then do; /* a segment */
+      211 		     if aim_check_$greater (branchp -> entry.access_class, access_class) then
+      212 			if branchp -> entry.multiple_class then go to fine;
+      213 						/* all other segments get access class reset (or corrected) */
+      214 		     call set_access_class (branchp, access_class, dirpath, branch_name);
+      215 		     call set_r1mc (branchp -> entry.multiple_class, "0"b, dirpath, branch_name);
+      216 		     call setfaults$if_active ((branchp -> entry.uid), (branchp -> entry.pvid),
+      217 			(branchp -> entry.vtocx), "1"b);
+      218 		end;
+      219 						/* now for directories */
+      220 	     if branchp -> entry.dirsw then if aim_check_$equal (branchp -> entry.access_class, access_class)
+      221 		then call set_r1mc (branchp -> entry.multiple_class, "0"b, dirpath, branch_name);
+      222 		else if aim_check_$greater (branchp -> entry.access_class, access_class)
+      223 		then call set_r1mc (branchp -> entry.multiple_class, "1"b, dirpath, branch_name);
+      224 		else do;				/* this directory doesn't fit */
+      225 		     if ^branchp -> entry.security_oosw then do;
+      226 			if access_audit_check_ep_$self (string (event_flags), access_operations_$fs_obj_set_soos, branchp) then
+      227 			     call access_audit_$log_entry_ptr (whoami, level$get (), string (event_flags),
+      228 			     access_operations_$fs_obj_set_soos, branchp, error_table_$ai_parent_greater, null (), 0,
+      229 			     "Parent class: ^a", display_access_class_ (access_class));
+      230 		     end;
+      231 		     branchp -> entry.security_oosw = "1"b;
+      232 		     oosw_err = "1"b;
+      233 		end;
+      234 fine:
+      235 	     relp = branchp -> entry.efrp;
+      236 	end;
+      237 
+      238 	if set_soos then go to finish_node;
+      239 	targp -> dir.access_class = access_class;
+      240 
+      241 /* now check all upgraded directories for quota */
+      242 /* this loop seperate from above since locking failure not critical */
+      243 
+      244 	relp = targp -> dir.entryfrp;
+      245 	do while (relp ^= "0"b);
+      246 	     branchp = ptr (targp, relp);
+      247 	     if branchp -> entry.dirsw then
+      248 		if aim_check_$greater (branchp -> entry.access_class, access_class) then do;
+      249 		     call vtoc_attributes$get_quota (branchp -> entry.uid, (branchp -> entry.pvid),
+      250 			(branchp -> entry.vtocx), addr (qcell), 0, code);
+      251 		     if code ^= 0 then go to q_err;
+      252 		     if ^qcell.terminal_quota_sw then do;
+      253 q_err:			if ^branchp -> entry.security_oosw then
+      254 			     if access_audit_check_ep_$self (string (event_flags), access_operations_$fs_obj_set_soos, branchp) then
+      255 				call access_audit_$log_entry_ptr (whoami, level$get (), string (event_flags),
+      256 				access_operations_$fs_obj_set_soos, branchp, error_table_$no_terminal_quota,
+      257 				null (), 0);
+      258 			branchp -> entry.security_oosw = "1"b;
+      259 			quota_err = "1"b;
+      260 		     end;
+      261 		end;
+      262 	     relp = branchp -> entry.efrp;
+      263 	end;
+      264 
+      265 /* fix branch in parent */
+      266 
+      267 finish_node:
+      268 	call sum$getbranch (targp, "1"b, ep, code);	/* get ep again (could change via on-line salvage) */
+      269 	if code ^= 0 then do;			/* stop the world, I want to get off */
+      270 	     call syserr$error_code (CRASH, code, "reclassify: err locking parent");
+      271 	     go to unlock_all;			/* just in case we come back... */
+      272 	end;
+      273 	ep_locked = "1"b;
+      274 	dp = ptr (ep, 0);				/* reaffirm dp */
+      275 	dir.modify = pds$processid;
+      276 	if set_soos then do;
+      277 	     if access_audit_check_ep_$self (string (event_flags), access_operations_$fs_obj_set_soos, ep) then
+      278 		call access_audit_$log_entry_ptr (whoami, level$get (), string (event_flags),
+      279 		access_operations_$fs_obj_set_soos, ep, error_table_$ai_son_less, null (), 0);
+      280 	     entry.security_oosw = "1"b;		/* zap main dir */
+      281 	end;
+      282 	call set_access_class (ep, access_class, dirname, ename);
+      283 	if code = 0 then
+      284 	     call set_r1mc (ep -> entry.multiple_class, aim_check_$greater (access_class, parent_access_class), dirname, ename); /* Set multi-class bit */
+      285 	if code = 0 then if quota_err then code = error_table_$rqover;
+      286 	     else if oosw_err | set_soos then code = error_table_$soos_set; /* signal oosw problem */
+      287 	targp -> dir.modify = "0"b;
+      288 	call sum$dirmod (targp);
+      289 	call pathname_am$flush (ep -> entry.uid);
+      290 	dir.modify = "0"b;
+      291 	call sum$dirmod (dp);
+      292 	call lock$dir_unlock (dp);
+      293 	call dc_find$finished (targp, "1"b);		/* unlock and unuse */
+      294 
+      295 ret:
+      296 	a_code = code;
+      297 	return;
+      298 
+      299 unlock_all:
+      300 						/* we come here only if the operation is denied due
+      301*						   to some aim restriction or improper operation */
+      302 	event_flags.grant = "0"b;
+      303 	call access_audit_$log_obj_class (whoami, level$get (), string (event_flags),
+      304 	     access_operations_$fs_obj_reclassify, access_class, target (dirname, ename), code, null (), 0);
+      305 
+      306 	if targp_locked then do;			/* dirs held by targp */
+      307 	     if dep_locked then
+      308 		call lock$dir_unlock (ptr (dep, 0));
+      309 	     if ep_locked then do;
+      310 		dp -> dir.modify = "0"b;
+      311 		call lock$dir_unlock (ptr (ep, 0));
+      312 	     end;
+      313 	     targp -> dir.modify = "0"b;
+      314 	     call dc_find$finished (targp, "1"b);
+      315 	end;
+      316 	else do;
+      317 	     if dep_locked then call lock$dir_unlock (ptr (dep, 0));
+      318 	     dir.modify = "0"b;
+      319 	     call dc_find$finished (dp, "1"b);		/* unlock and unuse */
+      320 	end;
+      321 	go to ret;
+      322 
+      323 /* get entry and check access */
+      324 
+      325 setup: proc;
+      326 
+      327 dcl  lvid bit (36) aligned;
+      328 
+      329 	string (event_flags) = ""b;
+      330 	event_flags.special_op = "1"b;
+      331 	event_flags.grant = "1"b;			/* for now */
+      332 
+      333 	if whoami ^= "reclassify$sys_seg"		/* this one's refed through admin_gate_ */
+      334 	then event_flags.priv_op = "1"b;
+      335 
+      336 	pvt_arrayp = addr (pvt$array);
+      337 	dep_locked, ep_locked, oosw_err, quota_err, set_soos, targp_locked = "0"b;
+      338 	access_class = a_access_class;		/* copy args */
+      339 	if aim_check_$greater_or_equal (sys_info$access_class_ceiling, access_class) then code = 0;
+      340 	else do;					/* check arg */
+      341 	     code = error_table_$argerr;
+      342 	     go to ret;
+      343 	end;
+      344 	dirname = a_dirname;
+      345 	ename = a_ename;
+      346 
+      347 /* the calls to dc_find below may generate an audit message
+      348*   thus, it's OK to simply return without additional auditing
+      349*   if either fails. */
+      350 	if whoami = "reclassify$node" then do;
+      351 	     if dirname = ">" then dirpath = ">" || ename;/* now check out the directory */
+      352 	     else dirpath = rtrim (dirname) || ">" || ename;
+      353 	     call dc_find$dir_reclassify (dirpath, dep, ep, targp, code);
+      354 	     if code ^= 0 then go to ret;
+      355 	     targp_locked = "1"b;
+      356 	end;
+      357 	else do;
+      358 	     call dc_find$obj_reclassify (dirname, ename, dep, ep, code);
+      359 	     if code ^= 0 then go to ret;
+      360 	end;
+      361 	ep_locked = "1"b;
+      362 	dp = ptr (ep, 0);
+      363 	if dep ^= null then dep_locked = "1"b;
+      364 
+      365 	if ^ep -> entry.bs then do;			/* this is a link */
+      366 	     code = error_table_$not_a_branch;
+      367 	     go to unlock_all;
+      368 	end;
+      369 	if whoami = "reclassify$node" then lvid = entry.sons_lvid; /* check AIM for volume */
+      370 	else do;
+      371 	     pvtx = get_pvtx (entry.pvid, code);
+      372 	     if code ^= 0 then go to unlock_all;
+      373 	     lvid = pvt_array (pvtx).lvid;
+      374 	end;
+      375 	call logical_volume_manager$lvtep (lvid, lvtep, code); /* check lv mounted, AIM range */
+      376 	if code ^= 0 then go to unlock_all;		/* oh well */
+      377 	if ^aim_check_$greater_or_equal (access_class, lvte.access_class.min) |
+      378 	     ^aim_check_$greater_or_equal (lvte.access_class.max, access_class) then do;
+      379 	     code = error_table_$ai_out_range;
+      380 	     go to unlock_all;
+      381 	end;
+      382 	if dep_locked then do;
+      383 	     parent_access_class = dep -> entry.access_class;
+      384 	     call lock$dir_unlock (ptr (dep, 0));
+      385 	     dep_locked = "0"b;			/* remember not to do this again when finishing */
+      386 	end;
+      387 	else parent_access_class = "0"b;
+      388 
+      389      end setup;
+      390 
+      391 
+      392 
+      393 set_access_class: proc (set_ep, to_this, dirname, ename);
+      394 
+      395 dcl  dirname char (168) parameter;
+      396 dcl  ename char (32) parameter;
+      397 dcl  set_ep ptr parameter;
+      398 dcl  to_this bit (72) aligned parameter;
+      399 
+      400 dcl  pvid bit (36);
+      401 dcl  uid bit (36) aligned;
+      402 dcl  vtocx fixed bin (17);
+      403 
+      404 
+      405 
+      406 /* reclassify$(branch sys_seg sys_seg_priv) call this to
+      407*   set the new access class of the segment in its entry and
+      408*   vtoce.  reclassify$node calls this once for each segment
+      409*   in the dir being reclassified, and finally once for the
+      410*   directory itself.  "set_soos" is set if the operation
+      411*   failed so reclassify$node will set security-out-of-service
+      412*   on the containing dir that is being reclassified. */
+      413 
+      414 	if access_audit_check_ep_$self (string (event_flags), access_operations_$fs_obj_reclassify, set_ep) then
+      415 	     call access_audit_$log_entry_ptr (whoami, level$get (), string (event_flags),
+      416 	     access_operations_$fs_obj_reclassify, set_ep, 0, null (), 0, "New class: ^a",
+      417 	     display_access_class_ (to_this));
+      418 
+      419 	pvid = set_ep -> entry.pvid;			/* do vtoce first */
+      420 	uid = set_ep -> entry.uid;
+      421 	vtocx = set_ep -> entry.vtocx;		/* copy args before ASTlocking */
+      422 	call lock$lock_ast;
+      423 	pvtx = get_pvtx (pvid, code);
+      424 	if code ^= 0 then go to bust;
+      425 	call vtoc_man$get_vtoce ((pvid), pvtx, vtocx, "101"b, addr (local_vtoce), code);
+      426 						/* read activation + part 3 */
+      427 	if code ^= 0 then go to bust;
+      428 	if local_vtoce.uid ^= uid then do;
+      429 	     code = error_table_$vtoce_connection_fail;
+      430 	     go to bust;
+      431 	end;
+      432 	addr (local_vtoce) -> vtoce.access_class = to_this;
+      433 	call vtoc_man$put_vtoce ((pvid), pvtx, vtocx, "001"b, addr (local_vtoce), code);
+      434 						/* but only write part 3 */
+      435 
+      436 bust:	call lock$unlock_ast;
+      437 	if code = 0 then do;
+      438 	     set_ep -> entry.access_class = to_this;
+      439 	     call change_dtem (set_ep);		/* Cause access recomputation */
+      440 	end;
+      441 	else set_soos = "1"b;
+      442 	return;
+      443      end set_access_class;
+      444 
+      445 
+      446 set_r1mc: proc (set_this, to_this, dirname, ename);
+      447 
+      448 dcl  dirname char (168) parameter;
+      449 dcl  ename char (32) parameter;
+      450 dcl  set_this bit (1) parameter;
+      451 dcl  to_this bit (1) parameter;
+      452 
+      453 dcl  type (0:1) char (12) aligned static options (constant) init ("single-class", "upgraded");
+      454 
+      455 	if set_this ^= to_this
+      456 	then do;
+      457 						/* we'll already have logged with entry data by reclassifying,
+      458*						   so here we'll just log a text message, no binary */
+      459 	     call access_audit_$log_obj_class (whoami, level$get (), string (event_flags),
+      460 		access_operations_$fs_obj_reclassify, access_class, target (dirname, ename),
+      461 		0, null (), 0, "Changed to ^a", type (fixed (to_this, 1)));
+      462 	end;
+      463 
+      464 	set_this = to_this;
+      465 
+      466 	return;
+      467      end set_r1mc;
+      468 
+      469 target: proc (dir, ent) returns (char (*));
+      470 
+      471 dcl  dir char (*) parameter;
+      472 dcl  ent char (*) parameter;
+      473 
+      474 	if dir = ">"
+      475 	then return (">" || ent);
+      476 	else return (rtrim (dir) || ">" || ent);
+      477 
+      478      end target;
+      479 
+      480 /* format: off */
+      481  /* begin include file - access_audit_eventflags.incl.pl1 */
+  1     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  1     3*Keep it up to date. */
+  1     4 
+  1     5 dcl 1 audit_event_flags	based aligned,
+  1     6       2 special_op	bit (1) unal,  /* special sys operation */
+  1     7       2 grant	bit (1) unal,  /* operation was successful */
+  1     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  1     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  1    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  1    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  1    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  1    13       2 pad	bit (29) unal;
+  1    14 
+  1    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      481 
+      482  /* BEGIN include file dc_find_dcls.incl.pl1 */
+  2     2 
+  2     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  2     4 /* Added a few more, October 1984. */
+  2     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  2     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  2     7 
+  2     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  2     9 
+  2    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  2    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  2    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  2    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  2    14 
+  2    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  2    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  2    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  2    18 
+  2    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  2    20 
+  2    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  2    22 
+  2    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  2    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  2    25 
+  2    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  2    27 
+  2    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  2    29 
+  2    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  2    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  2    32 
+  2    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  2    34 
+  2    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  2    36 
+  2    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  2    38 
+  2    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    41 
+  2    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  2    44 
+  2    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  2    47 
+  2    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  2    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  2    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  2    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  2    52 
+  2    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  2    58 
+  2    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  2    60 
+  2    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  2    62 
+  2    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  2    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  2    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  2    66 
+  2    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  2    68 
+  2    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  2    70 
+  2    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  2    72 
+  2    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    74 
+  2    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  2    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  2    82 
+  2    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  2    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  2    87 
+  2    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  2    90 
+  2    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  2    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  2    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  2    94 
+  2    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  2    96 
+  2    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  2    98 
+  2    99 /* END include file dc_find_dcls.incl.pl1 */
+      482 
+      483  /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  3     2 
+  3     3 
+  3     4 /* Template for an entry. Length = 38 words */
+  3     5 
+  3     6 dcl  ep ptr;
+  3     7 
+  3     8 dcl 1 entry based (ep) aligned,
+  3     9 
+  3    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  3    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  3    12 
+  3    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  3    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  3    15 
+  3    16     2 uid bit (36),					/* unique id of entry */
+  3    17 
+  3    18     2 dtem bit (36),				/* date-time entry modified */
+  3    19 
+  3    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  3    21     2 pad0 bit (17),
+  3    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  3    23 
+  3    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  3    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  3    26 
+  3    27     2 author,					/* user who created branch */
+  3    28       3 pers_rp bit (18),				/* name of user who created branch */
+  3    29       3 proj_rp bit (18),				/* project of user who created branch */
+  3    30 
+  3    31       3 tag char (1),				/* tag of user who created branch */
+  3    32       3 pad1 char (3),
+  3    33 
+  3    34     2 primary_name bit (504),				/* first name on name list */
+  3    35 
+  3    36     2 dtd bit (36),					/* date time dumped */
+  3    37 
+  3    38     2 pad2 bit (36),
+  3    39 
+  3    40 
+  3    41 /* the declarations below are for branch only */
+  3    42 
+  3    43 
+  3    44     2 pvid bit (36),				/* physical volume id */
+  3    45 
+  3    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  3    47     2 pad3 bit (18),
+  3    48 
+  3    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  3    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  3    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  3    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  3    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  3    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  3    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  3    56     2 security_oosw bit (1),				/* security out of service switch */
+  3    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  3    58     2 master_dir bit (1),				/* TRUE for master directory */
+  3    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  3    60     2 pad4 bit (11),
+  3    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  3    62 
+  3    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  3    64 
+  3    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  3    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  3    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  3    68 
+  3    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  3    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  3    71 
+  3    72     2 bc_author,					/* user who last set the bit count */
+  3    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  3    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  3    75 
+  3    76       3 tag char (1),				/* tag of user who set the bit count */
+  3    77       3 pad5 bit (2),
+  3    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  3    79 
+  3    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  3    81 
+  3    82     2 pad6 bit (36),
+  3    83 
+  3    84     2 checksum bit (36),				/* checksum from dtd */
+  3    85 
+  3    86     2 owner bit (36);				/* uid of containing directory */
+  3    87 
+  3    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      483 
+      484  /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  4     2 /* Modified 8/74 for NSS */
+  4     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  4     4 /* Modified 3/82 BIM for change pclock */
+  4     5 /* format: style3 */
+  4     6 
+  4     7 /* Template for the directory header. Length = 64 words. */
+  4     8 
+  4     9 dcl  dp ptr;
+  4    10 
+  4    11 dcl 1 dir based (dp) aligned,
+  4    12 
+  4    13    2 modify bit (36),				/* Process ID of last modifier */
+  4    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  4    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  4    16     2 dtc (3),					/* date-time checked by salvager array */
+  4    17       3 date bit (36),				/* the date */
+  4    18       3 error bit (36),				/* what errors were discovered */
+  4    19 
+  4    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  4    21 
+  4    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  4    23 
+  4    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  4    25 
+  4    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  4    27 
+  4    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  4    29     2 version_number fixed bin (17),			/* version number of header */
+  4    30 
+  4    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  4    32     2 pad2 bit (18),
+  4    33 
+  4    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  4    35     2 pad3 bit (18),
+  4    36 
+  4    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  4    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  4    39 
+  4    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  4    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  4    42 
+  4    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  4    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  4    45 
+  4    46     2 lcount fixed bin (17),				/* number of links */
+  4    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  4    48 
+  4    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  4    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  4    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  4    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  4    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  4    54     2 pad4 bit (14),
+  4    55 
+  4    56     2 iacl_count (0:7),
+  4    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  4    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  4    59 
+  4    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  4    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  4    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  4    63 
+  4    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  4    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  4    66 
+  4    67     2 htsize fixed bin (17),				/* size of hash table */
+  4    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  4    69 
+  4    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  4    71     2 pad6 fixed bin (17),
+  4    72 
+  4    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  4    74     2 pad7 bit (18)) unaligned,
+  4    75 
+  4    76     2 dts bit (36),					/* date-time directory last salvaged */
+  4    77 
+  4    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  4    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  4    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  4    81     2 checksum bit (36),				/* checksummed from uid on */
+  4    82     2 owner bit (36);				/* uid of parent dir */
+  4    83 
+  4    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  4    85 
+  4    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      484 
+      485  /*     BEGIN INCLUDE FILE ... dir_name.incl.pl1 ... last modified Nov 1975 for nss */
+  5     2 
+  5     3 /* Template for names of branches or links. Length = 14 words. */
+  5     4 
+  5     5 dcl np ptr;
+  5     6 
+  5     7 dcl 1 names based aligned,				/* based on ptr(dp,ep->entry.name_frp) */
+  5     8     2 fp bit(18) unaligned,				/* rel ptr to next name */
+  5     9     2 bp bit(18) unaligned,				/* rel ptr to prev name */
+  5    10 
+  5    11     2 type bit (18) unaligned,			/* type = dir name */
+  5    12     2 size fixed bin (17) unaligned,			/* size of dir name */
+  5    13 
+  5    14     2 entry_rp bit(18) unaligned,			/* rel ptr to entry */
+  5    15     2 ht_index fixed bin(17) unaligned,			/* index of hash table entry */
+  5    16 
+  5    17     2 hash_thread bit (18) unal,			/* relative ptr to next hash  entry */
+  5    18     2 pad3 bit (18) unal,
+  5    19 
+  5    20     2 name char(32) aligned,
+  5    21 
+  5    22     2 checksum bit (36),				/* checksum from entry_rp */
+  5    23 
+  5    24     2 owner bit (36);				/* uid of entry */
+  5    25 
+  5    26 
+  5    27 /*     END INCLUDE FILE ... dir_name.incl.pl1 */
+      485 
+      486  /* BEGIN INCLUDE FILE lvt.incl.pl1 -- Written Jan. 1976 by R. Bratt       */
+  6     2 /*
+  6     3*   This include file defines the format of the hardcore L_ogical V_olume T_able (LVT).
+  6     4**/
+  6     5 
+  6     6 dcl  lvt$ ext;
+  6     7 dcl  lvtp ptr;
+  6     8 dcl  lvtep ptr;
+  6     9 
+  6    10 dcl 1 lvt aligned based (lvtp),
+  6    11     2 max_lvtex fixed bin (17),			/* maximum number of LVs describable */
+  6    12     2 high_water_lvtex fixed bin (17),			/* highest LVT index assigned */
+  6    13     2 free_lvtep ptr,				/* pointer to  first free lvte  */
+  6    14     2 pad1 (4) bit (36),
+  6    15     2 ht (0:63) ptr unal,				/* lvid hash table */
+  6    16     2 lvtes (1:1 refer (lvt.max_lvtex)) like lvte;	/* LVT entries */
+  6    17 
+  6    18 dcl 1 lvte aligned based (lvtep),			/* logical volume table entry */
+  6    19     2 lvtep ptr unaligned,				/* lvid hash thread */
+  6    20     2 pvtex fixed bin (17),				/* thread of mounted PVs */
+  6    21     2 lvid bit (36),				/* logical volume id */
+  6    22     2 access_class aligned,				/* access isolation mechanism stuff */
+  6    23       3 min bit (72),				/* minimum access class allowed on LV */
+  6    24       3 max bit (72),				/* maximum access class allowed on volume */
+  6    25     2 flags unaligned,				/* flags */
+  6    26       3 public bit (1),				/* => anyone can connect to this LV */
+  6    27       3 read_only bit (1),				/* => no writes on this LV */
+  6    28       3 pad bit (16),
+  6    29       3 cycle_pvtx fixed bin (17);			/* pvtx for next per_process seg */
+  6    30 
+  6    31 /* END INCLUDE FILE lvt.incl.pl1                                                    */
+      486 
+      487  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  7     2 
+  7     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  7     4 
+  7     5 /****^  HISTORY COMMENTS:
+  7     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  7     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  7     8*     Add the support for subvolumes
+  7     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  7    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  7    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  7    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  7    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  7    14*     Added inconsistent_dbm bit for determining the status of volume
+  7    15*     dumper bit maps.
+  7    16*                                                   END HISTORY COMMENTS */
+  7    17 
+  7    18      dcl	   pvt$array	      aligned external;
+  7    19      dcl	   pvt$max_n_entries      fixed bin external;
+  7    20 
+  7    21      dcl	   pvt_arrayp	      ptr;
+  7    22      dcl	   pvtep		      ptr;
+  7    23 
+  7    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  7    25 
+  7    26      dcl	   1 pvte		      based (pvtep) aligned,
+  7    27 
+  7    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  7    29 
+  7    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  7    31 
+  7    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  7    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  7    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  7    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  7    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  7    37 	     2 pad3	      bit (2) unaligned,
+  7    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  7    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  7    40 
+  7    41 
+  7    42 
+  7    43 	     2 devname	      char (4),		/* device name */
+  7    44 
+  7    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  7    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  7    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  7    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  7    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  7    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  7    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  7    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  7    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  7    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  7    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  7    56 	     2 scav_check_address
+  7    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  7    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  7    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  7    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  7    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  7    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  7    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  7    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  7    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  7    66 
+  7    67 
+  7    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  7    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  7    70 
+  7    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  7    72 
+  7    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  7    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  7    75 
+  7    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  7    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  7    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  7    79 	     2 records_per_cyl    fixed bin,
+  7    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  7    81 	     2 sv_name            char (2) aligned,
+  7    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  7    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  7    84 
+  7    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  7    86 	     2 pad2	      bit (18) unaligned,
+  7    87 
+  7    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  7    89 
+  7    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  7    91 
+  7    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  7    93 
+  7    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  7    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  7    96 
+  7    97 
+  7    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  7    99 
+  7   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  7   101 
+  7   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  7   103 
+  7   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  7   105 
+  7   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  7   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  7   108 
+  7   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  7   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  7   111 
+  7   112 
+  7   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  7   114 	   VOLMAP_ASYNC_READ      init (1),
+  7   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  7   116 
+  7   117 
+  7   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      487 
+      488  /* BEGIN INCLUDE FILE ... quota_cell.incl.pl1 ... February 1982 */
+  8     2 
+  8     3 dcl 1 quota_cell based (qcp) aligned,			/* Argument used by vtoc_attributes$(get set)_quota */
+  8     4     2 quota fixed bin (35),				/* Record quota */
+  8     5     2 used fixed bin (35),				/* Current use */
+  8     6     2 received fixed bin (35),			/* Quota moved down */
+  8     7     2 tup bit (36),					/* Clock time of update */
+  8     8     2 trp fixed bin (71),				/* Time-page-product, in page-seconds */
+  8     9     2 pad fixed bin,
+  8    10     2 terminal_quota_sw bit (1);			/* TRUE if terminal quota */
+  8    11 
+  8    12 dcl  qcp ptr;
+  8    13 
+  8    14 /* END INCLUDE FILE ... quota_cell */
+      488 
+      489  /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  9     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  9     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  9     4 
+  9     5 dcl  vtocep ptr;
+  9     6 
+  9     7 dcl 1 vtoce based (vtocep) aligned,
+  9     8 
+  9     9 
+  9    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  9    11 
+  9    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  9    13 
+  9    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  9    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  9    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  9    17     2 pad2 bit (9),
+  9    18 
+  9    19     2 dtu bit (36),					/* date and time segment was last used */
+  9    20 
+  9    21     2 dtm bit (36),					/* date and time segment was last modified */
+  9    22 
+  9    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  9    24     2 deciduous bit (1),				/* true if hc_sdw */
+  9    25     2 nid bit (1),					/* no incremental dump switch */
+  9    26     2 dnzp bit (1),					/* Dont null zero pages */
+  9    27     2 gtpd bit (1),					/* Global transparent paging device */
+  9    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  9    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  9    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  9    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  9    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  9    33     2 pad3 bit (8),
+  9    34     2 dirsw bit (1),				/* directory switch */
+  9    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  9    36     2 pad4 bit (16)) unaligned,			/* not used */
+  9    37 
+  9    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  9    39 
+  9    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  9    41 
+  9    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  9    43 
+  9    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  9    45 
+  9    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  9    47 
+  9    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  9    49 
+  9    50 
+  9    51 
+  9    52 
+  9    53 
+  9    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  9    55 
+  9    56     2 pad6 (10) bit (36),				/* not used */
+  9    57 
+  9    58     2 ncd bit (1),					/* no complete dump switch */
+  9    59     2 pad7 bit (17),
+  9    60     2 pad8 bit (18),
+  9    61 
+  9    62     2 dtd bit (36),					/* date-time-dumped */
+  9    63 
+  9    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  9    65 
+  9    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  9    67 
+  9    68 
+  9    69 
+  9    70 
+  9    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  9    72 
+  9    73     2 primary_name char (32),				/* primary name of the segment */
+  9    74 
+  9    75     2 time_created bit (36),				/* time the segment was created */
+  9    76 
+  9    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  9    78 
+  9    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  9    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  9    81 
+  9    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  9    83 
+  9    84     2 access_class bit (72),				/* access class in branch */
+  9    85     2 perm_flags aligned,
+  9    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  9    87       3 pad9 bit (35) unal,
+  9    88     2 owner bit (36);				/* pvid of this volume */
+  9    89 
+  9    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  9    91 
+  9    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  9    93     2 pad1 bit (7*36),
+  9    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  9    95     2 pad2 bit (184*36);
+  9    96 
+  9    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      489 
+      490  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 10     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 10     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 10     4 
+ 10     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 10     6 
+ 10     7 dcl (
+ 10     8 
+ 10     9 /* The following constants define the message action codes.  This indicates
+ 10    10*how a message is to be handled.  */
+ 10    11 
+ 10    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 10    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 10    14 
+ 10    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 10    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 10    17 
+ 10    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 10    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 10    20 
+ 10    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 10    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 10    23 
+ 10    24      SYSERR_LOG_OR_PRINT	init (4),
+ 10    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 10    26 
+ 10    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 10    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 10    29 
+ 10    30 
+ 10    31 /* The following constants are added to the normal severities to indicate
+ 10    32*different sorting classes of messages.  */
+ 10    33 
+ 10    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 10    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 10    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 10    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 10    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 10    39 	) fixed bin internal static options (constant);
+ 10    40 
+ 10    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      490 
+      491 
+      492 /* format: on */
+      493 
+      494 /* BEGIN MESSAGE DOCUMENTATION
+      495*
+      496*   Message:
+      497*   reclassify: err locking parent. ERROR_CODE
+      498*
+      499*   S:	$crash
+      500*
+      501*   T:	$run
+      502*
+      503*   M:	$err
+      504*   $crashes
+      505*
+      506*   A:	$recover
+      507*
+      508*
+      509*   Message:
+      510*   AUDIT (reclassify$ENTRY): GRANTED modification of security out-of-service ADDED_INFO
+      511*
+      512*   S:	$access_audit
+      513*
+      514*   T:	$run
+      515*
+      516*   M:	An AIM error was found in respect to the specified directory.
+      517*   There was a disagreement in access class between the directory
+      518*   and one of it's sons, or there was an upgraded directory with
+      519*   non-terminal quota.
+      520*
+      521*   A:	$ignore
+      522*
+      523*
+      524*   Message:
+      525*   AUDIT (reclassify$ENTRY): GRANTED|DENIED modification of fs_obj access class ADDED_INFO
+      526*
+      527*   S:	$access_audit
+      528*
+      529*   T:	$run
+      530*
+      531*   M:	Indicates whether an attempt to reclassify the specified file
+      532*   system object was granted or denied.  In the case of
+      533*   reclassify$node, a message will be generated for each
+      534*   entry in the directory being reclassified.
+      535*
+      536*   A:	$ignore
+      537*
+      538*
+      539*   END MESSAGE DOCUMENTATION */
+      540 
+      541      end reclassify;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  reclassify.pl1                    >spec>install>1110>reclassify.pl1
+481          1    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+482          2    05/20/85  0848.1  dc_find_dcls.incl.pl1             >ldd>include>dc_find_dcls.incl.pl1
+483          3    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+484          4    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+485          5    11/02/76  1414.7  dir_name.incl.pl1                 >ldd>include>dir_name.incl.pl1
+486          6    11/30/76  1555.4  lvt.incl.pl1                      >ldd>include>lvt.incl.pl1
+487          7    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+488          8    05/27/82  1525.9  quota_cell.incl.pl1               >ldd>include>quota_cell.incl.pl1
+489          9    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+490         10    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000026 constant        fixed bin(17,0)          initial dcl 10-7 set ref 270*
+a_access_class                         parameter       bit(72)                  dcl 34 ref 116 132 140 173 338
+a_code                                 parameter       fixed bin(35,0)          dcl 35 set ref 116 132 140 173 295*
+a_dirname                              parameter       char                     packed unaligned dcl 36 ref 116 132 140 173 344
+a_ename                                parameter       char                     packed unaligned dcl 37 ref 116 132 140 173 345
+access_audit_$log_entry_ptr     000012 constant        entry                    external dcl 68 ref 226 253 277 414
+access_audit_$log_obj_class     000014 constant        entry                    external dcl 69 ref 303 459
+access_audit_check_ep_$self     000010 constant        entry                    external dcl 67 ref 226 253 277 414
+access_class             33            based           bit(72)                  level 2 in structure "entry" dcl 3-8 in procedure
+                                                                                  "reclassify" set ref 211* 220* 222* 247* 383 438*
+access_class             13            based           bit(72)                  level 2 in structure "dir" dcl 4-11 in procedure
+                                                                                  "reclassify" set ref 239*
+access_class                    000100 automatic       bit(72)                  dcl 41 in procedure "reclassify" set ref 145* 158*
+                                                                                  191* 197* 211* 214* 220* 222* 226* 226* 239 247*
+                                                                                  282* 283* 283* 303* 338* 339* 377* 377* 459*
+access_class              3            based           structure                level 2 in structure "lvte" dcl 6-18 in procedure
+                                                                                  "reclassify"
+access_class            274            based           bit(72)                  level 2 in structure "vtoce" dcl 9-7 in procedure
+                                                                                  "reclassify" set ref 432*
+access_operations_$fs_obj_reclassify
+                                000064 external static bit(36)                  dcl 92 set ref 303* 414* 414* 459*
+access_operations_$fs_obj_set_soos
+                                000066 external static bit(36)                  dcl 93 set ref 226* 226* 253* 253* 277* 277*
+addr                                                   builtin function         dcl 112 ref 182 182 249 249 336 425 425 432 433 433
+aim_check_$equal                000016 constant        entry                    external dcl 70 ref 197 220
+aim_check_$greater              000020 constant        entry                    external dcl 71 ref 145 191 211 222 247 283 283
+aim_check_$greater_or_equal     000022 constant        entry                    external dcl 72 ref 339 377 377
+audit_event_flags                      based           structure                level 1 dcl 1-5
+branch_name                     000102 automatic       char(32)                 packed unaligned dcl 42 set ref 209* 214* 215* 220*
+                                                                                  222*
+branchp                         000112 automatic       pointer                  dcl 43 set ref 208* 209 210 210 211 211 214* 215 216
+                                                                                  216 216 220 220 220 222 222 225 226* 226* 231 234
+                                                                                  246* 247 247 249 249 249 253 253* 253* 258 262
+bs                        4            based           bit(1)                   level 2 packed packed unaligned dcl 3-8 ref 210 365
+change_dtem                     000024 constant        entry                    external dcl 73 ref 439
+code                            000114 automatic       fixed bin(35,0)          dcl 44 set ref 121* 126 146* 150* 154* 159 165 178*
+                                                                                  182* 184 193* 198* 249* 251 267* 269 270* 283 285
+                                                                                  285* 286* 295 303* 339* 341* 353* 354 358* 359
+                                                                                  366* 371* 372 375* 376 379* 423* 424 425* 427 429*
+                                                                                  433* 437
+dc_find$dir_reclassify          000126 constant        entry                    external dcl 2-26 ref 353
+dc_find$finished                000130 constant        entry                    external dcl 2-33 ref 168 293 314 319
+dc_find$obj_reclassify          000132 constant        entry                    external dcl 2-71 ref 358
+dep                             000116 automatic       pointer                  dcl 45 set ref 307 307 317 317 353* 358* 363 383 384
+                                                                                  384
+dep_locked                      000120 automatic       bit(1)                   dcl 46 set ref 307 317 337* 363* 382 385*
+dir                                    parameter       char                     packed unaligned dcl 471 in procedure "target" ref
+                                                                                  469 474 476
+dir                                    based           structure                level 1 dcl 4-11 in procedure "reclassify"
+dirname                                parameter       char(168)                packed unaligned dcl 448 in procedure "set_r1mc" set
+                                                                                  ref 446 459*
+dirname                         000121 automatic       char(168)                packed unaligned dcl 47 in procedure "reclassify"
+                                                                                  set ref 125* 126* 158* 159* 282* 283* 303* 344*
+                                                                                  351 352 358*
+dirname                                parameter       char(168)                packed unaligned dcl 395 in procedure
+                                                                                  "set_access_class" ref 393
+dirpath                         000173 automatic       char(168)                packed unaligned dcl 48 set ref 214* 215* 220* 222*
+                                                                                  351* 352* 353*
+dirsw                    32            based           bit(1)                   level 2 packed packed unaligned dcl 3-8 ref 120 149
+                                                                                  177 210 220 247
+display_access_class_           000026 constant        entry                    external dcl 74 ref 226 226 414 414
+dp                              000616 automatic       pointer                  dcl 4-9 set ref 124 157 164 165* 168* 187* 274* 275
+                                                                                  290 291* 292* 310 318 319* 362*
+efrp                                   based           bit(18)                  level 2 packed packed unaligned dcl 3-8 ref 234 262
+ename                           000245 automatic       char(32)                 packed unaligned dcl 49 in procedure "reclassify"
+                                                                                  set ref 125* 126* 158* 159* 282* 283* 303* 345*
+                                                                                  351 352 358*
+ename                                  parameter       char(32)                 packed unaligned dcl 449 in procedure "set_r1mc" set
+                                                                                  ref 446 459*
+ename                                  parameter       char(32)                 packed unaligned dcl 396 in procedure
+                                                                                  "set_access_class" ref 393
+ent                                    parameter       char                     packed unaligned dcl 472 ref 469 474 476
+entry                                  based           structure                level 1 dcl 3-8
+entryfrp                 16            based           bit(18)                  level 2 packed packed unaligned dcl 4-11 ref 206 244
+ep                              000614 automatic       pointer                  dcl 3-6 set ref 120 125* 126 149 153 158* 159 161
+                                                                                  161 161 177 182 182 182 267* 274 277* 277* 280
+                                                                                  282* 283 289 311 311 353* 358* 362 365 369 371
+ep_locked                       000255 automatic       bit(1)                   dcl 50 set ref 189* 273* 309 337* 361*
+error_table_$action_not_performed
+                                000070 external static fixed bin(35,0)          dcl 94 ref 146 198
+error_table_$ai_out_range       000072 external static fixed bin(35,0)          dcl 95 ref 379
+error_table_$ai_parent_greater  000074 external static fixed bin(35,0)          dcl 96 set ref 226*
+error_table_$ai_son_less        000076 external static fixed bin(35,0)          dcl 97 set ref 277*
+error_table_$argerr             000100 external static fixed bin(35,0)          dcl 98 ref 341
+error_table_$bad_ring_brackets  000102 external static fixed bin(35,0)          dcl 99 ref 154
+error_table_$dirseg             000104 external static fixed bin(35,0)          dcl 100 ref 121 150
+error_table_$no_terminal_quota  000106 external static fixed bin(35,0)          dcl 101 set ref 193 253*
+error_table_$nondirseg          000110 external static fixed bin(35,0)          dcl 102 ref 178
+error_table_$not_a_branch       000112 external static fixed bin(35,0)          dcl 103 ref 366
+error_table_$rqover             000114 external static fixed bin(35,0)          dcl 104 ref 285
+error_table_$soos_set           000116 external static fixed bin(35,0)          dcl 105 ref 286
+error_table_$vtoce_connection_fail
+                                000120 external static fixed bin(35,0)          dcl 106 ref 429
+event_flags                     000256 automatic       structure                level 1 dcl 51 set ref 226 226 226 226 253 253 253
+                                                                                  253 277 277 277 277 303 303 329* 414 414 414 414
+                                                                                  459 459
+fixed                                                  builtin function         dcl 112 ref 459
+get_pvtx                        000030 constant        entry                    external dcl 75 ref 371 423
+grant                     0(01) 000256 automatic       bit(1)                   level 2 packed packed unaligned dcl 51 set ref 299*
+                                                                                  331*
+has_zero_quota                  000257 automatic       bit(1)                   packed unaligned dcl 52 set ref 185* 191
+level$get                       000032 constant        entry                    external dcl 76 ref 226 226 253 253 277 277 303 303
+                                                                                  414 414 459 459
+local_vtoce                     000260 automatic       structure                level 1 dcl 53 set ref 425 425 432 433 433
+lock$dir_unlock                 000034 constant        entry                    external dcl 77 ref 187 292 307 311 317 384
+lock$lock_ast                   000036 constant        entry                    external dcl 78 ref 422
+lock$unlock_ast                 000040 constant        entry                    external dcl 79 ref 436
+logical_volume_manager$lvtep    000042 constant        entry                    external dcl 80 ref 375
+lvid                      1            based           bit(36)                  array level 2 in structure "pvt_array" dcl 7-24
+                                                                                  in procedure "reclassify" ref 373
+lvid                            000632 automatic       bit(36)                  dcl 327 in procedure "setup" set ref 369* 373* 375*
+lvte                                   based           structure                level 1 dcl 6-18
+lvtep                           000620 automatic       pointer                  dcl 6-8 set ref 375* 377 377
+max                       5            based           bit(72)                  level 3 dcl 6-18 set ref 377*
+min                       3            based           bit(72)                  level 3 dcl 6-18 set ref 377*
+modify                                 based           bit(36)                  level 2 dcl 4-11 set ref 124* 157* 164* 205* 275*
+                                                                                  287* 290* 310* 313* 318*
+multiple_class           32(05)        based           bit(1)                   level 2 packed packed unaligned dcl 3-8 set ref 126*
+                                                                                  159* 211 215* 220* 222* 283*
+name                      4            based           char(32)                 level 2 dcl 5-7 ref 209
+name_frp                  5            based           bit(18)                  level 2 packed packed unaligned dcl 3-8 ref 209
+names                                  based           structure                level 1 dcl 5-7
+null                                                   builtin function         dcl 112 ref 226 226 253 253 277 277 303 303 363 414
+                                                                                  414 459 459
+oosw_err                        000560 automatic       bit(1)                   dcl 54 set ref 232* 286 337*
+parent_access_class             000562 automatic       bit(72)                  dcl 55 set ref 125* 145* 191* 197* 283* 283* 383*
+                                                                                  387*
+pathname_am$flush               000044 constant        entry                    external dcl 81 ref 289
+pds$processid                   000122 external static bit(36)                  dcl 107 ref 124 157 205 275
+priv_op                   0(03) 000256 automatic       bit(1)                   level 2 packed packed unaligned dcl 51 set ref 333*
+ptr                                                    builtin function         dcl 112 ref 208 209 246 274 307 307 311 311 317 317
+                                                                                  362 384 384
+pvid                            000642 automatic       bit(36)                  packed unaligned dcl 400 in procedure
+                                                                                  "set_access_class" set ref 419* 423* 425 433
+pvid                     30            based           bit(36)                  level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 3-8 in procedure "reclassify" set ref 161 182
+                                                                                  216 249 371* 419
+pvt$array                       000134 external static fixed bin(17,0)          dcl 7-18 set ref 336
+pvt_array                              based           structure                array level 1 dcl 7-24
+pvt_arrayp                      000622 automatic       pointer                  dcl 7-21 set ref 336* 373
+pvte                                   based           structure                level 1 dcl 7-26
+pvtx                            000564 automatic       fixed bin(17,0)          dcl 56 set ref 371* 373 423* 425* 433*
+qcell                           000566 automatic       structure                level 1 dcl 57 set ref 182 182 249 249
+quota_cell                             based           structure                level 1 dcl 8-3
+quota_err                       000576 automatic       bit(1)                   dcl 58 set ref 259* 285 337*
+relp                            000577 automatic       bit(18)                  packed unaligned dcl 59 set ref 206* 207 208 234*
+                                                                                  244* 245 246 262*
+ring_brackets            35            based           bit(3)                   array level 2 packed packed unaligned dcl 3-8 ref
+                                                                                  153
+rtrim                                                  builtin function         dcl 112 ref 352 476
+security_oosw            32(07)        based           bit(1)                   level 2 packed packed unaligned dcl 3-8 set ref 225
+                                                                                  231* 253 258* 280*
+set_ep                                 parameter       pointer                  dcl 397 set ref 393 414* 414* 419 420 421 438 439*
+set_soos                        000600 automatic       bit(1)                   dcl 60 set ref 238 276 286 337* 441*
+set_this                               parameter       bit(1)                   packed unaligned dcl 450 set ref 446 455 464*
+setfaults$if_active             000046 constant        entry                    external dcl 82 ref 161 216
+sons_lvid                41            based           bit(36)                  level 2 dcl 3-8 ref 369
+special_op                      000256 automatic       bit(1)                   level 2 packed packed unaligned dcl 51 set ref 330*
+string                                                 builtin function         dcl 112 set ref 226 226 226 226 253 253 253 253 277
+                                                                                  277 277 277 303 303 329* 414 414 414 414 459 459
+sum$dirmod                      000050 constant        entry                    external dcl 83 ref 165 288 291
+sum$getbranch                   000052 constant        entry                    external dcl 84 ref 267
+sys_info$access_class_ceiling   000124 external static bit(72)                  dcl 108 set ref 339*
+syserr$error_code               000054 constant        entry                    external dcl 85 ref 270
+targp                           000602 automatic       pointer                  dcl 61 set ref 205 206 208 209 239 244 246 267* 287
+                                                                                  288* 293* 313 314* 353*
+targp_locked                    000604 automatic       bit(1)                   dcl 62 set ref 306 337* 355*
+terminal_quota_sw         7     000566 automatic       bit(1)                   level 2 dcl 57 set ref 185 252
+to_this                                parameter       bit(72)                  dcl 398 in procedure "set_access_class" set ref 393
+                                                                                  414* 414* 432 438
+to_this                                parameter       bit(1)                   packed unaligned dcl 451 in procedure "set_r1mc" ref
+                                                                                  446 455 459 464
+type                            000000 constant        char(12)                 initial array dcl 453 set ref 459*
+uid                       1     000260 automatic       bit(36)                  level 2 in structure "local_vtoce" packed packed
+                                                                                  unaligned dcl 53 in procedure "reclassify" set ref
+                                                                                  428
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 3-8 in procedure
+                                                                                  "reclassify" set ref 161 182* 216 249* 289* 420
+uid                             000643 automatic       bit(36)                  dcl 401 in procedure "set_access_class" set ref 420*
+                                                                                  428
+vtoc_attributes$get_quota       000056 constant        entry                    external dcl 86 ref 182 249
+vtoc_man$get_vtoce              000060 constant        entry                    external dcl 87 ref 425
+vtoc_man$put_vtoce              000062 constant        entry                    external dcl 88 ref 433
+vtoce                                  based           structure                level 1 dcl 9-7
+vtocx                    31            based           fixed bin(17,0)          level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 3-8 in procedure "reclassify" ref 161 182 216
+                                                                                  249 421
+vtocx                           000644 automatic       fixed bin(17,0)          dcl 402 in procedure "set_access_class" set ref 421*
+                                                                                  425* 433*
+whoami                          000605 automatic       char(24)                 dcl 63 set ref 118* 134* 142* 175* 226* 253* 277*
+                                                                                  303* 333 350 369 414* 459*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 10-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 10-7
+DC_FIND_CHASE                          internal static fixed bin(1,0)           initial dcl 2-10
+DC_FIND_NO_CHASE                       internal static fixed bin(1,0)           initial dcl 2-11
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 2-12
+DC_FIND_UNLOCK_DIR                     internal static bit(1)                   initial dcl 2-13
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 10-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 10-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 10-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 7-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 7-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 7-113
+dc_find$dir_for_append          000000 constant        entry                    external dcl 2-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 2-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 2-17
+dc_find$dir_initiate            000000 constant        entry                    external dcl 2-19
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 2-21
+dc_find$dir_read                000000 constant        entry                    external dcl 2-23
+dc_find$dir_read_priv           000000 constant        entry                    external dcl 2-24
+dc_find$dir_salvage             000000 constant        entry                    external dcl 2-28
+dc_find$dir_write               000000 constant        entry                    external dcl 2-30
+dc_find$dir_write_priv          000000 constant        entry                    external dcl 2-31
+dc_find$link_target             000000 constant        entry                    external dcl 2-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 2-37
+dc_find$obj_access_write        000000 constant        entry                    external dcl 2-39
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 2-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 2-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 2-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 2-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 2-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 2-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 2-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 2-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 2-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 2-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 2-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 2-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 2-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 2-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 2-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 2-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 2-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 2-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 2-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 2-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 2-69
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 2-73
+dc_find$obj_status_read         000000 constant        entry                    external dcl 2-75
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 2-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 2-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 2-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 2-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 2-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 2-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 2-83
+dc_find$obj_status_write_priv   000000 constant        entry                    external dcl 2-84
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 2-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 2-86
+dc_find$obj_terminate           000000 constant        entry                    external dcl 2-88
+dc_find$obj_terminate_ptr       000000 constant        entry                    external dcl 2-89
+dc_find$obj_truncate            000000 constant        entry                    external dcl 2-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 2-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 2-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 2-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 2-97
+lvt                                    based           structure                level 1 dcl 6-10
+lvt$                                   external static fixed bin(17,0)          dcl 6-6
+lvtp                                   automatic       pointer                  dcl 6-7
+np                                     automatic       pointer                  dcl 5-5
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 7-19
+pvtep                                  automatic       pointer                  dcl 7-22
+qcp                                    automatic       pointer                  dcl 8-12
+seg_vtoce                              based           structure                level 1 dcl 9-92
+version_number_2                       internal static fixed bin(17,0)          initial dcl 4-84
+vtoce_parts                            based           bit(2304)                array dcl 9-90
+vtocep                                 automatic       pointer                  dcl 9-5
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+branch                          000122 constant        entry                    external dcl 116
+bust                            003033 constant        label                    dcl 436 ref 424 427 430
+fine                            001200 constant        label                    dcl 234 ref 211
+finish_node                     001420 constant        label                    dcl 267 ref 238
+finish_seg                      000356 constant        label                    dcl 161 ref 128
+node                            000435 constant        entry                    external dcl 173
+q_err                           001302 constant        label                    dcl 253 ref 251
+reclassify                      000107 constant        entry                    external dcl 30
+ret                             001734 constant        label                    dcl 295 ref 169 321 342 354 359
+set_access_class                002550 constant        entry                    internal dcl 393 ref 125 158 214 282
+set_r1mc                        003065 constant        entry                    internal dcl 446 ref 126 159 215 220 222 283
+setup                           002145 constant        entry                    internal dcl 325 ref 119 143 176
+sys_seg                         000237 constant        entry                    external dcl 140
+sys_seg_join                    000262 constant        label                    dcl 143 ref 135
+sys_seg_priv                    000211 constant        entry                    external dcl 132
+target                          003237 constant        entry                    internal dcl 469 ref 303 459
+unlock_all                      001740 constant        label                    dcl 299 ref 122 147 151 155 179 184 194 199 271 367
+                                                                                  372 376 380
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4204        4342    3413        4214
+Length      5044    3413       136         466     571           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+reclassify                          680 external procedure  is an external procedure.  
+setup                                   internal procedure  shares stack frame of external procedure reclassify.  
+set_access_class                        internal procedure  shares stack frame of external procedure reclassify.  
+set_r1mc                                internal procedure  shares stack frame of external procedure reclassify.  
+target                               70 internal procedure  uses returns(char(*)) or returns(bit(*)).  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+reclassify               000100 access_class                reclassify
+                         000102 branch_name                 reclassify
+                         000112 branchp                     reclassify
+                         000114 code                        reclassify
+                         000116 dep                         reclassify
+                         000120 dep_locked                  reclassify
+                         000121 dirname                     reclassify
+                         000173 dirpath                     reclassify
+                         000245 ename                       reclassify
+                         000255 ep_locked                   reclassify
+                         000256 event_flags                 reclassify
+                         000257 has_zero_quota              reclassify
+                         000260 local_vtoce                 reclassify
+                         000560 oosw_err                    reclassify
+                         000562 parent_access_class         reclassify
+                         000564 pvtx                        reclassify
+                         000566 qcell                       reclassify
+                         000576 quota_err                   reclassify
+                         000577 relp                        reclassify
+                         000600 set_soos                    reclassify
+                         000602 targp                       reclassify
+                         000604 targp_locked                reclassify
+                         000605 whoami                      reclassify
+                         000614 ep                          reclassify
+                         000616 dp                          reclassify
+                         000620 lvtep                       reclassify
+                         000622 pvt_arrayp                  reclassify
+                         000632 lvid                        setup
+                         000642 pvid                        set_access_class
+                         000643 uid                         set_access_class
+                         000644 vtocx                       set_access_class
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        call_int_this_desc  return_mac
+shorten_stack       ext_entry           ext_entry_desc      int_entry_desc      return_chars_eis
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_$log_entry_ptr   access_audit_$log_obj_class   access_audit_check_ep_$self   aim_check_$equal
+aim_check_$greater            aim_check_$greater_or_equal   change_dtem                   dc_find$dir_reclassify
+dc_find$finished              dc_find$obj_reclassify        display_access_class_         get_pvtx
+level$get                     lock$dir_unlock               lock$lock_ast                 lock$unlock_ast
+logical_volume_manager$lvtep  pathname_am$flush             setfaults$if_active           sum$dirmod
+sum$getbranch                 syserr$error_code             vtoc_attributes$get_quota     vtoc_man$get_vtoce
+vtoc_man$put_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$fs_obj_reclassify                        access_operations_$fs_obj_set_soos
+error_table_$action_not_performed                           error_table_$ai_out_range
+error_table_$ai_parent_greater                              error_table_$ai_son_less      error_table_$argerr
+error_table_$bad_ring_brackets                              error_table_$dirseg
+error_table_$no_terminal_quota                              error_table_$nondirseg        error_table_$not_a_branch
+error_table_$rqover           error_table_$soos_set         error_table_$vtoce_connection_fail
+pds$processid                 pvt$array                     sys_info$access_class_ceiling
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     30 000106       116 000114       118 000142       119 000145       120 000146       121 000152       122 000155
+    124 000156       125 000161       126 000163       128 000206       132 000207       134 000231       135 000234
+    140 000235       142 000257       143 000262       145 000263       146 000301       147 000304       149 000305
+    150 000311       151 000314       153 000315       154 000322       155 000325       157 000326       158 000331
+    159 000333       161 000356       164 000405       165 000406       168 000417       169 000432       173 000433
+    175 000455       176 000460       177 000461       178 000465       179 000470       182 000471       184 000522
+    185 000524       187 000527       189 000536       191 000537       193 000557       194 000562       196 000563
+    197 000564       198 000602       199 000605       205 000606       206 000611       207 000615       208 000620
+    209 000623       210 000632       211 000640       214 000662       215 000664       216 000705       220 000734
+    222 001000       225 001041       226 001045       231 001173       232 001176       234 001200       236 001203
+    238 001204       239 001206       244 001212       245 001215       246 001220       247 001223       249 001244
+    251 001276       252 001300       253 001302       258 001407       259 001412       262 001414       263 001417
+    267 001420       269 001437       270 001441       271 001465       273 001466       274 001470       275 001472
+    276 001475       277 001477       280 001577       282 001602       283 001604       285 001643       286 001653
+    287 001662       288 001663       289 001672       290 001702       291 001703       292 001712       293 001721
+    295 001734       297 001737       299 001740       303 001742       306 002046       307 002051       309 002064
+    310 002066       311 002067       313 002100       314 002101       315 002114       317 002115       318 002130
+    319 002131       321 002144       325 002145       329 002146       330 002147       331 002151       333 002153
+    336 002161       337 002164       338 002172       339 002177       341 002216       342 002221       344 002222
+    345 002230       350 002235       351 002241       352 002261       353 002321       354 002341       355 002343
+    356 002345       358 002346       359 002365       361 002367       362 002371       363 002373       365 002401
+    366 002405       367 002410       369 002411       371 002420       372 002433       373 002435       375 002442
+    376 002455       377 002457       379 002520       380 002523       382 002524       383 002526       384 002532
+    385 002543       386 002544       387 002545       389 002547       393 002550       414 002552       419 002703
+    420 002710       421 002712       422 002715       423 002722       424 002735       425 002737       427 002766
+    428 002770       429 002773       430 002776       432 002777       433 003004       436 003033       437 003040
+    438 003042       439 003052       440 003061       441 003062       442 003064       446 003065       455 003067
+    459 003075       462 003226       464 003227       466 003235       469 003236       474 003257       476 003306
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

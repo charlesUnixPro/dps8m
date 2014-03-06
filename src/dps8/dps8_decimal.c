@@ -32,6 +32,12 @@
 //decNumber *decBCDToNumber(const uint8_t *bcd, int length, const int scale, decNumber *dn);
 //uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn);
 
+#define PRINTDEC(msg, dn) \
+    { \
+        char temp[256]; \
+        decNumberToString(dn, temp); \
+        sim_printf("%s:'%s'\n", msg, temp);   \
+    }
 
 
 /* ------------------------------------------------------------------ */
@@ -97,7 +103,7 @@ static decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale,
     
     // copy the digits to the number's units, starting at the lsu
     // [unrolled]
-    for (;;) {                            // forever
+    for (;last >= bcd;) {                            // forever
         nib=(unsigned)(*last & 0x0f);
         // got a digit, in nib
         if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
@@ -171,7 +177,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
     
     // copy the digits to the number's units, starting at the lsu
     // [unrolled]
-    for (;;) {                            // forever
+    for (;last >= bcd;) {                            // forever
         nib=(unsigned)(*last & 0x0f);
         // got a digit, in nib
         if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
@@ -186,6 +192,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
             cut=0;
         }
         last--;                             // ready for next
+        
         //        nib = *last & 0x0f;                // get right nibble
         //        if (nib>9) {decNumberZero(dn); return NULL;}
         //
@@ -230,7 +237,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
 /* ------------------------------------------------------------------ */
 static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn) {
     const Unit *up=dn->lsu;     // Unit array pointer
-    uByte obyte, *out;          // current output byte, and where it goes
+    uByte obyte=0, *out;          // current output byte, and where it goes
     Int indigs=dn->digits;      // digits processed
     uInt cut=DECDPUN;           // downcounter per Unit
     uInt u=*up;                 // work
@@ -308,7 +315,6 @@ static void printBCD(decNumber *a, decContext *set, int width)
 }
 #endif
 
-#ifndef QUIET_UNUSED
 static char *getBCD(decNumber *a)
 {
     static uint8_t bcd[256];
@@ -323,7 +329,6 @@ static char *getBCD(decNumber *a)
     
     
 }
-#endif
 
 
 #ifndef QUIET_UNUSED
@@ -349,10 +354,8 @@ static int calcOD(int lengthOfDividend,
 }
 #endif
 
-#ifndef QUIET_UNUSED
 static char *CS[] = {"CSFL", "CSLS", "CSTS", "CSNS"};
 static char *CTN[] = {"CTN9", "CTN4"};
-#endif
 
 static int calcSF(int sf1, int sf2, int sf3)
 {
@@ -418,8 +421,10 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             break;          // no sign to worry about. Use everything
     }
     
-    //fprintf(stderr, "\nINFO: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
-    //fprintf(stderr,   "INFO: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "\nformatDecimal: adjLen=%d SF=%d S=%s TN=%s\n", adjLen, sf, CS[s], CTN[tn]);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "formatDecimal: %s  r->digits=%d  r->exponent=%d\n", getBCD(r), r->digits, r->exponent);
     
     if (adjLen < 1)
     {
@@ -443,23 +448,26 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
     {
         decNumberTrim(r);   // clean up any trailing 0's
         
-#ifndef QUIET_UNUSED
         int scale;
-#endif
-        //char out[256], out2[256];
-        //bzero(out, sizeof(out));
-        //bzero(out2, sizeof(out2));
+        char out[256], out2[256];
+
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+        {
+            bzero(out, sizeof(out));
+            bzero(out2, sizeof(out2));
         
-        //decBCDFromNumber(out, r->digits, &scale, r);
-        //for(int i = 0 ; i < r->digits ; i += 1 )
-        //    out[i] += '0';
+            decBCDFromNumber((uint8_t *)out, r->digits, &scale, r);
+            for(int i = 0 ; i < r->digits ; i += 1 )
+                out[i] += '0';
+        }
         
         if (s != CSFL)
         {
             decNumberFromInt32(&_sf, sf);
             
             r2 = decNumberRescale(&_r2, r, &_sf, set);
-            //fprintf(stderr, "INFO: %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "formatDecimal: %s r2->digits=%d r2->exponent=%d\n", getBCD(r2), r2->digits, r2->exponent);
         }
         else
             *r2 = *r;
@@ -468,13 +476,17 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
         //decNumberReduce(r2, r2, set);   // clean up any trailing 0's
         //decNumberTrim(r2);   // clean up any trailing 0's
         
-        //decBCDFromNumber(out2, r2->digits, &scale, r2);
-        //for(int i = 0 ; i < r2->digits ; i += 1 )
-        //    out2[i] += '0';
+        if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+        {
+            decBCDFromNumber((uint8_t *)out2, r2->digits, &scale, r2);
+            for(int i = 0 ; i < r2->digits ; i += 1 )
+                out2[i] += '0';
         
-        //fprintf(stderr, "INFO: adjLen=%d digits(r)=%s E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, out,r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
+        }
     }
-        
+    
     int scale;
     
     static uint8_t out[256];
@@ -488,13 +500,23 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
     if (!ovr && !trunc)
         //if ((r2->digits <= adjLen) && (r->digits == r2->digits))
     {
-        //fprintf(stderr, "formatDecimal(OK): r->digits(%d) <= adjLen(%d) r2->digits(%d)\n", r->digits, adjLen, r2->digits);
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "formatDecimal(OK): r->digits(%d) <= adjLen(%d) r2->digits(%d)\n", r->digits, adjLen, r2->digits);
         if (s == CSFL)
             if (r2->digits < adjLen)
             {
+                //PRINTDEC("Value 1", r2)
+                
                 decNumber _s, *s;
-                s = decNumberFromInt32(&_s, r2->exponent - (adjLen - r2->digits));
-                r2 = decNumberRescale(r2, r2, s, set);
+                int rescaleFactor = r2->exponent - (adjLen - r2->digits);
+                s = decNumberFromInt32(&_s, rescaleFactor); //r2->exponent - (adjLen - r2->digits));
+                //s = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));
+                //PRINTDEC("Value s", s)
+
+                if (rescaleFactor > (adjLen - r2->digits))
+                    r2 = decNumberRescale(r2, r2, s, set);
+                
+                //PRINTDEC("Value 2", r2)
             }
         decBCDFromNumber(out, adjLen, &scale, r2);
         for(int i = 0 ; i < adjLen ; i += 1 )
@@ -507,7 +529,8 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
         
         // if we get here then we have either overflow or truncation....
         
-        //fprintf(stderr, "formatDecimal(%s): r->digits %d > adjLen %d\n", R ? "R" : "", r->digits, adjLen);
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "formatDecimal(%s): r->digits %d > adjLen %d\n", R ? "R" : "", r->digits, adjLen);
         
         // so, what do we do?
         if (R)
@@ -550,7 +573,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                 strcpy((char *) out, temp);
                 //strcpy(out, out+set->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
                 
-                //fprintf(stderr, "R OVR\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "R OVR\n");
                 ovr = true;
             }
             else
@@ -575,16 +598,18 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             
             
             // display int of number
-            //decNumber _i;
-            //decNumber *i = decNumberToIntegralValue(&_i, ro, set);
             
-            //char outi[256];
-            //bzero(outi, sizeof(outi));
-            //decBCDFromNumber(outi, adjLen, &scale, i);
-            //for(int i = 0 ; i < adjLen; i += 1 )
-            //    outi[i] += '0';
-            //fprintf(stderr, "i=%s\n", outi);
-            
+            if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+            {
+                decNumber _i;
+                decNumber *i = decNumberToIntegralValue(&_i, ro, set);
+                char outi[256];
+                bzero(outi, sizeof(outi));
+                decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
+                for(int i = 0 ; i < adjLen; i += 1 )
+                    outi[i] += '0';
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
+            }
         }
         else
         {
@@ -615,7 +640,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                 set->digits = safe;
                 decContextSetRounding(set, safeR);              // restore rounding mode
                 
-                //fprintf(stderr, "CSFL TRUNC\n");
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "CSFL TRUNC\n");
                 trunc = true;
             }
             else
@@ -639,7 +664,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                     
                     decContextSetRounding(set, safeR);              // restore rounding mode
                     
-                    //fprintf(stderr, "TRUNC\n");
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "TRUNC\n");
                     trunc = true;
                     
                 } else if (r->digits > adjLen)
@@ -656,15 +681,16 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                     strcpy((char *) out, temp);
                     //strcpy(out, out+r->digits-adjLen); // this generates a SIGABRT - probably because of overlapping strings.
                     
-                    //fprintf(stderr, "OVR\n");
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "OVR\n");
                     ovr = true;
                 }
                 else
-                    fprintf(stderr, "formatDecimal(): How'd we get here?\n");
+                    sim_printf("formatDecimal(): How'd we get here?\n");
             }
         }
     }
-    //fprintf(stderr, "INFO: ovrflow=%d trunc=%d R=%d\n", ovr, trunc, R);
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "formatDecimal: ovrflow=%d trunc=%d R=%d\n", ovr, trunc, R);
     *OVR = ovr;
     *TRUNC = trunc;
     
@@ -2586,6 +2612,8 @@ void dv3d(DCDstruct *ins)
             break;  // no sign wysiwyg
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    //PRINTDEC("op1", op1);
+    
     if (e->sign == -1)
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
@@ -2622,11 +2650,25 @@ void dv3d(DCDstruct *ins)
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
+    // TODO: Need to check/implement this
+    // The number of required quotient digits, NQ, is determined before division begins as follows:
+    //  1) Floating-point quotient
+    //      NQ = N3, but if the divisor is greater than the dividend after operand alignment, the leading zero digit produced is counted and
+    //      the effective precision of the result is reduced by one.
+    //  2) Fixed-point quotient
+    //    NQ = (N2-LZ2+1) - (N1-LZ1) + (E2-E1-SF3)
+    //    ￼where: Nn = given operand field length
+    //        LZn = leading zero count for operand n
+    //        En = exponent of operand n
+    //        SF3 = scaling factor of quotient
+    // 3) Rounding
+    //    If rounding is specified (R = 1), then one extra quotient digit is produced.
+    
     
     decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Yes, they're switched
     
     bool Ovr = false, Trunc = false;
-    
+     
     int SF = calcSF(e->SF1, e->SF2, e->SF3);
     
     char *res = formatDecimal(&set, op3, e->dstTN, e->N3, e->S3, SF, e->R, &Ovr, &Trunc);
@@ -2900,3 +2942,232 @@ void cmpn(DCDstruct *ins)
     SCF(cSigned == 1, rIR, I_NEG);
     SCF(cMag == 1, rIR, I_CARRY);
 }
+
+/*
+ * mvn - move numeric (initial version was deleted by house gnomes)
+ */
+void mvn(DCDstruct *ins)
+{
+    /*
+     * EXPLANATION:
+     * Starting at location YC1, the decimal number of data type TN1 and sign and decimal type S1 is moved, properly scaled, to the decimal number of data type TN2 and sign and decimal type S2 that starts at location YC2.
+     * If S2 indicates a fixed-point format, the results are stored as L2 digits using scale factor SF2, and thereby may cause most-significant-digit overflow and/or least- significant-digit truncation.
+     * If P = 1, positive signed 4-bit results are stored using octal 13 as the plus sign. Rounding is legal for both fixed-point and floating-point formats. If P = 0, positive signed 4-bit results are stored using octal 14 as the plus sign.
+     * Provided that string 1 and string 2 are not overlapped, the contents of the decimal number that starts in location YC1 remain unchanged.
+     */
+
+    EISstruct *e = ins->e;
+    
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    
+    parseNumericOperandDescriptor(1, e);
+    parseNumericOperandDescriptor(2, e);
+    
+    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
+    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
+    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    
+    e->srcTN = e->TN1;    // type of chars in src
+    e->srcCN = e->CN1;    // starting at char pos CN
+    
+    e->dstTN = e->TN2;    // type of chars in dst
+    e->dstCN = e->CN2;    // starting at char pos CN
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "TN1 %d CN1 %d TN2 %d CN2 %d\n",
+      e->TN1, e->CN1, e->TN2, e->CN2);
+
+    decContext set;
+    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    
+    decNumber _1;
+    
+    int n1 = 0, n2 = 0, sc1 = 0;
+    
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
+    
+    /*
+     * Here we need to distinguish between 4 type of numbers.
+     *
+     * CSFL - Floating-point, leading sign
+     * CSLS - Scaled fixed-point, leading sign
+     * CSTS - Scaled fixed-point, trailing sign
+     * CSNS - Scaled fixed-point, unsigned
+     */
+    
+    // determine precision
+    switch(e->S1)
+    {
+        case CSFL:
+            n1 = e->N1 - 1; // need to account for the - sign
+            if (e->srcTN == CTN4)
+                n1 -= 2;    // 2 4-bit digits exponent
+            else
+                n1 -= 1;    // 1 9-bit digit exponent
+            sc1 = 0;        // no scaling factor
+            break;
+        
+        case CSLS:
+        case CSTS:
+            n1 = e->N1 - 1; // only 1 sign
+            sc1 = -e->SF1;
+            break;
+        
+        case CSNS:
+            n1 = e->N1;     // no sign
+            sc1 = -e->SF1;
+            break;  // no sign wysiwyg
+    }
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "n1 %d sc1 %d\n",
+      n1, sc1);
+
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits = DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    if (decNumberIsZero(op1))
+        op1->exponent = 127;
+    
+    bool Ovr = false, Trunc = false;
+    
+    int SF = calcSF(e->SF1, e->SF2, 0); 
+    
+    char *res = formatDecimal(&set, op1, e->dstTN, e->N2, e->S2, SF, e->R, &Ovr, &Trunc);
+    
+    //printf("%s\r\n", res);
+    
+    // now write to memory in proper format.....
+    switch(e->S2)
+    {
+        case CSFL:
+            n2 = e->N2 - 1; // need to account for the sign
+            if (e->dstTN == CTN4)
+                n2 -= 2;    // 2 4-bit digit exponent
+            else
+                n2 -= 1;    // 1 9-bit digit exponent
+            break;
+        
+        case CSLS:
+        case CSTS:
+            n2 = e->N2 - 1; // 1 sign
+            break;
+        
+        case CSNS:
+            n2 = e->N2;     // no sign
+            break;          // no sign wysiwyg
+    }
+    
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "n2 %d\n",
+      n2);
+
+    //word18 dstAddr = e->dstAddr;
+    int pos = e->dstCN;
+    
+    // 1st, take care of any leading sign .......
+    switch(e->S2)
+    {
+        case CSFL:  // floating-point, leading sign.
+        case CSLS:  // fixed-point, leading sign
+            switch(e->dstTN)
+            {
+                case CTN4:
+                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 : 013);  // special +
+                    else
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 : 014);  // default +
+                    break;
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? '-' : '+');
+                    break;
+            }
+            break;
+        
+        case CSTS:  // nuttin' to do here .....
+        case CSNS:
+            break;  // no sign wysiwyg
+    }
+    
+    // 2nd, write the characteristic .....
+    for(int i = 0 ; i < n2 ; i++)
+        switch(e->dstTN)
+        {
+            case CTN4:
+                EISwrite49(&e->ADDR2, &pos, e->dstTN, res[i] - '0');
+                break;
+            case CTN9:
+                EISwrite49(&e->ADDR2, &pos, e->dstTN, res[i]);
+                break;
+        }
+    
+    // 3rd, take care of any trailing sign or exponent ...
+    switch(e->S2)
+    {
+        case CSTS:  // write trailing sign ....
+            switch(e->dstTN)
+            {
+                case CTN4:
+                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 :  013);  // special +
+                    else
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 :  014);  // default +
+                    break;
+            
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? '-' : '+');
+                    break;
+            }
+            break;
+        
+        case CSFL:  // floating-point, leading sign.
+            // write the exponent
+            switch(e->dstTN)
+            {
+                case CTN4:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, (op1->exponent >> 4) & 0xf); // upper 4-bits
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN,  op1->exponent       & 0xf); // lower 4-bits
+                    break;
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, op1->exponent & 0xff);    // write 8-bit exponent
+                break;
+            }
+            break;
+        
+        case CSLS:  // fixed point, leading sign - already done
+        case CSNS:  // fixed point, unsigned - nuttin' needed to do
+            break;
+    }
+    
+    // set flags, etc ...
+    if (e->S2 == CSFL)
+    {
+        if (op1->exponent > 127)
+            SETF(rIR, I_EOFL);
+        if (op1->exponent < -128)
+            SETF(rIR, I_EUFL);
+    }
+    
+    SCF(decNumberIsNegative(op1), rIR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op1), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    
+    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    
+    if (e->T && Trunc)
+    {
+        doFault(ins, 0, 0,"mvn truncation(overflow) fault");
+        SETF(rIR, I_OFLOW);
+    }
+    
+    if (Ovr)
+    {
+        SETF(rIR, I_OFLOW);
+        doFault(ins, 0,0,"mvn overflow fault");
+    }
+
+}
+
+

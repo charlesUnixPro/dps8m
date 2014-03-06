@@ -1,0 +1,1709 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1115>ioi_.alm                                                                                                                                             
+ASSEMBLED ON:	11/11/89  0922.9 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************************
+                                     2  " *                                                    *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987           *
+                                     4  " *                                                    *
+                                     5  " * Copyright (c) 1987 by Massachusetts Institute of   *
+                                     6  " * Technology and Honeywell Information Systems, Inc. *
+                                     7  " *                                                    *
+                                     8  " * Copyright (c) 1972 by Massachusetts Institute of   *
+                                     9  " * Technology and Honeywell Information Systems, Inc. *
+                                    10  " *                                                    *
+                                    11  " ******************************************************
+                                    12  
+                                    13  " Written in antiquity, probably by Morris.
+                                    14  " Modified February 1983 by Chris Jones for IOI rewrite.
+                                    15  
+                                    16  	include	gate_macros
+                                   1-1  " BEGIN INCLUDE FILE ...... gate_macros.incl.alm
+                                   1-2  "   Last modified 6/77 by N. Morris, B. Greenberg, & T. VanVleck
+                                   1-3  "   Modified 741212 by PG to inhibit while computing virtual CPU time
+                                   1-4  "   Modified 83-03-14 by E. N. Kittlitz to clear IR
+                                   1-5  "   Modified 83-06-01 BIM for ring alarm polling
+                                   1-6  "   Modified 85-04-03 by Keith Loepere to make polling a little smarter.
+                                   1-7  
+                                   1-8  " This file contains several macros used when generating gate segments.
+                                   1-9  " The major macros that are defined are:
+                                  1-10  "
+                                  1-11  "	gate_info		general setup code for normal gates
+                                  1-12  "	hardcore_gate_info	general setup code for hardcore gates
+                                  1-13  "	bad_dir_handler	setup and handler for bad_dir_ condition (goes at bottom)
+                                  1-14  "	bad_dir_handler_entry	entrypoint for above (goes at top)
+                                  1-15  "	gate		to define a normal gate
+                                  1-16  "	hgate		to define a hardcore gate
+                                  1-17  "	fgate		to define a fast hardcore gate
+                                  1-18  "
+                                  1-19  
+                                  1-20  
+    000000                        1-21  	maclist	off
+                                  1-22  
+                                  1-23  
+                                  1-24  " HGATE - define a hardcore gate entry
+                                  1-25  "
+                                  1-26  "	hgate	gatename,procedure,entry,args{,bad_dir_trap}
+                                  1-27  "
+                                  1-28  " The entrypoint gatename is defined in the gate segment.  If args
+                                  1-29  " is nonzero, the number of arguments passed to gatename must be
+                                  1-30  " equal to args.  When gatename is called, it will in turn call
+                                  1-31  " procedure$entry.
+                                  1-32  "
+                                  1-33  
+                                  1-34  macro	hgate
+                              1   1-35  	gentry	&1,&4*2,&1.t
+                              2   1-36  	tsx2	.setup
+                              3   1-37  &=&5,bad_dir_trap&[	tsx0	.set_dir_trap
+                              4   1-38  &]	ldi	=0,dl
+                              5   1-39  	short_call &2$&3(ap|0)
+                              6   1-40  	eppbp	lp|&1.t
+                              7   1-41  	tra	.return_code
+                              8   1-42  	maclist	restore
+                              9   1-43  	use	linkage
+                             10   1-44  	even
+                             11   1-45  	maclist	on,save
+                             12   1-46  &1.t:
+                             13   1-47  	bss	,gate_entry_data_size
+                             14   1-48  
+                             15   1-49  	maclist	restore
+                             16   1-50  &end
+                                  1-51  
+                                  1-52  
+                                  1-53  " FGATE - define a fast hardcore gate
+                                  1-54  "
+                                  1-55  "	fgate	gatename,procedure,entry
+                                  1-56  "
+                                  1-57  
+                                  1-58  macro	fgate
+                              1   1-59  	gentry	&1,0,0
+                              2   1-60  	ldi	=0,dl
+                              3   1-61  	epplp	.my_lp,*
+                              4   1-62  	tra	&2$&3
+                              5   1-63  
+                              6   1-64  	maclist	off
+                              7   1-65  &end
+                                  1-66  
+                                  1-67  
+                                  1-68  " GATE - define a normal gate entry
+                                  1-69  "
+                                  1-70  "	gate	gatename,procedure,entry,args
+                                  1-71  "
+                                  1-72  
+                                  1-73  macro	gate
+                              1   1-74  	gentry	&1,&4*2,0
+                              2   1-75  	tsx2	.setup
+                              3   1-76  	ldi	=0,dl
+                              4   1-77  	short_call &2$&3(ap|0)
+                              5   1-78  	return
+                              6   1-79  
+                              7   1-80  	maclist	restore
+                              8   1-81  &end
+                                  1-82  
+                                  1-83  
+                                  1-84  
+                                  1-85  macro	gentry
+                              1   1-86  	maclist	on,save
+                              2   1-87  	segdef	&1
+                              3   1-88  	maclist	restore
+                              4   1-89  	use	transfer_vector
+                              5   1-90  	maclist	on,save
+                              6   1-91  &1:
+                              7   1-92  	tra	&1.e
+                              8   1-93  	maclist	restore
+                              9   1-94  	use	main
+                             10   1-95  	maclist	on,save
+                             11   1-96  	zero	&2,&3
+                             12   1-97  &1.e:
+                             13   1-98  &end
+                                  1-99  
+                                 1-100  
+                                 1-101  " HARDCORE_GATE_INFO - general info for hardcore gates
+                                 1-102  
+                                 1-103  macro	hardcore_gate_info
+                              1  1-104  	maclist	on,save
+                              2  1-105  	name	&1
+                              3  1-106  
+                              4  1-107  	include	stack_header
+                              5  1-108  
+                              6  1-109  	include	stack_frame
+                              7  1-110  	include	gate_data
+                              8  1-111  
+                              9  1-112  	maclist	restore
+                             10  1-113  	eject
+                             11  1-114  
+                             12  1-115  	tempd	.temp
+                             13  1-116  	tempd	.label_variable(0)
+                             14  1-117  	tempd	.time1,.time2
+                             15  1-118  	tempd	.unwinder_arglist(0)
+                             16  1-119  	tempd	.on_unit(5)
+                             17  1-120  	temp	.pf,.entryp
+                             18  1-121  	tempd	.vfl_arglist(2)
+                             19  1-122  	tempd	.mcptr
+                             20  1-123  
+                             21  1-124  	use	transfer_vector
+                             22  1-125  	equ	.tv_begin,*
+                             23  1-126  
+                             24  1-127  	tra	.actor
+                             25  1-128  
+                             26  1-129  	use	tv_end
+                             27  1-130  	entrybound
+                             28  1-131  
+                             29  1-132  	segdef	.tv_end
+                             30  1-133  .tv_end:	vfd	14/(*-.tv_begin)
+                             31  1-134  
+                             32  1-135  	use	main
+                             33  1-136  
+                             34  1-137  	segdef	.my_lp
+                             35  1-138  	even
+                             36  1-139  .my_lp:	bss	,2
+                             37  1-140  
+                             38  1-141  	join	/text/transfer_vector,tv_end,main
+                             39  1-142  
+                             40  1-143  	use	linkage
+                             41  1-144  	join	/link/linkage
+                             42  1-145  
+                             43  1-146  	use	main
+                             44  1-147  
+                             45  1-148  	maclist	restore
+                             46  1-149  	eject
+                             47  1-150  
+                             48  1-151  .actor:	epplp	.my_lp,*
+                             49  1-152  	maclist	restore
+                             50  1-153  	gate_actor
+                             51  1-154  
+                             52  1-155  
+                             53  1-156  
+                             54  1-157  .setup:	push
+                             55  1-158  	epplp	.my_lp,*
+                             56  1-159  	sprilp	sp|stack_frame.lp_ptr
+                             57  1-160  
+                             58  1-161  	maclist	restore
+                             59  1-162  	gcheck
+                             60  1-163  
+                             61  1-164  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                             62  1-165  	rccl	sys_info$clock_,*	calculate times
+                             63  1-166  	sbaq	pds$cpu_time
+                             64  1-167  	staq	.time1
+                             65  1-168  	sbaq	pds$virtual_delta
+                             66  1-169  	staq	.time2
+                             67  1-170  	lda	pds$page_waits
+                             68  1-171  	sta	.pf
+                             69  1-172  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                             70  1-173  	tra	0,2
+                             71  1-174  
+                             72  1-175  	maclist	restore
+                             73  1-176  	eject
+                             74  1-177  
+                             75  1-178  .return_code:
+                             76  1-179  
+                             77  1-180  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                             78  1-181  	rccl	sys_info$clock_,*	calculate times
+                             79  1-182  	sbaq	pds$cpu_time
+                             80  1-183  	staq	.temp
+                             81  1-184  	sbaq	.time1
+                             82  1-185  	adaq	bp|gate_entry_data.cpu_time
+                             83  1-186  	staq	bp|gate_entry_data.cpu_time
+                             84  1-187  	ldaq	.temp
+                             85  1-188  	sbaq	pds$virtual_delta
+                             86  1-189  	sbaq	.time2
+                             87  1-190  	adaq	bp|gate_entry_data.vcpu_time
+                             88  1-191  	staq	bp|gate_entry_data.vcpu_time
+                             89  1-192  	lda	pds$page_waits
+                             90  1-193  	sbla	.pf
+                             91  1-194  	asa	bp|gate_entry_data.page_waits
+                             92  1-195  	aos	bp|gate_entry_data.calls
+                             93  1-196  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                             94  1-197  
+                             95  1-198  			" Poll for ring alarms
+                             96  1-199  	sra	.temp	Borrow from time calc
+                             97  1-200  	szn	.temp	Zero?
+                             98  1-201  	tze	.return_code_return
+                             99  1-202  
+                            100  1-203  	epp1	sp|stack_frame.prev_sp,*	"possible ring alarm
+                            101  1-204  	epaq	pr1|stack_frame.return_ptr,*
+                            102  1-205  	ana	7,dl	" ring number to which we return
+                            103  1-206  	cmpa	.temp
+                            104  1-207  	tpl	.ring_alarm	" ring alarm will occur
+                            105  1-208  
+                            106  1-209  .return_code_return:
+                            107  1-210  	return
+                            108  1-211  
+                            109  1-212  .ring_alarm:		" perhaps we can handle without faults?
+                            110  1-213  
+                            111  1-214  	aos	bp|gate_entry_data.ring_alarms
+                            112  1-215  	stz	.temp	" return argument for ring_alarm$poll
+                            113  1-216  	ldaq	.one_arg_header
+                            114  1-217  	staq	.ring_alarm_arg_list
+                            115  1-218  	epp1	.temp
+                            116  1-219  	spri1	.ring_alarm_arg_list+2
+                            117  1-220  	eppap	.ring_alarm_arg_list
+                            118  1-221  	short_call ring_alarm$poll
+                            119  1-222  	szn	.temp
+                            120  1-223  	tze	.return_code_return
+                            121  1-224  	eppsp	sp|stack_frame.prev_sp,*
+                            122  1-225  	sprisp	pds$pre_empt_poll_return          " short-return from here
+                            123  1-226  	epp1	sb|stack_header.stack_begin_ptr,* " abandoning this stack frame.
+                            124  1-227  	spri1	sb|stack_header.stack_end_ptr
+                            125  1-228  " Leave SB as stack_0, so pxss can get to operators.
+                            126  1-229  	tra	pxss$pre_empt_poll
+                            127  1-230  
+                            128  1-231  	tempd	.ring_alarm_arg_list(2)
+                            129  1-232  	even
+                            130  1-233  .one_arg_header:
+                            131  1-234  	vfd	17/2,1/0,18/4
+                            132  1-235  	vfd	18/0,18/0
+                            133  1-236  
+                            134  1-237  
+                            135  1-238  	maclist	restore
+                            136  1-239  	eject
+                            137  1-240  	maclist	restore
+                            138  1-241  &end
+                                 1-242  
+                                 1-243  
+                                 1-244  " BAD_DIR_HANDLER - code to setup and handle bad_dir_ condition
+                                 1-245  "			put this after the last hgate macro
+                                 1-246  
+                                 1-247  macro	bad_dir_handler
+                              1  1-248  	maclist	on,save
+                              2  1-249  
+                              3  1-250  	include	on_unit
+                              4  1-251  
+                              5  1-252  	use	transfer_vector
+                              6  1-253  .handler_entry:
+                              7  1-254  	tra	.handler
+                              8  1-255  .handler_restart_entry:
+                              9  1-256  	tra	.handler_restart_point
+                             10  1-257  
+                             11  1-258  	use	main
+                             12  1-259  .set_dir_trap:
+                             13  1-260  	stx0	.entryp		save for restart
+                             14  1-261  
+                             15  1-262  	mlr	(),(pr),fill(000)
+                             16  1-263  	desc9a	0,0
+                             17  1-264  	desc9a	.on_unit,10*4
+                             18  1-265  	eppbp	.bad_dir_name
+                             19  1-266  	spribp	.on_unit+on_unit.name
+                             20  1-267  	eppbp	.handler_entry
+                             21  1-268  	spribp	.on_unit+on_unit.body
+                             22  1-269  	lxl1	.bad_dir_desc
+                             23  1-270  	sxl1	.on_unit+on_unit.size
+                             24  1-271  	eaa	.on_unit		set up on-unit for bad_dir_
+                             25  1-272  	sbla	sp|0,du		.. make rel to sp
+                             26  1-273  	sta	sp|stack_frame.on_unit_rel_ptrs
+                             27  1-274  	lda	stack_frame.condition_bit,dl
+                             28  1-275  	orsa	sp|stack_frame.flag_word
+                             29  1-276  	tra	0,0
+                             30  1-277  
+                             31  1-278  	string	bad_dir_
+                             32  1-279  
+                             33  1-280  
+                             34  1-281  
+                             35  1-282  .handler:	epaq	sp|0		verify that call came from ring 0
+                             36  1-283  	cana	-1,dl		check ring number in AL
+                             37  1-284  	tze	*+2
+                             38  1-285  	zero	0		go way kid you bother me
+                             39  1-286  
+                             40  1-287  	push			" ok, we like the call
+                             41  1-288  	epplp	.my_lp,*
+                             42  1-289  	ldx0	ap|0		get display
+                             43  1-290  	eppbp	ap|2,0*
+                             44  1-291  	lda	bp|stack_frame.prev_sp
+                             45  1-292  	cana	=o700000,dl	from another ring?
+                             46  1-293  	tze	.continue_signal	if not, back to signal_
+                             47  1-294  	eppap	ap|2,*		Get mcptr
+                             48  1-295  	eppap	ap|0,*		..
+                             49  1-296  	spriap	bp|.mcptr		.. save in gate frame
+                             50  1-297  	spribp	.label_variable+2
+                             51  1-298  	eppbp	.handler_restart_entry
+                             52  1-299  	spribp	.label_variable
+                             53  1-300  	eppbp	.label_variable
+                             54  1-301  	spribp	.unwinder_arglist+2
+                             55  1-302  	fld	=1b24,dl
+                             56  1-303  	staq	.unwinder_arglist
+                             57  1-304  	call	unwinder_$unwinder_(.unwinder_arglist)
+                             58  1-305  
+                             59  1-306  .continue_signal:
+                             60  1-307  	lda	=o400000,du	"1"b
+                             61  1-308  	sta	ap|10,*		set continue bit
+                             62  1-309  	return
+                             63  1-310  
+                             64  1-311  .handler_restart_point:
+                             65  1-312  	epaq	sp|0		check that call came from ring 0
+                             66  1-313  	cana	-1,dl
+                             67  1-314  	tze	*+2
+                             68  1-315  	zero	1
+                             69  1-316  	epplp	.my_lp,*
+                             70  1-317  	lca	stack_frame.condition_bit+1,dl  Vanish on-unit
+                             71  1-318  	ansa	sp|stack_frame.flag_word
+                             72  1-319  	eppbp	.mcptr
+                             73  1-320  	spribp	.vfl_arglist+2
+                             74  1-321  	fld	=1b24,dl
+                             75  1-322  	staq	.vfl_arglist
+                             76  1-323  	short_call  verify_lock$verify_lock_bad_dir(.vfl_arglist)
+                             77  1-324  	ldx0	.entryp
+                             78  1-325  	eppap	sp|stack_frame.arg_ptr,*
+                             79  1-326  	tra	0,0		retry the call
+                             80  1-327  
+                             81  1-328  	maclist	restore
+                             82  1-329  	eject
+                             83  1-330  	maclist	restore
+                             84  1-331  &end
+                                 1-332  
+                                 1-333  
+                                 1-334  " GATE_INFO - general info for non-hardcore gates
+                                 1-335  
+                                 1-336  macro	gate_info
+                              1  1-337  	maclist	on,save
+                              2  1-338  	use	transfer_vector
+                              3  1-339  	tra	.actor
+                              4  1-340  
+                              5  1-341  	use	tv_end
+                              6  1-342  	entrybound
+                              7  1-343  
+                              8  1-344  	use	main
+                              9  1-345  	join	/text/transfer_vector,tv_end,main
+                             10  1-346  
+                             11  1-347  	maclist	restore
+                             12  1-348  	eject
+                             13  1-349  
+                             14  1-350  .actor:	getlp
+                             15  1-351  	maclist	restore
+                             16  1-352  	gate_actor
+                             17  1-353  
+                             18  1-354  	maclist	restore
+                             19  1-355  	eject
+                             20  1-356  
+                             21  1-357  .setup:	push
+                             22  1-358  	getlp
+                             23  1-359  	maclist	restore
+                             24  1-360  	gcheck
+                             25  1-361  	tra	0,2
+                             26  1-362  
+                             27  1-363  	maclist	restore
+                             28  1-364  	eject
+                             29  1-365  
+                             30  1-366  	maclist	restore
+                             31  1-367  &end
+                                 1-368  
+                                 1-369  
+                                 1-370  " Macro to generate gate actor.
+                                 1-371  
+                                 1-372  macro	gate_actor
+                              1  1-373  	maclist	on,save
+                              2  1-374  	eppbp	ap|2,*
+                              3  1-375  	lda	bp|-1		get length of string
+                              4  1-376  	tze	.return_name	zero length => get name
+                              5  1-377  
+                              6  1-378  	adla	1,dl		include length of acc
+                              7  1-379  	stz	ap|4,*
+                              8  1-380  	tsx0	.search_defs
+                              9  1-381  
+                             10  1-382  	cmpc	(pr,rl),(pr,rl)	compare name
+                             11  1-383  	desc9a	bp|-1(3),al
+                             12  1-384  	desc9a	bb|0,al
+                             13  1-385  	tnz	.next_def
+                             14  1-386  
+                             15  1-387  	lda	ab|1,2		return location
+                             16  1-388  	arl	18
+                             17  1-389  	sta	ap|4,*
+                             18  1-390  
+                             19  1-391  	short_return
+                             20  1-392  
+                             21  1-393  .return_name:
+                             22  1-394  	lxl3	ap|4,*		get location
+                             23  1-395  	tsx0	.search_defs
+                             24  1-396  
+                             25  1-397  	cmpx3	ab|1,2		compare location
+                             26  1-398  	tnz	.next_def
+                             27  1-399  
+                             28  1-400  	lda	bb|0		get length of name
+                             29  1-401  	arl	27
+                             30  1-402  	sta	bp|-1		set length of varying string
+                             31  1-403  	mlr	(pr,rl),(pr,rl)	return string
+                             32  1-404  	desc9a	bb|0(1),al
+                             33  1-405  	desc9a	bp|0,al
+                             34  1-406  
+                             35  1-407  	short_return
+                             36  1-408  
+                             37  1-409  .search_defs:
+                             38  1-410  	eax2	0
+                             39  1-411  	eppab	lp|0,*		ab -> defs
+                             40  1-412  .defs_loop:
+                             41  1-413  	lxl1	ab|1,2		get class and flags
+                             42  1-414  	cmpx1	=o400000,du	must be class 0
+                             43  1-415  	tnz	.next_def
+                             44  1-416  
+                             45  1-417  	ldx7	ab|2,2
+                             46  1-418  	eppbb	ab|0,7		bb -> name
+                             47  1-419  	tra	0,0		test definition
+                             48  1-420  .next_def:
+                             49  1-421  	ldx2	ab|0,2		chain to next def
+                             50  1-422  	tnz	.defs_loop
+                             51  1-423  
+                             52  1-424  	short_return
+                             53  1-425  
+                             54  1-426  &end
+                                 1-427  
+                                 1-428  
+                                 1-429  " Miscellaneous macros.
+                                 1-430  
+                                 1-431  macro	gcheck
+                              1  1-432  	maclist	on,save
+                              2  1-433  	ldx1	-2,2		get number of args expected
+                              3  1-434  	tze	.no_gate_error	if zero, none or doesn't matter
+                              4  1-435  	cmpx1	ap|0		compare against number given
+                              5  1-436  	tze	.no_gate_error	args match, call procedure
+                              6  1-437  
+                              7  1-438  	call	signal_$signal_(signal_arglist)
+                              8  1-439  	oct	0
+                              9  1-440  
+                             10  1-441  	even
+                             11  1-442  signal_arglist:
+                             12  1-443  	zero	2,4
+                             13  1-444  	zero	2,0
+                             14  1-445  	arg	.gate_errorname
+                             15  1-446  	arg
+                             16  1-447  	arg	.gate_errordesc
+                             17  1-448  	arg
+                             18  1-449  
+                             19  1-450  	string	gate_error
+                             20  1-451  
+                             21  1-452  
+                             22  1-453  .no_gate_error:
+                             23  1-454  &end
+                                 1-455  
+                                 1-456  macro	string
+                              1  1-457  .&1name:
+                              2  1-458  	aci	"&1"
+                              3  1-459  .&1desc:
+                              4  1-460  	vfd	o9/525,o27/&l1
+                              5  1-461  
+                              6  1-462  &end
+                                 1-463  
+                                 1-464  macro	eject
+                              1  1-465  	maclist	on,save
+                              2  1-466  
+                              3  1-467  &end
+                                 1-468  
+                                 1-469  " END INCLUDE FILE ...... gate_macros.incl.alm
+                                 1-470  
+                                 1-471  "  To arrange the return it wants to return, it will have to reach back  2 frames.
+                                    17  
+                                    18  	hardcore_gate_info	ioi_
+    000000                              	name	ioi_
+                                        
+                                        	include	stack_header
+                                   2-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   2-2  "
+                                   2-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   2-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   2-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   2-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   2-7  
+                                   2-8  " HISTORY COMMENTS:
+                                   2-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  2-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  2-11  "     added the heap_header_ptr definition
+                                  2-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  2-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  2-14  "     Modified to support control point management.  These changes were
+                                  2-15  "     actually made in February 1985 by G. Palter.
+                                  2-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  2-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  2-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  2-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  2-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  2-21  "     cpm_data_ptr (ITS pair).
+                                  2-22  "                                                      END HISTORY COMMENTS
+                                  2-23  
+                        000004    2-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    2-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  2-26  
+                        000010    2-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    2-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    2-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    2-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    2-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    2-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    2-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    2-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  2-35  
+                        000020    2-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    2-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    2-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    2-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  2-40  
+                        000030    2-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    2-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    2-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    2-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  2-45  
+                        000040    2-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    2-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    2-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    2-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  2-50  
+                        000050    2-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    2-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    2-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    2-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  2-55  
+                        000060    2-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    2-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    2-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    2-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    2-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    2-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    2-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    2-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    2-64  	equ	stack_header_end,64			length of stack header
+                                  2-65  
+                                  2-66  
+                                  2-67  
+                                  2-68  
+                        000000    2-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    2-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  2-71  
+                                  2-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  2-73  "	It  references a  transfer vector table.
+                                  2-74  
+                        000551    2-75  	bool	tv_offset,551
+                                  2-76  
+                                  2-77  
+                                  2-78  "	The  following constants are offsets within this transfer vector table.
+                                  2-79  
+                        001170    2-80  	equ	call_offset,tv_offset+271
+                        001171    2-81  	equ	push_offset,tv_offset+272
+                        001172    2-82  	equ	return_offset,tv_offset+273
+                        001173    2-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    2-84  	equ	entry_offset,tv_offset+275
+                                  2-85  
+                                  2-86  
+                                  2-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                        
+                                        	include	stack_frame
+                                   3-1  "
+                                   3-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   3-3  "
+                                   3-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   3-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   3-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   3-7  "
+                        000020     3-8  	equ	stack_frame.prev_sp,16
+                        000020     3-9  	equ	stack_frame.condition_word,16
+                        000022    3-10  	equ	stack_frame.next_sp,18
+                        000022    3-11  	equ	stack_frame.signaller_word,18
+                        000024    3-12  	equ	stack_frame.return_ptr,20
+                        000026    3-13  	equ	stack_frame.entry_ptr,22
+                        000030    3-14  	equ	stack_frame.operator_ptr,24
+                        000030    3-15  	equ	stack_frame.lp_ptr,24
+                        000032    3-16  	equ	stack_frame.arg_ptr,26
+                        000034    3-17  	equ	stack_frame.static_ptr,28
+                        000035    3-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    3-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    3-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    3-21  	equ	stack_frame.translator_id,31
+                        000040    3-22  	equ	stack_frame.regs,32
+                        000060    3-23  	equ	stack_frame.min_length,48
+                        000020    3-24  	equ	stack_frame.flag_word,16
+                        020000    3-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    3-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    3-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    3-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    3-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    3-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    3-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    3-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  3-33  
+                                  3-34  "
+                                  3-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  3-36  "
+                                        	include	gate_data
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE gate_data.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 11/07/83  0737.6 est Mon by convert_include_file,
+                                   4-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   4-8  
+                                   4-9  	"Made from >user_dir_dir>Multics>Margulies>h>gate_data.incl.pl1,
+                                  4-10  	"   modified 11/07/83  0737.5 est Mon
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure gate_table
+                                  4-14  "
+                        000003    4-15  	equ	gate_table_size,3
+                                  4-16  
+                                  4-17  
+                        000000    4-18  	equ	gate_table.entryp,0
+                        000001    4-19  	equ	gate_table.entryl,1
+                        000002    4-20  	equ	gate_table.datap,2
+                                  4-21  
+                                  4-22  "
+                                  4-23  "	Structure gate_entry_data
+                                  4-24  "
+                        000010    4-25  	equ	gate_entry_data_size,8
+                                  4-26  
+                        000000    4-27  	equ	gate_entry_data.cpu_time,0	" DOUBLE
+                        000002    4-28  	equ	gate_entry_data.vcpu_time,2	" DOUBLE
+                        000004    4-29  	equ	gate_entry_data.page_waits,4
+                        000005    4-30  	equ	gate_entry_data.calls,5
+                        000006    4-31  	equ	gate_entry_data.ring_alarms,6
+                                  4-32  
+                                  4-33       "END INCLUDE FILE gate_data.incl.alm
+                                        
+                                        
+                                        
+                                        	tempd	.temp
+                                        	tempd	.label_variable(0)
+                                        	tempd	.time1,.time2
+                                        	tempd	.unwinder_arglist(0)
+                                        	tempd	.on_unit(5)
+                                        	temp	.pf,.entryp
+                                        	tempd	.vfl_arglist(2)
+                                        	tempd	.mcptr
+                                        
+                                        	use	transfer_vector
+                        000000          	equ	.tv_begin,*
+                                        
+    000000  0a   000020 7100 00         	tra	.actor
+                                        
+                                        	use	tv_end
+                                        	entrybound
+                                        
+                        000014          	segdef	.tv_end
+    000014  aa   000300 000000          .tv_end:	vfd	14/(*-.tv_begin)
+                                        
+                                        	use	main
+                                        
+                        000016          	segdef	.my_lp
+                                        	even
+    000016                              .my_lp:	bss	,2
+                                        
+                                        	join	/text/transfer_vector,tv_end,main
+                                        
+                                        	use	linkage
+                                        	join	/link/linkage
+                                        
+                                        	use	main
+                                        
+                                        
+                                        
+    000020  0a   000016 3700 20         .actor:	epplp	.my_lp,*
+    000021  aa  0 00002 3521 20         	eppbp	ap|2,*
+    000022  aa  2 77777 2351 00         	lda	bp|-1		get length of string
+    000023  0a   000037 6000 00         	tze	.return_name	zero length => get name
+                                        
+    000024  aa   000001 0350 07         	adla	1,dl		include length of acc
+    000025  aa  0 00004 4501 20         	stz	ap|4,*
+    000026  0a   000052 7000 00         	tsx0	.search_defs
+                                        
+    000027  aa  0 00140 1065 40         	cmpc	(pr,rl),(pr,rl)	compare name
+    000030  aa   277777 600005          	desc9a	bp|-1(3),al
+    000031  aa   300000 000005          	desc9a	bb|0,al
+    000032  0a   000062 6010 00         	tnz	.next_def
+                                        
+    000033  aa  1 00001 2351 12         	lda	ab|1,2		return location
+    000034  aa   000022 7710 00         	arl	18
+    000035  aa  0 00004 7551 20         	sta	ap|4,*
+                                        
+    000036  aa  7 00044 7101 20         	short_return
+                                        
+    000037                              .return_name:
+    000037  aa  0 00004 7231 20         	lxl3	ap|4,*		get location
+    000040  0a   000052 7000 00         	tsx0	.search_defs
+                                        
+    000041  aa  1 00001 1031 12         	cmpx3	ab|1,2		compare location
+    000042  0a   000062 6010 00         	tnz	.next_def
+                                        
+    000043  aa  3 00000 2351 00         	lda	bb|0		get length of name
+    000044  aa   000033 7710 00         	arl	27
+    000045  aa  2 77777 7551 00         	sta	bp|-1		set length of varying string
+    000046  aa  0 00140 1005 40         	mlr	(pr,rl),(pr,rl)	return string
+    000047  aa   300000 200005          	desc9a	bb|0(1),al
+    000050  aa   200000 000005          	desc9a	bp|0,al
+                                        
+    000051  aa  7 00044 7101 20         	short_return
+                                        
+    000052                              .search_defs:
+    000052  aa   000000 6220 00         	eax2	0
+    000053  aa  4 00000 3515 20         	eppab	lp|0,*		ab -> defs
+    000054                              .defs_loop:
+    000054  aa  1 00001 7211 12         	lxl1	ab|1,2		get class and flags
+    000055  aa   400000 1010 03         	cmpx1	=o400000,du	must be class 0
+    000056  0a   000062 6010 00         	tnz	.next_def
+                                        
+    000057  aa  1 00002 2271 12         	ldx7	ab|2,2
+    000060  aa  1 00000 3535 17         	eppbb	ab|0,7		bb -> name
+    000061  aa   000000 7100 10         	tra	0,0		test definition
+    000062                              .next_def:
+    000062  aa  1 00000 2221 12         	ldx2	ab|0,2		chain to next def
+    000063  0a   000054 6010 00         	tnz	.defs_loop
+                                        
+    000064  aa  7 00044 7101 20         	short_return
+                                        
+                                        
+                                        
+                                        
+    000065  aa   000120 6270 00         .setup:	push
+    000066  aa  7 00040 2721 20
+    000067  0a   000016 3700 20         	epplp	.my_lp,*
+    000070  aa  6 00030 6501 00         	sprilp	sp|stack_frame.lp_ptr
+                                        
+    000071  aa   777776 2210 12         	ldx1	-2,2		get number of args expected
+    000072  0a   000120 6000 00         	tze	.no_gate_error	if zero, none or doesn't matter
+    000073  aa  0 00000 1011 00         	cmpx1	ap|0		compare against number given
+    000074  0a   000120 6000 00         	tze	.no_gate_error	args match, call procedure
+                                        
+    000075  aa  6 00000 2541 00         	call	signal_$signal_(signal_arglist)
+    000076  0a   000106 3500 00
+    000077  4a  4 00140 3521 20
+    000100  aa  6 00040 7531 00
+    000101  aa  7 00036 6701 20
+    000102  aa  6 00000 1731 00
+    000103  aa  6 00040 0731 00
+    000104  aa   000000 000000          	oct	0
+                                        
+    000105  aa   000000 0110 03         	even
+    000106                              signal_arglist:
+    000106  aa   000002 000004          	zero	2,4
+    000107  aa   000002 000000          	zero	2,0
+    000110  0a   000114 0000 00         	arg	.gate_errorname
+    000111  aa   000000 0000 00         	arg
+    000112  0a   000117 0000 00         	arg	.gate_errordesc
+    000113  aa   000000 0000 00         	arg
+                                        
+                                        	string	gate_error
+    000114                              .gate_errorname:
+    000114  aa  147 141 164 145         	aci	"gate_error"
+    000115  aa  137 145 162 162
+    000116  aa  157 162 000 000
+    000117                              .gate_errordesc:
+    000117  aa   525000 000010          	vfd	o9/525,o27/10
+                                        
+                                        
+                                        
+    000120                              .no_gate_error:
+                                        
+    000120                              	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+    000120  4a  4 00142 6333 20         	rccl	sys_info$clock_,*	calculate times
+    000121  4a  4 00144 1773 20         	sbaq	pds$cpu_time
+    000122  aa  6 00052 7573 00         	staq	.time1
+    000123  4a  4 00146 1773 20         	sbaq	pds$virtual_delta
+    000124  aa  6 00054 7573 00         	staq	.time2
+    000125  4a  4 00150 2353 20         	lda	pds$page_waits
+    000126  aa  6 00070 7553 00         	sta	.pf
+    000127                              	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+    000127  aa   000000 7100 12         	tra	0,2
+                                        
+                                        
+                                        
+    000130                              .return_code:
+                                        
+    000130                              	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+    000130  4a  4 00142 6333 20         	rccl	sys_info$clock_,*	calculate times
+    000131  4a  4 00144 1773 20         	sbaq	pds$cpu_time
+    000132  aa  6 00050 7573 00         	staq	.temp
+    000133  aa  6 00052 1773 00         	sbaq	.time1
+    000134  aa  2 00000 0773 00         	adaq	bp|gate_entry_data.cpu_time
+    000135  aa  2 00000 7573 00         	staq	bp|gate_entry_data.cpu_time
+    000136  aa  6 00050 2373 00         	ldaq	.temp
+    000137  4a  4 00146 1773 20         	sbaq	pds$virtual_delta
+    000140  aa  6 00054 1773 00         	sbaq	.time2
+    000141  aa  2 00002 0773 00         	adaq	bp|gate_entry_data.vcpu_time
+    000142  aa  2 00002 7573 00         	staq	bp|gate_entry_data.vcpu_time
+    000143  4a  4 00150 2353 20         	lda	pds$page_waits
+    000144  aa  6 00070 1353 00         	sbla	.pf
+    000145  aa  2 00004 0553 00         	asa	bp|gate_entry_data.page_waits
+    000146  aa  2 00005 0543 00         	aos	bp|gate_entry_data.calls
+    000147                              	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                        
+                                        			" Poll for ring alarms
+    000147  aa  6 00050 7545 00         	sra	.temp	Borrow from time calc
+    000150  aa  6 00050 2341 00         	szn	.temp	Zero?
+    000151  0a   000157 6000 00         	tze	.return_code_return
+                                        
+    000152  aa  6 00020 3515 20         	epp1	sp|stack_frame.prev_sp,*	"possible ring alarm
+    000153  aa  1 00024 2131 20         	epaq	pr1|stack_frame.return_ptr,*
+    000154  aa   000007 3750 07         	ana	7,dl	" ring number to which we return
+    000155  aa  6 00050 1151 00         	cmpa	.temp
+    000156  0a   000160 6050 00         	tpl	.ring_alarm	" ring alarm will occur
+                                        
+    000157                              .return_code_return:
+    000157  aa  7 00042 7101 20         	return
+                                        
+    000160                              .ring_alarm:		" perhaps we can handle without faults?
+                                        
+    000160  aa  2 00006 0541 00         	aos	bp|gate_entry_data.ring_alarms
+    000161  aa  6 00050 4501 00         	stz	.temp	" return argument for ring_alarm$poll
+    000162  0a   000202 2370 00         	ldaq	.one_arg_header
+    000163  aa  6 00100 7571 00         	staq	.ring_alarm_arg_list
+    000164  aa  6 00050 3515 00         	epp1	.temp
+    000165  aa  6 00102 2515 00         	spri1	.ring_alarm_arg_list+2
+    000166  aa  6 00100 3501 00         	eppap	.ring_alarm_arg_list
+    000167  4a  4 00152 3521 20         	short_call ring_alarm$poll
+    000170  aa  7 00036 6701 20
+    000171  aa  6 00030 3701 20
+    000172  aa  6 00050 2341 00         	szn	.temp
+    000173  0a   000157 6000 00         	tze	.return_code_return
+    000174  aa  6 00020 3721 20         	eppsp	sp|stack_frame.prev_sp,*
+    000175  4a  4 00154 6521 20         	sprisp	pds$pre_empt_poll_return          " short-return from here
+    000176  aa  7 00022 3515 20         	epp1	sb|stack_header.stack_begin_ptr,* " abandoning this stack frame.
+    000177  aa  7 00024 2515 00         	spri1	sb|stack_header.stack_end_ptr
+                                        " Leave SB as stack_0, so pxss can get to operators.
+    000200  4a  4 00156 7101 20         	tra	pxss$pre_empt_poll
+                                        
+                                        	tempd	.ring_alarm_arg_list(2)
+    000201  aa   000000 0110 03         	even
+    000202                              .one_arg_header:
+    000202  aa   000004 000004          	vfd	17/2,1/0,18/4
+    000203  aa   000000 000000          	vfd	18/0,18/0
+                                        
+                                        
+                                        
+                                    19  
+                                    20  	hgate	connect,ioi_connect,ioi_connect,3
+                        000001          	segdef	connect
+    000001                              connect:
+    000001  0a   000205 7100 00         	tra	connect.e
+    000204  a8   000006 000010          	zero	3*2,connect.t
+    000205                              connect.e:
+    000205  0a   000065 7020 00         	tsx2	.setup
+    000206  aa   000000 6340 07         	ldi	=0,dl
+    000207  4a  4 00160 3521 20         	short_call ioi_connect$ioi_connect(ap|0)
+    000210  aa  7 00036 6701 20
+    000211  aa  6 00030 3701 20
+    000212  9a  4 00010 3521 00         	eppbp	lp|connect.t
+    000213  0a   000130 7100 00         	tra	.return_code
+    000010                              connect.t:
+    000010                              	bss	,gate_entry_data_size
+                                        
+                                    21  	hgate	connect_pcw,ioi_connect,ioi_connect_pcw,4
+                        000002          	segdef	connect_pcw
+    000002                              connect_pcw:
+    000002  0a   000215 7100 00         	tra	connect_pcw.e
+    000214  a8   000010 000020          	zero	4*2,connect_pcw.t
+    000215                              connect_pcw.e:
+    000215  0a   000065 7020 00         	tsx2	.setup
+    000216  aa   000000 6340 07         	ldi	=0,dl
+    000217  4a  4 00162 3521 20         	short_call ioi_connect$ioi_connect_pcw(ap|0)
+    000220  aa  7 00036 6701 20
+    000221  aa  6 00030 3701 20
+    000222  9a  4 00020 3521 00         	eppbp	lp|connect_pcw.t
+    000223  0a   000130 7100 00         	tra	.return_code
+    000020                              connect_pcw.t:
+    000020                              	bss	,gate_entry_data_size
+                                        
+                                    22  	hgate	get_detailed_status,ioi_get_status,detailed_status,4
+                        000003          	segdef	get_detailed_status
+    000003                              get_detailed_status:
+    000003  0a   000225 7100 00         	tra	get_detailed_status.e
+    000224  a8   000010 000030          	zero	4*2,get_detailed_status.t
+    000225                              get_detailed_status.e:
+    000225  0a   000065 7020 00         	tsx2	.setup
+    000226  aa   000000 6340 07         	ldi	=0,dl
+    000227  4a  4 00164 3521 20         	short_call ioi_get_status$detailed_status(ap|0)
+    000230  aa  7 00036 6701 20
+    000231  aa  6 00030 3701 20
+    000232  9a  4 00030 3521 00         	eppbp	lp|get_detailed_status.t
+    000233  0a   000130 7100 00         	tra	.return_code
+    000030                              get_detailed_status.t:
+    000030                              	bss	,gate_entry_data_size
+                                        
+                                    23  	hgate	get_special_status,ioi_get_status,special_status,4
+                        000004          	segdef	get_special_status
+    000004                              get_special_status:
+    000004  0a   000235 7100 00         	tra	get_special_status.e
+    000234  a8   000010 000040          	zero	4*2,get_special_status.t
+    000235                              get_special_status.e:
+    000235  0a   000065 7020 00         	tsx2	.setup
+    000236  aa   000000 6340 07         	ldi	=0,dl
+    000237  4a  4 00166 3521 20         	short_call ioi_get_status$special_status(ap|0)
+    000240  aa  7 00036 6701 20
+    000241  aa  6 00030 3701 20
+    000242  9a  4 00040 3521 00         	eppbp	lp|get_special_status.t
+    000243  0a   000130 7100 00         	tra	.return_code
+    000040                              get_special_status.t:
+    000040                              	bss	,gate_entry_data_size
+                                        
+                                    24  	hgate	release_devices,ioi_suspend_devices,ioi_release_devices,2
+                        000005          	segdef	release_devices
+    000005                              release_devices:
+    000005  0a   000245 7100 00         	tra	release_devices.e
+    000244  a8   000004 000050          	zero	2*2,release_devices.t
+    000245                              release_devices.e:
+    000245  0a   000065 7020 00         	tsx2	.setup
+    000246  aa   000000 6340 07         	ldi	=0,dl
+    000247  4a  4 00170 3521 20         	short_call ioi_suspend_devices$ioi_release_devices(ap|0)
+    000250  aa  7 00036 6701 20
+    000251  aa  6 00030 3701 20
+    000252  9a  4 00050 3521 00         	eppbp	lp|release_devices.t
+    000253  0a   000130 7100 00         	tra	.return_code
+    000050                              release_devices.t:
+    000050                              	bss	,gate_entry_data_size
+                                        
+                                    25  	hgate	set_channel_required,ioi_set,channel_required,4
+                        000006          	segdef	set_channel_required
+    000006                              set_channel_required:
+    000006  0a   000255 7100 00         	tra	set_channel_required.e
+    000254  a8   000010 000060          	zero	4*2,set_channel_required.t
+    000255                              set_channel_required.e:
+    000255  0a   000065 7020 00         	tsx2	.setup
+    000256  aa   000000 6340 07         	ldi	=0,dl
+    000257  4a  4 00172 3521 20         	short_call ioi_set$channel_required(ap|0)
+    000260  aa  7 00036 6701 20
+    000261  aa  6 00030 3701 20
+    000262  9a  4 00060 3521 00         	eppbp	lp|set_channel_required.t
+    000263  0a   000130 7100 00         	tra	.return_code
+    000060                              set_channel_required.t:
+    000060                              	bss	,gate_entry_data_size
+                                        
+                                    26  	hgate	set_event,ioi_set,event,3
+                        000007          	segdef	set_event
+    000007                              set_event:
+    000007  0a   000265 7100 00         	tra	set_event.e
+    000264  a8   000006 000070          	zero	3*2,set_event.t
+    000265                              set_event.e:
+    000265  0a   000065 7020 00         	tsx2	.setup
+    000266  aa   000000 6340 07         	ldi	=0,dl
+    000267  4a  4 00174 3521 20         	short_call ioi_set$event(ap|0)
+    000270  aa  7 00036 6701 20
+    000271  aa  6 00030 3701 20
+    000272  9a  4 00070 3521 00         	eppbp	lp|set_event.t
+    000273  0a   000130 7100 00         	tra	.return_code
+    000070                              set_event.t:
+    000070                              	bss	,gate_entry_data_size
+                                        
+                                    27  	hgate	set_status,ioi_set,status,4
+                        000010          	segdef	set_status
+    000010                              set_status:
+    000010  0a   000275 7100 00         	tra	set_status.e
+    000274  a8   000010 000100          	zero	4*2,set_status.t
+    000275                              set_status.e:
+    000275  0a   000065 7020 00         	tsx2	.setup
+    000276  aa   000000 6340 07         	ldi	=0,dl
+    000277  4a  4 00176 3521 20         	short_call ioi_set$status(ap|0)
+    000300  aa  7 00036 6701 20
+    000301  aa  6 00030 3701 20
+    000302  9a  4 00100 3521 00         	eppbp	lp|set_status.t
+    000303  0a   000130 7100 00         	tra	.return_code
+    000100                              set_status.t:
+    000100                              	bss	,gate_entry_data_size
+                                        
+                                    28  	hgate	suspend_devices,ioi_suspend_devices,ioi_suspend_devices,2
+                        000011          	segdef	suspend_devices
+    000011                              suspend_devices:
+    000011  0a   000305 7100 00         	tra	suspend_devices.e
+    000304  a8   000004 000110          	zero	2*2,suspend_devices.t
+    000305                              suspend_devices.e:
+    000305  0a   000065 7020 00         	tsx2	.setup
+    000306  aa   000000 6340 07         	ldi	=0,dl
+    000307  4a  4 00200 3521 20         	short_call ioi_suspend_devices$ioi_suspend_devices(ap|0)
+    000310  aa  7 00036 6701 20
+    000311  aa  6 00030 3701 20
+    000312  9a  4 00110 3521 00         	eppbp	lp|suspend_devices.t
+    000313  0a   000130 7100 00         	tra	.return_code
+    000110                              suspend_devices.t:
+    000110                              	bss	,gate_entry_data_size
+                                        
+                                    29  	hgate	timeout,ioi_set,timeout,3
+                        000012          	segdef	timeout
+    000012                              timeout:
+    000012  0a   000315 7100 00         	tra	timeout.e
+    000314  a8   000006 000120          	zero	3*2,timeout.t
+    000315                              timeout.e:
+    000315  0a   000065 7020 00         	tsx2	.setup
+    000316  aa   000000 6340 07         	ldi	=0,dl
+    000317  4a  4 00202 3521 20         	short_call ioi_set$timeout(ap|0)
+    000320  aa  7 00036 6701 20
+    000321  aa  6 00030 3701 20
+    000322  9a  4 00120 3521 00         	eppbp	lp|timeout.t
+    000323  0a   000130 7100 00         	tra	.return_code
+    000120                              timeout.t:
+    000120                              	bss	,gate_entry_data_size
+                                        
+                                    30  	hgate	workspace,ioi_set,workspace,4
+                        000013          	segdef	workspace
+    000013                              workspace:
+    000013  0a   000325 7100 00         	tra	workspace.e
+    000324  a8   000010 000130          	zero	4*2,workspace.t
+    000325                              workspace.e:
+    000325  0a   000065 7020 00         	tsx2	.setup
+    000326  aa   000000 6340 07         	ldi	=0,dl
+    000327  4a  4 00204 3521 20         	short_call ioi_set$workspace(ap|0)
+    000330  aa  7 00036 6701 20
+    000331  aa  6 00030 3701 20
+    000332  9a  4 00130 3521 00         	eppbp	lp|workspace.t
+    000333  0a   000130 7100 00         	tra	.return_code
+    000130                              workspace.t:
+    000130                              	bss	,gate_entry_data_size
+                                        
+                                    31  
+                                    32  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000334  5a   000003 000000 
+    000335  5a   000142 600000 
+    000336  aa   000000 000000 
+    000337  55   000010 000002 
+    000340  5a   000002 400003 
+    000341  55   000006 000010 
+    000342  aa  004 151 157 151
+    000343  aa  137 000 000 000
+    000344  55   000016 000003 
+    000345  0a   000013 400000 
+    000346  55   000013 000003 
+    000347  aa  011 167 157 162         workspace
+    000350  aa  153 163 160 141
+    000351  aa  143 145 000 000
+    000352  55   000023 000010 
+    000353  0a   000012 400000 
+    000354  55   000021 000003 
+    000355  aa  007 164 151 155         timeout
+    000356  aa  145 157 165 164
+    000357  55   000032 000016 
+    000360  0a   000011 400000 
+    000361  55   000026 000003 
+    000362  aa  017 163 165 163         suspend_devices
+    000363  aa  160 145 156 144
+    000364  aa  137 144 145 166
+    000365  aa  151 143 145 163
+    000366  55   000040 000023 
+    000367  0a   000010 400000 
+    000370  55   000035 000003 
+    000371  aa  012 163 145 164         set_status
+    000372  aa  137 163 164 141
+    000373  aa  164 165 163 000
+    000374  55   000046 000032 
+    000375  0a   000007 400000 
+    000376  55   000043 000003 
+    000377  aa  011 163 145 164         set_event
+    000400  aa  137 145 166 145
+    000401  aa  156 164 000 000
+    000402  55   000057 000040 
+    000403  0a   000006 400000 
+    000404  55   000051 000003 
+    000405  aa  024 163 145 164         set_channel_required
+    000406  aa  137 143 150 141
+    000407  aa  156 156 145 154
+    000410  aa  137 162 145 161
+    000411  aa  165 151 162 145
+    000412  aa  144 000 000 000
+    000413  55   000066 000046 
+    000414  0a   000005 400000 
+    000415  55   000062 000003 
+    000416  aa  017 162 145 154         release_devices
+    000417  aa  145 141 163 145
+    000420  aa  137 144 145 166
+    000421  aa  151 143 145 163
+    000422  55   000076 000057 
+    000423  0a   000004 400000 
+    000424  55   000071 000003 
+    000425  aa  022 147 145 164         get_special_status
+    000426  aa  137 163 160 145
+    000427  aa  143 151 141 154
+    000430  aa  137 163 164 141
+    000431  aa  164 165 163 000
+    000432  55   000106 000066 
+    000433  0a   000003 400000 
+    000434  55   000101 000003 
+    000435  aa  023 147 145 164         get_detailed_status
+    000436  aa  137 144 145 164
+    000437  aa  141 151 154 145
+    000440  aa  144 137 163 164
+    000441  aa  141 164 165 163
+    000442  55   000114 000076 
+    000443  0a   000002 400000 
+    000444  55   000111 000003 
+    000445  aa  013 143 157 156         connect_pcw
+    000446  aa  156 145 143 164
+    000447  aa  137 160 143 167
+    000450  55   000121 000106 
+    000451  0a   000001 400000 
+    000452  55   000117 000003 
+    000453  aa  007 143 157 156         connect
+    000454  aa  156 145 143 164
+    000455  55   000126 000114 
+    000456  0a   000016 400000 
+    000457  55   000124 000003 
+    000460  aa  006 056 155 171         .my_lp
+    000461  aa  137 154 160 000
+    000462  55   000133 000121 
+    000463  0a   000014 400000 
+    000464  55   000131 000003 
+    000465  aa  007 056 164 166         .tv_end
+    000466  aa  137 145 156 144
+    000467  55   000002 000126 
+    000470  6a   000000 400002 
+    000471  55   000136 000003 
+    000472  aa  014 163 171 155         symbol_table
+    000473  aa  142 157 154 137
+    000474  aa  164 141 142 154
+    000475  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000476  aa   000000 000033 
+    000477  aa   000000 000000 
+    000500  aa   000000 000000 
+    000501  5a   000046 000000 
+    000502  aa   000000 000000 
+    000503  aa   000000 000000 
+    000504  5a   000010 000000 
+    000505  5a   000016 000000 
+    000506  5a   000106 000000 
+    000507  aa   000000 000000 
+    000510  aa   000000 000000 
+    000511  5a   000114 000000 
+    000512  5a   000133 000000 
+    000513  5a   000032 000000 
+    000514  5a   000040 000000 
+    000515  5a   000126 000000 
+    000516  aa   000000 000000 
+    000517  aa   000000 000000 
+    000520  5a   000023 000000 
+    000521  5a   000076 000000 
+    000522  5a   000066 000000 
+    000523  aa   000000 000000 
+    000524  aa   000000 000000 
+    000525  aa   000000 000000 
+    000526  aa   000000 000000 
+    000527  aa   000000 000000 
+    000530  5a   000057 000000 
+    000531  5a   000121 000000 
+
+EXTERNAL NAMES
+
+    000532  aa  006 163 164 141         status
+    000533  aa  164 165 163 000
+    000534  aa  005 145 166 145         event
+    000535  aa  156 164 000 000
+    000536  aa  020 143 150 141         channel_required
+    000537  aa  156 156 145 154
+    000540  aa  137 162 145 161
+    000541  aa  165 151 162 145
+    000542  aa  144 000 000 000
+    000543  aa  007 151 157 151         ioi_set
+    000544  aa  137 163 145 164
+    000545  aa  023 151 157 151         ioi_release_devices
+    000546  aa  137 162 145 154
+    000547  aa  145 141 163 145
+    000550  aa  137 144 145 166
+    000551  aa  151 143 145 163
+    000552  aa  023 151 157 151         ioi_suspend_devices
+    000553  aa  137 163 165 163
+    000554  aa  160 145 156 144
+    000555  aa  137 144 145 166
+    000556  aa  151 143 145 163
+    000557  aa  016 163 160 145         special_status
+    000560  aa  143 151 141 154
+    000561  aa  137 163 164 141
+    000562  aa  164 165 163 000
+    000563  aa  017 144 145 164         detailed_status
+    000564  aa  141 151 154 145
+    000565  aa  144 137 163 164
+    000566  aa  141 164 165 163
+    000567  aa  016 151 157 151         ioi_get_status
+    000570  aa  137 147 145 164
+    000571  aa  137 163 164 141
+    000572  aa  164 165 163 000
+    000573  aa  017 151 157 151         ioi_connect_pcw
+    000574  aa  137 143 157 156
+    000575  aa  156 145 143 164
+    000576  aa  137 160 143 167
+    000577  aa  013 151 157 151         ioi_connect
+    000600  aa  137 143 157 156
+    000601  aa  156 145 143 164
+    000602  aa  015 160 162 145         pre_empt_poll
+    000603  aa  137 145 155 160
+    000604  aa  164 137 160 157
+    000605  aa  154 154 000 000
+    000606  aa  004 160 170 163         pxss
+    000607  aa  163 000 000 000
+    000610  aa  024 160 162 145         pre_empt_poll_return
+    000611  aa  137 145 155 160
+    000612  aa  164 137 160 157
+    000613  aa  154 154 137 162
+    000614  aa  145 164 165 162
+    000615  aa  156 000 000 000
+    000616  aa  004 160 157 154         poll
+    000617  aa  154 000 000 000
+    000620  aa  012 162 151 156         ring_alarm
+    000621  aa  147 137 141 154
+    000622  aa  141 162 155 000
+    000623  aa  012 160 141 147         page_waits
+    000624  aa  145 137 167 141
+    000625  aa  151 164 163 000
+    000626  aa  015 166 151 162         virtual_delta
+    000627  aa  164 165 141 154
+    000630  aa  137 144 145 154
+    000631  aa  164 141 000 000
+    000632  aa  010 143 160 165         cpu_time
+    000633  aa  137 164 151 155
+    000634  aa  145 000 000 000
+    000635  aa  003 160 144 163         pds
+    000636  aa  006 143 154 157         clock_
+    000637  aa  143 153 137 000
+    000640  aa  010 163 171 163         sys_info
+    000641  aa  137 151 156 146
+    000642  aa  157 000 000 000
+    000643  aa  007 163 151 147         signal_
+    000644  aa  156 141 154 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000645  aa   000004 000000 
+    000646  55   000207 000013 
+    000647  aa   000004 000000 
+    000650  55   000207 000021 
+    000651  aa   000004 000000 
+    000652  55   000216 000216 
+    000653  aa   000004 000000 
+    000654  55   000207 000176 
+    000655  aa   000004 000000 
+    000656  55   000207 000200 
+    000657  aa   000004 000000 
+    000660  55   000207 000202 
+    000661  aa   000004 000000 
+    000662  55   000216 000211 
+    000663  aa   000004 000000 
+    000664  55   000233 000223 
+    000665  aa   000004 000000 
+    000666  55   000233 000227 
+    000667  aa   000004 000000 
+    000670  55   000243 000237 
+    000671  aa   000004 000000 
+    000672  55   000243 000243 
+    000673  aa   000004 000000 
+    000674  55   000252 000246 
+    000675  aa   000004 000000 
+    000676  55   000301 000254 
+    000677  aa   000004 000000 
+    000700  55   000264 000262 
+    000701  aa   000004 000000 
+    000702  55   000301 000267 
+    000703  aa   000004 000000 
+    000704  55   000301 000272 
+    000705  aa   000004 000000 
+    000706  55   000301 000276 
+    000707  aa   000004 000000 
+    000710  55   000304 000302 
+    000711  aa   000004 000000 
+    000712  55   000307 000307 
+    000713  aa   000001 000000 
+    000714  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000715  5a   000311 000000 
+    000716  5a   000313 000000 
+    000717  5a   000315 000000 
+    000720  5a   000317 000000 
+    000721  5a   000321 000000 
+    000722  5a   000323 000000 
+    000723  5a   000325 000000 
+    000724  5a   000327 000000 
+    000725  5a   000331 000000 
+    000726  5a   000333 000000 
+    000727  5a   000335 000000 
+    000730  5a   000337 000000 
+    000731  5a   000341 000000 
+    000732  5a   000343 000000 
+    000733  5a   000345 000000 
+    000734  5a   000347 000000 
+    000735  5a   000351 000000 
+    000736  5a   000353 000000 
+    000737  5a   000355 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000334 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000140 000206 
+    000007  a2   000000 000130 
+    000140  9a   777640 0000 46         signal_|signal_
+    000141  5a   000403 0000 00
+    000142  9a   777636 0000 46         sys_info|clock_
+    000143  5a   000402 0000 20
+    000144  9a   777634 0000 46         pds|cpu_time
+    000145  5a   000401 0000 00
+    000146  9a   777632 0000 46         pds|virtual_delta
+    000147  5a   000400 0000 00
+    000150  9a   777630 0000 46         pds|page_waits
+    000151  5a   000377 0000 00
+    000152  9a   777626 0000 46         ring_alarm|poll
+    000153  5a   000376 0000 00
+    000154  9a   777624 0000 46         pds|pre_empt_poll_return
+    000155  5a   000375 0000 00
+    000156  9a   777622 0000 46         pxss|pre_empt_poll
+    000157  5a   000374 0000 00
+    000160  9a   777620 0000 46         ioi_connect|ioi_connect
+    000161  5a   000373 0000 00
+    000162  9a   777616 0000 46         ioi_connect|ioi_connect_pcw
+    000163  5a   000372 0000 00
+    000164  9a   777614 0000 46         ioi_get_status|detailed_status
+    000165  5a   000371 0000 00
+    000166  9a   777612 0000 46         ioi_get_status|special_status
+    000167  5a   000370 0000 00
+    000170  9a   777610 0000 46         ioi_suspend_devices|ioi_release_devices
+    000171  5a   000367 0000 00
+    000172  9a   777606 0000 46         ioi_set|channel_required
+    000173  5a   000366 0000 00
+    000174  9a   777604 0000 46         ioi_set|event
+    000175  5a   000365 0000 00
+    000176  9a   777602 0000 46         ioi_set|status
+    000177  5a   000364 0000 00
+    000200  9a   777600 0000 46         ioi_suspend_devices|ioi_suspend_devices
+    000201  5a   000363 0000 00
+    000202  9a   777576 0000 46         ioi_set|timeout
+    000203  5a   000362 0000 00
+    000204  9a   777574 0000 46         ioi_set|workspace
+    000205  5a   000361 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   241453 232171 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000306 
+    000020  aa   000000 000164 
+    000021  aa   000234 000215 
+    000022  aa   000275 000164 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000005 
+    000066  aa   000112 000033 
+    000067  aa   175453 027775 
+    000070  aa   000000 117547 
+    000071  aa   225731 400000 
+    000072  aa   000121 000041 
+    000073  aa   134571 651553 
+    000074  aa   000000 113462 
+    000075  aa   317506 600000 
+    000076  aa   000132 000042 
+    000077  aa   147777 464111 
+    000100  aa   000000 115000 
+    000101  aa   507463 000000 
+    000102  aa   000143 000041 
+    000103  aa   052721 247134 
+    000104  aa   000000 105272 
+    000105  aa   317215 400000 
+    000106  aa   000154 000037 
+    000107  aa   127236 043523 
+    000110  aa   000000 112724 
+    000111  aa   701744 400000 
+    000112  aa   076163 160145          >spec>install>1115>ioi_.alm
+    000113  aa   143076 151156 
+    000114  aa   163164 141154 
+    000115  aa   154076 061061 
+    000116  aa   061065 076151 
+    000117  aa   157151 137056 
+    000120  aa   141154 155040 
+    000121  aa   076154 144144          >ldd>include>gate_macros.incl.alm
+    000122  aa   076151 156143 
+    000123  aa   154165 144145 
+    000124  aa   076147 141164 
+    000125  aa   145137 155141 
+    000126  aa   143162 157163 
+    000127  aa   056151 156143 
+    000130  aa   154056 141154 
+    000131  aa   155040 040040 
+    000132  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000133  aa   076151 156143 
+    000134  aa   154165 144145 
+    000135  aa   076163 164141 
+    000136  aa   143153 137150 
+    000137  aa   145141 144145 
+    000140  aa   162056 151156 
+    000141  aa   143154 056141 
+    000142  aa   154155 040040 
+    000143  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000144  aa   076151 156143 
+    000145  aa   154165 144145 
+    000146  aa   076163 164141 
+    000147  aa   143153 137146 
+    000150  aa   162141 155145 
+    000151  aa   056151 156143 
+    000152  aa   154056 141154 
+    000153  aa   155040 040040 
+    000154  aa   076154 144144          >ldd>include>gate_data.incl.alm
+    000155  aa   076151 156143 
+    000156  aa   154165 144145 
+    000157  aa   076147 141164 
+    000160  aa   145137 144141 
+    000161  aa   164141 056151 
+    000162  aa   156143 154056 
+    000163  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          20    .actor                   ioi_:          18.
+          54    .defs_loop               ioi_:          18.
+          71    .entryp                  ioi_:          18.
+         117    .gate_errordesc          ioi_:          18.
+         114    .gate_errorname          ioi_:          18.
+          52    .label_variable          ioi_:          18.
+          76    .mcptr                   ioi_:          18.
+          16    .my_lp                   ioi_:          18.
+          62    .next_def                ioi_:          18.
+         120    .no_gate_error           ioi_:          18.
+         202    .one_arg_header          ioi_:          18.
+          56    .on_unit                 ioi_:          18.
+          70    .pf                      ioi_:          18.
+         130    .return_code             ioi_:          18,   20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30.
+         157    .return_code_return      ioi_:          18.
+          37    .return_name             ioi_:          18.
+         160    .ring_alarm              ioi_:          18.
+         100    .ring_alarm_arg_list     ioi_:          18.
+          52    .search_defs             ioi_:          18.
+          65    .setup                   ioi_:          18,   20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30.
+          50    .temp                    ioi_:          18.
+          52    .time1                   ioi_:          18.
+          54    .time2                   ioi_:          18.
+           0    .tv_begin                ioi_:          18.
+          14    .tv_end                  ioi_:          18.
+          56    .unwinder_arglist        ioi_:          18.
+          72    .vfl_arglist             ioi_:          18.
+        1170    call_offset              stack_header:        80.
+                channel_required         ioi_:          25.
+                clock_                   ioi_:          18.
+           1    connect                  ioi_:          20.
+         205    connect.e                ioi_:          20.
+          10    connect.t                ioi_:          20.
+           2    connect_pcw              ioi_:          21.
+         215    connect_pcw.e            ioi_:          21.
+          20    connect_pcw.t            ioi_:          21.
+                cpu_time                 ioi_:          18.
+                detailed_status          ioi_:          22.
+        1174    entry_offset             stack_header:        84.
+                event                    ioi_:          26.
+           5    gate_entry_data.calls    ioi_:          18,
+                                         gate_data:     30.
+           0    gate_entry_data.cpu_time       ioi_:          18,
+                                               gate_data:     27.
+           4    gate_entry_data.page_waits     ioi_:          18,
+                                               gate_data:     29.
+           6    gate_entry_data.ring_alarms    ioi_:          18,
+                                               gate_data:     31.
+           2    gate_entry_data.vcpu_time      ioi_:          18,
+                                               gate_data:     28.
+          10    gate_entry_data_size     ioi_:          20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30,
+                                         gate_data:     25.
+           2    gate_table.datap         gate_data:     20.
+           1    gate_table.entryl        gate_data:     19.
+           0    gate_table.entryp        gate_data:     18.
+           3    gate_table_size          gate_data:     15.
+           3    get_detailed_status      ioi_:          22.
+         225    get_detailed_status.e    ioi_:          22.
+          30    get_detailed_status.t    ioi_:          22.
+           4    get_special_status       ioi_:          23.
+         235    get_special_status.e     ioi_:          23.
+          40    get_special_status.t     ioi_:          23.
+                ioi_connect              ioi_:          20,   21.
+                ioi_connect_pcw          ioi_:          21.
+                ioi_get_status           ioi_:          22,   23.
+                ioi_release_devices      ioi_:          24.
+                ioi_set                  ioi_:          25,   26,   27,   29,   30.
+                ioi_suspend_devices      ioi_:          24,   28.
+          10    linkage                  ioi_:          18,   20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30.
+          16    main                     ioi_:          18,   20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30.
+                page_waits               ioi_:          18.
+                pds                      ioi_:          18.
+                poll                     ioi_:          18.
+                pre_empt_poll            ioi_:          18.
+                pre_empt_poll_return     ioi_:          18.
+        1171    push_offset              stack_header:        81.
+                pxss                     ioi_:          18.
+           5    release_devices          ioi_:          24.
+         245    release_devices.e        ioi_:          24.
+          50    release_devices.t        ioi_:          24.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+                ring_alarm               ioi_:          18.
+           6    set_channel_required     ioi_:          25.
+         255    set_channel_required.e   ioi_:          25.
+          60    set_channel_required.t   ioi_:          25.
+           7    set_event                ioi_:          26.
+         265    set_event.e              ioi_:          26.
+          70    set_event.t              ioi_:          26.
+          10    set_status               ioi_:          27.
+         275    set_status.e             ioi_:          27.
+         100    set_status.t             ioi_:          27.
+                signal_                  ioi_:          18.
+         106    signal_arglist           ioi_:          18.
+                special_status           ioi_:          23.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       ioi_:          18,
+                                         stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      ioi_:          18,
+                                         stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   ioi_:          18,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   ioi_:          18,
+                                               stack_header:        37.
+          24    stack_header.stack_end_ptr     ioi_:          18,
+                                               stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+                status                   ioi_:          27.
+          11    suspend_devices          ioi_:          28.
+         305    suspend_devices.e        ioi_:          28.
+         110    suspend_devices.t        ioi_:          28.
+                sys_info                 ioi_:          18.
+          12    timeout                  ioi_:          29.
+         315    timeout.e                ioi_:          29.
+         120    timeout.t                ioi_:          29.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+           0    transfer_vector          ioi_:          18,   20,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30.
+          14    tv_end                   ioi_:          18.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+                virtual_delta            ioi_:          18.
+          13    workspace                ioi_:          30.
+         325    workspace.e              ioi_:          30.
+         130    workspace.t              ioi_:          30.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1241 @@
+	COMPILATION LISTING OF SEGMENT hc_tune
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1059.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8         /* use: pl1_macro hc_tune.pl1.pmac */
+        9 
+       10 hc_tune: proc ();
+       11 
+       12 /* *	HC_TUNE
+       13*   *
+       14*   *	This procedure manages the getting and setting of system tuning parameters.
+       15*   *	It is organized in a somewhat unusual fashion for a PL/I program, in order to
+       16*   *	make the addition of new tuning parameters as simple as possible. All the tuning
+       17*   *	parameters appear in a section of code at the very end of this program. A complex
+       18*   *	mechanism of gotos and label variables is used to minize the size of the program,
+       19*   *	and, more importantly, to make the description of individual tuning parameters
+       20*   *	as simple and straightforward as possible. Each tuning parameter must be a single
+       21*   *	word quantity at some known address in the supervisor, and is described by a
+       22*   *	block of code like this:
+       23*   *
+       24*   *	dcl  tc_data$post_purge_switch fixed bin (35) external static;
+       25*   *	%set NUM to NUM + 1;
+       26*   *	TP (NUM):	call tp_init (addr (tc_data$post_purge_switch),
+       27*   *		     "post_purge", "pp", TP_ON_OFF);
+       28*   *
+       29*   *		call on_or_off ();
+       30*   *		goto RETURN;
+       31*   *
+       32*   *	The parameters to tp_init are:
+       33*   *	   1) The location of the value in the supervisor address space.
+       34*   *	   2) The long name of the tuning parameter.
+       35*   *	   3) The short name. If the short name is "", it will be the same as the long name.
+       36*   *	   4) The type, as defined in tuning_parameter_info.incl.pl1
+       37*   *
+       38*   *	Additionally, the value tp_special may be set to "1"b to indicate that this parameter
+       39*   *	is not to be listed by a normal listing operation. It is intended for internal system
+       40*   *	parameters, solely in order to make them easy to set by other than patching.
+       41*   *
+       42*   *	There are two procedures available to insure that an input value is acceptable. The
+       43*   *	range procedure is called with two limits, and aborts an attempt to set if the value
+       44*   *	falls outside the limits of the specified range. The on_or_off procedure aborts if
+       45*   *	an attempt is made to set an on/off parameter to an invalid value. Additionally, the
+       46*   *	procedure abort may be called if it is necessary to invalid a n attempt to set a
+       47*   *	tuning parameter for some other, more complex, reason.
+       48*   *
+       49*   *	The existing examples in this program should be used as guidelines for how to add
+       50*   *	and name new tuning parameters.
+       51*   *
+       52*   *	04/21/81, W. Olin Sibert
+       53*   *	Modified 10/24/81, J. Bongiovanni, to fix bug in maxabs
+       54*   *	Modified February 1982, BIM, for stack truncation parameters
+       55*   *	Modified March 1982, J. Bongiovanni, for trap_invalid_masked, wsf bug fix
+       56*   *	Modified April 1982, J. Bongiovanni, gv_integration
+       57*   *	Modified July 1982, J. Bongiovanni, meter_ast_locking
+       58*   *	Modified August 1982, J. Bongiovanni, realtime_io parameters
+       59*   *	Modified October 1982, J. Bongiovanni, checksum_filemap
+       60*   *	Modified February 1983, E. N. Kittlitz, default_256K_enable
+       61*   *	Modified October 1984, M. Pandolf, dirlock_writebehind
+       62*   */
+       63 
+       64 /*  */
+       65 
+       66 dcl  P_input_name char (32) parameter;			/* Name of parameter to get or set */
+       67 dcl  P_old_value bit (36) aligned parameter;		/* Current value for parameter */
+       68 dcl  P_new_value bit (36) aligned parameter;		/* New value, for setting */
+       69 dcl  P_tp_ptr pointer parameter;			/* Its address (in ring zero) */
+       70 dcl  P_long_name char (*) parameter;			/* Long name, for output */
+       71 dcl  P_short_name char (*) parameter;			/* Short name, for output */
+       72 dcl  P_error char (*) parameter;			/* Description of error while setting, if any */
+       73 dcl  P_tp_type fixed bin parameter;			/* Its type */
+       74 dcl  P_area_ptr pointer parameter;			/* Pointer to area for parameter list allocation */
+       75 dcl  P_special_flag bit (1) aligned parameter;		/* Whether to return "special" values, in a listing */
+       76 dcl  P_tp_count fixed bin parameter;			/* Number of defined tuning parameters */
+       77 dcl  P_tp_list_ptr pointer parameter;			/* Pointer to returned array of info */
+       78 dcl  P_code fixed bin (35) parameter;			/* Error code */
+       79 
+       80 dcl  input_name char (32);
+       81 dcl  function fixed bin;				/* What we are supposed to do */
+       82 dcl  return_label label variable internal local;		/* Used for our pseudo-subroutine call mechanism */
+       83 dcl  lookup_return_label variable label internal local;
+       84 dcl  severity fixed bin;				/* Severity code for syserr call */
+       85 dcl  code fixed bin (35);
+       86 dcl  return_special bit (1) aligned;			/* Whether to list "special" parameters */
+       87 dcl  error_reason char (128);				/* Description of error encountered in setting */
+       88 
+       89 dcl  based_value bit (36) aligned based;		/* For parameter assignment */
+       90 
+       91 dcl  list_area area based (list_area_ptr);
+       92 dcl  list_area_ptr pointer;
+       93 
+       94 dcl 1 tp_list (tp_list_size) based (tp_list_ptr) like tp_info;
+       95 dcl  tp_list_ptr pointer;
+       96 dcl  tp_list_size fixed bin;
+       97 dcl  list_idx fixed bin;
+       98 
+       99 dcl  tp_ptr pointer;				/* Pointer to tuning parameter currently of interest */
+      100 dcl  tp_type fixed bin;				/* Type of this tuning parameter */
+      101 dcl  tp_idx fixed bin;				/* Its index */
+      102 dcl  tp_short_name char (16); 			/* Short and long names */
+      103 dcl  tp_long_name char (32);
+      104 dcl  tp_special bit (1) aligned;			/* Whether it is "special" */
+      105 
+      106 dcl  tp_value bit (36) aligned;			/* Current value, as bits */
+      107 dcl  binary_value fixed bin (35) aligned;		/* unspec equivalent of tp_value */
+      108 dcl  scaled_value fixed bin (35, 18) aligned;		/* unspec equivalent of tp_value */
+      109 dcl  char_value char (4) aligned;			/* unspec equivalent of tp_value */
+      110 dcl  float_value float bin (27) aligned;		/* unspec equivalent of tp_value */
+      111 
+      112 dcl  new_value bit (36) aligned;			/* New value, as above */
+      113 dcl  new_binary_value fixed bin (35) aligned;
+      114 dcl  new_scaled_value fixed bin (35, 18) aligned;
+      115 dcl  new_char_value char (4) aligned;
+      116 dcl  new_float_value float bin (27) aligned;
+      117 
+      118 dcl  pds$process_group_id char (32) aligned external static;
+      119 
+      120 dcl  error_table_$unknown_tp fixed bin (35) external static;
+      121 dcl  error_table_$invalid_tp_value fixed bin (35) external static;
+      122 
+      123 dcl  syserr entry options (variable);
+      124 
+      125 dcl  ONE_SECOND fixed bin (35) internal static options (constant) init (1000000); /* Assorted limits in microseconds */
+      126 dcl  ONE_MINUTE fixed bin (35) internal static options (constant) init (60000000);
+      127 dcl  TEN_MINUTES fixed bin (35) internal static options (constant) init (600000000);
+      128 dcl  FIVE_HOURS fixed bin (35) internal static options (constant) init (18000000000);
+      129 
+      130 dcl  SCALE fixed bin (35) internal static options (constant) init (262144); /* Converts fixed bin (35) to (35,18) */
+      131 
+      132 dcl  LIST init (1) fixed bin internal static options (constant);
+      133 dcl  GET init (2) fixed bin internal static options (constant);
+      134 dcl  SET init (3) fixed bin internal static options (constant);
+      135 
+      136 dcl (addr, decimal, divide, float, hbound, round, trunc, unspec) builtin;
+      137 
+      138 /*  */
+      139 
+      140 hc_tune$get: entry (P_input_name, P_tp_type, P_old_value, P_tp_ptr, P_long_name, P_short_name, P_code);
+      141 
+      142 /* This entrypoint returns the address and present value of the named tuning parameter.
+      143*   It will return an error code if the tuning parameter does not exist. It is accessed
+      144*   via metering_gate_$get_tuning_parameter */
+      145 
+      146 	input_name = P_input_name;			/* Copy input parameter */
+      147 	function = GET;				/* Say what we're doing */
+      148 	code = 0;
+      149 
+      150 	return_label = GET_LOOKUP_RETURNS;
+      151 	goto LOOKUP;				/* Find it, set idx & code */
+      152 
+      153 GET_LOOKUP_RETURNS:
+      154 	if code ^= 0 then do;			/* Couldn't find it */
+      155 	     P_code = code;
+      156 	     return;
+      157 	     end;
+      158 
+      159 	P_old_value = tp_value;			/* Return value and address */
+      160 	P_tp_ptr = tp_ptr;
+      161 	P_tp_type = tp_type;
+      162 	P_long_name = tp_long_name;
+      163 	P_short_name = tp_short_name;
+      164 
+      165 	P_code = 0;
+      166 	return;					/* End of hc_tune$get */
+      167 
+      168 /*  */
+      169 
+      170 hc_tune$set: entry (P_input_name, P_new_value, P_old_value, P_tp_ptr, P_error, P_code);
+      171 
+      172 /* This entry sets a tuning parameter, also returning its old value and address. The change
+      173*   is announced on the BOS console. It is accessed via hphcs_$set_tuning_parameter */
+      174 
+      175 	severity = ANNOUNCE;
+      176 	goto SET_COMMON;
+      177 
+      178 
+      179 hc_tune$set_silent: entry (P_input_name, P_new_value, P_old_value, P_tp_ptr, P_error, P_code);
+      180 
+      181 /* This entry sets a tuning parameter, as above, but logs the change without typing it out.
+      182*   Used only by the Initializer, it is accessed via initializer_gate_$set_tuning_parameter */
+      183 
+      184 	severity = LOG;
+      185 	goto SET_COMMON;
+      186 
+      187 
+      188 SET_COMMON:
+      189 	code = 0;
+      190 	input_name = P_input_name;			/* Copy input parameter */
+      191 	new_value = P_new_value;
+      192 	unspec (new_binary_value) = new_value;		/* Make it available in all its forms */
+      193 	unspec (new_scaled_value) = new_value;
+      194 	unspec (new_char_value) = new_value;
+      195 	unspec (new_float_value) = new_value;
+      196 	
+      197 	function = GET;				/* First, find it */
+      198 	return_label = SET_LOOKUP_RETURNS;
+      199 	goto LOOKUP;				/* Find it, set idx & code */
+      200 
+      201 SET_LOOKUP_RETURNS:
+      202 	if code ^= 0 then do;			/* Can't set it */
+      203 	     P_code = code;
+      204 	     P_error = error_reason;
+      205 	     return;
+      206 	     end;
+      207 
+      208 	P_old_value = tp_value;			/* Return value and address */
+      209 	P_tp_ptr = tp_ptr;
+      210 
+      211 	function = SET;				/* Next, check whether the new value is valid */
+      212 	return_label = SET_CHECK_RETURNS;
+      213 	goto TP (tp_idx);
+      214 
+      215 SET_CHECK_RETURNS:
+      216 	if code ^= 0 then do;			/* Can't set it */
+      217 	     P_code = code;
+      218 	     P_error = error_reason;
+      219 	     return;
+      220 	     end;
+      221 
+      222 /*  */
+      223 
+      224 	if tp_type = TP_CHAR then			/* Call syserr to announce the change */
+      225 	     call syserr (severity, "hc_tune: Changing ^a from ""^4a"" to ""^4a"" for ^a",
+      226 		tp_long_name, char_value, new_char_value, pds$process_group_id);
+      227 
+      228 	else if tp_type = TP_INTEGER then
+      229 	     call syserr (severity, "hc_tune: Changing ^a from ^d to ^d for ^a",
+      230 		tp_long_name, binary_value, new_binary_value, pds$process_group_id);
+      231 
+      232 	else if tp_type = TP_SCALED_INTEGER then
+      233 	     call syserr (severity, "hc_tune: Changing ^a from ^f to ^f for ^a",
+      234 		tp_long_name, round (decimal (scaled_value), 4),
+      235 		round (decimal (new_scaled_value), 4), pds$process_group_id);
+      236 
+      237 	else if tp_type = TP_MICROSECONDS then
+      238 	     call syserr (severity, "hc_tune: Changing ^a from ^f to ^f seconds for ^a",
+      239 		tp_long_name, (float (binary_value) / 1.0e6),
+      240 		(float (new_binary_value) / 1.0e6), pds$process_group_id);
+      241 
+      242 	else if tp_type = TP_ON_OFF then
+      243 	     call syserr (severity, "hc_tune: Changing ^a from ^[on^;off^] to ^[on^;off^] for ^a",
+      244 		tp_long_name, (binary_value ^= 0), (new_binary_value ^= 0), pds$process_group_id);
+      245 
+      246 	else if tp_type = TP_FLOAT
+      247 	then call syserr (severity, "hc_tune: Changing ^a from ^f to ^f for ^a.",
+      248 	          tp_long_name, float_value, new_float_value, pds$process_group_id);
+      249 
+      250 	else call syserr (severity, "hc_tune: Changing ^a from ^w to ^w for ^a",
+      251 		tp_long_name, tp_value, new_value, pds$process_group_id);
+      252 
+      253 
+      254 	tp_ptr -> based_value = new_value;		/* Do it */
+      255 
+      256 	P_code = 0;
+      257 	P_error = "";
+      258 	return;					/* End of hc_tune$get */
+      259 
+      260 /*  */
+      261 
+      262 hc_tune$list: entry (P_area_ptr, P_special_flag, P_tp_count, P_tp_list_ptr);
+      263 
+      264 /* This entrypoint returns a list of all the defined tuning parameters, and their current
+      265*   values. If P_special_flag is set, it returns all parameters, including special ones.
+      266*   It is accessed via metering_gate_$list_tuning_parameters. */
+      267 
+      268 	input_name = "";
+      269 	code = 0;
+      270 
+      271 	list_area_ptr = P_area_ptr;
+      272 	return_special = P_special_flag;
+      273 
+      274 	function = LIST;
+      275 
+      276 	return_label = LIST_COUNT_RETURNS;		/* "return" to our label, below */
+      277 	tp_list_size = 0;				/* start out empty */
+      278 	do tp_idx = 1 to hbound (TP, 1); 		/* First, count them */
+      279 	     goto TP (tp_idx); 			/* "call" */
+      280 LIST_COUNT_RETURNS:
+      281 	     if return_special | (^tp_special) then tp_list_size = tp_list_size + 1;
+      282 	     end;
+      283 
+      284 	allocate tp_list in (list_area) set (tp_list_ptr); /* Make room to return to our caller */
+      285 
+      286 	return_label = LIST_LISTING_RETURNS;		/* "return" to our label, below */
+      287 	list_idx = 1;				/* start out with the first one */
+      288 	do tp_idx = 1 to hbound (TP, 1);		/* Get info for each parameter, again */
+      289 	     goto TP (tp_idx); 			/* "call" to get info on this parameter */
+      290 LIST_LISTING_RETURNS:				/* and "return" here */
+      291 	     if tp_special & (^return_special) then goto LIST_NOT_RETURN_THIS_ONE;
+      292 
+      293 	     tp_list (list_idx).type = tp_type;
+      294 	     tp_list (list_idx).long_name = tp_long_name;
+      295 	     tp_list (list_idx).short_name = tp_short_name;
+      296 	     tp_list (list_idx).ptr = tp_ptr;
+      297 	     tp_list (list_idx).value = tp_value;
+      298 	     tp_list (list_idx).special = tp_special;
+      299 	     list_idx = list_idx + 1;
+      300 
+      301 LIST_NOT_RETURN_THIS_ONE:
+      302 	     end;
+      303 
+      304 	P_tp_count = tp_list_size;			/* Return info */
+      305 	P_tp_list_ptr = tp_list_ptr;
+      306 
+      307 	return;					/* End of hc_tune$list */
+      308 
+      309 /*  */
+      310 
+      311 tp_init: proc (P_tp_ptr, P_long_name, P_short_name, P_type);
+      312 
+      313 dcl  P_tp_ptr pointer parameter;
+      314 dcl  P_long_name char (*) parameter;
+      315 dcl  P_short_name char (*) parameter;
+      316 dcl  P_type fixed bin;
+      317 
+      318 /* This procedure initializes values for a single tuning parameter */
+      319 
+      320 	tp_ptr = P_tp_ptr;
+      321 	tp_long_name = P_long_name;
+      322 	tp_short_name = P_short_name;
+      323 	tp_type = P_type;
+      324 	if tp_short_name = "" then tp_short_name = tp_long_name;
+      325 
+      326 	tp_special = "0"b;
+      327 	code = 0;
+      328 
+      329 	tp_value = tp_ptr -> based_value;		/* Get the value from ring zero */
+      330 
+      331 	unspec (binary_value) = tp_value;
+      332 	unspec (scaled_value) = tp_value;
+      333 	unspec (char_value) = tp_value;
+      334 	unspec (float_value) = tp_value;
+      335 
+      336 	return;
+      337 	end tp_init;
+      338 
+      339 /*  */
+      340 
+      341 /* This portion of the program decides whether a particular tuning parameter exists, and
+      342*   sets code and tp_idx appropriately. */
+      343 
+      344 LOOKUP:	lookup_return_label = return_label;		/* Save return label, for "recursion" */
+      345 
+      346 	return_label = LOOKUP_INTERNAL_RETURN;
+      347 	do tp_idx = 1 to hbound (TP, 1); 		/* Try each one in its turn */
+      348 	     goto TP (tp_idx); 			/* "call" */
+      349 LOOKUP_INTERNAL_RETURN:
+      350 	     if tp_long_name = input_name then goto lookup_return_label; /* This is the one we want */
+      351 	     if tp_short_name = input_name then goto lookup_return_label;
+      352 	     end;
+      353 
+      354 	code = error_table_$unknown_tp;		/* Sorry, no sale */
+      355 	error_reason = "";
+      356 	tp_idx = -1;
+      357 	goto lookup_return_label;			/* "return" */
+      358 
+      359 
+      360 
+      361 /* This part of the program finishes off the lookup/checking of each individual tuning parameter */
+      362 
+      363 RETURN:	goto return_label;				/* Set all values, etc. */
+      364 
+      365 
+      366 
+      367 
+      368 /* This label is used to indicate that a parameter cannot be set to the requested value
+      369*   for some reason. No attempt is made to describe the reason, however. */
+      370 
+      371 ABORT_SETTING:
+      372 	code = error_table_$invalid_tp_value;
+      373 
+      374 	goto return_label;
+      375 
+      376 /*  */
+      377 
+      378 range: proc (P_lower, P_upper, P_range_description);
+      379 
+      380 /* This procedure insures that, for set attempts only, the specified value is within range */
+      381 
+      382 dcl  P_lower fixed bin (35) parameter;
+      383 dcl  P_upper fixed bin (35) parameter;
+      384 dcl  P_range_description char (*) parameter;
+      385 
+      386 
+      387 	if function ^= SET then return;		/* Not setting, ignore it */
+      388 
+      389 	if new_binary_value < P_lower then call abort (P_range_description);
+      390 	if new_binary_value > P_upper then call abort (P_range_description);
+      391 
+      392 	return;					/* All OK */
+      393 	end range;
+      394 
+      395 
+      396 
+      397 need_integer: proc ();
+      398 
+      399 /* This procedure aborts if a scaled "integer" is not actually an integral value */
+      400 
+      401 	if function ^= SET then return;
+      402 
+      403 	if trunc (new_scaled_value) ^= new_scaled_value then
+      404 	     call abort ("an integer value");
+      405 
+      406 	return;
+      407 	end need_integer;
+      408 
+      409 
+      410 
+      411 on_or_off: proc ();
+      412 
+      413 /* This procedure rejects attempts to set on/off parameters to invalid values */
+      414 
+      415 	if function ^= SET then return;		/* Not setting, ignore it */
+      416 
+      417 	if new_binary_value ^= 0 then
+      418 	     if new_binary_value ^= 1 then
+      419 		call abort ("Not ""on"" or ""off""");
+      420 
+      421 	return;					/* All OK */
+      422 	end on_or_off;
+      423 
+      424 
+      425 /* COMMENT THIS IN WHEN A FLOATING POINT PARM IS DEFINED */
+      426 
+      427 
+      428 /* float_range:
+      429*/* 	procedure (P_lower, P_upper, P_range_description);
+      430*/*
+      431*/*	declare (P_lower, P_upper) float bin (27) aligned;
+      432*/*	declare P_range_description character (*);
+      433*
+      434*/*	if function ^= SET then return;
+      435*
+      436*/*	if new_float_value < P_lower | new_float_value > P_upper
+      437*/*	then call abort (P_range_description);
+      438*
+      439*/*	return;
+      440*/*	end float_range;
+      441**/
+      442 scaled_range:
+      443           procedure (P_lower, P_upper, P_range_description);
+      444 
+      445 	declare (P_lower, P_upper) fixed bin (35, 18);
+      446 	declare P_range_description character (*);
+      447 
+      448 	if function ^= SET
+      449 	then return;
+      450 
+      451 	if new_scaled_value < P_lower | new_scaled_value > P_upper
+      452 	then call abort (P_range_description);
+      453 
+      454 	return;
+      455 	end scaled_range;
+      456 
+      457 
+      458 abort: proc (P_reason);
+      459 
+      460 /* This procedure just performs an abort -- it would be used anywhere the
+      461*   valid values cannot be tested by either of the above procedures. It is a
+      462*   procedure only in order to retain the general procedural structure of this
+      463*   program. */
+      464 
+      465 dcl  P_reason char (*);
+      466 
+      467 
+      468 	error_reason = P_reason;
+      469 
+      470 	goto ABORT_SETTING;
+      471 
+      472 	end abort;
+      473 
+      474 /*  */
+      475 
+      476 /* At last, the tuning parameters themselves: */
+      477 
+      478 
+      479 
+      480 dcl  tc_data$tefirst fixed bin (35) external static;
+      481 
+      482 TP (1):	call tp_init (addr (tc_data$tefirst),
+      483 	     "tefirst", "", TP_MICROSECONDS);
+      484 
+      485 	call range (500, ONE_MINUTE, "between 500 us. and one minute");
+      486 	goto RETURN;
+      487 
+      488 
+      489 
+      490 dcl  tc_data$telast fixed bin (35) external static;
+      491 
+      492 TP (2):	call tp_init (addr (tc_data$telast),
+      493 	     "telast", "", TP_MICROSECONDS);
+      494 
+      495 	call range (500, ONE_MINUTE, "between 500 us. and one minute");
+      496 	if function = SET
+      497 	     then if ^tc_data$gv_integration_set
+      498 	          then tc_data$gv_integration = 4 * new_binary_value;
+      499 	goto RETURN;
+      500 
+      501 
+      502 
+      503 dcl  tc_data$timax fixed bin (35) external static;
+      504 
+      505 TP (3):	call tp_init (addr (tc_data$timax),
+      506 	     "timax", "", TP_MICROSECONDS);
+      507 
+      508 	call range (500, ONE_MINUTE, "between 500 us. and one minute");
+      509 	goto RETURN;
+      510 
+      511 
+      512 
+      513 dcl  tc_data$priority_sched_inc fixed bin (35) external static;
+      514 
+      515 TP (4):	call tp_init (addr (tc_data$priority_sched_inc),
+      516 	     "priority_sched_inc", "psi", TP_MICROSECONDS);
+      517 
+      518 	call range (100000, FIVE_HOURS, "between 100 ms. and five hours");
+      519 	goto RETURN;
+      520 
+      521 
+      522 
+      523 dcl  tc_data$ncpu fixed bin (35) external static;
+      524 dcl  tc_data$max_max_eligible fixed bin (35) external static;
+      525 dcl  tc_data$min_eligible fixed bin (35) external static;
+      526 
+      527 TP (5):	call tp_init (addr (tc_data$min_eligible),
+      528 	     "min_eligible", "mine", TP_SCALED_INTEGER);
+      529 
+      530 	call need_integer ();
+      531 	call range ((tc_data$ncpu * SCALE), (tc_data$max_eligible), "at least as large as the number of cpus");
+      532 	call range (0, (tc_data$max_eligible), "not greater than max_eligible");
+      533 	goto RETURN;				/* up to the maximum allowed */
+      534 
+      535 
+      536 
+      537 dcl  tc_data$max_eligible fixed bin (35) external static;
+      538 
+      539 TP (6):	call tp_init (addr (tc_data$max_eligible),
+      540 	     "max_eligible", "maxe", TP_SCALED_INTEGER);
+      541 
+      542 	call need_integer ();
+      543 	call range ((tc_data$min_eligible), (tc_data$max_max_eligible), "between min_eligible and max_max_eligible");
+      544 	goto RETURN;				/* up to the maximum allowed */
+      545 
+      546 
+      547 
+      548 dcl  tc_data$max_batch_elig fixed bin (35) external static;
+      549 
+      550 TP (7):	call tp_init (addr (tc_data$max_batch_elig),
+      551 	     "max_batch_elig", "maxabs", TP_INTEGER);
+      552 
+      553 	call range (0, (tc_data$max_eligible), "between 0 and max_eligible");
+      554 	goto RETURN;
+      555 
+      556 
+      557 
+      558 dcl  tc_data$working_set_factor fixed bin (35) external static;
+      559 
+      560 TP (8):	call tp_init (addr (tc_data$working_set_factor),
+      561 	     "working_set_factor", "wsf", TP_SCALED_INTEGER);
+      562 
+      563 	call range (0, (2 * SCALE), "between 0 and 2");
+      564 	goto RETURN;
+      565 
+      566 
+      567 
+      568 dcl  tc_data$working_set_addend fixed bin (35) external static;
+      569 
+      570 TP (9):	call tp_init (addr (tc_data$working_set_addend),
+      571 	     "working_set_addend", "wsa", TP_INTEGER);
+      572 
+      573 	call range (-1000, 1000, "between -1000 and 1000");
+      574 	goto RETURN;
+      575 
+      576 
+      577 
+      578 dcl  tc_data$deadline_mode fixed bin (35) external static;
+      579 
+      580 TP (10):	call tp_init (addr (tc_data$deadline_mode),
+      581 	     "deadline_mode", "dmode", TP_ON_OFF);
+      582 
+      583 	call on_or_off ();				/* only two possible values */
+      584 	goto RETURN;
+      585 
+      586 
+      587 
+      588 dcl  tc_data$int_q_enabled fixed bin (35) external static;
+      589 
+      590 TP (11):	call tp_init (addr (tc_data$int_q_enabled),
+      591 	     "int_q_enabled", "intq", TP_ON_OFF);
+      592 
+      593 	call on_or_off ();				/* only two possible values */
+      594 	goto RETURN;
+      595 
+      596 
+      597 
+      598 dcl  tc_data$post_purge_switch fixed bin (35) external static;
+      599 
+      600 TP (12):	call tp_init (addr (tc_data$post_purge_switch),
+      601 	     "post_purge", "pp", TP_ON_OFF);
+      602 
+      603 	call on_or_off ();				/* only two possible values */
+      604 	goto RETURN;
+      605 
+      606 
+      607 
+      608 dcl  tc_data$pre_empt_sample_time fixed bin (35) external static;
+      609 
+      610 TP (13):	call tp_init (addr (tc_data$pre_empt_sample_time),
+      611 	     "pre_empt_sample_time", "pest", TP_MICROSECONDS);
+      612 
+      613 	call range (500, ONE_SECOND, "between 500 us. and one second");
+      614 	goto RETURN;
+      615 
+      616 
+      617 
+      618 dcl  tc_data$gp_at_notify fixed bin (35) external static;
+      619 
+      620 TP (14):	call tp_init (addr (tc_data$gp_at_notify),
+      621 	     "gp_at_notify", "gpn", TP_ON_OFF);
+      622 
+      623 	call on_or_off ();				/* only two possible values */
+      624 	goto RETURN;
+      625 
+      626 
+      627 
+      628 dcl  tc_data$gp_at_ptlnotify fixed bin (35) external static;
+      629 
+      630 TP (15):	call tp_init (addr (tc_data$gp_at_ptlnotify),
+      631 	     "gp_at_ptlnotify", "gpp", TP_ON_OFF);
+      632 
+      633 	call on_or_off ();				/* only two possible values */
+      634 	goto RETURN;
+      635 
+      636 
+      637 
+      638 dcl  tc_data$process_initial_quantum fixed bin (35) external static;
+      639 
+      640 TP (16):	call tp_init (addr (tc_data$process_initial_quantum),
+      641 	     "process_initial_quantum", "piq", TP_MICROSECONDS);
+      642 
+      643 	call range (100000, (30 * ONE_SECOND), "between 100 ms. and 30 seconds");
+      644 	goto RETURN;
+      645 
+      646 
+      647 
+      648 dcl  tc_data$quit_priority fixed bin (35) external static;
+      649 
+      650 TP (17):	call tp_init (addr (tc_data$quit_priority),
+      651 	     "quit_priority", "qp", TP_SCALED_INTEGER);
+      652 
+      653 	call range (0, (2 * SCALE), "between zero and two");
+      654 	goto RETURN;
+      655 
+      656 
+      657 
+      658 dcl  tc_data$nto_delta fixed bin (35) external static;
+      659 
+      660 TP (18):	call tp_init (addr (tc_data$nto_delta),
+      661 	     "notify_timeout_interval", "nto_delta", TP_MICROSECONDS);
+      662 
+      663 	call range (ONE_SECOND, TEN_MINUTES, "between one second and ten minutes");
+      664 	goto RETURN;
+      665 
+      666 
+      667 
+      668 dcl  tc_data$time_out_severity fixed bin (35) external static;
+      669 
+      670 TP (19):	call tp_init (addr (tc_data$time_out_severity),
+      671 	     "notify_timeout_severity", "nto_severity", TP_INTEGER);
+      672 
+      673 	call range (-1, 5, "any of -1, 0, 1, 3, 4, or 5");	/* Disallow 2 */
+      674 	if new_binary_value = 2 then call abort ("any of -1, 0, 1, 3, 4, or 5");
+      675 	goto RETURN;
+      676 
+      677 
+      678 
+      679 dcl  sst$nused fixed bin (35) external static;
+      680 dcl  sst$write_limit fixed bin (35) external static;
+      681 
+      682 TP (20):	call tp_init (addr (sst$write_limit),
+      683 	     "write_limit", "wlim", TP_INTEGER);
+      684 
+      685 	call range (30, divide (sst$nused, 2, 35, 0), "between 30 pages and half of memory");
+      686 	goto RETURN;
+      687 
+      688 
+      689 declare tc_data$stk_truncate bit (1) ext static;
+      690 TP (21): call tp_init (addr (tc_data$stk_truncate),
+      691    "stack_truncation", "stkt", TP_ON_OFF);
+      692 
+      693 	tp_special = "1"b;
+      694 	call on_or_off ();
+      695 	goto RETURN;
+      696 
+      697 declare tc_data$stk_truncate_always bit (1) aligned ext;
+      698 
+      699 
+      700 TP (22): call tp_init (addr (tc_data$stk_truncate_always),
+      701        "stack_truncation_always", "stta", TP_ON_OFF);
+      702 
+      703 	tp_special = "1"b;
+      704 	call on_or_off;
+      705 	goto RETURN;
+      706 
+      707 
+      708 declare tc_data$stk_trunc_avg_f1 aligned fixed bin (35, 18) ext static;
+      709 declare tc_data$stk_trunc_avg_f2 aligned fixed bin (35, 18) ext static;
+      710 
+      711 TP (23): call tp_init (addr (tc_data$stk_trunc_avg_f1),
+      712 	     "stk_trunc_block_avg_factor", "stk_baf",
+      713               TP_SCALED_INTEGER);
+      714 
+      715            tp_special = "1"b;
+      716 	 call scaled_range (0b, 1b, "between zero and one.");
+      717 
+      718 	if function = SET
+      719 	then tc_data$stk_trunc_avg_f2 = 1b - tc_data$stk_trunc_avg_f1;
+      720 
+      721 	 goto RETURN;
+      722 
+      723 
+      724 
+      725 declare wired_hardcore_data$trap_invalid_masked bit (1) aligned ext static;
+      726 TP (24): call tp_init (addr (wired_hardcore_data$trap_invalid_masked),
+      727    "trap_invalid_masked", "", TP_ON_OFF);
+      728 
+      729           tp_special = "1"b;
+      730           call on_or_off ();
+      731 	goto RETURN;
+      732 
+      733 
+      734 declare tc_data$gv_integration fixed bin (35) external static;
+      735 declare tc_data$gv_integration_set bit (1) aligned external static;
+      736 
+      737 TP (25): call tp_init (addr (tc_data$gv_integration),
+      738    "gv_integration", "", TP_MICROSECONDS);
+      739 
+      740           call range ((tc_data$telast), FIVE_HOURS, "between telast and 5 hours");
+      741 
+      742 	if function = SET
+      743 	     then tc_data$gv_integration_set = "1"b;
+      744 	goto RETURN;
+      745 	
+      746 
+      747 dcl  sst$meter_ast_locking fixed bin (35) external static;
+      748 
+      749 TP (26): call tp_init (addr (sst$meter_ast_locking),
+      750                "meter_ast_locking", "", TP_ON_OFF);
+      751 
+      752 	tp_special = "1"b;
+      753 	call on_or_off ();
+      754 	goto RETURN;
+      755 
+      756 
+      757 dcl  tc_data$realtime_io_priority_switch fixed bin (35) external static;
+      758 
+      759 TP (27): call tp_init (addr (tc_data$realtime_io_priority_switch),
+      760 	     "realtime_io_priority", "io_prior", TP_ON_OFF);
+      761 
+      762           call on_or_off ();
+      763 	goto RETURN;
+      764 
+      765 
+      766 dcl  tc_data$realtime_io_deadline fixed bin (35) external static;
+      767 
+      768 TP (28): call tp_init (addr (tc_data$realtime_io_deadline),
+      769 	     "realtime_io_deadline", "io_deadline", TP_MICROSECONDS);
+      770 
+      771           call range (500, ONE_MINUTE, "between 500 us. and one minute");
+      772 	goto RETURN;
+      773 
+      774 
+      775 dcl  tc_data$realtime_io_quantum fixed bin (35) external static;
+      776 
+      777 TP (29): call tp_init (addr (tc_data$realtime_io_quantum),
+      778 	     "realtime_io_quantum", "io_quantum", TP_MICROSECONDS);
+      779 
+      780           call range (500, ONE_MINUTE, "between 500 us. and one minute");
+      781 	goto RETURN;
+      782 
+      783 dcl  sst$checksum_filemap fixed bin (35) external static;
+      784 
+      785 TP (30): call tp_init (addr (sst$checksum_filemap),
+      786 	     "checksum_filemap", "", TP_ON_OFF);
+      787 
+      788 	tp_special = "1"b;
+      789 	call on_or_off ();
+      790 	goto RETURN;
+      791 
+      792 dcl  sys_info$default_256K_enable bit (1) aligned ext static;
+      793 
+      794 TP (31): call tp_init (addr (sys_info$default_256K_enable),
+      795    	     "default_256K_enable", "", TP_ON_OFF);
+      796 	tp_special = "1"b;
+      797 	call on_or_off ();
+      798 	go to RETURN;
+      799 
+      800 dcl  sst$dirlock_writebehind fixed bin (35) external static;
+      801 
+      802 TP (32):	call tp_init (addr (sst$dirlock_writebehind),
+      803 	     "dirlock_writebehind", "dirw", TP_ON_OFF);
+      804 	call on_or_off ();
+      805 	goto RETURN;
+      806 
+      807  /* BEGIN INCLUDE FILE ... tuning_parameter_info.incl.pl1 ... 04/21/81 ... WOS */
+  1     2 
+  1     3 dcl  tp_info_ptr pointer;
+  1     4 
+  1     5 dcl 1 tp_info aligned based (tp_info_ptr),
+  1     6     2 ptr pointer unaligned,				/* Location of the value */
+  1     7     2 value bit (36) aligned, 			/* Current value */
+  1     8     2 type fixed bin,				/* See types, below */
+  1     9     2 special bit (1) aligned,			/* Whether this one is "special" */
+  1    10     2 long_name char (32) unaligned,			/* Long and short names */
+  1    11     2 short_name char (16) unaligned;
+  1    12 
+  1    13 dcl (TP_ON_OFF		init (1), 		/* bit (1) aligned -- also "on" and "off" to the command */
+  1    14      TP_INTEGER		init (2), 		/* fixed bin (35) */
+  1    15      TP_MICROSECONDS	init (3), 		/* fixed bin (35) microseconds, scaled by command */
+  1    16      TP_SCALED_INTEGER	init (4), 		/* fixed bin (35, 18) */
+  1    17      TP_CHAR		init (5),			/* char (4) aligned */
+  1    18      TP_FLOAT		init (6)			/* float bin (27) aligned */
+  1    19 	) fixed binary internal static options (constant);
+  1    20 
+  1    21 /* END INCLUDE FILE ... tuning_parameter_info.incl.pl1 */
+      807 
+      808  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  2     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  2     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  2     4 
+  2     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  2     6 
+  2     7 dcl (
+  2     8 
+  2     9 /* The following constants define the message action codes.  This indicates
+  2    10*how a message is to be handled.  */
+  2    11 
+  2    12      SYSERR_CRASH_SYSTEM	init (1),			
+  2    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  2    14 
+  2    15      SYSERR_TERMINATE_PROCESS	init (2),
+  2    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  2    17 
+  2    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  2    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  2    20 
+  2    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  2    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  2    23 
+  2    24      SYSERR_LOG_OR_PRINT	init (4),
+  2    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  2    26 
+  2    27      SYSERR_LOG_OR_DISCARD	init (5),
+  2    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  2    29 
+  2    30 
+  2    31 /* The following constants are added to the normal severities to indicate
+  2    32*different sorting classes of messages.  */
+  2    33 
+  2    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  2    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  2    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  2    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  2    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  2    39 	) fixed bin internal static options (constant);
+  2    40 
+  2    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      808 
+      809 
+      810 	end hc_tune;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  1059.0  hc_tune.pl1                       >spec>install>1110>hc_tune.pl1
+807          1    03/29/82  1006.9  tuning_parameter_info.incl.pl1    >ldd>include>tuning_parameter_info.incl.pl1
+808          2    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                               constant        fixed bin(17,0)          initial dcl 2-7 ref 175
+FIVE_HOURS                      000040 constant        fixed bin(35,0)          initial dcl 128 set ref 518* 740*
+GET                                    constant        fixed bin(17,0)          initial dcl 133 ref 147 197
+LIST                                   constant        fixed bin(17,0)          initial dcl 132 ref 274
+LOG                                    constant        fixed bin(17,0)          initial dcl 2-7 ref 184
+ONE_MINUTE                      000042 constant        fixed bin(35,0)          initial dcl 126 set ref 485* 495* 508* 771* 780*
+ONE_SECOND                      000043 constant        fixed bin(35,0)          initial dcl 125 set ref 613* 643 663*
+P_area_ptr                             parameter       pointer                  dcl 74 ref 262 271
+P_code                                 parameter       fixed bin(35,0)          dcl 78 set ref 140 155* 165* 170 179 203* 217* 256*
+P_error                                parameter       char                     packed unaligned dcl 72 set ref 170 179 204* 218*
+                                                                                  257*
+P_input_name                           parameter       char(32)                 packed unaligned dcl 66 ref 140 146 170 179 190
+P_long_name                            parameter       char                     packed unaligned dcl 314 in procedure "tp_init" ref
+                                                                                  311 321
+P_long_name                            parameter       char                     packed unaligned dcl 70 in procedure "hc_tune" set
+                                                                                  ref 140 162*
+P_lower                                parameter       fixed bin(35,18)         dcl 445 in procedure "scaled_range" ref 442 451
+P_lower                                parameter       fixed bin(35,0)          dcl 382 in procedure "range" ref 378 389
+P_new_value                            parameter       bit(36)                  dcl 68 ref 170 179 191
+P_old_value                            parameter       bit(36)                  dcl 67 set ref 140 159* 170 179 208*
+P_range_description                    parameter       char                     packed unaligned dcl 384 in procedure "range" set
+                                                                                  ref 378 389* 390*
+P_range_description                    parameter       char                     packed unaligned dcl 446 in procedure "scaled_range"
+                                                                                  set ref 442 451*
+P_reason                               parameter       char                     packed unaligned dcl 465 ref 458 468
+P_short_name                           parameter       char                     packed unaligned dcl 71 in procedure "hc_tune" set
+                                                                                  ref 140 163*
+P_short_name                           parameter       char                     packed unaligned dcl 315 in procedure "tp_init" ref
+                                                                                  311 322
+P_special_flag                         parameter       bit(1)                   dcl 75 ref 262 272
+P_tp_count                             parameter       fixed bin(17,0)          dcl 76 set ref 262 304*
+P_tp_list_ptr                          parameter       pointer                  dcl 77 set ref 262 305*
+P_tp_ptr                               parameter       pointer                  dcl 69 in procedure "hc_tune" set ref 140 160* 170
+                                                                                  179 209*
+P_tp_ptr                               parameter       pointer                  dcl 313 in procedure "tp_init" ref 311 320
+P_tp_type                              parameter       fixed bin(17,0)          dcl 73 set ref 140 161*
+P_type                                 parameter       fixed bin(17,0)          dcl 316 ref 311 323
+P_upper                                parameter       fixed bin(35,18)         dcl 445 in procedure "scaled_range" ref 442 451
+P_upper                                parameter       fixed bin(35,0)          dcl 383 in procedure "range" ref 378 390
+SCALE                                  constant        fixed bin(35,0)          initial dcl 130 ref 531 563 653
+SET                                    constant        fixed bin(17,0)          initial dcl 134 ref 211 387 401 415 448 496 718 742
+TEN_MINUTES                     000041 constant        fixed bin(35,0)          initial dcl 127 set ref 663*
+TP_CHAR                                constant        fixed bin(17,0)          initial dcl 1-13 ref 224
+TP_FLOAT                               constant        fixed bin(17,0)          initial dcl 1-13 ref 246
+TP_INTEGER                             constant        fixed bin(17,0)          initial dcl 1-13 set ref 228 550* 570* 670* 682*
+TP_MICROSECONDS                        constant        fixed bin(17,0)          initial dcl 1-13 set ref 237 482* 492* 505* 515*
+                                                                                  610* 640* 660* 737* 768* 777*
+TP_ON_OFF                              constant        fixed bin(17,0)          initial dcl 1-13 set ref 242 580* 590* 600* 620*
+                                                                                  630* 690* 700* 726* 749* 759* 785* 794* 802*
+TP_SCALED_INTEGER                      constant        fixed bin(17,0)          initial dcl 1-13 set ref 232 527* 539* 560* 650*
+                                                                                  711*
+addr                                                   builtin function         dcl 136 ref 482 482 492 492 505 505 515 515 527 527
+                                                                                  539 539 550 550 560 560 570 570 580 580 590 590
+                                                                                  600 600 610 610 620 620 630 630 640 640 650 650
+                                                                                  660 660 670 670 682 682 690 690 700 700 711 711
+                                                                                  726 726 737 737 749 749 759 759 768 768 777 777
+                                                                                  785 785 794 794 802 802
+based_value                            based           bit(36)                  dcl 89 set ref 254* 329
+binary_value                    000216 automatic       fixed bin(35,0)          dcl 107 set ref 228* 237 242 331*
+char_value                      000220 automatic       char(4)                  dcl 109 set ref 224* 333*
+code                            000123 automatic       fixed bin(35,0)          dcl 85 set ref 148* 153 155 188* 201 203 215 217
+                                                                                  269* 327* 354* 371*
+decimal                                                builtin function         dcl 136 ref 232 232 232 232
+divide                                                 builtin function         dcl 136 ref 685 685
+error_reason                    000125 automatic       char(128)                packed unaligned dcl 87 set ref 204 218 355* 468*
+error_table_$invalid_tp_value   000014 external static fixed bin(35,0)          dcl 121 ref 371
+error_table_$unknown_tp         000012 external static fixed bin(35,0)          dcl 120 ref 354
+float                                                  builtin function         dcl 136 ref 237 237
+float_value                     000221 automatic       float bin(27)            dcl 110 set ref 246* 334*
+function                        000110 automatic       fixed bin(17,0)          dcl 81 set ref 147* 197* 211* 274* 387 401 415 448
+                                                                                  496 718 742
+hbound                                                 builtin function         dcl 136 ref 278 288 347
+input_name                      000100 automatic       char(32)                 packed unaligned dcl 80 set ref 146* 190* 268* 349
+                                                                                  351
+list_area                              based           area(1024)               dcl 91 ref 284
+list_area_ptr                   000166 automatic       pointer                  dcl 92 set ref 271* 284
+list_idx                        000173 automatic       fixed bin(17,0)          dcl 97 set ref 287* 293 294 295 296 297 298 299* 299
+long_name                 4            based           char(32)                 array level 2 packed packed unaligned dcl 94 set ref
+                                                                                  294*
+lookup_return_label             000116 automatic       label variable           local dcl 83 set ref 344* 349 351 357
+new_binary_value                000223 automatic       fixed bin(35,0)          dcl 113 set ref 192* 228* 237 242 389 390 417 417
+                                                                                  496 674
+new_char_value                  000225 automatic       char(4)                  dcl 115 set ref 194* 224*
+new_float_value                 000226 automatic       float bin(27)            dcl 116 set ref 195* 246*
+new_scaled_value                000224 automatic       fixed bin(35,18)         dcl 114 set ref 193* 232 232 403 403 451 451
+new_value                       000222 automatic       bit(36)                  dcl 112 set ref 191* 192 193 194 195 250* 254
+pds$process_group_id            000010 external static char(32)                 dcl 118 set ref 224* 228* 232* 237* 242* 246* 250*
+ptr                                    based           pointer                  array level 2 packed packed unaligned dcl 94 set ref
+                                                                                  296*
+return_label                    000112 automatic       label variable           local dcl 82 set ref 150* 198* 212* 276* 286* 344
+                                                                                  346* 363 374
+return_special                  000124 automatic       bit(1)                   dcl 86 set ref 272* 280 290
+round                                                  builtin function         dcl 136 ref 232 232 232 232
+scaled_value                    000217 automatic       fixed bin(35,18)         dcl 108 set ref 232 232 332*
+severity                        000122 automatic       fixed bin(17,0)          dcl 84 set ref 175* 184* 224* 228* 232* 237* 242*
+                                                                                  246* 250*
+short_name               14            based           char(16)                 array level 2 packed packed unaligned dcl 94 set ref
+                                                                                  295*
+special                   3            based           bit(1)                   array level 2 dcl 94 set ref 298*
+sst$checksum_filemap            000124 external static fixed bin(35,0)          dcl 783 set ref 785 785
+sst$dirlock_writebehind         000130 external static fixed bin(35,0)          dcl 800 set ref 802 802
+sst$meter_ast_locking           000114 external static fixed bin(35,0)          dcl 747 set ref 749 749
+sst$nused                       000072 external static fixed bin(35,0)          dcl 679 ref 685 685
+sst$write_limit                 000074 external static fixed bin(35,0)          dcl 680 set ref 682 682
+sys_info$default_256K_enable    000126 external static bit(1)                   dcl 792 set ref 794 794
+syserr                          000016 constant        entry                    external dcl 123 ref 224 228 232 237 242 246 250
+tc_data$deadline_mode           000046 external static fixed bin(35,0)          dcl 578 set ref 580 580
+tc_data$gp_at_notify            000056 external static fixed bin(35,0)          dcl 618 set ref 620 620
+tc_data$gp_at_ptlnotify         000060 external static fixed bin(35,0)          dcl 628 set ref 630 630
+tc_data$gv_integration          000110 external static fixed bin(35,0)          dcl 734 set ref 496* 737 737
+tc_data$gv_integration_set      000112 external static bit(1)                   dcl 735 set ref 496 742*
+tc_data$int_q_enabled           000050 external static fixed bin(35,0)          dcl 588 set ref 590 590
+tc_data$max_batch_elig          000040 external static fixed bin(35,0)          dcl 548 set ref 550 550
+tc_data$max_eligible            000036 external static fixed bin(35,0)          dcl 537 set ref 531 532 539 539 553
+tc_data$max_max_eligible        000032 external static fixed bin(35,0)          dcl 524 ref 543
+tc_data$min_eligible            000034 external static fixed bin(35,0)          dcl 525 set ref 527 527 543
+tc_data$ncpu                    000030 external static fixed bin(35,0)          dcl 523 ref 531
+tc_data$nto_delta               000066 external static fixed bin(35,0)          dcl 658 set ref 660 660
+tc_data$post_purge_switch       000052 external static fixed bin(35,0)          dcl 598 set ref 600 600
+tc_data$pre_empt_sample_time    000054 external static fixed bin(35,0)          dcl 608 set ref 610 610
+tc_data$priority_sched_inc      000026 external static fixed bin(35,0)          dcl 513 set ref 515 515
+tc_data$process_initial_quantum 000062 external static fixed bin(35,0)          dcl 638 set ref 640 640
+tc_data$quit_priority           000064 external static fixed bin(35,0)          dcl 648 set ref 650 650
+tc_data$realtime_io_deadline    000120 external static fixed bin(35,0)          dcl 766 set ref 768 768
+tc_data$realtime_io_priority_switch
+                                000116 external static fixed bin(35,0)          dcl 757 set ref 759 759
+tc_data$realtime_io_quantum     000122 external static fixed bin(35,0)          dcl 775 set ref 777 777
+tc_data$stk_trunc_avg_f1        000102 external static fixed bin(35,18)         dcl 708 set ref 711 711 718
+tc_data$stk_trunc_avg_f2        000104 external static fixed bin(35,18)         dcl 709 set ref 718*
+tc_data$stk_truncate            000076 external static bit(1)                   packed unaligned dcl 689 set ref 690 690
+tc_data$stk_truncate_always     000100 external static bit(1)                   dcl 697 set ref 700 700
+tc_data$tefirst                 000020 external static fixed bin(35,0)          dcl 480 set ref 482 482
+tc_data$telast                  000022 external static fixed bin(35,0)          dcl 490 set ref 492 492 740
+tc_data$timax                   000024 external static fixed bin(35,0)          dcl 503 set ref 505 505
+tc_data$time_out_severity       000070 external static fixed bin(35,0)          dcl 668 set ref 670 670
+tc_data$working_set_addend      000044 external static fixed bin(35,0)          dcl 568 set ref 570 570
+tc_data$working_set_factor      000042 external static fixed bin(35,0)          dcl 558 set ref 560 560
+tp_idx                          000177 automatic       fixed bin(17,0)          dcl 101 set ref 213 278* 279* 288* 289* 347* 348*
+                                                                                  356*
+tp_info                                based           structure                level 1 dcl 1-5
+tp_list                                based           structure                array level 1 unaligned dcl 94 set ref 284
+tp_list_ptr                     000170 automatic       pointer                  dcl 95 set ref 284* 293 294 295 296 297 298 305
+tp_list_size                    000172 automatic       fixed bin(17,0)          dcl 96 set ref 277* 280* 280 284 304
+tp_long_name                    000204 automatic       char(32)                 packed unaligned dcl 103 set ref 162 224* 228* 232*
+                                                                                  237* 242* 246* 250* 294 321* 324 349
+tp_ptr                          000174 automatic       pointer                  dcl 99 set ref 160 209 254 296 320* 329
+tp_short_name                   000200 automatic       char(16)                 packed unaligned dcl 102 set ref 163 295 322* 324
+                                                                                  324* 351
+tp_special                      000214 automatic       bit(1)                   dcl 104 set ref 280 290 298 326* 693* 703* 715* 729*
+                                                                                  752* 788* 796*
+tp_type                         000176 automatic       fixed bin(17,0)          dcl 100 set ref 161 224 228 232 237 242 246 293 323*
+tp_value                        000215 automatic       bit(36)                  dcl 106 set ref 159 208 250* 297 329* 331 332 333
+                                                                                  334
+trunc                                                  builtin function         dcl 136 ref 403
+type                      2            based           fixed bin(17,0)          array level 2 dcl 94 set ref 293*
+unspec                                                 builtin function         dcl 136 set ref 192* 193* 194* 195* 331* 332* 333*
+                                                                                  334*
+value                     1            based           bit(36)                  array level 2 dcl 94 set ref 297*
+wired_hardcore_data$trap_invalid_masked
+                                000106 external static bit(1)                   dcl 725 set ref 726 726
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 2-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 2-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 2-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 2-7
+tp_info_ptr                            automatic       pointer                  dcl 1-3
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ABORT_SETTING                   002032 constant        label                    dcl 371 set ref 470
+GET_LOOKUP_RETURNS              001007 constant        label                    dcl 153 ref 150
+LIST_COUNT_RETURNS              001674 constant        label                    dcl 280 ref 276
+LIST_LISTING_RETURNS            001724 constant        label                    dcl 290 ref 286
+LIST_NOT_RETURN_THIS_ONE        001757 constant        label                    dcl 301 ref 290
+LOOKUP                          001767 constant        label                    dcl 344 ref 151 199
+LOOKUP_INTERNAL_RETURN          002004 constant        label                    dcl 349 ref 346
+RETURN                          002031 constant        label                    dcl 363 ref 486 499 509 519 533 544 554 564 574 584
+                                                                                  594 604 614 624 634 644 654 664 675 686 695 705
+                                                                                  721 731 744 754 763 772 781 790 798 805
+SET_CHECK_RETURNS               001160 constant        label                    dcl 215 ref 212
+SET_COMMON                      001110 constant        label                    dcl 188 ref 176 185
+SET_LOOKUP_RETURNS              001132 constant        label                    dcl 201 ref 198
+TP                              000000 constant        label                    array(32) dcl 482 set ref 213 278 279 288 289 347
+                                                                                  348
+abort                           003557 constant        entry                    internal dcl 458 ref 389 390 403 417 451 674
+hc_tune                         000734 constant        entry                    external dcl 10
+hc_tune$get                     000750 constant        entry                    external dcl 140
+hc_tune$list                    001637 constant        entry                    external dcl 262
+hc_tune$set                     001044 constant        entry                    external dcl 170
+hc_tune$set_silent              001067 constant        entry                    external dcl 179
+need_integer                    003455 constant        entry                    internal dcl 397 ref 530 542
+on_or_off                       003502 constant        entry                    internal dcl 411 ref 583 593 603 623 633 694 704 730
+                                                                                  753 762 789 797 804
+range                           003405 constant        entry                    internal dcl 378 ref 485 495 508 518 531 532 543 553
+                                                                                  563 573 613 643 653 663 673 685 740 771 780
+scaled_range                    003522 constant        entry                    internal dcl 442 ref 716
+tp_init                         003327 constant        entry                    internal dcl 311 ref 482 492 505 515 527 539 550 560
+                                                                                  570 580 590 600 610 620 630 640 650 660 670 682
+                                                                                  690 700 711 726 737 749 759 768 777 785 794 802
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      6054        6206    5257        6064
+Length      6634    5257       132         411     574           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+hc_tune                             323 external procedure  is an external procedure.  
+tp_init                                 internal procedure  shares stack frame of external procedure hc_tune.  
+range                                   internal procedure  shares stack frame of external procedure hc_tune.  
+need_integer                            internal procedure  shares stack frame of external procedure hc_tune.  
+on_or_off                               internal procedure  shares stack frame of external procedure hc_tune.  
+scaled_range                            internal procedure  shares stack frame of external procedure hc_tune.  
+abort                                   internal procedure  shares stack frame of external procedure hc_tune.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+hc_tune                  000100 input_name                  hc_tune
+                         000110 function                    hc_tune
+                         000112 return_label                hc_tune
+                         000116 lookup_return_label         hc_tune
+                         000122 severity                    hc_tune
+                         000123 code                        hc_tune
+                         000124 return_special              hc_tune
+                         000125 error_reason                hc_tune
+                         000166 list_area_ptr               hc_tune
+                         000170 tp_list_ptr                 hc_tune
+                         000172 tp_list_size                hc_tune
+                         000173 list_idx                    hc_tune
+                         000174 tp_ptr                      hc_tune
+                         000176 tp_type                     hc_tune
+                         000177 tp_idx                      hc_tune
+                         000200 tp_short_name               hc_tune
+                         000204 tp_long_name                hc_tune
+                         000214 tp_special                  hc_tune
+                         000215 tp_value                    hc_tune
+                         000216 binary_value                hc_tune
+                         000217 scaled_value                hc_tune
+                         000220 char_value                  hc_tune
+                         000221 float_value                 hc_tune
+                         000222 new_value                   hc_tune
+                         000223 new_binary_value            hc_tune
+                         000224 new_scaled_value            hc_tune
+                         000225 new_char_value              hc_tune
+                         000226 new_float_value             hc_tune
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+fx1_to_fl2          r_ne_as             call_ext_out_desc   return_mac          ext_entry           ext_entry_desc
+trunc_fx1           trunc_fx2           real_to_real_truncatop_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$invalid_tp_value error_table_$unknown_tp       pds$process_group_id          sst$checksum_filemap
+sst$dirlock_writebehind       sst$meter_ast_locking         sst$nused                     sst$write_limit
+sys_info$default_256K_enable  tc_data$deadline_mode         tc_data$gp_at_notify          tc_data$gp_at_ptlnotify
+tc_data$gv_integration        tc_data$gv_integration_set    tc_data$int_q_enabled         tc_data$max_batch_elig
+tc_data$max_eligible          tc_data$max_max_eligible      tc_data$min_eligible          tc_data$ncpu
+tc_data$nto_delta             tc_data$post_purge_switch     tc_data$pre_empt_sample_time  tc_data$priority_sched_inc
+tc_data$process_initial_quantum                             tc_data$quit_priority         tc_data$realtime_io_deadline
+tc_data$realtime_io_priority_switch                         tc_data$realtime_io_quantum   tc_data$stk_trunc_avg_f1
+tc_data$stk_trunc_avg_f2      tc_data$stk_truncate          tc_data$stk_truncate_always   tc_data$tefirst
+tc_data$telast                tc_data$timax                 tc_data$time_out_severity     tc_data$working_set_addend
+tc_data$working_set_factor    wired_hardcore_data$trap_invalid_masked
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     10 000733       140 000741       146 000773       147 001000       148 001002       150 001003       151 001006
+    153 001007       155 001011       156 001012       159 001013       160 001016       161 001020       162 001022
+    163 001027       165 001034       166 001035       170 001036       175 001062       176 001064       179 001065
+    184 001105       185 001107       188 001110       190 001111       191 001116       192 001120       193 001121
+    194 001122       195 001123       197 001124       198 001126       199 001131       201 001132       203 001134
+    204 001135       205 001143       208 001144       209 001147       211 001151       212 001153       213 001156
+    215 001160       217 001162       218 001163       219 001171       224 001172       228 001235       232 001277
+    237 001371       242 001447       246 001517       250 001561       254 001620       256 001622       257 001623
+    258 001631       262 001632       268 001644       269 001647       271 001650       272 001654       274 001657
+    276 001661       277 001664       278 001665       279 001673       280 001674       282 001701       284 001703
+    286 001711       287 001714       288 001716       289 001723       290 001724       293 001730       294 001736
+    295 001742       296 001750       297 001752       298 001754       299 001756       301 001757       304 001761
+    305 001764       307 001766       344 001767       346 001773       347 001776       348 002003       349 002004
+    351 002011       352 002016       354 002020       355 002023       356 002026       357 002030       363 002031
+    371 002032       374 002035       482 002036       485 002046       486 002056       492 002057       495 002067
+    496 002077       499 002110       505 002111       508 002121       509 002131       515 002132       518 002145
+    519 002155       527 002156       530 002172       531 002173       532 002207       533 002221       539 002222
+    542 002237       543 002240       544 002253       550 002254       553 002272       554 002304       560 002305
+    563 002323       564 002340       570 002341       573 002354       574 002371       580 002372       583 002410
+    584 002411       590 002412       593 002430       594 002431       600 002432       603 002446       604 002447
+    610 002450       613 002466       614 002476       620 002477       623 002514       624 002515       630 002516
+    633 002534       634 002535       640 002536       643 002554       644 002567       650 002570       653 002606
+    654 002620       660 002621       663 002641       664 002647       670 002650       673 002671       674 002703
+    675 002714       682 002715       685 002731       686 002745       690 002746       693 002764       694 002766
+    695 002767       700 002770       703 003006       704 003010       705 003011       711 003012       715 003025
+    716 003027       718 003044       721 003060       726 003061       729 003075       730 003077       731 003100
+    737 003101       740 003115       742 003126       744 003134       749 003135       752 003146       753 003150
+    754 003151       759 003152       762 003170       763 003171       768 003172       771 003210       772 003220
+    777 003221       780 003241       781 003251       785 003252       788 003266       789 003270       790 003271
+    794 003272       796 003303       797 003305       798 003306       802 003307       804 003325       805 003326
+    311 003327       320 003345       321 003351       322 003356       323 003362       324 003364       326 003374
+    327 003375       329 003376       331 003400       332 003401       333 003402       334 003403       336 003404
+    378 003405       387 003416       389 003422       390 003437       392 003454       397 003455       401 003456
+    403 003462       406 003501       411 003502       415 003503       417 003507       421 003521       442 003522
+    448 003533       451 003537       454 003556       458 003557       468 003570       470 003575
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

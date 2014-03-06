@@ -1,0 +1,2704 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>sys_trouble.alm                                                                                                                                      
+ASSEMBLED ON:	11/11/89  0951.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " HISTORY COMMENTS:
+                                    13  "  1) change(87-01-19,Fawcett), approve(87-01-19,MCR7531),
+                                    14  "     audit(87-01-19,Martinson), install(87-01-20,MR12.0-1288):
+                                    15  "     Change to set the bb pointer before it is used. Also add segdef sys_trouble.
+                                    16  "                                                      END HISTORY COMMENTS
+                                    17  
+                                    18  
+    000000                          19  inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                    20  
+                                    21  	use	main
+                                    22  
+                                    23  
+                                    24  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    25  "
+                                    26  "	Before spinning waiting for console I/O to die, and before going to
+                                    27  "	bce, the fault vector for lockup is patched to do an SCU/RCU
+                                    28  "	in absolute mode. This must be in absolute mode, in case the lockup
+                                    29  "	happens in early bce. The target of the SCU/RCU is in this program
+                                    30  "	rather than prds$ignore_data, since the latter may not be in the
+                                    31  "	low-order 256K.
+                                    32  "
+                                    33  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    34  	eight
+    000000                          35  ignore_data:
+    000000                          36  	bss	,8		" SCU data for SCU/RCU on lockup fault
+                                    37  
+    000010                          38  ignore_scu_rcu:
+    000010  aa   000000 6572 00     39  	scu	0		" Put into fault vector for lockup fault
+    000011  aa   000000 6132 00     40  	rcu	0		" after absolute address inserted into Y-field
+                                    41  
+                                    42  " 
+                        000012      43  	segdef	sys_trouble
+    000012                          44  sys_trouble:
+    000012  4a  4 00014 2353 20     45  	lda	prds$processor_pattern  get bit pattern for this CPU
+    000013  4a  4 00016 3153 20     46  	cana	scs$bos_restart_flags  are we restarting this processor?
+    000014  0a   000047 6012 00     47  	tnz	restart		if so, get it running again
+                                    48  
+                                    49  
+                                    50  "	If this is the first processor to enter this code,
+                                    51  "	a system trouble connect must be sent to all other
+                                    52  "	processors to stop them too.
+                                    53  
+    000015  4a  4 00020 2353 20     54  	lda	scs$processor	get flags for all running CPU's
+    000016  4a  4 00022 3543 20     55  	stac	scs$trouble_flags	are we the first processor?
+    000017  0a   000021 6012 00     56  	tnz	*+2		if not, skip broadcast
+    000020  0a   000233 7002 00     57  	tsx0	broadcast		broadcast system trouble connects to others
+                                    58  
+    000021  4a  4 00024 7003 20     59  	tsx0	fim_util$set_mask	save mask and mask down
+                                    60  
+                                    61  " 
+                                    62  
+                                    63  "	Copy the machine conditions into prds$sys_trouble_data.
+                                    64  "	This prevents overwriting the data when another
+                                    65  "	system trouble interrupt is used to restart CPU's.
+                                    66  
+    000022  aa  2 00031 2353 00     67  	lda	bp|mc.scu+scu.fi_num_word  get fault code
+    000023  aa   000037 3752 07     68  	ana	scu.fi_num_mask,dl	mask fault code
+    000024  aa   000001 7712 00     69  	arl	scu.fi_num_shift	right-justify
+    000025  aa   000010 1152 07     70  	cmpa	FAULT_NO_CON,dl	connect fault?
+    000026  0a   000031 6012 00     71  	tnz	no_copy		if not, conditions already in trouble_data
+                                    72  
+    000027  4a  4 00026 3503 20     73  	eppap	prds$sys_trouble_data  ap -> cache for machine conditions
+    000030  4a  4 00030 7003 20     74  	tsx0	fim_util$copy_mc	copy the machine conditions
+    000031                          75  no_copy:
+                                    76  
+    000031  4a  4 00032 3537 20     77  	eppbb	pds$history_reg_data	bb -> place to store history regs
+    000032  4a  4 00034 7003 20     78  	tsx0	fim_util$check_mct		go copy cpu type into machine conditions
+    000033  4a  4 00036 7003 20     79  	tsx0	fim_util$force_hist_regs	save the history registers in pds
+                                    80  
+    000034  4a  4 00040 2353 20     81  	lda	prds$processor_tag	CPU tag in A
+    000035  aa   000001 7352 00     82  	als	1		multiply by 2
+    000036  4a  4 00042 1543 20     83  	sdbr	scs$trouble_dbrs,al	save DBR for debugging
+                                    84  
+                                    85  
+                                    86  "	If this is the bootload CPU, enter bce.
+                                    87  "	Otherwise, die gracefully.
+                                    88  
+    000037  aa   000001 3352 07     89  	lca	1,dl		all one's in A
+    000040  4a  4 00014 6753 20     90  	era	prds$processor_pattern  CPU pattern mask in A
+    000041  4a  4 00020 3553 20     91  	ansa	scs$processor	indicate that this CPU is stopped
+                                    92  
+    000042  4a  4 00040 2353 20     93  	lda	prds$processor_tag	processor tag in A
+    000043  4a  4 00044 1153 20     94  	cmpa	scs$bos_processor_tag  is this the bootload CPU?
+    000044  0a   000066 6002 00     95  	tze	enter_bce		if so, go to bce
+                                    96  
+    000045                          97  die:
+    000045  aa   777777 6162 03     98  	dis	-1,du		stop 
+    000046  0a   000045 7102 00     99  	tra	*-1		I said stop!
+                                   100  
+                                   101  " 
+                                   102  
+                                   103  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   104  "
+                                   105  "	The second trouble connect for restarting processors
+                                   106  "	causes control to be transferred here.
+                                   107  "
+                                   108  "
+                                   109  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   110  
+    000047                         111  restart:
+    000047  4a  4 00014 2353 20    112  	lda	prds$processor_pattern  get bit for this processor
+    000050  4a  4 00020 2553 20    113  	orsa	scs$processor	indicate CPU is running again
+    000051  0a   000364 6752 00    114  	era	=-1		complement to make a mask
+    000052  4a  4 00016 3553 20    115  	ansa	scs$bos_restart_flags  indicate processor has been restarted
+    000053  4a  4 00046 3553 20    116  	ansa	scs$sys_trouble_pending  turn off trouble flag for this processor
+                                   117  
+    000054  4a  4 00050 3523 20    118  	eppbp	wired_fim$trouble_prs,*  bp -> system trouble m.c. area
+    000055  4a  4 00052 7003 20    119  	tsx0	fim_util$restore_mask  restore original controller mask
+                                   120  
+    000056  4a  4 00054 2343 20    121  	szn	scs$faults_initialized  see if system ready for cache
+    000057  0a   000061 6002 00    122  	tze	trouble_exit	transfer if not
+    000060  4a  4 00056 7003 20    123  	tsx0	fim_util$reset_mode_reg  restore mode and cache mode regs
+                                   124  
+                                   125  	odd
+    000061                         126  trouble_exit:
+    000061  4a  4 00060 7003 20    127  	tsx0	fim_util$v_time_calc  start virtual time meters again
+                                   128  
+    000062  aa  2 00050 4677 00    129  	lpl	bp|mc.eis_info	restore ptrs and lgths
+    000063  aa  2 00020 0733 00    130  	lreg	bp|mc.regs_word	and regs
+    000064  aa  2 00000 1733 00    131  	lpri	bp|mc.prs		and prs
+    000065  4a  4 00062 6133 20    132  	rcu	wired_fim$trouble_scuinfo,*	get running again
+                                   133  
+                                   134  " 
+                                   135  
+                                   136  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   137  "
+                                   138  "	The following code copies an error message into the bce
+                                   139  "	flagbox message buffer.
+                                   140  "
+                                   141  "
+                                   142  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   143  
+    000066                         144  enter_bce:
+    000066  4a  4 00046 2353 20    145  	lda	scs$sys_trouble_pending  get flags
+    000067  aa   000022 7352 00    146  	als	18		extract low-order
+    000070  aa   000022 7312 00    147  	ars	18		could be negative number
+    000071  aa   000000 5312 00    148  	neg	0		or zero
+    000072  0a   000142 6002 00    149  	tze	rtb_no_message	if zero, no messag
+    000073  4a  4 00064 3537 20    150  	eppbb	flagbox$		bb -> bce flagbox
+    000074  aa   000007 1152 07    151  	cmpa	trbl_exec_flt,dl
+    000075  0a   000100 6012 00    152  	tnz	not_manual_crash	execute fault?
+    000076  aa   004000 2362 03    153  	ldq	fgbx.manual_crash,du
+    000077  aa  3 00043 2563 00    154  	orsq	bb|fgbx.rtb
+    000100                         155  not_manual_crash:
+    000100  aa   000100 1006 00    156  	mlr	(),(pr)		copy program ID
+    000101  0a   000123 000015     157  	desc9a	sys_trouble_name,13
+    000102  aa   300060 000015     158  	desc9a	bb|fgbx.message,13
+                                   159  
+    000103  aa   040100 1006 20    160  	mlr	(id),(pr),fill(040)	copy error message
+    000104  0a   000126 0002 05    161  	arg	trouble_messages-1,al
+    000105  aa   300063 200063     162  	desc9a	bb|fgbx.message+3(1),64-13
+                                   163  
+    000106  aa   000013 1152 07    164  	cmpa	trbl_r0_drl_flt,dl	is it a ring-0 derail?
+    000107  0a   000120 6012 00    165  	tnz	non_drl		nope, that's all 
+    000110  4a  4 00066 2343 20    166  	szn	scs$drl_message_pointer augment the message
+    000111  0a   000120 6002 00    167  	tze	non_drl		nothing to say
+    000112  4a  4 00066 7653 20    168  	lprplb	scs$drl_message_pointer 
+    000113  aa  5 00000 2353 00    169  	lda	lb|0		acc length in upper 9
+    000114  aa   000033 7712 00    170  	arl	27		lower 9, now
+    000115  aa  0 40100 1007 40    171  	mlr	(pr,rl),(pr),fill(040) Your life story in 32 characters.
+    000116  aa   500000 200005     172  	desc9a	lb|0(1),al
+    000117  aa   300070 000040     173  	desc9a	bb|fgbx.message+8,64-32
+                                   174  
+    000120  aa   060000 2362 03    175  non_drl:	ldq	fgbx.mess+fgbx.alert,du  set flags for message printing
+    000121  aa  3 00043 2563 00    176  	orsq	bb|fgbx.rtb	..
+                                   177  
+    000122  0a   000142 7102 00    178  	tra	rtb_no_message	no, go back to bce
+                                   179  
+                                   180  
+    000123                         181  sys_trouble_name:
+    000123  aa  163 171 163 137    182  	aci	"sys_trouble: "
+    000124  aa  164 162 157 165
+    000125  aa  142 154 145 072
+    000126  aa  040 000 000 000
+                                   183  
+                                   184  " 
+                                   185  
+                                   186  	macro	message
+                              1    187  	desc9a	&U,&l1
+                              2    188  	maclist	off,save
+                              3    189  	use	message
+                              4    190  	maclist	restore
+                              5    191  &U:
+                              6    192  	aci	"&1"
+                              7    193  	maclist	off,save
+                              8    194  	use	main
+                              9    195  	maclist	restore
+                             10    196  	&end
+                                   197  
+    000127                         198  trouble_messages:
+                                   199  	message	(Page fault while on prds.)
+    000127  0a   000250 000031          	desc9a	.._00000,25
+    000250                              .._00000:
+    000250  aa  120 141 147 145         	aci	"Page fault while on prds."
+    000251  aa  040 146 141 165
+    000252  aa  154 164 040 167
+    000253  aa  150 151 154 145
+    000254  aa  040 157 156 040
+    000255  aa  160 162 144 163
+    000256  aa  056 000 000 000
+                                   200  
+                                   201  	message	(Fault/interrupt while on prds.)
+    000130  0a   000257 000036          	desc9a	.._00001,30
+    000257                              .._00001:
+    000257  aa  106 141 165 154         	aci	"Fault/interrupt while on prds."
+    000260  aa  164 057 151 156
+    000261  aa  164 145 162 162
+    000262  aa  165 160 164 040
+    000263  aa  167 150 151 154
+    000264  aa  145 040 157 156
+    000265  aa  040 160 162 144
+    000266  aa  163 056 000 000
+                                   202  
+                                   203  	message	(Fault in idle process.)
+    000131  0a   000267 000026          	desc9a	.._00002,22
+    000267                              .._00002:
+    000267  aa  106 141 165 154         	aci	"Fault in idle process."
+    000270  aa  164 040 151 156
+    000271  aa  040 151 144 154
+    000272  aa  145 040 160 162
+    000273  aa  157 143 145 163
+    000274  aa  163 056 000 000
+                                   204  
+                                   205  	message	(Fault/interrupt with PTL set.)
+    000132  0a   000275 000035          	desc9a	.._00003,29
+    000275                              .._00003:
+    000275  aa  106 141 165 154         	aci	"Fault/interrupt with PTL set."
+    000276  aa  164 057 151 156
+    000277  aa  164 145 162 162
+    000300  aa  165 160 164 040
+    000301  aa  167 151 164 150
+    000302  aa  040 120 124 114
+    000303  aa  040 163 145 164
+    000304  aa  056 000 000 000
+                                   206  
+                                   207  	message	(Unrecognized fault.)
+    000133  0a   000305 000023          	desc9a	.._00004,19
+    000305                              .._00004:
+    000305  aa  125 156 162 145         	aci	"Unrecognized fault."
+    000306  aa  143 157 147 156
+    000307  aa  151 172 145 144
+    000310  aa  040 146 141 165
+    000311  aa  154 164 056 000
+                                   208  
+                                   209  	message	(Unexpected fault.)
+    000134  0a   000312 000021          	desc9a	.._00005,17
+    000312                              .._00005:
+    000312  aa  125 156 145 170         	aci	"Unexpected fault."
+    000313  aa  160 145 143 164
+    000314  aa  145 144 040 146
+    000315  aa  141 165 154 164
+    000316  aa  056 000 000 000
+                                   210  
+                                   211  	message	(Execute fault by operator.)
+    000135  0a   000317 000032          	desc9a	.._00006,26
+    000317                              .._00006:
+    000317  aa  105 170 145 143         	aci	"Execute fault by operator."
+    000320  aa  165 164 145 040
+    000321  aa  146 141 165 154
+    000322  aa  164 040 142 171
+    000323  aa  040 157 160 145
+    000324  aa  162 141 164 157
+    000325  aa  162 056 000 000
+                                   212  
+                                   213  	message	(Out-of-Segment-Bounds on prds.)
+    000136  0a   000326 000036          	desc9a	.._00007,30
+    000326                              .._00007:
+    000326  aa  117 165 164 055         	aci	"Out-of-Segment-Bounds on prds."
+    000327  aa  157 146 055 123
+    000330  aa  145 147 155 145
+    000331  aa  156 164 055 102
+    000332  aa  157 165 156 144
+    000333  aa  163 040 157 156
+    000334  aa  040 160 162 144
+    000335  aa  163 056 000 000
+                                   214  
+                                   215  	message	(Fault while in masked environment.)	
+    000137  0a   000336 000042          	desc9a	.._00010,34
+    000336                              .._00010:
+    000336  aa  106 141 165 154         	aci	"Fault while in masked environment."
+    000337  aa  164 040 167 150
+    000340  aa  151 154 145 040
+    000341  aa  151 156 040 155
+    000342  aa  141 163 153 145
+    000343  aa  144 040 145 156
+    000344  aa  166 151 162 157
+    000345  aa  156 155 145 156
+    000346  aa  164 056 000 000
+                                   216  
+                                   217  	message	(Fault while in bound_interceptors.)
+    000140  0a   000347 000042          	desc9a	.._00011,34
+    000347                              .._00011:
+    000347  aa  106 141 165 154         	aci	"Fault while in bound_interceptors."
+    000350  aa  164 040 167 150
+    000351  aa  151 154 145 040
+    000352  aa  151 156 040 142
+    000353  aa  157 165 156 144
+    000354  aa  137 151 156 164
+    000355  aa  145 162 143 145
+    000356  aa  160 164 157 162
+    000357  aa  163 056 000 000
+                                   218  
+                                   219  	message	(Ring 0 derail.)
+    000141  0a   000360 000016          	desc9a	.._00012,14
+    000360                              .._00012:
+    000360  aa  122 151 156 147         	aci	"Ring 0 derail."
+    000361  aa  040 060 040 144
+    000362  aa  145 162 141 151
+    000363  aa  154 056 000 000
+                                   220  
+                                   221  " 
+                                   222  
+                                   223  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   224  "
+                                   225  "	The following code enters bce by placing the two
+                                   226  "	absolute mode instructions needed to enter bce
+                                   227  "	into the fault vector slot for the derail fault.
+                                   228  "	NOTE: bp must be preserved  across call to bce since
+                                   229  "	we use it to restore pointer registers upon return.
+                                   230  "
+                                   231  "
+                                   232  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   233  
+    000142                         234  rtb_no_message:
+    000142  4a  4 00070 3537 20    235  	eppbb	fault_vector$+0	bb -> fault vector segment
+    000143  aa  3 00116 2373 00    236  	ldaq	bb|2*FAULT_NO_LUF+fv.fpair
+    000144  9a  4 00010 7573 00    237  	staq	lp|save_lockup_fault  save SCU/TRA
+    000145  0a   000000 2122 00    238  	absa	ignore_data	abs addr in 0-23
+    000146  aa   000006 7352 00    239  	als	6		abs addr in 0-17 of Areg
+    000147  aa   000000 6362 01    240  	eaq	0,au		abs addr in 0-17 of Qreg
+    000150  0a   000010 2772 00    241  	oraq	ignore_scu_rcu	replace lockup fault vector
+    000151  aa  3 00116 7573 00    242  	staq	bb|2*FAULT_NO_LUF+fv.fpair
+                                   243  
+    000152  4a  4 00020 2343 20    244  	szn	scs$processor	all CPU's stopped?
+    000153  0a   000152 6012 00    245  	tnz	*-1		if not, wait here
+                                   246  
+    000154  aa   000004 2352 03    247  	lda	4,du		wait for operator's console output to finish
+                                   248  	odd
+    000155  aa   000001 1752 07    249  	sba	1,dl		to allow I/O to drain off
+    000156  0a   000155 6012 00    250  	tnz	*-1		..
+                                   251  
+                                   252  " 
+                                   253  
+                                   254  " Here is the channel masking code.
+                                   255  
+    000157  4a  4 00072 3503 20    256  	epp0	iom_data$
+    000160  aa  0 00240 6213 00    257  	eax1	pr0|iom_data.per_device
+    000161  aa  0 00000 7203 00    258  	lxl0	pr0|iom_data.n_devices
+    000162                         259  mask.next_device:
+    000162  aa  0 00026 2353 11    260  	lda	pr0|per_device.flags,x1
+    000163  aa   400000 3152 03    261  	cana	per_device.in_use,du
+    000164  0a   000211 6002 00    262  	tze	mask.skip_device		" not in use now.
+                                   263  
+    000165  aa  0 00020 2363 11    264  	ldq	pr0|per_device.iom,x1	" which iom?
+    000166  aa   000040 4022 07    265  	mpy	per_iom_size,dl		 
+    000167  aa   000000 6222 06    266  	eax2	-per_iom_size+iom_data.per_iom,ql " pr0|per_iom.XXX,x2 
+    000170  aa  0 00020 2363 11    267  	ldq	pr0|per_device.iom,x1
+    000171  aa   000400 4022 07    268  	mpy	iom_mailbox_size,dl		" address iom mbx
+    000172  4a  4 00074 3517 20    269  	epp1	iom_mailbox$+iom_mailbox_seg.iom_mailbox-iom_mailbox_size,ql
+                                   270  				          " pr1|mailbox
+                                   271  
+    000173  aa  0 00021 2363 11    272  	ldq	pr0|per_device.channel,x1
+    000174  aa   000010 1162 07    273  	cmpq	=o10,dl			" it has to be bigger than this
+    000175  0a   000211 6042 00    274  	tmi	mask.skip_device		" overhead
+                                   275  
+    000176  aa   000033 7362 00    276  	qls	27			" channel position
+    000177  0a   000246 2772 00    277  	oraq	MASK_PCW
+    000200  aa  1 00012 7573 00    278  	staq	pr1|connect.pcw
+    000201  aa  0 00006 2363 12    279  	ldq	pr0|per_iom.connect_lpw,x2	" take template PCW
+    000202  aa  1 00010 7563 00    280  	stq	pr1|connect.lpw		" set up for real
+    000203  aa   000062 2352 07    281  	lda	50,dl
+    000204  aa  0 00007 0153 12    282  	cioc	pr0|per_iom.cow,x2		" BANG
+                                   283  	odd	
+    000205                         284  mask.connect_loop:
+    000205  aa  1 00010 1163 00    285  	cmpq	pr1|connect.lpw		" connect taken yet?
+    000206  0a   000211 6012 00    286  	tnz	mask.skip_device		" nope, wait it out.
+    000207  aa   000001 1752 07    287  	sba	1,dl
+    000210  0a   000205 6012 00    288  	tnz	mask.connect_loop		" keep waiting
+                                   289  
+    000211                         290  mask.skip_device:
+    000211  aa   000050 6212 11    291  	eax1	per_device_size,x1		" next device
+    000212  aa   000001 1602 03    292  	sbx0	1,du			" how many done?
+    000213  0a   000162 6012 00    293  	tnz	mask.next_device		" not all
+                                   294  
+                                   295  " 
+                                   296  	
+                                   297  
+                                   298  		
+                                   299  
+    000214  aa  3 00114 2373 00    300  	ldaq	bb|2*FAULT_NO_DRL+fv.fpair  grab SCU-TRA pair from fault vector
+    000215  9a  4 00012 7573 00    301  	staq	lp|save_derail_fault
+    000216  4a  4 00076 2373 20    302  	ldaq	toehold$+2*TOE_HOLD_MULTICS_ENTRY pick up code to enter bce
+    000217  aa  3 00114 7573 00    303  	staq	bb|2*FAULT_NO_DRL+fv.fpair  set it in fault vector
+                                   304  
+    000220  aa   000000 0022 00    305  drl:	drl	0		****** bce is entered here ******
+                                   306  
+    000221  4a  4 00100 2343 20    307  	szn	scs$connect_lock	did we enter through pmut call?
+    000222  0a   000220 6002 00    308  	tze	drl		if not, cannot restart
+                                   309  
+    000223  4a  4 00022 0343 20    310  	ldac	scs$trouble_flags	get and clear trouble flags
+    000224  4a  4 00016 7553 20    311  	sta	scs$bos_restart_flags  set for restarting CPU's
+                                   312  
+    000225  9a  4 00012 2373 00    313  	ldaq	lp|save_derail_fault
+    000226  aa  3 00114 7573 00    314  	staq	bb|2*FAULT_NO_DRL+fv.fpair  ..
+    000227  9a  4 00010 2373 00    315  	ldaq	lp|save_lockup_fault  restore lockup faults
+    000230  aa  3 00116 7573 00    316  	staq	bb|2*FAULT_NO_LUF+fv.fpair  ..
+                                   317  
+    000231  0a   000233 7002 00    318  	tsx0	broadcast		send trouble connects to start CPU's
+                                   319  
+    000232  0a   000047 7102 00    320  	tra	restart		restart the bootload CPU
+                                   321  
+                                   322  " 
+                                   323  
+                                   324  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   325  "
+                                   326  "	BROADCAST - Send system trouble connects to all other
+                                   327  "		processors.
+                                   328  "
+                                   329  "
+                                   330  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   331  
+    000233                         332  broadcast:
+    000233  aa   000007 2362 07    333  	ldq	hbound_processor_data,dl	initialize the Q with maximum configurable CPUs
+    000234                         334  broadcast_loop:
+    000234  4a  4 00040 1163 20    335  	cmpq	prds$processor_tag	test for ourselves
+    000235  0a   000242 6002 00    336  	tze	broadcast_next	don't hit ourselves
+    000236  4a  4 00102 2353 20    337  	lda	scs$processor_data,ql  get processor data for this CPU
+    000237  aa   400000 3152 03    338  	cana	processor_data.online,du  is it configured?
+    000240  0a   000242 6002 00    339  	tze	broadcast_next	if not, don't hit it
+                                   340  
+    000241  4a  4 00104 0153 20    341  	cioc	scs$cow_ptrs,ql*	Zap
+                                   342  
+    000242                         343  broadcast_next:
+    000242  aa   000001 1762 07    344  	sbq	1,dl		step to next CPU
+    000243  0a   000234 6052 00    345  	tpl	broadcast_loop	if more, get the others
+    000244  aa   000000 7102 10    346  	tra	0,0		return to caller
+                                   347  
+                                   348  "
+                                   349  
+                                   350  
+    000245                         351  	maclist 	off
+                                   352  	include	make_data_macros
+                                   1-1  " ------------------------------------------------------------
+                                   1-2  
+                                   1-3  	macro	vfd_mac
+                              1    1-4  	maclist	object,save
+                              2    1-5  "
+                              3    1-6  "	Utility macro for generating multi-line vfd's
+                              4    1-7  "
+                              5    1-8  	vfd	&F1
+                              6    1-9  	maclist	restore
+                              7   1-10  &end
+                                  1-11  
+                                  1-12  " ------------------------------------------------------------
+                                  1-13  
+                                  1-14  "	assign_by_keyword	Variable,KeywordArgument,MacroName,
+                                  1-15  "		(ErrorMessage),
+                                  1-16  "		(Keyword,Value),(Keyword,Value), ...
+                                  1-17  
+                                  1-18  "
+                                  1-19  " Internal macro to set arg1 if arg2 matches the keyword in arg3.
+                                  1-20  "
+                                  1-21  	macro	assign_single_keyword
+                              1   1-22  &^=4,&K&[ ife	 FOO,FOO
+                              2   1-23  	  warn	(assign_by_keyword: A (Keyword,Value) pair must contain exactly two values, not &FQ3.)
+                              3   1-24  	ifend_exit
+                              4   1-25  &]
+                              5   1-26  	ife	(&2),(&3)
+                              6   1-27  	  set	&1,&4
+                              7   1-28  	  macro	assign_by_keyword.error  " Punt the previous contents of this macro
+                              8   1-29  &&end				" Since we have successfully assigned.
+                              9   1-30  	ifend_exit
+                             10   1-31  &end
+                                  1-32  
+                                  1-33  " ------------------------------------------------------------
+                                  1-34  
+                                  1-35  	macro	assign_by_keyword
+                              1   1-36  	maclist	off,save
+                              2   1-37  &>5,&K&[ ife	FOO,FOO
+                              3   1-38  	  warn	(assign_by_keyword: At least five arguments must be supplied.)
+                              4   1-39  	  maclist restore
+                              5   1-40  	ifend_exit
+                              6   1-41  &]
+                              7   1-42  
+                              8   1-43  	macro	assign_by_keyword.error  " Create a macro to complain about errors
+                              9   1-44  	warn	(&3: &4)
+                             10   1-45  	set	&1,33814345695
+                             11   1-46  &&end
+                             12   1-47  
+                             13   1-48  &R5,&K&( assign_single_keyword  (&1),(&2),&i
+                             14   1-49  &)
+                             15   1-50  
+                             16   1-51  	assign_by_keyword.error	" Print error message, if any.
+                             17   1-52  
+                             18   1-53  	maclist	restore
+                             19   1-54  &end
+                                  1-55  
+                                  1-56  " ------------------------------------------------------------
+                                  1-57  
+                                  1-58  "	assign_flags	Variable,(FlagArgument),MacroName,
+                                  1-59  "		(ErrorMessage),
+                                  1-60  "		(Flag,Value),(Flag,Value), ...
+                                  1-61  
+                                  1-62  "
+                                  1-63  " Internal macro to set arg1 to arg1 + arg2, if arg2 matches the keyword in arg3.
+                                  1-64  "
+                                  1-65  	macro	assign_single_flag
+                              1   1-66  &^=4,&K&[ ife	 FOO,FOO
+                              2   1-67  	  warn	(assign_flags: A (Flag,Value) pair must contain exactly two values, not &FQ3.)
+                              3   1-68  	ifend_exit
+                              4   1-69  &]
+                              5   1-70  	ife	(&2),(&3)
+                              6   1-71  	  bool	&U,&1+&4
+                              7   1-72  	  set	&1,&U
+                              8   1-73  	  macro	assign_flags.error " Punt the error message, now that we've assigned successfully
+                              9   1-74  &&end
+                             10   1-75  	ifend_exit
+                             11   1-76  &end
+                                  1-77  
+                                  1-78  " ------------------------------------------------------------
+                                  1-79  "
+                                  1-80  "	Internal macro to iterate over all flag values for a single component of the flags argument
+                                  1-81  "
+                                  1-82  	macro	iterate_over_flags
+                              1   1-83  
+                              2   1-84  	macro	assign_flags.error	" Create a macro to complain about errors
+                              3   1-85  	warn	(&2: &3)
+                              4   1-86  	set	&1,33814345695
+                              5   1-87  &&end
+                              6   1-88  
+                              7   1-89  &R5,&K&( assign_single_flag  (&1),(&4),&i
+                              8   1-90  &)
+                              9   1-91  
+                             10   1-92  	assign_flags.error
+                             11   1-93  
+                             12   1-94  &end
+                                  1-95  
+                                  1-96  " ------------------------------------------------------------
+                                  1-97  
+                                  1-98  	macro	assign_flags
+                              1   1-99  	maclist	off,save
+                              2  1-100  &>5,&K&[ ife	FOO,FOO
+                              3  1-101  	  warn	(assign_flags: At least five arguments must be supplied.)
+                              4  1-102  	  maclist restore
+                              5  1-103  	ifend_exit
+                              6  1-104  &]
+                              7  1-105  	set	&1,0		" start out with none
+                              8  1-106  
+                              9  1-107  &(2	iterate_over_flags	(&1),(&3),(&4),&i,&FQ5
+                             10  1-108  &)
+                             11  1-109  
+                             12  1-110  	maclist	restore
+                             13  1-111  &end
+                                   353  	include	iom_word_macros
+                                   2-1  "	Macros for creating IOM control words. They require that make_data_macros
+                                   2-2  "	have already been included. Formats:
+                                   2-3  "
+                                   2-4  "	make_pcw	PCW_name,
+                                   2-5  "		Command,
+                                   2-6  "		Channel,
+                                   2-7  "		Device,
+                                   2-8  "		{record,multirecord,character,nondata},
+                                   2-9  "		{proceed,terminate,marker},
+                                  2-10  "		[ChanData,]
+                                  2-11  "		[Extension,]
+                                  2-12  "		[mask,]
+                                  2-13  "
+                                  2-14  "	make_ddcw DDCW_name,
+                                  2-15  "		Address,
+                                  2-16  "		Tally,
+                                  2-17  "		{iotd,iotp,iontp},
+                                  2-18  "		[{char,word},]
+                                  2-19  "		[CharOffset]
+                                  2-20  "
+                                  2-21  "	make_idcw IDCW_name,
+                                  2-22  "		Command,
+                                  2-23  "		Device,
+                                  2-24  "		{record,multirecord,character,nondata},
+                                  2-25  "		{proceed,terminate,marker},
+                                  2-26  "		[ChanData,]
+                                  2-27  "		[Extension,]
+                                  2-28  "		[mask,]
+                                  2-29  "
+                                  2-30  "	make_tdcw TDCW_name,
+                                  2-31  "		Address,
+                                  2-32  "		[([restrict,][extend,][relative])]
+                                  2-33  "
+                                  2-34  "
+                                  2-35  
+                                  2-36  " ------------------------------------------------------------
+                                  2-37  
+                                  2-38  	macro	make_pcw
+                              1   2-39  	maclist	off,save
+                              2   2-40  &>6,&K&[	ife	foo,foo
+                              3   2-41  	  warn	(make_pcw: At least six arguments are required.)
+                              4   2-42  	  maclist restore
+                              5   2-43  	ifend_exit		" give up on this one
+                              6   2-44  &]
+                              7   2-45  
+                              8   2-46  	assign_by_keyword	make_pcw.chan_cmd,(&5),make_pcw,
+                              9   2-47  		(Channel command must be one of record, nondata, multirecord, or character, not &5),
+                             10   2-48  		(record,0),(rec,0),(nondata,2),(multirecord,6),(character,8),(char,8)
+                             11   2-49  
+                             12   2-50  	assign_by_keyword	make_pcw.chan_ctrl,(&6),make_pcw,
+                             13   2-51  		(Channel control must be one of terminate, proceed, or marker, not &6),
+                             14   2-52  		(terminate,0),(proceed,2),(marker,3)
+                             15   2-53  
+                             16   2-54  	assign_by_keyword	make_pcw.mask,(&9),make_pcw,
+                             17   2-55  		(Mask must be either mask, or omitted, not &9.),
+                             18   2-56  		((),0),(mask,1)
+                             19   2-57  
+                             20   2-58  
+                             21   2-59  	set		make_pcw.command,&2
+                             22   2-60  	set		make_pcw.channel,&3
+                             23   2-61  	set		make_pcw.device,&4
+                             24   2-62  	set		make_pcw.chan_data,(&7)
+                             25   2-63  	set		make_pcw.extension,(&8)
+                             26   2-64  
+                             27   2-65  "	Now, generate it
+                             28   2-66  
+                             29   2-67  	maclist	on
+                             30   2-68  	even
+                             31   2-69  &1:
+                             32   2-70  	maclist	object
+                             33   2-71  	vfd_mac	6/make_pcw.command,
+                             34   2-72  		6/make_pcw.device,
+                             35   2-73  		6/make_pcw.extension,
+                             36   2-74  		3/7,
+                             37   2-75  		1/make_pcw.mask,
+                             38   2-76  		2/make_pcw.chan_ctrl,
+                             39   2-77  		6/make_pcw.chan_cmd,
+                             40   2-78  		6/make_pcw.chan_data
+                             41   2-79  
+                             42   2-80  	vfd_mac	3/0,
+                             43   2-81  		6/make_pcw.channel,
+                             44   2-82  		27/0
+                             45   2-83  
+                             46   2-84  	maclist	restore
+                             47   2-85  &end
+                                  2-86  
+                                  2-87  " ------------------------------------------------------------
+                                  2-88  
+                                  2-89  	macro	make_idcw
+                              1   2-90  	maclist	off,save
+                              2   2-91  &>5,&K&[	ife	foo,foo
+                              3   2-92  	  warn	(make_idcw: At least five arguments are required.)
+                              4   2-93  	  maclist restore
+                              5   2-94  	ifend_exit		" give up on this one
+                              6   2-95  &]
+                              7   2-96  
+                              8   2-97  	assign_by_keyword	make_pcw.chan_cmd,(&4),make_idcw,
+                              9   2-98  		(Channel command must be one of record, nondata, multirecord, or character, not &4),
+                             10   2-99  		(record,0),(rec,0),(nondata,2),(multirecord,6),(character,8),(char,8)
+                             11  2-100  
+                             12  2-101  	assign_by_keyword	make_pcw.chan_ctrl,(&5),make_idcw,
+                             13  2-102  		(Channel control must be one of terminate, proceed, or marker, not &5),
+                             14  2-103  		(terminate,0),(proceed,2),(marker,3)
+                             15  2-104  
+                             16  2-105  	assign_by_keyword	make_pcw.mask,(&8),make_idcw,
+                             17  2-106  		(Mask must be either mask, or omitted, not &8.),
+                             18  2-107  		((),0),(mask,1)
+                             19  2-108  
+                             20  2-109  	set		make_pcw.command,&2
+                             21  2-110  	set		make_pcw.device,&3
+                             22  2-111  	set		make_pcw.chan_data,(&6)
+                             23  2-112  	set		make_pcw.extension,(&7)
+                             24  2-113  
+                             25  2-114  "	Now, generate it
+                             26  2-115  
+                             27  2-116  	maclist	on
+                             28  2-117  &1:
+                             29  2-118  	maclist	object
+                             30  2-119  	vfd_mac	6/make_pcw.command,
+                             31  2-120  		6/make_pcw.device,
+                             32  2-121  		6/make_pcw.extension,
+                             33  2-122  		o3/7,
+                             34  2-123  		1/make_pcw.mask,
+                             35  2-124  		2/make_pcw.chan_ctrl,
+                             36  2-125  		6/make_pcw.chan_cmd,
+                             37  2-126  		6/make_pcw.chan_data
+                             38  2-127  
+                             39  2-128  	maclist	restore
+                             40  2-129  &end
+                                 2-130  
+                                 2-131  " ------------------------------------------------------------
+                                 2-132  
+                                 2-133  	macro	make_ddcw
+                              1  2-134  	maclist	off,save
+                              2  2-135  &>4,&K&[	ife	foo,foo
+                              3  2-136  	  warn	(make_ddcw: At least four arguments are required.)
+                              4  2-137  	  maclist restore
+                              5  2-138  	ifend_exit		" give up on this one
+                              6  2-139  &]
+                              7  2-140  
+                              8  2-141  	assign_by_keyword	make_ddcw.op_type,&4,make_ddcw,
+                              9  2-142  		(Operation type must be one of iotd, iotp, or iontp, not &4.),
+                             10  2-143  		(iotd,0),(iotp,1),(iontp,3)
+                             11  2-144  
+                             12  2-145  	assign_by_keyword	make_ddcw.tally_type,(&5),make_ddcw,
+                             13  2-146  		(Tally type must be either word, character, or omitted, not &5.),
+                             14  2-147  		((),0),(word,0),(character,1),(char,1)
+                             15  2-148  
+                             16  2-149  	set		make_ddcw.address,&2
+                             17  2-150  	set		make_ddcw.tally,&3
+                             18  2-151  	set		make_ddcw.char_offset,(&6)
+                             19  2-152  
+                             20  2-153  "	Now, generate it
+                             21  2-154  
+                             22  2-155  	maclist	on
+                             23  2-156  &1:
+                             24  2-157  	maclist	object
+                             25  2-158  	vfd_mac	18/make_ddcw.address,
+                             26  2-159  		3/make_ddcw.char_offset,
+                             27  2-160  		1/make_ddcw.tally_type,
+                             28  2-161  		2/make_ddcw.op_type,
+                             29  2-162  		12/make_ddcw.tally
+                             30  2-163  
+                             31  2-164  	maclist	restore
+                             32  2-165  &end
+                                 2-166  
+                                 2-167  " ------------------------------------------------------------
+                                 2-168  
+                                 2-169  	macro	make_tdcw
+                              1  2-170  	maclist	off,save
+                              2  2-171  &>2,&K&[	ife	foo,foo
+                              3  2-172  	  warn	(make_tdcw: At least two arguments are required.)
+                              4  2-173  	  maclist restore
+                              5  2-174  	ifend_exit		" give up on this one
+                              6  2-175  &]
+                              7  2-176  
+                              8  2-177  	set		make_tdcw.address,&2
+                              9  2-178  	set		make_tdcw.bits,0
+                             10  2-179  &(3	make_tdcw.get_bits	&i
+                             11  2-180  &)
+                             12  2-181  
+                             13  2-182  "	Now, generate it
+                             14  2-183  
+                             15  2-184  	maclist	on
+                             16  2-185  &1:
+                             17  2-186  	maclist	object
+                             18  2-187  	vfd_mac	18/make_tdcw.address,
+                             19  2-188  		4/0,
+                             20  2-189  		2/2,
+                             21  2-190  		9/0,
+                             22  2-191  		3/make_tdcw.bits
+                             23  2-192  
+                             24  2-193  	maclist	restore
+                             25  2-194  &end
+    000245                         354  	maclist	on
+                                   355  
+                                   356  	make_pcw	MASK_PCW,0,0,0,record,terminate,0,0,mask
+    000245  aa   000000 0112 03         	even
+    000246                              MASK_PCW:
+    000246  aa   000000 740000 
+    000247  aa   000000 000000 
+                                   357  
+                                   358  " 
+                                   359  
+                                   360  	use	internal_static
+                                   361  	join	/link/internal_static
+                                   362  
+                                   363  	even
+    000010                         364  save_lockup_fault:
+    000010                         365  	bss	,2		place to save lockup fault SCU and TRA
+                                   366  
+    000012                         367  save_derail_fault:
+    000012                         368  	bss	,2		place to save derail fault SCU and TRA
+                                   369  
+                                   370  
+                                   371  
+                                   372  " 
+                                   373  
+                                   374  	include	scs
+                                   3-1  "	BEGIN INCLUDE FILE scs.incl.alm  2/4/76 S. Webber
+                                   3-2  "	Modified 80 Sep 19 by Art Beattie:  added hbound_processor_data.
+                                   3-3  
+                        400000     3-4  	bool	processor_data.online,400000 "DU
+                        200000     3-5  	bool	processor_data.offline,200000	"DU
+                        020000     3-6  	bool	processor_data.delete_cpu,020000	"DU
+                        010000     3-7  	bool	processor_data.interrupt_cpu,010000	"DU
+                        004000     3-8  	bool	processor_data.halted_cpu,004000	"DU
+                        000007     3-9  	bool	processor_data.port_mask,000007	"DL
+                        000007    3-10  	bool	hbound_processor_data,7
+                                  3-11  
+                                  3-12  "	END INCLUDE FILE scs.incl.alm
+                                   375  
+                                   376  	include	flagbox
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE flagbox.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  " HISTORY COMMENTS:
+                                   4-7  "  1) change(87-03-03,Farley), approve(87-04-15,MCR7661),
+                                   4-8  "     audit(87-04-21,Fawcett), install(87-04-28,MR12.1-1028):
+                                   4-9  "     Added io_reconfig flag to inhibit BCE from attempting an emergency
+                                  4-10  "     shutdown when the data in memory could be corrupted.
+                                  4-11  "                                                      END HISTORY COMMENTS
+                                  4-12  
+                                  4-13  
+                                  4-14  
+                                  4-15  
+                                  4-16  	"Created 03/03/87  1026.3 mst Tue by convert_include_file,
+                                  4-17  	"   Version of 01/09/85  0754.4 mst Wed.
+                                  4-18  
+                                  4-19  	"Made from >udd>m>Farley>install_dir>rcf>flagbox.incl.pl1,
+                                  4-20  	"   modified 02/26/87  1355.3 mst Thu
+                                  4-21  
+                                  4-22  "
+                                  4-23  "	Structure fgbx
+                                  4-24  "
+                        000140    4-25  	equ	fgbx_size,96
+                                  4-26  
+                                  4-27  
+                        000000    4-28  	equ	fgbx.toehold_used,0
+                                  4-29  
+                        000040    4-30  	equ	fgbx.flags_word,32
+                        400000    4-31  	bool	fgbx.flags,400000		" DU
+                                  4-32  
+                        000041    4-33  	equ	fgbx.slt_segno,33		" UPPER
+                                  4-34  
+                        000043    4-35  	equ	fgbx.rtb,35		" LEVEL 2
+                                  4-36  
+                        400000    4-37  	bool	fgbx.ssenb,400000		" DU
+                        200000    4-38  	bool	fgbx.call_bce,200000	" DU
+                        100000    4-39  	bool	fgbx.shut,100000		" DU
+                        040000    4-40  	bool	fgbx.mess,040000		" DU
+                        020000    4-41  	bool	fgbx.alert,020000		" DU
+                        010000    4-42  	bool	fgbx.breakpoint,010000	" DU
+                        004000    4-43  	bool	fgbx.manual_crash,004000	" DU
+                        002000    4-44  	bool	fgbx.io_reconfig,002000	" DU
+                        000001    4-45  	equ	fgbx.bce_entry_shift,1
+                        000077    4-46  	bool	fgbx.bce_entry_mask,000077
+                                  4-47  
+                        000044    4-48  	equ	fgbx.sentinel,36
+                        000054    4-49  	equ	fgbx.sst_sdw,44		" DOUBLE
+                        000056    4-50  	equ	fgbx.hc_dbr,46		" DOUBLE
+                        000060    4-51  	equ	fgbx.message,48
+                        000100    4-52  	equ	fgbx.return_to_bce_command,64
+                                  4-53  
+                                  4-54       "END INCLUDE FILE flagbox.incl.alm
+                                   377  
+                                   378  	include	sys_trouble_codes
+                                   5-1  " Begin include file ...... sys_trouble_codes.incl.alm ...... Feb. 24, 1982
+                                   5-2  
+                        000001     5-3  	equ	trbl_prds_pf,1	page fault while on prds
+                        000002     5-4  	equ	trbl_prds_fi,2	fault/interrupt while on prds
+                        000003     5-5  	equ	trbl_idle_flt,3	fault in idle process
+                        000004     5-6  	equ	trbl_ptl_fi,4	fault/interrupt with ptl set
+                        000005     5-7  	equ	trbl_illeg_flt,5	unrecognized fault
+                        000006     5-8  	equ	trbl_unexp_flt,6	unexpected fault
+                        000007     5-9  	equ	trbl_exec_flt,7	operator caused execute fault
+                        000010    5-10  	equ	trbl_oosb_prds,8	OOSB on prds with target prds
+                        000011    5-11  	equ	trbl_fault_masked,9  interrupts masked in user-ring
+                        000012    5-12  	equ	trbl_fim_flt,10     Fault while in bound_interceptors
+                        000013    5-13  	equ	trbl_r0_drl_flt,11	derail in ring 0
+                                  5-14  
+                                  5-15  " End of include file ...... sys_trouble_codes.incl.alm
+                                   379  
+                                   380  	include	fault_vector
+                                   6-1  
+                                   6-2  
+                                   6-3       "BEGIN INCLUDE FILE fault_vector.incl.alm
+                                   6-4  
+                                   6-5  "	Modified February 1981 by J. Bongiovanni to add fault types
+                                   6-6  
+                                   6-7  "
+                                   6-8  "	Structure fv
+                                   6-9  "
+                        000600    6-10  	equ	fv_size,384
+                                  6-11  
+                                  6-12  
+                        000000    6-13  	equ	fv.ipair,0		"LEVEL 2
+                                  6-14  
+                        000000    6-15  	equ	fv.ipair.scu,0
+                        000001    6-16  	equ	fv.ipair.tra,1
+                        000100    6-17  	equ	fv.fpair,64		"LEVEL 2
+                                  6-18  
+                        000100    6-19  	equ	fv.fpair.scu,64
+                        000101    6-20  	equ	fv.fpair.tra,65
+                        000200    6-21  	equ	fv.i_tra_ptr,128
+                        000300    6-22  	equ	fv.i_scu_ptr,192
+                        000400    6-23  	equ	fv.f_tra_ptr,256
+                        000500    6-24  	equ	fv.f_scu_ptr,320
+                                  6-25  
+                        000000    6-26  	equ	FAULT_NO_SDF,0		" Shutdown
+                        000001    6-27  	equ	FAULT_NO_STR,1		" Store
+                        000002    6-28  	equ	FAULT_NO_MME,2		" Master Mode Entry 1
+                        000003    6-29  	equ	FAULT_NO_F1,3		" Fault Tag 1
+                        000004    6-30  	equ	FAULT_NO_TRO,4		" Timer Runout
+                        000005    6-31  	equ	FAULT_NO_CMD,5		" Command
+                        000006    6-32  	equ	FAULT_NO_DRL,6		" Derail
+                        000007    6-33  	equ	FAULT_NO_LUF,7		" Lockup
+                        000010    6-34  	equ	FAULT_NO_CON,8		" Connect
+                        000011    6-35  	equ	FAULT_NO_PAR,9		" Parity
+                        000012    6-36  	equ	FAULT_NO_IPR,10		" Illegal Procedure
+                        000013    6-37  	equ	FAULT_NO_ONC,11		" Operation Not Complete
+                        000014    6-38  	equ	FAULT_NO_SUF,12		" Startup
+                        000015    6-39  	equ	FAULT_NO_OFL,13		" Overflow
+                        000016    6-40  	equ	FAULT_NO_DIV,14		" Divide Check
+                        000017    6-41  	equ	FAULT_NO_EXF,15		" Execute
+                        000020    6-42  	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
+                        000021    6-43  	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
+                        000022    6-44  	equ	FAULT_NO_DF2,18		" Directed Fault 2
+                        000023    6-45  	equ	FAULT_NO_DF3,19		" Directed Fault 3
+                        000024    6-46  	equ	FAULT_NO_ACV,20		" Access Violation
+                        000025    6-47  	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
+                        000026    6-48  	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
+                        000027    6-49  	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
+                        000030    6-50  	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
+                        000031    6-51  	equ	FAULT_NO_F3,25		" Fault Tag 3
+                                  6-52  					" Fault No. 26-30 are Undefined
+                        000037    6-53  	equ	FAULT_NO_TRB,31		" Trouble
+                                  6-54  
+                                  6-55       "END INCLUDE FILE fault_vector.incl.alm
+                                   381  
+                                   382  	include	toe_hold
+                                   7-1  
+                                   7-2  
+                                   7-3       "BEGIN INCLUDE FILE toe_hold.incl.alm
+                                   7-4  
+                                   7-5  
+                                   7-6  	"Created 04/16/84  1150.7 est Mon by convert_include_file,
+                                   7-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   7-8  
+                                   7-9  	"Made from >cdd>incl>x>toe_hold.incl.pl1,
+                                  7-10  	"   modified 04/16/84  1150.7 est Mon
+                                  7-11  
+                                  7-12  "
+                                  7-13  "	Structure toe_hold
+                                  7-14  "
+                        004000    7-15  	equ	toe_hold_size,2048
+                                  7-16  
+                                  7-17  
+                        000000    7-18  	equ	toe_hold.entry_sequences,0	" DOUBLE
+                        000040    7-19  	equ	toe_hold.flagbox,32
+                        000220    7-20  	equ	toe_hold.paths,144		" LEVEL 2
+                                  7-21  
+                        000240    7-22  	equ	toe_hold.n_paths_used,160
+                        000241    7-23  	equ	toe_hold.memory_state,161
+                        000242    7-24  	equ	toe_hold.bce_dbr,162	" DOUBLE
+                        002760    7-25  	equ	toe_hold.multics_state,1520	" LEVEL 2
+                                  7-26  
+                                  7-27  
+                                  7-28  "
+                                  7-29  "	Structure io_path
+                                  7-30  "
+                        000004    7-31  	equ	io_path_size,4
+                                  7-32  
+                        000000    7-33  	equ	io_path.pcw,0		" DOUBLE
+                                  7-34  
+                        000002    7-35  	equ	io_path.port_number_word,2
+                        000041    7-36  	equ	io_path.port_number_shift,33
+                        000007    7-37  	bool	io_path.port_number_mask,000007
+                        000002    7-38  	equ	io_path.iom_number_word,2
+                        000022    7-39  	equ	io_path.iom_number_shift,18
+                        077777    7-40  	bool	io_path.iom_number_mask,077777
+                        000002    7-41  	equ	io_path.channel_number,2	" LOWER
+                                  7-42  
+                        000000    7-43  	equ	TOE_HOLD_CRASH_ENTRY,0	" MANIFEST
+                        000001    7-44  	equ	TOE_HOLD_ESD_ENTRY,1	" MANIFEST
+                        000002    7-45  	equ	TOE_HOLD_DUMP_ENTRY,2	" MANIFEST
+                        000003    7-46  	equ	TOE_HOLD_MULTICS_ENTRY,3	" MANIFEST
+                        000004    7-47  	equ	TOE_HOLD_RESTART_ENTRY,4	" MANIFEST
+                        000005    7-48  	equ	TOE_HOLD_BOOT_ENTRY,5	" MANIFEST
+                        000014    7-49  	equ	TOE_HOLD_BOS_ENTRY,12	" MANIFEST
+                        000015    7-50  	equ	TOE_HOLD_BOS_NO_SAVE_ENTRY,13	" MANIFEST
+                        000016    7-51  	equ	TOE_HOLD_BOS_MULTICS_ENTRY,14	" MANIFEST
+                                  7-52  
+                                  7-53  "
+                                  7-54  "	Structure mc_state
+                                  7-55  "
+                        001020    7-56  	equ	mc_state_size,528
+                                  7-57  
+                        000000    7-58  	equ	mc_state.mc_,0		" LEVEL 2
+                                  7-59  
+                        000060    7-60  	equ	mc_state.masks,48
+                        000100    7-61  	equ	mc_state.interrupt,64	" DOUBLE
+                        000102    7-62  	equ	mc_state.mode_reg,66
+                        000103    7-63  	equ	mc_state.cache_mode_reg,67
+                        000104    7-64  	equ	mc_state.dbr,68		" DOUBLE
+                        000106    7-65  	equ	mc_state.cfg,70		" DOUBLE
+                        000110    7-66  	equ	mc_state.bar,72
+                        000111    7-67  	equ	mc_state.old_memory_state,73
+                        000120    7-68  	equ	mc_state.ou_history_registers,80 " DOUBLE
+                        000160    7-69  	equ	mc_state.cu_history_registers,112 " DOUBLE
+                        000220    7-70  	equ	mc_state.du_history_registers,144 " DOUBLE
+                        000260    7-71  	equ	mc_state.apu_history_registers,176 " DOUBLE
+                        000320    7-72  	equ	mc_state.ptwam_ptrs,208
+                        000420    7-73  	equ	mc_state.ptwam_regs,272
+                        000520    7-74  	equ	mc_state.sdwam_ptrs,336
+                        000620    7-75  	equ	mc_state.sdwam_regs,400	" DOUBLE
+                                  7-76  
+                        000000    7-77  	equ	Initial_undefined,0		" MANIFEST
+                        000001    7-78  	equ	At_bce__early,1		" MANIFEST
+                        000002    7-79  	equ	At_bce__boot,2		" MANIFEST
+                        000003    7-80  	equ	Multics,3			" MANIFEST
+                        000004    7-81  	equ	Undefined_saving_state,4	" MANIFEST
+                        000005    7-82  	equ	Undefined_reading_bce,5	" MANIFEST
+                        000006    7-83  	equ	At_bce__crash,6		" MANIFEST
+                        000007    7-84  	equ	At_bce__shutdown,7		" MANIFEST
+                        000010    7-85  	equ	Undefined_continue,8	" MANIFEST
+                        000011    7-86  	equ	Undefined_saving_mem,9	" MANIFEST
+                                  7-87  
+                                  7-88  "
+                                  7-89  "	Structure mc
+                                  7-90  "
+                        000060    7-91  	equ	mc_size,48
+                                  7-92  
+                        000000    7-93  	equ	mc.prs,0
+                                  7-94  
+                        000020    7-95  	equ	mc.regs_word,16
+                        001532    7-96  	equ	mc.regs_shift,858
+                        000020    7-97  	equ	mc.x,16			" UPPER
+                                  7-98  
+                        000024    7-99  	equ	mc.a,20
+                        000025   7-100  	equ	mc.q,21
+                                 7-101  
+                        000026   7-102  	equ	mc.e_word,22
+                        000034   7-103  	equ	mc.e_shift,28
+                        000377   7-104  	bool	mc.e_mask,000377
+                                 7-105  
+                        000027   7-106  	equ	mc.t_word,23
+                        000011   7-107  	equ	mc.t_shift,9
+                        000027   7-108  	equ	mc.ralr_word,23
+                        000000   7-109  	equ	mc.ralr_shift,0
+                        000007   7-110  	bool	mc.ralr_mask,000007
+                                 7-111  
+                        000030   7-112  	equ	mc.scu,24
+                        000040   7-113  	equ	mc.mask,32		" DOUBLE
+                        000042   7-114  	equ	mc.ips_temp,34
+                                 7-115  
+                        000043   7-116  	equ	mc.errcode_word,35
+                        000000   7-117  	equ	mc.errcode_shift,0
+                                 7-118  
+                        000044   7-119  	equ	mc.fim_temp_word,36
+                        000000   7-120  	equ	mc.fim_temp_shift,0
+                        000044   7-121  	equ	mc.unique_index,36		" UPPER
+                        000044   7-122  	equ	mc.resignal_word,36
+                        400000   7-123  	bool	mc.resignal,400000		" DL
+                        000044   7-124  	equ	mc.fcode_word,36
+                        000000   7-125  	equ	mc.fcode_shift,0
+                        377777   7-126  	bool	mc.fcode_mask,377777
+                                 7-127  
+                        000045   7-128  	equ	mc.fault_reg,37
+                                 7-129  
+                        000046   7-130  	equ	mc.cpu_type_word,38
+                        000041   7-131  	equ	mc.cpu_type_shift,33
+                        000003   7-132  	bool	mc.cpu_type_mask,000003
+                        000046   7-133  	equ	mc.ext_fault_reg_word,38
+                        000022   7-134  	equ	mc.ext_fault_reg_shift,18
+                        077777   7-135  	bool	mc.ext_fault_reg_mask,077777
+                                 7-136  
+                        000046   7-137  	equ	mc.fault_time,38		" DOUBLE
+                        000050   7-138  	equ	mc.eis_info,40
+                                 7-139  
+                        000000   7-140  	equ	apx,0			" MANIFEST
+                        000001   7-141  	equ	abx,1			" MANIFEST
+                        000002   7-142  	equ	bpx,2			" MANIFEST
+                        000003   7-143  	equ	bbx,3			" MANIFEST
+                        000004   7-144  	equ	lpx,4			" MANIFEST
+                        000005   7-145  	equ	lbx,5			" MANIFEST
+                        000006   7-146  	equ	spx,6			" MANIFEST
+                        000007   7-147  	equ	sbx,7			" MANIFEST
+                                 7-148  
+                                 7-149  "
+                                 7-150  "	Structure scu
+                                 7-151  "
+                        000010   7-152  	equ	scu_size,8
+                                 7-153  
+                        000000   7-154  	equ	scu.ppr_word,0
+                        000021   7-155  	equ	scu.ppr_shift,17
+                        000041   7-156  	equ	scu.prr_shift,33
+                        000007   7-157  	bool	scu.prr_mask,000007
+                        000022   7-158  	equ	scu.psr_shift,18
+                        077777   7-159  	bool	scu.psr_mask,077777
+                        400000   7-160  	bool	scu.p,400000		" DL
+                        000000   7-161  	equ	scu.apu_word,0
+                        000003   7-162  	equ	scu.apu_shift,3
+                        037777   7-163  	bool	scu.apu_mask,037777
+                        200000   7-164  	bool	scu.xsf,200000		" DL
+                        100000   7-165  	bool	scu.sdwm,100000		" DL
+                        040000   7-166  	bool	scu.sd_on,040000		" DL
+                        020000   7-167  	bool	scu.ptwm,020000		" DL
+                        010000   7-168  	bool	scu.pt_on,010000		" DL
+                        004000   7-169  	bool	scu.pi_ap,004000		" DL
+                        002000   7-170  	bool	scu.dsptw,002000		" DL
+                        001000   7-171  	bool	scu.sdwnp,001000		" DL
+                        000400   7-172  	bool	scu.sdwp,000400		" DL
+                        000200   7-173  	bool	scu.ptw,000200		" DL
+                        000100   7-174  	bool	scu.ptw2,000100		" DL
+                        000040   7-175  	bool	scu.fap,000040		" DL
+                        000020   7-176  	bool	scu.fanp,000020		" DL
+                        000010   7-177  	bool	scu.fabs,000010		" DL
+                        000000   7-178  	equ	scu.fault_cntr_word,0
+                        000000   7-179  	equ	scu.fault_cntr_shift,0
+                        000007   7-180  	bool	scu.fault_cntr_mask,000007
+                                 7-181  
+                        000001   7-182  	equ	scu.fd_word,1
+                        000020   7-183  	equ	scu.fd_shift,16
+                        000001   7-184  	equ	scu.iro_word,1
+                        400000   7-185  	bool	scu.iro,400000		" DU
+                        000001   7-186  	equ	scu.oeb_word,1
+                        200000   7-187  	bool	scu.oeb,200000		" DU
+                        000001   7-188  	equ	scu.e_off_word,1
+                        100000   7-189  	bool	scu.e_off,100000		" DU
+                        000001   7-190  	equ	scu.orb_word,1
+                        040000   7-191  	bool	scu.orb,040000		" DU
+                        000001   7-192  	equ	scu.r_off_word,1
+                        020000   7-193  	bool	scu.r_off,020000		" DU
+                        000001   7-194  	equ	scu.owb_word,1
+                        010000   7-195  	bool	scu.owb,010000		" DU
+                        000001   7-196  	equ	scu.w_off_word,1
+                        004000   7-197  	bool	scu.w_off,004000		" DU
+                        000001   7-198  	equ	scu.no_ga_word,1
+                        002000   7-199  	bool	scu.no_ga,002000		" DU
+                        000001   7-200  	equ	scu.ocb_word,1
+                        001000   7-201  	bool	scu.ocb,001000		" DU
+                        000001   7-202  	equ	scu.ocall_word,1
+                        000400   7-203  	bool	scu.ocall,000400		" DU
+                        000001   7-204  	equ	scu.boc_word,1
+                        000200   7-205  	bool	scu.boc,000200		" DU
+                        000001   7-206  	equ	scu.inret_word,1
+                        000100   7-207  	bool	scu.inret,000100		" DU
+                        000001   7-208  	equ	scu.crt_word,1
+                        000040   7-209  	bool	scu.crt,000040		" DU
+                        000001   7-210  	equ	scu.ralr_word,1
+                        000020   7-211  	bool	scu.ralr,000020		" DU
+                        000001   7-212  	equ	scu.am_er_word,1
+                        000010   7-213  	bool	scu.am_er,000010		" DU
+                        000001   7-214  	equ	scu.oosb_word,1
+                        000004   7-215  	bool	scu.oosb,000004		" DU
+                        000001   7-216  	equ	scu.paru_word,1
+                        000002   7-217  	bool	scu.paru,000002		" DU
+                        000001   7-218  	equ	scu.parl_word,1
+                        000001   7-219  	bool	scu.parl,000001		" DU
+                        000001   7-220  	equ	scu.onc_1_word,1
+                        400000   7-221  	bool	scu.onc_1,400000		" DL
+                        000001   7-222  	equ	scu.onc_2_word,1
+                        200000   7-223  	bool	scu.onc_2,200000		" DL
+                        000001   7-224  	equ	scu.port_stat_word,1
+                        000006   7-225  	equ	scu.port_stat_shift,6
+                        001777   7-226  	bool	scu.port_stat_mask,001777
+                        000001   7-227  	equ	scu.ial_word,1
+                        000014   7-228  	equ	scu.ial_shift,12
+                        000017   7-229  	bool	scu.ial_mask,000017
+                        000001   7-230  	equ	scu.iac_word,1
+                        000011   7-231  	equ	scu.iac_shift,9
+                        000007   7-232  	bool	scu.iac_mask,000007
+                        000001   7-233  	equ	scu.con_chan_word,1
+                        000006   7-234  	equ	scu.con_chan_shift,6
+                        000007   7-235  	bool	scu.con_chan_mask,000007
+                        000001   7-236  	equ	scu.fi_num_word,1
+                        000001   7-237  	equ	scu.fi_num_shift,1
+                        000037   7-238  	bool	scu.fi_num_mask,000037
+                        000001   7-239  	equ	scu.fi_flag_word,1
+                        000001   7-240  	bool	scu.fi_flag,000001		" DL
+                                 7-241  
+                        000002   7-242  	equ	scu.tpr,2			" UPPER
+                        000002   7-243  	equ	scu.trr_word,2
+                        000041   7-244  	equ	scu.trr_shift,33
+                        000007   7-245  	bool	scu.trr_mask,000007
+                        000002   7-246  	equ	scu.tsr_word,2
+                        000022   7-247  	equ	scu.tsr_shift,18
+                        077777   7-248  	bool	scu.tsr_mask,077777
+                        000002   7-249  	equ	scu.cpu_no_word,2
+                        000006   7-250  	equ	scu.cpu_no_shift,6
+                        000007   7-251  	bool	scu.cpu_no_mask,000007
+                        000002   7-252  	equ	scu.delta_word,2
+                        000000   7-253  	equ	scu.delta_shift,0
+                        000077   7-254  	bool	scu.delta_mask,000077
+                                 7-255  
+                        000003   7-256  	equ	scu.word3,3		" UPPER
+                        000003   7-257  	equ	scu.tsr_stat_word,3
+                        000006   7-258  	equ	scu.tsr_stat_shift,6
+                        007777   7-259  	bool	scu.tsr_stat_mask,007777
+                        000003   7-260  	equ	scu.tsna_word,3
+                        000016   7-261  	equ	scu.tsna_shift,14
+                        000017   7-262  	bool	scu.tsna_mask,000017
+                        000003   7-263  	equ	scu.tsnb_word,3
+                        000012   7-264  	equ	scu.tsnb_shift,10
+                        000017   7-265  	bool	scu.tsnb_mask,000017
+                        000003   7-266  	equ	scu.tsnc_word,3
+                        000006   7-267  	equ	scu.tsnc_shift,6
+                        000017   7-268  	bool	scu.tsnc_mask,000017
+                        000003   7-269  	equ	scu.tpr_tbr_word,3
+                        000000   7-270  	equ	scu.tpr_tbr_shift,0
+                        000077   7-271  	bool	scu.tpr_tbr_mask,000077
+                                 7-272  
+                        000004   7-273  	equ	scu.ilc,4			" UPPER
+                        000004   7-274  	equ	scu.ir,4			" LOWER
+                        000004   7-275  	equ	scu.zero_word,4
+                        400000   7-276  	bool	scu.zero,400000		" DL
+                        000004   7-277  	equ	scu.neg_word,4
+                        200000   7-278  	bool	scu.neg,200000		" DL
+                        000004   7-279  	equ	scu.carry_word,4
+                        100000   7-280  	bool	scu.carry,100000		" DL
+                        000004   7-281  	equ	scu.ovfl_word,4
+                        040000   7-282  	bool	scu.ovfl,040000		" DL
+                        000004   7-283  	equ	scu.eovf_word,4
+                        020000   7-284  	bool	scu.eovf,020000		" DL
+                        000004   7-285  	equ	scu.eufl_word,4
+                        010000   7-286  	bool	scu.eufl,010000		" DL
+                        000004   7-287  	equ	scu.oflm_word,4
+                        004000   7-288  	bool	scu.oflm,004000		" DL
+                        000004   7-289  	equ	scu.tro_word,4
+                        002000   7-290  	bool	scu.tro,002000		" DL
+                        000004   7-291  	equ	scu.par_word,4
+                        001000   7-292  	bool	scu.par,001000		" DL
+                        000004   7-293  	equ	scu.parm_word,4
+                        000400   7-294  	bool	scu.parm,000400		" DL
+                        000004   7-295  	equ	scu.bm_word,4
+                        000200   7-296  	bool	scu.bm,000200		" DL
+                        000004   7-297  	equ	scu.tru_word,4
+                        000100   7-298  	bool	scu.tru,000100		" DL
+                        000004   7-299  	equ	scu.mif_word,4
+                        000040   7-300  	bool	scu.mif,000040		" DL
+                        000004   7-301  	equ	scu.abs_word,4
+                        000020   7-302  	bool	scu.abs,000020		" DL
+                        000004   7-303  	equ	scu.hex_word,4
+                        000010   7-304  	bool	scu.hex,000010		" DL
+                                 7-305  
+                        000005   7-306  	equ	scu.ca,5			" UPPER
+                        000005   7-307  	equ	scu.cu_word,5
+                        000006   7-308  	equ	scu.cu_shift,6
+                        007777   7-309  	bool	scu.cu_mask,007777
+                        000005   7-310  	equ	scu.rf_word,5
+                        400000   7-311  	bool	scu.rf,400000		" DL
+                        000005   7-312  	equ	scu.rpt_word,5
+                        200000   7-313  	bool	scu.rpt,200000		" DL
+                        000005   7-314  	equ	scu.rd_word,5
+                        100000   7-315  	bool	scu.rd,100000		" DL
+                        000005   7-316  	equ	scu.rl_word,5
+                        040000   7-317  	bool	scu.rl,040000		" DL
+                        000005   7-318  	equ	scu.pot_word,5
+                        020000   7-319  	bool	scu.pot,020000		" DL
+                        000005   7-320  	equ	scu.pon_word,5
+                        010000   7-321  	bool	scu.pon,010000		" DL
+                        000005   7-322  	equ	scu.xde_word,5
+                        004000   7-323  	bool	scu.xde,004000		" DL
+                        000005   7-324  	equ	scu.xdo_word,5
+                        002000   7-325  	bool	scu.xdo,002000		" DL
+                        000005   7-326  	equ	scu.poa_word,5
+                        001000   7-327  	bool	scu.poa,001000		" DL
+                        000005   7-328  	equ	scu.rfi_word,5
+                        000400   7-329  	bool	scu.rfi,000400		" DL
+                        000005   7-330  	equ	scu.its_word,5
+                        000200   7-331  	bool	scu.its,000200		" DL
+                        000005   7-332  	equ	scu.if_word,5
+                        000100   7-333  	bool	scu.if,000100		" DL
+                        000005   7-334  	equ	scu.cpu_tag_word,5
+                        000000   7-335  	equ	scu.cpu_tag_shift,0
+                        000077   7-336  	bool	scu.cpu_tag_mask,000077
+                                 7-337  
+                        000006   7-338  	equ	scu.even_inst,6
+                        000007   7-339  	equ	scu.odd_inst,7
+                                 7-340  
+                                 7-341  "
+                                 7-342  "	Structure scux
+                                 7-343  "
+                        000010   7-344  	equ	scux_size,8
+                                 7-345  
+                                 7-346  
+                        000001   7-347  	equ	scux.fd_word,1
+                        000000   7-348  	equ	scux.fd_shift,0
+                        000001   7-349  	equ	scux.isn_word,1
+                        400000   7-350  	bool	scux.isn,400000		" DU
+                        000001   7-351  	equ	scux.ioc_word,1
+                        200000   7-352  	bool	scux.ioc,200000		" DU
+                        000001   7-353  	equ	scux.ia_am_word,1
+                        100000   7-354  	bool	scux.ia_am,100000		" DU
+                        000001   7-355  	equ	scux.isp_word,1
+                        040000   7-356  	bool	scux.isp,040000		" DU
+                        000001   7-357  	equ	scux.ipr_word,1
+                        020000   7-358  	bool	scux.ipr,020000		" DU
+                        000001   7-359  	equ	scux.nea_word,1
+                        010000   7-360  	bool	scux.nea,010000		" DU
+                        000001   7-361  	equ	scux.oobb_word,1
+                        004000   7-362  	bool	scux.oobb,004000		" DU
+                                 7-363  
+                        000003   7-364  	equ	scux.tsr_stat_word,3
+                        000006   7-365  	equ	scux.tsr_stat_shift,6
+                        007777   7-366  	bool	scux.tsr_stat_mask,007777
+                                 7-367  
+                        000006   7-368  	equ	scux.instr,6
+                                 7-369  
+                                 7-370       "END INCLUDE FILE toe_hold.incl.alm
+                                   383  
+                                   384  	include	iom_data
+                                   8-1  
+                                   8-2  
+                                   8-3       "BEGIN INCLUDE FILE iom_data.incl.alm
+                                   8-4  
+                                   8-5  
+                                   8-6  	"Created 03/22/85  1256.2 est Fri by convert_include_file,
+                                   8-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   8-8  
+                                   8-9  	"Made from >pool>m>CLJones>d>rcf>iom_data.incl.pl1,
+                                  8-10  	"   modified 03/22/85  1256.1 est Fri
+                                  8-11  
+                                  8-12  "
+                                  8-13  "	Structure iom_data
+                                  8-14  "
+                                  8-15  
+                        000000    8-16  	equ	iom_data.n_devices,0
+                        000001    8-17  	equ	iom_data.stop_lpw,1
+                        000002    8-18  	equ	iom_data.stop_dcw,2
+                        000003    8-19  	equ	iom_data.stop_scw,3
+                        000004    8-20  	equ	iom_data.imw_lock,4
+                        000005    8-21  	equ	iom_data.n_intr_procs,5
+                        000010    8-22  	equ	iom_data.stop_status,8	" DOUBLE
+                        000012    8-23  	equ	iom_data.rfh1,10
+                        000020    8-24  	equ	iom_data.stop_ext_status,16	" DOUBLE
+                        000035    8-25  	equ	iom_data.invalid_interrupts,29
+                        000036    8-26  	equ	iom_data.null_interrupts,30
+                        000037    8-27  	equ	iom_data.multiple_interrupts,31
+                        000040    8-28  	equ	iom_data.per_iom,32		" LEVEL 2
+                                  8-29  
+                        000240    8-30  	equ	iom_data.per_device,160	" LEVEL 2
+                                  8-31  
+                                  8-32  
+                                  8-33  "
+                                  8-34  "	Structure per_iom
+                                  8-35  "
+                        000040    8-36  	equ	per_iom_size,32
+                                  8-37  
+                        000000    8-38  	equ	per_iom.lock,0
+                        000001    8-39  	equ	per_iom.flags,1		" LEVEL 2
+                                  8-40  
+                        400000    8-41  	bool	per_iom.configured,400000	" DU
+                        200000    8-42  	bool	per_iom.on_line,200000	" DU
+                                  8-43  
+                        000002    8-44  	equ	per_iom.model,2
+                        000003    8-45  	equ	per_iom.port,3
+                        000004    8-46  	equ	per_iom.connect_time,4	" DOUBLE
+                        000006    8-47  	equ	per_iom.connect_lpw,6
+                        000007    8-48  	equ	per_iom.cow,7
+                        000010    8-49  	equ	per_iom.special_chx,8
+                        000011    8-50  	equ	per_iom.fault_chx,9
+                        000016    8-51  	equ	per_iom.abandoned_connects,14
+                        000017    8-52  	equ	per_iom.reconnects,15
+                                  8-53  
+                        000020    8-54  	equ	per_iom.chantab_word,16
+                        000033    8-55  	equ	per_iom.chantab_shift,27
+                        000777    8-56  	bool	per_iom.chantab_mask,000777
+                                  8-57  
+                                  8-58  "
+                                  8-59  "	Structure per_device
+                                  8-60  "
+                        000050    8-61  	equ	per_device_size,40
+                                  8-62  
+                                  8-63  
+                        000000    8-64  	equ	per_device.status,0		" DOUBLE
+                        000002    8-65  	equ	per_device.rfh1,2
+                        000010    8-66  	equ	per_device.ext_status,8	" DOUBLE
+                        000020    8-67  	equ	per_device.iom,16
+                        000021    8-68  	equ	per_device.channel,17
+                        000022    8-69  	equ	per_device.handler,18
+                        000026    8-70  	equ	per_device.flags,22		" LEVEL 2
+                                  8-71  
+                        400000    8-72  	bool	per_device.in_use,400000	" DU
+                        200000    8-73  	bool	per_device.queue_status,200000 " DU
+                        100000    8-74  	bool	per_device.on_line,100000	" DU
+                                  8-75  
+                        000027    8-76  	equ	per_device.index,23
+                        000030    8-77  	equ	per_device.pcw,24		" DOUBLE
+                        000032    8-78  	equ	per_device.lpw,26		" DOUBLE
+                        000034    8-79  	equ	per_device.scw,28
+                        000036    8-80  	equ	per_device.status_queue_ptr,30
+                        000040    8-81  	equ	per_device.connect_time,32	" DOUBLE
+                        000042    8-82  	equ	per_device.connects,34	" DOUBLE
+                        000044    8-83  	equ	per_device.interrupts,36	" DOUBLE
+                        000046    8-84  	equ	per_device.interrupt_time,38	" DOUBLE
+                                  8-85  
+                                  8-86  "
+                                  8-87  "	Structure iom_mailbox_seg
+                                  8-88  "
+                        002200    8-89  	equ	iom_mailbox_seg_size,1152
+                                  8-90  
+                        000000    8-91  	equ	iom_mailbox_seg.imw_array_word,0
+                        000004    8-92  	equ	iom_mailbox_seg.imw_array_shift,4
+                                  8-93  
+                        000040    8-94  	equ	iom_mailbox_seg.system_fault,32 " LEVEL 2
+                                  8-95  
+                        000120    8-96  	equ	iom_mailbox_seg.special_status,80 " LEVEL 2
+                                  8-97  
+                        000200    8-98  	equ	iom_mailbox_seg.iom_mailbox,128 " LEVEL 2
+                                  8-99  
+                                 8-100  
+                                 8-101  "
+                                 8-102  "	Structure status_queue
+                                 8-103  "
+                        000014   8-104  	equ	status_queue_size,12
+                                 8-105  
+                        000000   8-106  	equ	status_queue.status,0
+                                 8-107  
+                                 8-108  "
+                                 8-109  "	Structure iom_mailbox
+                                 8-110  "
+                        000400   8-111  	equ	iom_mailbox_size,256
+                                 8-112  
+                        000000   8-113  	equ	iom_mailbox.channel_mailbox,0	" LEVEL 2
+                                 8-114  
+                                 8-115  
+                                 8-116  "
+                                 8-117  "	Structure channel_mailbox
+                                 8-118  "
+                        000004   8-119  	equ	channel_mailbox_size,4
+                                 8-120  
+                        000000   8-121  	equ	channel_mailbox.lpw,0	" DOUBLE
+                        000002   8-122  	equ	channel_mailbox.scw,2
+                        000003   8-123  	equ	channel_mailbox.dcw,3
+                                 8-124  
+                        000001   8-125  	equ	system_fault_channel,1	" MANIFEST
+                        000002   8-126  	equ	connect_channel,2		" MANIFEST
+                        000006   8-127  	equ	special_status_channel,6	" MANIFEST
+                                 8-128  
+                                 8-129       "END INCLUDE FILE iom_data.incl.alm
+                                   385  
+                        000012     386  	equ	connect.pcw,connect_channel*channel_mailbox_size+channel_mailbox.scw
+                        000010     387  	equ	connect.lpw,connect_channel*channel_mailbox_size+channel_mailbox.lpw
+                                   388  
+                                   389  
+                                   390  " 
+                                   391  
+                                   392  " BEGIN MESSAGE DOCUMENTATION
+                                   393  "
+                                   394  " Message:
+                                   395  " sys_trouble: Page fault while on prds.
+                                   396  "
+                                   397  " S:	$crash
+                                   398  "
+                                   399  " T:	$run
+                                   400  "
+                                   401  " M:	$err
+                                   402  "
+                                   403  " A:	$recov
+                                   404  "
+                                   405  "
+                                   406  " Message:
+                                   407  " sys_trouble: Fault/interrupt while on prds.
+                                   408  "
+                                   409  " S:	$crash
+                                   410  "
+                                   411  " T:	$run
+                                   412  "
+                                   413  " M:	$err
+                                   414  "
+                                   415  " A:	$recov
+                                   416  "
+                                   417  "
+                                   418  " Message:
+                                   419  " sys_trouble: Fault in idle process.
+                                   420  "
+                                   421  " S:	$crash
+                                   422  "
+                                   423  " T:	$run
+                                   424  "
+                                   425  " M:	$err
+                                   426  "
+                                   427  " A:	$recov
+                                   428  "
+                                   429  "
+                                   430  " Message:
+                                   431  " sys_trouble: Fault/interrupt with ptl set.
+                                   432  "
+                                   433  " S:	$crash
+                                   434  "
+                                   435  " T:	$run
+                                   436  "
+                                   437  " M:	$err
+                                   438  "
+                                   439  " A:	$recov
+                                   440  "
+                                   441  "
+                                   442  " Message:
+                                   443  " sys_trouble: Unrecognized fault.
+                                   444  "
+                                   445  " S:	$crash
+                                   446  "
+                                   447  " T:	$run
+                                   448  "
+                                   449  " M:	Unexpected or unrecognized fault subcondition.
+                                   450  "	Probable hardware malfunction.
+                                   451  "
+                                   452  " A:	$contact
+                                   453  "
+                                   454  "
+                                   455  " Message:
+                                   456  " sys_trouble: Unexpected fault.
+                                   457  "
+                                   458  " S:	$crash
+                                   459  "
+                                   460  " T:	$init
+                                   461  "
+                                   462  " M:	$err
+                                   463  "
+                                   464  " A:	$recov
+                                   465  "
+                                   466  "
+                                   467  " Message:
+                                   468  " sys_trouble: Execute fault by operator.
+                                   469  "
+                                   470  " S:	$crash
+                                   471  "
+                                   472  " T:	$run
+                                   473  "
+                                   474  " M:	Operator depressed execute pushbutton on processor.
+                                   475  "
+                                   476  " A:	$recov
+                                   477  "
+                                   478  "
+                                   479  " Message:
+                                   480  " sys_trouble:  Out-of-Segment-Bounds on prds.
+                                   481  "
+                                   482  " S:	$crash
+                                   483  "
+                                   484  " T:	$run
+                                   485  "
+                                   486  " M:	While running with the prds as a stack, an attempt was
+                                   487  "	made to reference beyond the end of the prds.  The likely
+                                   488  "	cause was stack overflow, due either to a recursive loop
+                                   489  "	in the procedures running on the prds or insufficient
+                                   490  "	space allocated for the prds.  If the latter, the size of
+                                   491  "	the prds should be increased by means of the TBLS Configuration
+                                   492  "	Card.
+                                   493  "
+                                   494  " A:	$recover
+                                   495  "
+                                   496  "
+                                   497  " Message:
+                                   498  " sys_trouble: Interrupts Masked in User Ring.
+                                   499  "
+                                   500  " S:	$crash
+                                   501  "
+                                   502  " T:	$run
+                                   503  "
+                                   504  " M:	During processing of a fault, it was noticed that interrupts
+                                   505  "	were masked in user-ring, an invalid condition. This is a
+                                   506  "	debug trap crash, enabled by the hidden tuning parameter
+                                   507  "	trap_invalid_masked.
+                                   508  "
+                                   509  " A:	Contact the Multics System Development staff.
+                                   510  "
+                                   511  "
+                                   512  " Message:
+                                   513  " sys_trouble: Fault in bound_interceptors.
+                                   514  "
+                                   515  " S:	$crash
+                                   516  "
+                                   517  " T:	$run
+                                   518  "
+                                   519  " M:	A fault occured while handling another fault.
+                                   520  "
+                                   521  " A:	$recov
+                                   522  "
+                                   523  "
+                                   524  " Message:
+                                   525  " sys_trouble: Ring 0 derail. {MESSAGE}
+                                   526  "
+                                   527  " S:	$crash
+                                   528  "
+                                   529  " T:	$run
+                                   530  "
+                                   531  " M:	A supervisor software module discovered an untenable situation, and
+                                   532  "	crashed the system by executing a derail (DRL) instruction.
+                                   533  "	If MESSAGE is also present, it will be of the form:
+                                   534  "         "module: explanation", and further details can be found in
+                                   535  "	this documentation in the description of "module".
+                                   536  "
+                                   537  " A:	$recov
+                                   538  "
+                                   539  " END MESSAGE DOCUMENTATION
+                                   540  
+                                   541  
+                                   542  
+                                   543  	end
+LITERALS
+     
+    000364  aa   777777 777777 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000365  5a   000003 000000 
+    000366  5a   000026 600000 
+    000367  aa   000000 000000 
+    000370  55   000011 000002 
+    000371  5a   000002 400003 
+    000372  55   000006 000011 
+    000373  aa  013 163 171 163
+    000374  aa  137 164 162 157
+    000375  aa  165 142 154 145
+    000376  55   000017 000003 
+    000377  0a   000012 400000 
+    000400  55   000014 000003 
+    000401  aa  013 163 171 163         sys_trouble
+    000402  aa  137 164 162 157
+    000403  aa  165 142 154 145
+    000404  55   000002 000011 
+    000405  6a   000000 400002 
+    000406  55   000022 000003 
+    000407  aa  014 163 171 155         symbol_table
+    000410  aa  142 157 154 137
+    000411  aa  164 141 142 154
+    000412  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000413  aa   000000 000015 
+    000414  aa   000000 000000 
+    000415  aa   000000 000000 
+    000416  aa   000000 000000 
+    000417  aa   000000 000000 
+    000420  5a   000011 000000 
+    000421  aa   000000 000000 
+    000422  5a   000017 000000 
+    000423  aa   000000 000000 
+    000424  aa   000000 000000 
+    000425  aa   000000 000000 
+    000426  aa   000000 000000 
+    000427  aa   000000 000000 
+    000430  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000431  aa  010 143 157 167         cow_ptrs
+    000432  aa  137 160 164 162
+    000433  aa  163 000 000 000
+    000434  aa  016 160 162 157         processor_data
+    000435  aa  143 145 163 163
+    000436  aa  157 162 137 144
+    000437  aa  141 164 141 000
+    000440  aa  014 143 157 156         connect_lock
+    000441  aa  156 145 143 164
+    000442  aa  137 154 157 143
+    000443  aa  153 000 000 000
+    000444  aa  007 164 157 145         toehold
+    000445  aa  150 157 154 144
+    000446  aa  013 151 157 155         iom_mailbox
+    000447  aa  137 155 141 151
+    000450  aa  154 142 157 170
+    000451  aa  010 151 157 155         iom_data
+    000452  aa  137 144 141 164
+    000453  aa  141 000 000 000
+    000454  aa  014 146 141 165         fault_vector
+    000455  aa  154 164 137 166
+    000456  aa  145 143 164 157
+    000457  aa  162 000 000 000
+    000460  aa  023 144 162 154         drl_message_pointer
+    000461  aa  137 155 145 163
+    000462  aa  163 141 147 145
+    000463  aa  137 160 157 151
+    000464  aa  156 164 145 162
+    000465  aa  007 146 154 141         flagbox
+    000466  aa  147 142 157 170
+    000467  aa  017 164 162 157         trouble_scuinfo
+    000470  aa  165 142 154 145
+    000471  aa  137 163 143 165
+    000472  aa  151 156 146 157
+    000473  aa  013 166 137 164         v_time_calc
+    000474  aa  151 155 145 137
+    000475  aa  143 141 154 143
+    000476  aa  016 162 145 163         reset_mode_reg
+    000477  aa  145 164 137 155
+    000500  aa  157 144 145 137
+    000501  aa  162 145 147 000
+    000502  aa  022 146 141 165         faults_initialized
+    000503  aa  154 164 163 137
+    000504  aa  151 156 151 164
+    000505  aa  151 141 154 151
+    000506  aa  172 145 144 000
+    000507  aa  014 162 145 163         restore_mask
+    000510  aa  164 157 162 145
+    000511  aa  137 155 141 163
+    000512  aa  153 000 000 000
+    000513  aa  013 164 162 157         trouble_prs
+    000514  aa  165 142 154 145
+    000515  aa  137 160 162 163
+    000516  aa  011 167 151 162         wired_fim
+    000517  aa  145 144 137 146
+    000520  aa  151 155 000 000
+    000521  aa  023 163 171 163         sys_trouble_pending
+    000522  aa  137 164 162 157
+    000523  aa  165 142 154 145
+    000524  aa  137 160 145 156
+    000525  aa  144 151 156 147
+    000526  aa  021 142 157 163         bos_processor_tag
+    000527  aa  137 160 162 157
+    000530  aa  143 145 163 163
+    000531  aa  157 162 137 164
+    000532  aa  141 147 000 000
+    000533  aa  014 164 162 157         trouble_dbrs
+    000534  aa  165 142 154 145
+    000535  aa  137 144 142 162
+    000536  aa  163 000 000 000
+    000537  aa  015 160 162 157         processor_tag
+    000540  aa  143 145 163 163
+    000541  aa  157 162 137 164
+    000542  aa  141 147 000 000
+    000543  aa  017 146 157 162         force_hist_regs
+    000544  aa  143 145 137 150
+    000545  aa  151 163 164 137
+    000546  aa  162 145 147 163
+    000547  aa  011 143 150 145         check_mct
+    000550  aa  143 153 137 155
+    000551  aa  143 164 000 000
+    000552  aa  020 150 151 163         history_reg_data
+    000553  aa  164 157 162 171
+    000554  aa  137 162 145 147
+    000555  aa  137 144 141 164
+    000556  aa  141 000 000 000
+    000557  aa  003 160 144 163         pds
+    000560  aa  007 143 157 160         copy_mc
+    000561  aa  171 137 155 143
+    000562  aa  020 163 171 163         sys_trouble_data
+    000563  aa  137 164 162 157
+    000564  aa  165 142 154 145
+    000565  aa  137 144 141 164
+    000566  aa  141 000 000 000
+    000567  aa  010 163 145 164         set_mask
+    000570  aa  137 155 141 163
+    000571  aa  153 000 000 000
+    000572  aa  010 146 151 155         fim_util
+    000573  aa  137 165 164 151
+    000574  aa  154 000 000 000
+    000575  aa  015 164 162 157         trouble_flags
+    000576  aa  165 142 154 145
+    000577  aa  137 146 154 141
+    000600  aa  147 163 000 000
+    000601  aa  011 160 162 157         processor
+    000602  aa  143 145 163 163
+    000603  aa  157 162 000 000
+    000604  aa  021 142 157 163         bos_restart_flags
+    000605  aa  137 162 145 163
+    000606  aa  164 141 162 164
+    000607  aa  137 146 154 141
+    000610  aa  147 163 000 000
+    000611  aa  003 163 143 163         scs
+    000612  aa  021 160 162 157         processor_pattern
+    000613  aa  143 145 163 163
+    000614  aa  157 162 137 160
+    000615  aa  141 164 164 145
+    000616  aa  162 156 000 000
+    000617  aa  004 160 162 144         prds
+    000620  aa  163 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000621  aa   000004 000000 
+    000622  55   000224 000044 
+    000623  aa   000004 000000 
+    000624  55   000224 000047 
+    000625  aa   000004 000000 
+    000626  55   000224 000053 
+    000627  aa   000003 000000 
+    000630  5a   000057 000000 
+    000631  aa   000003 000000 
+    000632  5a   000061 000000 
+    000633  aa   000003 000000 
+    000634  5a   000064 000000 
+    000635  aa   000003 000000 
+    000636  5a   000067 000000 
+    000637  aa   000004 000000 
+    000640  55   000224 000073 
+    000641  aa   000003 000000 
+    000642  5a   000100 000000 
+    000643  aa   000004 000000 
+    000644  55   000131 000102 
+    000645  aa   000004 000000 
+    000646  55   000205 000106 
+    000647  aa   000004 000000 
+    000650  55   000205 000111 
+    000651  aa   000004 000000 
+    000652  55   000224 000115 
+    000653  aa   000004 000000 
+    000654  55   000205 000122 
+    000655  aa   000004 000000 
+    000656  55   000131 000126 
+    000657  aa   000004 000000 
+    000660  55   000224 000134 
+    000661  aa   000004 000000 
+    000662  55   000224 000141 
+    000663  aa   000004 000000 
+    000664  55   000224 000146 
+    000665  aa   000004 000000 
+    000666  55   000232 000152 
+    000667  aa   000004 000000 
+    000670  55   000205 000156 
+    000671  aa   000004 000000 
+    000672  55   000205 000162 
+    000673  aa   000004 000000 
+    000674  55   000172 000165 
+    000675  aa   000004 000000 
+    000676  55   000205 000173 
+    000677  aa   000004 000000 
+    000700  55   000232 000175 
+    000701  aa   000004 000000 
+    000702  55   000205 000202 
+    000703  aa   000004 000000 
+    000704  55   000224 000210 
+    000705  aa   000004 000000 
+    000706  55   000224 000214 
+    000707  aa   000004 000000 
+    000710  55   000224 000217 
+    000711  aa   000004 000000 
+    000712  55   000232 000225 
+    000713  aa   000001 000000 
+    000714  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000715  5a   000234 000000 
+    000716  5a   000236 000000 
+    000717  5a   000240 000000 
+    000720  5a   000242 000006 
+    000721  5a   000244 777600 
+    000722  5a   000246 000000 
+    000723  5a   000250 000000 
+    000724  5a   000252 000000 
+    000725  5a   000254 000000 
+    000726  5a   000256 000000 
+    000727  5a   000260 000000 
+    000730  5a   000262 000000 
+    000731  5a   000264 000000 
+    000732  5a   000266 000000 
+    000733  5a   000270 000000 
+    000734  5a   000272 000000 
+    000735  5a   000274 000000 
+    000736  5a   000276 000000 
+    000737  5a   000300 000000 
+    000740  5a   000302 000000 
+    000741  5a   000304 000000 
+    000742  5a   000306 000000 
+    000743  5a   000310 000000 
+    000744  5a   000312 000000 
+    000745  5a   000314 000000 
+    000746  5a   000316 000000 
+    000747  5a   000320 000000 
+    000750  5a   000322 000000 
+    000751  5a   000324 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000365 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000014 000106 
+    000007  a2   000000 000004 
+    000014  9a   777764 0000 46         prds|processor_pattern
+    000015  5a   000364 0000 00
+    000016  9a   777762 0000 46         scs|bos_restart_flags
+    000017  5a   000363 0000 00
+    000020  9a   777760 0000 46         scs|processor
+    000021  5a   000362 0000 00
+    000022  9a   777756 0000 46         scs|trouble_flags
+    000023  5a   000361 0000 00
+    000024  9a   777754 0000 46         fim_util|set_mask
+    000025  5a   000360 0000 00
+    000026  9a   777752 0000 46         prds|sys_trouble_data
+    000027  5a   000357 0000 00
+    000030  9a   777750 0000 46         fim_util|copy_mc
+    000031  5a   000356 0000 00
+    000032  9a   777746 0000 46         pds|history_reg_data
+    000033  5a   000355 0000 00
+    000034  9a   777744 0000 46         fim_util|check_mct
+    000035  5a   000354 0000 00
+    000036  9a   777742 0000 46         fim_util|force_hist_regs
+    000037  5a   000353 0000 00
+    000040  9a   777740 0000 46         prds|processor_tag
+    000041  5a   000352 0000 00
+    000042  9a   777736 0000 46         scs|trouble_dbrs
+    000043  5a   000351 0000 05
+    000044  9a   777734 0000 46         scs|bos_processor_tag
+    000045  5a   000350 0000 00
+    000046  9a   777732 0000 46         scs|sys_trouble_pending
+    000047  5a   000347 0000 00
+    000050  9a   777730 0000 46         wired_fim|trouble_prs
+    000051  5a   000346 0000 20
+    000052  9a   777726 0000 46         fim_util|restore_mask
+    000053  5a   000345 0000 00
+    000054  9a   777724 0000 46         scs|faults_initialized
+    000055  5a   000344 0000 00
+    000056  9a   777722 0000 46         fim_util|reset_mode_reg
+    000057  5a   000343 0000 00
+    000060  9a   777720 0000 46         fim_util|v_time_calc
+    000061  5a   000342 0000 00
+    000062  9a   777716 0000 46         wired_fim|trouble_scuinfo
+    000063  5a   000341 0000 20
+    000064  9a   777714 0000 46         flagbox|       
+    000065  5a   000340 0000 00
+    000066  9a   777712 0000 46         scs|drl_message_pointer
+    000067  5a   000337 0000 00
+    000070  9a   777710 0000 46         fault_vector|       
+    000071  5a   000336 0000 00
+    000072  9a   777706 0000 46         iom_data|       
+    000073  5a   000335 0000 00
+    000074  9a   777704 0000 46         iom_mailbox|       
+    000075  5a   000334 0000 06
+    000076  9a   777702 0000 46         toehold|       
+    000077  5a   000333 0000 00
+    000100  9a   777700 0000 46         scs|connect_lock
+    000101  5a   000332 0000 00
+    000102  9a   777676 0000 46         scs|processor_data
+    000103  5a   000331 0000 06
+    000104  9a   777674 0000 46         scs|cow_ptrs
+    000105  5a   000330 0000 26
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   256410 313607 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000010 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000367 
+    000020  aa   000000 000251 
+    000021  aa   000320 000303 
+    000022  aa   000353 000251 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000011 
+    000066  aa   000132 000042 
+    000067  aa   175453 017357 
+    000070  aa   000000 117547 
+    000071  aa   175037 400000 
+    000072  aa   000143 000046 
+    000073  aa   112375 747473 
+    000074  aa   000000 111240 
+    000075  aa   207531 200000 
+    000076  aa   000155 000045 
+    000077  aa   112375 747472 
+    000100  aa   000000 111240 
+    000101  aa   207531 200000 
+    000102  aa   000167 000031 
+    000103  aa   075522 764240 
+    000104  aa   000000 107555 
+    000105  aa   332322 000000 
+    000106  aa   000176 000035 
+    000107  aa   153072 447700 
+    000110  aa   000000 115333 
+    000111  aa   300226 600000 
+    000112  aa   000206 000047 
+    000113  aa   123154 505732 
+    000114  aa   000000 112316 
+    000115  aa   133413 400000 
+    000116  aa   000220 000042 
+    000117  aa   101301 045475 
+    000120  aa   000000 110133 
+    000121  aa   352304 600000 
+    000122  aa   000231 000036 
+    000123  aa   127236 043574 
+    000124  aa   000000 112724 
+    000125  aa   701751 400000 
+    000126  aa   000241 000036 
+    000127  aa   134547 161111 
+    000130  aa   000000 113455 
+    000131  aa   515111 200000 
+    000132  aa   076163 160145          >spec>install>1110>sys_trouble.alm
+    000133  aa   143076 151156 
+    000134  aa   163164 141154 
+    000135  aa   154076 061061 
+    000136  aa   061060 076163 
+    000137  aa   171163 137164 
+    000140  aa   162157 165142 
+    000141  aa   154145 056141 
+    000142  aa   154155 040040 
+    000143  aa   076154 144144          >ldd>include>make_data_macros.incl.alm
+    000144  aa   076151 156143 
+    000145  aa   154165 144145 
+    000146  aa   076155 141153 
+    000147  aa   145137 144141 
+    000150  aa   164141 137155 
+    000151  aa   141143 162157 
+    000152  aa   163056 151156 
+    000153  aa   143154 056141 
+    000154  aa   154155 040040 
+    000155  aa   076154 144144          >ldd>include>iom_word_macros.incl.alm
+    000156  aa   076151 156143 
+    000157  aa   154165 144145 
+    000160  aa   076151 157155 
+    000161  aa   137167 157162 
+    000162  aa   144137 155141 
+    000163  aa   143162 157163 
+    000164  aa   056151 156143 
+    000165  aa   154056 141154 
+    000166  aa   155040 040040 
+    000167  aa   076154 144144          >ldd>include>scs.incl.alm
+    000170  aa   076151 156143 
+    000171  aa   154165 144145 
+    000172  aa   076163 143163 
+    000173  aa   056151 156143 
+    000174  aa   154056 141154 
+    000175  aa   155040 040040 
+    000176  aa   076154 144144          >ldd>include>flagbox.incl.alm
+    000177  aa   076151 156143 
+    000200  aa   154165 144145 
+    000201  aa   076146 154141 
+    000202  aa   147142 157170 
+    000203  aa   056151 156143 
+    000204  aa   154056 141154 
+    000205  aa   155040 040040 
+    000206  aa   076154 144144          >ldd>include>sys_trouble_codes.incl.alm
+    000207  aa   076151 156143 
+    000210  aa   154165 144145 
+    000211  aa   076163 171163 
+    000212  aa   137164 162157 
+    000213  aa   165142 154145 
+    000214  aa   137143 157144 
+    000215  aa   145163 056151 
+    000216  aa   156143 154056 
+    000217  aa   141154 155040 
+    000220  aa   076154 144144          >ldd>include>fault_vector.incl.alm
+    000221  aa   076151 156143 
+    000222  aa   154165 144145 
+    000223  aa   076146 141165 
+    000224  aa   154164 137166 
+    000225  aa   145143 164157 
+    000226  aa   162056 151156 
+    000227  aa   143154 056141 
+    000230  aa   154155 040040 
+    000231  aa   076154 144144          >ldd>include>toe_hold.incl.alm
+    000232  aa   076151 156143 
+    000233  aa   154165 144145 
+    000234  aa   076164 157145 
+    000235  aa   137150 157154 
+    000236  aa   144056 151156 
+    000237  aa   143154 056141 
+    000240  aa   154155 040040 
+    000241  aa   076154 144144          >ldd>include>iom_data.incl.alm
+    000242  aa   076151 156143 
+    000243  aa   154165 144145 
+    000244  aa   076151 157155 
+    000245  aa   137144 141164 
+    000246  aa   141056 151156 
+    000247  aa   143154 056141 
+    000250  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         250    .._00000                 sys_trouble:  199.
+         257    .._00001                 sys_trouble:  201.
+         267    .._00002                 sys_trouble:  203.
+         275    .._00003                 sys_trouble:  205.
+         305    .._00004                 sys_trouble:  207.
+         312    .._00005                 sys_trouble:  209.
+         317    .._00006                 sys_trouble:  211.
+         326    .._00007                 sys_trouble:  213.
+         336    .._00010                 sys_trouble:  215.
+         347    .._00011                 sys_trouble:  217.
+         360    .._00012                 sys_trouble:  219.
+           1    abx                      toe_hold:     141.
+           0    apx                      toe_hold:     140.
+           2    At_bce__boot             toe_hold:      79.
+           6    At_bce__crash            toe_hold:      83.
+           1    At_bce__early            toe_hold:      78.
+           7    At_bce__shutdown         toe_hold:      84.
+           3    bbx                      toe_hold:     143.
+                bos_processor_tag        sys_trouble:   94.
+                bos_restart_flags        sys_trouble:   46,  115,  311.
+           2    bpx                      toe_hold:     142.
+         233    broadcast                sys_trouble:   57,  318,  332.
+         234    broadcast_loop           sys_trouble:  334,  345.
+         242    broadcast_next           sys_trouble:  336,  339,  343.
+           3    channel_mailbox.dcw      iom_data:     123.
+           0    channel_mailbox.lpw      sys_trouble:  387,
+                                         iom_data:     121.
+           2    channel_mailbox.scw      sys_trouble:  386,
+                                         iom_data:     122.
+           4    channel_mailbox_size     sys_trouble:  386,  387,
+                                         iom_data:     119.
+                check_mct                sys_trouble:   78.
+          10    connect.lpw              sys_trouble:  280,  285,  387.
+          12    connect.pcw              sys_trouble:  278,  386.
+           2    connect_channel          sys_trouble:  386,  387,
+                                         iom_data:     126.
+                connect_lock             sys_trouble:  307.
+                copy_mc                  sys_trouble:   74.
+                cow_ptrs                 sys_trouble:  341.
+          45    die                      sys_trouble:   97.
+         220    drl                      sys_trouble:  305,  308.
+                drl_message_pointer      sys_trouble:  166,  168.
+          66    enter_bce                sys_trouble:   95,  144.
+                faults_initialized       sys_trouble:  121.
+          24    FAULT_NO_ACV             fault_vector:        46.
+           5    FAULT_NO_CMD             fault_vector:        31.
+          10    FAULT_NO_CON             sys_trouble:   70,
+                                         fault_vector:        34.
+          20    FAULT_NO_DF0             fault_vector:        42.
+          21    FAULT_NO_DF1             fault_vector:        43.
+          22    FAULT_NO_DF2             fault_vector:        44.
+          23    FAULT_NO_DF3             fault_vector:        45.
+          16    FAULT_NO_DIV             fault_vector:        40.
+           6    FAULT_NO_DRL             sys_trouble:  300,  303,  314,
+                                         fault_vector:        32.
+          17    FAULT_NO_EXF             fault_vector:        41.
+           3    FAULT_NO_F1              fault_vector:        29.
+          30    FAULT_NO_F2              fault_vector:        50.
+          31    FAULT_NO_F3              fault_vector:        51.
+          12    FAULT_NO_IPR             fault_vector:        36.
+           7    FAULT_NO_LUF             sys_trouble:  236,  242,  316,
+                                         fault_vector:        33.
+           2    FAULT_NO_MME             fault_vector:        28.
+          25    FAULT_NO_MME2            fault_vector:        47.
+          26    FAULT_NO_MME3            fault_vector:        48.
+          27    FAULT_NO_MME4            fault_vector:        49.
+          15    FAULT_NO_OFL             fault_vector:        39.
+          13    FAULT_NO_ONC             fault_vector:        37.
+          11    FAULT_NO_PAR             fault_vector:        35.
+           0    FAULT_NO_SDF             fault_vector:        26.
+           1    FAULT_NO_STR             fault_vector:        27.
+          14    FAULT_NO_SUF             fault_vector:        38.
+          37    FAULT_NO_TRB             fault_vector:        53.
+           4    FAULT_NO_TRO             fault_vector:        30.
+                fault_vector             sys_trouble:  235.
+       20000    fgbx.alert               sys_trouble:  175,
+                                         flagbox:       41.
+          77    fgbx.bce_entry_mask      flagbox:       46.
+           1    fgbx.bce_entry_shift     flagbox:       45.
+       10000    fgbx.breakpoint          flagbox:       42.
+      200000    fgbx.call_bce            flagbox:       38.
+      400000    fgbx.flags               flagbox:       31.
+          40    fgbx.flags_word          flagbox:       30.
+          56    fgbx.hc_dbr              flagbox:       50.
+        2000    fgbx.io_reconfig         flagbox:       44.
+        4000    fgbx.manual_crash        sys_trouble:  153,
+                                         flagbox:       43.
+       40000    fgbx.mess                sys_trouble:  175,
+                                         flagbox:       40.
+          60    fgbx.message             sys_trouble:  158,  162,  173,
+                                         flagbox:       51.
+         100    fgbx.return_to_bce_command     flagbox:       52.
+          43    fgbx.rtb                 sys_trouble:  154,  176,
+                                         flagbox:       35.
+          44    fgbx.sentinel            flagbox:       48.
+      100000    fgbx.shut                flagbox:       39.
+          41    fgbx.slt_segno           flagbox:       33.
+      400000    fgbx.ssenb               flagbox:       37.
+          54    fgbx.sst_sdw             flagbox:       49.
+           0    fgbx.toehold_used        flagbox:       28.
+         140    fgbx_size                flagbox:       25.
+                fim_util                 sys_trouble:   59,   74,   78,   79,  119,  123,  127.
+                flagbox                  sys_trouble:  150.
+                force_hist_regs          sys_trouble:   79.
+         100    fv.fpair                 sys_trouble:  236,  242,  300,  303,  314,  316,
+                                         fault_vector:        17.
+         100    fv.fpair.scu             fault_vector:        19.
+         101    fv.fpair.tra             fault_vector:        20.
+         500    fv.f_scu_ptr             fault_vector:        24.
+         400    fv.f_tra_ptr             fault_vector:        23.
+           0    fv.ipair                 fault_vector:        13.
+           0    fv.ipair.scu             fault_vector:        15.
+           1    fv.ipair.tra             fault_vector:        16.
+         300    fv.i_scu_ptr             fault_vector:        22.
+         200    fv.i_tra_ptr             fault_vector:        21.
+         600    fv_size                  fault_vector:        10.
+           7    hbound_processor_data    sys_trouble:  333,
+                                         scs:           10.
+                history_reg_data         sys_trouble:   77.
+           0    ignore_data              sys_trouble:   35,  238.
+          10    ignore_scu_rcu           sys_trouble:   38,  241.
+           0    Initial_undefined        toe_hold:      77.
+          10    internal_static          sys_trouble:  360,  361.
+                iom_data                 sys_trouble:  256.
+           4    iom_data.imw_lock        iom_data:      20.
+          35    iom_data.invalid_interrupts    iom_data:      25.
+          37    iom_data.multiple_interrupts   iom_data:      27.
+          36    iom_data.null_interrupts       iom_data:      26.
+           0    iom_data.n_devices       sys_trouble:  258,
+                                         iom_data:      16.
+           5    iom_data.n_intr_procs    iom_data:      21.
+         240    iom_data.per_device      sys_trouble:  257,
+                                         iom_data:      30.
+          40    iom_data.per_iom         sys_trouble:  266,
+                                         iom_data:      28.
+          12    iom_data.rfh1            iom_data:      23.
+           2    iom_data.stop_dcw        iom_data:      18.
+          20    iom_data.stop_ext_status       iom_data:      24.
+           1    iom_data.stop_lpw        iom_data:      17.
+           3    iom_data.stop_scw        iom_data:      19.
+          10    iom_data.stop_status     iom_data:      22.
+                iom_mailbox              sys_trouble:  269.
+           0    iom_mailbox.channel_mailbox    iom_data:     113.
+           4    iom_mailbox_seg.imw_array_shift      iom_data:      92.
+           0    iom_mailbox_seg.imw_array_word       iom_data:      91.
+         200    iom_mailbox_seg.iom_mailbox    sys_trouble:  269,
+                                               iom_data:      98.
+         120    iom_mailbox_seg.special_status       iom_data:      96.
+          40    iom_mailbox_seg.system_fault   iom_data:      94.
+        2200    iom_mailbox_seg_size     iom_data:      89.
+         400    iom_mailbox_size         sys_trouble:  268,  269,
+                                         iom_data:     111.
+           2    io_path.channel_number   toe_hold:      41.
+       77777    io_path.iom_number_mask  toe_hold:      40.
+          22    io_path.iom_number_shift       toe_hold:      39.
+           2    io_path.iom_number_word  toe_hold:      38.
+           0    io_path.pcw              toe_hold:      33.
+           7    io_path.port_number_mask       toe_hold:      37.
+          41    io_path.port_number_shift      toe_hold:      36.
+           2    io_path.port_number_word       toe_hold:      35.
+           4    io_path_size             toe_hold:      31.
+           5    lbx                      toe_hold:     145.
+           4    lpx                      toe_hold:     144.
+           0    main                     sys_trouble:   21,  199,  201,  203,  205,  207,  209,  211,  213,  215,  217,  219.
+           0    make_pcw.channel         sys_trouble:  356.
+           0    make_pcw.chan_cmd        sys_trouble:  356.
+           0    make_pcw.chan_ctrl       sys_trouble:  356.
+           0    make_pcw.chan_data       sys_trouble:  356.
+           0    make_pcw.command         sys_trouble:  356.
+           0    make_pcw.device          sys_trouble:  356.
+           0    make_pcw.extension       sys_trouble:  356.
+           1    make_pcw.mask            sys_trouble:  356.
+         205    mask.connect_loop        sys_trouble:  284,  288.
+         162    mask.next_device         sys_trouble:  259,  293.
+         211    mask.skip_device         sys_trouble:  262,  274,  286,  290.
+         246    MASK_PCW                 sys_trouble:  277,  356.
+          24    mc.a                     toe_hold:      99.
+           3    mc.cpu_type_mask         toe_hold:     132.
+          41    mc.cpu_type_shift        toe_hold:     131.
+          46    mc.cpu_type_word         toe_hold:     130.
+          50    mc.eis_info              sys_trouble:  129,
+                                         toe_hold:     138.
+           0    mc.errcode_shift         toe_hold:     117.
+          43    mc.errcode_word          toe_hold:     116.
+       77777    mc.ext_fault_reg_mask    toe_hold:     135.
+          22    mc.ext_fault_reg_shift   toe_hold:     134.
+          46    mc.ext_fault_reg_word    toe_hold:     133.
+         377    mc.e_mask                toe_hold:     104.
+          34    mc.e_shift               toe_hold:     103.
+          26    mc.e_word                toe_hold:     102.
+          45    mc.fault_reg             toe_hold:     128.
+          46    mc.fault_time            toe_hold:     137.
+      377777    mc.fcode_mask            toe_hold:     126.
+           0    mc.fcode_shift           toe_hold:     125.
+          44    mc.fcode_word            toe_hold:     124.
+           0    mc.fim_temp_shift        toe_hold:     120.
+          44    mc.fim_temp_word         toe_hold:     119.
+          42    mc.ips_temp              toe_hold:     114.
+          40    mc.mask                  toe_hold:     113.
+           0    mc.prs                   sys_trouble:  131,
+                                         toe_hold:      93.
+          25    mc.q                     toe_hold:     100.
+           7    mc.ralr_mask             toe_hold:     110.
+           0    mc.ralr_shift            toe_hold:     109.
+          27    mc.ralr_word             toe_hold:     108.
+        1532    mc.regs_shift            toe_hold:      96.
+          20    mc.regs_word             sys_trouble:  130,
+                                         toe_hold:      95.
+      400000    mc.resignal              toe_hold:     123.
+          44    mc.resignal_word         toe_hold:     122.
+          30    mc.scu                   sys_trouble:   67,
+                                         toe_hold:     112.
+          11    mc.t_shift               toe_hold:     107.
+          27    mc.t_word                toe_hold:     106.
+          44    mc.unique_index          toe_hold:     121.
+          20    mc.x                     toe_hold:      97.
+          60    mc_size                  toe_hold:      91.
+         260    mc_state.apu_history_registers       toe_hold:      71.
+         110    mc_state.bar             toe_hold:      66.
+         103    mc_state.cache_mode_reg  toe_hold:      63.
+         106    mc_state.cfg             toe_hold:      65.
+         160    mc_state.cu_history_registers  toe_hold:      69.
+         104    mc_state.dbr             toe_hold:      64.
+         220    mc_state.du_history_registers  toe_hold:      70.
+         100    mc_state.interrupt       toe_hold:      61.
+          60    mc_state.masks           toe_hold:      60.
+           0    mc_state.mc_             toe_hold:      58.
+         102    mc_state.mode_reg        toe_hold:      62.
+         111    mc_state.old_memory_state      toe_hold:      67.
+         120    mc_state.ou_history_registers  toe_hold:      68.
+         320    mc_state.ptwam_ptrs      toe_hold:      72.
+         420    mc_state.ptwam_regs      toe_hold:      73.
+         520    mc_state.sdwam_ptrs      toe_hold:      74.
+         620    mc_state.sdwam_regs      toe_hold:      75.
+        1020    mc_state_size            toe_hold:      56.
+         250    message                  sys_trouble:  199,  201,  203,  205,  207,  209,  211,  213,  215,  217,  219.
+           3    Multics                  toe_hold:      80.
+         120    non_drl                  sys_trouble:  165,  167,  175.
+         100    not_manual_crash         sys_trouble:  152,  155.
+          31    no_copy                  sys_trouble:   71,   75.
+                pds                      sys_trouble:   77.
+          21    per_device.channel       sys_trouble:  272,
+                                         iom_data:      68.
+          42    per_device.connects      iom_data:      82.
+          40    per_device.connect_time  iom_data:      81.
+          10    per_device.ext_status    iom_data:      66.
+          26    per_device.flags         sys_trouble:  260,
+                                         iom_data:      70.
+          22    per_device.handler       iom_data:      69.
+          27    per_device.index         iom_data:      76.
+          44    per_device.interrupts    iom_data:      83.
+          46    per_device.interrupt_time      iom_data:      84.
+      400000    per_device.in_use        sys_trouble:  261,
+                                         iom_data:      72.
+          20    per_device.iom           sys_trouble:  264,  267,
+                                         iom_data:      67.
+          32    per_device.lpw           iom_data:      78.
+      100000    per_device.on_line       iom_data:      74.
+          30    per_device.pcw           iom_data:      77.
+      200000    per_device.queue_status  iom_data:      73.
+           2    per_device.rfh1          iom_data:      65.
+          34    per_device.scw           iom_data:      79.
+           0    per_device.status        iom_data:      64.
+          36    per_device.status_queue_ptr    iom_data:      80.
+          50    per_device_size          sys_trouble:  291,
+                                         iom_data:      61.
+          16    per_iom.abandoned_connects     iom_data:      51.
+         777    per_iom.chantab_mask     iom_data:      56.
+          33    per_iom.chantab_shift    iom_data:      55.
+          20    per_iom.chantab_word     iom_data:      54.
+      400000    per_iom.configured       iom_data:      41.
+           6    per_iom.connect_lpw      sys_trouble:  279,
+                                         iom_data:      47.
+           4    per_iom.connect_time     iom_data:      46.
+           7    per_iom.cow              sys_trouble:  282,
+                                         iom_data:      48.
+          11    per_iom.fault_chx        iom_data:      50.
+           1    per_iom.flags            iom_data:      39.
+           0    per_iom.lock             iom_data:      38.
+           2    per_iom.model            iom_data:      44.
+      200000    per_iom.on_line          iom_data:      42.
+           3    per_iom.port             iom_data:      45.
+          17    per_iom.reconnects       iom_data:      52.
+          10    per_iom.special_chx      iom_data:      49.
+          40    per_iom_size             sys_trouble:  265,  266,
+                                         iom_data:      36.
+                prds                     sys_trouble:   45,   73,   81,   90,   93,  112,  335.
+                processor                sys_trouble:   54,   91,  113,  244.
+                processor_data           sys_trouble:  337.
+       20000    processor_data.delete_cpu      scs:            6.
+        4000    processor_data.halted_cpu      scs:            8.
+       10000    processor_data.interrupt_cpu   scs:            7.
+      200000    processor_data.offline   scs:            5.
+      400000    processor_data.online    sys_trouble:  338,
+                                         scs:            4.
+           7    processor_data.port_mask       scs:            9.
+                processor_pattern        sys_trouble:   45,   90,  112.
+                processor_tag            sys_trouble:   81,   93,  335.
+                reset_mode_reg           sys_trouble:  123.
+          47    restart                  sys_trouble:   47,  111,  320.
+                restore_mask             sys_trouble:  119.
+         142    rtb_no_message           sys_trouble:  149,  178,  234.
+          12    save_derail_fault        sys_trouble:  301,  313,  367.
+          10    save_lockup_fault        sys_trouble:  237,  315,  364.
+           7    sbx                      toe_hold:     147.
+                scs                      sys_trouble:   46,   54,   55,   83,   91,   94,  113,  115,  116,  121,  145,  166,
+                                                       168,  244,  307,  310,  311,  337,  341.
+          20    scu.abs                  toe_hold:     302.
+           4    scu.abs_word             toe_hold:     301.
+          10    scu.am_er                toe_hold:     213.
+           1    scu.am_er_word           toe_hold:     212.
+       37777    scu.apu_mask             toe_hold:     163.
+           3    scu.apu_shift            toe_hold:     162.
+           0    scu.apu_word             toe_hold:     161.
+         200    scu.bm                   toe_hold:     296.
+           4    scu.bm_word              toe_hold:     295.
+         200    scu.boc                  toe_hold:     205.
+           1    scu.boc_word             toe_hold:     204.
+           5    scu.ca                   toe_hold:     306.
+      100000    scu.carry                toe_hold:     280.
+           4    scu.carry_word           toe_hold:     279.
+           7    scu.con_chan_mask        toe_hold:     235.
+           6    scu.con_chan_shift       toe_hold:     234.
+           1    scu.con_chan_word        toe_hold:     233.
+           7    scu.cpu_no_mask          toe_hold:     251.
+           6    scu.cpu_no_shift         toe_hold:     250.
+           2    scu.cpu_no_word          toe_hold:     249.
+          77    scu.cpu_tag_mask         toe_hold:     336.
+           0    scu.cpu_tag_shift        toe_hold:     335.
+           5    scu.cpu_tag_word         toe_hold:     334.
+          40    scu.crt                  toe_hold:     209.
+           1    scu.crt_word             toe_hold:     208.
+        7777    scu.cu_mask              toe_hold:     309.
+           6    scu.cu_shift             toe_hold:     308.
+           5    scu.cu_word              toe_hold:     307.
+          77    scu.delta_mask           toe_hold:     254.
+           0    scu.delta_shift          toe_hold:     253.
+           2    scu.delta_word           toe_hold:     252.
+        2000    scu.dsptw                toe_hold:     170.
+       20000    scu.eovf                 toe_hold:     284.
+           4    scu.eovf_word            toe_hold:     283.
+       10000    scu.eufl                 toe_hold:     286.
+           4    scu.eufl_word            toe_hold:     285.
+           6    scu.even_inst            toe_hold:     338.
+      100000    scu.e_off                toe_hold:     189.
+           1    scu.e_off_word           toe_hold:     188.
+          10    scu.fabs                 toe_hold:     177.
+          20    scu.fanp                 toe_hold:     176.
+          40    scu.fap                  toe_hold:     175.
+           7    scu.fault_cntr_mask      toe_hold:     180.
+           0    scu.fault_cntr_shift     toe_hold:     179.
+           0    scu.fault_cntr_word      toe_hold:     178.
+          20    scu.fd_shift             toe_hold:     183.
+           1    scu.fd_word              toe_hold:     182.
+           1    scu.fi_flag              toe_hold:     240.
+           1    scu.fi_flag_word         toe_hold:     239.
+          37    scu.fi_num_mask          sys_trouble:   68,
+                                         toe_hold:     238.
+           1    scu.fi_num_shift         sys_trouble:   69,
+                                         toe_hold:     237.
+           1    scu.fi_num_word          sys_trouble:   67,
+                                         toe_hold:     236.
+          10    scu.hex                  toe_hold:     304.
+           4    scu.hex_word             toe_hold:     303.
+           7    scu.iac_mask             toe_hold:     232.
+          11    scu.iac_shift            toe_hold:     231.
+           1    scu.iac_word             toe_hold:     230.
+          17    scu.ial_mask             toe_hold:     229.
+          14    scu.ial_shift            toe_hold:     228.
+           1    scu.ial_word             toe_hold:     227.
+         100    scu.if                   toe_hold:     333.
+           5    scu.if_word              toe_hold:     332.
+           4    scu.ilc                  toe_hold:     273.
+         100    scu.inret                toe_hold:     207.
+           1    scu.inret_word           toe_hold:     206.
+           4    scu.ir                   toe_hold:     274.
+      400000    scu.iro                  toe_hold:     185.
+           1    scu.iro_word             toe_hold:     184.
+         200    scu.its                  toe_hold:     331.
+           5    scu.its_word             toe_hold:     330.
+          40    scu.mif                  toe_hold:     300.
+           4    scu.mif_word             toe_hold:     299.
+      200000    scu.neg                  toe_hold:     278.
+           4    scu.neg_word             toe_hold:     277.
+        2000    scu.no_ga                toe_hold:     199.
+           1    scu.no_ga_word           toe_hold:     198.
+         400    scu.ocall                toe_hold:     203.
+           1    scu.ocall_word           toe_hold:     202.
+        1000    scu.ocb                  toe_hold:     201.
+           1    scu.ocb_word             toe_hold:     200.
+           7    scu.odd_inst             toe_hold:     339.
+      200000    scu.oeb                  toe_hold:     187.
+           1    scu.oeb_word             toe_hold:     186.
+        4000    scu.oflm                 toe_hold:     288.
+           4    scu.oflm_word            toe_hold:     287.
+      400000    scu.onc_1                toe_hold:     221.
+           1    scu.onc_1_word           toe_hold:     220.
+      200000    scu.onc_2                toe_hold:     223.
+           1    scu.onc_2_word           toe_hold:     222.
+           4    scu.oosb                 toe_hold:     215.
+           1    scu.oosb_word            toe_hold:     214.
+       40000    scu.orb                  toe_hold:     191.
+           1    scu.orb_word             toe_hold:     190.
+       40000    scu.ovfl                 toe_hold:     282.
+           4    scu.ovfl_word            toe_hold:     281.
+       10000    scu.owb                  toe_hold:     195.
+           1    scu.owb_word             toe_hold:     194.
+      400000    scu.p                    toe_hold:     160.
+        1000    scu.par                  toe_hold:     292.
+           1    scu.parl                 toe_hold:     219.
+           1    scu.parl_word            toe_hold:     218.
+         400    scu.parm                 toe_hold:     294.
+           4    scu.parm_word            toe_hold:     293.
+           2    scu.paru                 toe_hold:     217.
+           1    scu.paru_word            toe_hold:     216.
+           4    scu.par_word             toe_hold:     291.
+        4000    scu.pi_ap                toe_hold:     169.
+        1000    scu.poa                  toe_hold:     327.
+           5    scu.poa_word             toe_hold:     326.
+       10000    scu.pon                  toe_hold:     321.
+           5    scu.pon_word             toe_hold:     320.
+        1777    scu.port_stat_mask       toe_hold:     226.
+           6    scu.port_stat_shift      toe_hold:     225.
+           1    scu.port_stat_word       toe_hold:     224.
+       20000    scu.pot                  toe_hold:     319.
+           5    scu.pot_word             toe_hold:     318.
+          21    scu.ppr_shift            toe_hold:     155.
+           0    scu.ppr_word             toe_hold:     154.
+           7    scu.prr_mask             toe_hold:     157.
+          41    scu.prr_shift            toe_hold:     156.
+       77777    scu.psr_mask             toe_hold:     159.
+          22    scu.psr_shift            toe_hold:     158.
+         200    scu.ptw                  toe_hold:     173.
+         100    scu.ptw2                 toe_hold:     174.
+       20000    scu.ptwm                 toe_hold:     167.
+       10000    scu.pt_on                toe_hold:     168.
+          20    scu.ralr                 toe_hold:     211.
+           1    scu.ralr_word            toe_hold:     210.
+      100000    scu.rd                   toe_hold:     315.
+           5    scu.rd_word              toe_hold:     314.
+      400000    scu.rf                   toe_hold:     311.
+         400    scu.rfi                  toe_hold:     329.
+           5    scu.rfi_word             toe_hold:     328.
+           5    scu.rf_word              toe_hold:     310.
+       40000    scu.rl                   toe_hold:     317.
+           5    scu.rl_word              toe_hold:     316.
+      200000    scu.rpt                  toe_hold:     313.
+           5    scu.rpt_word             toe_hold:     312.
+       20000    scu.r_off                toe_hold:     193.
+           1    scu.r_off_word           toe_hold:     192.
+      100000    scu.sdwm                 toe_hold:     165.
+        1000    scu.sdwnp                toe_hold:     171.
+         400    scu.sdwp                 toe_hold:     172.
+       40000    scu.sd_on                toe_hold:     166.
+           2    scu.tpr                  toe_hold:     242.
+          77    scu.tpr_tbr_mask         toe_hold:     271.
+           0    scu.tpr_tbr_shift        toe_hold:     270.
+           3    scu.tpr_tbr_word         toe_hold:     269.
+        2000    scu.tro                  toe_hold:     290.
+           4    scu.tro_word             toe_hold:     289.
+           7    scu.trr_mask             toe_hold:     245.
+          41    scu.trr_shift            toe_hold:     244.
+           2    scu.trr_word             toe_hold:     243.
+         100    scu.tru                  toe_hold:     298.
+           4    scu.tru_word             toe_hold:     297.
+          17    scu.tsna_mask            toe_hold:     262.
+          16    scu.tsna_shift           toe_hold:     261.
+           3    scu.tsna_word            toe_hold:     260.
+          17    scu.tsnb_mask            toe_hold:     265.
+          12    scu.tsnb_shift           toe_hold:     264.
+           3    scu.tsnb_word            toe_hold:     263.
+          17    scu.tsnc_mask            toe_hold:     268.
+           6    scu.tsnc_shift           toe_hold:     267.
+           3    scu.tsnc_word            toe_hold:     266.
+       77777    scu.tsr_mask             toe_hold:     248.
+          22    scu.tsr_shift            toe_hold:     247.
+        7777    scu.tsr_stat_mask        toe_hold:     259.
+           6    scu.tsr_stat_shift       toe_hold:     258.
+           3    scu.tsr_stat_word        toe_hold:     257.
+           2    scu.tsr_word             toe_hold:     246.
+           3    scu.word3                toe_hold:     256.
+        4000    scu.w_off                toe_hold:     197.
+           1    scu.w_off_word           toe_hold:     196.
+        4000    scu.xde                  toe_hold:     323.
+           5    scu.xde_word             toe_hold:     322.
+        2000    scu.xdo                  toe_hold:     325.
+           5    scu.xdo_word             toe_hold:     324.
+      200000    scu.xsf                  toe_hold:     164.
+      400000    scu.zero                 toe_hold:     276.
+           4    scu.zero_word            toe_hold:     275.
+           0    scux.fd_shift            toe_hold:     348.
+           1    scux.fd_word             toe_hold:     347.
+      100000    scux.ia_am               toe_hold:     354.
+           1    scux.ia_am_word          toe_hold:     353.
+           6    scux.instr               toe_hold:     368.
+      200000    scux.ioc                 toe_hold:     352.
+           1    scux.ioc_word            toe_hold:     351.
+       20000    scux.ipr                 toe_hold:     358.
+           1    scux.ipr_word            toe_hold:     357.
+      400000    scux.isn                 toe_hold:     350.
+           1    scux.isn_word            toe_hold:     349.
+       40000    scux.isp                 toe_hold:     356.
+           1    scux.isp_word            toe_hold:     355.
+       10000    scux.nea                 toe_hold:     360.
+           1    scux.nea_word            toe_hold:     359.
+        4000    scux.oobb                toe_hold:     362.
+           1    scux.oobb_word           toe_hold:     361.
+        7777    scux.tsr_stat_mask       toe_hold:     366.
+           6    scux.tsr_stat_shift      toe_hold:     365.
+           3    scux.tsr_stat_word       toe_hold:     364.
+          10    scux_size                toe_hold:     344.
+          10    scu_size                 toe_hold:     152.
+                set_mask                 sys_trouble:   59.
+           6    special_status_channel   iom_data:     127.
+           6    spx                      toe_hold:     146.
+           0    status_queue.status      iom_data:     106.
+          14    status_queue_size        iom_data:     104.
+           1    system_fault_channel     iom_data:     125.
+          12    sys_trouble              sys_trouble:   43,   44.
+                sys_trouble_data         sys_trouble:   73.
+         123    sys_trouble_name         sys_trouble:  157,  181.
+                sys_trouble_pending      sys_trouble:  116,  145.
+                toehold                  sys_trouble:  302.
+         242    toe_hold.bce_dbr         toe_hold:      24.
+           0    toe_hold.entry_sequences       toe_hold:      18.
+          40    toe_hold.flagbox         toe_hold:      19.
+         241    toe_hold.memory_state    toe_hold:      23.
+        2760    toe_hold.multics_state   toe_hold:      25.
+         240    toe_hold.n_paths_used    toe_hold:      22.
+         220    toe_hold.paths           toe_hold:      20.
+           5    TOE_HOLD_BOOT_ENTRY      toe_hold:      48.
+          14    TOE_HOLD_BOS_ENTRY       toe_hold:      49.
+          16    TOE_HOLD_BOS_MULTICS_ENTRY     toe_hold:      51.
+          15    TOE_HOLD_BOS_NO_SAVE_ENTRY     toe_hold:      50.
+           0    TOE_HOLD_CRASH_ENTRY     toe_hold:      43.
+           2    TOE_HOLD_DUMP_ENTRY      toe_hold:      45.
+           1    TOE_HOLD_ESD_ENTRY       toe_hold:      44.
+           3    TOE_HOLD_MULTICS_ENTRY   sys_trouble:  302,
+                                         toe_hold:      46.
+           4    TOE_HOLD_RESTART_ENTRY   toe_hold:      47.
+        4000    toe_hold_size            toe_hold:      15.
+           7    trbl_exec_flt            sys_trouble:  151,
+                                         sys_trouble_codes:    9.
+          11    trbl_fault_masked        sys_trouble_codes:   11.
+          12    trbl_fim_flt             sys_trouble_codes:   12.
+           3    trbl_idle_flt            sys_trouble_codes:    5.
+           5    trbl_illeg_flt           sys_trouble_codes:    7.
+          10    trbl_oosb_prds           sys_trouble_codes:   10.
+           2    trbl_prds_fi             sys_trouble_codes:    4.
+           1    trbl_prds_pf             sys_trouble_codes:    3.
+           4    trbl_ptl_fi              sys_trouble_codes:    6.
+          13    trbl_r0_drl_flt          sys_trouble:  164,
+                                         sys_trouble_codes:   13.
+           6    trbl_unexp_flt           sys_trouble_codes:    8.
+                trouble_dbrs             sys_trouble:   83.
+          61    trouble_exit             sys_trouble:  122,  126.
+                trouble_flags            sys_trouble:   55,  310.
+         127    trouble_messages         sys_trouble:  161,  198.
+                trouble_prs              sys_trouble:  118.
+                trouble_scuinfo          sys_trouble:  132.
+          10    Undefined_continue       toe_hold:      85.
+           5    Undefined_reading_bce    toe_hold:      82.
+          11    Undefined_saving_mem     toe_hold:      86.
+           4    Undefined_saving_state   toe_hold:      81.
+                v_time_calc              sys_trouble:  127.
+                wired_fim                sys_trouble:  118,  132.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

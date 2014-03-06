@@ -1,0 +1,183 @@
+	COMPILATION LISTING OF SEGMENT make_seg
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1044.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* The make_seg procedure creates a branch in a
+       14*   specified directory with a specified entry name.  Once
+       15*   the branch is created, the segment is made known to the
+       16*   process by a call to "initiate" and a pointer to the
+       17*   segment is returned to the caller. */
+       18 
+       19 make_seg: procedure (adirname, aentry, arefname, amode, asegptr, acode);
+       20 
+       21 /* Modified by R. Bratt 04/76 to make "" and " " equivalent arguments for dname/ename */
+       22 /* Modified by E. Stone 10/73 to remove the $stack entry point */
+       23 
+       24 dcl  adirname char (*),				/* is the directory in which to create "entry". */
+       25      aentry char (*),				/* is the entry name in question. */
+       26      arefname char (*),				/* is the desired reference name, or "". */
+       27      amode fixed bin (5),				/* specifies the mode for this user. */
+       28      asegptr ptr,					/* is an ITS pointer to the created segment.
+       29*						   (Output) */
+       30      acode fixed bin;				/* is a standard File System status code.
+       31*						   (Output) */
+       32 
+       33 dcl  dirname char (168),				/* copy of directory name */
+       34      entry char (32),				/* copy of entry name */
+       35     (code1, code2) fixed bin (35);			/* error codes */
+       36 
+       37 dcl  pds$process_dir_name char (32) ext,		/* name of process directory */
+       38      error_table_$namedup fixed bin (35) ext;		/* error code for name duplication */
+       39 
+       40 dcl (null, length) builtin;
+       41 
+       42 dcl  unique_chars_ ext entry (bit (*) aligned) returns (char (15)),
+       43      append$branch entry (char (*), char (*), fixed bin (5), fixed bin (35)),
+       44      initiate entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr, fixed bin (35));
+       45 
+       46 
+       47 /*  */
+       48 
+       49 	asegptr = null;				/* Initialize pointer. */
+       50 
+       51 	dirname = adirname;
+       52 	if dirname = ""				/* If supplied directory name is null ... */
+       53 	then dirname = pds$process_dir_name;		/* Use process directory name. */
+       54 
+       55 	entry = aentry;
+       56 	if entry = ""				/* If supplied entry name is null ... */
+       57 	then entry = unique_chars_ ("0"b);		/* Use unique name. */
+       58 
+       59 	call append$branch (dirname, entry, amode, code1); /* Now create segment branch in hierarchy. */
+       60 	if code1 ^= 0 then				/* If error ... */
+       61 	     if code1 ^= error_table_$namedup then	/* If not a name duplication ... */
+       62 		go to make_rtn;			/* Return the error code2. */
+       63 
+       64 	call initiate (dirname, entry, arefname, 0, 0, asegptr, code2);
+       65 						/* Initiate the segment. */
+       66 
+       67 	if code2 ^= 0 then				/* If error in initiate ... */
+       68 	     acode = code2;				/* Return error code from initiate. */
+       69 	else					/* Otherwise ... */
+       70 make_rtn:
+       71 	acode = code1;				/* Return error code from append. */
+       72 	return;					/* Return to caller. */
+       73 
+       74 
+       75 
+       76 
+       77      end make_seg;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.6  make_seg.pl1                      >spec>install>1110>make_seg.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+acode                                  parameter       fixed bin(17,0)          dcl 24 set ref 19 67* 69*
+adirname                               parameter       char                     packed unaligned dcl 24 ref 19 51
+aentry                                 parameter       char                     packed unaligned dcl 24 ref 19 55
+amode                                  parameter       fixed bin(5,0)           dcl 24 set ref 19 59*
+append$branch                   000016 constant        entry                    external dcl 42 ref 59
+arefname                               parameter       char                     packed unaligned dcl 24 set ref 19 64*
+asegptr                                parameter       pointer                  dcl 24 set ref 19 49* 64*
+code1                           000162 automatic       fixed bin(35,0)          dcl 33 set ref 59* 60 60 69
+code2                           000163 automatic       fixed bin(35,0)          dcl 33 set ref 64* 67 67
+dirname                         000100 automatic       char(168)                packed unaligned dcl 33 set ref 51* 52 52* 59* 64*
+entry                           000152 automatic       char(32)                 packed unaligned dcl 33 set ref 55* 56 56* 59* 64*
+error_table_$namedup            000012 external static fixed bin(35,0)          dcl 37 ref 60
+initiate                        000020 constant        entry                    external dcl 42 ref 64
+null                                                   builtin function         dcl 40 ref 49
+pds$process_dir_name            000010 external static char(32)                 packed unaligned dcl 37 ref 52
+unique_chars_                   000014 constant        entry                    external dcl 42 ref 56
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+length                                                 builtin function         dcl 40
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+make_rtn                        000230 constant        label                    dcl 69 ref 60
+make_seg                        000024 constant        entry                    external dcl 19
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       326         350     234         336
+Length       516     234        22         132      72           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+make_seg                            184 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+make_seg                 000100 dirname                     make_seg
+                         000152 entry                       make_seg
+                         000162 code1                       make_seg
+                         000163 code2                       make_seg
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   return_mac          ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branch                 initiate                      unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$namedup          pds$process_dir_name
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     19 000016        49 000051        51 000054        52 000061        55 000071        56 000076        59 000123
+     60 000151        64 000156        67 000223        69 000230        72 000233
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

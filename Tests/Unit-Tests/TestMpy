@@ -1,0 +1,5 @@
+load TestMpy.oct
+;set debug stdout
+;set cpu debug=trace;regdumpaqi
+g 0
+q

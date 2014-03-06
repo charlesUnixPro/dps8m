@@ -45,6 +45,27 @@ expr *exprSymbolValue(char *s)
     return res;
 }
 
+expr *exprLocalSymbolValue(char *s)
+{
+    // TODO: make operationslal
+    
+    symtab *y = getsym(s);
+    
+    if (!y)
+    {
+        nulExp.value = -1LL;
+        nulExp.type = eExprUnknown;
+        
+        if (nPass == 1)
+            return &nulExp;
+        
+        yyprintf("undefined local symbol <%s>", s);
+        return &nulExp;
+    }
+    expr *res = y->Value;
+    return res;
+}
+
 expr *exprWord36Value(word36 i36)
 {
     expr *res = newExpr();

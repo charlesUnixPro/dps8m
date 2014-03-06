@@ -1,0 +1,538 @@
+	COMPILATION LISTING OF SEGMENT init_hardcore_gates
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0940.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* INIT_HARDCORE_GATES - Initialize all gates into the hardcore ring. */
+        9 
+       10 /* This program is called to set up the linkage pointers stored in all hardcore gates.
+       11*   The only reason is efficiency, i.e. to make normal execution thru the gate faster.
+       12*   The program also sets up the entry bounds (call limiters) within the SDWs for
+       13*   the hardcore gates.
+       14*   Ring brackets are also put in the hardcore descriptors for
+       15*   restart_fault and return_to_ring_0_. */
+       16 
+       17 /****^  HISTORY COMMENTS:
+       18*  1) change(77-06-01,Morris), approve(), audit(), install():
+       19*      Library maintenance installation.
+       20*      Rewritten to determine hardcore gates automatically from
+       21*      ring brackets in the SLT.  6/77 by Noel I. Morris
+       22*                                                   END HISTORY COMMENTS */
+       23 
+       24 /* ******************************************************
+       25*   *                                                    *
+       26*   *                                                    *
+       27*   * Copyright (c) 1972 by Massachusetts Institute of   *
+       28*   * Technology and Honeywell Information Systems, Inc. *
+       29*   *                                                    *
+       30*   *                                                    *
+       31*   ****************************************************** */
+       32 
+       33 
+       34 init_hardcore_gates: proc;
+       35 
+       36 dcl  tsdw fixed bin (71),				/* temporary for SDW */
+       37      segno fixed bin (18),				/* gate segment number */
+       38      segp ptr,					/* pointer to gate segment */
+       39      lp ptr,					/* pointer to gate's linkage */
+       40      dp ptr,					/* pointer to gate's definitions */
+       41      lp_ptr ptr,					/* pointer to linkage pointer within gate */
+       42      tv_ptr ptr;					/* pointer to call limiter within gate */
+       43 
+       44 dcl  based_ptr ptr based,				/* based pointer */
+       45      tv_end bit (14) aligned based;			/* based call limiter value */
+       46 
+       47 dcl 1 segname_acc aligned,
+       48    (2 l fixed bin (8),
+       49     2 s char (31)) unal;
+       50 
+       51 dcl 1 my_lp_acc static aligned options (constant),
+       52    (2 l fixed bin (8) init (6),
+       53     2 s char (6) init (".my_lp")) unal;
+       54 
+       55 dcl 1 tv_end_acc static aligned options (constant),
+       56    (2 l fixed bin (8) init (7),
+       57     2 s char (7) init (".tv_end")) unal;
+       58 
+       59 dcl  lot$ (0: 1023) ptr unaligned ext,
+       60      dseg$ (0: 1) fixed bin (71) ext,
+       61      slt$ ext,
+       62      restart_fault$ ext,
+       63      return_to_ring_0_$ ext;
+       64 
+       65 dcl  pmut$swap_sdw entry (ptr, ptr),
+       66      get_defptr_ entry (ptr, ptr, ptr, ptr, fixed bin (35));
+       67 
+       68 dcl (addr, baseno, baseptr, bin, length, ptr, rtrim, substr, unspec) builtin;
+       69 
+       70 
+       71 
+  1     1 /* BEGIN INCLUDE FILE ... sdw.incl.pl1 ... last modified 12 May 1976 */
+  1     2 
+  1     3 dcl  sdwp ptr;
+  1     4 
+  1     5 dcl 1 sdw based (sdwp) aligned,			/* Segment Descriptor Word */
+  1     6 
+  1     7    (2 add bit (24),					/* main memory address of page table */
+  1     8     2 (r1, r2, r3) bit (3),				/* ring brackets for the segment */
+  1     9     2 df bit (1),					/* directed fault bit (0 => fault) */
+  1    10     2 df_no bit (2),				/* directed fault number */
+  1    11 
+  1    12     2 pad1 bit (1),
+  1    13     2 bound bit (14),				/* boundary field (in 16 word blocks) */
+  1    14     2 access,					/* access bits */
+  1    15       3 read bit (1),				/* read permission bit */
+  1    16       3 execute bit (1),				/* execute permission bit */
+  1    17       3 write bit (1),				/* write permission bit */
+  1    18       3 privileged bit (1),				/* privileged bit */
+  1    19     2 unpaged bit (1),				/* segment is unpaged if this is 1 */
+  1    20     2 entry_bound_sw bit (1),				/* if this is 0 the entry bound is checked by hardware */
+  1    21     2 cache bit (1),				/* cache enable bit */
+  1    22     2 entry_bound bit (14)) unaligned;			/* entry bound */
+  1    23 
+  1    24 dcl 1 sdwa (0: 1) based (sdwp) aligned like sdw;		/* SDW array (descriptor segment) */
+  1    25 
+  1    26 /* END INCLUDE FILE  sdw.incl.pl1 */
+       72 
+       73 
+       74 
+       75 
+  2     1 /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  2     2 
+  2     3 /* Declarations for Segment Loading Table header and array.
+  2     4*
+  2     5*   Used by Initialization and MST Checker subroutines */
+  2     6 
+  2     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  2     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  2     9     namep ptr,					/* pointer to segment name list block */
+  2    10     pathp ptr,					/* pointer to segment's directory path name */
+  2    11     aclp ptr;					/* pointer to acl structure */
+  2    12 
+  2    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  2    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  2    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  2    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  2    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  2    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  2    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  2    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  2    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  2    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  2    23 
+  2    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  2    25 
+  2    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  2    27 	2 pad bit (18) unal,
+  2    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  2    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  2    30 
+  2    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  2    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  2    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  2    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  2    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  2    36 	  3 pad bit (5) unal,
+  2    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  2    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  2    39 
+  2    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  2    41 	2 size fixed bin (17),			/* length of pathname */
+  2    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  2    43 	2 acls fixed bin;				/* ACL list starts here */
+  2    44 
+  2    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  2    46 	2 count fixed bin,				/* number of entries in acl list */
+  2    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  2    48 	  3 userid char (32),			/* user specification */
+  2    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  2    50 	  3 pad bit (36) aligned,
+  2    51 	  3 code fixed bin;
+  2    52 
+  2    53 
+  2    54 /* END INCLUDE FILE slt.incl.pl1 */
+       76 
+       77 
+       78 
+       79 
+  3     1 /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  3     2 /* Declaration for Segment Loading Table Entry structure.
+  3     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  3     4 /* modified 5/4/76 by Noel I. Morris	*/
+  3     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  3     6 /* format: style3 */
+  3     7 
+  3     8 dcl	sltep		ptr;
+  3     9 
+  3    10 dcl	1 slte_uns	based (sltep) aligned,
+  3    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  3    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  3    13 /**** End of word 1 */
+  3    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  3    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  3    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  3    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  3    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  3    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  3    20 	  2 pad1		bit (3),			/* unused */
+  3    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  3    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  3    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  3    24 	  2 pad3		bit (2),
+  3    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  3    26 /**** End of 1st half of word 2 */
+  3    27 	  2 pad4		bit (3),
+  3    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  3    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  3    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  3    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  3    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  3    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  3    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  3    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  3    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  3    37 /***** End of word 2 */
+  3    38 	  2 pad5		bit (6),
+  3    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  3    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  3    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  3    42 /***** End of word 3 */
+  3    43 	  2 pad7		bit (3),
+  3    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  3    45 	  2 bit_count	fixed bin (24) uns
+  3    46 	  )		unaligned;		/* bitcount of segment */
+  3    47 
+  3    48 dcl	1 slte		based (sltep) aligned,
+  3    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  3    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  3    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  3    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  3    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  3    54 	  2 firmware_seg    bit (1),
+  3    55 	  2 layout_seg      bit (1),
+  3    56 	  2 breakpointable  bit (1),
+  3    57 	  2 pad2		bit (3),
+  3    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  3    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  3    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  3    61 	  2 pad3		bit (2),
+  3    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  3    63 	  2 pad4		bit (3),
+  3    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  3    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  3    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  3    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  3    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  3    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  3    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  3    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  3    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  3    73 	  2 pad5		bit (6),
+  3    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  3    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  3    76 	  2 segno		bit (18),			/* text/link segment number */
+  3    77 	  2 pad6		bit (3),
+  3    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  3    79 	  2 bit_count	bit (24)
+  3    80 	  )		unaligned;		/* bitcount of segment */
+  3    81 
+  3    82 /* END INCLUDE FILE slte.incl.pl1 */
+       80 
+       81 
+       82 
+       83 
+  4     1 /* BEGIN INCLUDE FILE definition.incl.pl1 */
+  4     2 
+  4     3 
+  4     4 
+  4     5 /****^  HISTORY COMMENTS:
+  4     6*  1) change(86-05-02,Elhard), approve(86-05-02,MCR7391),
+  4     7*     audit(86-07-18,DGHowe), install(86-11-20,MR12.0-1222):
+  4     8*     Modified to add indirect bit to definition flags.
+  4     9*                                                   END HISTORY COMMENTS */
+  4    10 
+  4    11 
+  4    12 dcl	1 definition	aligned based,
+  4    13 	2 forward		unal bit(18),	/* offset of next def */
+  4    14 	2 backward	unal bit(18),	/* offset of previous def */
+  4    15 	2 value		unal bit(18),
+  4    16 	2 flags		unal,
+  4    17 	  3 new		bit(1),
+  4    18 	  3 ignore	bit(1),
+  4    19 	  3 entry		bit(1),
+  4    20 	  3 retain	bit(1),
+  4    21 	  3 argcount	bit(1),
+  4    22 	  3 descriptors	bit(1),
+  4    23 	  3 indirect	bit(1),
+  4    24 	  3 unused	bit(8),
+  4    25 	2 class		unal bit(3),
+  4    26 	2 symbol		unal bit(18),	/* offset of ACC for symbol */
+  4    27 	2 segname		unal bit(18);	/* offset of segname def */
+  4    28 
+  4    29 /* END INCLUDE FILE definition.incl.pl1 */
+       84 
+       85 
+       86 
+       87 
+       88 	sltp = addr (slt$);				/* Get ptr to slt */
+       89 	sdwp = addr (tsdw);				/* and pointer to temporary SDW */
+       90 
+       91 	do segno = slt.first_sup_seg to slt.last_sup_seg; /* Iterate through all supervisor segments. */
+       92 	     sltep = addr (slt.seg (segno));		/* Get pointer to SLT entry. */
+       93 	     if slte.ringbrack (3) ^= "0"b3 &		/* If a hardcore gate ... */
+       94 		slte.ringbrack (2) = "0"b3 &
+       95 		slte.ringbrack (1) = "0"b3 then do;
+       96 
+       97 		segp = baseptr (segno);		/* Get pointer to base of segment. */
+       98 		lp = lot$ (segno);			/* Get pointer to linkage for gate. */
+       99 		dp = lp -> based_ptr;		/* Get pointer to definitions. */
+      100 
+      101 		namep = ptr (slt.name_seg_ptr, slte.names_ptr);  /* Get name of segment. */
+      102 		unspec (segname_acc) = "0"b;		/* Clear name ACC string. */
+      103 		segname_acc.l = length (rtrim (segnam.names (1).name));
+      104 		substr (segname_acc.s, 1, length (rtrim (segnam.names (1).name))) = segnam.names (1).name;
+      105 
+      106 		lp_ptr = getadr (addr (my_lp_acc));	/* Get pointer to lp to be filled in. */
+      107 		tv_ptr = getadr (addr (tv_end_acc));	/* Get pointer to call limiter. */
+      108 
+      109 		tsdw = dseg$ (segno);		/* Grab the SDW for segment. */
+      110 		sdw.write = "1"b;			/* Give write access. */
+      111 		call pmut$swap_sdw (segp, sdwp);
+      112 
+      113 		lp_ptr -> based_ptr = lp;		/* Set linkage pointer in segment. */
+      114 		sdw.entry_bound_sw = "0"b;		/* Enable call limiter. */
+      115 		sdw.entry_bound = tv_ptr -> tv_end;	/* Set call limiter. */
+      116 
+      117 		sdw.write = "0"b;			/* Take away write access. */
+      118 		call pmut$swap_sdw (segp, sdwp);	/* Insert new SDW in descriptor segment. */
+      119 	     end;
+      120 	end;
+      121 
+      122 /* Now set the ringbrackets in the SDWs for
+      123*   restart_fault and return_to_ring_0_.		*/
+      124 
+      125 	call set_sdw (addr (restart_fault$));		/* Set ring brackets and put in dseg */
+      126 	call set_sdw (addr (return_to_ring_0_$));
+      127 
+      128 	return;
+      129 
+      130 
+      131 
+      132 set_sdw:	procedure (segptr);				/* This procedure inserts ring brackets
+      133*						   from the SLT into hardcore descriptors */
+      134 dcl  segptr ptr;
+      135 
+      136 	segno = bin (baseno (segptr), 18);		/* Get number of segment. */
+      137 	sltep = addr (slt.seg (segno));		/* access SLT entry */
+      138 	tsdw = dseg$ (segno);			/* grab the SDW */
+      139 
+      140 	sdwp -> sdw.r1 = slte.ringbrack (1);		/* copy ring brackets */
+      141 	sdwp -> sdw.r2 = slte.ringbrack (2);
+      142 	sdwp -> sdw.r3 = slte.ringbrack (3);
+      143 
+      144 	call pmut$swap_sdw (segptr, sdwp);		/* actually place SDW */
+      145 
+      146      end set_sdw;
+      147 
+      148 
+      149 
+      150 getadr: proc (accp) returns (ptr);			/* procedure to search for definition symbol */
+      151 
+      152 dcl  accp ptr;
+      153 
+      154 dcl  defsp ptr,
+      155      code fixed bin (35);
+      156 
+      157 	call get_defptr_ (dp, addr (segname_acc), accp, defsp, code);
+      158 
+      159 	return (ptr (segp, defsp -> definition.value));
+      160 
+      161      end getadr;
+      162 
+      163 
+      164      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.9  init_hardcore_gates.pl1           >spec>install>1112>init_hardcore_gates.pl1
+72           1    09/14/76  0759.8  sdw.incl.pl1                      >ldd>include>sdw.incl.pl1
+76           2    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+80           3    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+84           4    11/24/86  1226.9  definition.incl.pl1               >ldd>include>definition.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+access                    1(15)        based           structure                level 2 packed packed unaligned dcl 1-5
+accp                                   parameter       pointer                  dcl 152 set ref 150 157*
+addr                                                   builtin function         dcl 68 ref 88 89 92 106 106 107 107 125 125 126 126
+                                                                                  137 157 157
+based_ptr                              based           pointer                  dcl 44 set ref 99 113*
+baseno                                                 builtin function         dcl 68 ref 136
+baseptr                                                builtin function         dcl 68 ref 97
+bin                                                    builtin function         dcl 68 ref 136
+code                            000156 automatic       fixed bin(35,0)          dcl 154 set ref 157*
+definition                             based           structure                level 1 dcl 4-12
+defsp                           000154 automatic       pointer                  dcl 154 set ref 157* 159
+dp                              000110 automatic       pointer                  dcl 36 set ref 99* 157*
+dseg$                           000012 external static fixed bin(71,0)          array dcl 59 ref 109 138
+entry_bound               1(22)        based           bit(14)                  level 2 packed packed unaligned dcl 1-5 set ref 115*
+entry_bound_sw            1(20)        based           bit(1)                   level 2 packed packed unaligned dcl 1-5 set ref 114*
+first_sup_seg             3            based           fixed bin(18,0)          level 2 dcl 2-13 ref 91
+get_defptr_                     000024 constant        entry                    external dcl 65 ref 157
+l                               000116 automatic       fixed bin(8,0)           level 2 packed packed unaligned dcl 47 set ref 103*
+last_sup_seg              4            based           fixed bin(18,0)          level 2 dcl 2-13 ref 91
+length                                                 builtin function         dcl 68 ref 103 104
+lot$                            000010 external static pointer                  array packed unaligned dcl 59 ref 98
+lp                              000106 automatic       pointer                  dcl 36 set ref 98* 99 113
+lp_ptr                          000112 automatic       pointer                  dcl 36 set ref 106* 113
+my_lp_acc                       000000 constant        structure                level 1 dcl 51 set ref 106 106
+name                      2            based           char(32)                 array level 3 packed packed unaligned dcl 2-31 ref
+                                                                                  103 104 104
+name_seg_ptr                           based           pointer                  level 2 dcl 2-13 ref 101
+namep                           000132 automatic       pointer                  dcl 2-7 set ref 101* 103 104 104
+names                     1            based           structure                array level 2 dcl 2-31
+names_ptr                              based           bit(18)                  level 2 packed packed unaligned dcl 3-48 ref 101
+pmut$swap_sdw                   000022 constant        entry                    external dcl 65 ref 111 118 144
+ptr                                                    builtin function         dcl 68 ref 101 159
+r1                        0(24)        based           bit(3)                   level 2 packed packed unaligned dcl 1-5 set ref 140*
+r2                        0(27)        based           bit(3)                   level 2 packed packed unaligned dcl 1-5 set ref 141*
+r3                        0(30)        based           bit(3)                   level 2 packed packed unaligned dcl 1-5 set ref 142*
+restart_fault$                  000016 external static fixed bin(17,0)          dcl 59 set ref 125 125
+return_to_ring_0_$              000020 external static fixed bin(17,0)          dcl 59 set ref 126 126
+ringbrack                 2(09)        based           bit(3)                   array level 2 packed packed unaligned dcl 3-48 ref
+                                                                                  93 93 93 140 141 142
+rtrim                                                  builtin function         dcl 68 ref 103 104
+s                         0(09) 000116 automatic       char(31)                 level 2 packed packed unaligned dcl 47 set ref 104*
+sdw                                    based           structure                level 1 dcl 1-5
+sdwp                            000126 automatic       pointer                  dcl 1-3 set ref 89* 110 111* 114 115 117 118* 140
+                                                                                  141 142 144*
+seg                      10            based           structure                array level 2 dcl 2-13 set ref 92 137
+segnam                                 based           structure                level 1 dcl 2-31
+segname_acc                     000116 automatic       structure                level 1 dcl 47 set ref 102* 157 157
+segno                           000102 automatic       fixed bin(18,0)          dcl 36 set ref 91* 92 97 98 109* 136* 137 138
+segp                            000104 automatic       pointer                  dcl 36 set ref 97* 111* 118* 159
+segptr                                 parameter       pointer                  dcl 134 set ref 132 136 144*
+slt                                    based           structure                level 1 dcl 2-13
+slt$                            000014 external static fixed bin(17,0)          dcl 59 set ref 88
+slte                                   based           structure                level 1 dcl 3-48
+sltep                           000134 automatic       pointer                  dcl 3-8 set ref 92* 93 93 93 101 137* 140 141 142
+sltp                            000130 automatic       pointer                  dcl 2-7 set ref 88* 91 91 92 101 137
+substr                                                 builtin function         dcl 68 set ref 104*
+tsdw                            000100 automatic       fixed bin(71,0)          dcl 36 set ref 89 109* 138*
+tv_end                                 based           bit(14)                  dcl 44 ref 115
+tv_end_acc                      000002 constant        structure                level 1 dcl 55 set ref 107 107
+tv_ptr                          000114 automatic       pointer                  dcl 36 set ref 107* 115
+unspec                                                 builtin function         dcl 68 set ref 102*
+value                     1            based           bit(18)                  level 2 packed packed unaligned dcl 4-12 ref 159
+write                     1(17)        based           bit(1)                   level 3 packed packed unaligned dcl 1-5 set ref 110*
+                                                                                  117*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+aclp                                   automatic       pointer                  dcl 2-7
+acls                                   based           structure                level 1 dcl 2-45
+name_seg                               based           structure                level 1 dcl 2-26
+names_ptr                              automatic       pointer                  dcl 2-7
+path                                   based           structure                level 1 dcl 2-40
+pathp                                  automatic       pointer                  dcl 2-7
+sdwa                                   based           structure                array level 1 dcl 1-24
+slte_uns                               based           structure                level 1 dcl 3-10
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+getadr                          000251 constant        entry                    internal dcl 150 ref 106 107
+init_hardcore_gates             000006 constant        entry                    external dcl 34
+set_sdw                         000200 constant        entry                    internal dcl 132 ref 125 126
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       430         456     330         440
+Length       712     330        26         217     100           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_hardcore_gates                 140 external procedure  is an external procedure.  
+set_sdw                                 internal procedure  shares stack frame of external procedure init_hardcore_gates.  
+getadr                                  internal procedure  shares stack frame of external procedure init_hardcore_gates.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_hardcore_gates      000100 tsdw                        init_hardcore_gates
+                         000102 segno                       init_hardcore_gates
+                         000104 segp                        init_hardcore_gates
+                         000106 lp                          init_hardcore_gates
+                         000110 dp                          init_hardcore_gates
+                         000112 lp_ptr                      init_hardcore_gates
+                         000114 tv_ptr                      init_hardcore_gates
+                         000116 segname_acc                 init_hardcore_gates
+                         000126 sdwp                        init_hardcore_gates
+                         000130 sltp                        init_hardcore_gates
+                         000132 namep                       init_hardcore_gates
+                         000134 sltep                       init_hardcore_gates
+                         000154 defsp                       getadr
+                         000156 code                        getadr
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_defptr_                   pmut$swap_sdw
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dseg$                         lot$                          restart_fault$                return_to_ring_0_$
+slt$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     34 000005        88 000013        89 000015        91 000017        92 000027        93 000033        97 000044
+     98 000050        99 000053       101 000055       102 000063       103 000066       104 000101       106 000106
+    107 000112       109 000116       110 000123       111 000126       113 000136       114 000140       115 000143
+    117 000150       118 000152       120 000163       125 000165       126 000172       128 000177       132 000200
+    136 000202       137 000210       138 000214       140 000221       141 000226       142 000233       144 000240
+    146 000250       150 000251       157 000253       159 000275
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,154 @@
+	COMPILATION LISTING OF SEGMENT quota_util
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1043.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 quota_util$suspend_quota: proc;	/* Set switch for this process' PDS */
+       14 
+       15 dcl switch_val fixed bin(17),
+       16     pdsp ptr,
+       17     (pds$quota_inhib ext, pdsval based(pdsp)) fixed bin(17);
+       18 
+       19 	switch_val = 1;		/* Suspend quota checking for this process */
+       20 
+       21 	go to this_process_common;
+       22 
+       23 restore_quota: entry;		/* clear switch */
+       24 
+       25 	switch_val = 0;
+       26 
+       27 this_process_common:
+       28 	pds$quota_inhib = switch_val;
+       29 
+       30 	return;
+       31 
+       32 /* Following code is commented out, may be completed and de-commented if
+       33*   it is ever desired to suspend the quota for any process other than
+       34*   one which may call hphcs_$(suspend/restore)_quota in its own right.
+       35*suspend_proc_quota: entry(pid, code);
+       36*
+       37*dcl pid fixed bin(35),
+       38*    code fixed bin(17);
+       39*
+       40*	switch_val = 1;
+       41*	go to find_pdir;
+       42*
+       43*restore_proc_quota: entry(pid, code);
+       44*
+       45*	switch_val = 0;
+       46*
+       47*find_pdir:
+       48*	uc = unique_chars(addr(pid) -> bit36b);
+       49*	...
+       50*
+       51*	call initiate(pdir, "pds", "", 1, 0, pdsp, code);
+       52*
+       53*	if pdsp = null
+       54*	then return;
+       55*
+       56*	pdsp = ptr(pdsp, rel(addr(pds$quota_inhib));
+       57*
+       58*	code = 0;
+       59*	pdsp -> pdsval = switch_val;
+       60*
+       61*	call terminate_noname(pdsp, ignore_code);
+       62*
+       63*   End of commented code */
+       64 
+       65 end quota_util$suspend_quota;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.6  quota_util.pl1                    >spec>install>1110>quota_util.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+pds$quota_inhib                 000010 external static fixed bin(17,0)          dcl 15 set ref 27*
+switch_val                      000100 automatic       fixed bin(17,0)          dcl 15 set ref 19* 25* 27
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+pdsp                                   automatic       pointer                  dcl 15
+pdsval                                 based           fixed bin(17,0)          dcl 15
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+quota_util$suspend_quota        000001 constant        entry                    external dcl 13
+restore_quota                   000012 constant        entry                    external dcl 23
+this_process_common             000020 constant        label                    dcl 27 ref 21
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       104         116      24         114
+Length       260      24        12         126      60           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+quota_util$suspend_quota             65 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+quota_util$suspend_quota 000100 switch_val                  quota_util$suspend_quota
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$quota_inhib
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000000        19 000006        21 000010        23 000011        25 000017        27 000020        30 000023
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

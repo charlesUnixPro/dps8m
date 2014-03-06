@@ -1,7 +1,7 @@
 1030 (002006) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestAddrMods ... 1/04 10:03 
+This is TestAddrMods ... 2/21 20:47 
 R mods ...
 Result: 006000010003
 Result: 000077710000
@@ -104,7 +104,7 @@ Result: 000000000345
 Result: 400000000255
 Result: 000000000670
 
-cpuCycles = 20478
+cpuCycles = 20479
 TestAddrMods-11> g 0
 
 DIS instruction, IC: 001115 (000000616000)

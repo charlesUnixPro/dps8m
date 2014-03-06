@@ -1,0 +1,890 @@
+	COMPILATION LISTING OF SEGMENT pre_link_hc
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1021.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 pre_link_hc:
+        9      procedure;
+       10 
+       11 /* Snap all the links in the hardcore. */
+       12 /* Written November 1982 by C. Hornig */
+       13 
+       14 dcl  definitions_$ external;
+       15 dcl  lot$ external;
+       16 dcl  slt$ external;
+       17 
+       18 dcl  get_defptr_ entry (ptr, ptr, ptr, ptr, fixed bin (35));
+       19 dcl  slt_manager$get_seg_ptr entry (char (32) aligned) returns (ptr);
+       20 
+       21 dcl  segno fixed bin (15);
+       22 
+       23 /* * * * * * * * * * PRE_LINK_HC * * * * * * * * * */
+       24 
+       25 	definitions_ptr = addr (definitions_$);
+       26 	lotp = addr (lot$);
+       27 	sltp = addr (slt$);
+       28 
+       29 	do segno = slt.first_sup_seg to slt.last_sup_seg;
+       30 	     call process_seg;
+       31 	end;
+       32 
+       33 	do segno = slt.first_init_seg to slt.last_init_seg;
+       34 	     call process_seg;
+       35 	end;
+       36 
+       37 	return;
+       38 
+       39 /* * * * * * * * * * PROCESS_SEG * * * * * * * * * * */
+       40 
+       41 process_seg:
+       42      procedure;
+       43 
+       44 dcl  (lp, dp, link_ptr, tgtp) ptr;
+       45 dcl  link_offset fixed bin (18);
+       46 
+       47 	if unspec (lot.lp (segno)) = ""b then return;
+       48 
+       49 	lp = lot.lp (segno);			/* linkage section */
+       50 	dp = lp -> header.def_ptr;			/* definitions */
+       51 
+       52 	do link_offset = binary (lp -> header.stats.begin_links, 18) by 2
+       53 	     to binary (lp -> header.stats.block_length, 18) - 1;
+       54 
+       55 	     link_ptr = addrel (lp, link_offset);
+       56 	     if link_ptr -> link.ft2 ^= "46"b3 then goto next_link;
+       57 						/* only look at unsnapped links */
+       58 	     tgtp = null ();
+       59 	     exp_ptr = addrel (dp, link_ptr -> link.exp_ptr);
+       60 						/* find exp word */
+       61 	     type_ptr = addrel (dp, exp_word.type_relp);	/* and type pair */
+       62 	     if type_pair.type = LINK_SELF_BASE
+       63 	     then if type_pair.segname_relp = SECTION_TEXT then tgtp = baseptr (segno);
+       64 		else if type_pair.segname_relp = SECTION_LINK then tgtp = lp;
+       65 		else goto next_link;
+       66 	     else if type_pair.type = LINK_REFNAME_BASE then call find_seg;
+       67 	     else if (type_pair.type = LINK_REFNAME_OFFSETNAME) | (type_pair.type = LINK_CREATE_IF_NOT_FOUND) then do;
+       68 		call find_seg;
+       69 		call find_def;
+       70 		end;
+       71 	     else goto next_link;
+       72 
+       73 	     tgtp = addrel (tgtp, exp_word.expression);
+       74 	     addr (tgtp) -> link.modifier = link_ptr -> link.modifier;
+       75 	     link_ptr -> link = addr (tgtp) -> link;
+       76 
+       77 next_link:
+       78 	end;
+       79 
+       80 	return;
+       81 
+       82 /* * * * * * * * * FIND_SEG * * * * * * * * */
+       83 
+       84 find_seg:
+       85 	procedure;
+       86 
+       87 	     tgtp = slt_manager$get_seg_ptr ((addrel (dp, type_pair.segname_relp) -> acc_string.string));
+       88 	     if tgtp = null () then goto next_link;
+       89 	     return;
+       90 	end find_seg;
+       91 
+       92 /* * * * * * * * * FIND_DEF * * * * * * * * * */
+       93 
+       94 find_def:
+       95 	procedure;
+       96 
+       97 dcl  code fixed bin (35);
+       98 
+       99 	     call get_defptr_ (addrel (definitions_ptr, definitions.dot (binary (baseno (tgtp), 15)).offset),
+      100 		addrel (dp, type_pair.segname_relp), addrel (dp, type_pair.offsetname_relp), def_ptr, code);
+      101 	     if code ^= 0 then goto next_link;
+      102 
+      103 	     if definition.class = CLASS_TEXT then ;
+      104 	     else if definition.class = CLASS_LINKAGE then tgtp = lot.lp (binary (baseno (tgtp), 15));
+      105 	     else goto next_link;
+      106 
+      107 	     tgtp = addrel (tgtp, definition.thing_relp);
+      108 
+      109 	     return;
+      110 	end find_def;
+      111 
+  1     1 /* Begin include file definition_dcls.incl.pl1 BIM 1981 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(86-05-02,Elhard), approve(86-05-02,MCR7391),
+  1     6*     audit(86-07-18,DGHowe), install(86-11-20,MR12.0-1222):
+  1     7*     Modified to add indirect bit to definition flags, add msf_map_relp to the
+  1     8*     definition header, declare the msf_map, and add structures and constants
+  1     9*     for deferred initialization.
+  1    10*  2) change(86-06-24,DGHowe), approve(86-06-24,MCR7420),
+  1    11*     audit(86-08-05,Schroth), install(86-11-20,MR12.0-1222):
+  1    12*     added the structures for pointer initialization. pointer_init_template.
+  1    13*     changed list_template_entry
+  1    14*                                                   END HISTORY COMMENTS */
+  1    15 
+  1    16 
+  1    17 /* Modified:  */
+  1    18 /*   13 Dec 1982 by Lee A. Newcomb to put definition_header.hash_table_relp */
+  1    19 /*	after unused half-word instead of before it. */
+  1    20 /*   1 March 1983 by M. Weaver to add list template init type */
+  1    21 
+  1    22 /* format: style3,idind25 */
+  1    23 /* everything for the definition section */
+  1    24 
+  1    25 declare	(
+  1    26 	CLASS_TEXT	     init (0),		/* text section definition */
+  1    27 	CLASS_LINKAGE	     init (1),		/* linkage section definition */
+  1    28 	CLASS_SYMBOL	     init (2),		/* symbol section definition */
+  1    29 	CLASS_SEGNAME	     init (3),		/* segment name definition */
+  1    30 	CLASS_STATIC	     init (4),		/* static section definition */
+  1    31 	CLASS_SYSTEM	     init (5),		/* valid only in self links, not def class */
+  1    32 	CLASS_HEAP	     init (6)		/* valid only in self links, not def class */
+  1    33 	)		     fixed bin (3) unsigned internal static options (constant);
+  1    34 
+  1    35 declare	CLASS_NAMES	     (0:6) character (12) internal static options (constant)
+  1    36 			     init ("text", "linkage", "symbol", "segname", "static", "system", "heap");
+  1    37 
+  1    38 declare	SYMBOLIC_SECTION_NAMES   (0:6) character (8)
+  1    39 			     init ("*text", "*link", "*symbol", *, "*static", "*system", "*heap") internal static
+  1    40 			     options (constant);
+  1    41 
+  1    42 declare	1 definition_flags	     unaligned based,
+  1    43 	  2 new		     bit (1),		/* should be "1"b */
+  1    44 	  2 ignore	     bit (1),		/* cannot snap link to this */
+  1    45 	  2 entry		     bit (1),		/* can tra here */
+  1    46 	  2 retain	     bit (1),		/* binder respects this */
+  1    47 	  2 argcount	     bit (1),		/* OBSOLETE */
+  1    48 	  2 descriptors	     bit (1),		/* OBSOLETE */
+  1    49 	  2 indirect	     bit (1),		/* target is a pointer to actual target */
+  1    50 	  2 unused	     bit (8);		/* Must be zero */
+  1    51 
+  1    52 
+  1    53 
+  1    54 
+  1    55 /* Header of the definition section */
+  1    56 
+  1    57 declare	def_header_ptr	     pointer;
+  1    58 declare	1 definition_header	     aligned based (def_header_ptr),
+  1    59 	  2 def_list_relp	     fixed bin (18) unsigned unaligned,
+  1    60 						/* first definition, reloc def18 */
+  1    61 	  2 msf_map_relp	     fixed bin (18) unsigned unaligned,
+  1    62 						/* msf_map if any, or 0 if none.  reloc def18 unless none */
+  1    63 	  2 hash_table_relp	     fixed bin (18) unsigned unaligned,
+  1    64 						/* def hash table, if any, or 0 if none. reloc def18 unless none */
+  1    65 	  2 flags		     unaligned like definition_flags;
+  1    66 						/* both new and ignore must be "1"b here */
+  1    67 
+  1    68 /* A non class=3 definition. See segname_definition below for class=3 */
+  1    69 
+  1    70 
+  1    71 declare	def_ptr		     pointer;
+  1    72 declare	1 definition	     aligned based (def_ptr),
+  1    73 	  2 forward_relp	     unal fixed bin (18) unsigned,
+  1    74 						/* offset of next def */
+  1    75 	  2 backward_relp	     unal fixed bin (18) unsigned,
+  1    76 						/* offset of previous def */
+  1    77 	  2 thing_relp	     unal fixed bin (18) unsigned,
+  1    78 						/* offset in section specified by class of thing this defines */
+  1    79 	  2 flags		     unaligned like definition_flags,
+  1    80 	  2 class		     unal fixed bin (3) unsigned,
+  1    81 						/* Type of definition */
+  1    82 	  2 name_relp	     unal fixed bin (18) unsigned,
+  1    83 						/* offset of ACC for symbol */
+  1    84 	  2 segname_relp	     unal fixed bin (18) unsigned;
+  1    85 						/* offset of segname def to which this belongs */
+  1    86 
+  1    87 /* Class=3, segname definition */
+  1    88 
+  1    89 declare	segname_ptr	     pointer;
+  1    90 declare	1 segname_definition     aligned based (segname_ptr),
+  1    91 	  2 forward_relp	     unal fixed bin (18) unsigned,
+  1    92 						/* offset of next def */
+  1    93 	  2 backward_relp	     unal fixed bin (18) unsigned,
+  1    94 						/* offset of previous def */
+  1    95 	  2 next_segname_relp    unal fixed bin (18) unsigned,
+  1    96 						/* offset of next segname def */
+  1    97 	  2 flags		     unaligned like definition_flags,
+  1    98 	  2 class		     unal fixed bin (3) unsigned,
+  1    99 						/* 3 for segname */
+  1   100 	  2 name_relp	     unal fixed bin (18) unsigned,
+  1   101 						/* offset of ACC for symbol */
+  1   102 	  2 first_relp	     unal fixed bin (18) unsigned;
+  1   103 						/* see following : */
+  1   104 
+  1   105 /* Definition blocks are chained off of segname definitions.
+  1   106*   segname_definition.first_relp is one of three things:
+  1   107*    (1) the def section offset of the first ordinary (class^=3) definition
+  1   108*      belonging to this segname block. In the case where there are more than
+  1   109*      one segname's on a block, all their first_relp will point
+  1   110*      to the same place.
+  1   111*
+  1   112*    (2) if there are no ordinary definitions associated with this segname,
+  1   113*      then it is the def section offset of the next segname. 
+  1   114*
+  1   115*    (3) if there are no ordinary definitions in the block, and it
+  1   116*      is the last block, then it points to a word containing 0.
+  1   117*
+  1   118* Thus the end of a list of synonym segnames can be detected by forward_relp
+  1   119*   pointing to a class=3 definition whose first_relp is not the same as
+  1   120*   the current definitions first_relp.
+  1   121**/
+  1   122 
+  1   123 /* All the definitions are linked through the forward and
+  1   124*   backward thread variables. The end of the chain can is indicated
+  1   125*   by forward pointing to a zero word. */
+  1   126 
+  1   127 
+  1   128 declare	exp_ptr		     pointer;
+  1   129 declare	1 exp_word	     based (exp_ptr) aligned, /* expression word in link definition */
+  1   130 	  2 type_relp	     fixed bin (18) unsigned unal,
+  1   131 						/* pointer (rel to defs) of type pair structure */
+  1   132 	  2 expression	     fixed bin (17) unal;	/* constant expression to be added in when snapping link */
+  1   133 
+  1   134 declare	(
+  1   135 	LINK_SELF_BASE	     init (1),		/* *section|0+expression,modifier */
+  1   136 						/* which section determined by segname_relp */
+  1   137 	LINK_OBSOLETE_2	     init (2),		/* not used */
+  1   138 	LINK_REFNAME_BASE	     init (3),		/* refname|0+expression,modifier */
+  1   139 	LINK_REFNAME_OFFSETNAME  init (4),		/* refname|offsetname+expression,modifier */
+  1   140 	LINK_SELF_OFFSETNAME     init (5),		/* *section|offsetname+expression,modifier */
+  1   141 	LINK_CREATE_IF_NOT_FOUND init (6),		/* OBSOLETE: like LINK_REFNAME_OFFSETNAME except that it will create instead of taking linkage_error */
+  1   142 	SECTION_TEXT	     init (0),		/* *text */
+  1   143 	SECTION_LINK	     init (1),		/* *link */
+  1   144 	SECTION_SYMBOL	     init (2),		/* *symbol */
+  1   145 	SECTION_UNUSED	     init (3),		/* reserved */
+  1   146 	SECTION_STATIC	     init (4),		/* *static */
+  1   147 	SECTION_SYSTEM	     init (5),		/* *system */
+  1   148 	SECTION_HEAP	     init (6)		/* *heap */
+  1   149 	)		     fixed bin (18) unsigned unaligned internal static options (constant);
+  1   150 
+  1   151 /* use CLASS_NAMES for section names */
+  1   152 
+  1   153 declare	LINK_TYPE_NAMES	     (1:6)
+  1   154 			     init ("absolute in section", "unused", "absolute off of refname",
+  1   155 			     "symbolic off of refname", "symbolic in section", "symbolic off of refname; create")
+  1   156 			     character (32) varying internal static options (constant);
+  1   157 
+  1   158 
+  1   159 declare	type_ptr		     pointer;
+  1   160 declare	1 type_pair	     based (type_ptr) aligned,/* type pair in link definition */
+  1   161 	  2 type		     fixed bin (18) unsigned unal,
+  1   162 						/* see above */
+  1   163 	  2 trap_relp	     fixed bin (18) unsigned unal,
+  1   164 						/* pointer (rel to defs) to the trap word */
+  1   165 						/* unless LINK_SELF_OFFSETNAME off of *system or create link */
+  1   166 	  2 segname_relp	     fixed bin (18) unsigned unal,
+  1   167 						/* pointer (rel to defs) to ACC reference name for segment referenced, 
+  1   168* /*or section code for SELF links */
+  1   169 	  2 offsetname_relp	     fixed bin (18) unsigned unal;
+  1   170 						/* for OFFSETNAME links, ACC string of name of location. */
+  1   171 						/* for others, must be ZERO */
+  1   172 
+  1   173 
+  1   174 /* Link Trap Pair */
+  1   175 
+  1   176 declare	link_trap_ptr	     pointer;
+  1   177 declare	1 link_trap_pair	     aligned based (link_trap_ptr),
+  1   178 	  2 call_relp	     fixed bin (18) unsigned unaligned,
+  1   179 						/* LINK18, link to thing to call */
+  1   180 	  2 info_relp	     fixed bin (18) unsigned unaligned;
+  1   181 						/* LINK18, link to argument list */
+  1   182 
+  1   183 
+  1   184 /* initialization info for *system or *heap link */
+  1   185 
+  1   186 
+  1   187 /* NOTE --------------------------------------------------
+  1   188*   the following structures defining initialization information are also
+  1   189*   defined in fortran_storage.incl.pl1  system_link_init_info.incl.pl1
+  1   190*   and should be kept equivalent
+  1   191*   -------------------------------------------------------
+  1   192**/
+  1   193 
+  1   194 declare	(
+  1   195 	INIT_NO_INIT	     init (0),
+  1   196 	INIT_COPY_INFO	     init (3),
+  1   197 	INIT_DEFINE_AREA	     init (4),
+  1   198 	INIT_LIST_TEMPLATE	     init (5),
+  1   199 	INIT_DEFERRED	     init (6)
+  1   200 	)		     fixed bin internal static options (constant);
+  1   201 
+  1   202 /* for type = 0 or 4 */
+  1   203 
+  1   204 declare	link_init_ptr	     pointer;
+  1   205 declare	1 link_init	     aligned based (link_init_ptr),
+  1   206 	  2 n_words	     fixed bin (35),	/* number to invent */
+  1   207 	  2 type		     fixed bin;		/* see types above */
+  1   208 
+  1   209 /* for type=3, there is data to copy */
+  1   210 
+  1   211 declare	1 link_init_copy_info    aligned based (link_init_ptr),
+  1   212 	  2 header	     aligned like link_init,
+  1   213 	  2 initial_data	     (link_init_n_words refer (link_init_copy_info.header.n_words)) bit (36) aligned;
+  1   214 
+  1   215 declare	link_init_n_words	     fixed bin;
+  1   216 
+  1   217 /* for type = 5, there is a list template to copy */
+  1   218 
+  1   219 declare	1 link_init_list_template
+  1   220 			     aligned based (link_init_ptr),
+  1   221 	  2 header	     aligned like link_init,
+  1   222 	  2 pad		     bit (18) unaligned,
+  1   223 	  2 n_words_in_list	     fixed bin (18) unsigned unaligned,
+  1   224 	  2 template	     (link_init_n_words_in_list refer (link_init_list_template.n_words_in_list));
+  1   225 
+  1   226 declare	link_init_n_words_in_list
+  1   227 			     fixed bin;
+  1   228 
+  1   229 /* A list template consists of a series of entries with the following
+  1   230*   description, concatenated together.  n_bits and datum are bit items,
+  1   231*   to permit a wide range of inputs.
+  1   232*
+  1   233*   1.  A 'repeat' of '0' signifies skipping of 'n_bits' bits.
+  1   234*   2.  A 'n_bits' of '0' signifies the last item of the list.
+  1   235*
+  1   236*   COMMON, VLA's, and LA's are presumed to start at the base pointer
+  1   237*   of their particular storage section. */
+  1   238 
+  1   239 declare	1 list_template_entry    aligned based,
+  1   240 	  2 n_bits	     fixed bin (35) aligned,	/* size of datum */
+  1   241 	  2 mbz		     bit (3) unaligned,	/* future expansion */
+  1   242 	  2 init_type	     fixed bin (3) unsigned unaligned, /* 0 normal init, 1 ptr init, 2 packed ptr init */
+  1   243 	  2 repeat	     fixed bin (30) unsigned unaligned,
+  1   244 						/* number of times to repeat datum */
+  1   245 	  2 datum		     bit (link_init_n_bits_in_datum refer (list_template_entry.n_bits));
+  1   246 
+  1   247 
+  1   248 /* the pointer_init_template represents the initialization information
+  1   249*   for ITS and packed pointers.  Both pointer types require the entire
+  1   250*   72 bit structure.
+  1   251**/
+  1   252 
+  1   253 dcl       1 pointer_init_template  based,
+  1   254 	  2 ptr_type	     fixed bin (18) unsigned unaligned,  /* 0 text section, 1 linkage section, 2 static section */
+  1   255 	  2 section_offset	     fixed bin (18) unsigned unaligned,  /* offset to item in specified section */
+  1   256 	  2 word_offset	     fixed bin (18) unsigned unaligned,  /* offset from section item to target in words */
+  1   257 	  2 mbz		     bit (12) unaligned,
+  1   258 	  2 bit_offset	     fixed bin (6) unsigned unaligned;   /* offset from section item|word offset to target in bits */
+  1   259 
+  1   260 
+  1   261 declare	link_init_n_bits_in_datum
+  1   262 			     fixed bin (35);
+  1   263 
+  1   264 /* for type = 6, the init_info resides in another MSF component */
+  1   265 /* target_relp is a linkage section offset to a partial link to */
+  1   266 /* the base of the linkage section of the component containing  */
+  1   267 /* the actual init_info. link_relp is the offset of the actual  */
+  1   268 /* link within that linkage section.			    */
+  1   269 
+  1   270 declare	1 link_init_deferred     aligned based (link_init_ptr),
+  1   271 	  2 header	     aligned like link_init,
+  1   272 	  2 target_relp	     fixed bin (18) unsigned unaligned,
+  1   273 	  2 link_relp	     fixed bin (18) unsigned unaligned;
+  1   274 
+  1   275 /* Definition section hash table */
+  1   276 
+  1   277 declare	def_ht_ptr	     pointer;
+  1   278 declare	1 definition_ht	     aligned based (def_ht_ptr),
+  1   279 	  2 n_entries	     fixed bin,
+  1   280 	  2 table		     (def_ht_n_entries refer (definition_ht.n_entries)) aligned,
+  1   281 	    3 def_relp	     fixed bin (18) unsigned unaligned,
+  1   282 	    3 unused	     bit (18) unaligned;
+  1   283 
+  1   284 declare	def_ht_n_entries	     fixed bin;
+  1   285 
+  1   286 
+  1   287 /* Component name ht */
+  1   288 declare	comp_ht_ptr	     pointer;
+  1   289 declare	1 component_ht	     aligned based (comp_ht_ptr),
+  1   290 	  2 n_entries	     fixed bin,
+  1   291 	  2 table		     (comp_ht_n_entries refer (component_ht.n_entries)) aligned,
+  1   292 	    3 def_relp	     fixed bin (18) unsigned unaligned,
+  1   293 						/* hashed segname */
+  1   294 	    3 block_hdr_relp     fixed bin (18) unsigned unaligned;
+  1   295 						/* first segname def of block containing def_relp */
+  1   296 
+  1   297 declare	comp_ht_n_entries	     fixed bin;
+  1   298 
+  1   299 /* Duplicate name table */
+  1   300 
+  1   301 declare	dup_table_ptr	     pointer;
+  1   302 declare	1 duplicate_table	     aligned based (dup_table_ptr),
+  1   303 	  2 mbz		     bit (18) unaligned,	/* to tell it from a definition */
+  1   304 	  2 n_names	     fixed bin (18) unsigned unaligned,
+  1   305 						/* n in table */
+  1   306 	  2 table		     (dup_table_n_names refer (duplicate_table.n_names)) aligned,
+  1   307 	    3 def_relp	     fixed bin (18) unsigned unaligned,
+  1   308 	    3 block_hdr_relp     fixed bin (18) unsigned unaligned;
+  1   309 
+  1   310 declare	dup_table_n_names	     fixed bin;
+  1   311 
+  1   312 /* The msf_map is found in the definition section of an	*/
+  1   313 /* object MSF component.  It is used by the linker to	*/
+  1   314 /* determine whether a segment is a component of an object	*/
+  1   315 /* MSF or a standard single-segment object.		*/
+  1   316   
+  1   317   dcl msf_map_ptr		ptr;
+  1   318   dcl 01 msf_map		aligned based (msf_map_ptr),
+  1   319        02 version		char (8),
+  1   320        02 component_count	fixed bin (15) unsigned,
+  1   321        02 my_component	fixed bin (15) unsigned;
+  1   322   
+  1   323   dcl msf_map_version_1	char (8) static options (constant)
+  1   324 			     init ("msfmp1.0");
+  1   325   
+  1   326 declare	acc_string_ptr	     pointer;
+  1   327 declare	1 acc_string	     aligned based (acc_string_ptr),
+  1   328 	  2 count		     fixed bin (9) unsigned unaligned,
+  1   329 	  2 string	     character (max (3, acc_string_length) refer (acc_string.count)) unaligned,
+  1   330 	  2 mbz		     bit (0) aligned;	/* this causes the statement */
+  1   331 						/* unspec (acc_string) = ""b to zero out */
+  1   332 						/* the last word, if the string is not of length 0mod4 */
+  1   333 
+  1   334 declare	acc_string_length	     fixed bin (21);
+  1   335 
+  1   336 
+  1   337 /* end include file definitions_dcls.incl.pl1 */
+      112 
+      113 
+      114      end process_seg;
+      115 
+  2     1 /* Begin include file hc_definitions_seg.incl.pl1 BIM 7/82 */
+  2     2 /* format: style3 */
+  2     3 
+  2     4 declare	definitions_ptr	ptr;
+  2     5 
+  2     6 declare	1 definitions	aligned based (definitions_ptr),
+  2     7 	  2 next_free_ptr	pointer,			/* next section, starts after table */
+  2     8 	  2 dot		(2:511) aligned,		/* definitions_offset_table */
+  2     9 	    3 offset	fixed bin (18) uns unal,	/* in this segment */
+  2    10 	    3 length	fixed bin unal,
+  2    11 	  2 first_free	bit (0) aligned;
+  2    12 
+  2    13 /* End include file hc_definitions_seg.incl.pl1 */
+      116 
+  3     1 /* BEGIN INCLUDE FILE linkdcl.incl.pl1 --- last modified 15 Nov 1971 by C Garman */
+  3     2 
+  3     3 /* Last Modified (Date and Reason):
+  3     4*   6/75 by M.Weaver to add virgin_linkage_header declaration
+  3     5*   6/75 by S.Webber to comment existing structures better
+  3     6*   9/77 by M. Weaver to add run_depth to link
+  3     7*   2/83 by M. Weaver to add linkage header flags and change run_depth precision
+  3     8**/
+  3     9 
+  3    10 /* format: style3 */
+  3    11 dcl	1 link		based aligned,		/* link pair in linkage section */
+  3    12 	  2 head_ptr	bit (18) unal,		/* rel pointer to beginning of linkage section */
+  3    13 	  2 ringno	bit (3) unal,
+  3    14 	  2 mbz		bit (6) unal,
+  3    15 	  2 run_depth	fixed bin (2) unal,		/* run unit depth, filled when link is snapped */
+  3    16 	  2 ft2		bit (6) unal,		/* fault tag. 46(8) if not snapped, 43(8) if snapped */
+  3    17 	  2 exp_ptr	bit (18) unal,		/* pointer (rel to defs) of expression word */
+  3    18 	  2 mbz2		bit (12) unal,
+  3    19 	  2 modifier	bit (6) unal;		/* modifier to be left in snapped link */
+  3    20 
+  3    21 dcl	1 exp_word	based aligned,		/* expression word in link definition */
+  3    22 	  2 type_ptr	bit (18) unal,		/* pointer (rel to defs) of type pair structure */
+  3    23 	  2 exp		bit (18) unal;		/* constant expression to be added in when snapping link */
+  3    24 
+  3    25 dcl	1 type_pair	based aligned,		/* type pair in link definition */
+  3    26 	  2 type		bit (18) unal,		/* type of link. may be 1,2,3,4,5, or 6 */
+  3    27 	  2 trap_ptr	bit (18) unal,		/* pointer (rel to defs) to the trap word */
+  3    28 	  2 seg_ptr	bit (18) unal,		/* pointer to ACC reference name for segment referenced */
+  3    29 	  2 ext_ptr	bit (18) unal;		/* pointer (rel to defs)  of ACC segdef name */
+  3    30 
+  3    31 dcl	1 header		based aligned,		/* linkage block header */
+  3    32 	  2 def_ptr	ptr,			/* pointer to definition section */
+  3    33 	  2 symbol_ptr	ptr unal,			/* pointer to symbol section in object segment */
+  3    34 	  2 original_linkage_ptr
+  3    35 			ptr unal,			/* pointer to linkage section in object segment */
+  3    36 	  2 unused	bit (72),
+  3    37 	  2 stats,
+  3    38 	    3 begin_links	bit (18) unal,		/* offset (rel to this section) of first link */
+  3    39 	    3 block_length	bit (18) unal,		/* number of words in this linkage section */
+  3    40 	    3 segment_number
+  3    41 			bit (18) unal,		/* text segment number associated with this section */
+  3    42 	    3 static_length bit (18) unal;		/* number of words of static for this segment */
+  3    43 
+  3    44 dcl	1 linkage_header_flags
+  3    45 			aligned based,		/* overlay of def_ptr for flags */
+  3    46 	  2 pad1		bit (28) unaligned,		/* flags are in first word */
+  3    47 	  2 static_vlas	bit (1) unaligned,		/* static section "owns" some LA/VLA segments */
+  3    48 	  2 perprocess_static
+  3    49 			bit (1) unaligned,		/* 1 copy of static section is used by all tasks/run units */
+  3    50 	  2 pad2		bit (6) unaligned;
+  3    51 
+  3    52 dcl	1 virgin_linkage_header
+  3    53 			aligned based,		/* template for linkage header in object segment */
+  3    54 	  2 pad		bit (30) unaligned,		/* is filled in by linker */
+  3    55 	  2 defs_in_link	bit (6) unaligned,		/* =o20 if defs in linkage (nonstandard) */
+  3    56 	  2 def_offset	bit (18) unaligned,		/* offset of definition section */
+  3    57 	  2 first_ref_relp	bit (18) unaligned,		/* offset of trap-at-first-reference offset array */
+  3    58 	  2 filled_in_later bit (144),
+  3    59 	  2 link_begin	bit (18) unaligned,		/* offset of first link */
+  3    60 	  2 linkage_section_lng
+  3    61 			bit (18) unaligned,		/* length of linkage section */
+  3    62 	  2 segno_pad	bit (18) unaligned,		/* will be segment number of copied linkage */
+  3    63 	  2 static_length	bit (18) unaligned;		/* length of static section */
+  3    64 
+  3    65 
+  3    66 dcl	1 trap_word	based aligned,		/* trap word in link definition */
+  3    67 	  2 call_ptr	bit (18) unal,		/* pointer (rel to link) of link to trap procedure */
+  3    68 	  2 arg_ptr	bit (18) unal;		/* pointer (rel to link) of link to arg info for trap proc */
+  3    69 
+  3    70 dcl	1 name		based aligned,		/* storage of ASCII names in definitions */
+  3    71 	  2 nchars	bit (9) unaligned,		/* number of characters in name */
+  3    72 	  2 char_string	char (31) unaligned;	/* 31-character name */
+  3    73 
+  3    74 /* END INCLUDE FILE linkdcl.incl.pl1 */
+      117 
+  4     1 /* BEGIN INCLUDE FILE --  lot.incl.pl1   S.Webber 9/74, Modified by R. Bratt 04/76, modified by M. Weaver 7/76 */
+  4     2 /* modified by M. Weaver 3/77 */
+  4     3 
+  4     4 dcl  lotp ptr;
+  4     5 
+  4     6 dcl 1 lot based (lotp) aligned,
+  4     7     2 lp (0:9999) ptr unaligned;			/* array of packed pointers to linkage sections */
+  4     8 
+  4     9 dcl lot_fault bit (36) aligned static options (constant) init ("111000000000000000000000000000000000"b);
+  4    10 						/* lot fault has fault code = 0 and offset = 0 */
+  4    11 
+  4    12 dcl  isotp ptr;
+  4    13 dcl 1 isot based (isotp) aligned,
+  4    14     2 isp (0:9999) ptr unaligned;
+  4    15 
+  4    16 dcl 1 isot1 (0 :9999) aligned based,
+  4    17     2 flags unaligned,
+  4    18       3 fault bit (2) unaligned,
+  4    19       3 system bit (1) unaligned,
+  4    20       3 mbz bit (6) unaligned,
+  4    21     2 fault_code fixed bin (8) unaligned,
+  4    22     2 static_offset bit (18) unaligned;
+  4    23 
+  4    24 
+  4    25 /* END INCLUDE FILE  lot.incl.pl1 */
+      118 
+  5     1 /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  5     2 
+  5     3 /* Declarations for Segment Loading Table header and array.
+  5     4*
+  5     5*   Used by Initialization and MST Checker subroutines */
+  5     6 
+  5     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  5     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  5     9     namep ptr,					/* pointer to segment name list block */
+  5    10     pathp ptr,					/* pointer to segment's directory path name */
+  5    11     aclp ptr;					/* pointer to acl structure */
+  5    12 
+  5    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  5    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  5    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  5    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  5    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  5    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  5    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  5    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  5    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  5    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  5    23 
+  5    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  5    25 
+  5    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  5    27 	2 pad bit (18) unal,
+  5    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  5    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  5    30 
+  5    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  5    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  5    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  5    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  5    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  5    36 	  3 pad bit (5) unal,
+  5    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  5    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  5    39 
+  5    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  5    41 	2 size fixed bin (17),			/* length of pathname */
+  5    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  5    43 	2 acls fixed bin;				/* ACL list starts here */
+  5    44 
+  5    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  5    46 	2 count fixed bin,				/* number of entries in acl list */
+  5    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  5    48 	  3 userid char (32),			/* user specification */
+  5    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  5    50 	  3 pad bit (36) aligned,
+  5    51 	  3 code fixed bin;
+  5    52 
+  5    53 
+  5    54 /* END INCLUDE FILE slt.incl.pl1 */
+      119 
+      120 
+      121      end pre_link_hc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.1  pre_link_hc.pl1                   >spec>install>1110>pre_link_hc.pl1
+112          1    11/24/86  1226.9  definition_dcls.incl.pl1          >ldd>include>definition_dcls.incl.pl1
+116          2    10/20/82  0938.5  hc_definitions_seg.incl.pl1       >ldd>include>hc_definitions_seg.incl.pl1
+117          3    07/27/83  0910.0  linkdcl.incl.pl1                  >ldd>include>linkdcl.incl.pl1
+118          4    08/05/77  1022.4  lot.incl.pl1                      >ldd>include>lot.incl.pl1
+119          5    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CLASS_LINKAGE                          constant        fixed bin(3,0)           initial unsigned dcl 1-25 ref 104
+CLASS_TEXT                             constant        fixed bin(3,0)           initial unsigned dcl 1-25 ref 103
+LINK_CREATE_IF_NOT_FOUND               constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134 ref 67
+LINK_REFNAME_BASE                      constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134 ref 66
+LINK_REFNAME_OFFSETNAME                constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134 ref 67
+LINK_SELF_BASE                         constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134 ref 62
+SECTION_LINK                           constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134 ref 64
+SECTION_TEXT                           constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134 ref 62
+acc_string                             based           structure                level 1 dcl 1-327
+begin_links               6            based           bit(18)                  level 3 packed packed unaligned dcl 3-31 ref 52
+block_length              6(18)        based           bit(18)                  level 3 packed packed unaligned dcl 3-31 ref 52
+class                     1(33)        based           fixed bin(3,0)           level 2 packed packed unsigned unaligned dcl 1-72
+                                                                                  ref 103 104
+code                            000156 automatic       fixed bin(35,0)          dcl 97 set ref 99* 101
+count                                  based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 1-327
+                                                                                  ref 87
+def_ptr                                based           pointer                  level 2 in structure "header" dcl 3-31 in procedure
+                                                                                  "pre_link_hc" ref 50
+def_ptr                         000132 automatic       pointer                  dcl 1-71 in procedure "process_seg" set ref 99* 103
+                                                                                  104 107
+definition                             based           structure                level 1 dcl 1-72
+definition_flags                       based           structure                level 1 packed packed unaligned dcl 1-42
+definitions                            based           structure                level 1 dcl 2-6
+definitions_$                   000010 external static fixed bin(17,0)          dcl 14 set ref 25
+definitions_ptr                 000102 automatic       pointer                  dcl 2-4 set ref 25* 99 99 99 99
+dot                       2            based           structure                array level 2 dcl 2-6
+dp                              000122 automatic       pointer                  dcl 44 set ref 50* 59 61 87 99 99 99 99
+exp_ptr                   1            based           bit(18)                  level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 3-11 in procedure "pre_link_hc" set ref 59
+exp_ptr                         000134 automatic       pointer                  dcl 1-128 in procedure "process_seg" set ref 59* 61
+                                                                                  73
+exp_word                               based           structure                level 1 dcl 1-129
+expression                0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-129 ref 73
+first_init_seg            5            based           fixed bin(18,0)          level 2 dcl 5-13 ref 33
+first_sup_seg             3            based           fixed bin(18,0)          level 2 dcl 5-13 ref 29
+ft2                       0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 3-11 set ref 56
+get_defptr_                     000016 constant        entry                    external dcl 18 ref 99
+header                                 based           structure                level 1 dcl 3-31
+last_init_seg             6            based           fixed bin(18,0)          level 2 dcl 5-13 ref 33
+last_sup_seg              4            based           fixed bin(18,0)          level 2 dcl 5-13 ref 29
+link                                   based           structure                level 1 dcl 3-11 set ref 75* 75
+link_init                              based           structure                level 1 dcl 1-205
+link_offset                     000130 automatic       fixed bin(18,0)          dcl 45 set ref 52* 55*
+link_ptr                        000124 automatic       pointer                  dcl 44 set ref 55* 56 59 74 75
+lot                                    based           structure                level 1 dcl 4-6
+lot$                            000012 external static fixed bin(17,0)          dcl 15 set ref 26
+lotp                            000104 automatic       pointer                  dcl 4-4 set ref 26* 47 49 104
+lp                                     based           pointer                  array level 2 in structure "lot" packed packed
+                                                                                  unaligned dcl 4-6 in procedure "pre_link_hc" ref
+                                                                                  47 49 104
+lp                              000120 automatic       pointer                  dcl 44 in procedure "process_seg" set ref 49* 50 52
+                                                                                  52 55 64
+modifier                  1(30)        based           bit(6)                   level 2 packed packed unaligned dcl 3-11 set ref 74*
+                                                                                  74
+offset                    2            based           fixed bin(18,0)          array level 3 packed packed unsigned unaligned
+                                                                                  dcl 2-6 ref 99 99
+offsetname_relp           1(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-160
+                                                                                  ref 99 99
+segname_relp              1            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-160
+                                                                                  ref 62 64 87 99 99
+segno                           000100 automatic       fixed bin(15,0)          dcl 21 set ref 29* 33* 47 49 62
+slt                                    based           structure                level 1 dcl 5-13
+slt$                            000014 external static fixed bin(17,0)          dcl 16 set ref 27
+slt_manager$get_seg_ptr         000020 constant        entry                    external dcl 19 ref 87
+sltp                            000106 automatic       pointer                  dcl 5-7 set ref 27* 29 29 33 33
+stats                     6            based           structure                level 2 dcl 3-31
+string                    0(09)        based           char                     level 2 packed packed unaligned dcl 1-327 ref 87
+tgtp                            000126 automatic       pointer                  dcl 44 set ref 58* 62* 64* 73* 73 74 75 87* 88 99 99
+                                                                                  104* 104 107* 107
+thing_relp                1            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-72
+                                                                                  ref 107
+type                                   based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-160
+                                                                                  ref 62 66 67 67
+type_pair                              based           structure                level 1 dcl 1-160
+type_ptr                        000136 automatic       pointer                  dcl 1-159 set ref 61* 62 62 64 66 67 67 87 99 99 99
+                                                                                  99
+type_relp                              based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-129
+                                                                                  ref 61
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+CLASS_HEAP                             internal static fixed bin(3,0)           initial unsigned dcl 1-25
+CLASS_NAMES                            internal static char(12)                 initial array packed unaligned dcl 1-35
+CLASS_SEGNAME                          internal static fixed bin(3,0)           initial unsigned dcl 1-25
+CLASS_STATIC                           internal static fixed bin(3,0)           initial unsigned dcl 1-25
+CLASS_SYMBOL                           internal static fixed bin(3,0)           initial unsigned dcl 1-25
+CLASS_SYSTEM                           internal static fixed bin(3,0)           initial unsigned dcl 1-25
+INIT_COPY_INFO                         internal static fixed bin(17,0)          initial dcl 1-194
+INIT_DEFERRED                          internal static fixed bin(17,0)          initial dcl 1-194
+INIT_DEFINE_AREA                       internal static fixed bin(17,0)          initial dcl 1-194
+INIT_LIST_TEMPLATE                     internal static fixed bin(17,0)          initial dcl 1-194
+INIT_NO_INIT                           internal static fixed bin(17,0)          initial dcl 1-194
+LINK_OBSOLETE_2                        internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+LINK_SELF_OFFSETNAME                   internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+LINK_TYPE_NAMES                        internal static varying char(32)         initial array dcl 1-153
+SECTION_HEAP                           internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+SECTION_STATIC                         internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+SECTION_SYMBOL                         internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+SECTION_SYSTEM                         internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+SECTION_UNUSED                         internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 1-134
+SYMBOLIC_SECTION_NAMES                 internal static char(8)                  initial array packed unaligned dcl 1-38
+acc_string_length                      automatic       fixed bin(21,0)          dcl 1-334
+acc_string_ptr                         automatic       pointer                  dcl 1-326
+aclp                                   automatic       pointer                  dcl 5-7
+acls                                   based           structure                level 1 dcl 5-45
+comp_ht_n_entries                      automatic       fixed bin(17,0)          dcl 1-297
+comp_ht_ptr                            automatic       pointer                  dcl 1-288
+component_ht                           based           structure                level 1 dcl 1-289
+def_header_ptr                         automatic       pointer                  dcl 1-57
+def_ht_n_entries                       automatic       fixed bin(17,0)          dcl 1-284
+def_ht_ptr                             automatic       pointer                  dcl 1-277
+definition_header                      based           structure                level 1 dcl 1-58
+definition_ht                          based           structure                level 1 dcl 1-278
+dup_table_n_names                      automatic       fixed bin(17,0)          dcl 1-310
+dup_table_ptr                          automatic       pointer                  dcl 1-301
+duplicate_table                        based           structure                level 1 dcl 1-302
+exp_word                               based           structure                level 1 dcl 3-21
+isot                                   based           structure                level 1 dcl 4-13
+isot1                                  based           structure                array level 1 dcl 4-16
+isotp                                  automatic       pointer                  dcl 4-12
+link_init_copy_info                    based           structure                level 1 dcl 1-211
+link_init_deferred                     based           structure                level 1 dcl 1-270
+link_init_list_template                based           structure                level 1 dcl 1-219
+link_init_n_bits_in_datum              automatic       fixed bin(35,0)          dcl 1-261
+link_init_n_words                      automatic       fixed bin(17,0)          dcl 1-215
+link_init_n_words_in_list              automatic       fixed bin(17,0)          dcl 1-226
+link_init_ptr                          automatic       pointer                  dcl 1-204
+link_trap_pair                         based           structure                level 1 dcl 1-177
+link_trap_ptr                          automatic       pointer                  dcl 1-176
+linkage_header_flags                   based           structure                level 1 dcl 3-44
+list_template_entry                    based           structure                level 1 dcl 1-239
+lot_fault                              internal static bit(36)                  initial dcl 4-9
+msf_map                                based           structure                level 1 dcl 1-318
+msf_map_ptr                            automatic       pointer                  dcl 1-317
+msf_map_version_1                      internal static char(8)                  initial packed unaligned dcl 1-323
+name                                   based           structure                level 1 dcl 3-70
+name_seg                               based           structure                level 1 dcl 5-26
+namep                                  automatic       pointer                  dcl 5-7
+names_ptr                              automatic       pointer                  dcl 5-7
+path                                   based           structure                level 1 dcl 5-40
+pathp                                  automatic       pointer                  dcl 5-7
+pointer_init_template                  based           structure                level 1 packed packed unaligned dcl 1-253
+segnam                                 based           structure                level 1 dcl 5-31
+segname_definition                     based           structure                level 1 dcl 1-90
+segname_ptr                            automatic       pointer                  dcl 1-89
+trap_word                              based           structure                level 1 dcl 3-66
+type_pair                              based           structure                level 1 dcl 3-25
+virgin_linkage_header                  based           structure                level 1 dcl 3-52
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+find_def                        000240 constant        entry                    internal dcl 94 ref 69
+find_seg                        000207 constant        entry                    internal dcl 84 ref 66 68
+next_link                       000203 constant        label                    dcl 77 ref 56 64 67 88 101 104
+pre_link_hc                     000005 constant        entry                    external dcl 8
+process_seg                     000047 constant        entry                    internal dcl 41 ref 30 34
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 25 26 27 74 75
+addrel                                                 builtin function         ref 55 59 61 73 87 99 99 99 99 99 99 107
+baseno                                                 builtin function         ref 99 99 104
+baseptr                                                builtin function         ref 62
+binary                                                 builtin function         ref 52 52 99 99 104
+null                                                   builtin function         ref 58 88
+unspec                                                 builtin function         ref 47
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       414         436     331         424
+Length       702     331        22         230      62           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+pre_link_hc                         148 external procedure  is an external procedure.  
+process_seg                             internal procedure  shares stack frame of external procedure pre_link_hc.  
+find_seg                                internal procedure  shares stack frame of external procedure pre_link_hc.  
+find_def                                internal procedure  shares stack frame of external procedure pre_link_hc.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+pre_link_hc              000100 segno                       pre_link_hc
+                         000102 definitions_ptr             pre_link_hc
+                         000104 lotp                        pre_link_hc
+                         000106 sltp                        pre_link_hc
+                         000120 lp                          process_seg
+                         000122 dp                          process_seg
+                         000124 link_ptr                    process_seg
+                         000126 tgtp                        process_seg
+                         000130 link_offset                 process_seg
+                         000132 def_ptr                     process_seg
+                         000134 exp_ptr                     process_seg
+                         000136 type_ptr                    process_seg
+                         000156 code                        find_def
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_defptr_                   slt_manager$get_seg_ptr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+definitions_$                 lot$                          slt$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000004        25 000012        26 000014        27 000016        29 000020        30 000027        31 000030
+     33 000032        34 000043        35 000044        37 000046        41 000047        47 000050        49 000054
+     50 000056        52 000060        55 000073        56 000076        58 000102        59 000104        61 000111
+     62 000116        64 000140        66 000147        67 000155        68 000165        69 000166        73 000167
+     74 000175        75 000200        77 000203        80 000206        84 000207        87 000210        88 000233
+     89 000237        94 000240        99 000241       101 000303       103 000305       104 000313       107 000322
+    109 000330
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -20,13 +20,25 @@ extern word18 rIC;
 
 static void EISWrite(EISaddr *p, word36 data)
 {
-    if (p->mat == viaPR)    //&& get_addr_mode() == APPEND_mode)
+    if (p->mat == viaPR)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Write(p->e->ins, p->address, data, APUDataWrite, 0); // write data
-    } else
-        Write(p->e->ins, p->address, data, OperandWrite, 0); // write data
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, p -> SNR, p -> address);
+        Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, true); // write data
+    }
+    else
+    {
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
+        Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, false); // write data
+    }
 }
 
 static word36 EISRead(EISaddr *p)
@@ -36,11 +48,21 @@ static word36 EISRead(EISaddr *p)
     {
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
-        Read(p->e->ins, p->address, &data, APUDataRead, 0);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+        
+        Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
     else
-        Read(p->e->ins, p->address, &data, OperandRead, 0);  // read operand
-    
+    {
+        if (get_addr_mode() == APPEND_mode)
+        {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+        }
+        
+        Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, false);  // read operand
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
+    }
     return data;
 }
 
@@ -170,7 +192,8 @@ void setupOperandDescriptor(int k, EISstruct *e)
                 e->addr[k-1].mat = viaPR;   // ARs involved
             }
         } else
-            e->addr[k-1].mat = IndirectRead;      // no ARs involved yet
+            //e->addr[k-1].mat = IndirectRead;      // no ARs involved yet
+            e->addr[k-1].mat = OperandRead;      // no ARs involved yet
 
         
         // Address modifier for ADDRESS. All register modifiers except du and dl may be used. If the ic modifier is used, then ADDRESS is an 18-bit offset relative to value of the instruction counter for the instruction word. C(REG) is always interpreted as a word offset. REG 
@@ -182,7 +205,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
         
         //Read(e->ins, address, &e->op[k-1], OperandRead, 0);  // read operand
         e->op[k-1] = EISRead(&e->addr[k-1]);  // read EIS operand .. this should be an indirectread
-        e->addr[k-1].mat = OperandRead; 
+        //e->addr[k-1].mat = OperandRead;
     }
 }
 
@@ -196,17 +219,17 @@ void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     
-    word18 address = GETHI(opDesc);
+    int address = SIGNEXT18(GETHI(opDesc));
     
     if (MFk & MFkAR)
     {
         // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
         int n = (int)bitfieldExtract36(address, 15, 3);
-        int offset = address & 077777;  // 15-bit signed number
-        address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
+        int offset = SIGNEXT15(address & 077777);  // 15-bit signed number
+        address = SIGNEXT18((AR[n].WORDNO + offset) & 0777777);
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -242,9 +265,13 @@ void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     else
         e->N[k-1] = opDesc & 07777;
     
-    word18 r = (word18)getMFReg(MFk & 017, true);
+    int r = SIGNEXT18((word18)getMFReg(MFk & 017, true));
     
-    if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
+    // AL-39 implies, and RJ-76 say that RL and reg == IC is illegal;
+    // but it the emulator ignores RL if reg == IC, then that PL/I
+    // generated code in Multics works. "Pragmatic debugging."
+
+    if (/*!(MFk & MFkRL) && */ (MFk & 017) == 4)   // reg == IC ?
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
         address += r;
@@ -320,8 +347,8 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
         int offset = address & 077777;  ///< 15-bit signed number
         address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -420,8 +447,8 @@ void parseBitstringOperandDescriptor(int k, EISstruct *e)
         int offset = address & 077777;  // 15-bit signed number
         address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -704,13 +731,15 @@ int EISget49(EISaddr *p, int *pos, int tn)
     int maxPos = tn == CTN4 ? 7 : 3;
     
     //if (p->lastAddress != p->address)                 // read from memory if different address
-        p->data = EISRead(p);   // read data word from memory
+        // p->data = EISRead(p);   // read data word from memory
     
     if (*pos > maxPos)        // overflows to next word?
     {   // yep....
         *pos = 0;        // reset to 1st byte
         p->address = (p->address + 1) & AMASK;          // bump source to next address
         p->data = EISRead(p);    // read it from memory
+    } else {
+        p->data = EISRead(p);   // read data word from memory
     }
     
     int c = 0;
@@ -862,6 +891,8 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
 
     int sgn = 1;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "loadDec: maxPos %d N1 %d\n", maxPos, e->N1);
     for(int n = 0 ; n < e->N1 ; n += 1)
     {
         if (pos > maxPos)   // overflows to next word?
@@ -883,10 +914,13 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                 c = (word9)GETBYTE(p->data, pos);
                 break;
         }
-        //fprintf(stderr, "c=%d\n", c);
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "loadDec: n %d c %d(%o)\n", n, c, c);
         
         if (n == 0 && e->TN1 == CTN4 && e->S1 == CSLS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n 0, TN1 CTN4, S1 CSLS\n");
             switch (c)
             {
                 case 015:   // 6-bit - sign
@@ -902,9 +936,14 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // not a leading sign
                     // XXX generate Ill Proc fault
             }
+            pos += 1;           // onto next posotion
             continue;
-        } else if (n == 0 && e->TN1 == CTN9 && e->S1 == CSLS)
+        }
+
+        if (n == 0 && e->TN1 == CTN9 && e->S1 == CSLS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n 0, TN1 CTN9, S1 CSLS\n");
             switch (c)
             {
                 case '-':
@@ -920,9 +959,14 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // XXX generate Ill Proc fault
 
             }
+            pos += 1;           // onto next posotion
             continue;
-        } else if (n == e->N1-1 && e->TN1 == CTN4 && e->S1 == CSTS)
+        }
+
+        if (n == e->N1-1 && e->TN1 == CTN4 && e->S1 == CSTS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n N1-1, TN1 CTN4, S1 CSTS\n");
             switch (c)
             {
                 case 015:   // 4-bit - sign
@@ -938,9 +982,13 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // not a trailing sign
                     // XXX generate Ill Proc fault
             }
-            continue;
-        } else if (n == e->N1-1 && e->TN1 == CTN9 && e->S1 == CSTS)
+            break;
+        }
+
+        if (n == e->N1-1 && e->TN1 == CTN9 && e->S1 == CSTS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n N1-1, TN1 CTN9, S1 CSTS\n");
             switch (c)
             {
                 case '-':
@@ -955,16 +1003,20 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // not a trailing sign
                     // XXX generate Ill Proc fault
             }
-            continue;
+            break;
         }
         
         x *= 10;
         x += c & 0xf;
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec:  x %lld\n", (int64) x);
         
         pos += 1;           // onto next posotion
     }
     
     e->x = sgn * x;
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "loadDec:  final x %lld\n", (int64) x);
 }
 
 /*!
@@ -1070,25 +1122,25 @@ void EISwrite4r(EISaddr *p, int *pos, int char4)
     switch (*pos)
     {
         case 0:
-            w = bitfieldInsert36(w, char4, 31, 4);
+            w = bitfieldInsert36(w, char4, 31, 5);
             break;
         case 1:
             w = bitfieldInsert36(w, char4, 27, 4);
             break;
         case 2:
-            w = bitfieldInsert36(w, char4, 22, 4);
+            w = bitfieldInsert36(w, char4, 22, 5);
             break;
         case 3:
             w = bitfieldInsert36(w, char4, 18, 4);
             break;
         case 4:
-            w = bitfieldInsert36(w, char4, 13, 4);
+            w = bitfieldInsert36(w, char4, 13, 5);
             break;
         case 5:
             w = bitfieldInsert36(w, char4, 9, 4);
             break;
         case 6:
-            w = bitfieldInsert36(w, char4, 4, 4);
+            w = bitfieldInsert36(w, char4, 4, 5);
             break;
         case 7:
             w = bitfieldInsert36(w, char4, 0, 4);
@@ -1119,25 +1171,25 @@ void EISwrite4(EISaddr *p, int *pos, int char4)
     switch (*pos)
     {
         case 0:
-            w = bitfieldInsert36(w, char4, 31, 4);
+            w = bitfieldInsert36(w, char4, 31, 5);
             break;
         case 1:
             w = bitfieldInsert36(w, char4, 27, 4);
             break;
         case 2:
-            w = bitfieldInsert36(w, char4, 22, 4);
+            w = bitfieldInsert36(w, char4, 22, 5);
             break;
         case 3:
             w = bitfieldInsert36(w, char4, 18, 4);
             break;
         case 4:
-            w = bitfieldInsert36(w, char4, 13, 4);
+            w = bitfieldInsert36(w, char4, 13, 5);
             break;
         case 5:
             w = bitfieldInsert36(w, char4, 9, 4);
             break;
         case 6:
-            w = bitfieldInsert36(w, char4, 4, 4);
+            w = bitfieldInsert36(w, char4, 4, 5);
             break;
         case 7:
             w = bitfieldInsert36(w, char4, 0, 4);
@@ -1302,30 +1354,45 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
         CN = e->CN[k-1];    // character number (position) 0-7 (4), 0-5 (6), 0-3 (9)
         TN = e->TN[k-1];    // type code
         
+        int chunk = 0;
+        int maxPos;
         switch (TN)
         {
             case CTN4:
                 //address = e->addr[k-1].address;
                 size = 4;
+                chunk = 32;
+                maxPos = 8;
                 break;
             case CTN9:
                 //address = e->addr[k-1].address;
                 size = 9;
+                chunk = 36;
+                maxPos = 4;
                 break;
         }
         
         /// since we want to write the data in reverse (since it's right justified) we need to determine
         /// the final address/CN for the type and go backwards from there
         
-        int numBits = ((TN == CTN4) ? 4 : 9) * N;               ///< 8 4-bit digits, 4 9-bit bytes / word
+        //int numBits = size * N;               ///< 8 4-bit digits, 4 9-bit bytes / word
         ///< (remember there are 4 slop bits in a 36-bit word when dealing with BCD)
         //int numWords = numBits / ((TN == CTN4) ? 32 : 36);      ///< how many additional words will the N chars take up?
-        int numWords = (numBits-1 + CN * size) / ((TN == CTN4) ? 32 : 36);      ///< how many additional words will the N chars take up?
-        int lastChar = (CN + N - 1) % ((TN == CTN4) ? 8 : 4);   ///< last character number
+
+// CN+N    numWords  (CN+N+3)/4   lastChar
+//   1       1                      0
+//   2       1                      1
+//   3       1                      2
+//   4       1                      3
+//   5       2                      0
+
+        int numWords = (CN + N + (maxPos - 1)) / maxPos;
+        int lastWordOffset = numWords - 1;
+        int lastChar = (CN + N - 1) % maxPos;   ///< last character number
         
-        if (numWords > 0)           // more that the 1 word needed?
-            //address += numWords;    // highest memory address
-            e->addr[k-1].address += numWords;
+        if (lastWordOffset > 0)           // more that the 1 word needed?
+            //address += lastWordOffset;    // highest memory address
+            e->addr[k-1].address += lastWordOffset;
         
         pos = lastChar;             // last character number
         
@@ -1336,8 +1403,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     // any room left in output string?
     if (N == 0)
     {
-        SETF(e->_flags, I_OFLOW);
-        
+        //SETF(e->_flags, I_OFLOW); // HWR 26 Jan 14 - Don't think we need to fault it here.
         return;
     }
     
@@ -1368,11 +1434,14 @@ void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     
     int numBits = 9 * N;               ///< 4 9-bit bytes / word
     //int numWords = numBits / 36;       ///< how many additional words will the N chars take up?
-    int numWords = (numBits + CN * 9) / 36;       ///< how many additional words will the N chars take up?
+    //int numWords = (numBits + CN * 9) / 36;       ///< how many additional words will the N chars take up?
+    int numWords = (numBits + CN * 9 + 35) / 36;       ///< how many additional words will the N chars take up?
+    // convert from count to offset
+    int lastWordOffset = numWords - 1;
     int lastChar = (CN + N - 1) % 4;   ///< last character number
     
-    if (numWords > 1)           // more that the 1 word needed?
-        p->address += numWords;    // highest memory address
+    if (lastWordOffset > 0)           // more that the 1 word needed?
+        p->address += lastWordOffset;    // highest memory address
     int pos = lastChar;             // last character number
     
     int128 x = p->e->x;
@@ -1388,7 +1457,7 @@ void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     }
     
     // anything left in x?. If it's not all 1's we have an overflow!
-    if (~x)    // if it's all 1's this will be 0
+    if (~x && x != 0)    // if it's all 1's this will be 0
         SETF(p->e->_flags, I_OFLOW);
 }
 
@@ -1601,7 +1670,9 @@ void btd(DCDstruct *ins)
     
     //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
     //load9x(e->N1, addr, e->CN1, e);
-    
+    if (e->N1 == 0 || e->N1 > 8)
+        doFault(ins, illproc_fault, 0, "btd(1): N1 == 0 || N1 > 8"); 
+
     load9x(e->N1, &e->ADDR1, e->CN1, e);
     
     EISwriteToOutputStringReverse(e, 2, 0);    // initialize output writer .....
@@ -1777,6 +1848,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
     for(int n = 0 ; n < N ; n += 1)
     {
         int c = EISget49(a, &pos, TN);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "src: %d: %o\n", n, c);
         
         /*
          * Here we need to distinguish between 4 type of numbers.
@@ -1801,7 +1873,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                     c &= 0xf;   // hack off all but lower 4 bits
                     
                     if (c < 012 || c > 017)
-                        doFault(ins, 0, 0, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(ins, illproc_fault, 0, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
                     
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -1884,6 +1956,13 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 break;
         }
     }
+    if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+      {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "inBuffer:");
+        for (word9 *q = e->inBuffer; q < p; q ++)
+          sim_debug (DBG_TRACEEXT, & cpu_dev, " %02o", * q);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "\n");
+      }
 }
 
 /*!
@@ -2308,7 +2387,7 @@ int mopLTE(EISstruct *e)
     e->mopTally -= 1;
     
     e->editInsertionTable[e->mopIF - 1] = next;
-    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
     return 0;
 }
 
@@ -2404,17 +2483,18 @@ int mopMFLS(EISstruct *e)
     
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
-        if (e->srcTally == 0 || e->dstTally == 0)
+        if (e->srcTally == 0 && e->dstTally > 1)
         {
             e->_faults = FAULT_IPR;
             return -1;
         }
         
         int c = *(e->in);
-
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLS n %d c %o\n", n, c);
         if (!e->mopES) { // e->mopES is OFF
             if (c == 0) {
                 // edit insertion table entry 1 is moved to the receiving field in place of the character.
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is zero; edit insertion table entry 1 is moved to the receiving field in place of the character.\n");
                 writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
                 e->srcTally -= 1;
@@ -2423,11 +2503,12 @@ int mopMFLS(EISstruct *e)
                 if (!e->mopSN)
                 {
                     // then edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is off; edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
                     writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
 
                     e->in += 1;
                     e->srcTally -= 1;
-                    if (e->srcTally == 0 || e->dstTally == 0)
+                    if (e->srcTally == 0 && e->dstTally > 1)
                     {
                         e->_faults |= FAULT_IPR;
                         return -1;
@@ -2438,11 +2519,12 @@ int mopMFLS(EISstruct *e)
                     e->mopES = true;
                 } else {
                     //  SN is ON; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is OFF; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
                     writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
                     
                     e->in += 1;
                     e->srcTally -= 1;
-                    if (e->srcTally == 0 || e->dstTally == 0)
+                    if (e->srcTally == 0 && e->dstTally > 1)
                     {
                         e->_faults |= FAULT_IPR;
                         return -1;
@@ -2455,6 +2537,7 @@ int mopMFLS(EISstruct *e)
             }
         } else {
             // If ES is ON, the character is moved to the receiving field.
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is ON, the character is moved to the receiving field.\n");
             writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
             
             e->in += 1;
@@ -2736,7 +2819,7 @@ int mopSES(EISstruct *e)
 /*!
  * fetch MOP from e->mopAddr/e->mopCN ...
  */
-MOPstruct* EISgetMop(EISstruct *e)
+static MOPstruct* EISgetMop(EISstruct *e)
 {
     //static word18 lastAddress;  // try to keep memory access' down
     //static word36 data;
@@ -2766,6 +2849,7 @@ MOPstruct* EISgetMop(EISstruct *e)
     e->mopIF = e->mop9 & 0xf;
     
     MOPstruct *m = &mopTab[e->mop];
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MOP %s\n", m -> mopName);
     e->m = m;
     if (e->m == NULL || e->m->f == NULL)
     {
@@ -2888,7 +2972,11 @@ void mvne(DCDstruct *ins)
             e->dstSZ = 9;
             break;
     }
-    
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "mvne N1 %d N2 %d N3 %d TN1 %d CN1 %d TA3 %d CN3 %d\n",
+      e->N1, e->N2, e->N3, e->TN1, e->CN1, e->TA3, e->CN3);
+
     // 1. load sending string into inputBuffer
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
@@ -3077,6 +3165,11 @@ void mlr(DCDstruct *ins)
             break;
     }
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
+      __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
+      fill, fillT, e -> N1, e -> N2);
+
     // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved and the truncation indicator is set ON.
     // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
     //The user of string replication or overlaying is warned that the decimal unit addresses the main memory in unaligned (not on modulo 8 boundary) units of Y-block8 words and that the overlayed string, C(Y-charn2), is not returned to main memory until the unit of Y-block8 words is filled or the instruction completes.
@@ -3198,14 +3291,16 @@ void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
                 break;
         }
     
+    int chunk = size * maxPos; // 32 or 36
     int numBits = size * n;
     
-    int numWords =  (numBits + (initCN * size)) / ((size == 4) ? 32 : 36);  ///< how many additional words will the N chars take up?
+    int numWords =  (numBits + (initCN * size) + (chunk - 1)) / chunk;  ///< how many additional words will the N chars take up?
+    int lastWordOffset = numWords - 1;
                                                                             ///< (remember there are 4 slop bits in a 36-bit word when dealing with BCD)
     int lastChar = (initCN + n - 1) % maxPos;       ///< last character number
     
-    if (numWords > 1)          // more that the 1 word needed?
-        *nWords = numWords-1;  // # of additional words
+    if (lastWordOffset > 0)          // more that the 1 word needed?
+        *nWords = lastWordOffset;  // # of additional words
     else
         *nWords = 0;           // no additional words needed
     *newCN = lastChar;         // last character number
@@ -3386,13 +3481,13 @@ void mrl(DCDstruct *ins)
     }
 }
 
-word8 xlate(word36 *xlatTbl, int dstTA, int c)
+word9 xlate(word36 *xlatTbl, int dstTA, int c)
 {
     int idx = (c / 4) & 0177;      // max 128-words (7-bit index)
     word36 entry = xlatTbl[idx];
     
     int pos9 = c % 4;      // lower 2-bits
-    int cout = (int)GETBYTE(entry, pos9);
+    unsigned int cout = (int)GETBYTE(entry, pos9);
     //int cout = getByte(pos9, entry);
     switch(dstTA)
     {
@@ -3484,8 +3579,8 @@ void mvt(DCDstruct *ins)
         int offset = xAddress & 077777;  // 15-bit signed number
         xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -3546,13 +3641,19 @@ void mvt(DCDstruct *ins)
             break;
     }
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d dstCN:%d srcSZ:%d dstSZ:%d T:%d fill:%03o/%03o N1:%d N2:%d\n",
+      __func__, e -> srcCN, e -> dstCN, e -> srcSZ, e -> dstSZ, e -> T,
+      fill, fillT, e -> N1, e -> N2);
+
     //int xlatAddr = 0;
     //int xlatCN = 0;
 
     /// XXX when do we do a truncation fault?
     
     SCF(e->N1 > e->N2, rIR, I_TRUNC);
-    
+    SCF(e->N1 > e->N2, rIR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
+
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
     
     for(int i = 0 ; i < min(e->N1, e->N2); i += 1)
@@ -3569,7 +3670,7 @@ void mvt(DCDstruct *ins)
             // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
             cidx = c;
             
-            int cout = xlate(xlatTbl, e->dstTA, cidx);
+            unsigned int cout = xlate(xlatTbl, e->dstTA, cidx);
 
 //            switch(e->dstSZ)
 //            {
@@ -3617,7 +3718,7 @@ void mvt(DCDstruct *ins)
     
     if (e->N1 < e->N2)
     {
-        int cfill = xlate(xlatTbl, e->dstTA, fillT);
+        unsigned int cfill = xlate(xlatTbl, e->dstTA, fillT);
         switch (e->srcSZ)
         {
             case 6:
@@ -3802,23 +3903,32 @@ void scm(DCDstruct *ins)
             ctest &= 0777;   // keep 9-bits
     }
 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d srcCN2:%d srcTA:%d srcTA2:%d srcSZ:%d mask:0%06o ctest: 0%03o\n",
+      __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcTA2, e -> srcSZ, 
+      mask, ctest);
+
     word18 y3 = GETHI(e->OP3);
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
     word18 r = (word18)getMFReg(y3REG, true);
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s y3:0%06o y3A:%d y3REG: %d, r:%d\n",
+      __func__, y3, y3A, y3REG, r);
+
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -3829,6 +3939,11 @@ void scm(DCDstruct *ins)
             
             e->ADDR3.mat = viaPR;
         }
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev, 
+          "%s is y3a: n:%d offset:0%06o y3:0%06o ARn_CHAR:%d ARn_BITNO:%d SNR:0%5o RNR:%d mat: %d\n",
+          __func__, n, offset, y3, ARn_CHAR, ARn_BITNO, e->ADDR3.SNR, e->ADDR3.RNR, e->ADDR3.mat);
+
     }
     
     y3 +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
@@ -3836,6 +3951,9 @@ void scm(DCDstruct *ins)
     
     e->ADDR3.address = y3;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s y3: :0%06o\n",
+      __func__, y3);
     //get469(NULL, 0, 0, 0);    // initialize char getter
     
     int i = 0;
@@ -3993,12 +4111,12 @@ void scmr(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4109,8 +4227,8 @@ void tct(DCDstruct *ins)
         int offset = xAddress & 077777;  // 15-bit signed number
         xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
 
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4172,12 +4290,12 @@ void tct(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4221,7 +4339,7 @@ void tct(DCDstruct *ins)
                 break;              // should already be 0-filled
         }
         
-        int cout = xlate(xlatTbl, e->srcTA, m);
+        unsigned int cout = xlate(xlatTbl, e->srcTA, m);
         if (cout)
         {
             CY3 = bitfieldInsert36(0, cout, 27, 9); // C(Y-char92)m → C(Y3)0,8
@@ -4298,9 +4416,9 @@ void tctr(DCDstruct *ins)
     int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
     int xREG = xlat & 0xf;
     
-    word18 r = (word18)getMFReg(xREG, true);
+    int r = SIGNEXT18 ((word18)getMFReg(xREG, true));
     
-    word18 xAddress = GETHI(xlat);
+    int xAddress = GETHI(xlat);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -4311,8 +4429,8 @@ void tctr(DCDstruct *ins)
         int offset = xAddress & 077777;  // 15-bit signed number
         xAddress = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4363,23 +4481,23 @@ void tctr(DCDstruct *ins)
     
     // fetch 3rd operand ...
     
-    word18 y3 = GETHI(e->OP3);
+    int y3 = GETHI(e->OP3);
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    r = (word18)getMFReg(y3REG, true);
+    r = SIGNEXT18((word18)getMFReg(y3REG, true));
     
     ARn_CHAR = 0;
     ARn_BITNO = 0;
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4422,7 +4540,7 @@ void tctr(DCDstruct *ins)
                 break;          // should already be 0-filled
         }
         
-        int cout = xlate(xlatTbl, e->srcTA, m);
+        unsigned int cout = xlate(xlatTbl, e->srcTA, m);
 
         if (cout)
         {
@@ -4503,7 +4621,11 @@ void cmpc(DCDstruct *ins)
     //get469(NULL, 0, 0, 0);    // initialize src1 getter
     //get4692(NULL, 0, 0, 0);   // initialize src2 getter
     
-    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d srcCN2:%d srcTA:%d srcSZ:%d fill:0%03o\n",
+      __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcSZ, 
+      fill);
+
     SETF(rIR, I_ZERO);  // set ZERO flag assuming strings are are equal ...
     SETF(rIR, I_CARRY); // set CARRY flag assuming strings are are equal ...
     
@@ -4682,12 +4804,12 @@ void scd(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -4875,12 +4997,12 @@ void scdr(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
-        ARn_CHAR = AR[n].CHAR;
-        ARn_BITNO = AR[n].BITNO;
+        ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
+        ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
         if (get_addr_mode() == APPEND_mode)
         {
@@ -5321,10 +5443,11 @@ void getBitOffsets(int length, int initC, int initB, int *nWords, int *newC, int
     
     int endBit = (length + 9 * initC + initB - 1) % 36;
     
-    int numWords = length / 36;  ///< how many additional words will the bits take up?
+    int numWords = (length + 35) / 36;  ///< how many additional words will the bits take up?
+    int lastWordOffset = numWords - 1;
     
-    if (numWords > 1)          // more that the 1 word needed?
-        *nWords = numWords-1;  // # of additional words
+    if (lastWordOffset > 0)          // more that the 1 word needed?
+        *nWords = lastWordOffset;  // # of additional words
     else
         *nWords = 0;    // no additional words needed
     

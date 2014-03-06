@@ -1,0 +1,1087 @@
+	COMPILATION LISTING OF SEGMENT bootload_fs_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1008.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bootload_fs_:
+        9      procedure;
+       10 	return;
+       11 
+       12 /* format: style4,insnl,delnl,indattr */
+       13 /* Coded by Benson I. Margulies late at night(s) in early November 1980 */
+       14 /* Modified by Keith Loepere, March 1983 for get_ptr and put_ptr entrypoints. */
+       15 /* Modified by Keith Loepere, July 1984 for fixes relating to character lengths
+       16*   and force writing the file sys. */
+       17 
+       18 /*
+       19*
+       20*   bootload_fs_ manages a primitive file system in a disk partition for Bootload
+       21*   Multics.  The file system is intended to be unbreakable, and therefore in no
+       22*   need of salvaging EVER.  To this end, linked lists are not used. A finite file
+       23*   table is used, and files are contiguous. Any consistency checks must be
+       24*   possible on a local per-file level.
+       25*
+       26*   *** ENTRIES ***
+       27*
+       28*   bootload_fs_$lookup
+       29*   declare bootload_fs_$lookup entry (char (*), fixed bin (21), fixed bin (35));
+       30*   call bootload_fs_$lookup (file_name, length, code);
+       31*
+       32*   where:
+       33*   file_name   (input)	is a file name, 32 characters or less. no checks
+       34*   are made on the legality of the characters.
+       35*
+       36*   length	  (output) is the length of the file, in characters. files
+       37*   are always an even number of characters long.
+       38*
+       39*   code	  (output) is a standard system status code,
+       40*   error_table_$noentry for a file that isn't there.
+       41*
+       42*   bootload_fs_$list:
+       43*   declare bootload_fs_$list entry (area (*), pointer, fixed bin (35));
+       44*   call bootload_fs_$list (work_area, info_pointer, code);
+       45*
+       46*   where:
+       47*   work_area	(input)	is an area in which a structure containing the
+       48*   list information can be allocated.
+       49*
+       50*   info_pointer
+       51*   (output)	is a pointer to tthe structure
+       52*   bootload_fs_listing(.incl.pl1)
+       53*
+       54*   code	(output)	is a standard system status code. It may be
+       55*   error_table_$noalloc if the work_area was not big
+       56*   enough.
+       57*
+       58*   bootload_fs_$get:
+       59*   declare bootload_fs_$get (char (*), pointer, fixed bin (21), fixed bin (21),
+       60*   fixed bin (35));
+       61*   call bootload_fs_$get (file_name, data_pointer, max_length, length, code);
+       62*
+       63*   where:
+       64*   file_name	(input)	is the file name, dummy.
+       65*
+       66*   data_pointer
+       67*   (input)	is a pointer to the place to copy the data to.
+       68*
+       69*   max_length
+       70*   (input)	is the maximum length (in characters) of the
+       71*   space pointed to by data_pointer.
+       72*
+       73*   length	(output)  is the length of the file.
+       74*
+       75*   code	(output)	is a standard system status code. It may be
+       76*   error_table_$long_record if the file cannot be
+       77*   fit into max_length.
+       78*
+       79*   bootload_fs_$get_ptr:
+       80*   declare bootload_fs_$get_ptr (char (*), pointer, fixed bin (21),
+       81*   fixed bin (35));
+       82*   call bootload_fs_$get_ptr (file_name, data_pointer, length, code);
+       83*
+       84*   where:
+       85*   file_name	(input)	is the file name.
+       86*
+       87*   data_pointer
+       88*   (output)	is a pointer to the file in the partition.
+       89*
+       90*   length	(output)  is the length of the file.
+       91*
+       92*   code	(output)	is a standard system status code.
+       93*
+       94*   bootload_fs_$put:
+       95*   declare bootload_fs_$put entry (char (*), pointer, fixed bin (21),
+       96*   bit (1) aligned, fixed bin (35));
+       97*   call bootload_fs_$put (file_name, data_pointer, length, create_switch, code);
+       98*
+       99*   where:
+      100*   file_name	(input)	is the file name to be put.
+      101*
+      102*   data_pointer
+      103*   (input)	is a pointer to the data to be put.
+      104*
+      105*   length	(input)	is the length of the data in characters.
+      106*
+      107*   create_switch
+      108*   (input)	if this is "1"b, the file must not already exist
+      109*   in the bootload file system. If it does not,
+      110*   error_table_$namedup is returned.
+      111*
+      112*   code	(output)	is a standard system status code.
+      113*
+      114*   bootload_fs_$put_ptr:
+      115*   declare bootload_fs_$put_ptr entry (char (*), fixed bin (21), bit (1) aligned,
+      116*   ptr, fixed bin (35));
+      117*   call bootload_fs_$put (file_name, length, create_switch, data_pointer, code);
+      118*
+      119*   where:
+      120*   file_name	(input)	is the file name to be put.
+      121*
+      122*   length	(input)	is the length of the data to be written in
+      123*   characters.
+      124*
+      125*   create_switch
+      126*   (input)	if this is "1"b, the file must not already exist
+      127*   in the bootload file system. If it does not,
+      128*   error_table_$namedup is returned.
+      129*
+      130*   data_pointer
+      131*   (output)	a ptr to the area in the partition into which
+      132*   to put the file
+      133*
+      134*   code	(output)	is a standard system status code.
+      135*
+      136*   Note: After a put_ptr op, the user should call bootload_fs_$flush_sys.
+      137*
+      138*   bootload_fs_$delete:
+      139*   declare bootload_fs_$delete entry (char (*), fixed bin (35));
+      140*   call bootload_fs_$delete (file_name, code);
+      141*
+      142*   where:
+      143*   file_name	(input)	is the name of the file to delete.
+      144*
+      145*   code	(output)	is a standard system status code.
+      146*
+      147*   bootload_fs_$rename:
+      148*   declare bootload_fs_$rename entry (char (*), char (*), fixed bin (35));
+      149*   call bootload_fs_$rename (old_file_name, new_file_name, code);
+      150*
+      151*   where:
+      152*   old_file_name	(input)
+      153*   is the file to be renamed.
+      154*
+      155*   new_file_name	(input)
+      156*   is the new name.
+      157*
+      158*   code	(output)	is a standard system status code.
+      159*
+      160*   bootload_fs_$init:
+      161*   declare bootload_fs_$init entry (bit (1) aligned, fixed bin, fixed bin (35));
+      162*   call bootload_fs_$init (init_switch, length, code);
+      163*
+      164*   where:
+      165*   init_switch
+      166*   (input)	if this is "1"b, then reinitialize the partition
+      167*   to length length. Otherwise, expect it to be
+      168*   initialized.
+      169*
+      170*   length	(input)   if init_switch is "1"b, this is the length in
+      171*   pages of the partition.
+      172*
+      173*   code	(output)	is a standard error code. If init_switch is
+      174*   not "1"b, and the partition does not have the
+      175*   correct sentinels, it will be
+      176*   error_table_$improper_data_format.
+      177*
+      178**/
+      179 
+      180 
+      181 /*
+      182*
+      183*   The following is the basic data structure of the partition.  The partition
+      184*   must be accessable before it can be seen as a segment by doing disk io to pick
+      185*   up the correct page.  The first two pages of the partition are reserved for the
+      186*   header.  This includes the directory and the free block map.  Thereafter the
+      187*   partition is considered to consist of 64 word character blocks, to make
+      188*   finding them easy.  Files are made of contiguous sets of blocks.
+      189*   Initialization or compaction sweeps the directory to recreate the
+      190*   free map to recover pages lost. All allocations start by clearing the free bit,
+      191*   so that blocks cannot be reused, ever.
+      192*
+      193**/
+      194 
+      195 declare  1 bootload_file_partition$
+      196 			  aligned external,
+      197 	 2 part_header	  aligned,
+      198 	   3 small_things	  aligned,
+      199 	     4 sentinel	  char (32),
+      200 	     4 part_pages	  fixed bin,		/* length in pages of partition */
+      201 	     4 part_blocks	  fixed bin,		/* length in 64 word blocks WITHOUT header */
+      202 	   3 maps		  aligned,
+      203 	     4 free_block_map (4048) bit (1) unal,	/* max 64 word blocks in 253K */
+      204 						/* maximum number of 64 word blocks in a 255 word partition */
+      205 	     4 pad_align1	  bit (20) unal,
+      206 	     4 free_file_map  (174) bit (1) unal,
+      207 	     4 pad_align2	  bit (6) unal,		/* brings to 200 octal */
+      208 	   3 directory	  (174) aligned,
+      209 	     4 name	  char (32) unal,
+      210 	     4 length_in_chars
+      211 			  fixed bin (21),		/* not including fractional blocks */
+      212 	     4 first_block	  fixed bin,
+      213 	     4 n_blocks	  fixed bin,
+      214 	   3 pad_align3	  (6) fixed bin;		/* bring to 2 pages */
+      215 
+      216 declare  1 partition_storage	  aligned based (addr (bootload_file_partition$)),
+      217 	 2 header_page	  (header_size) bit (36) aligned,
+      218 	 2 blocks		  (part_header.part_blocks) char (256) unal;
+      219 
+      220 declare  block_map		  (part_header.part_blocks) bit (1) unal defined (part_header.free_block_map);
+      221 
+      222 declare  block_map_string	  bit (part_header.part_blocks) defined (part_header.free_block_map) unal;
+      223 
+  1     1 /*  START OF:	bootload_fs_list.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 /*  BIM  Nobember 80 */
+  1     3 
+  1     4 declare bootload_fs_list_ptr pointer;
+  1     5 
+  1     6 declare 1 bootload_fs_list aligned based (bootload_fs_list_ptr),
+  1     7         2 n_files fixed bin,
+  1     8         2 files (bootload_fs_list_n_files refer (n_files)) aligned,
+  1     9 	3 name char (32) unal,
+  1    10 	3 length fixed bin (21);
+  1    11 
+  1    12 declare bootload_fs_list_n_files fixed bin;
+  1    13 
+  1    14 /*  END OF:	bootload_fs_list.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      225 
+      226 declare  (
+      227          a_init_switch	  bit (1) aligned,
+      228          a_area		  area (*),
+      229          a_part_length	  fixed bin (19),
+      230          a_file_name	  char (*),
+      231          a_new_file_name	  char (*),
+      232          a_code		  fixed bin (35),
+      233          a_create_switch	  bit (1) aligned,
+      234          a_data_pointer	  pointer,
+      235          a_length		  fixed bin (21),
+      236          a_max_length	  fixed bin (21)
+      237          )		  parameter;
+      238 
+      239 dcl  header_size	        fixed bin (19) init (size (bootload_file_partition$));
+      240 						/* size of the header in words */
+      241 dcl  i		        fixed bin;
+      242 dcl  code		        fixed bin (35);
+      243 dcl  file_name	        char (32);
+      244 dcl  new_file_name	        char (32);
+      245 dcl  copy_length	        fixed bin (21);
+      246 dcl  copy_data	        character (copy_length) based;
+      247 dcl  data_pointer	        pointer;
+      248 dcl  copy_pointer	        pointer;
+      249 dcl  file_idx	        fixed bin;
+      250 dcl  file_count	        fixed bin;
+      251 dcl  i_length	        fixed bin (21);
+      252 dcl  max_length	        fixed bin (21);
+      253 dcl  init_switch	        bit (1) aligned;
+      254 dcl  create_switch	        bit (1) aligned;
+      255 dcl  part_length	        fixed bin (19);
+      256 dcl  ptr_entry	        bit (1) aligned;
+      257 
+      258 
+      259 dcl  Sentinel	        char (32) aligned init ("Bootload Multics File Partition") internal static options (constant);
+      260 dcl  Blocks_per_page        fixed bin int static init (16) options (constant);
+      261 dcl  Chars_per_block        fixed bin int static init (256) options (constant);
+      262 dcl  (addr, bin, copy, divide, hbound, index, min, null, segno, size, string, substr, sum)
+      263 		        builtin;
+      264 dcl  area		        condition;
+      265 dcl  get_ptrs_$given_segno  entry (fixed bin (15)) returns (ptr);
+      266 dcl  get_ring_	        entry () returns (fixed bin (3));
+      267 dcl  pc_wired$write_wait    entry (ptr, fixed bin, fixed bin);
+      268 dcl  sub_err_	        entry () options (variable);
+      269 dcl  syserr$error_code      entry options (variable);
+      270 dcl  (
+      271      error_table_$noentry,
+      272      error_table_$noalloc,
+      273      error_table_$namedup,
+      274      error_table_$long_record,
+      275      error_table_$improper_data_format
+      276      )		        ext static fixed bin (35);
+      277 dcl  sys_info$bce_max_seg_size
+      278 		        ext static fixed bin (18);
+      279 dcl  sys_info$initialization_state
+      280 		        ext fixed bin;
+      281 
+      282 
+      283 
+      284 init:
+      285      entry (a_init_switch, a_part_length, a_code);
+      286 	init_switch = a_init_switch;
+      287 	part_length = a_part_length;
+      288 	call SETUP_init;
+      289 	if ^init_switch then do;			/* the partition has to be in good shape */
+      290 	     if part_header.sentinel ^= Sentinel then do;
+      291 		code = error_table_$improper_data_format;
+      292 		goto SET_CODE_RETURN;		/* caller should call us back with init_switch */
+      293 	     end;
+      294 	     a_code = 0;
+      295 	     return;
+      296 	end;
+      297 	else do;					/* we are redoing this */
+      298 	     part_header.part_pages = divide (part_length + 1023, 1024, 19, 0);
+      299 	     part_header.part_blocks =
+      300 		(part_header.part_pages - divide (header_size + 1023, 1024, 19, 0)) * Blocks_per_page;
+      301 	     string (part_header.free_block_map) = ""b;	/* allocate all possible blocks */
+      302 	     string (part_header.free_block_map) = copy ("1"b, hbound (part_header.free_block_map, 1));
+      303 						/* and free those that exist */
+      304 	     string (part_header.free_file_map) = copy ("1"b, hbound (part_header.directory, 1));
+      305 	     do i = 1 to hbound (part_header.directory, 1);
+      306 		part_header.directory (i).name = "";
+      307 		part_header.directory (i).first_block = -1;
+      308 						/* flag unused entries in case of bad crazyness */
+      309 		part_header.directory (i).n_blocks = 0;
+      310 		part_header.sentinel = Sentinel;
+      311 	     end;
+      312 	     call flush_sys;
+      313 	     code = 0;
+      314 SET_CODE_RETURN:
+      315 	     a_code = code;
+      316 	     return;
+      317 	end;
+      318 
+      319 
+      320 lookup:
+      321      entry (a_file_name, a_length, a_code);
+      322 	file_name = a_file_name;
+      323 	code = 0;
+      324 	i_length = 0;
+      325 	call LOOKUP (file_name, file_idx, a_code);
+      326 	if code = 0 then do;
+      327 	     i_length = part_header.directory (file_idx).length_in_chars;
+      328 	end;
+      329 	a_length = i_length;
+      330 	a_code = code;
+      331 	return;					/* how simple */
+      332 
+      333 
+      334 
+      335 list:
+      336      entry (a_area, a_data_pointer, a_code);
+      337 	call SETUP;
+      338 	call COUNT_FILES (file_count);		/* dont depend on redundant (possibly inconsistant data) */
+      339 	if file_count = 0 then do;
+      340 	     a_code = error_table_$noentry;		/* avoid unnecessary  allocation */
+      341 	     a_data_pointer = null ();
+      342 	     return;
+      343 	end;
+      344 	bootload_fs_list_n_files = file_count;
+      345 	on area goto LIST_NO_ALLOC;
+      346 	allocate bootload_fs_list in (a_area);
+      347 	revert area;
+      348 	file_count = 0;
+      349 	do i = 1 to hbound (part_header.directory, 1) while (file_count < bootload_fs_list_n_files);
+      350 	     if ^part_header.free_file_map (i) then do;
+      351 		file_count = file_count + 1;
+      352 		bootload_fs_list.files (file_count).name = part_header.directory (i).name;
+      353 		bootload_fs_list.files (file_count).length = part_header.directory (i).length_in_chars;
+      354 	     end;
+      355 	end;
+      356 	a_code = code;
+      357 	a_data_pointer = bootload_fs_list_ptr;
+      358 	return;
+      359 LIST_NO_ALLOC:
+      360 	a_code = error_table_$noalloc;
+      361 	a_data_pointer = null ();
+      362 	return;
+      363 
+      364 
+      365 get:
+      366      entry (a_file_name, a_data_pointer, a_max_length, a_length, a_code);
+      367 	call SETUP;
+      368 	max_length = a_max_length;
+      369 	data_pointer = a_data_pointer;
+      370 	file_name = a_file_name;
+      371 	call LOOKUP (file_name, file_idx, code);
+      372 	if code ^= 0
+      373 	then goto SET_CODE_RETURN;
+      374 	i_length = part_header.directory (file_idx).length_in_chars;
+      375 	copy_length = min (i_length, max_length);
+      376 	copy_pointer = addr (partition_storage.blocks (part_header.directory (file_idx).first_block));
+      377 	data_pointer -> copy_data = copy_pointer -> copy_data;
+      378 	if i_length > max_length
+      379 	then code = error_table_$long_record;
+      380 	a_code = code;
+      381 	a_length = i_length;
+      382 	return;
+      383 
+      384 get_ptr:
+      385      entry (a_file_name, a_data_pointer, a_length, a_code);
+      386 	call SETUP;
+      387 	file_name = a_file_name;
+      388 	call LOOKUP (file_name, file_idx, code);
+      389 	if code ^= 0
+      390 	then goto SET_CODE_RETURN;
+      391 	a_length = part_header.directory (file_idx).length_in_chars;
+      392 	a_data_pointer = addr (partition_storage.blocks (part_header.directory (file_idx).first_block));
+      393 	a_code = code;
+      394 	return;
+      395 
+      396 
+      397 
+      398 put:
+      399      entry (a_file_name, a_data_pointer, a_length, a_create_switch, a_code);
+      400 	ptr_entry = "0"b;
+      401 	data_pointer = a_data_pointer;
+      402 	goto put_join;
+      403 
+      404 put_ptr:
+      405      entry (a_file_name, a_length, a_create_switch, a_data_pointer, a_code);
+      406 	ptr_entry = "1"b;
+      407 
+      408 put_join:
+      409 	call SETUP;
+      410 	file_name = a_file_name;
+      411 	i_length = a_length;
+      412 	if i_length > sys_info$bce_max_seg_size * 4 then do;
+      413 	     a_code = error_table_$long_record;
+      414 	     return;
+      415 	end;
+      416 	create_switch = a_create_switch;
+      417 	call LOOKUP (file_name, file_idx, code);
+      418 	if create_switch then do;			/* MUST not exist */
+      419 	     if code = 0 then do;
+      420 		a_code = error_table_$namedup;
+      421 		return;
+      422 	     end;
+      423 	end;
+      424 	else do;
+      425 	     if code = 0 then do;			/* we must delete old entry */
+      426 		call DELETE (file_name, (0));		/* it will succeed */
+      427 	     end;
+      428 	end;
+      429 	call CREATE (file_name, file_idx, i_length, code);/* perhaps no space */
+      430 	if code ^= 0 then do;
+      431 	     call flush_sys;			/* We may have deleted old */
+      432 	     goto SET_CODE_RETURN;
+      433 	end;
+      434 	if ptr_entry
+      435 	then a_data_pointer = addr (partition_storage.blocks (part_header.directory (file_idx).first_block));
+      436 	else do;
+      437 	     copy_length = i_length;
+      438 	     copy_pointer = addr (partition_storage.blocks (part_header.directory (file_idx).first_block));
+      439 	     copy_pointer -> copy_data = data_pointer -> copy_data;
+      440 	     call flush_sys;
+      441 	end;
+      442 	a_code = 0;
+      443 	return;
+      444 
+      445 flush_sys:
+      446      entry;					/* used after a put_ptr op */
+      447 
+      448 	call flush_sys;
+      449 	return;
+      450 
+      451 
+      452 
+      453 rename:
+      454      entry (a_file_name, a_new_file_name, a_code);
+      455 	call SETUP;
+      456 	file_name = a_file_name;
+      457 	new_file_name = a_new_file_name;
+      458 	call LOOKUP (file_name, file_idx, code);
+      459 	if code ^= 0
+      460 	then goto SET_CODE_RETURN;
+      461 	call LOOKUP (new_file_name, (0), code);
+      462 	if code = 0 then do;
+      463 	     code = error_table_$namedup;
+      464 	     goto SET_CODE_RETURN;
+      465 	end;
+      466 	code = 0;
+      467 	part_header.directory (file_idx).name = new_file_name;
+      468 	call flush_sys;
+      469 	a_code = code;
+      470 	return;
+      471 
+      472 
+      473 delete:
+      474      entry (a_file_name, a_code);
+      475 	call SETUP;
+      476 	file_name = a_file_name;
+      477 	call DELETE (file_name, code);
+      478 	call flush_sys;
+      479 	a_code = code;
+      480 	return;
+      481 
+      482 
+      483 
+      484 LOOKUP:
+      485      procedure (l_file_name, l_file_idx, l_code);
+      486 
+      487 dcl  (
+      488      l_file_name	        char (*),
+      489      l_file_idx	        fixed bin,
+      490      l_code	        fixed bin (35)
+      491      )		        parameter;
+      492 dcl  l		        fixed bin;
+      493 
+      494 	l_code = 0;
+      495 	l_file_idx = -1;
+      496 	do l = 1 to hbound (part_header.directory, 1) while (l_file_idx < 0);
+      497 	     if ^part_header.free_file_map (l)		/* we could do multiple indexes, but this dosent have to be fast */
+      498 	     then if part_header.directory (l).name = l_file_name then do;
+      499 		     l_file_idx = l;
+      500 		end;
+      501 	end;
+      502 	if l_file_idx = -1
+      503 	then l_code = error_table_$noentry;
+      504 	return;
+      505      end LOOKUP;
+      506 
+      507 DELETE:
+      508      procedure (d_file_name, d_code);
+      509 
+      510 dcl  (
+      511      d_file_name	        char (*),
+      512      d_code	        fixed bin (35)
+      513      )		        parameter;
+      514 dcl  d		        fixed bin;
+      515 dcl  done		        bit (1) aligned;
+      516 
+      517 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      518 /*									*/
+      519 /* the free-ing allocation is as follows -- always turn off in-use FIRST. then if we	*/
+      520 /* crash in the middle, all we will do is lose track of some space, which we will	*/
+      521 /* recover at the next COMPACT, if we ever do one.  The other order might leave		*/
+      522 /* offsets to freed storage in the directory.					*/
+      523 /*									*/
+      524 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      525 
+      526 	d_code = 0;
+      527 	done = ""b;
+      528 	do d = 1 to hbound (part_header.directory, 1) while (^done);
+      529 	     if ^part_header.free_file_map (d)
+      530 	     then if part_header.directory (d).name = d_file_name then do;
+      531 		     part_header.free_file_map (d) = "1"b;
+      532 						/* FREE */
+      533 		     part_header.directory (d).name = "";
+      534 						/* cleanliness ... */
+      535 		     substr (block_map_string, part_header.directory (d).first_block,
+      536 			part_header.directory (d).n_blocks) = copy ("1"b, part_header.directory (d).n_blocks);
+      537 		     done = "1"b;
+      538 		end;
+      539 	end;
+      540 	if ^done
+      541 	then d_code = error_table_$noentry;
+      542 	return;
+      543      end DELETE;
+      544 
+      545 COUNT_FILES:
+      546      procedure (count);
+      547 
+      548 dcl  count	        fixed bin parameter;
+      549 
+      550 	count = hbound (part_header.directory, 1) - sum (bin (part_header.free_file_map, 1));
+      551 						/* arent builtins wonderful? */
+      552 	return;
+      553      end COUNT_FILES;
+      554 
+      555 
+      556 CREATE:
+      557      procedure (c_file_name, c_file_idx, c_length, c_code); /* THIS DOES NOT CHECK NAMEDUP */
+      558 
+      559 dcl  (
+      560      c_file_name	        char (*),
+      561      c_file_idx	        fixed bin,
+      562      c_length	        fixed bin (21),
+      563      c_code	        fixed bin (35)
+      564      )		        parameter;
+      565 
+      566 dcl  c_free_block	        fixed bin;
+      567 dcl  block_need	        fixed bin;
+      568 
+      569 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      570 /*									*/
+      571 /* strategy: FIRST allocate storage, so that if we compact we will search for a free index */
+      572 /* in the compacted file table.						*/
+      573 /*									*/
+      574 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      575 
+      576 	c_code = 0;
+      577 	block_need = divide (c_length + Chars_per_block - 1, Chars_per_block, 17, 0);
+      578 	c_free_block = FIND_FREE (block_need);		/* look for some space */
+      579 	if c_free_block < 1
+      580 	then
+      581 retry:
+      582 	     do;
+      583 		call COMPACT;			/* Squueeze, wring */
+      584 		c_free_block = FIND_FREE (block_need);
+      585 		if c_free_block < 1
+      586 		then goto C_NO_ALLOC;
+      587 	     end;
+      588 
+      589 	substr (block_map_string, c_free_block, block_need) = ""b;
+      590 						/* check them off */
+      591 
+      592 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      593 /*									*/
+      594 /* if we got here, we made an allocation.					*/
+      595 /*									*/
+      596 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      597 
+      598 	c_file_idx = index (string (part_header.free_file_map), "1"b);
+      599 	if c_file_idx < 1 then do;
+      600 	     c_code = error_table_$noalloc;
+      601 	     if get_ring_ () = 0
+      602 	     then call syserr$error_code (3, c_code, "bootload_fs_: CREATE: no free file entries.");
+      603 	     else call sub_err_ (c_code, "bootload_fs_", "c", null (), (0), "CREATE: no free file entries.");
+      604 	     return;
+      605 	end;
+      606 
+      607 	part_header.free_file_map (c_file_idx) = ""b;	/* all ours */
+      608 	part_header.directory (c_file_idx).first_block = c_free_block;
+      609 	part_header.directory (c_file_idx).name = c_file_name;
+      610 						/* it we die, leave a name that can be deleted */
+      611 	part_header.directory (c_file_idx).n_blocks = block_need;
+      612 	part_header.directory (c_file_idx).length_in_chars = c_length;
+      613 
+      614 	return;
+      615 C_NO_ALLOC:
+      616 	c_code = error_table_$noalloc;
+      617 	if get_ring_ () = 0
+      618 	then call syserr$error_code (3, c_code, "bootload_fs_ CREATE: partition filled.");
+      619 	else call sub_err_ (c_code, "bootload_fs_", "c", null (), (0), "CREATE: partition filled.");
+      620      end CREATE;
+      621 
+      622 COMPACT:
+      623      procedure;
+      624 
+      625 dcl  copy_block_map	        (hbound (block_map, 1)) bit (1) unal;
+      626 dcl  copy_block_map_string  bit (hbound (block_map, 1)) unal defined (copy_block_map);
+      627 dcl  copy_file_map	        (hbound (part_header.free_file_map, 1)) bit (1) unal;
+      628 dcl  (n_to_free, first_to_free, free_block, next_file, c_file)
+      629 		        fixed bin;
+      630 dcl  (copy_pointer, data_pointer)
+      631 		        pointer;
+      632 
+      633 	string (copy_block_map) = copy ("1"b, hbound (block_map, 1));
+      634 	string (copy_file_map) = copy ("1"b, hbound (part_header.free_file_map, 1));
+      635 						/* FREE all blocks and files */
+      636 
+      637 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      638 /*									*/
+      639 /* first we make a new block_map and file_map without any garbage -- useless directory	*/
+      640 /* entries or unclaimed blocks. If we get interrupted while putting one of these in	*/
+      641 /* there is no harm donw. Then we can shift down, allocation and freeing blocks one file	*/
+      642 /* at a time.								*/
+      643 /*									*/
+      644 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      645 
+      646 	do c_file = 1 to hbound (part_header.directory, 1);
+      647 	     if ^part_header.free_file_map (c_file) then do;
+      648 						/* claims to be for real */
+      649 		if part_header.directory (c_file).name ^= "" & part_header.directory (c_file).first_block > 0
+      650 		     & part_header.directory (c_file).n_blocks > 0 then do;
+      651 						/* its reasonable */
+      652 		     copy_file_map (c_file) = ""b;	/* IN USE */
+      653 		     substr (copy_block_map_string, part_header.directory (c_file).first_block,
+      654 			part_header.directory (c_file).n_blocks) = ""b;
+      655 						/* IN USE */
+      656 		end;
+      657 	     end;					/* do not bother to free garbage in the real maps. If we crash, the next init call will do this over */
+      658 	end;
+      659 
+      660 /* now put in the new maps */
+      661 
+      662 	part_header.free_file_map = copy_file_map;
+      663 	block_map = copy_block_map;
+      664 
+      665 /* now we do the real compaction, closing up space, one file at a time */
+      666 
+      667 	do free_block = FIND_FREE (1) repeat (FIND_FREE (1)) while (free_block > 0);
+      668 	     next_file = find_above (free_block);	/* are there any files above the first free block? */
+      669 	     if next_file < 1
+      670 	     then goto DONE_COMPACT;			/* no more files */
+      671 						/* move this file down into free_block and cetra */
+      672 
+      673 	     substr (block_map_string, free_block, part_header.directory (next_file).first_block - free_block) = ""b;
+      674 						/* IN USE */
+      675 	     copy_pointer = addr (partition_storage.blocks (free_block));
+      676 	     data_pointer = addr (partition_storage.blocks (part_header.directory (next_file).first_block));
+      677 	     copy_length = part_header.directory (next_file).length_in_chars;
+      678 	     copy_pointer -> copy_data = data_pointer -> copy_data;
+      679 						/* data shifted down */
+      680 	     n_to_free = part_header.directory (next_file).first_block - free_block;
+      681 	     first_to_free =
+      682 		part_header.directory (next_file).first_block + part_header.directory (next_file).n_blocks
+      683 		- n_to_free;
+      684 	     part_header.directory (next_file).first_block = free_block;
+      685 	     substr (block_map_string, first_to_free, n_to_free) = copy ("1"b, n_to_free);
+      686 	end;
+      687 DONE_COMPACT:
+      688 	return;
+      689 find_above:
+      690 	procedure (what) returns (fixed bin);
+      691 
+      692 dcl  what		        fixed bin;
+      693 dcl  fi		        fixed bin;
+      694 
+      695 /* we have to look for a file that claims to own blocks above what */
+      696 /* contract is to return the file index of the file owning the block above */
+      697 
+      698 	     do fi = 1 to hbound (part_header.directory, 1);
+      699 		if ^part_header.free_file_map (fi)
+      700 		then				/* has to be in use to be meaningful */
+      701 		     if part_header.directory (fi).first_block > what
+      702 		     then return (fi);
+      703 	     end;
+      704 	     return (-1);				/* no suce beastie */
+      705 	end find_above;
+      706      end COMPACT;
+      707 
+      708 FIND_FREE:
+      709      procedure (f_length) returns (fixed bin);
+      710 
+      711 dcl  f_length	        fixed bin;
+      712 
+      713 	return (index (string (block_map), copy ("1"b, f_length)));
+      714      end FIND_FREE;
+      715 SETUP:
+      716      procedure;
+      717 	if part_header.sentinel ^= Sentinel then do;
+      718 	     a_code = error_table_$improper_data_format;
+      719 	     goto RETURN;
+      720 	end;
+      721 SETUP_init:
+      722      entry;
+      723 	code = 0;
+      724      end SETUP;
+      725 RETURN:
+      726 	return;
+      727 
+      728 flush_sys:
+      729      proc;
+      730 
+      731 	if sys_info$initialization_state < 4
+      732 	then call pc_wired$write_wait (get_ptrs_$given_segno (segno (addr (bootload_file_partition$))), 0, -1);
+      733 						/* force write */
+      734 	return;
+      735      end flush_sys;
+      736      end bootload_fs_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  bootload_fs_.pl1                  >spec>install>1110>bootload_fs_.pl1
+224          1    07/11/84  0937.3  bootload_fs_list.incl.pl1         >ldd>include>bootload_fs_list.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Blocks_per_page                        constant        fixed bin(17,0)          initial dcl 260 ref 299
+Chars_per_block                        constant        fixed bin(17,0)          initial dcl 261 ref 577 577
+Sentinel                        000000 constant        char(32)                 initial dcl 259 ref 290 310 717
+a_area                                 parameter       area                     dcl 226 ref 335 346
+a_code                                 parameter       fixed bin(35,0)          dcl 226 set ref 284 294* 314* 320 325* 330* 335 340*
+                                                                                  356* 359* 365 380* 384 393* 398 404 413* 420* 442*
+                                                                                  453 469* 473 479* 718*
+a_create_switch                        parameter       bit(1)                   dcl 226 ref 398 404 416
+a_data_pointer                         parameter       pointer                  dcl 226 set ref 335 341* 357* 361* 365 369 384 392*
+                                                                                  398 401 404 434*
+a_file_name                            parameter       char                     packed unaligned dcl 226 ref 320 322 365 370 384 387
+                                                                                  398 404 410 453 456 473 476
+a_init_switch                          parameter       bit(1)                   dcl 226 ref 284 286
+a_length                               parameter       fixed bin(21,0)          dcl 226 set ref 320 329* 365 381* 384 391* 398 404
+                                                                                  411
+a_max_length                           parameter       fixed bin(21,0)          dcl 226 ref 365 368
+a_new_file_name                        parameter       char                     packed unaligned dcl 226 ref 453 457
+a_part_length                          parameter       fixed bin(19,0)          dcl 226 ref 284 287
+addr                                                   builtin function         dcl 262 ref 376 376 392 392 434 434 438 438 675 675
+                                                                                  676 676 731 731 731 731
+area                            000144 stack reference condition                dcl 264 ref 345 347
+bin                                                    builtin function         dcl 262 ref 550
+block_map                              defined         bit(1)                   array packed unaligned dcl 220 set ref 625 626 633
+                                                                                  663* 713
+block_map_string                       defined         bit                      packed unaligned dcl 222 set ref 535* 589* 673* 685*
+block_need                      000225 automatic       fixed bin(17,0)          dcl 567 set ref 577* 578* 584* 589 611
+blocks                                 based           char(256)                array level 2 packed packed unaligned dcl 216 set
+                                                                                  ref 376 392 434 438 675 676
+bootload_file_partition$        000010 external static structure                level 1 dcl 195 set ref 239 376 392 434 438 675 676
+                                                                                  731 731 731 731
+bootload_fs_list                       based           structure                level 1 dcl 1-6 set ref 346
+bootload_fs_list_n_files        000102 automatic       fixed bin(17,0)          dcl 1-12 set ref 344* 346 346 349
+bootload_fs_list_ptr            000100 automatic       pointer                  dcl 1-4 set ref 346* 352 353 357
+c_code                                 parameter       fixed bin(35,0)          dcl 559 set ref 556 576* 600* 601* 603* 615* 617*
+                                                                                  619*
+c_file                          000104 automatic       fixed bin(17,0)          dcl 628 set ref 646* 647 649 649 649 652 653 653*
+c_file_idx                             parameter       fixed bin(17,0)          dcl 559 set ref 556 598* 599 607 608 609 611 612
+c_file_name                            parameter       char                     packed unaligned dcl 559 ref 556 609
+c_free_block                    000224 automatic       fixed bin(17,0)          dcl 566 set ref 578* 579 584* 585 589 608
+c_length                               parameter       fixed bin(21,0)          dcl 559 ref 556 577 612
+code                            000105 automatic       fixed bin(35,0)          dcl 242 set ref 291* 313* 314 323* 326 330 356 371*
+                                                                                  372 378* 380 388* 389 393 417* 419 425 429* 430
+                                                                                  458* 459 461* 462 463* 466* 469 477* 479 723*
+copy                                                   builtin function         dcl 262 ref 302 304 535 633 634 685 713
+copy_block_map                  000100 automatic       bit(1)                   array packed unaligned dcl 625 set ref 633* 653 653
+                                                                                  663
+copy_block_map_string                  defined         bit                      packed unaligned dcl 626 set ref 653*
+copy_data                              based           char                     packed unaligned dcl 246 set ref 377* 377 439* 439
+                                                                                  678* 678
+copy_file_map                   000100 automatic       bit(1)                   array packed unaligned dcl 627 set ref 634* 652* 662
+copy_length                     000126 automatic       fixed bin(21,0)          dcl 245 set ref 375* 377 377 437* 439 439 677* 678
+                                                                                  678
+copy_pointer                    000132 automatic       pointer                  dcl 248 in procedure "bootload_fs_" set ref 376* 377
+                                                                                  438* 439
+copy_pointer                    000106 automatic       pointer                  dcl 630 in procedure "COMPACT" set ref 675* 678
+count                                  parameter       fixed bin(17,0)          dcl 548 set ref 545 550*
+create_switch                   000141 automatic       bit(1)                   dcl 254 set ref 416* 418
+d                               000202 automatic       fixed bin(17,0)          dcl 514 set ref 528* 529 529 531 533 535 535 535*
+d_code                                 parameter       fixed bin(35,0)          dcl 510 set ref 507 526* 540*
+d_file_name                            parameter       char                     packed unaligned dcl 510 ref 507 529
+data_pointer                    000130 automatic       pointer                  dcl 247 in procedure "bootload_fs_" set ref 369* 377
+                                                                                  401* 439
+data_pointer                    000110 automatic       pointer                  dcl 630 in procedure "COMPACT" set ref 676* 678
+directory               200     000010 external static structure                array level 3 dcl 195 set ref 304 305 349 496 528
+                                                                                  550 646 698
+divide                                                 builtin function         dcl 262 ref 298 299 577
+done                            000203 automatic       bit(1)                   dcl 515 set ref 527* 528 537* 540
+error_table_$improper_data_format
+                                000034 external static fixed bin(35,0)          dcl 270 ref 291 718
+error_table_$long_record        000032 external static fixed bin(35,0)          dcl 270 ref 378 413
+error_table_$namedup            000030 external static fixed bin(35,0)          dcl 270 ref 420 463
+error_table_$noalloc            000026 external static fixed bin(35,0)          dcl 270 ref 359 600 615
+error_table_$noentry            000024 external static fixed bin(35,0)          dcl 270 ref 340 502 540
+f_length                               parameter       fixed bin(17,0)          dcl 711 ref 708 713
+fi                              000134 automatic       fixed bin(17,0)          dcl 693 set ref 698* 699 699 699*
+file_count                      000135 automatic       fixed bin(17,0)          dcl 250 set ref 338* 339 344 348* 349 351* 351 352
+                                                                                  353
+file_idx                        000134 automatic       fixed bin(17,0)          dcl 249 set ref 325* 327 371* 374 376 388* 391 392
+                                                                                  417* 429* 434 438 458* 467
+file_name                       000106 automatic       char(32)                 packed unaligned dcl 243 set ref 322* 325* 370* 371*
+                                                                                  387* 388* 410* 417* 426* 429* 456* 458* 476* 477*
+files                     1            based           structure                array level 2 dcl 1-6
+first_block             211     000010 external static fixed bin(17,0)          array level 4 dcl 195 set ref 307* 376 392 434 438
+                                                                                  535 608* 649 653 673 676 680 681 684* 699
+first_to_free                   000101 automatic       fixed bin(17,0)          dcl 628 set ref 681* 685
+free_block                      000102 automatic       fixed bin(17,0)          dcl 628 set ref 667* 667* 668* 673 673 675 680 684*
+free_block_map           12     000010 external static bit(1)                   array level 4 packed packed unaligned dcl 195 set
+                                                                                  ref 301* 302* 302 535 535 589 589 625 625 626 626
+                                                                                  633 633 663 663 673 673 685 685 713 713
+free_file_map           173     000010 external static bit(1)                   array level 4 packed packed unaligned dcl 195 set
+                                                                                  ref 304* 350 497 529 531* 550 598 607* 627 634 647
+                                                                                  662* 699
+get_ptrs_$given_segno           000012 constant        entry                    external dcl 265 ref 731 731
+get_ring_                       000014 constant        entry                    external dcl 266 ref 601 617
+hbound                                                 builtin function         dcl 262 ref 302 304 305 349 496 528 550 625 626 627
+                                                                                  633 634 646 698
+header_size                     000103 automatic       fixed bin(19,0)          initial dcl 239 set ref 239* 299 376 392 434 438 675
+                                                                                  676
+i                               000104 automatic       fixed bin(17,0)          dcl 241 set ref 305* 306 307 309* 349* 350 352 353*
+i_length                        000136 automatic       fixed bin(21,0)          dcl 251 set ref 324* 327* 329 374* 375 378 381 411*
+                                                                                  412 429* 437
+index                                                  builtin function         dcl 262 ref 598 713
+init_switch                     000140 automatic       bit(1)                   dcl 253 set ref 286* 289
+l                               000172 automatic       fixed bin(17,0)          dcl 492 set ref 496* 497 497 499*
+l_code                                 parameter       fixed bin(35,0)          dcl 487 set ref 484 494* 502*
+l_file_idx                             parameter       fixed bin(17,0)          dcl 487 set ref 484 495* 496 499* 502
+l_file_name                            parameter       char                     packed unaligned dcl 487 ref 484 497
+length                   11            based           fixed bin(21,0)          array level 3 dcl 1-6 set ref 353*
+length_in_chars         210     000010 external static fixed bin(21,0)          array level 4 dcl 195 set ref 327 353 374 391 612*
+                                                                                  677
+maps                     12     000010 external static structure                level 3 dcl 195
+max_length                      000137 automatic       fixed bin(21,0)          dcl 252 set ref 368* 375 378
+min                                                    builtin function         dcl 262 ref 375
+n_blocks                212     000010 external static fixed bin(17,0)          array level 4 dcl 195 set ref 309* 535 535 611* 649
+                                                                                  653 681
+n_files                                based           fixed bin(17,0)          level 2 dcl 1-6 set ref 346*
+n_to_free                       000100 automatic       fixed bin(17,0)          dcl 628 set ref 680* 681 685 685
+name                      1            based           char(32)                 array level 3 in structure "bootload_fs_list" packed
+                                                                                  packed unaligned dcl 1-6 in procedure
+                                                                                  "bootload_fs_" set ref 352*
+name                    200     000010 external static char(32)                 array level 4 in structure
+                                                                                  "bootload_file_partition$" packed packed unaligned
+                                                                                  dcl 195 in procedure "bootload_fs_" set ref 306*
+                                                                                  352 467* 497 529 533* 609* 649
+new_file_name                   000116 automatic       char(32)                 packed unaligned dcl 244 set ref 457* 461* 467
+next_file                       000103 automatic       fixed bin(17,0)          dcl 628 set ref 668* 669 673 676 677 680 681 681 684
+null                                                   builtin function         dcl 262 ref 341 361 603 603 619 619
+part_blocks              11     000010 external static fixed bin(17,0)          level 4 dcl 195 set ref 220 222 299*
+part_header                     000010 external static structure                level 2 dcl 195
+part_length                     000142 automatic       fixed bin(19,0)          dcl 255 set ref 287* 298
+part_pages               10     000010 external static fixed bin(17,0)          level 4 dcl 195 set ref 298* 299
+partition_storage                      based           structure                level 1 dcl 216
+pc_wired$write_wait             000016 constant        entry                    external dcl 267 ref 731
+ptr_entry                       000143 automatic       bit(1)                   dcl 256 set ref 400* 406* 434
+segno                                                  builtin function         dcl 262 ref 731 731 731 731
+sentinel                        000010 external static char(32)                 level 4 dcl 195 set ref 290 310* 717
+size                                                   builtin function         dcl 262 ref 239
+small_things                    000010 external static structure                level 3 dcl 195
+string                                                 builtin function         dcl 262 set ref 301* 302* 304* 598 633* 634* 713
+sub_err_                        000020 constant        entry                    external dcl 268 ref 603 619
+substr                                                 builtin function         dcl 262 set ref 535* 589* 653* 673* 685*
+sum                                                    builtin function         dcl 262 ref 550
+sys_info$bce_max_seg_size       000036 external static fixed bin(18,0)          dcl 277 ref 412
+sys_info$initialization_state   000040 external static fixed bin(17,0)          dcl 279 ref 731
+syserr$error_code               000022 constant        entry                    external dcl 269 ref 601 617
+what                                   parameter       fixed bin(17,0)          dcl 692 ref 689 699
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+COMPACT                         002102 constant        entry                    internal dcl 622 ref 583
+COUNT_FILES                     001470 constant        entry                    internal dcl 545 ref 338
+CREATE                          001523 constant        entry                    internal dcl 556 ref 429
+C_NO_ALLOC                      001761 constant        label                    dcl 615 ref 585
+DELETE                          001363 constant        entry                    internal dcl 507 ref 426 477
+DONE_COMPACT                    002416 constant        label                    dcl 687 ref 669
+FIND_FREE                       002455 constant        entry                    internal dcl 708 ref 578 584 667 686
+LIST_NO_ALLOC                   000516 constant        label                    dcl 359 ref 345
+LOOKUP                          001301 constant        entry                    internal dcl 484 ref 325 371 388 417 458 461
+RETURN                          001300 constant        label                    dcl 725 ref 719
+SETUP                           002503 constant        entry                    internal dcl 715 ref 337 367 386 408 455 475
+SETUP_init                      002516 constant        entry                    internal dcl 721 ref 288
+SET_CODE_RETURN                 000261 constant        label                    dcl 314 ref 292 372 389 432 459 464
+bootload_fs_                    000115 constant        entry                    external dcl 8
+delete                          001243 constant        entry                    external dcl 473
+find_above                      002417 constant        entry                    internal dcl 689 ref 668
+flush_sys                       002521 constant        entry                    internal dcl 728 in procedure "bootload_fs_" ref 312
+                                                                                  431 440 448 468 478
+flush_sys                       001127 constant        entry                    external dcl 445
+get                             000531 constant        entry                    external dcl 365
+get_ptr                         000641 constant        entry                    external dcl 384
+init                            000130 constant        entry                    external dcl 284
+list                            000362 constant        entry                    external dcl 335
+lookup                          000270 constant        entry                    external dcl 320
+put                             000724 constant        entry                    external dcl 398
+put_join                        001012 constant        label                    dcl 408 ref 402
+put_ptr                         000763 constant        entry                    external dcl 404
+rename                          001143 constant        entry                    external dcl 453
+retry                           001555 constant        label                    dcl 579
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3174        3236    2701        3204
+Length      3516    2701        42         244     273           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bootload_fs_                        272 external procedure  is an external procedure.  
+on unit on line 345                  64 on unit               
+LOOKUP                                  internal procedure  shares stack frame of external procedure bootload_fs_.  
+DELETE                                  internal procedure  shares stack frame of external procedure bootload_fs_.  
+COUNT_FILES                             internal procedure  shares stack frame of external procedure bootload_fs_.  
+CREATE                                  internal procedure  shares stack frame of external procedure bootload_fs_.  
+COMPACT                             104 internal procedure  uses auto adjustable storage.  
+find_above                              internal procedure  shares stack frame of internal procedure COMPACT.  
+FIND_FREE                            66 internal procedure  is called by several nonquick procedures.  
+SETUP                                   internal procedure  shares stack frame of external procedure bootload_fs_.  
+flush_sys                               internal procedure  shares stack frame of external procedure bootload_fs_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+COMPACT                  000100 copy_block_map              COMPACT
+                         000100 n_to_free                   COMPACT
+                         000100 copy_file_map               COMPACT
+                         000101 first_to_free               COMPACT
+                         000102 free_block                  COMPACT
+                         000103 next_file                   COMPACT
+                         000104 c_file                      COMPACT
+                         000106 copy_pointer                COMPACT
+                         000110 data_pointer                COMPACT
+                         000134 fi                          find_above
+bootload_fs_             000100 bootload_fs_list_ptr        bootload_fs_
+                         000102 bootload_fs_list_n_files    bootload_fs_
+                         000103 header_size                 bootload_fs_
+                         000104 i                           bootload_fs_
+                         000105 code                        bootload_fs_
+                         000106 file_name                   bootload_fs_
+                         000116 new_file_name               bootload_fs_
+                         000126 copy_length                 bootload_fs_
+                         000130 data_pointer                bootload_fs_
+                         000132 copy_pointer                bootload_fs_
+                         000134 file_idx                    bootload_fs_
+                         000135 file_count                  bootload_fs_
+                         000136 i_length                    bootload_fs_
+                         000137 max_length                  bootload_fs_
+                         000140 init_switch                 bootload_fs_
+                         000141 create_switch               bootload_fs_
+                         000142 part_length                 bootload_fs_
+                         000143 ptr_entry                   bootload_fs_
+                         000172 l                           LOOKUP
+                         000202 d                           DELETE
+                         000203 done                        DELETE
+                         000224 c_free_block                CREATE
+                         000225 block_need                  CREATE
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_bit_temp      call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac
+tra_ext_1           alloc_auto_adj      bound_ck_signal     enable_op           shorten_stack       ext_entry
+ext_entry_desc      int_entry           set_bits_eis        index_bits_eis      index_bs_1_eis      op_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_ptrs_$given_segno         get_ring_                     pc_wired$write_wait           sub_err_
+syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bootload_file_partition$      error_table_$improper_data_format                           error_table_$long_record
+error_table_$namedup          error_table_$noalloc          error_table_$noentry          sys_info$bce_max_seg_size
+sys_info$initialization_state
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+    220 000103       222 000107       239 000110         8 000114        10 000123       284 000124       286 000141
+    287 000145       288 000147       289 000150       290 000152       291 000160       292 000162       294 000163
+    295 000164       298 000165       299 000173       301 000203       302 000206       304 000216       305 000227
+    306 000235       307 000244       309 000250       310 000251       311 000255       312 000257       313 000260
+    314 000261       316 000263       320 000264       322 000311       323 000317       324 000320       325 000321
+    326 000341       327 000343       329 000351       330 000353       331 000355       335 000356       337 000403
+    338 000404       339 000406       340 000410       341 000413       342 000415       344 000416       345 000417
+    346 000436       347 000450       348 000451       349 000452       350 000462       351 000471       352 000472
+    353 000505       355 000507       356 000511       357 000513       358 000515       359 000516       361 000521
+    362 000523       365 000524       367 000554       368 000555       369 000560       370 000563       371 000570
+    372 000573       374 000575       375 000604       376 000610       377 000615       378 000622       380 000627
+    381 000631       382 000633       384 000634       386 000664       387 000665       388 000673       389 000676
+    391 000700       392 000707       393 000714       394 000716       398 000717       400 000751       401 000752
+    402 000755       404 000756       406 001010       408 001012       410 001013       411 001021       412 001023
+    413 001030       414 001032       416 001033       417 001036       418 001041       419 001043       420 001045
+    421 001050       423 001051       425 001052       426 001054       429 001060       430 001063       431 001065
+    432 001066       434 001067       437 001103       438 001105       439 001116       440 001123       442 001124
+    443 001125       445 001126       448 001135       449 001136       453 001137       455 001167       456 001170
+    457 001176       458 001203       459 001206       461 001210       462 001214       463 001216       464 001221
+    466 001222       467 001223       468 001233       469 001234       470 001236       473 001237       475 001262
+    476 001263       477 001271       478 001274       479 001275       480 001277       725 001300       484 001301
+    494 001312       495 001314       496 001316       497 001326       499 001347       501 001351       502 001353
+    504 001362       507 001363       526 001374       527 001376       528 001377       529 001407       531 001427
+    533 001433       535 001437       537 001454       539 001457       540 001461       542 001467       545 001470
+    550 001472       552 001522       556 001523       576 001534       577 001536       578 001542       579 001552
+    583 001555       584 001561       585 001571       589 001574       598 001603       599 001611       600 001613
+    601 001615       603 001655       604 001730       607 001731       608 001734       609 001740       611 001750
+    612 001753       614 001760       615 001761       617 001765       619 002025       620 002100       622 002101
+    625 002107       626 002117       627 002121       633 002130       634 002142       646 002155       647 002163
+    649 002171       652 002205       653 002212       658 002217       662 002221       663 002245       667 002275
+    668 002312       669 002314       673 002317       675 002334       676 002342       677 002347       678 002351
+    680 002354       681 002357       684 002363       685 002365       686 002401       687 002416       689 002417
+    698 002421       699 002427       703 002446       704 002450       708 002454       713 002462       715 002503
+    717 002504       718 002512       719 002514       721 002515       723 002517       724 002520       728 002521
+    731 002522       734 002562
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,233 @@
+	COMPILATION LISTING OF SEGMENT level_0_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1045.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 level_0_: proc;
+       14 
+       15 /* This a program to set the level to 0 before call the access primitives. */
+       16 /* Last modified 01/11/79 by C. D. Tavares to add dir_ring_brackets code */
+       17 /* Modified 04/26/82 by S Krupp to change declaration of dname and
+       18*   ename to char(*). */
+       19 
+       20 dcl  dname char (*),
+       21      ename char (*),
+       22      aptr ptr,
+       23      acount fixed bin,
+       24      dbit bit (1) aligned,				/* daemon bit */
+       25      code fixed bin (35),
+       26      dir_ring_brackets (2) fixed bin (5),
+       27      ring_brackets (3) fixed bin (5),
+       28      esw fixed bin,
+       29      save_level fixed bin;
+       30 
+       31 dcl  level$get entry (fixed bin),
+       32      level$set entry (fixed bin),
+       33      asd_$add_sentries entry (char (*), char (*), ptr, fixed bin (17), fixed bin (35)),
+       34      asd_$add_dentries entry (char (*), char (*), ptr, fixed bin (17), fixed bin (35)),
+       35      asd_$replace_sall entry (char (*), char (*), ptr, fixed bin (17), bit (1) aligned, fixed bin (35)),
+       36      asd_$replace_dall entry (char (*), char (*), ptr, fixed bin (17), bit (1) aligned, fixed bin (35)),
+       37      asd_$del_sentries entry (char (*), char (*), ptr, fixed bin (17), fixed bin (35)),
+       38      asd_$del_dentries entry (char (*), char (*), ptr, fixed bin (17), fixed bin (35)),
+       39      ringbr_$set entry (char (*), char (*), (3) fixed bin (5), fixed bin (35)),
+       40      ringbr_$set_dir entry (char (*), char (*), (2) fixed bin (5), fixed bin (35)),
+       41      delentry$priv_dfile entry (char (*), char (*), fixed bin (35));
+       42 
+       43 
+       44 add_acl_entries: entry (dname, ename, aptr, acount, code);
+       45 
+       46 	esw = 0;					/* add name or names to acl */
+       47 	go to start;
+       48 
+       49 add_dir_acl_entries: entry (dname, ename, aptr, acount, code);
+       50 
+       51 	esw = 1;					/* add name or names to dir acl */
+       52 	go to start;
+       53 
+       54 replace_acl: entry (dname, ename, aptr, acount, dbit, code);
+       55 
+       56 	esw = 2;					/* replace acls */
+       57 	go to start;
+       58 
+       59 replace_dir_acl: entry (dname, ename, aptr, acount, dbit, code);
+       60 
+       61 	esw = 3;					/* replace for a dir */
+       62 	go to start;
+       63 
+       64 delete_acl_entries: entry (dname, ename, aptr, acount, code);
+       65 
+       66 	esw = 4;					/* delete acls */
+       67 	go to start;
+       68 
+       69 delete_dir_acl_entries: entry (dname, ename, aptr, acount, code);
+       70 
+       71 	esw = 5;					/* delete for a dir */
+       72 	go to start;
+       73 
+       74 set_ring_brackets: entry (dname, ename, ring_brackets, code);
+       75 
+       76 	esw = 6;					/* modify the ring brackets */
+       77 	go to start;
+       78 
+       79 set_dir_ring_brackets: entry (dname, ename, dir_ring_brackets, code);
+       80 
+       81 	esw = 7;					/* modify the dir ring brackets */
+       82 	go to start;
+       83 
+       84 delentry_file: entry (dname, ename, code);
+       85 
+       86 	esw = 8;					/* delete a segment */
+       87 	goto start;
+       88 
+       89 start:
+       90 	call level$get (save_level);			/* save the current level */
+       91 	call level$set (0);				/* set it to zero */
+       92 
+       93 	if esw = 0 then call asd_$add_sentries (dname, ename, aptr, acount, code);
+       94 	else if esw = 1 then call asd_$add_dentries (dname, ename, aptr, acount, code);
+       95 	else if esw = 2 then call asd_$replace_sall (dname, ename, aptr, acount, dbit, code);
+       96 	else if esw = 3 then call asd_$replace_dall (dname, ename, aptr, acount, dbit, code);
+       97 	else if esw = 4 then call asd_$del_sentries (dname, ename, aptr, acount, code);
+       98 	else if esw = 5 then call asd_$del_dentries (dname, ename, aptr, acount, code);
+       99 	else if esw = 6 then call ringbr_$set (dname, ename, ring_brackets, code);
+      100 	else if esw = 7 then call ringbr_$set_dir (dname, ename, dir_ring_brackets, code);
+      101 	else if esw = 8 then call delentry$priv_dfile (dname, ename, code);
+      102 
+      103 	call level$set (save_level);			/* restore the proper level */
+      104 
+      105 	return;
+      106 
+      107      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.6  level_0_.pl1                      >spec>install>1110>level_0_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+acount                                 parameter       fixed bin(17,0)          dcl 20 set ref 44 49 54 59 64 69 93* 94* 95* 96* 97*
+                                                                                  98*
+aptr                                   parameter       pointer                  dcl 20 set ref 44 49 54 59 64 69 93* 94* 95* 96* 97*
+                                                                                  98*
+asd_$add_dentries               000016 constant        entry                    external dcl 31 ref 94
+asd_$add_sentries               000014 constant        entry                    external dcl 31 ref 93
+asd_$del_dentries               000026 constant        entry                    external dcl 31 ref 98
+asd_$del_sentries               000024 constant        entry                    external dcl 31 ref 97
+asd_$replace_dall               000022 constant        entry                    external dcl 31 ref 96
+asd_$replace_sall               000020 constant        entry                    external dcl 31 ref 95
+code                                   parameter       fixed bin(35,0)          dcl 20 set ref 44 49 54 59 64 69 74 79 84 93* 94*
+                                                                                  95* 96* 97* 98* 99* 100* 101*
+dbit                                   parameter       bit(1)                   dcl 20 set ref 54 59 95* 96*
+delentry$priv_dfile             000034 constant        entry                    external dcl 31 ref 101
+dir_ring_brackets                      parameter       fixed bin(5,0)           array dcl 20 set ref 79 100*
+dname                                  parameter       char                     packed unaligned dcl 20 set ref 44 49 54 59 64 69 74
+                                                                                  79 84 93* 94* 95* 96* 97* 98* 99* 100* 101*
+ename                                  parameter       char                     packed unaligned dcl 20 set ref 44 49 54 59 64 69 74
+                                                                                  79 84 93* 94* 95* 96* 97* 98* 99* 100* 101*
+esw                             000100 automatic       fixed bin(17,0)          dcl 20 set ref 46* 51* 56* 61* 66* 71* 76* 81* 86*
+                                                                                  93 94 95 96 97 98 99 100 101
+level$get                       000010 constant        entry                    external dcl 31 ref 89
+level$set                       000012 constant        entry                    external dcl 31 ref 91 103
+ring_brackets                          parameter       fixed bin(5,0)           array dcl 20 set ref 74 99*
+ringbr_$set                     000030 constant        entry                    external dcl 31 ref 99
+ringbr_$set_dir                 000032 constant        entry                    external dcl 31 ref 100
+save_level                      000101 automatic       fixed bin(17,0)          dcl 20 set ref 89* 103*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+add_acl_entries                 000031 constant        entry                    external dcl 44
+add_dir_acl_entries             000060 constant        entry                    external dcl 49
+delentry_file                   000344 constant        entry                    external dcl 84
+delete_acl_entries              000174 constant        entry                    external dcl 64
+delete_dir_acl_entries          000224 constant        entry                    external dcl 69
+level_0_                        000016 constant        entry                    external dcl 13
+replace_acl                     000114 constant        entry                    external dcl 54
+replace_dir_acl                 000144 constant        entry                    external dcl 59
+set_dir_ring_brackets           000312 constant        entry                    external dcl 79
+set_ring_brackets               000257 constant        entry                    external dcl 74
+start                           000372 constant        label                    dcl 89 ref 47 52 57 62 67 72 77 82 87
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1270        1326    1026        1300
+Length      1530    1026        36         165     242           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+level_0_                            124 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+level_0_                 000100 esw                         level_0_
+                         000101 save_level                  level_0_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+asd_$add_dentries             asd_$add_sentries             asd_$del_dentries             asd_$del_sentries
+asd_$replace_dall             asd_$replace_sall             delentry$priv_dfile           level$get
+level$set                     ringbr_$set                   ringbr_$set_dir
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000015        44 000023        46 000054        47 000055        49 000056        51 000103        52 000105
+     54 000106        56 000137        57 000141        59 000142        61 000167        62 000171        64 000172
+     66 000217        67 000221        69 000222        71 000247        72 000251        74 000252        76 000302
+     77 000304        79 000305        81 000335        82 000337        84 000340        86 000367        87 000371
+     89 000372        91 000401        93 000411        94 000447        95 000505        96 000547        97 000611
+     98 000647        99 000705       100 000737       101 000771       103 001016       105 001025
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

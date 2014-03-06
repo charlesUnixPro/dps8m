@@ -1,0 +1,780 @@
+	COMPILATION LISTING OF SEGMENT ncp_connection_
+	Compiled by: Multics PL/I Compiler, Release 28d, of October 4, 1983
+	Compiled at: Honeywell Multics Op. - System M
+	Compiled on: 07/02/84  1318.9 mst Mon
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1976 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        9*   * Technology and Honeywell Information Systems, Inc.      *
+       10*   *                                                         *
+       11*   *********************************************************** */
+       12 
+       13 
+       14 ncp_connection_:
+       15           procedure ();
+       16 
+       17 /*             This procedure contains the read, status, and write entry        */
+       18 /*        points.  They are isolated into this one module to reduce paging.     */
+       19 
+       20 /*        Originally created by D. M. Wells, 1975.03.24                         */
+       21 
+       22           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+       23 
+       24      declare
+       25          (P_link_num fixed binary (8),
+       26           P_msg_allocation fixed binary (16),
+       27           P_bit_allocation fixed binary (32),
+       28           P_error_code fixed binary (35),                   /* a standard Multics status code                 */
+       29           P_send_gender bit (1),
+       30           P_host_ptr pointer,
+       31           P_sock_ptr pointer)
+       32                parameter;
+       33 
+       34           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+       35 
+       36      declare
+       37          (host_tb_index fixed binary (17),
+       38           host_ptr pointer,
+       39           sock_ptr pointer,
+       40           hpr pointer)
+       41                automatic;
+       42 
+       43      declare
+       44           1 ALL_msg aligned automatic,
+       45              2 opcode bit (8) unaligned,
+       46              2 link bit (8) unaligned,
+       47              2 mspace bit (16) unaligned,
+       48              2 bspace bit (32) unaligned;
+       49 
+       50           /* * * * * BASED & TEMPLATE DECLARATIONS * * * * */
+       51 
+       52      declare
+       53           1 host_array (1) aligned based like host,
+       54           1 socket_array (1) aligned based like socket;
+       55 
+       56           /* * * * * EXTERNAL STATIC DECLARATIONS  * * * * */
+       57 
+       58      declare
+       59          (ncp_params_$max_bit_allocation fixed binary (32),
+       60           ncp_params_$max_msg_allocation fixed binary (16))
+       61                external static;
+       62 
+       63      declare
+       64           ncp_tables_$host_tbl
+       65                external static;
+       66 
+       67           /* * * * * ENTRY & PROCEDURE DECLARATIONS  * * * */
+       68 
+       69      declare
+       70           imp_order$imp_update_write_allocation constant entry (fixed bin (17), fixed bin (16), fixed bin (32)),
+       71           ncp_access_$signal_process constant entry (ptr, fixed bin (1), fixed bin (35)),
+       72           ncp_access_$unassign_link constant entry (ptr, fixed bin (35)),
+       73           ncp_control_$ncp_change_global_state constant entry (fixed bin (3), fixed bin (35)),
+       74           ncp_tbop_$process_call constant entry (ptr),
+       75           ncp_trace_ constant entry options (variable),
+       76           ncp_util_$find_socket_from_link_number constant entry (fixed bin (32), fixed bin (8), bit (1), ptr, fixed bin (35)),
+       77           ncp_util_$send_control_message constant entry (ptr, ptr, fixed bin (24), fixed bin (35)),
+       78           ncp_util_$unlock_socket constant entry (ptr, fixed bin (35));
+       79 
+       80      declare
+       81           (addr, binary, bit, null, substr)
+       82                builtin;
+       83 
+       84           /* * * * * INCLUDE FILES * * * * * * * * * * * * */
+       85 
+       86           
+  1     2 /*        BEGIN include file "ncp_connection_dcls.incl.pl1" --                  */
+  1     3 
+  1     4 /*             This include file contains declarations for the structures       */
+  1     5 /*        maintained by the NCP which contain information about Host-Host       */
+  1     6 /*        connections.  Currently, this is the information about sockets,       */
+  1     7 /*        hosts, and requests-for-connection.                                   */
+  1     8 
+  1     9 /*        Originally created by D. M. Wells, Summer, 1975.                      */
+  1    10 /*	Modified by B. Greenberg, Spring '78 for new leader support */
+  1    11 /*	        Modified by C. Hornig, July 1979 for new host number format */
+  1    12 
+  1    13      declare
+  1    14           1 socket aligned based,                           /* information we keep on a per-socket basis      */
+  1    15              2 event_channel fixed binary (71),             /* event channel of using process                 */
+  1    16              2 overseer_event_channel fixed binary (71),    /* event chanel of overseer process               */
+  1    17              2 lock bit (36) aligned,                       /* lock to prevent simultaneous updating          */
+  1    18              2 process_id bit (36) aligned,                 /* process id of using process                    */
+  1    19              2 overseer_process_id bit (36) aligned,        /* process id of overseer process                 */
+  1    20              2 bit_allocation fixed binary (32),            /* bit allocation outstanding on attached link    */
+  1    21              2 msg_allocation fixed binary (16),            /* message allocation outstanding on link         */
+  1    22 
+  1    23              2 local_socket unaligned like socket.foreign_socket,     /* identification of local socket       */
+  1    24              2 foreign_socket unaligned,                    /* identification of foreign socket               */
+  1    25 	      3 host,				/* id of this host				*/
+  1    26 	        4 net bit (8),			/* network id				*/
+  1    27 	        4 host bit (8),			/* port on imp				*/
+  1    28 	        4 imp bit (16),			/* imp id					*/
+  1    29                 3 socket_num bit (32),                      /* actual socket number                           */
+  1    30                 3 pad bit (8),
+  1    31 
+  1    32              2 rfc_queue fixed binary (17) unaligned,       /* RFC table index of next block for this         */
+  1    33                                                             /* socket, 0 if queue is empty                    */
+  1    34              2 link_number fixed binary (17) unaligned,     /* number of link assigned for connection         */
+  1    35 
+  1    36              2 host_entry_index fixed binary (17) unaligned,          /* index in host table of foreign       */
+  1    37                                                                       /* host involved in connection          */
+  1    38              2 impdim_index fixed binary (17) unaligned,    /* index by which IMPDIM knows about connection   */
+  1    39              2 state bit (6) unaligned,                     /* finite-state-machine information               */
+  1    40              2 byte_size bit (8) unaligned,                 /* byte-size of connections                       */
+  1    41              2 send_gender bit (1) unaligned,               /* on iff this is a transmit socket               */
+  1    42              2 allow_interrupts bit (1) unaligned,          /* on iff INS and INR should be signalled to user */
+  1    43              2 deactivate bit (1) unaligned,                /* on iff this socket should be deactivated when  */
+  1    44                                                             /* matching network messages are finally received */
+  1    45              2 allow_rfc_queuing bit (1) unaligned,         /* on iff we should allow multiple outstanding    */
+  1    46                                                             /* RFC's for this socket                          */
+  1    47              2 extra_bits bit (12) unaligned,
+  1    48 
+  1    49              2 overseer_validation_level bit (3) unaligned,           /* ring of highest overseer control     */
+  1    50              2 validation_level bit (3) unaligned,                    /* ring of highest operator control     */
+  1    51 
+  1    52              2 overseer_lock_id bit (36) aligned,           /* lock id of the overseer process                */
+  1    53              2 umodes bit (36) aligned,                     /* 36 bits that the users can play with           */
+  1    54              2 time_state_changed fixed binary (71),        /* time that the socket state last changed        */
+  1    55              2 signal_event_channel fixed binary (71),      /* chanel to signal over when get INS or INR      */
+  1    56              2 socket_index bit (36) aligned,               /* the handle we gave user for future reference   */
+  1    57              2 history aligned,                             /* state of socket over recent past history       */
+  1    58                 3 num_state_changes fixed binary (11) unaligned,      /* small field, so only keep mod        */
+  1    59                 3 prev_state (0 : 3) fixed binary (5) unaligned;      /* past N states, kept in rotation      */
+  1    60 
+  1    61      declare
+  1    62           1 host aligned based,                             /* information we retain about a foreign host     */
+  1    63              2 lock bit (36) aligned,                       /* lock to prevent simultaneous updating          */
+  1    64              2 rcv_link_index fixed binary (17) unaligned,  /* impdim index of read link for control msgs     */
+  1    65              2 xmit_link_index fixed binary (17) unaligned, /* impdim index of write link for control msgs    */
+  1    66              2 read_links_assigned bit (32) unaligned,      /* a bit is on iff we have assigned that link     */
+  1    67              2 read_link_padd bit (4) unaligned,
+  1    68 	   2 xhost_number_pad bit (9) unaligned,
+  1    69              2 host_state bit (6) unaligned,                /* stae of communications with this host          */
+  1    70              2 previous_host_state bit (6) unaligned,       /* last state of this host                        */
+  1    71              2 state_pad bit (15) unaligned,
+  1    72              2 time_state_changed fixed binary (71),        /* time when host state last changed              */
+  1    73              2 read_links_used bit (32) unaligned,          /* bit is on if link has been used "recently"     */
+  1    74              2 read_link_used_pad bit (4) unaligned,
+  1    75              2 num_connections fixed binary (17) unaligned, /* times we attached links for this host          */
+  1    76              2 hash_index fixed binary (17) unaligned,      /* table index of this host entry                 */
+  1    77 	   2 host_number fixed bin (32) aligned,	/* host number of this host			*/
+  1    78 	   2 host_number_pad fixed bin (35);
+  1    79 
+  1    80      declare
+  1    81           1 rcvd_rfc aligned based,                         /* info about a rcvd Request for Connection       */
+  1    82              2 foreign_socket unaligned like socket.foreign_socket,   /* foreign socket in RFC msg            */
+  1    83              2 foreign_hosts_choice fixed binary (17) unaligned,      /* link or size that other host chose   */
+  1    84              2 next_entry fixed binary (17) unaligned,                /* next RFC entry in queue for socket   */
+  1    85              2 padding (1) fixed binary (35);
+  1    86 
+  1    87      declare
+  1    88 	1 host_address based aligned,			/* Form of a host address			*/
+  1    89 	   2 net bit (8) unaligned,			/* Netwwork ID				*/
+  1    90 	   2 host bit (8) unaligned,			/* Host Port				*/
+  1    91 	   2 imp bit (16) unaligned;			/* IMP ID					*/
+  1    92 				/* Duplicated because of PL/I multi-like restriction */
+  1    93 
+  1    94 /*        END of include file ncp_connection_dcls.incl.pl1                      */
+  1    95 
+       86 
+       87           
+  2     2 /*             "ncp_constants_dcls.incl.pl1" -- include file to       */
+  2     3 /*        declare some constants used throughout the Multics Network  */
+  2     4 /*        Control Program (NCP).                                      */
+  2     5 
+  2     6 /*        Originally created by D. M. Wells, 1975, May 19.            */
+  2     7 
+  2     8      declare
+  2     9          (NCP_DOWN            initial (0),                  /* the NCP has been shutdown normally             */
+  2    10           NCP_UP_IMP_DOWN     initial (1),                  /* the NCP is up, but the IMP is unreachable      */
+  2    11           NCP_UP              initial (2),                  /* the NCP is up and running normally             */
+  2    12           NCP_CRASHED         initial (-1))                 /* the NCP has crashed itself                     */
+  2    13                fixed binary (3) internal static options (constant);
+  2    14 
+  2    15      declare
+  2    16          (READ_GENDER         initial ("0"b),               /* Read sockets are even numbers                  */
+  2    17           WRITE_GENDER        initial ("1"b))               /* Write sockets ar odd numbers                   */
+  2    18                bit (1) internal static options (constant);
+  2    19 
+  2    20      declare
+  2    21          (HOST_OFF            initial (0),                  /* this host is not enabled for communications    */
+  2    22           HOST_UP             initial (1),                  /* Host is up and everything ok                   */
+  2    23           HOST_RST            initial (2),                  /* a Host-Host RST command has been sent          */
+  2    24           HOST_DOWN           initial (3),                  /* Foreign host is down                           */
+  2    25           HOST_ON             initial (4))                  /* Foreign host is enabled, but not RST yet       */
+  2    26                fixed binary (6) internal static options (constant);
+  2    27 
+  2    28      declare
+  2    29          (SOCK_UNASSIGNED     initial (0),                  /* This socket entry is not in use currently      */
+  2    30           SOCK_ASSIGNED       initial (1),                  /* Socket has been assigned and is quiescent      */
+  2    31           SOCK_LISTENING      initial (2),                  /* Socket is listening for incoming-RFCs          */
+  2    32           SOCK_RFC_RCVD       initial (3),                  /* Socket has received RFC from foreign socket    */
+  2    33           SOCK_RFC_ABORTED    initial (4),                  /* CLS  received for unacknowledged RFC           */
+  2    34           SOCK_RFC_SENT       initial (5),                  /* RFC sent to foreign socket, but no reply       */
+  2    35           SOCK_CONNECTED      initial (6),                  /* Socket is connected to foreign socket          */
+  2    36           SOCK_CLS_WAIT       initial (7),                  /* CLS issued, waiting for reply CLS              */
+  2    37                                                             /* State 8 is not currently defined               */
+  2    38           SOCK_DATA_WAIT      initial (9),                  /* User requested close, but data still here      */
+  2    39           SOCK_RFNM_WAIT      initial (10),                 /* User requested close, but waiting on last RFNM */
+  2    40           SOCK_CLS_READ       initial (11),                 /* CLS received, but data still in buffers        */
+  2    41                                                             /* State 12 is not currently defined              */
+  2    42           SOCK_BROKEN         initial (13),                 /* Socket has been involved in some NCP anomaly   */
+  2    43           SOCK_RESET          initial (14))                 /* Socket was connected to host that was reset    */
+  2    44                fixed binary (6) internal static options (constant);
+  2    45 
+  2    46      declare
+  2    47          (SOCK_INDX_MASK      initial ("000000777777"b3),   /* mask to get out actual array index             */
+  2    48           SOCK_UNIQUE_MASK    initial ("377777000000"b3))   /* mask to get out incrementing part of indx      */
+  2    49                bit (36) internal static options (constant);
+  2    50 
+  2    51      declare
+  2    52          (ANY_TRACING         initial ("400000000000"b3),             /* if any tracing is occurring          */
+  2    53           PRINTER_TRACING     initial ("200000000000"b3),             /* if tracing to the ptr is happening   */
+  2    54           SYSERR_LOG_TRACING  initial ("100000000000"b3),             /* if tracing to syserr log mechanism   */
+  2    55 
+  2    56           TRACE_CTL_MSGS      initial ("004000000000"b3),             /* if host-host ctl msgs should be trcd */
+  2    57           TRACE_PROCESS_INFO  initial ("002000000000"b3),             /* if process control should be trcd    */
+  2    58           TRACE_DATA_FLOW     initial ("001000000000"b3),             /* if flow of user data to be traced    */
+  2    59 
+  2    60           TRACE_NCP_RING      initial ("000400000000"b3),             /* if ncp_ring_ should be traced        */
+  2    61           TRACE_NCP_ACCESS    initial ("000200000000"b3),             /* if ncp_access_ should be traced      */
+  2    62           TRACE_NCP_DAEMON    initial ("000100000000"b3),             /* if ncp_daemon_ should be traced      */
+  2    63           TRACE_NCP_CONTROL   initial ("000040000000"b3),             /* if ncp_control_ should be traced     */
+  2    64           TRACE_NCP_TBOP      initial ("000020000000"b3),             /* if ncp_tbop_ should be traced        */
+  2    65           TRACE_NCP_IO        initial ("000010000000"b3))             /* if ncp_io_ should be traced          */
+  2    66                bit (36) aligned internal static options (constant);
+  2    67 
+  2    68 /*        end of include file "ncp_constants_dcls.incl.pl1            */
+  2    69 
+       87 
+       88 
+       89 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+       90 
+       91 allocate_write:
+       92           entry (P_host_ptr, P_link_num, P_msg_allocation, P_bit_allocation, P_error_code);
+       93 
+       94           P_error_code = 0;
+       95 
+       96           call ncp_util_$find_socket_from_link_number ((P_host_ptr -> host.host_number), P_link_num, "1"b, sock_ptr, P_error_code);
+       97           if P_error_code ^= 0
+       98           then return;
+       99 
+      100           call imp_order$imp_update_write_allocation ((sock_ptr -> socket.impdim_index), P_msg_allocation, P_bit_allocation);
+      101 
+      102           call ncp_util_$unlock_socket (sock_ptr, (0));
+      103 
+      104           return;
+      105 
+      106           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      107 
+      108 allocate_read:
+      109           entry (P_sock_ptr, P_error_code);
+      110 
+      111           P_error_code = 0;
+      112 
+      113           sock_ptr = P_sock_ptr;
+      114 
+      115           ALL_msg.opcode = bit (binary (4, 8));
+      116           ALL_msg.link = bit (binary (sock_ptr -> socket.link_number, 8));
+      117           ALL_msg.mspace = bit (binary (ncp_params_$max_msg_allocation - sock_ptr -> socket.msg_allocation, 16));
+      118           ALL_msg.bspace = bit (binary (ncp_params_$max_bit_allocation - sock_ptr -> socket.bit_allocation, 32));
+      119 
+      120           hpr = addr (ncp_tables_$host_tbl);
+      121           host_tb_index = sock_ptr -> socket.host_entry_index;
+      122           host_ptr = addr (hpr -> host_array (host_tb_index));
+      123 
+      124           call ncp_util_$send_control_message (host_ptr, addr (ALL_msg), 8, P_error_code);
+      125           if P_error_code ^= 0
+      126           then return;
+      127 
+      128           sock_ptr -> socket.msg_allocation = ncp_params_$max_msg_allocation;
+      129           sock_ptr -> socket.bit_allocation = ncp_params_$max_bit_allocation;
+      130 
+      131           return;
+      132 
+      133           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      134 
+      135 signal_interrupt:
+      136           entry (P_host_ptr, P_link_num, P_send_gender, P_error_code);
+      137 
+      138           P_error_code = 0;
+      139 
+      140           return;
+      141 
+      142 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      143 
+      144           /* end ncp_connection_                          */
+      145 end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    07/02/84  1129.4  ncp_connection_.pl1               >dumps>old_dumps>hardcore>ncp_connection_.pl1
+86           1    09/05/79  2206.3  ncp_connection_dcls.incl.pl1      >ldd>include>ncp_connection_dcls.incl.pl1
+87           2    10/07/77  1700.0  ncp_constants_dcls.incl.pl1       >ldd>include>ncp_constants_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALL_msg                         000110 automatic       structure                level 1 dcl 43 set ref 124 124
+P_bit_allocation                       parameter       fixed bin(32,0)          dcl 24 set ref 91 100*
+P_error_code                           parameter       fixed bin(35,0)          dcl 24 set ref 91 94* 96* 97 108 111* 124* 125 135
+                                                                                  138*
+P_host_ptr                             parameter       pointer                  dcl 24 ref 91 96 135
+P_link_num                             parameter       fixed bin(8,0)           dcl 24 set ref 91 96* 135
+P_msg_allocation                       parameter       fixed bin(16,0)          dcl 24 set ref 91 100*
+P_send_gender                          parameter       bit(1)                   unaligned dcl 24 ref 135
+P_sock_ptr                             parameter       pointer                  dcl 24 ref 108 113
+addr                                                   builtin function         dcl 80 ref 120 122 124 124
+binary                                                 builtin function         dcl 80 ref 115 116 117 118
+bit                                                    builtin function         dcl 80 ref 115 116 117 118
+bit_allocation            7            based           fixed bin(32,0)          level 2 dcl 1-13 set ref 118 129*
+bspace                    0(32) 000110 automatic       bit(32)                  level 2 packed unaligned dcl 43 set ref 118*
+foreign_socket           13            based           structure                array level 2 in structure "socket_array" packed
+                                                                                  unaligned dcl 52 in procedure "ncp_connection_"
+foreign_socket           13            based           structure                level 2 in structure "socket" packed unaligned
+                                                                                  dcl 1-13 in procedure "ncp_connection_"
+host                                   based           structure                level 1 dcl 1-61
+host_array                             based           structure                array level 1 dcl 52 set ref 122
+host_entry_index         16            based           fixed bin(17,0)          level 2 packed unaligned dcl 1-13 ref 121
+host_number              10            based           fixed bin(32,0)          level 2 dcl 1-61 ref 96
+host_ptr                        000102 automatic       pointer                  dcl 36 set ref 122* 124*
+host_tb_index                   000100 automatic       fixed bin(17,0)          dcl 36 set ref 121* 122
+hpr                             000106 automatic       pointer                  dcl 36 set ref 120* 122
+imp_order$imp_update_write_allocation
+                                000016 constant        entry                    external dcl 69 ref 100
+impdim_index             16(18)        based           fixed bin(17,0)          level 2 packed unaligned dcl 1-13 ref 100
+link                      0(08) 000110 automatic       bit(8)                   level 2 packed unaligned dcl 43 set ref 116*
+link_number              15(18)        based           fixed bin(17,0)          level 2 packed unaligned dcl 1-13 ref 116
+msg_allocation           10            based           fixed bin(16,0)          level 2 dcl 1-13 set ref 117 128*
+mspace                    0(16) 000110 automatic       bit(16)                  level 2 packed unaligned dcl 43 set ref 117*
+ncp_params_$max_bit_allocation  000010 external static fixed bin(32,0)          dcl 58 ref 118 129
+ncp_params_$max_msg_allocation  000012 external static fixed bin(16,0)          dcl 58 ref 117 128
+ncp_tables_$host_tbl            000014 external static fixed bin(17,0)          dcl 63 set ref 120
+ncp_util_$find_socket_from_link_number
+                                000020 constant        entry                    external dcl 69 ref 96
+ncp_util_$send_control_message  000022 constant        entry                    external dcl 69 ref 124
+ncp_util_$unlock_socket         000024 constant        entry                    external dcl 69 ref 102
+opcode                          000110 automatic       bit(8)                   level 2 packed unaligned dcl 43 set ref 115*
+sock_ptr                        000104 automatic       pointer                  dcl 36 set ref 96* 100 102* 113* 116 117 118 121 128
+                                                                                  129
+socket                                 based           structure                level 1 dcl 1-13
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANY_TRACING                            internal static bit(36)                  initial dcl 2-51
+HOST_DOWN                              internal static fixed bin(6,0)           initial dcl 2-20
+HOST_OFF                               internal static fixed bin(6,0)           initial dcl 2-20
+HOST_ON                                internal static fixed bin(6,0)           initial dcl 2-20
+HOST_RST                               internal static fixed bin(6,0)           initial dcl 2-20
+HOST_UP                                internal static fixed bin(6,0)           initial dcl 2-20
+NCP_CRASHED                            internal static fixed bin(3,0)           initial dcl 2-8
+NCP_DOWN                               internal static fixed bin(3,0)           initial dcl 2-8
+NCP_UP                                 internal static fixed bin(3,0)           initial dcl 2-8
+NCP_UP_IMP_DOWN                        internal static fixed bin(3,0)           initial dcl 2-8
+PRINTER_TRACING                        internal static bit(36)                  initial dcl 2-51
+READ_GENDER                            internal static bit(1)                   initial unaligned dcl 2-15
+SOCK_ASSIGNED                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_BROKEN                            internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_CLS_READ                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_CLS_WAIT                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_CONNECTED                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_DATA_WAIT                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_INDX_MASK                         internal static bit(36)                  initial unaligned dcl 2-46
+SOCK_LISTENING                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RESET                             internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFC_ABORTED                       internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFC_RCVD                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFC_SENT                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFNM_WAIT                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_UNASSIGNED                        internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_UNIQUE_MASK                       internal static bit(36)                  initial unaligned dcl 2-46
+SYSERR_LOG_TRACING                     internal static bit(36)                  initial dcl 2-51
+TRACE_CTL_MSGS                         internal static bit(36)                  initial dcl 2-51
+TRACE_DATA_FLOW                        internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_ACCESS                       internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_CONTROL                      internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_DAEMON                       internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_IO                           internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_RING                         internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_TBOP                         internal static bit(36)                  initial dcl 2-51
+TRACE_PROCESS_INFO                     internal static bit(36)                  initial dcl 2-51
+WRITE_GENDER                           internal static bit(1)                   initial unaligned dcl 2-15
+host_address                           based           structure                level 1 dcl 1-87
+ncp_access_$signal_process      000000 constant        entry                    external dcl 69
+ncp_access_$unassign_link       000000 constant        entry                    external dcl 69
+ncp_control_$ncp_change_global_state
+                                000000 constant        entry                    external dcl 69
+ncp_tbop_$process_call          000000 constant        entry                    external dcl 69
+ncp_trace_                      000000 constant        entry                    external dcl 69
+null                                                   builtin function         dcl 80
+rcvd_rfc                               based           structure                level 1 dcl 1-80
+socket_array                           based           structure                array level 1 dcl 52
+substr                                                 builtin function         dcl 80
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+allocate_read                   000122 constant        entry                    external dcl 108
+allocate_write                  000022 constant        entry                    external dcl 91
+ncp_connection_                 000007 constant        entry                    external dcl 14
+signal_interrupt                000255 constant        entry                    external dcl 135
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       456         504     273         466
+Length       730     273        26         210     162           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ncp_connection_                      92 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ncp_connection_          000100 host_tb_index               ncp_connection_
+                         000102 host_ptr                    ncp_connection_
+                         000104 sock_ptr                    ncp_connection_
+                         000106 hpr                         ncp_connection_
+                         000110 ALL_msg                     ncp_connection_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return              ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+imp_order$imp_update_write_allocation                       ncp_util_$find_socket_from_link_number
+ncp_util_$send_control_message                              ncp_util_$unlock_socket
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+ncp_params_$max_bit_allocation                              ncp_params_$max_msg_allocation
+ncp_tables_$host_tbl
+
+
+CONSTANTS
+000270  aa     000000000017
+000271  aa     777777777400
+
+000272  aa     000003777760
+
+000000  aa     464000000000
+
+000001  aa     516000000001
+
+000002  aa     404000000043
+
+000003  aa     404000000040
+
+000004  aa     404000000020
+
+000005  aa     404000000010
+
+BEGIN PROCEDURE ncp_connection_
+ENTRY TO ncp_connection_                                    STATEMENT 1 ON LINE 14
+ncp_connection_:
+          procedure ();
+
+000006  da     000130200000
+000007  aa   000140 6270 00	eax7 	96
+000010  aa  7 00034 3521 20	epp2 	pr7|28,*
+000011  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000012  aa     000000000000
+000013  aa     000000000000
+						STATEMENT 1 ON LINE 91
+allocate_write:
+          entry (P_host_ptr, P_link_num, P_msg_allocation, P_bit_allocation, P_error_code);
+
+000014  aa   000016 7100 04	tra  	14,ic		000032
+ENTRY TO allocate_write                                     STATEMENT 1 ON LINE 91
+allocate_write:
+          entry (P_host_ptr, P_link_num, P_msg_allocation, P_bit_allocation, P_error_code);
+
+000015  at     000005000000
+000016  tt     000005000004
+000017  tt     000003000002
+000020  ta     000015000000
+000021  da     000137300000
+000022  aa   000140 6270 00	eax7 	96
+000023  aa  7 00034 3521 20	epp2 	pr7|28,*
+000024  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000025  aa     000012000000
+000026  aa     000000000000
+000027  aa  6 00032 3735 20	epp7 	pr6|26,*
+000030  aa  7 00012 3715 20	epp5 	pr7|10,*
+000031  aa  6 00112 6515 00	spri5	pr6|74
+						STATEMENT 1 ON LINE 94
+          P_error_code = 0;
+
+000032  aa  6 00112 4501 20	stz  	pr6|74,*		P_error_code
+						STATEMENT 1 ON LINE 96
+          call ncp_util_$find_socket_from_link_number ((P_host_ptr -> host.host_number), P_link_num, "1"b, sock_ptr, P_error_code);
+
+000033  aa  6 00032 3735 20	epp7 	pr6|26,*
+000034  aa  7 00002 3715 20	epp5 	pr7|2,*		P_host_ptr
+000035  aa  5 00000 3715 20	epp5 	pr5|0,*		P_host_ptr
+000036  aa  5 00010 2361 00	ldq  	pr5|8		host.host_number
+000037  aa  6 00114 7561 00	stq  	pr6|76
+000040  aa   400000 2350 03	lda  	131072,du
+000041  aa  6 00115 7551 00	sta  	pr6|77
+000042  aa  6 00114 3521 00	epp2 	pr6|76
+000043  aa  6 00120 2521 00	spri2	pr6|80
+000044  aa  7 00004 3521 20	epp2 	pr7|4,*		P_link_num
+000045  aa  6 00122 2521 00	spri2	pr6|82
+000046  aa  6 00115 3521 00	epp2 	pr6|77
+000047  aa  6 00124 2521 00	spri2	pr6|84
+000050  aa  6 00104 3521 00	epp2 	pr6|68		sock_ptr
+000051  aa  6 00126 2521 00	spri2	pr6|86
+000052  aa  6 00112 3521 20	epp2 	pr6|74,*		P_error_code
+000053  aa  6 00130 2521 00	spri2	pr6|88
+000054  aa  6 00116 6211 00	eax1 	pr6|78
+000055  aa   024000 4310 07	fld  	10240,dl
+000056  la  4 00020 3521 20	epp2 	pr4|16,*		ncp_util_$find_socket_from_link_number
+000057  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 97
+          if P_error_code ^= 0
+          then return;
+
+000060  aa  6 00112 2361 20	ldq  	pr6|74,*		P_error_code
+000061  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 100
+          call imp_order$imp_update_write_allocation ((sock_ptr -> socket.impdim_index), P_msg_allocation, P_bit_allocation);
+
+000062  aa  6 00104 3735 20	epp7 	pr6|68,*		sock_ptr
+000063  aa  7 00016 2351 00	lda  	pr7|14		socket.impdim_index
+000064  aa   000022 7350 00	als  	18
+000065  aa   000066 7330 00	lrs  	54
+000066  aa  6 00115 7561 00	stq  	pr6|77
+000067  aa  6 00115 3521 00	epp2 	pr6|77
+000070  aa  6 00120 2521 00	spri2	pr6|80
+000071  aa  6 00032 3715 20	epp5 	pr6|26,*
+000072  aa  5 00006 3521 20	epp2 	pr5|6,*		P_msg_allocation
+000073  aa  6 00122 2521 00	spri2	pr6|82
+000074  aa  5 00010 3521 20	epp2 	pr5|8,*		P_bit_allocation
+000075  aa  6 00124 2521 00	spri2	pr6|84
+000076  aa  6 00116 6211 00	eax1 	pr6|78
+000077  aa   014000 4310 07	fld  	6144,dl
+000100  aa  6 00044 3701 20	epp4 	pr6|36,*
+000101  la  4 00016 3521 20	epp2 	pr4|14,*		imp_order$imp_update_write_allocation
+000102  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 102
+          call ncp_util_$unlock_socket (sock_ptr, (0));
+
+000103  aa  6 00115 4501 00	stz  	pr6|77
+000104  aa  6 00104 3521 00	epp2 	pr6|68		sock_ptr
+000105  aa  6 00120 2521 00	spri2	pr6|80
+000106  aa  6 00115 3521 00	epp2 	pr6|77
+000107  aa  6 00122 2521 00	spri2	pr6|82
+000110  aa  6 00116 6211 00	eax1 	pr6|78
+000111  aa   010000 4310 07	fld  	4096,dl
+000112  aa  6 00044 3701 20	epp4 	pr6|36,*
+000113  la  4 00024 3521 20	epp2 	pr4|20,*		ncp_util_$unlock_socket
+000114  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 104
+          return;
+
+000115  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO allocate_read                                      STATEMENT 1 ON LINE 108
+allocate_read:
+          entry (P_sock_ptr, P_error_code);
+
+000116  at     000002000000
+000117  ta     000002000000
+000120  ta     000116000000
+000121  da     000146300000
+000122  aa   000140 6270 00	eax7 	96
+000123  aa  7 00034 3521 20	epp2 	pr7|28,*
+000124  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000125  aa     000004000000
+000126  aa     000000000000
+000127  aa  6 00032 3735 20	epp7 	pr6|26,*
+000130  aa  7 00004 3715 20	epp5 	pr7|4,*
+000131  aa  6 00112 6515 00	spri5	pr6|74
+						STATEMENT 1 ON LINE 111
+          P_error_code = 0;
+
+000132  aa  6 00112 4501 20	stz  	pr6|74,*		P_error_code
+						STATEMENT 1 ON LINE 113
+          sock_ptr = P_sock_ptr;
+
+000133  aa  6 00032 3735 20	epp7 	pr6|26,*
+000134  aa  7 00002 3715 20	epp5 	pr7|2,*		P_sock_ptr
+000135  aa  5 00000 3715 20	epp5 	pr5|0,*		P_sock_ptr
+000136  aa  6 00104 6515 00	spri5	pr6|68		sock_ptr
+						STATEMENT 1 ON LINE 115
+          ALL_msg.opcode = bit (binary (4, 8));
+
+000137  aa   000004 2350 07	lda  	4,dl
+000140  aa   000002 6050 04	tpl  	2,ic		000142
+000141  aa   000000 5310 00	neg  	0
+000142  aa   000034 7350 00	als  	28
+000143  aa  6 00110 6751 00	era  	pr6|72		ALL_msg.opcode
+000144  aa  0 00020 3751 00	ana  	pr0|16		= 776000000000
+000145  aa  6 00110 6551 00	ersa 	pr6|72		ALL_msg.opcode
+						STATEMENT 1 ON LINE 116
+          ALL_msg.link = bit (binary (sock_ptr -> socket.link_number, 8));
+
+000146  aa  5 00015 2351 00	lda  	pr5|13		socket.link_number
+000147  aa   000022 7350 00	als  	18
+000150  aa   000066 7330 00	lrs  	54
+000151  aa   000003 6050 04	tpl  	3,ic		000154
+000152  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+000153  aa   000001 0760 07	adq  	1,dl
+000154  aa   000100 7370 00	lls  	64
+000155  aa   000010 7730 00	lrl  	8
+000156  aa  6 00110 6751 00	era  	pr6|72		ALL_msg.link
+000157  aa   001774 3750 03	ana  	1020,du
+000160  aa  6 00110 6551 00	ersa 	pr6|72		ALL_msg.link
+						STATEMENT 1 ON LINE 117
+          ALL_msg.mspace = bit (binary (ncp_params_$max_msg_allocation - sock_ptr -> socket.msg_allocation, 16));
+
+000161  aa  6 00044 3701 20	epp4 	pr6|36,*
+000162  la  4 00012 2361 20	ldq  	pr4|10,*		ncp_params_$max_msg_allocation
+000163  aa  5 00010 1761 00	sbq  	pr5|8		socket.msg_allocation
+000164  aa   000003 6050 04	tpl  	3,ic		000167
+000165  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+000166  aa   000001 0760 07	adq  	1,dl
+000167  aa   000070 7370 00	lls  	56
+000170  aa   000020 7730 00	lrl  	16
+000171  aa  6 00110 6751 00	era  	pr6|72		ALL_msg.mspace
+000172  aa   000100 3750 04	ana  	64,ic		000272 = 000003777760
+000173  aa  6 00110 6551 00	ersa 	pr6|72		ALL_msg.mspace
+						STATEMENT 1 ON LINE 118
+          ALL_msg.bspace = bit (binary (ncp_params_$max_bit_allocation - sock_ptr -> socket.bit_allocation, 32));
+
+000174  la  4 00010 2361 20	ldq  	pr4|8,*		ncp_params_$max_bit_allocation
+000175  aa  5 00007 1761 00	sbq  	pr5|7		socket.bit_allocation
+000176  aa   000003 6050 04	tpl  	3,ic		000201
+000177  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+000200  aa   000001 0760 07	adq  	1,dl
+000201  aa   000050 7370 00	lls  	40
+000202  aa   000040 7730 00	lrl  	32
+000203  aa  6 00110 6771 00	eraq 	pr6|72		ALL_msg.bspace
+000204  aa   000064 3770 04	anaq 	52,ic		000270 = 000000000017 777777777400
+000205  aa  6 00110 6551 00	ersa 	pr6|72		ALL_msg.bspace
+000206  aa  6 00111 6561 00	ersq 	pr6|73		ALL_msg.bspace
+						STATEMENT 1 ON LINE 120
+          hpr = addr (ncp_tables_$host_tbl);
+
+000207  la  4 00014 3535 20	epp3 	pr4|12,*		ncp_tables_$host_tbl
+000210  aa  6 00106 2535 00	spri3	pr6|70		hpr
+						STATEMENT 1 ON LINE 121
+          host_tb_index = sock_ptr -> socket.host_entry_index;
+
+000211  aa  5 00016 2351 00	lda  	pr5|14		socket.host_entry_index
+000212  aa   000066 7330 00	lrs  	54
+000213  aa  6 00100 7561 00	stq  	pr6|64		host_tb_index
+						STATEMENT 1 ON LINE 122
+          host_ptr = addr (hpr -> host_array (host_tb_index));
+
+000214  aa   000012 4020 07	mpy  	10,dl
+000215  aa  3 77766 3515 06	epp1 	pr3|-10,ql	host_array
+000216  aa  6 00102 2515 00	spri1	pr6|66		host_ptr
+						STATEMENT 1 ON LINE 124
+          call ncp_util_$send_control_message (host_ptr, addr (ALL_msg), 8, P_error_code);
+
+000217  aa  6 00110 3715 00	epp5 	pr6|72		ALL_msg
+000220  aa  6 00132 6515 00	spri5	pr6|90
+000221  aa   000010 2360 07	ldq  	8,dl
+000222  aa  6 00115 7561 00	stq  	pr6|77
+000223  aa  6 00102 3521 00	epp2 	pr6|66		host_ptr
+000224  aa  6 00120 2521 00	spri2	pr6|80
+000225  aa  6 00132 3521 00	epp2 	pr6|90
+000226  aa  6 00122 2521 00	spri2	pr6|82
+000227  aa  6 00115 3521 00	epp2 	pr6|77
+000230  aa  6 00124 2521 00	spri2	pr6|84
+000231  aa  6 00112 3521 20	epp2 	pr6|74,*		P_error_code
+000232  aa  6 00126 2521 00	spri2	pr6|86
+000233  aa  6 00116 6211 00	eax1 	pr6|78
+000234  aa   020000 4310 07	fld  	8192,dl
+000235  la  4 00022 3521 20	epp2 	pr4|18,*		ncp_util_$send_control_message
+000236  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 125
+          if P_error_code ^= 0
+          then return;
+
+000237  aa  6 00112 2361 20	ldq  	pr6|74,*		P_error_code
+000240  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 128
+          sock_ptr -> socket.msg_allocation = ncp_params_$max_msg_allocation;
+
+000241  aa  6 00044 3701 20	epp4 	pr6|36,*
+000242  la  4 00012 2361 20	ldq  	pr4|10,*		ncp_params_$max_msg_allocation
+000243  aa  6 00104 3735 20	epp7 	pr6|68,*		sock_ptr
+000244  aa  7 00010 7561 00	stq  	pr7|8		socket.msg_allocation
+						STATEMENT 1 ON LINE 129
+          sock_ptr -> socket.bit_allocation = ncp_params_$max_bit_allocation;
+
+000245  la  4 00010 2361 20	ldq  	pr4|8,*		ncp_params_$max_bit_allocation
+000246  aa  7 00007 7561 00	stq  	pr7|7		socket.bit_allocation
+						STATEMENT 1 ON LINE 131
+          return;
+
+000247  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO signal_interrupt                                   STATEMENT 1 ON LINE 135
+signal_interrupt:
+          entry (P_host_ptr, P_link_num, P_send_gender, P_error_code);
+
+000250  at     000004000000
+000251  tt     000005000001
+000252  ta     000002000000
+000253  ta     000250000000
+000254  da     000156300000
+000255  aa   000140 6270 00	eax7 	96
+000256  aa  7 00034 3521 20	epp2 	pr7|28,*
+000257  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000260  aa     000010000000
+000261  aa     000000000000
+000262  aa  6 00032 3735 20	epp7 	pr6|26,*
+000263  aa  7 00010 3715 20	epp5 	pr7|8,*
+000264  aa  6 00112 6515 00	spri5	pr6|74
+						STATEMENT 1 ON LINE 138
+          P_error_code = 0;
+
+000265  aa  6 00112 4501 20	stz  	pr6|74,*		P_error_code
+						STATEMENT 1 ON LINE 140
+          return;
+
+000266  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 145
+end;
+
+  END PROCEDURE ncp_connection_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

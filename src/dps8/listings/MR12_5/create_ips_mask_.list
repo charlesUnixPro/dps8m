@@ -1,0 +1,190 @@
+	COMPILATION LISTING OF SEGMENT create_ips_mask_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1012.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style3 */
+       13 
+       14 /* DESCRIPTION:
+       15*   Creates an IPS mask given the names of the ips interrupts
+       16*   to be masked.
+       17**/
+       18 
+       19 /* HISTORY:
+       20*Written by Dan Bricklin, October 1970.
+       21*Modified:
+       22*06/08/72 by D. M. Wells:  To make it properly respect an invocation with
+       23*            lng = 0; that is, no mask is wanted.
+       24*07/16/84 by R. Michael Tague:  Make it use the include file ips_mask_data.
+       25**/
+       26 
+       27 create_ips_mask_:
+       28      proc (p, lng, mask);
+       29 
+  1     1 /* BEGIN INCLUDE FILE ips_mask_data.incl.pl1 */
+  1     2 /* Added all_valid_ips_mask, Benson Margulies 83-12 */
+  1     3 
+  1     4 dcl 1 sys_info$ips_mask_data ext aligned,		/* structure of mask/name associations for IPS masks */
+  1     5     2 count fixed bin,				/* number of ips signals currently in the system */
+  1     6     2 mask (35),
+  1     7       3 name char (32),				/* name of the ips signal */
+  1     8       3 mask bit (36);				/* has one bit ON, the one for the current ips signal */
+  1     9 
+  1    10 dcl sys_info$all_valid_ips_mask bit (36) aligned external;
+  1    11 
+  1    12 /* END INCLUDE FILE ips_mask_data.incl.pl1 */
+       30 
+       31 
+       32 dcl	p		ptr,
+       33 	lng		fixed bin (17),
+       34 	mask		bit (36) aligned,
+       35 	ips_names		(1) char (32) aligned based (p),
+       36 	create_ips_mask_err condition,
+       37 	(i, j)		fixed bin (17);
+       38 
+       39 	mask = "0"b;				/* Initialize the mask */
+       40 
+       41 	if lng <= 0
+       42 	then goto ret;				/* allow for the mask none case		*/
+       43 
+       44 	if p -> ips_names (1) = "-all"
+       45 	then do;					/* return a mask of everything */
+       46 		do i = 1 to sys_info$ips_mask_data.count;
+       47 		     mask = mask | sys_info$ips_mask_data.mask.mask (i);
+       48 		end;
+       49 		go to ret;
+       50 	     end;
+       51 
+       52 	do i = 1 to lng;				/* Look for each signal type in list */
+       53 
+       54 	     do j = 1 to sys_info$ips_mask_data.count;	/* Look through all possible names */
+       55 		if p -> ips_names (i) = sys_info$ips_mask_data.mask.name (j)
+       56 		then do;
+       57 			mask = mask | sys_info$ips_mask_data.mask.mask (j);
+       58 			go to next;		/* when found, or in bit */
+       59 		     end;
+       60 	     end;
+       61 
+       62 	     signal condition (create_ips_mask_err);
+       63 	     return;
+       64 
+       65 next:
+       66 	end;
+       67 
+       68 ret:
+       69 	mask = ^mask;				/* Mask is now an enable mask, so ^ it for
+       70*							a disable mask */
+       71 	return;
+       72 
+       73      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.3  create_ips_mask_.pl1              >spec>install>1110>create_ips_mask_.pl1
+30           1    07/11/84  0937.3  ips_mask_data.incl.pl1            >ldd>include>ips_mask_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+count                           000010 external static fixed bin(17,0)          level 2 dcl 1-4 ref 46 54
+create_ips_mask_err             000100 stack reference condition                dcl 32 ref 62
+i                               000106 automatic       fixed bin(17,0)          dcl 32 set ref 46* 47* 52* 55*
+ips_names                              based           char(32)                 array dcl 32 ref 44 55
+j                               000107 automatic       fixed bin(17,0)          dcl 32 set ref 54* 55 57*
+lng                                    parameter       fixed bin(17,0)          dcl 32 ref 27 41 52
+mask                      1     000010 external static structure                array level 2 in structure "sys_info$ips_mask_data"
+                                                                                  dcl 1-4 in procedure "create_ips_mask_"
+mask                                   parameter       bit(36)                  dcl 32 in procedure "create_ips_mask_" set ref 27
+                                                                                  39* 47* 47 57* 57 68* 68
+mask                     11     000010 external static bit(36)                  array level 3 in structure "sys_info$ips_mask_data"
+                                                                                  dcl 1-4 in procedure "create_ips_mask_" ref 47 57
+name                      1     000010 external static char(32)                 array level 3 dcl 1-4 ref 55
+p                                      parameter       pointer                  dcl 32 ref 27 44 55
+sys_info$ips_mask_data          000010 external static structure                level 1 dcl 1-4
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+sys_info$all_valid_ips_mask            external static bit(36)                  dcl 1-10
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+create_ips_mask_                000015 constant        entry                    external dcl 27
+next                            000123 constant        label                    dcl 65 ref 58
+ret                             000125 constant        label                    dcl 68 ref 41 49
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       172         204     132         202
+Length       366     132        12         146      40           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+create_ips_mask_                     77 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+create_ips_mask_         000106 i                           create_ips_mask_
+                         000107 j                           create_ips_mask_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          signal_op           ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sys_info$ips_mask_data
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     27 000011        39 000022        41 000024        44 000026        46 000034        47 000043        48 000050
+     49 000052        52 000053        54 000061        55 000071        57 000112        58 000114        60 000115
+     62 000117        63 000122        65 000123        68 000125        71 000131
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,235 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXkwlkmwf
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1029.7 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*   *                                                         *
+        7*   *********************************************************** */
+        8 log_data_:
+        9      procedure ();
+       10 
+       11 /* *	LOG_DATA_
+       12*   *
+       13*   *	Constants concerning new-format logs, and, in particular, the names and
+       14*   *	directories for the new-format syserr log.
+       15*   *
+       16*   *	Modification history:
+       17*   *	84-10-30, W. Olin Sibert: Converted from ALM
+       18*   */
+       19 
+       20 declare 1 log_data			aligned automatic,
+       21 	2 default_log_size		fixed bin		init (51200),
+       22           2 new_message_flag            bit (36) aligned    init ("777111555333"b3),
+       23           2 complete_message_flag       bit (36) aligned    init ("666000444222"b3),
+       24           2 deleted_message_flag        bit (36) aligned    init ("111777333555"b3),
+       25 	2 max_text_lth		fixed bin (21)	init (16000),
+       26 	2 max_data_size		fixed bin (18)	init (16000),
+       27 
+       28 	2 syserr_log_name		char (32)		init ("syserr_log"),
+       29 	2 syserr_log_empty_name	char (32)		init ("syserr_log.empty"),
+       30 	2 syserr_log_dir		char (168)	init (">system_library_1"),
+       31 	2 syserr_log_history_dir	char (168)	init (">system_control_1>syserr_log"),
+       32 	2 syserr_log_partition	char (4)		init ("log"),
+       33 	2 syserr_log_daemon		char (32)		init ("SyserrLogger.SysDaemon.z");
+       34 
+       35 
+       36 declare 1 cds_info aligned like cds_args;
+       37 declare	code fixed bin (35);
+       38 
+       39 declare	com_err_ entry options (variable);
+       40 declare	create_data_segment_ entry (pointer, fixed bin (35));
+       41 
+       42 /* */
+       43 
+       44 	unspec (cds_info) = ""b;
+       45 	cds_info.sections (1).p = addr (log_data);
+       46 	cds_info.sections (1).len = size (log_data);
+       47 	cds_info.sections (1).struct_name = "log_data";
+       48 	cds_info.seg_name = "log_data_";
+       49 	cds_info.switches.have_text = "1"b;
+       50 
+       51 	call create_data_segment_ (addr (cds_info), code);
+       52 
+       53 	if (code ^= 0) then
+       54 	     call com_err_ (code, cds_info.seg_name, "Cannot create CDS segment.");
+       55 
+       56 	return;
+       57 
+       58  /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       58 
+       59 
+       60 	end log_data_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.8  !BBBJZjXkwlkmwf.pl1               >spec>install>1111>log_data_.cds
+58           1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+cds_args                               based           structure                level 1 dcl 1-3
+cds_info                        000264 automatic       structure                level 1 dcl 36 set ref 44* 51 51
+code                            000331 automatic       fixed bin(35,0)          dcl 37 set ref 51* 53 53*
+com_err_                        000012 constant        entry                    external dcl 39 ref 53
+complete_message_flag
+                          2     000100 automatic       bit(36)                  initial level 2 dcl 20 set ref 20*
+create_data_segment_            000014 constant        entry                    external dcl 40 ref 51
+default_log_size                000100 automatic       fixed bin(17,0)          initial level 2 dcl 20 set ref 20*
+deleted_message_flag      3     000100 automatic       bit(36)                  initial level 2 dcl 20 set ref 20*
+have_text                44(02) 000264 automatic       bit(1)                   level 3 packed packed unaligned dcl 36 set ref 49*
+len                       2     000264 automatic       fixed bin(18,0)          array level 3 dcl 36 set ref 46*
+log_data                        000100 automatic       structure                level 1 dcl 20 set ref 45 46
+max_data_size             5     000100 automatic       fixed bin(18,0)          initial level 2 dcl 20 set ref 20*
+max_text_lth              4     000100 automatic       fixed bin(21,0)          initial level 2 dcl 20 set ref 20*
+new_message_flag          1     000100 automatic       bit(36)                  initial level 2 dcl 20 set ref 20*
+p                               000264 automatic       pointer                  array level 3 dcl 36 set ref 45*
+sections                        000264 automatic       structure                array level 2 dcl 36
+seg_name                 30     000264 automatic       char(32)                 level 2 dcl 36 set ref 48* 53*
+struct_name               3     000264 automatic       char(32)                 array level 3 dcl 36 set ref 47*
+switches                 44     000264 automatic       structure                level 2 dcl 36
+syserr_log_daemon       153     000100 automatic       char(32)                 initial level 2 dcl 20 set ref 20*
+syserr_log_dir           26     000100 automatic       char(168)                initial level 2 dcl 20 set ref 20*
+syserr_log_empty_name
+                         16     000100 automatic       char(32)                 initial level 2 dcl 20 set ref 20*
+syserr_log_history_dir
+                        100     000100 automatic       char(168)                initial level 2 dcl 20 set ref 20*
+syserr_log_name           6     000100 automatic       char(32)                 initial level 2 dcl 20 set ref 20*
+syserr_log_partition    152     000100 automatic       char(4)                  initial level 2 dcl 20 set ref 20*
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+log_data_                       000056 constant        entry                    external dcl 8
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 45 51 51
+size                                                   builtin function         ref 46
+unspec                                                 builtin function         ref 44
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       252         270     200         262
+Length      1400     200        16        1074      52           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+log_data_                           248 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+log_data_                000100 log_data                    log_data_
+                         000264 cds_info                    log_data_
+                         000331 code                        log_data_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000055        20 000063        44 000120        45 000123        46 000125        47 000127        48 000132
+     49 000135        51 000137        53 000151        56 000177
+
+
+Object Segment >spec>install>1111>log_data_
+Created on 11/11/89  1029.7 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0     164     346     356     356
+Length     540     164     162      10     146       0
+
+
+14 Definitions:
+
+
+segname:    log_data_
+
+text|2          complete_message_flag
+text|0          default_log_size
+text|3          deleted_message_flag
+text|5          max_data_size
+text|4          max_text_lth
+text|1          new_message_flag
+symb|0          symbol_table
+text|153        syserr_log_daemon
+text|26         syserr_log_dir
+text|16         syserr_log_empty_name
+text|100        syserr_log_history_dir
+text|6          syserr_log_name
+text|152        syserr_log_partition
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

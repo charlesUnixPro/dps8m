@@ -1,0 +1,43 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	bad_fill
+	entry	bad_fill
+
+bad_fill:	push
+
+	eppbb	ap|2,*
+	eppbb	bb|0,*		"ptr to test_data1_
+	eppbp	ap|4,*
+	eppbp	bp|0,*		"ptr to temp seg
+	ldq	4097,dl
+	mlr	(pr,rl),(pr,rl),fill(777)
+	desc9a	bb|0,ql
+	desc9a	bp|0,ql
+
+	call 	test_cpu$deactivate_tempseg
+
+	cmpc	(pr,rl),(pr,rl),fill(776)
+	desc9a	bb|0,ql
+	desc9a	bp|0,ql
+	tnz	fault
+	return
+
+fault:	oct	0		"ZOP
+	return
+	end

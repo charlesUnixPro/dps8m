@@ -1,0 +1,285 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>adjust_float_.alm                                                                                                                                    
+ASSEMBLED ON:	11/11/89  0950.7 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                        000060       8  	bool	digit_0,060
+                                     9  "	this code is used to adjust a float decimal
+                                    10  "	number preparatory to the edit step.  the float decimal number is
+                                    11  "	normalized to contain no leading zeros and the PL/I exponent is
+                                    12  "	returned as a decimal number.  The PL/I exponent is
+                                    13  "		original_exponent  - number leading zeros + q - sf
+                                    14  "	where q is scale (number of digits after v in picture),
+                                    15  "	and sf is picture scale factor.
+                                    16  "		call adjust_float_(pt,pp,exp)
+                                    17  "	where 	pt ptr		points at number
+                                    18  "		pp ptr		points at picture_image block
+                                    19  "		exp fixed dec(3)	is set to exponent to use in edit
+                                    20  "
+                                    21  "	this code runs in the stack frame of its caller.
+                                    22  "
+                        000000      23  	segdef	adjust_float_
+                                    24  "
+                        000070      25  	equ	prec,56
+                        000071      26  	equ	scale,57
+                        000072      27  	equ	t,58
+                        000073      28  	equ	t1,59
+                                    29  "
+    000000                          30  adjust_float_:
+    000000  aa  0 00002 3521 20     31  	epp2	ap|2,*		get ptr to float dec number
+    000001  aa  2 00000 3521 20     32  	epp2	2|0,*
+    000002  aa  0 00006 3535 20     33  	epp3	ap|6,*		get ptr to exponent
+    000003  aa  0 00004 3701 20     34  	epp4	ap|4,*		get ptr to picture info block
+    000004  aa  4 00000 3701 20     35  	epp4	4|0,*
+    000005  aa  4 00000 2361 00     36  	ldq	4|0		get packed prec & scale
+    000006  aa   000022 7370 00     37  	lls	18
+    000007  aa   000777 3750 07     38  	ana	=o777,dl		get precision
+    000010  aa   000000 6270 05     39  	eax7	0,al
+    000011  aa  0 00000 1645 40     40  	tct	(pr,rl)		count leading zeros
+    000012  aa   200000 200017      41  	desc9a	2|0(1),x7
+    000013  0a   000051 0000 00     42  	arg	zero_table-12
+    000014  aa  6 00072 0001 00     43  	arg	sp|t
+    000015  0a   000060 6064 00     44  	ttn	float_zero	skip if all zero
+    000016  aa  6 00070 7551 00     45  	sta	sp|prec		save precision
+    000017  aa   000011 7370 00     46  	lls	9		isolate scale
+    000020  aa   000777 3750 07     47  	ana	=o777,dl
+    000021  aa  6 00071 7551 00     48  	sta	sp|scale		and save
+    000022  aa   000177 2360 07     49  	ldq	=o177,dl		isolate number leading digits
+    000023  aa  6 00072 3561 00     50  	ansq	sp|t
+    000024  aa  0 00100 1005 17     51  	mlr	(pr,x7),(pr)	extract exponent
+    000025  aa   200000 200001      52  	desc9a	2|0(1),1
+    000026  aa   600073 000001      53  	desc9a	sp|t1,1
+    000027  aa  6 00073 2361 00     54  	ldq	sp|t1		get exponent
+    000030  aa   000001 7360 00     55  	qls	1
+    000031  aa   000034 7320 00     56  	qrs	28
+    000032  aa  6 00072 7261 00     57  	lxl6	sp|t		get number leading zeros
+    000033  0a   000042 6000 00     58  	tze	l1		skip if none
+    000034  aa  6 00070 2351 00     59  	lda	sp|prec		get back precision
+    000035  aa  6 00072 1751 00     60  	sba	sp|t		compute number of digits to move
+    000036  aa  0 60140 1005 56     61  	mlr	(pr,rl,x6),(pr,rl),fill(digit_0)	move digits over to normalize
+    000037  aa   200000 200005      62  	desc9a	2|0(1),al
+    000040  aa   200000 200017      63  	desc9a	2|0(1),x7
+    000041  aa  6 00072 1761 00     64  	sbq	sp|t		correct exponent
+    000042  aa  6 00071 0561 00     65  l1:	asq	sp|scale		set scale = exponent
+    000043  aa  4 00001 2351 00     66  	lda	4|1		get picture scale factor
+    000044  aa   000011 7350 00     67  	als	9
+    000045  aa   000033 7310 00     68  	ars	27
+    000046  aa   000000 5310 00     69  	neg	0
+    000047  aa  6 00071 0551 00     70  	asa	sp|scale		get final exponent
+    000050  aa  4 00001 2361 00     71  	ldq	4|1		get length of exponent field
+    000051  aa   000033 7370 00     72  	lls	27
+    000052  aa   000777 3750 07     73  	ana	=o777,dl
+    000053  aa   000001 0750 07     74  	ada	1,dl
+    000054  aa  0 00140 3015 00     75  	btd	(pr),(pr,rl)
+    000055  aa   600071 000004      76  	desc9a	sp|scale,4
+    000056  aa   300000 010005      77  	desc9ls	3|0,al
+    000057  aa  7 00044 7101 20     78  	short_return
+                                    79  "
+    000060                          80  float_zero:
+    000060  aa   000100 1004 00     81  	mlr	(0),(pr)		move zero into exponent
+    000061  0a   000064 000004      82  	desc9a	zero,4
+    000062  aa   300000 000004      83  	desc9a	3|0,4
+    000063  aa  7 00044 7101 20     84  	short_return
+                                    85  "
+    000064  aa  053 060 060 060     86  zero:	aci	"+000"
+    000065                          87  zero_table:
+    000065  aa   000001 002003      88  	oct	000001002003,004005006007,011012000000
+    000066  aa   004005 006007 
+    000067  aa   011012 000000 
+                                    89  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000070  5a   000003 000000 
+    000071  5a   000030 600000 
+    000072  aa   000000 000000 
+    000073  55   000012 000002 
+    000074  5a   000002 400003 
+    000075  55   000006 000012 
+    000076  aa  015 141 144 152
+    000077  aa  165 163 164 137
+    000100  aa  146 154 157 141
+    000101  aa  164 137 000 000
+    000102  55   000021 000003 
+    000103  0a   000000 400000 
+    000104  55   000015 000003 
+    000105  aa  015 141 144 152         adjust_float_
+    000106  aa  165 163 164 137
+    000107  aa  146 154 157 141
+    000110  aa  164 137 000 000
+    000111  55   000002 000012 
+    000112  6a   000000 400002 
+    000113  55   000024 000003 
+    000114  aa  014 163 171 155         symbol_table
+    000115  aa  142 157 154 137
+    000116  aa  164 141 142 154
+    000117  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000120  aa   000000 000015 
+    000121  aa   000000 000000 
+    000122  aa   000000 000000 
+    000123  5a   000012 000000 
+    000124  aa   000000 000000 
+    000125  aa   000000 000000 
+    000126  aa   000000 000000 
+    000127  5a   000021 000000 
+    000130  aa   000000 000000 
+    000131  aa   000000 000000 
+    000132  aa   000000 000000 
+    000133  aa   000000 000000 
+    000134  aa   000000 000000 
+    000135  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000136  aa   000001 000000 
+    000137  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000070 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   256027 153770 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000131 
+    000020  aa   000000 000103 
+    000021  aa   000114 000111 
+    000022  aa   000123 000103 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000044 
+    000067  aa   175453 017534 
+    000070  aa   000000 117547 
+    000071  aa   176214 400000 
+    000072  aa   076163 160145          >spec>install>1110>adjust_float_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076141 
+    000077  aa   144152 165163 
+    000100  aa   164137 146154 
+    000101  aa   157141 164137 
+    000102  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    adjust_float_            adjust_float_:       23,   30.
+          60    digit_0                  adjust_float_:        8,   61.
+          60    float_zero               adjust_float_:       44,   80.
+          42    l1                       adjust_float_:       58,   65.
+          70    prec                     adjust_float_:       25,   45,   59.
+          71    scale                    adjust_float_:       26,   48,   65,   70,   76.
+          72    t                        adjust_float_:       27,   43,   50,   57,   60,   64.
+          73    t1                       adjust_float_:       28,   53,   54.
+          64    zero                     adjust_float_:       82,   86.
+          65    zero_table               adjust_float_:       42,   87.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

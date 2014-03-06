@@ -1,0 +1,2258 @@
+	COMPILATION LISTING OF SEGMENT truncate_vtoce
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0953.9 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /* format: style4 */
+       15 truncate_vtoce: proc (branchp, first_page, code);
+       16 
+       17 
+       18 /* FUNCTION -
+       19*
+       20*   This procedure truncates the segment whose branch is pointed  to  by  the  input
+       21*   argument  "branchp",  from  the  page  number  defined  by  the  input  argument
+       22*   "first_page". The current length of the segment becomes equal  to  "first_page".
+       23*   All core and disk records occupied by the truncated portion of the segment
+       24*   are  freed.  In  addition,  the quota used information of the parents, up to the
+       25*   appropriate terminal quota directory, are updated to reflect the fact that  they
+       26*   , are not responsible any longer for those pages that have been freed.
+       27*
+       28*   If  code  = 0 upon return, the operation was successful. Otherwise the operation
+       29*   failed at some point because of a system error.
+       30*
+       31*   The parent directory is supposed to be locked before this procedure  is  called.
+       32*
+       33*
+       34*   IMPLEMENTATION -
+       35*
+       36*   If the segment is active, the truncation takes place in the ASTE. The VTOCE will
+       37*   automatically  be updated at deactivation or any time the procedure update_vtoce
+       38*   is called.
+       39*
+       40*   If the segment is not active, the truncation takes place directly in the  VTOCE.
+       41*   Since  the  parent  is  locked  and  the  segment  is  not active, it is safe to
+       42*   manipulate the VTOCE. However, updating the used count of the  parents  will  be
+       43*   done  on the ASTE's of the parent, after having forced them to the active state.
+       44*
+       45*
+       46*
+       47*   MODIFIED BY :
+       48*
+       49*   04/29/75  A. Bensoussan - Written for the new storage system.
+       50*   05/76	By Greenberg for await_vtoce,  06/76 for hphcs_$delete_vtoce.
+       51*   06/76 D.Vinograd - added entry hold which does not release pvtx .
+       52*   07/76 D. Vinograd modified to set volume dumper bit map so that truncated/deleted vtoces are dumped
+       53*   06/08/81 by J. Bongiovanni to set vtoce.records to 0 if truncating to 0
+       54*   07/10/82 by J. Bongiovanni to read entire VTOCE
+       55*   08/18/82 by J. Bongiovanni for new pc$deposit_list calling sequence
+       56*   10/26/82 by J. Bongiovanni to reset fm_damaged if truncating to 0, fix grandparent locking
+       57*   830430 BIM to make check of pvtx and vtocx against branch.
+       58*   83-08-06 by E. N. Kittlitz to do pvtx/vtocx check using search_ast$check.
+       59*   84-12-20 by Keith Loepere to count dirs pages against own quota.
+       60*   85-01-10 by Keith Loepere for covert channel detection.
+       61*   85-01-21 by Keith Loepere to add dtm setting and detection.
+       62**/
+       63 
+       64 
+       65 
+       66 dcl  branchp ptr;
+       67 dcl  code fixed bin (35);
+       68 dcl  first_page fixed bin (17);
+       69 
+       70 dcl  csl fixed bin;
+       71 dcl  deleting bit (1) init ("0"b);
+       72 dcl  1 deposit aligned,
+       73        2 list (256) bit (22) aligned;
+       74 dcl  dir_must_be_unlocked bit (1);
+       75 dcl  event_count fixed bin;
+       76 dcl  first fixed bin;
+       77 dcl  hold bit (1) init ("0"b);
+       78 dcl  i fixed bin;
+       79 dcl  1 local_vtoce like vtoce aligned;
+       80 dcl  multi_class bit (1) aligned;
+       81 dcl  n fixed bin;
+       82 dcl  normal bit (1) aligned;
+       83 dcl  page_count fixed bin;
+       84 dcl  pageno_list (256) fixed bin aligned;
+       85 dcl  par_astep ptr;
+       86 dcl  par_dp ptr;
+       87 dcl  par_ep ptr;
+       88 dcl  par_pvid bit (36) aligned;
+       89 dcl  par_uid bit (36) aligned;
+       90 dcl  par_vtocx fixed bin;
+       91 dcl  pvid bit (36) aligned;
+       92 dcl  pvtx fixed bin;
+       93 dcl  uid bit (36) aligned;
+       94 dcl  vtocx fixed bin;
+       95 
+       96 dcl  error_table_$mylock fixed bin (35) external;
+       97 dcl  error_table_$vtoce_connection_fail fixed bin (35) external;
+       98 dcl  pds$throttle_segment_state_changes bit (1) aligned external;
+       99 dcl  sst$checksum_filemap fixed bin (35) external;
+      100 
+      101 dcl  activate entry (ptr, fixed bin (35)) returns (ptr);
+      102 dcl  dbm_man$set_incr entry (fixed bin, fixed bin, fixed bin (35));
+      103 dcl  filemap_checksum_ entry (ptr, fixed bin, bit (36) aligned);
+      104 dcl  get_pvtx entry (bit (36) aligned, fixed bin (35)) returns (fixed bin);
+      105 dcl  get_pvtx$hold_pvtx entry (bit (36) aligned, fixed bin, fixed bin (35));
+      106 dcl  get_pvtx$release_pvtx entry (bit (36) aligned, fixed bin);
+      107 dcl  limit_covert_channel entry (fixed bin);
+      108 dcl  lock$dir_unlock entry (ptr);
+      109 dcl  lock$lock_ast entry;
+      110 dcl  lock$unlock_ast entry;
+      111 dcl  pc$deposit_list entry (fixed bin, fixed bin, ptr, fixed bin, ptr);
+      112 dcl  pc$truncate entry (ptr, fixed bin);
+      113 dcl  pc$updates entry (ptr);
+      114 dcl  quotaw$cu entry (ptr, fixed bin, bit (1), fixed bin, fixed bin (35));
+      115 dcl  search_ast$check entry (bit (36) aligned, bit (36) aligned, fixed bin, fixed bin (35)) returns (ptr);
+      116 dcl  sum$getbranch_root_my entry (ptr, bit (1), ptr, fixed bin (35));
+      117 dcl  syserr entry options (variable);
+      118 dcl  vtoc_man$await_vtoce entry (bit (36) aligned, fixed bin, fixed bin, fixed bin (35));
+      119 dcl  vtoc_man$get_vtoce entry (bit (36) aligned, fixed bin, fixed bin, bit (3), ptr, fixed bin (35));
+      120 dcl  vtoc_man$put_vtoce entry (bit (36) aligned, fixed bin, fixed bin, bit (3), ptr, fixed bin (35));
+      121 
+      122 dcl  (addr, bit, clock, fixed, min, null, ptr, substr) builtin;
+      123 
+      124 
+      125 	first = first_page;
+      126 	go to join;
+      127 hold: entry (branchp, first_page, code);
+      128 	first = first_page;
+      129 	hold = "1"b;
+      130 	goto join;
+      131 truncate_vtoce_delete: entry (branchp, code);
+      132 	deleting = "1"b;
+      133 	first = 0;
+      134 join:
+      135 
+      136 /* INITIALIZE POINTERS AND VARIABLES */
+      137 
+      138 	normal = ^(deleting | hold);
+      139 	ep = branchp;
+      140 	code = 0;
+      141 
+      142 	uid = entry.uid;
+      143 	pvid = entry.pvid;
+      144 	pvtx = get_pvtx (pvid, code); if code ^= 0 then return;
+      145 	vtocx = entry.vtocx;
+      146 	multi_class = entry.multiple_class;
+      147 	event_count = 0;
+      148 
+      149 /* IF THE SEGMENT IS ACTIVE, CALL UPON PAGE CONTROL TO DO ALL THE WORK */
+      150 
+      151 	call lock$lock_ast;
+      152 
+      153 	astep = search_ast$check (uid, pvid, vtocx, (0)); /* ignore double-uid error for now */
+      154 
+      155 	if astep ^= null then do;			/* aste really matches */
+      156 	     if aste.hc_sdw then call syserr (CRASH, "truncate_vtoce: attempt to destroy hc_sdw seg astep ^p", astep);
+      157 	     csl = fixed (aste.csl);
+      158 	     call pc$truncate (astep, first);
+      159 	     if first = 0 then do;			/* was truncate to zero length? */
+      160 		if aste.damaged then aste.fmchanged = "1"b; /* force update_vtoce if reset it */
+      161 		aste.damaged = "0"b;		/* user wanted zeroes: he's got them */
+      162 		aste.fm_damaged = "0"b;		/* any filemap damage got better */
+      163 	     end;
+      164 	     call lock$unlock_ast;
+      165 	     if ^deleting & hold then call get_pvtx$hold_pvtx (pvid, pvtx, code);
+      166 	     go to covert_test;
+      167 	end;
+      168 
+      169 	call lock$unlock_ast;
+      170 
+      171 
+      172 /* THE SEGMENT IS NOT ACTIVE - THEREFORE THE OPERATION HAS TO BE DONE ON THE VTOCE. */
+      173 /* NOTE THAT ANOTHER SEGMENT WITH THE SAME UID MIGHT BE ACTIVE, BUT WE DON'T CARE. */
+      174 
+      175 	vtocep = addr (local_vtoce);
+      176 
+      177 	call vtoc_man$get_vtoce (pvid, pvtx, vtocx, "111"b, vtocep, code);
+      178 	if code ^= 0 then return;
+      179 
+      180 	if uid ^= vtoce.uid then do;
+      181 	     code = error_table_$vtoce_connection_fail;
+      182 	     return;
+      183 	end;
+      184 
+      185 	csl = fixed (vtoce.csl);
+      186 
+      187 	if ^deleting then call get_pvtx$hold_pvtx (pvid, pvtx, code);
+      188 	if code ^= 0 then return;			/* Got demounted if return */
+      189 
+      190 
+      191 /* PERFORM THE TRUNCATION ON THE VTOCE AND WRITE IT BACK IN THE DISK -
+      192*   DO NOT DEPOSIT ANY DISK ADDRESSES YET, BUT REMEMBER THEM */
+      193 
+      194 	n = 0;
+      195 	do i = first to csl - 1;
+      196 	     if substr (vtoce.fm (i), 1, 1) = "0"b then do;
+      197 		n = n + 1;
+      198 		deposit.list (n) = vtoce.fm (i);
+      199 		pageno_list (n) = i;
+      200 		vtoce.fm (i) = truncate_vtoce_null_addr;
+      201 	     end;
+      202 	end;
+      203 
+      204 	if vtoce.fm_damaged & (sst$checksum_filemap ^= 0)
+      205 	then n = 0;				/* don't deposit potentially bogus addresses */
+      206 
+      207 	vtoce.csl = bit (fixed (min (first, csl), 9), 9);
+      208 	if first = 0 then do;
+      209 	     vtoce.records = "0"b;
+      210 	     vtoce.damaged = "0"b;
+      211 	     vtoce.fm_damaged = "0"b;
+      212 	end;
+      213 	else vtoce.records = bit (fixed (fixed (vtoce.records, 9) - n, 9), 9); /* #@!*%! */
+      214 
+      215 	if sst$checksum_filemap = 0 then do;
+      216 	     vtoce.fm_damaged = "0"b;
+      217 	     vtoce.fm_checksum_valid = "0"b;
+      218 	     vtoce.fm_checksum = ""b;
+      219 	end;
+      220 	else do;
+      221 	     vtoce.fm_checksum_valid = "1"b;
+      222 	     call filemap_checksum_ (addr (vtoce.fm), fixed (vtoce.csl, 9), vtoce.fm_checksum);
+      223 	end;
+      224 
+      225 	if vtoce.dirsw then
+      226 	     if ^vtoce.deciduous then
+      227 		vtoce.used (1) = vtoce.used (1) - n;	/* update dir quota */
+      228 
+      229 /* Set dtu, dtcm.
+      230*   This setting can be a covert channel event (external to page control's
+      231*   detection of dtu/dtm setting).  If the object is multi-class, then it sits
+      232*   in a lower class dir and this dtu setting is lower class visible.  The dtm
+      233*   is always lower class visible, since it propogates up the hierarchy. */
+      234 
+      235 	if normal then do;
+      236 	     vtoce.dtm, vtoce.dtu = bit (fixed (clock (), 52), 52);
+      237 	     if multi_class then event_count = 2;
+      238 	     else event_count = 1;
+      239 	end;
+      240 
+      241 	call vtoc_man$put_vtoce ("0"b, pvtx, vtocx, "111"b, vtocep, code);
+      242 	if code ^= 0 then go to release;
+      243 
+      244 	if deleting | (^deleting & ^vtoce.per_process & ^vtoce.deciduous) then
+      245 	     call dbm_man$set_incr (pvtx, vtocx, code);
+      246 
+      247 
+      248 /* IF THERE ARE ANY DISK ADDRESSES TO BE DEPOSITED, DO IT NOW - AND ALSO UPDATE THE USED COUNT
+      249*   IN ASTE's OF SUPERIOR DIRECTORIES AFTER HAVING FORCED THEM TO BE ACTIVE */
+      250 
+      251 	if n = 0 then go to release;
+      252 
+      253 	if ^vtoce.deciduous then do;			/* Cannot free deciduous space (hc part) */
+      254 	     call vtoc_man$await_vtoce ("0"b, pvtx, vtocx, code);
+      255 	     if code ^= 0 then go to release;
+      256 	     call pc$deposit_list (pvtx, (n), addr (deposit.list), vtocx, addr (pageno_list));
+      257 	end;
+      258 
+      259 release:
+      260 	if normal then call get_pvtx$release_pvtx (pvid, pvtx); /* Free volume for demount */
+      261 
+      262 
+      263 	if entry.owner = "111111111111111111111111111111111000"b then return;
+      264 						/* No quota handling if hphcs_$delv */
+      265 
+      266 	dp = ptr (ep, 0);
+      267 	par_uid = dir.uid;
+      268 	par_pvid = dir.pvid;
+      269 	par_vtocx = dir.vtocx;
+      270 	dir_must_be_unlocked = "0"b;
+      271 
+      272 	call lock$lock_ast;
+      273 
+      274 	par_astep = search_ast$check (par_uid, par_pvid, par_vtocx, code);
+      275 	if code ^= 0 then do;			/* can't activate it, so punt */
+      276 	     call lock$unlock_ast;
+      277 	     return;
+      278 	end;
+      279 
+      280 	if par_astep = null then do;
+      281 	     call lock$unlock_ast;
+      282 
+      283 	     call sum$getbranch_root_my (dp, "0"b, par_ep, code);
+      284 
+      285 	     if code = 0 then dir_must_be_unlocked = "1"b;
+      286 	     else if code = error_table_$mylock then code = 0; else return;
+      287 
+      288 	     par_dp = ptr (par_ep, 0);
+      289 	     par_astep = activate (par_ep, code);
+      290 
+      291 	     if code ^= 0 then do;
+      292 		if dir_must_be_unlocked then call lock$dir_unlock (par_dp);
+      293 		return;
+      294 	     end;
+      295 	end;
+      296 
+      297 	if ^vtoce.deciduous then do;
+      298 	     if vtoce.dirsw then
+      299 		if vtoce.received (1) = 0 then	/* non-terminal dir - give back quota to terminal cell */
+      300 		     call quotaw$cu (par_astep, (-n), "1"b, 0, code);
+      301 		else ;				/* deleting dir merely zeroes its own terminal quota */
+      302 	     else call quotaw$cu (par_astep, (-n), "0"b, 0, code);
+      303 	     if normal then call pc$updates (par_astep); /* let dumper know to come */
+      304 	end;
+      305 	call lock$unlock_ast;
+      306 
+      307 	if dir_must_be_unlocked then call lock$dir_unlock (par_dp);
+      308 
+      309 covert_test:
+      310 	if ^normal then return;
+      311 
+      312 /* see if the truncation of these pages can transmit some data */
+      313 
+      314 	if ^pds$throttle_segment_state_changes then return; /* uninteresting */
+      315 	if multi_class then do;			/* only multi-class segment attributes count towards covert channels */
+      316 
+      317 /* The changing of records used is a covert channel relevant event.  The number
+      318*   of events depends on how many pages were truncated. */
+      319 
+      320 	     csl = csl - first;
+      321 	     if csl > 0 then do;
+      322 		page_count = 1;
+      323 		do event_count = event_count repeat event_count + 1 while (page_count <= csl);
+      324 		     page_count = page_count * 2;	/* this finds log2(csl), sort of */
+      325 		end;
+      326 	     end;
+      327 	end;
+      328 
+      329 	if event_count > 0 then call limit_covert_channel (event_count);
+      330 	return;
+      331 
+      332 /* format: off */
+      333 
+      334  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      334 
+      335  /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  2     2 
+  2     3 
+  2     4 /* Template for an entry. Length = 38 words */
+  2     5 
+  2     6 dcl  ep ptr;
+  2     7 
+  2     8 dcl 1 entry based (ep) aligned,
+  2     9 
+  2    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  2    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  2    12 
+  2    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  2    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  2    15 
+  2    16     2 uid bit (36),					/* unique id of entry */
+  2    17 
+  2    18     2 dtem bit (36),				/* date-time entry modified */
+  2    19 
+  2    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  2    21     2 pad0 bit (17),
+  2    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  2    23 
+  2    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  2    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  2    26 
+  2    27     2 author,					/* user who created branch */
+  2    28       3 pers_rp bit (18),				/* name of user who created branch */
+  2    29       3 proj_rp bit (18),				/* project of user who created branch */
+  2    30 
+  2    31       3 tag char (1),				/* tag of user who created branch */
+  2    32       3 pad1 char (3),
+  2    33 
+  2    34     2 primary_name bit (504),				/* first name on name list */
+  2    35 
+  2    36     2 dtd bit (36),					/* date time dumped */
+  2    37 
+  2    38     2 pad2 bit (36),
+  2    39 
+  2    40 
+  2    41 /* the declarations below are for branch only */
+  2    42 
+  2    43 
+  2    44     2 pvid bit (36),				/* physical volume id */
+  2    45 
+  2    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    47     2 pad3 bit (18),
+  2    48 
+  2    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  2    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  2    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  2    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  2    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  2    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  2    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  2    56     2 security_oosw bit (1),				/* security out of service switch */
+  2    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  2    58     2 master_dir bit (1),				/* TRUE for master directory */
+  2    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  2    60     2 pad4 bit (11),
+  2    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  2    62 
+  2    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  2    64 
+  2    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  2    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  2    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  2    68 
+  2    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  2    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  2    71 
+  2    72     2 bc_author,					/* user who last set the bit count */
+  2    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  2    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  2    75 
+  2    76       3 tag char (1),				/* tag of user who set the bit count */
+  2    77       3 pad5 bit (2),
+  2    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  2    79 
+  2    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  2    81 
+  2    82     2 pad6 bit (36),
+  2    83 
+  2    84     2 checksum bit (36),				/* checksum from dtd */
+  2    85 
+  2    86     2 owner bit (36);				/* uid of containing directory */
+  2    87 
+  2    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      335 
+      336  /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  3     2 /* Modified 8/74 for NSS */
+  3     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  3     4 /* Modified 3/82 BIM for change pclock */
+  3     5 /* format: style3 */
+  3     6 
+  3     7 /* Template for the directory header. Length = 64 words. */
+  3     8 
+  3     9 dcl  dp ptr;
+  3    10 
+  3    11 dcl 1 dir based (dp) aligned,
+  3    12 
+  3    13    2 modify bit (36),				/* Process ID of last modifier */
+  3    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  3    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  3    16     2 dtc (3),					/* date-time checked by salvager array */
+  3    17       3 date bit (36),				/* the date */
+  3    18       3 error bit (36),				/* what errors were discovered */
+  3    19 
+  3    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  3    21 
+  3    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  3    23 
+  3    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  3    25 
+  3    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  3    27 
+  3    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  3    29     2 version_number fixed bin (17),			/* version number of header */
+  3    30 
+  3    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  3    32     2 pad2 bit (18),
+  3    33 
+  3    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  3    35     2 pad3 bit (18),
+  3    36 
+  3    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  3    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  3    39 
+  3    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  3    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  3    42 
+  3    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  3    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  3    45 
+  3    46     2 lcount fixed bin (17),				/* number of links */
+  3    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  3    48 
+  3    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  3    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  3    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  3    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  3    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  3    54     2 pad4 bit (14),
+  3    55 
+  3    56     2 iacl_count (0:7),
+  3    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  3    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  3    59 
+  3    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  3    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  3    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  3    63 
+  3    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  3    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  3    66 
+  3    67     2 htsize fixed bin (17),				/* size of hash table */
+  3    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  3    69 
+  3    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  3    71     2 pad6 fixed bin (17),
+  3    72 
+  3    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  3    74     2 pad7 bit (18)) unaligned,
+  3    75 
+  3    76     2 dts bit (36),					/* date-time directory last salvaged */
+  3    77 
+  3    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  3    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  3    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  3    81     2 checksum bit (36),				/* checksummed from uid on */
+  3    82     2 owner bit (36);				/* uid of parent dir */
+  3    83 
+  3    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  3    85 
+  3    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      336 
+      337  /* BEGIN INCLUDE FILE  null_addresses.incl.pl1 */
+  4     2 /* Added segmove values, Benson Margulies, 84-01 */
+  4     3 
+  4     4 dcl (pc_move_page_table_1_null_addr init	("3770070"b3),
+  4     5      pc_move_page_table_2_null_addr init	("3770100"b3),
+  4     6      get_aste_null_addr init			("3770110"b3),
+  4     7      make_sdw_null_addr init			("3770120"b3),
+  4     8      put_aste_null_addr init			("3770130"b3),
+  4     9      page_bad_pd_null_addr init		("3770150"b3),
+  4    10      list_deposit_null_addr init		("3770160"b3),
+  4    11      get_file_map_null_addr init		("3770170"b3),
+  4    12      fill_page_table_null_addr init		("3770200"b3),
+  4    13      init_sst_null_addr init			("3770210"b3),
+  4    14      get_file_map_vt_null_addr init		("3770220"b3),
+  4    15      unprotected_null_addr init		("3770230"b3),
+  4    16      page_bad_null_addr init			("3770240"b3),
+  4    17      page_problem_null_addr init		("3770250"b3),
+  4    18      page_parity_null_addr init		("3770260"b3),
+  4    19      page_devparity_null_addr init		("3770270"b3),
+  4    20      segmove_old_addr_null_addr init              ("3770300"b3),
+  4    21      segmove_new_addr_null_addr init		("3770310"b3),
+  4    22      get_file_map_dumper_non_null_addr init	("3777720"b3),
+  4    23      append_null_addr	         init       ("3777770"b3)) bit (22) aligned static options (constant);
+  4    24 dcl create_vtoce_four_null_addrs fixed bin (71) int static init (-1);/* 777777 777777 777777 777777 */
+  4    25 
+  4    26 dcl (create_vtoce_null_addr init		("777777"b3),
+  4    27      update_vtoce_null_addr init		("777776"b3),
+  4    28      truncate_vtoce_fill_null_addr init		("777775"b3),
+  4    29      truncate_vtoce_null_addr init		("777002"b3),
+  4    30      pv_salv_null_addr init			("777004"b3),
+  4    31      pv_scav_null_addr init			("777006"b3),
+  4    32      volume_reloader_null_addr init		("777774"b3),
+  4    33      volume_retriever_null_addr init		("777773"b3),
+  4    34      salv_truncate_null_addr init		("777005"b3)) bit (18) aligned static options (constant);
+  4    35 
+  4    36 /* END INCLUDE FILE null_addresses.incl.pl1 */
+      337 
+      338  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  5     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  5     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  5     4 
+  5     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  5     6 
+  5     7 dcl (
+  5     8 
+  5     9 /* The following constants define the message action codes.  This indicates
+  5    10*how a message is to be handled.  */
+  5    11 
+  5    12      SYSERR_CRASH_SYSTEM	init (1),			
+  5    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  5    14 
+  5    15      SYSERR_TERMINATE_PROCESS	init (2),
+  5    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  5    17 
+  5    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  5    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  5    20 
+  5    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  5    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  5    23 
+  5    24      SYSERR_LOG_OR_PRINT	init (4),
+  5    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  5    26 
+  5    27      SYSERR_LOG_OR_DISCARD	init (5),
+  5    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  5    29 
+  5    30 
+  5    31 /* The following constants are added to the normal severities to indicate
+  5    32*different sorting classes of messages.  */
+  5    33 
+  5    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  5    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  5    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  5    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  5    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  5    39 	) fixed bin internal static options (constant);
+  5    40 
+  5    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      338 
+      339  /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  6     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  6     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  6     4 
+  6     5 dcl  vtocep ptr;
+  6     6 
+  6     7 dcl 1 vtoce based (vtocep) aligned,
+  6     8 
+  6     9 
+  6    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  6    11 
+  6    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  6    13 
+  6    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  6    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  6    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  6    17     2 pad2 bit (9),
+  6    18 
+  6    19     2 dtu bit (36),					/* date and time segment was last used */
+  6    20 
+  6    21     2 dtm bit (36),					/* date and time segment was last modified */
+  6    22 
+  6    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  6    24     2 deciduous bit (1),				/* true if hc_sdw */
+  6    25     2 nid bit (1),					/* no incremental dump switch */
+  6    26     2 dnzp bit (1),					/* Dont null zero pages */
+  6    27     2 gtpd bit (1),					/* Global transparent paging device */
+  6    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  6    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  6    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  6    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  6    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  6    33     2 pad3 bit (8),
+  6    34     2 dirsw bit (1),				/* directory switch */
+  6    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  6    36     2 pad4 bit (16)) unaligned,			/* not used */
+  6    37 
+  6    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  6    39 
+  6    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  6    41 
+  6    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  6    43 
+  6    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  6    45 
+  6    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  6    47 
+  6    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  6    49 
+  6    50 
+  6    51 
+  6    52 
+  6    53 
+  6    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  6    55 
+  6    56     2 pad6 (10) bit (36),				/* not used */
+  6    57 
+  6    58     2 ncd bit (1),					/* no complete dump switch */
+  6    59     2 pad7 bit (17),
+  6    60     2 pad8 bit (18),
+  6    61 
+  6    62     2 dtd bit (36),					/* date-time-dumped */
+  6    63 
+  6    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  6    65 
+  6    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  6    67 
+  6    68 
+  6    69 
+  6    70 
+  6    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  6    72 
+  6    73     2 primary_name char (32),				/* primary name of the segment */
+  6    74 
+  6    75     2 time_created bit (36),				/* time the segment was created */
+  6    76 
+  6    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  6    78 
+  6    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  6    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  6    81 
+  6    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  6    83 
+  6    84     2 access_class bit (72),				/* access class in branch */
+  6    85     2 perm_flags aligned,
+  6    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  6    87       3 pad9 bit (35) unal,
+  6    88     2 owner bit (36);				/* pvid of this volume */
+  6    89 
+  6    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  6    91 
+  6    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  6    93     2 pad1 bit (7*36),
+  6    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  6    95     2 pad2 bit (184*36);
+  6    96 
+  6    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      339 
+      340 
+      341 /* format: on */
+      342 
+      343 /* BEGIN MESSAGE DOCUMENTATION
+      344*
+      345*   Message:
+      346*   truncate_vtoce: attempt to destroy hc_sdw seg astep PPP
+      347*
+      348*   S: $crash
+      349*
+      350*   T: $run
+      351*
+      352*   M: An attempt has been made to truncate
+      353*   a supervisor segment.
+      354*   The AST entry is located at PPP.
+      355*   $err
+      356*
+      357*   A: $recover
+      358*
+      359*   END MESSAGE DOCUMENTATION */
+      360 
+      361      end truncate_vtoce;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.5  truncate_vtoce.pl1                >spec>install>1115>truncate_vtoce.pl1
+334          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+335          2    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+336          3    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+337          4    07/11/84  0937.3  null_addresses.incl.pl1           >ldd>include>null_addresses.incl.pl1
+338          5    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+339          6    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000003 constant        fixed bin(17,0)          initial dcl 5-7 set ref 156*
+activate                        000020 constant        entry                    external dcl 101 ref 289
+addr                                                   builtin function         dcl 122 ref 175 222 222 256 256 256 256
+aste                                   based           structure                level 1 dcl 1-11
+astep                           001432 automatic       pointer                  dcl 1-9 set ref 153* 155 156 156* 157 158* 160 160
+                                                                                  161 162
+bit                                                    builtin function         dcl 122 ref 207 213 236
+branchp                                parameter       pointer                  dcl 66 ref 15 127 131 139
+clock                                                  builtin function         dcl 122 ref 236
+code                                   parameter       fixed bin(35,0)          dcl 67 set ref 15 127 131 140* 144* 144 165* 177*
+                                                                                  178 181* 187* 188 241* 242 244* 254* 255 274* 275
+                                                                                  283* 285 286 286* 289* 291 298* 302*
+csl                             000100 automatic       fixed bin(17,0)          dcl 70 in procedure "truncate_vtoce" set ref 157*
+                                                                                  185* 195 207 320* 320 321 323
+csl                      12            based           bit(9)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "truncate_vtoce" ref 157
+csl                       2(09)        based           bit(9)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 6-7 in procedure "truncate_vtoce" set ref 185
+                                                                                  207* 222 222
+damaged                  13(19)        based           bit(1)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "truncate_vtoce" set ref 160
+                                                                                  161*
+damaged                   5(06)        based           bit(1)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 6-7 in procedure "truncate_vtoce" set ref 210*
+dbm_man$set_incr                000022 constant        entry                    external dcl 102 ref 244
+deciduous                 5(01)        based           bit(1)                   level 2 packed packed unaligned dcl 6-7 ref 225 244
+                                                                                  253 297
+deleting                        000101 automatic       bit(1)                   initial packed unaligned dcl 71 set ref 71* 132* 134
+                                                                                  165 187 244 244
+deposit                         000102 automatic       structure                level 1 dcl 72
+dir                                    based           structure                level 1 dcl 3-11
+dir_must_be_unlocked            000502 automatic       bit(1)                   packed unaligned dcl 74 set ref 270* 285* 292 307
+dirsw                     5(18)        based           bit(1)                   level 2 packed packed unaligned dcl 6-7 ref 225 298
+dp                              001436 automatic       pointer                  dcl 3-9 set ref 266* 267 268 269 283*
+dtm                       4            based           bit(36)                  level 2 packed packed unaligned dcl 6-7 set ref 236*
+dtu                       3            based           bit(36)                  level 2 packed packed unaligned dcl 6-7 set ref 236*
+entry                                  based           structure                level 1 dcl 2-8
+ep                              001434 automatic       pointer                  dcl 2-6 set ref 139* 142 143 145 146 263 266
+error_table_$mylock             000010 external static fixed bin(35,0)          dcl 96 ref 286
+error_table_$vtoce_connection_fail
+                                000012 external static fixed bin(35,0)          dcl 97 ref 181
+event_count                     000503 automatic       fixed bin(17,0)          dcl 75 set ref 147* 237* 238* 323* 323 325* 329 329*
+filemap_checksum_               000024 constant        entry                    external dcl 103 ref 222
+first                           000504 automatic       fixed bin(17,0)          dcl 76 set ref 125* 128* 133* 158* 159 195 207 208
+                                                                                  320
+first_page                             parameter       fixed bin(17,0)          dcl 68 ref 15 125 127 128
+fixed                                                  builtin function         dcl 122 ref 157 185 207 213 213 222 222 236
+fm                       20            based           bit(18)                  array level 2 packed packed unaligned dcl 6-7 set
+                                                                                  ref 196 198 200* 222 222
+fm_checksum               6            based           bit(36)                  level 2 dcl 6-7 set ref 218* 222*
+fm_checksum_valid         5(08)        based           bit(1)                   level 2 packed packed unaligned dcl 6-7 set ref 217*
+                                                                                  221*
+fm_damaged                5(07)        based           bit(1)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 6-7 in procedure "truncate_vtoce" set ref 204
+                                                                                  211* 216*
+fm_damaged                5(12)        based           bit(1)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "truncate_vtoce" set ref
+                                                                                  162*
+fmchanged                12(09)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref
+                                                                                  160*
+get_pvtx                        000026 constant        entry                    external dcl 104 ref 144
+get_pvtx$hold_pvtx              000030 constant        entry                    external dcl 105 ref 165 187
+get_pvtx$release_pvtx           000032 constant        entry                    external dcl 106 ref 259
+hc_sdw                    5(05)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 ref 156
+hold                            000505 automatic       bit(1)                   initial packed unaligned dcl 77 set ref 77* 129* 134
+                                                                                  165
+i                               000506 automatic       fixed bin(17,0)          dcl 78 set ref 195* 196 198 199 200*
+limit_covert_channel            000034 constant        entry                    external dcl 107 ref 329
+list                            000102 automatic       bit(22)                  array level 2 dcl 72 set ref 198* 256 256
+local_vtoce                     000507 automatic       structure                level 1 dcl 79 set ref 175
+lock$dir_unlock                 000036 constant        entry                    external dcl 108 ref 292 307
+lock$lock_ast                   000040 constant        entry                    external dcl 109 ref 151 272
+lock$unlock_ast                 000042 constant        entry                    external dcl 110 ref 164 169 276 281 305
+min                                                    builtin function         dcl 122 ref 207
+multi_class                     001007 automatic       bit(1)                   dcl 80 set ref 146* 237 315
+multiple_class           32(05)        based           bit(1)                   level 2 packed packed unaligned dcl 2-8 ref 146
+n                               001010 automatic       fixed bin(17,0)          dcl 81 set ref 194* 197* 197 198 199 204* 213 225
+                                                                                  251 256 298 302
+normal                          001011 automatic       bit(1)                   dcl 82 set ref 134* 235 259 303 309
+null                                                   builtin function         dcl 122 ref 155 280
+owner                    44            based           bit(36)                  level 2 dcl 2-8 ref 263
+page_count                      001012 automatic       fixed bin(17,0)          dcl 83 set ref 322* 323 324* 324
+pageno_list                     001013 automatic       fixed bin(17,0)          array dcl 84 set ref 199* 256 256
+par_astep                       001414 automatic       pointer                  dcl 85 set ref 274* 280 289* 298* 302* 303*
+par_dp                          001416 automatic       pointer                  dcl 86 set ref 288* 292* 307*
+par_ep                          001420 automatic       pointer                  dcl 87 set ref 283* 288 289*
+par_pvid                        001422 automatic       bit(36)                  dcl 88 set ref 268* 274*
+par_uid                         001423 automatic       bit(36)                  dcl 89 set ref 267* 274*
+par_vtocx                       001424 automatic       fixed bin(17,0)          dcl 90 set ref 269* 274*
+pc$deposit_list                 000044 constant        entry                    external dcl 111 ref 256
+pc$truncate                     000046 constant        entry                    external dcl 112 ref 158
+pc$updates                      000050 constant        entry                    external dcl 113 ref 303
+pds$throttle_segment_state_changes
+                                000014 external static bit(1)                   dcl 98 ref 314
+per_process               5(05)        based           bit(1)                   level 2 packed packed unaligned dcl 6-7 ref 244
+ptr                                                    builtin function         dcl 122 ref 266 288
+pvid                     11            based           bit(36)                  level 2 in structure "dir" dcl 3-11 in procedure
+                                                                                  "truncate_vtoce" ref 268
+pvid                     30            based           bit(36)                  level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 2-8 in procedure "truncate_vtoce" ref 143
+pvid                            001425 automatic       bit(36)                  dcl 91 in procedure "truncate_vtoce" set ref 143*
+                                                                                  144* 153* 165* 177* 187* 259*
+pvtx                            001426 automatic       fixed bin(17,0)          dcl 92 set ref 144* 165* 177* 187* 241* 244* 254*
+                                                                                  256* 259*
+quotaw$cu                       000052 constant        entry                    external dcl 114 ref 298 302
+received                 11            based           fixed bin(18,0)          array level 2 packed packed unsigned unaligned
+                                                                                  dcl 6-7 ref 298
+records                   2(18)        based           bit(9)                   level 2 packed packed unaligned dcl 6-7 set ref 209*
+                                                                                  213* 213
+search_ast$check                000054 constant        entry                    external dcl 115 ref 153 274
+sst$checksum_filemap            000016 external static fixed bin(35,0)          dcl 99 ref 204 215
+substr                                                 builtin function         dcl 122 ref 196
+sum$getbranch_root_my           000056 constant        entry                    external dcl 116 ref 283
+syserr                          000060 constant        entry                    external dcl 117 ref 156
+truncate_vtoce_null_addr        001267 constant        bit(18)                  initial dcl 4-26 ref 200
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 3-11 in procedure
+                                                                                  "truncate_vtoce" ref 267
+uid                       1            based           bit(36)                  level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 6-7 in procedure "truncate_vtoce" ref 180
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 2-8 in procedure
+                                                                                  "truncate_vtoce" ref 142
+uid                             001427 automatic       bit(36)                  dcl 93 in procedure "truncate_vtoce" set ref 142*
+                                                                                  153* 180
+used                     10            based           fixed bin(18,0)          array level 2 packed packed unsigned unaligned
+                                                                                  dcl 6-7 set ref 225* 225
+vtoc_man$await_vtoce            000062 constant        entry                    external dcl 118 ref 254
+vtoc_man$get_vtoce              000064 constant        entry                    external dcl 119 ref 177
+vtoc_man$put_vtoce              000066 constant        entry                    external dcl 120 ref 241
+vtoce                                  based           structure                level 1 dcl 6-7
+vtocep                          001440 automatic       pointer                  dcl 6-5 set ref 175* 177* 180 185 196 198 200 204
+                                                                                  207 209 210 211 213 213 216 217 218 221 222 222
+                                                                                  222 222 222 225 225 225 225 236 236 241* 244 244
+                                                                                  253 297 298 298
+vtocx                           001430 automatic       fixed bin(17,0)          dcl 94 in procedure "truncate_vtoce" set ref 145*
+                                                                                  153* 177* 241* 244* 254* 256*
+vtocx                    31            based           fixed bin(17,0)          level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 2-8 in procedure "truncate_vtoce" ref 145
+vtocx                    15            based           fixed bin(17,0)          level 2 in structure "dir" packed packed unaligned
+                                                                                  dcl 3-11 in procedure "truncate_vtoce" ref 269
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 5-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 5-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 5-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 5-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 5-7
+append_null_addr                       internal static bit(22)                  initial dcl 4-4
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+create_vtoce_four_null_addrs           internal static fixed bin(71,0)          initial dcl 4-24
+create_vtoce_null_addr                 internal static bit(18)                  initial dcl 4-26
+fill_page_table_null_addr              internal static bit(22)                  initial dcl 4-4
+get_aste_null_addr                     internal static bit(22)                  initial dcl 4-4
+get_file_map_dumper_non_null_addr      internal static bit(22)                  initial dcl 4-4
+get_file_map_null_addr                 internal static bit(22)                  initial dcl 4-4
+get_file_map_vt_null_addr              internal static bit(22)                  initial dcl 4-4
+init_sst_null_addr                     internal static bit(22)                  initial dcl 4-4
+list_deposit_null_addr                 internal static bit(22)                  initial dcl 4-4
+make_sdw_null_addr                     internal static bit(22)                  initial dcl 4-4
+page_bad_null_addr                     internal static bit(22)                  initial dcl 4-4
+page_bad_pd_null_addr                  internal static bit(22)                  initial dcl 4-4
+page_devparity_null_addr               internal static bit(22)                  initial dcl 4-4
+page_parity_null_addr                  internal static bit(22)                  initial dcl 4-4
+page_problem_null_addr                 internal static bit(22)                  initial dcl 4-4
+pc_move_page_table_1_null_addr         internal static bit(22)                  initial dcl 4-4
+pc_move_page_table_2_null_addr         internal static bit(22)                  initial dcl 4-4
+put_aste_null_addr                     internal static bit(22)                  initial dcl 4-4
+pv_salv_null_addr                      internal static bit(18)                  initial dcl 4-26
+pv_scav_null_addr                      internal static bit(18)                  initial dcl 4-26
+salv_truncate_null_addr                internal static bit(18)                  initial dcl 4-26
+seg_aste                               based           structure                level 1 dcl 1-96
+seg_vtoce                              based           structure                level 1 dcl 6-92
+segmove_new_addr_null_addr             internal static bit(22)                  initial dcl 4-4
+segmove_old_addr_null_addr             internal static bit(22)                  initial dcl 4-4
+truncate_vtoce_fill_null_addr          internal static bit(18)                  initial dcl 4-26
+unprotected_null_addr                  internal static bit(22)                  initial dcl 4-4
+update_vtoce_null_addr                 internal static bit(18)                  initial dcl 4-26
+version_number_2                       internal static fixed bin(17,0)          initial dcl 3-84
+volume_reloader_null_addr              internal static bit(18)                  initial dcl 4-26
+volume_retriever_null_addr             internal static bit(18)                  initial dcl 4-26
+vtoce_parts                            based           bit(2304)                array dcl 6-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+covert_test                     001221 constant        label                    dcl 309 ref 166
+hold                            000056 constant        entry                    external dcl 127
+join                            000115 constant        label                    dcl 134 ref 126 130
+release                         000726 constant        label                    dcl 259 ref 242 251 255
+truncate_vtoce                  000037 constant        entry                    external dcl 15
+truncate_vtoce_delete           000101 constant        entry                    external dcl 131
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1616        1706    1271        1626
+Length      2242    1271        70         320     324           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+truncate_vtoce                      861 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+truncate_vtoce           000100 csl                         truncate_vtoce
+                         000101 deleting                    truncate_vtoce
+                         000102 deposit                     truncate_vtoce
+                         000502 dir_must_be_unlocked        truncate_vtoce
+                         000503 event_count                 truncate_vtoce
+                         000504 first                       truncate_vtoce
+                         000505 hold                        truncate_vtoce
+                         000506 i                           truncate_vtoce
+                         000507 local_vtoce                 truncate_vtoce
+                         001007 multi_class                 truncate_vtoce
+                         001010 n                           truncate_vtoce
+                         001011 normal                      truncate_vtoce
+                         001012 page_count                  truncate_vtoce
+                         001013 pageno_list                 truncate_vtoce
+                         001414 par_astep                   truncate_vtoce
+                         001416 par_dp                      truncate_vtoce
+                         001420 par_ep                      truncate_vtoce
+                         001422 par_pvid                    truncate_vtoce
+                         001423 par_uid                     truncate_vtoce
+                         001424 par_vtocx                   truncate_vtoce
+                         001425 pvid                        truncate_vtoce
+                         001426 pvtx                        truncate_vtoce
+                         001427 uid                         truncate_vtoce
+                         001430 vtocx                       truncate_vtoce
+                         001432 astep                       truncate_vtoce
+                         001434 ep                          truncate_vtoce
+                         001436 dp                          truncate_vtoce
+                         001440 vtocep                      truncate_vtoce
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+activate                      dbm_man$set_incr              filemap_checksum_             get_pvtx
+get_pvtx$hold_pvtx            get_pvtx$release_pvtx         limit_covert_channel          lock$dir_unlock
+lock$lock_ast                 lock$unlock_ast               pc$deposit_list               pc$truncate
+pc$updates                    quotaw$cu                     search_ast$check              sum$getbranch_root_my
+syserr                        vtoc_man$await_vtoce          vtoc_man$get_vtoce            vtoc_man$put_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$mylock           error_table_$vtoce_connection_fail
+pds$throttle_segment_state_changes                          sst$checksum_filemap
+
+
+CONSTANTS
+001261  aa     776777777777
+
+001262  aa     775777777777
+
+001263  aa     773777777777
+
+001264  aa     777777000777
+
+001265  aa     777737777777
+
+001266  aa     777777577777
+
+001267  aa     777002000000
+
+001270  aa     777777777770
+
+000000  aa     524000000066
+
+000001  aa     404000000021
+
+000002  aa     404000000043
+
+000003  aa     000000000001
+
+000004  aa     464000000000
+
+000006  aa     077777000043
+000007  aa     000001000000
+
+000010  aa  164 162 165 156	trun
+000011  aa  143 141 164 145	cate
+000012  aa  137 166 164 157	_vto
+000013  aa  143 145 072 040	ce: 
+000014  aa  141 164 164 145	atte
+000015  aa  155 160 164 040	mpt 
+000016  aa  164 157 040 144	to d
+000017  aa  145 163 164 162	estr
+000020  aa  157 171 040 150	oy h
+000021  aa  143 137 163 144	c_sd
+000022  aa  167 040 163 145	w se
+000023  aa  147 040 141 163	g as
+000024  aa  164 145 160 040	tep 
+000025  aa  136 160 000 000	^p
+
+BEGIN PROCEDURE truncate_vtoce
+PROLOGUE SEQUENCE
+000026  aa  6 01445 4401 00	sxl0 	pr6|805
+						STATEMENT 1 ON LINE 71
+000027  aa  6 00101 4501 00	stz  	pr6|65		deleting
+						STATEMENT 1 ON LINE 77
+000030  aa  6 00505 4501 00	stz  	pr6|325		hold
+000031  aa  6 01445 7201 00	lxl0 	pr6|805
+000032  aa   000000 7100 10	tra  	0,0
+MAIN SEQUENCE
+ENTRY TO truncate_vtoce                                     STATEMENT 1 ON LINE 15
+truncate_vtoce: proc (branchp, first_page, code);
+
+000033  at     000003000004
+000034  tt     000001000002
+000035  ta     000033000000
+000036  da     000302300000
+000037  aa   001540 6270 00	eax7 	864
+000040  aa  7 00034 3521 20	epp2 	pr7|28,*
+000041  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000042  aa     000006000000
+000043  aa     000000000000
+000044  aa  6 00032 3735 20	epp7 	pr6|26,*
+000045  aa  7 00006 3715 20	epp5 	pr7|6,*
+000046  aa  6 01442 6515 00	spri5	pr6|802
+000047  aa   777757 7000 04	tsx0 	-17,ic		000026
+						STATEMENT 1 ON LINE 125
+	first = first_page;
+
+000050  aa  6 00032 3735 20	epp7 	pr6|26,*
+000051  aa  7 00004 2361 20	ldq  	pr7|4,*		first_page
+000052  aa  6 00504 7561 00	stq  	pr6|324		first
+						STATEMENT 1 ON LINE 126
+	go to join;
+
+000053  aa   000042 7100 04	tra  	34,ic		000115
+ENTRY TO hold                                               STATEMENT 1 ON LINE 127
+hold: entry (branchp, first_page, code);
+
+000054  ta     000033000000
+000055  da     000307300000
+000056  aa   001540 6270 00	eax7 	864
+000057  aa  7 00034 3521 20	epp2 	pr7|28,*
+000060  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000061  aa     000006000000
+000062  aa     000000000000
+000063  aa  6 00032 3735 20	epp7 	pr6|26,*
+000064  aa  7 00006 3715 20	epp5 	pr7|6,*
+000065  aa  6 01442 6515 00	spri5	pr6|802
+000066  aa   777740 7000 04	tsx0 	-32,ic		000026
+						STATEMENT 1 ON LINE 128
+	first = first_page;
+
+000067  aa  6 00032 3735 20	epp7 	pr6|26,*
+000070  aa  7 00004 2361 20	ldq  	pr7|4,*		first_page
+000071  aa  6 00504 7561 00	stq  	pr6|324		first
+						STATEMENT 1 ON LINE 129
+	hold = "1"b;
+
+000072  aa   400000 2350 03	lda  	131072,du
+000073  aa  6 00505 7551 00	sta  	pr6|325		hold
+						STATEMENT 1 ON LINE 130
+	goto join;
+
+000074  aa   000021 7100 04	tra  	17,ic		000115
+ENTRY TO truncate_vtoce_delete                              STATEMENT 1 ON LINE 131
+truncate_vtoce_delete: entry (branchp, code);
+
+000075  at     000002000004
+000076  ta     000002000000
+000077  ta     000075000000
+000100  da     000320300000
+000101  aa   001540 6270 00	eax7 	864
+000102  aa  7 00034 3521 20	epp2 	pr7|28,*
+000103  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000104  aa     000004000000
+000105  aa     000000000000
+000106  aa  6 00032 3735 20	epp7 	pr6|26,*
+000107  aa  7 00004 3715 20	epp5 	pr7|4,*
+000110  aa  6 01442 6515 00	spri5	pr6|802
+000111  aa   777715 7000 04	tsx0 	-51,ic		000026
+						STATEMENT 1 ON LINE 132
+	deleting = "1"b;
+
+000112  aa   400000 2350 03	lda  	131072,du
+000113  aa  6 00101 7551 00	sta  	pr6|65		deleting
+						STATEMENT 1 ON LINE 133
+	first = 0;
+
+000114  aa  6 00504 4501 00	stz  	pr6|324		first
+						STATEMENT 1 ON LINE 134
+join:
+
+/* INITIALIZE POINTERS AND VARIABLES */
+
+	normal = ^(deleting | hold);
+
+000115  aa  6 00101 2351 00	lda  	pr6|65		deleting
+000116  aa  6 00505 2751 00	ora  	pr6|325		hold
+000117  aa  0 00002 6751 00	era  	pr0|2		= 400000000000
+000120  aa  6 01011 7551 00	sta  	pr6|521		normal
+						STATEMENT 1 ON LINE 139
+	ep = branchp;
+
+000121  aa  6 00032 3735 20	epp7 	pr6|26,*
+000122  aa  7 00002 3715 20	epp5 	pr7|2,*		branchp
+000123  aa  5 00000 3715 20	epp5 	pr5|0,*		branchp
+000124  aa  6 01434 6515 00	spri5	pr6|796		ep
+						STATEMENT 1 ON LINE 140
+	code = 0;
+
+000125  aa  6 01442 4501 20	stz  	pr6|802,*		code
+						STATEMENT 1 ON LINE 142
+	uid = entry.uid;
+
+000126  aa  5 00002 2351 00	lda  	pr5|2		entry.uid
+000127  aa  6 01427 7551 00	sta  	pr6|791		uid
+						STATEMENT 1 ON LINE 143
+	pvid = entry.pvid;
+
+000130  aa  5 00030 2351 00	lda  	pr5|24		entry.pvid
+000131  aa  6 01425 7551 00	sta  	pr6|789		pvid
+						STATEMENT 1 ON LINE 144
+	pvtx = get_pvtx (pvid, code);
+
+000132  aa  6 01425 3521 00	epp2 	pr6|789		pvid
+000133  aa  6 01450 2521 00	spri2	pr6|808
+000134  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000135  aa  6 01452 2521 00	spri2	pr6|810
+000136  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000137  aa  6 01454 2521 00	spri2	pr6|812
+000140  aa  6 01446 6211 00	eax1 	pr6|806
+000141  aa   014000 4310 07	fld  	6144,dl
+000142  aa  6 00044 3701 20	epp4 	pr6|36,*
+000143  la  4 00026 3521 20	epp2 	pr4|22,*		get_pvtx
+000144  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 2 ON LINE 144
+ if code ^= 0 then return;
+
+000145  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+000146  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 145
+	vtocx = entry.vtocx;
+
+000147  aa  6 01434 3735 20	epp7 	pr6|796,*		ep
+000150  aa  7 00031 2351 00	lda  	pr7|25		entry.vtocx
+000151  aa   000066 7330 00	lrs  	54
+000152  aa  6 01430 7561 00	stq  	pr6|792		vtocx
+						STATEMENT 1 ON LINE 146
+	multi_class = entry.multiple_class;
+
+000153  aa  7 00032 2351 00	lda  	pr7|26		entry.multiple_class
+000154  aa   000005 7350 00	als  	5
+000155  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000156  aa  6 01007 7551 00	sta  	pr6|519		multi_class
+						STATEMENT 1 ON LINE 147
+	event_count = 0;
+
+000157  aa  6 00503 4501 00	stz  	pr6|323		event_count
+						STATEMENT 1 ON LINE 151
+	call lock$lock_ast;
+
+000160  aa  6 00056 6211 00	eax1 	pr6|46
+000161  aa   000000 4310 07	fld  	0,dl
+000162  aa  6 00044 3701 20	epp4 	pr6|36,*
+000163  la  4 00040 3521 20	epp2 	pr4|32,*		lock$lock_ast
+000164  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 153
+	astep = search_ast$check (uid, pvid, vtocx, (0));
+
+000165  aa  6 01456 4501 00	stz  	pr6|814
+000166  aa  6 01427 3521 00	epp2 	pr6|791		uid
+000167  aa  6 01462 2521 00	spri2	pr6|818
+000170  aa  6 01425 3521 00	epp2 	pr6|789		pvid
+000171  aa  6 01464 2521 00	spri2	pr6|820
+000172  aa  6 01430 3521 00	epp2 	pr6|792		vtocx
+000173  aa  6 01466 2521 00	spri2	pr6|822
+000174  aa  6 01456 3521 00	epp2 	pr6|814
+000175  aa  6 01470 2521 00	spri2	pr6|824
+000176  aa  6 01432 3521 00	epp2 	pr6|794		astep
+000177  aa  6 01472 2521 00	spri2	pr6|826
+000200  aa  6 01460 6211 00	eax1 	pr6|816
+000201  aa   024000 4310 07	fld  	10240,dl
+000202  aa  6 00044 3701 20	epp4 	pr6|36,*
+000203  la  4 00054 3521 20	epp2 	pr4|44,*		search_ast$check
+000204  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 155
+	if astep ^= null then do;
+
+000205  aa  6 01432 2371 00	ldaq 	pr6|794		astep
+000206  aa   777600 6770 04	eraq 	-128,ic		000006 = 077777000043 000001000000
+000207  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000210  aa   000107 6000 04	tze  	71,ic		000317
+						STATEMENT 1 ON LINE 156
+	     if aste.hc_sdw then call syserr (CRASH, "truncate_vtoce: attempt to destroy hc_sdw seg astep ^p", astep);
+
+000211  aa  6 01432 3735 20	epp7 	pr6|794,*		astep
+000212  aa  7 00005 2351 00	lda  	pr7|5		aste.hc_sdw
+000213  aa   010000 3150 03	cana 	4096,du
+000214  aa   000025 6000 04	tze  	21,ic		000241
+000215  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000216  aa   777573 00 0070	desc9a	-133,56		000010 = 164162165156
+000217  aa  6 01474 00 0070	desc9a	pr6|828,56
+000220  aa   777563 3520 04	epp2 	-141,ic		000003 = 000000000001
+000221  aa  6 01514 2521 00	spri2	pr6|844
+000222  aa  6 01474 3521 00	epp2 	pr6|828
+000223  aa  6 01516 2521 00	spri2	pr6|846
+000224  aa  6 01432 3521 00	epp2 	pr6|794		astep
+000225  aa  6 01520 2521 00	spri2	pr6|848
+000226  aa   777553 3520 04	epp2 	-149,ic		000001 = 404000000021
+000227  aa  6 01522 2521 00	spri2	pr6|850
+000230  aa   777550 3520 04	epp2 	-152,ic		000000 = 524000000066
+000231  aa  6 01524 2521 00	spri2	pr6|852
+000232  aa   777552 3520 04	epp2 	-150,ic		000004 = 464000000000
+000233  aa  6 01526 2521 00	spri2	pr6|854
+000234  aa  6 01512 6211 00	eax1 	pr6|842
+000235  aa   014000 4310 07	fld  	6144,dl
+000236  aa  6 00044 3701 20	epp4 	pr6|36,*
+000237  la  4 00060 3521 20	epp2 	pr4|48,*		syserr
+000240  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 157
+	     csl = fixed (aste.csl);
+
+000241  aa  6 01432 3735 20	epp7 	pr6|794,*		astep
+000242  aa  7 00012 2351 00	lda  	pr7|10		aste.csl
+000243  aa   000077 7730 00	lrl  	63
+000244  aa  6 00100 7561 00	stq  	pr6|64		csl
+						STATEMENT 1 ON LINE 158
+	     call pc$truncate (astep, first);
+
+000245  aa  6 01432 3521 00	epp2 	pr6|794		astep
+000246  aa  6 01450 2521 00	spri2	pr6|808
+000247  aa  6 00504 3521 00	epp2 	pr6|324		first
+000250  aa  6 01452 2521 00	spri2	pr6|810
+000251  aa  6 01446 6211 00	eax1 	pr6|806
+000252  aa   010000 4310 07	fld  	4096,dl
+000253  aa  6 00044 3701 20	epp4 	pr6|36,*
+000254  la  4 00046 3521 20	epp2 	pr4|38,*		pc$truncate
+000255  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 159
+	     if first = 0 then do;
+
+000256  aa  6 00504 2361 00	ldq  	pr6|324		first
+000257  aa   000013 6010 04	tnz  	11,ic		000272
+						STATEMENT 1 ON LINE 160
+		if aste.damaged then aste.fmchanged = "1"b;
+
+000260  aa  6 01432 3735 20	epp7 	pr6|794,*		astep
+000261  aa  7 00013 2351 00	lda  	pr7|11		aste.damaged
+000262  aa   200000 3150 07	cana 	65536,dl
+000263  aa   000003 6000 04	tze  	3,ic		000266
+000264  aa   000400 2350 03	lda  	256,du
+000265  aa  7 00012 2551 00	orsa 	pr7|10		aste.fmchanged
+						STATEMENT 1 ON LINE 161
+		aste.damaged = "0"b;
+
+000266  aa   001000 2350 04	lda  	512,ic		001266 = 777777577777
+000267  aa  7 00013 3551 00	ansa 	pr7|11		aste.damaged
+						STATEMENT 1 ON LINE 162
+		aste.fm_damaged = "0"b;
+
+000270  aa   000775 2350 04	lda  	509,ic		001265 = 777737777777
+000271  aa  7 00005 3551 00	ansa 	pr7|5		aste.fm_damaged
+						STATEMENT 1 ON LINE 163
+	     end;
+
+						STATEMENT 1 ON LINE 164
+	     call lock$unlock_ast;
+
+000272  aa  6 00056 6211 00	eax1 	pr6|46
+000273  aa   000000 4310 07	fld  	0,dl
+000274  aa  6 00044 3701 20	epp4 	pr6|36,*
+000275  la  4 00042 3521 20	epp2 	pr4|34,*		lock$unlock_ast
+000276  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 165
+	     if ^deleting & hold then call get_pvtx$hold_pvtx (pvid, pvtx, code);
+
+000277  aa  6 00101 2351 00	lda  	pr6|65		deleting
+000300  aa   000721 6010 04	tnz  	465,ic		001221
+000301  aa  6 00505 2351 00	lda  	pr6|325		hold
+000302  aa   000717 6000 04	tze  	463,ic		001221
+000303  aa  6 01425 3521 00	epp2 	pr6|789		pvid
+000304  aa  6 01450 2521 00	spri2	pr6|808
+000305  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000306  aa  6 01452 2521 00	spri2	pr6|810
+000307  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000310  aa  6 01454 2521 00	spri2	pr6|812
+000311  aa  6 01446 6211 00	eax1 	pr6|806
+000312  aa   014000 4310 07	fld  	6144,dl
+000313  aa  6 00044 3701 20	epp4 	pr6|36,*
+000314  la  4 00030 3521 20	epp2 	pr4|24,*		get_pvtx$hold_pvtx
+000315  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 166
+	     go to covert_test;
+
+000316  aa   000703 7100 04	tra  	451,ic		001221
+						STATEMENT 1 ON LINE 167
+	end;
+
+						STATEMENT 1 ON LINE 169
+	call lock$unlock_ast;
+
+000317  aa  6 00056 6211 00	eax1 	pr6|46
+000320  aa   000000 4310 07	fld  	0,dl
+000321  aa  6 00044 3701 20	epp4 	pr6|36,*
+000322  la  4 00042 3521 20	epp2 	pr4|34,*		lock$unlock_ast
+000323  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 175
+	vtocep = addr (local_vtoce);
+
+000324  aa  6 00507 3735 00	epp7 	pr6|327		local_vtoce
+000325  aa  6 01440 6535 00	spri7	pr6|800		vtocep
+						STATEMENT 1 ON LINE 177
+	call vtoc_man$get_vtoce (pvid, pvtx, vtocx, "111"b, vtocep, code);
+
+000326  aa   700000 2350 03	lda  	229376,du
+000327  aa  6 01456 7551 00	sta  	pr6|814
+000330  aa  6 01425 3521 00	epp2 	pr6|789		pvid
+000331  aa  6 01514 2521 00	spri2	pr6|844
+000332  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000333  aa  6 01516 2521 00	spri2	pr6|846
+000334  aa  6 01430 3521 00	epp2 	pr6|792		vtocx
+000335  aa  6 01520 2521 00	spri2	pr6|848
+000336  aa  6 01456 3521 00	epp2 	pr6|814
+000337  aa  6 01522 2521 00	spri2	pr6|850
+000340  aa  6 01440 3521 00	epp2 	pr6|800		vtocep
+000341  aa  6 01524 2521 00	spri2	pr6|852
+000342  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000343  aa  6 01526 2521 00	spri2	pr6|854
+000344  aa  6 01512 6211 00	eax1 	pr6|842
+000345  aa   030000 4310 07	fld  	12288,dl
+000346  aa  6 00044 3701 20	epp4 	pr6|36,*
+000347  la  4 00064 3521 20	epp2 	pr4|52,*		vtoc_man$get_vtoce
+000350  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 178
+	if code ^= 0 then return;
+
+000351  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+000352  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 180
+	if uid ^= vtoce.uid then do;
+
+000353  aa  6 01427 2351 00	lda  	pr6|791		uid
+000354  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000355  aa  7 00001 1151 00	cmpa 	pr7|1		vtoce.uid
+000356  aa   000005 6000 04	tze  	5,ic		000363
+						STATEMENT 1 ON LINE 181
+	     code = error_table_$vtoce_connection_fail;
+
+000357  aa  6 00044 3701 20	epp4 	pr6|36,*
+000360  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$vtoce_connection_fail
+000361  aa  6 01442 7561 20	stq  	pr6|802,*		code
+						STATEMENT 1 ON LINE 182
+	     return;
+
+000362  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 183
+	end;
+
+						STATEMENT 1 ON LINE 185
+	csl = fixed (vtoce.csl);
+
+000363  aa  7 00002 2351 00	lda  	pr7|2		vtoce.csl
+000364  aa   000011 7350 00	als  	9
+000365  aa   000077 7730 00	lrl  	63
+000366  aa  6 00100 7561 00	stq  	pr6|64		csl
+						STATEMENT 1 ON LINE 187
+	if ^deleting then call get_pvtx$hold_pvtx (pvid, pvtx, code);
+
+000367  aa  6 00101 2351 00	lda  	pr6|65		deleting
+000370  aa   000014 6010 04	tnz  	12,ic		000404
+000371  aa  6 01425 3521 00	epp2 	pr6|789		pvid
+000372  aa  6 01450 2521 00	spri2	pr6|808
+000373  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000374  aa  6 01452 2521 00	spri2	pr6|810
+000375  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000376  aa  6 01454 2521 00	spri2	pr6|812
+000377  aa  6 01446 6211 00	eax1 	pr6|806
+000400  aa   014000 4310 07	fld  	6144,dl
+000401  aa  6 00044 3701 20	epp4 	pr6|36,*
+000402  la  4 00030 3521 20	epp2 	pr4|24,*		get_pvtx$hold_pvtx
+000403  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 188
+	if code ^= 0 then return;
+
+000404  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+000405  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 194
+	n = 0;
+
+000406  aa  6 01010 4501 00	stz  	pr6|520		n
+						STATEMENT 1 ON LINE 195
+	do i = first to csl - 1;
+
+000407  aa  6 00100 2361 00	ldq  	pr6|64		csl
+000410  aa   000001 1760 07	sbq  	1,dl
+000411  aa  6 01444 7561 00	stq  	pr6|804
+000412  aa  6 00504 2361 00	ldq  	pr6|324		first
+000413  aa  6 00506 7561 00	stq  	pr6|326		i
+000414  aa  6 00506 2361 00	ldq  	pr6|326		i
+000415  aa  6 01444 1161 00	cmpq 	pr6|804
+000416  aa   000027 6054 04	tpnz 	23,ic		000445
+						STATEMENT 1 ON LINE 196
+	     if substr (vtoce.fm (i), 1, 1) = "0"b then do;
+
+000417  aa   000022 4020 07	mpy  	18,dl
+000420  aa  6 01456 7561 00	stq  	pr6|814
+000421  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000422  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+000423  aa  7 00020 00 0001	descb	pr7|16,1		vtoce.fm
+000424  aa   000000 00 0000	descb	0,0
+000425  aa   000016 6010 04	tnz  	14,ic		000443
+						STATEMENT 1 ON LINE 197
+		n = n + 1;
+
+000426  aa  6 01010 0541 00	aos  	pr6|520		n
+						STATEMENT 1 ON LINE 198
+		deposit.list (n) = vtoce.fm (i);
+
+000427  aa  6 01010 7271 00	lxl7 	pr6|520		n
+000430  aa  6 00101 4501 17	stz  	pr6|65,7		deposit.list
+000431  aa  6 00101 3715 17	epp5 	pr6|65,7		deposit.list
+000432  aa  003 100 060 506	csl  	(pr,ql),(pr),fill(0),bool(move)
+000433  aa  7 00020 00 0022	descb	pr7|16,18		vtoce.fm
+000434  aa  5 00000 00 0026	descb	pr5|0,22		deposit.list
+						STATEMENT 1 ON LINE 199
+		pageno_list (n) = i;
+
+000435  aa  6 00506 2361 00	ldq  	pr6|326		i
+000436  aa  6 01012 7561 17	stq  	pr6|522,7		pageno_list
+						STATEMENT 1 ON LINE 200
+		vtoce.fm (i) = truncate_vtoce_null_addr;
+
+000437  aa  6 01456 7261 00	lxl6 	pr6|814
+000440  aa  003 116 060 404	csl  	(ic),(pr,x6),fill(0),bool(move)
+000441  aa   000627 00 0022	descb	407,18		001267 = 777002000000
+000442  aa  7 00020 00 0022	descb	pr7|16,18		vtoce.fm
+						STATEMENT 1 ON LINE 201
+	     end;
+
+						STATEMENT 1 ON LINE 202
+	end;
+
+000443  aa  6 00506 0541 00	aos  	pr6|326		i
+000444  aa   777750 7100 04	tra  	-24,ic		000414
+						STATEMENT 1 ON LINE 204
+	if vtoce.fm_damaged & (sst$checksum_filemap ^= 0)
+	then n = 0;
+
+000445  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000446  aa  7 00005 2351 00	lda  	pr7|5		vtoce.fm_damaged
+000447  aa   002000 3150 03	cana 	1024,du
+000450  aa   000005 6000 04	tze  	5,ic		000455
+000451  aa  6 00044 3701 20	epp4 	pr6|36,*
+000452  la  4 00016 2361 20	ldq  	pr4|14,*		sst$checksum_filemap
+000453  aa   000002 6000 04	tze  	2,ic		000455
+000454  aa  6 01010 4501 00	stz  	pr6|520		n
+						STATEMENT 1 ON LINE 207
+	vtoce.csl = bit (fixed (min (first, csl), 9), 9);
+
+000455  aa  6 00504 2361 00	ldq  	pr6|324		first
+000456  aa  6 00100 1161 00	cmpq 	pr6|64		csl
+000457  aa   000002 6040 04	tmi  	2,ic		000461
+000460  aa  6 00100 2361 00	ldq  	pr6|64		csl
+000461  aa  0 00000 1161 00	cmpq 	pr0|0		= 000000000000
+000462  aa   000003 6050 04	tpl  	3,ic		000465
+000463  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+000464  aa   000001 0760 07	adq  	1,dl
+000465  aa   000077 7370 00	lls  	63
+000466  aa   000011 7730 00	lrl  	9
+000467  aa  7 00002 5511 20	stba 	pr7|2,20		vtoce.csl
+						STATEMENT 1 ON LINE 208
+	if first = 0 then do;
+
+000470  aa  6 00504 2361 00	ldq  	pr6|324		first
+000471  aa   000010 6010 04	tnz  	8,ic		000501
+						STATEMENT 1 ON LINE 209
+	     vtoce.records = "0"b;
+
+000472  aa   000572 2350 04	lda  	378,ic		001264 = 777777000777
+000473  aa  7 00002 3551 00	ansa 	pr7|2		vtoce.records
+						STATEMENT 1 ON LINE 210
+	     vtoce.damaged = "0"b;
+
+000474  aa   000567 2350 04	lda  	375,ic		001263 = 773777777777
+000475  aa  7 00005 3551 00	ansa 	pr7|5		vtoce.damaged
+						STATEMENT 1 ON LINE 211
+	     vtoce.fm_damaged = "0"b;
+
+000476  aa   000564 2350 04	lda  	372,ic		001262 = 775777777777
+000477  aa  7 00005 3551 00	ansa 	pr7|5		vtoce.fm_damaged
+						STATEMENT 1 ON LINE 212
+	end;
+
+000500  aa   000013 7100 04	tra  	11,ic		000513
+						STATEMENT 1 ON LINE 213
+	else vtoce.records = bit (fixed (fixed (vtoce.records, 9) - n, 9), 9);
+
+000501  aa  7 00002 2351 00	lda  	pr7|2		vtoce.records
+000502  aa   000022 7350 00	als  	18
+000503  aa   000077 7730 00	lrl  	63
+000504  aa  6 01010 1761 00	sbq  	pr6|520		n
+000505  aa   000003 6050 04	tpl  	3,ic		000510
+000506  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+000507  aa   000001 0760 07	adq  	1,dl
+000510  aa   000077 7370 00	lls  	63
+000511  aa   000022 7730 00	lrl  	18
+000512  aa  7 00002 5511 10	stba 	pr7|2,10		vtoce.records
+						STATEMENT 1 ON LINE 215
+	if sst$checksum_filemap = 0 then do;
+
+000513  aa  6 00044 3701 20	epp4 	pr6|36,*
+000514  la  4 00016 2361 20	ldq  	pr4|14,*		sst$checksum_filemap
+000515  aa   000007 6010 04	tnz  	7,ic		000524
+						STATEMENT 1 ON LINE 216
+	     vtoce.fm_damaged = "0"b;
+
+000516  aa   000544 2350 04	lda  	356,ic		001262 = 775777777777
+000517  aa  7 00005 3551 00	ansa 	pr7|5		vtoce.fm_damaged
+						STATEMENT 1 ON LINE 217
+	     vtoce.fm_checksum_valid = "0"b;
+
+000520  aa   000541 2350 04	lda  	353,ic		001261 = 776777777777
+000521  aa  7 00005 3551 00	ansa 	pr7|5		vtoce.fm_checksum_valid
+						STATEMENT 1 ON LINE 218
+	     vtoce.fm_checksum = ""b;
+
+000522  aa  7 00006 4501 00	stz  	pr7|6		vtoce.fm_checksum
+						STATEMENT 1 ON LINE 219
+	end;
+
+000523  aa   000023 7100 04	tra  	19,ic		000546
+						STATEMENT 1 ON LINE 220
+	else do;
+
+						STATEMENT 1 ON LINE 221
+	     vtoce.fm_checksum_valid = "1"b;
+
+000524  aa   001000 2350 03	lda  	512,du
+000525  aa  7 00005 2551 00	orsa 	pr7|5		vtoce.fm_checksum_valid
+						STATEMENT 1 ON LINE 222
+	     call filemap_checksum_ (addr (vtoce.fm), fixed (vtoce.csl, 9), vtoce.fm_checksum);
+
+000526  aa  7 00020 3715 00	epp5 	pr7|16		vtoce.fm
+000527  aa  6 01530 6515 00	spri5	pr6|856
+000530  aa  7 00002 2351 00	lda  	pr7|2		vtoce.csl
+000531  aa   000011 7350 00	als  	9
+000532  aa   000077 7730 00	lrl  	63
+000533  aa  6 01456 7561 00	stq  	pr6|814
+000534  aa  6 01530 3521 00	epp2 	pr6|856
+000535  aa  6 01450 2521 00	spri2	pr6|808
+000536  aa  6 01456 3521 00	epp2 	pr6|814
+000537  aa  6 01452 2521 00	spri2	pr6|810
+000540  aa  7 00006 3521 00	epp2 	pr7|6		vtoce.fm_checksum
+000541  aa  6 01454 2521 00	spri2	pr6|812
+000542  aa  6 01446 6211 00	eax1 	pr6|806
+000543  aa   014000 4310 07	fld  	6144,dl
+000544  la  4 00024 3521 20	epp2 	pr4|20,*		filemap_checksum_
+000545  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 223
+	end;
+
+						STATEMENT 1 ON LINE 225
+	if vtoce.dirsw then
+	     if ^vtoce.deciduous then
+		vtoce.used (1) = vtoce.used (1) - n;
+
+000546  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000547  aa  7 00005 2351 00	lda  	pr7|5		vtoce.dirsw
+000550  aa   400000 3150 07	cana 	131072,dl
+000551  aa   000010 6000 04	tze  	8,ic		000561
+000552  aa  7 00005 2351 00	lda  	pr7|5		vtoce.deciduous
+000553  aa   200000 3150 03	cana 	65536,du
+000554  aa   000005 6010 04	tnz  	5,ic		000561
+000555  aa  7 00010 2361 00	ldq  	pr7|8		vtoce.used
+000556  aa  0 00374 3771 00	anaq 	pr0|252		= 000000000000 000000777777
+000557  aa  6 01010 1761 00	sbq  	pr6|520		n
+000560  aa  7 00010 5521 14	stbq 	pr7|8,14		vtoce.used
+						STATEMENT 1 ON LINE 235
+	if normal then do;
+
+000561  aa  6 01011 2351 00	lda  	pr6|521		normal
+000562  aa   000017 6000 04	tze  	15,ic		000601
+						STATEMENT 1 ON LINE 236
+	     vtoce.dtm, vtoce.dtu = bit (fixed (clock (), 52), 52);
+
+000563  aa  0 01435 7001 00	tsx0 	pr0|797		clock_mac
+000564  aa   000002 6050 04	tpl  	2,ic		000566
+000565  aa   000000 5330 00	negl 	0
+000566  aa   000024 7370 00	lls  	20
+000567  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000570  aa  7 00004 7551 00	sta  	pr7|4		vtoce.dtm
+000571  aa  7 00003 7551 00	sta  	pr7|3		vtoce.dtu
+						STATEMENT 1 ON LINE 237
+	     if multi_class then event_count = 2;
+
+000572  aa  6 01007 2351 00	lda  	pr6|519		multi_class
+000573  aa   000004 6000 04	tze  	4,ic		000577
+000574  aa   000002 2360 07	ldq  	2,dl
+000575  aa  6 00503 7561 00	stq  	pr6|323		event_count
+000576  aa   000003 7100 04	tra  	3,ic		000601
+						STATEMENT 1 ON LINE 238
+	     else event_count = 1;
+
+000577  aa   000001 2360 07	ldq  	1,dl
+000600  aa  6 00503 7561 00	stq  	pr6|323		event_count
+						STATEMENT 1 ON LINE 239
+	end;
+
+						STATEMENT 1 ON LINE 241
+	call vtoc_man$put_vtoce ("0"b, pvtx, vtocx, "111"b, vtocep, code);
+
+000601  aa   000000 2350 07	lda  	0,dl
+000602  aa  6 01456 7551 00	sta  	pr6|814
+000603  aa   700000 2350 03	lda  	229376,du
+000604  aa  6 01457 7551 00	sta  	pr6|815
+000605  aa  6 01456 3521 00	epp2 	pr6|814
+000606  aa  6 01476 2521 00	spri2	pr6|830
+000607  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000610  aa  6 01500 2521 00	spri2	pr6|832
+000611  aa  6 01430 3521 00	epp2 	pr6|792		vtocx
+000612  aa  6 01502 2521 00	spri2	pr6|834
+000613  aa  6 01457 3521 00	epp2 	pr6|815
+000614  aa  6 01504 2521 00	spri2	pr6|836
+000615  aa  6 01440 3521 00	epp2 	pr6|800		vtocep
+000616  aa  6 01506 2521 00	spri2	pr6|838
+000617  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000620  aa  6 01510 2521 00	spri2	pr6|840
+000621  aa  6 01474 6211 00	eax1 	pr6|828
+000622  aa   030000 4310 07	fld  	12288,dl
+000623  aa  6 00044 3701 20	epp4 	pr6|36,*
+000624  la  4 00066 3521 20	epp2 	pr4|54,*		vtoc_man$put_vtoce
+000625  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 242
+	if code ^= 0 then go to release;
+
+000626  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+000627  aa   000077 6010 04	tnz  	63,ic		000726
+						STATEMENT 1 ON LINE 244
+	if deleting | (^deleting & ^vtoce.per_process & ^vtoce.deciduous) then
+	     call dbm_man$set_incr (pvtx, vtocx, code);
+
+000630  aa  6 00101 2351 00	lda  	pr6|65		deleting
+000631  aa   000006 6010 04	tnz  	6,ic		000637
+000632  aa   000020 6010 04	tnz  	16,ic		000652
+000633  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000634  aa  7 00005 2351 00	lda  	pr7|5		vtoce.deciduous
+000635  aa   210000 3150 03	cana 	69632,du
+000636  aa   000014 6010 04	tnz  	12,ic		000652
+000637  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000640  aa  6 01450 2521 00	spri2	pr6|808
+000641  aa  6 01430 3521 00	epp2 	pr6|792		vtocx
+000642  aa  6 01452 2521 00	spri2	pr6|810
+000643  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000644  aa  6 01454 2521 00	spri2	pr6|812
+000645  aa  6 01446 6211 00	eax1 	pr6|806
+000646  aa   014000 4310 07	fld  	6144,dl
+000647  aa  6 00044 3701 20	epp4 	pr6|36,*
+000650  la  4 00022 3521 20	epp2 	pr4|18,*		dbm_man$set_incr
+000651  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 251
+	if n = 0 then go to release;
+
+000652  aa  6 01010 2361 00	ldq  	pr6|520		n
+000653  aa   000053 6000 04	tze  	43,ic		000726
+						STATEMENT 1 ON LINE 253
+	if ^vtoce.deciduous then do;
+
+000654  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+000655  aa  7 00005 2351 00	lda  	pr7|5		vtoce.deciduous
+000656  aa   200000 3150 03	cana 	65536,du
+000657  aa   000047 6010 04	tnz  	39,ic		000726
+						STATEMENT 1 ON LINE 254
+	     call vtoc_man$await_vtoce ("0"b, pvtx, vtocx, code);
+
+000660  aa   000000 2350 07	lda  	0,dl
+000661  aa  6 01457 7551 00	sta  	pr6|815
+000662  aa  6 01457 3521 00	epp2 	pr6|815
+000663  aa  6 01462 2521 00	spri2	pr6|818
+000664  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000665  aa  6 01464 2521 00	spri2	pr6|820
+000666  aa  6 01430 3521 00	epp2 	pr6|792		vtocx
+000667  aa  6 01466 2521 00	spri2	pr6|822
+000670  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000671  aa  6 01470 2521 00	spri2	pr6|824
+000672  aa  6 01460 6211 00	eax1 	pr6|816
+000673  aa   020000 4310 07	fld  	8192,dl
+000674  aa  6 00044 3701 20	epp4 	pr6|36,*
+000675  la  4 00062 3521 20	epp2 	pr4|50,*		vtoc_man$await_vtoce
+000676  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 255
+	     if code ^= 0 then go to release;
+
+000677  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+000700  aa   000026 6010 04	tnz  	22,ic		000726
+						STATEMENT 1 ON LINE 256
+	     call pc$deposit_list (pvtx, (n), addr (deposit.list), vtocx, addr (pageno_list));
+
+000701  aa  6 01010 2361 00	ldq  	pr6|520		n
+000702  aa  6 01457 7561 00	stq  	pr6|815
+000703  aa  6 00102 3735 00	epp7 	pr6|66		deposit.list
+000704  aa  6 01530 6535 00	spri7	pr6|856
+000705  aa  6 01013 3715 00	epp5 	pr6|523		pageno_list
+000706  aa  6 01532 6515 00	spri5	pr6|858
+000707  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000710  aa  6 01462 2521 00	spri2	pr6|818
+000711  aa  6 01457 3521 00	epp2 	pr6|815
+000712  aa  6 01464 2521 00	spri2	pr6|820
+000713  aa  6 01530 3521 00	epp2 	pr6|856
+000714  aa  6 01466 2521 00	spri2	pr6|822
+000715  aa  6 01430 3521 00	epp2 	pr6|792		vtocx
+000716  aa  6 01470 2521 00	spri2	pr6|824
+000717  aa  6 01532 3521 00	epp2 	pr6|858
+000720  aa  6 01472 2521 00	spri2	pr6|826
+000721  aa  6 01460 6211 00	eax1 	pr6|816
+000722  aa   024000 4310 07	fld  	10240,dl
+000723  aa  6 00044 3701 20	epp4 	pr6|36,*
+000724  la  4 00044 3521 20	epp2 	pr4|36,*		pc$deposit_list
+000725  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 257
+	end;
+
+						STATEMENT 1 ON LINE 259
+release:
+	if normal then call get_pvtx$release_pvtx (pvid, pvtx);
+
+000726  aa  6 01011 2351 00	lda  	pr6|521		normal
+000727  aa   000012 6000 04	tze  	10,ic		000741
+000730  aa  6 01425 3521 00	epp2 	pr6|789		pvid
+000731  aa  6 01450 2521 00	spri2	pr6|808
+000732  aa  6 01426 3521 00	epp2 	pr6|790		pvtx
+000733  aa  6 01452 2521 00	spri2	pr6|810
+000734  aa  6 01446 6211 00	eax1 	pr6|806
+000735  aa   010000 4310 07	fld  	4096,dl
+000736  aa  6 00044 3701 20	epp4 	pr6|36,*
+000737  la  4 00032 3521 20	epp2 	pr4|26,*		get_pvtx$release_pvtx
+000740  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 263
+	if entry.owner = "111111111111111111111111111111111000"b then return;
+
+000741  aa  6 01434 3735 20	epp7 	pr6|796,*		ep
+000742  aa  7 00044 2351 00	lda  	pr7|36		entry.owner
+000743  aa   000325 1150 04	cmpa 	213,ic		001270 = 777777777770
+000744  aa  0 00631 6001 00	tze  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 266
+	dp = ptr (ep, 0);
+
+000745  aa  7 00000 3525 00	epbp2	pr7|0
+000746  aa  6 01436 2521 00	spri2	pr6|798		dp
+						STATEMENT 1 ON LINE 267
+	par_uid = dir.uid;
+
+000747  aa  2 00010 2351 00	lda  	pr2|8		dir.uid
+000750  aa  6 01423 7551 00	sta  	pr6|787		par_uid
+						STATEMENT 1 ON LINE 268
+	par_pvid = dir.pvid;
+
+000751  aa  2 00011 2351 00	lda  	pr2|9		dir.pvid
+000752  aa  6 01422 7551 00	sta  	pr6|786		par_pvid
+						STATEMENT 1 ON LINE 269
+	par_vtocx = dir.vtocx;
+
+000753  aa  2 00015 2351 00	lda  	pr2|13		dir.vtocx
+000754  aa   000066 7330 00	lrs  	54
+000755  aa  6 01424 7561 00	stq  	pr6|788		par_vtocx
+						STATEMENT 1 ON LINE 270
+	dir_must_be_unlocked = "0"b;
+
+000756  aa  6 00502 4501 00	stz  	pr6|322		dir_must_be_unlocked
+						STATEMENT 1 ON LINE 272
+	call lock$lock_ast;
+
+000757  aa  6 00056 6211 00	eax1 	pr6|46
+000760  aa   000000 4310 07	fld  	0,dl
+000761  aa  6 00044 3701 20	epp4 	pr6|36,*
+000762  la  4 00040 3521 20	epp2 	pr4|32,*		lock$lock_ast
+000763  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 274
+	par_astep = search_ast$check (par_uid, par_pvid, par_vtocx, code);
+
+000764  aa  6 01423 3521 00	epp2 	pr6|787		par_uid
+000765  aa  6 01462 2521 00	spri2	pr6|818
+000766  aa  6 01422 3521 00	epp2 	pr6|786		par_pvid
+000767  aa  6 01464 2521 00	spri2	pr6|820
+000770  aa  6 01424 3521 00	epp2 	pr6|788		par_vtocx
+000771  aa  6 01466 2521 00	spri2	pr6|822
+000772  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+000773  aa  6 01470 2521 00	spri2	pr6|824
+000774  aa  6 01414 3521 00	epp2 	pr6|780		par_astep
+000775  aa  6 01472 2521 00	spri2	pr6|826
+000776  aa  6 01460 6211 00	eax1 	pr6|816
+000777  aa   024000 4310 07	fld  	10240,dl
+001000  aa  6 00044 3701 20	epp4 	pr6|36,*
+001001  la  4 00054 3521 20	epp2 	pr4|44,*		search_ast$check
+001002  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 275
+	if code ^= 0 then do;
+
+001003  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+001004  aa   000007 6000 04	tze  	7,ic		001013
+						STATEMENT 1 ON LINE 276
+	     call lock$unlock_ast;
+
+001005  aa  6 00056 6211 00	eax1 	pr6|46
+001006  aa   000000 4310 07	fld  	0,dl
+001007  aa  6 00044 3701 20	epp4 	pr6|36,*
+001010  la  4 00042 3521 20	epp2 	pr4|34,*		lock$unlock_ast
+001011  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 277
+	     return;
+
+001012  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 278
+	end;
+
+						STATEMENT 1 ON LINE 280
+	if par_astep = null then do;
+
+001013  aa  6 01414 2371 00	ldaq 	pr6|780		par_astep
+001014  aa   776772 6770 04	eraq 	-518,ic		000006 = 077777000043 000001000000
+001015  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001016  aa   000071 6010 04	tnz  	57,ic		001107
+						STATEMENT 1 ON LINE 281
+	     call lock$unlock_ast;
+
+001017  aa  6 00056 6211 00	eax1 	pr6|46
+001020  aa   000000 4310 07	fld  	0,dl
+001021  aa  6 00044 3701 20	epp4 	pr6|36,*
+001022  la  4 00042 3521 20	epp2 	pr4|34,*		lock$unlock_ast
+001023  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 283
+	     call sum$getbranch_root_my (dp, "0"b, par_ep, code);
+
+001024  aa   000000 2350 07	lda  	0,dl
+001025  aa  6 01457 7551 00	sta  	pr6|815
+001026  aa  6 01436 3521 00	epp2 	pr6|798		dp
+001027  aa  6 01462 2521 00	spri2	pr6|818
+001030  aa  6 01457 3521 00	epp2 	pr6|815
+001031  aa  6 01464 2521 00	spri2	pr6|820
+001032  aa  6 01420 3521 00	epp2 	pr6|784		par_ep
+001033  aa  6 01466 2521 00	spri2	pr6|822
+001034  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+001035  aa  6 01470 2521 00	spri2	pr6|824
+001036  aa  6 01460 6211 00	eax1 	pr6|816
+001037  aa   020000 4310 07	fld  	8192,dl
+001040  aa  6 00044 3701 20	epp4 	pr6|36,*
+001041  la  4 00056 3521 20	epp2 	pr4|46,*		sum$getbranch_root_my
+001042  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 285
+	     if code = 0 then dir_must_be_unlocked = "1"b;
+
+001043  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+001044  aa   000004 6010 04	tnz  	4,ic		001050
+001045  aa   400000 2350 03	lda  	131072,du
+001046  aa  6 00502 7551 00	sta  	pr6|322		dir_must_be_unlocked
+001047  aa   000007 7100 04	tra  	7,ic		001056
+						STATEMENT 1 ON LINE 286
+	     else if code = error_table_$mylock then code = 0;
+
+001050  aa  6 00044 3701 20	epp4 	pr6|36,*
+001051  la  4 00010 1161 20	cmpq 	pr4|8,*		error_table_$mylock
+001052  aa   000003 6010 04	tnz  	3,ic		001055
+001053  aa  6 01442 4501 20	stz  	pr6|802,*		code
+001054  aa   000002 7100 04	tra  	2,ic		001056
+						STATEMENT 2 ON LINE 286
+ else return;
+
+001055  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 288
+	     par_dp = ptr (par_ep, 0);
+
+001056  aa  6 01420 3525 20	epbp2	pr6|784,*		par_ep
+001057  aa  6 01416 2521 00	spri2	pr6|782		par_dp
+						STATEMENT 1 ON LINE 289
+	     par_astep = activate (par_ep, code);
+
+001060  aa  6 01420 3521 00	epp2 	pr6|784		par_ep
+001061  aa  6 01450 2521 00	spri2	pr6|808
+001062  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+001063  aa  6 01452 2521 00	spri2	pr6|810
+001064  aa  6 01414 3521 00	epp2 	pr6|780		par_astep
+001065  aa  6 01454 2521 00	spri2	pr6|812
+001066  aa  6 01446 6211 00	eax1 	pr6|806
+001067  aa   014000 4310 07	fld  	6144,dl
+001070  aa  6 00044 3701 20	epp4 	pr6|36,*
+001071  la  4 00020 3521 20	epp2 	pr4|16,*		activate
+001072  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 291
+	     if code ^= 0 then do;
+
+001073  aa  6 01442 2361 20	ldq  	pr6|802,*		code
+001074  aa   000013 6000 04	tze  	11,ic		001107
+						STATEMENT 1 ON LINE 292
+		if dir_must_be_unlocked then call lock$dir_unlock (par_dp);
+
+001075  aa  6 00502 2351 00	lda  	pr6|322		dir_must_be_unlocked
+001076  aa   000010 6000 04	tze  	8,ic		001106
+001077  aa  6 01416 3521 00	epp2 	pr6|782		par_dp
+001100  aa  6 01450 2521 00	spri2	pr6|808
+001101  aa  6 01446 6211 00	eax1 	pr6|806
+001102  aa   004000 4310 07	fld  	2048,dl
+001103  aa  6 00044 3701 20	epp4 	pr6|36,*
+001104  la  4 00036 3521 20	epp2 	pr4|30,*		lock$dir_unlock
+001105  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 293
+		return;
+
+001106  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 294
+	     end;
+
+						STATEMENT 1 ON LINE 295
+	end;
+
+						STATEMENT 1 ON LINE 297
+	if ^vtoce.deciduous then do;
+
+001107  aa  6 01440 3735 20	epp7 	pr6|800,*		vtocep
+001110  aa  7 00005 2351 00	lda  	pr7|5		vtoce.deciduous
+001111  aa   200000 3150 03	cana 	65536,du
+001112  aa   000071 6010 04	tnz  	57,ic		001203
+						STATEMENT 1 ON LINE 298
+	     if vtoce.dirsw then
+		if vtoce.received (1) = 0 then	/* non-terminal dir - give back quota to terminal cell */
+		     call quotaw$cu (par_astep, (-n), "1"b, 0, code);
+
+001113  aa  7 00005 2351 00	lda  	pr7|5		vtoce.dirsw
+001114  aa   400000 3150 07	cana 	131072,dl
+001115  aa   000031 6000 04	tze  	25,ic		001146
+001116  aa  7 00011 2361 00	ldq  	pr7|9		vtoce.received
+001117  aa  0 00374 3771 00	anaq 	pr0|252		= 000000000000 000000777777
+001120  aa   000052 6010 04	tnz  	42,ic		001172
+001121  aa  6 01010 3361 00	lcq  	pr6|520		n
+001122  aa  6 01457 7561 00	stq  	pr6|815
+001123  aa   400000 2350 03	lda  	131072,du
+001124  aa  6 01456 7551 00	sta  	pr6|814
+001125  aa  6 01534 4501 00	stz  	pr6|860
+001126  aa  6 01414 3521 00	epp2 	pr6|780		par_astep
+001127  aa  6 01462 2521 00	spri2	pr6|818
+001130  aa  6 01457 3521 00	epp2 	pr6|815
+001131  aa  6 01464 2521 00	spri2	pr6|820
+001132  aa  6 01456 3521 00	epp2 	pr6|814
+001133  aa  6 01466 2521 00	spri2	pr6|822
+001134  aa  6 01534 3521 00	epp2 	pr6|860
+001135  aa  6 01470 2521 00	spri2	pr6|824
+001136  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+001137  aa  6 01472 2521 00	spri2	pr6|826
+001140  aa  6 01460 6211 00	eax1 	pr6|816
+001141  aa   024000 4310 07	fld  	10240,dl
+001142  aa  6 00044 3701 20	epp4 	pr6|36,*
+001143  la  4 00052 3521 20	epp2 	pr4|42,*		quotaw$cu
+001144  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 301
+		else ;
+
+001145  aa   000025 7100 04	tra  	21,ic		001172
+						STATEMENT 1 ON LINE 302
+	     else call quotaw$cu (par_astep, (-n), "0"b, 0, code);
+
+001146  aa  6 01010 3361 00	lcq  	pr6|520		n
+001147  aa  6 01534 7561 00	stq  	pr6|860
+001150  aa   000000 2350 07	lda  	0,dl
+001151  aa  6 01456 7551 00	sta  	pr6|814
+001152  aa  6 01457 4501 00	stz  	pr6|815
+001153  aa  6 01414 3521 00	epp2 	pr6|780		par_astep
+001154  aa  6 01462 2521 00	spri2	pr6|818
+001155  aa  6 01534 3521 00	epp2 	pr6|860
+001156  aa  6 01464 2521 00	spri2	pr6|820
+001157  aa  6 01456 3521 00	epp2 	pr6|814
+001160  aa  6 01466 2521 00	spri2	pr6|822
+001161  aa  6 01457 3521 00	epp2 	pr6|815
+001162  aa  6 01470 2521 00	spri2	pr6|824
+001163  aa  6 01442 3521 20	epp2 	pr6|802,*		code
+001164  aa  6 01472 2521 00	spri2	pr6|826
+001165  aa  6 01460 6211 00	eax1 	pr6|816
+001166  aa   024000 4310 07	fld  	10240,dl
+001167  aa  6 00044 3701 20	epp4 	pr6|36,*
+001170  la  4 00052 3521 20	epp2 	pr4|42,*		quotaw$cu
+001171  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 303
+	     if normal then call pc$updates (par_astep);
+
+001172  aa  6 01011 2351 00	lda  	pr6|521		normal
+001173  aa   000010 6000 04	tze  	8,ic		001203
+001174  aa  6 01414 3521 00	epp2 	pr6|780		par_astep
+001175  aa  6 01450 2521 00	spri2	pr6|808
+001176  aa  6 01446 6211 00	eax1 	pr6|806
+001177  aa   004000 4310 07	fld  	2048,dl
+001200  aa  6 00044 3701 20	epp4 	pr6|36,*
+001201  la  4 00050 3521 20	epp2 	pr4|40,*		pc$updates
+001202  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 304
+	end;
+
+						STATEMENT 1 ON LINE 305
+	call lock$unlock_ast;
+
+001203  aa  6 00056 6211 00	eax1 	pr6|46
+001204  aa   000000 4310 07	fld  	0,dl
+001205  aa  6 00044 3701 20	epp4 	pr6|36,*
+001206  la  4 00042 3521 20	epp2 	pr4|34,*		lock$unlock_ast
+001207  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 307
+	if dir_must_be_unlocked then call lock$dir_unlock (par_dp);
+
+001210  aa  6 00502 2351 00	lda  	pr6|322		dir_must_be_unlocked
+001211  aa   000010 6000 04	tze  	8,ic		001221
+001212  aa  6 01416 3521 00	epp2 	pr6|782		par_dp
+001213  aa  6 01450 2521 00	spri2	pr6|808
+001214  aa  6 01446 6211 00	eax1 	pr6|806
+001215  aa   004000 4310 07	fld  	2048,dl
+001216  aa  6 00044 3701 20	epp4 	pr6|36,*
+001217  la  4 00036 3521 20	epp2 	pr4|30,*		lock$dir_unlock
+001220  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 309
+covert_test:
+	if ^normal then return;
+
+001221  aa  6 01011 2351 00	lda  	pr6|521		normal
+001222  aa  0 00631 6001 00	tze  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 314
+	if ^pds$throttle_segment_state_changes then return;
+
+001223  aa  6 00044 3701 20	epp4 	pr6|36,*
+001224  la  4 00014 2351 20	lda  	pr4|12,*		pds$throttle_segment_state_changes
+001225  aa  0 00631 6001 00	tze  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 315
+	if multi_class then do;
+
+001226  aa  6 01007 2351 00	lda  	pr6|519		multi_class
+001227  aa   000020 6000 04	tze  	16,ic		001247
+						STATEMENT 1 ON LINE 320
+	     csl = csl - first;
+
+001230  aa  6 00504 3361 00	lcq  	pr6|324		first
+001231  aa  6 00100 0561 00	asq  	pr6|64		csl
+						STATEMENT 1 ON LINE 321
+	     if csl > 0 then do;
+
+001232  aa  6 00100 2361 00	ldq  	pr6|64		csl
+001233  aa   000014 6044 04	tmoz 	12,ic		001247
+						STATEMENT 1 ON LINE 322
+		page_count = 1;
+
+001234  aa   000001 2360 07	ldq  	1,dl
+001235  aa  6 01012 7561 00	stq  	pr6|522		page_count
+						STATEMENT 1 ON LINE 323
+		do event_count = event_count repeat event_count + 1 while (page_count <= csl);
+
+001236  aa  6 00503 2361 00	ldq  	pr6|323		event_count
+001237  aa  6 00503 7561 00	stq  	pr6|323		event_count
+001240  aa  6 01012 2361 00	ldq  	pr6|522		page_count
+001241  aa  6 00100 1161 00	cmpq 	pr6|64		csl
+001242  aa   000005 6054 04	tpnz 	5,ic		001247
+						STATEMENT 1 ON LINE 324
+		     page_count = page_count * 2;
+
+001243  aa   000001 7360 00	qls  	1
+001244  aa  6 01012 7561 00	stq  	pr6|522		page_count
+						STATEMENT 1 ON LINE 325
+		end;
+
+001245  aa  6 00503 0541 00	aos  	pr6|323		event_count
+001246  aa   777772 7100 04	tra  	-6,ic		001240
+						STATEMENT 1 ON LINE 326
+	     end;
+
+						STATEMENT 1 ON LINE 327
+	end;
+
+						STATEMENT 1 ON LINE 329
+	if event_count > 0 then call limit_covert_channel (event_count);
+
+001247  aa  6 00503 2361 00	ldq  	pr6|323		event_count
+001250  aa   000010 6044 04	tmoz 	8,ic		001260
+001251  aa  6 00503 3521 00	epp2 	pr6|323		event_count
+001252  aa  6 01450 2521 00	spri2	pr6|808
+001253  aa  6 01446 6211 00	eax1 	pr6|806
+001254  aa   004000 4310 07	fld  	2048,dl
+001255  aa  6 00044 3701 20	epp4 	pr6|36,*
+001256  la  4 00034 3521 20	epp2 	pr4|28,*		limit_covert_channel
+001257  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 330
+	return;
+
+001260  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 361
+     end truncate_vtoce;
+
+  END PROCEDURE truncate_vtoce
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

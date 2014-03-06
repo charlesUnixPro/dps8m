@@ -1,0 +1,433 @@
+	COMPILATION LISTING OF SEGMENT rcp_attach_lv_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0953.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(85-07-10,EJSharpe), approve(86-02-20,MCR7304),
+       16*     audit(86-03-27,CLJones), install(86-04-23,MR12.0-1044):
+       17*     added security auditing
+       18*                                                   END HISTORY COMMENTS */
+       19 
+       20 
+       21 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       22 rcp_attach_lv_:
+       23      procedure (arg_volume_info_ptr, arg_event_id, arg_rcp_id, arg_ecode);
+       24 
+       25 /*	This program implements the rcp_$attach_lv entry point.
+       26*   *	Created on 06/08/76 by Bill Silver.
+       27*   *	Moddfied 09/13/76 by Bernard Greenberg for lv_request_.
+       28*   *	Modified 84-09-04 by EJ Sharpe - rename hdx refs to volume_registration_mgr_
+       29*   *	Modified 84-10-30 by EJ Sharpe - new volume_registration_mgr_$get_access uses bit(36) instead of fixed(5)
+       30*   *	Modified 12/84 by Chris Jones for B2 security cleanup.
+       31**/
+       32 
+       33 /*
+       34*   *	This program is called to attach one logical volume.
+       35*   *	The volume must be registered and this process must have RW access to it.
+       36*   *	The program rcp_lv_ will be call to add this lv to a list of lvs
+       37*   *	that are attached for this process.  The lv will be attached by rcp_attach_lv_.
+       38*   Calls to rcp$check_attach_lv interrogate the global table.
+       39**/
+       40 
+       41 /*		ARGUMENT  DATA		*/
+       42 
+       43 dcl	arg_volume_info_ptr	   ptr;			/* (I) Pointer to logical volume info structure. */
+       44 dcl	arg_event_id	   fixed bin (71);		/* (I) Caller's event channel ID. */
+       45 dcl	arg_rcp_id	   bit (36) aligned;	/* (0) ID for this logical volume attachment. */
+       46 dcl	arg_ecode		   fixed bin (35);		/* (O) error_table_ code. */
+       47 
+       48 /*		AUTOMATIC  DATA		*/
+       49 
+       50 dcl	access		   bit (36) aligned;	/* Access mode to logical volume. */
+       51 dcl	1 auto_event_flags	   aligned like audit_event_flags;
+       52 dcl	1 auto_lv_info	   aligned like lv_info;	/* local copy of lv info */
+       53 dcl	caller_level	   fixed bin;		/* Caller's validation level. */
+       54 dcl	ecode		   fixed bin (35);		/* error_table_ code. */
+       55 dcl	event_id		   fixed bin (71);		/* Caller's event channel ID */
+       56 dcl	lvid		   bit (36) aligned;	/* ID that identifies logical volume. */
+       57 dcl	lv_access_range	   (2) bit (72) aligned;	/* access range of volume */
+       58 dcl	pub_bit		   bit (1) aligned;		/* from volume_registration_mgr_$get_access - we ignore it */
+       59 dcl	rcp_id		   bit (36) aligned;	/* ID for this attach request. */
+       60 
+       61 /*		EXTERNAL ENTRIES CALLED	*/
+       62 
+       63 dcl	access_operations_$attach_lv
+       64 			   bit (36) aligned external;
+       65 dcl	error_table_$resource_assigned
+       66 			   fixed bin (35) external;
+       67 dcl	error_table_$resource_bad_access
+       68 			   fixed bin (35) external;
+       69 dcl	error_table_$unimplemented_version
+       70 			   fixed bin (35) external;
+       71 
+       72 dcl	access_audit_r1_$log_obj_class_range
+       73 			   entry options (variable);
+       74 dcl	cu_$level_get	   entry (fixed bin);
+       75 dcl	cu_$level_set	   entry (fixed bin);
+       76 dcl	get_ring_		   entry () returns (fixed bin (3));
+       77 dcl	volume_registration_mgr_$find_lvid
+       78 			   entry (char (*), bit (36) aligned, fixed bin (35));
+       79 dcl	volume_registration_mgr_$get_access_for_attach
+       80 			   entry (char (*), fixed bin, bit (36) aligned, bit (1) aligned, (2) bit (72) aligned,
+       81 			   fixed bin (35));
+       82 dcl	rcp_lv_$add_lv	   entry (char (*) aligned, bit (36) aligned, fixed bin (71), bit (36) aligned,
+       83 			   fixed bin (35));
+       84 
+       85 /*	Builtins and conditions	*/
+       86 
+       87 dcl	addr		   builtin;
+       88 dcl	null		   builtin;
+       89 dcl	string		   builtin;
+       90 
+       91 dcl	cleanup		   condition;
+       92 
+       93 /*	Begin rcp_attach_lv_ */
+       94 
+       95 	call cu_$level_get (caller_level);		/* Save caller's validation level. */
+       96 
+       97 	on cleanup call cu_$level_set (caller_level);
+       98 
+       99 	call cu_$level_set (get_ring_ ());		/* Set validation level to RCP level. */
+      100 
+      101 	rcp_id = "0"b;				/* Initialize RCP ID (rcp_id). */
+      102 	event_id = arg_event_id;			/* Copy caller's event channel */
+      103 
+      104 	lv_info_ptr = addr (auto_lv_info);
+      105 	lv_info = arg_volume_info_ptr -> lv_info;	/* copy lv_info structure */
+      106 	if lv_info.version_num ^= rlvi_version_1 then do; /* Wrong version of lv info structure. */
+      107 	     ecode = error_table_$unimplemented_version;
+      108 	     goto RETURN;
+      109 	end;
+      110 
+      111 	call volume_registration_mgr_$find_lvid ((lv_info.volume_name), lvid, ecode);
+      112 	if ecode ^= 0 then
+      113 	     goto RETURN;				/* Volume is not registered. */
+      114 
+      115 	/*** here's the decision whether to proceed with the attach.  This
+      116*	     code really should be in an "lv_access_kernel_" */
+      117 
+      118 	string (auto_event_flags) = ""b;
+      119 	call volume_registration_mgr_$get_access_for_attach ((lv_info.volume_name), caller_level, access, pub_bit,
+      120 	     lv_access_range, ecode);
+      121 	if ecode ^= 0 then do;
+      122 	     call audit_it;
+      123 	     goto RETURN;				/* Error getting access to volume. */
+      124 	end;
+      125 
+      126 	if (access & RW_ACCESS) ^= RW_ACCESS then do;	/* Caller does not have RW access to volume. */
+      127 	     ecode = error_table_$resource_bad_access;
+      128 	     call audit_it;
+      129 	     goto RETURN;
+      130 	end;
+      131 	else do;
+      132 	     auto_event_flags.grant = "1"b;
+      133 	     call audit_it;
+      134 	end;
+      135 
+      136 	call rcp_lv_$add_lv (lv_info.volume_name, lvid, event_id, rcp_id, ecode);
+      137 	if ecode ^= 0				/* Error adding lv to per-process list? */
+      138 	     then
+      139 	     if ecode = error_table_$resource_assigned then
+      140 		ecode = 0;			/* Ok if already attached. */
+      141 
+      142 
+      143 RETURN:
+      144 	arg_rcp_id = rcp_id;			/* Set return arguments. */
+      145 	arg_ecode = ecode;
+      146 	call cu_$level_set (caller_level);		/* Reset validation level to caller level. */
+      147 	return;
+      148 
+      149 audit_it:
+      150      procedure ();
+      151 
+      152 dcl	volname_str	   char (64);
+      153 
+      154 	volname_str = "logical volume " || lv_info.volume_name;
+      155 
+      156 	call access_audit_r1_$log_obj_class_range ("rcp_attach_lv_", caller_level, string (auto_event_flags),
+      157 	     access_operations_$attach_lv, lv_access_range, volname_str, ecode, null (), (0));
+      158 	return;
+      159 
+      160      end audit_it;
+      161 
+  1     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      162 
+      163 
+  2     1 /*	Begin  include file rcp_lv_info.incl.pl1
+  2     2**
+  2     3**	Created on 04/02/76 by Bill Silver.
+  2     4**	This include file defines the RCP lv info structure.
+  2     5**/
+  2     6 dcl	lv_info_ptr	ptr;		/* Pointer to lv info structure. */
+  2     7 
+  2     8 dcl	rlvi_version_1  fixed bin  internal static  init (1);
+  2     9 
+  2    10 dcl    1	lv_info based(lv_info_ptr) aligned,	/* RCP lv info structure. */
+  2    11 	2  version_num	fixed bin,	/* Version number of this structure. */
+  2    12 	2  usage_time	fixed bin,	/* Number of minutes lv will/may be used. */
+  2    13 	2  wait_time	fixed bin,	/* Number of minutes user will/must wait. */
+  2    14 	2  system_flag	bit(1),		/* ON => user wants to be a system process. */
+  2    15 	2  volume_name	char(32);		/* Logical volume name. */
+  2    16 
+  2    17 /*	End of include file ... rcp_lv_info.incl.pl1	*/
+      164 
+      165 
+  3     1 /* begin include file - access_audit_eventflags.incl.pl1 */
+  3     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  3     3*Keep it up to date. */
+  3     4 
+  3     5 dcl 1 audit_event_flags	based aligned,
+  3     6       2 special_op	bit (1) unal,  /* special sys operation */
+  3     7       2 grant	bit (1) unal,  /* operation was successful */
+  3     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  3     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  3    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  3    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  3    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  3    13       2 pad	bit (29) unal;
+  3    14 
+  3    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      166 
+      167 
+      168      end rcp_attach_lv_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  rcp_attach_lv_.pl1                >spec>install>1111>rcp_attach_lv_.pl1
+162          1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+164          2    05/20/76  0630.6  rcp_lv_info.incl.pl1              >ldd>include>rcp_lv_info.incl.pl1
+166          3    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+RW_ACCESS                              constant        bit(3)                   initial packed unaligned dcl 1-11 ref 126 126
+access                          000100 automatic       bit(36)                  dcl 50 set ref 119* 126
+access_audit_r1_$log_obj_class_range
+                                000020 constant        entry                    external dcl 72 ref 156
+access_operations_$attach_lv    000010 external static bit(36)                  dcl 63 set ref 156*
+addr                                                   builtin function         dcl 87 ref 104
+arg_ecode                              parameter       fixed bin(35,0)          dcl 46 set ref 22 145*
+arg_event_id                           parameter       fixed bin(71,0)          dcl 44 ref 22 102
+arg_rcp_id                             parameter       bit(36)                  dcl 45 set ref 22 143*
+arg_volume_info_ptr                    parameter       pointer                  dcl 43 ref 22 105
+audit_event_flags                      based           structure                level 1 dcl 3-5
+auto_event_flags                000101 automatic       structure                level 1 dcl 51 set ref 118* 156 156
+auto_lv_info                    000102 automatic       structure                level 1 dcl 52 set ref 104
+caller_level                    000116 automatic       fixed bin(17,0)          dcl 53 set ref 95* 97* 119* 146* 156*
+cleanup                         000132 stack reference condition                dcl 91 ref 97
+cu_$level_get                   000022 constant        entry                    external dcl 74 ref 95
+cu_$level_set                   000024 constant        entry                    external dcl 75 ref 97 99 146
+ecode                           000117 automatic       fixed bin(35,0)          dcl 54 set ref 107* 111* 112 119* 121 127* 136* 137
+                                                                                  137 137* 145 156*
+error_table_$resource_assigned  000012 external static fixed bin(35,0)          dcl 65 ref 137
+error_table_$resource_bad_access
+                                000014 external static fixed bin(35,0)          dcl 67 ref 127
+error_table_$unimplemented_version
+                                000016 external static fixed bin(35,0)          dcl 69 ref 107
+event_id                        000120 automatic       fixed bin(71,0)          dcl 55 set ref 102* 136*
+get_ring_                       000026 constant        entry                    external dcl 76 ref 99 99
+grant                     0(01) 000101 automatic       bit(1)                   level 2 packed packed unaligned dcl 51 set ref 132*
+lv_access_range                 000123 automatic       bit(72)                  array dcl 57 set ref 119* 156*
+lv_info                                based           structure                level 1 dcl 2-10 set ref 105* 105
+lv_info_ptr                     000140 automatic       pointer                  dcl 2-6 set ref 104* 105 106 111 119 136 154
+lvid                            000122 automatic       bit(36)                  dcl 56 set ref 111* 136*
+null                                                   builtin function         dcl 88 ref 156 156
+pub_bit                         000127 automatic       bit(1)                   dcl 58 set ref 119*
+rcp_id                          000130 automatic       bit(36)                  dcl 59 set ref 101* 136* 143
+rcp_lv_$add_lv                  000034 constant        entry                    external dcl 82 ref 136
+rlvi_version_1                         constant        fixed bin(17,0)          initial dcl 2-8 ref 106
+string                                                 builtin function         dcl 89 set ref 118* 156 156
+version_num                            based           fixed bin(17,0)          level 2 dcl 2-10 set ref 106
+volname_str                     000150 automatic       char(64)                 packed unaligned dcl 152 set ref 154* 156*
+volume_name               4            based           char(32)                 level 2 dcl 2-10 set ref 111 119 136* 154
+volume_registration_mgr_$find_lvid
+                                000030 constant        entry                    external dcl 77 ref 111
+volume_registration_mgr_$get_access_for_attach
+                                000032 constant        entry                    external dcl 79 ref 119
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETURN                          000311 constant        label                    dcl 143 ref 108 112 123 129
+audit_it                        000326 constant        entry                    internal dcl 149 ref 122 128 133
+rcp_attach_lv_                  000041 constant        entry                    external dcl 22
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       626         664     426         636
+Length      1126     426        36         226     200           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_attach_lv_                      220 external procedure  is an external procedure.  
+on unit on line 97                   68 on unit               
+audit_it                                internal procedure  shares stack frame of external procedure rcp_attach_lv_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_attach_lv_           000100 access                      rcp_attach_lv_
+                         000101 auto_event_flags            rcp_attach_lv_
+                         000102 auto_lv_info                rcp_attach_lv_
+                         000116 caller_level                rcp_attach_lv_
+                         000117 ecode                       rcp_attach_lv_
+                         000120 event_id                    rcp_attach_lv_
+                         000122 lvid                        rcp_attach_lv_
+                         000123 lv_access_range             rcp_attach_lv_
+                         000127 pub_bit                     rcp_attach_lv_
+                         000130 rcp_id                      rcp_attach_lv_
+                         000140 lv_info_ptr                 rcp_attach_lv_
+                         000150 volname_str                 audit_it
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          enable_op           shorten_stack
+ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_r1_$log_obj_class_range                        cu_$level_get                 cu_$level_set
+get_ring_                     rcp_lv_$add_lv                volume_registration_mgr_$find_lvid
+volume_registration_mgr_$get_access_for_attach
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$attach_lv  error_table_$resource_assigned
+error_table_$resource_bad_access                            error_table_$unimplemented_version
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     22 000034        95 000046        97 000054        99 000100       101 000120       102 000121       104 000124
+    105 000126       106 000133       107 000136       108 000141       111 000142       112 000166       118 000170
+    119 000171       121 000232       122 000234       123 000235       126 000236       127 000242       128 000245
+    129 000246       132 000247       133 000251       136 000252       137 000303       143 000311       145 000314
+    146 000316       147 000325       149 000326       154 000327       156 000343       158 000425
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

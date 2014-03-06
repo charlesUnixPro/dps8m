@@ -1,0 +1,436 @@
+	COMPILATION LISTING OF SEGMENT iom_assign
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1014.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       14 iom_assign:
+       15      procedure (Chx, Channel, Handler, Index, Statusp, Code);
+       16 
+       17 /* iom_assign: Assign an IOM chanel. */
+       18 /* Taken from iom_manager November 1980 by C. Hornig */
+       19 /* Modified for channel reconfiguration January 1984 by Chris Jones */
+       20 
+       21 dcl	(
+       22 	Chx		   fixed bin (35),
+       23 	Channel		   char (8) aligned,
+       24 	Index		   fixed bin (35),
+       25 	Handler		   entry,
+       26 	Statusp		   ptr,
+       27 	Code		   fixed bin (35)
+       28 	)		   parameter;
+       29 
+       30 dcl	error_table_$bad_arg   fixed bin (35) ext static;
+       31 dcl	error_table_$io_no_permission
+       32 			   fixed bin (35) ext static;
+       33 dcl	error_table_$io_not_configured
+       34 			   fixed bin (35) ext static;
+       35 dcl	error_table_$noalloc   fixed bin (35) ext static;
+       36 
+       37 dcl	add_entry		   bit (1) aligned;
+       38 dcl	chx		   fixed bin (35);
+       39 dcl	iom		   fixed bin (3);
+       40 dcl	channel		   fixed bin (7);
+       41 dcl	handler		   entry variable;
+       42 dcl	index		   fixed bin (35);
+       43 
+       44 dcl	(addr, binary, bit, hbound, lbound, null, stac, substr)
+       45 			   builtin;
+       46 
+       47 	add_entry = "0"b;
+       48 	goto common;
+       49 
+       50 add_channel:
+       51      entry (Chx, Channel, Handler, Index, Statusp, Code);
+       52 
+       53 	add_entry = "1"b;
+       54 common:
+       55 	Chx, Code = 0;
+       56 	Statusp = null ();
+       57 	handler = Handler;
+       58 	index = Index;
+       59 	iom_data_ptr = addr (iom_data$);
+       60 
+       61 	call io_chnl_util$name_to_iom (Channel, iom, channel, Code);
+       62 	if Code ^= 0 then
+       63 	     return;
+       64 
+       65 /* validate IOM/channel */
+       66 
+       67 	if (iom < lbound (iom_data.per_iom, 1)) | (iom > hbound (iom_data.per_iom, 1))
+       68 	     | (channel < lbound (iom_data.per_iom.chantab, 2)) | (channel > hbound (iom_data.per_iom.chantab, 2))
+       69 	then do;
+       70 	     Code = error_table_$bad_arg;
+       71 	     return;
+       72 	end;
+       73 
+       74 	if ^iom_data.per_iom (iom).flags.on_line then
+       75 	     goto bad_dev;
+       76 
+       77 	chx = iom_data.per_iom (iom).chantab (channel);
+       78 
+       79 	if chx = 0 then do;				/* must assign new chx */
+       80 	     do chx = lbound (iom_data.per_device, 1) to hbound (iom_data.per_device, 1)
+       81 		while (^stac (addr (iom_data.per_device (chx).iom), bit (binary (iom, 36))));
+       82 	     end;
+       83 	     if chx > hbound (iom_data.per_device, 1) then do;
+       84 		Code = error_table_$noalloc;
+       85 		return;
+       86 	     end;
+       87 
+       88 	     iom_data.per_iom (iom).chantab (channel) = chx;
+       89 						/* make the assignment */
+       90 
+       91 	     iom_data.per_device (chx).iom = iom;
+       92 	     iom_data.per_device (chx).channel = channel;
+       93 	     iom_data.per_device (chx).on_line = "1"b;
+       94 	end;
+       95 
+       96 	if iom_data.per_device (chx).flags.in_use then do;
+       97 	     Code = error_table_$io_no_permission;
+       98 	     return;
+       99 	end;
+      100 
+      101 	if add_entry then
+      102 	     iom_data.per_device (chx).on_line = "1"b;
+      103 	else if ^iom_data.per_device (chx).on_line then do;
+      104 bad_dev:
+      105 	     Code = error_table_$io_not_configured;
+      106 	     return;
+      107 	end;
+      108 
+      109 	iom_data.per_device (chx).handler = handler;
+      110 	iom_data.per_device (chx).index = index;
+      111 	iom_data.per_device (chx).pcw, iom_data.per_device (chx).lpw, iom_data.per_device (chx).status,
+      112 	     iom_data.per_device (chx).ext_status = ""b;
+      113 	substr (iom_data.per_device (chx).pcw, 40, 6) = bit (binary (channel, 6));
+      114 	iom_data.per_device (chx).flags.in_use = "1"b;
+      115 
+      116 	Chx = chx;
+      117 	Statusp = addr (iom_data.per_device (chx).status);
+      118 
+      119 	return;
+      120 
+  1     1 /* Begin include file ...... iom_data.incl.pl1
+  1     2*   First written in August 1971 by R F Mabee.
+  1     3*   Modified for paged IOM November 1980 by C. Hornig.
+  1     4*   More IIOC changes by C. Hornig, June 1982.
+  1     5*   Modified for channel reconfiguration by Chris Jones, January 1984.
+  1     6*   Modified to remove support of non-paged IOMs by Chris Jones, August 1984.
+  1     7*   Modified to add IMW read protocol flags by M. Pandolf, January 1985.
+  1     8**/
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	iom_data$		   external;
+  1    12 dcl	iom_mailbox$	   external;
+  1    13 
+  1    14 dcl	n_devices		   fixed bin;
+  1    15 dcl	iom_data_ptr	   ptr;
+  1    16 
+  1    17 dcl	1 iom_data	   based (iom_data_ptr) aligned,
+  1    18 	  2 n_devices	   fixed bin,		/* (0) Maximum number of channels. */
+  1    19 	  2 stop_lpw	   bit (36),		/* (1) LPW pointing to stop_dcw. */
+  1    20 	  2 stop_dcw	   bit (36),		/* (2) DCW to stop channel, probably storing bad status. */
+  1    21 	  2 stop_scw	   bit (36),		/* (3) SCW for same */
+  1    22 	  2 imw_lock	   fixed bin (35),		/* (4) Essentially a lock for iom switch checking: */
+  1    23 						/* 1  : OK to poll IMW */
+  1    24 						/* 0  : lock in transition */
+  1    25 						/* -1 : DONT poll IMW */
+  1    26 	  2 n_intr_procs fixed bin (35),		/* (5) Number of processors in interrupt handler */
+  1    27 	  2 pad1		   (2) bit (36),
+  1    28 	  2 stop_status	   bit (72),		/* (10) All unused channels store status here. */
+  1    29 	  2 rfh1		   (6) bit (36),		/* can't use this */
+  1    30 	  2 stop_ext_status	   bit (8 * 36),		/* (20) Unused channels' extended status */
+  1    31 	  2 pad3		   (5) bit (36),
+  1    32 	  2 invalid_interrupts fixed bin (35),		/* (35) interrupts on unused channels */
+  1    33 	  2 null_interrupts	   fixed bin (35),		/* (36) spurious interrupts */
+  1    34 	  2 multiple_interrupts
+  1    35 			   fixed bin (35),		/* (37) several interrupts at a time */
+  1    36 	  2 per_iom	   (4) like per_iom,	/* (40) for each IOM */
+  1    37 	  2 per_device	   (n_devices refer (iom_data.n_devices)) like per_device;
+  1    38 						/* (240) Data for assigned channels. */
+  1    39 
+  1    40 dcl	1 per_iom		   aligned based,
+  1    41 	  2 lock		   bit (36),		/* (40) connect mailbox lock */
+  1    42 	  2 flags,				/* (41) */
+  1    43 	    3 configured	   bit (1) unal,		/* is configured */
+  1    44 	    3 on_line	   bit (1) unal,		/* is ON */
+  1    45 	    3 pad1	   bit (34) unal,
+  1    46 	  2 model		   char (4),		/* (42) what kind of IOM */
+  1    47 	  2 port		   fixed bin (3),		/* (43) SC port */
+  1    48 	  2 connect_time	   fixed bin (71),		/* (44) time of last connect */
+  1    49 	  2 connect_lpw	   bit (36),		/* (46) LPW for connect channel */
+  1    50 	  2 cow		   bit (36),		/* (47) Connect Operand Word */
+  1    51 	  2 special_chx	   fixed bin (35),		/* (50) chx of special status channel */
+  1    52 	  2 fault_chx	   fixed bin (35),		/* (51) chx of system fault channel */
+  1    53 	  2 pad2		   (4) bit (36),
+  1    54 	  2 abandoned_connects fixed bin (35),		/* (56) times we couldn't get IOM to listen at all */
+  1    55 	  2 reconnects	   fixed bin (35),		/* (57) times a connect was lost */
+  1    56 	  2 chantab	   (0:63) uns fixed bin (9) unal;
+  1    57 						/* (60) packed devtab indices */
+  1    58 
+  1    59 dcl	1 per_device	   aligned based,
+  1    60 	  2 status	   bit (72),		/* (0) Status for channel is stored here. */
+  1    61 	  2 rfh1		   (6) bit (36),
+  1    62 	  2 ext_status	   bit (8 * 36),		/* (10) extended status stored by IIOC */
+  1    63 	  2 iom		   uns fixed bin (3),	/* (20) IOM# (1-4) */
+  1    64 	  2 channel	   uns fixed bin (6),	/* (21) channel # */
+  1    65 	  2 handler	   entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+  1    66 						/* (22) Interrupt handler for device. */
+  1    67 	  2 flags,				/* (26) */
+  1    68 	    3 in_use	   bit (1) unal,		/* assigned */
+  1    69 	    3 queue_status	   bit (1) unal,		/* maintain status queue */
+  1    70 	    3 on_line	   bit (1) unal,		/* can be assigned */
+  1    71 	  2 index		   fixed bin (35),		/* (27) Channel identification index. */
+  1    72 	  2 pcw		   bit (72),		/* (30) Peripheral Control Word */
+  1    73 	  2 lpw		   bit (72),		/* (32) List Pointer Word */
+  1    74 	  2 scw		   bit (36),		/* (34) Status Control Word */
+  1    75 	  2 pad1		   fixed bin (35),
+  1    76 	  2 status_queue_ptr   ptr,			/* (36) Status queue */
+  1    77 	  2 connect_time	   fixed bin (71),		/* (40) time of last connect */
+  1    78 	  2 connects	   fixed bin (71),		/* (42) Total connects */
+  1    79 	  2 interrupts	   fixed bin (71),		/* (44) Total number of interrupts for this channel. */
+  1    80 	  2 interrupt_time	   fixed bin (71);		/* (46) Total interrupt time for this channel. */
+  1    81 
+  1    82 dcl	iom_mailbox_seg_ptr	   ptr;
+  1    83 dcl	1 iom_mailbox_seg	   aligned based (iom_mailbox_seg_ptr),
+  1    84 	  2 imw_array	   (0:31) bit (32),		/* Indexed by interrupt cell number. One bit for each channel. */
+  1    85 	  2 system_fault	   (4) aligned like status_queue,
+  1    86 						/* system faults store here (12 words/IOM) */
+  1    87 	  2 special_status	   (4) aligned like status_queue,
+  1    88 						/* special status words here (12 words/IOM) */
+  1    89 	  2 iom_mailbox	   (4) like iom_mailbox;	/* Used to communicate with the IOM. */
+  1    90 
+  1    91 dcl	status_queue_ptr	   ptr;
+  1    92 dcl	1 status_queue	   aligned based (status_queue_ptr),
+  1    93 	  2 status	   (12) bit (36);
+  1    94 
+  1    95 dcl	1 iom_mailbox	   aligned based,
+  1    96 	  2 channel_mailbox	   (0:63) like channel_mailbox;
+  1    97 
+  1    98 dcl	1 channel_mailbox	   aligned based,
+  1    99 	  2 lpw		   bit (72),		/* List pointer word. Points to DCW list. */
+  1   100 	  2 scw		   bit (36),		/* Status control word. Points to channel_table.status. */
+  1   101 	  2 dcw		   bit (36);		/* Data control word. Primarily scratch space for IOM. */
+  1   102 
+  1   103 /* Defined channel numbers. */
+  1   104 
+  1   105 dcl	(
+  1   106 	system_fault_channel   init (1),		/* Stores system fault words using LPW and DCW. */
+  1   107 	connect_channel	   init (2),		/* Starts other channels using LPW pointing to PCW. */
+  1   108 	special_status_channel init (6)		/* Stores special status using LPW and DCW. */
+  1   109 	)		   fixed bin (6) static options (constant);
+  1   110 
+  1   111 /* End of include file ..... iom_data.incl.pl1 */
+      121 
+      122 
+  2     1 /*  START OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3 /* Written by Charles Hornig, 1st quarter 1981 */
+  2     4 /* Canonicalization entry added by Chris Jones, January 1984 */
+  2     5 
+  2     6 /* chanid = canonicalize_chanid (chanid); */
+  2     7 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2     8 dcl	io_chnl_util$canonicalize_chanid
+  2     9 			   entry (char (8) aligned) returns (char (8) aligned);
+  2    10 
+  2    11 /* call iom_to_name (iomno, channo, name, code); */
+  2    12 dcl	io_chnl_util$iom_to_name
+  2    13 			   entry (fixed bin (3), fixed bin (7), char (8) aligned, fixed bin (35));
+  2    14 
+  2    15 /* call name_to_iom (name, iomno, channo, code); */
+  2    16 dcl	io_chnl_util$name_to_iom
+  2    17 			   entry (char (8) aligned, fixed bin (3), fixed bin (7), fixed bin (35));
+  2    18 
+  2    19 /*  END OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      123 
+      124 
+      125      end iom_assign;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.6  iom_assign.pl1                    >spec>install>1110>iom_assign.pl1
+121          1    04/11/85  1452.4  iom_data.incl.pl1                 >ldd>include>iom_data.incl.pl1
+123          2    07/11/84  0937.3  io_chnl_util_dcls.incl.pl1        >ldd>include>io_chnl_util_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Channel                                parameter       char(8)                  dcl 21 set ref 14 50 61*
+Chx                                    parameter       fixed bin(35,0)          dcl 21 set ref 14 50 54* 116*
+Code                                   parameter       fixed bin(35,0)          dcl 21 set ref 14 50 54* 61* 62 70* 84* 97* 104*
+Handler                                parameter       entry variable           dcl 21 ref 14 50 57
+Index                                  parameter       fixed bin(35,0)          dcl 21 ref 14 50 58
+Statusp                                parameter       pointer                  dcl 21 set ref 14 50 56* 117*
+add_entry                       000100 automatic       bit(1)                   dcl 37 set ref 47* 53* 101
+addr                                                   builtin function         dcl 44 ref 59 80 117
+binary                                                 builtin function         dcl 44 ref 80 113
+bit                                                    builtin function         dcl 44 ref 80 113
+channel                 261            based           fixed bin(6,0)           array level 3 in structure "iom_data" unsigned
+                                                                                  dcl 1-17 in procedure "iom_assign" set ref 92*
+channel                         000103 automatic       fixed bin(7,0)           dcl 40 in procedure "iom_assign" set ref 61* 67 67
+                                                                                  77 88 92 113
+channel_mailbox                        based           structure                level 1 dcl 1-98
+chantab                  60            based           fixed bin(9,0)           array level 3 packed packed unsigned unaligned
+                                                                                  dcl 1-17 set ref 67 67 77 88*
+chx                             000101 automatic       fixed bin(35,0)          dcl 38 set ref 77* 79 80* 80* 83 88 91 92 93 96 101
+                                                                                  103 109 110 111 111 111 111 113 114 116 117
+error_table_$bad_arg            000010 external static fixed bin(35,0)          dcl 30 ref 70
+error_table_$io_no_permission   000012 external static fixed bin(35,0)          dcl 31 ref 97
+error_table_$io_not_configured  000014 external static fixed bin(35,0)          dcl 33 ref 104
+error_table_$noalloc            000016 external static fixed bin(35,0)          dcl 35 ref 84
+ext_status              250            based           bit(288)                 array level 3 dcl 1-17 set ref 111*
+flags                    41            based           structure                array level 3 in structure "iom_data" dcl 1-17
+                                                                                  in procedure "iom_assign"
+flags                   266            based           structure                array level 3 in structure "iom_data" dcl 1-17
+                                                                                  in procedure "iom_assign"
+handler                         000104 automatic       entry variable           dcl 41 in procedure "iom_assign" set ref 57* 109
+handler                 262            based           entry variable           array level 3 in structure "iom_data" dcl 1-17
+                                                                                  in procedure "iom_assign" set ref 109*
+hbound                                                 builtin function         dcl 44 ref 67 67 80 83
+in_use                  266            based           bit(1)                   array level 4 packed packed unaligned dcl 1-17 set
+                                                                                  ref 96 114*
+index                   267            based           fixed bin(35,0)          array level 3 in structure "iom_data" dcl 1-17
+                                                                                  in procedure "iom_assign" set ref 110*
+index                           000110 automatic       fixed bin(35,0)          dcl 42 in procedure "iom_assign" set ref 58* 110
+io_chnl_util$name_to_iom        000022 constant        entry                    external dcl 2-16 ref 61
+iom                             000102 automatic       fixed bin(3,0)           dcl 39 in procedure "iom_assign" set ref 61* 67 67
+                                                                                  74 77 80 88 91
+iom                     260            based           fixed bin(3,0)           array level 3 in structure "iom_data" unsigned
+                                                                                  dcl 1-17 in procedure "iom_assign" set ref 80 91*
+iom_data                               based           structure                level 1 dcl 1-17
+iom_data$                       000020 external static fixed bin(17,0)          dcl 1-11 set ref 59
+iom_data_ptr                    000112 automatic       pointer                  dcl 1-15 set ref 59* 67 67 67 67 74 77 80 80 80 83
+                                                                                  88 91 92 93 96 101 103 109 110 111 111 111 111 113
+                                                                                  114 117
+iom_mailbox                            based           structure                level 1 dcl 1-95
+lbound                                                 builtin function         dcl 44 ref 67 67 80
+lpw                     272            based           bit(72)                  array level 3 dcl 1-17 set ref 111*
+n_devices                              based           fixed bin(17,0)          level 2 dcl 1-17 ref 80 83
+null                                                   builtin function         dcl 44 ref 56
+on_line                 266(02)        based           bit(1)                   array level 4 in structure "iom_data" packed packed
+                                                                                  unaligned dcl 1-17 in procedure "iom_assign" set
+                                                                                  ref 93* 101* 103
+on_line                  41(01)        based           bit(1)                   array level 4 in structure "iom_data" packed packed
+                                                                                  unaligned dcl 1-17 in procedure "iom_assign" ref
+                                                                                  74
+pcw                     270            based           bit(72)                  array level 3 dcl 1-17 set ref 111* 113*
+per_device                             based           structure                level 1 dcl 1-59 in procedure "iom_assign"
+per_device              240            based           structure                array level 2 in structure "iom_data" dcl 1-17
+                                                                                  in procedure "iom_assign" set ref 80 80 83
+per_iom                  40            based           structure                array level 2 in structure "iom_data" dcl 1-17
+                                                                                  in procedure "iom_assign" set ref 67 67
+per_iom                                based           structure                level 1 dcl 1-40 in procedure "iom_assign"
+stac                                                   builtin function         dcl 44 ref 80
+status                  240            based           bit(72)                  array level 3 dcl 1-17 set ref 111* 117
+status_queue                           based           structure                level 1 dcl 1-92
+substr                                                 builtin function         dcl 44 set ref 113*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+connect_channel                        internal static fixed bin(6,0)           initial dcl 1-105
+io_chnl_util$canonicalize_chanid
+                                000000 constant        entry                    external dcl 2-8
+io_chnl_util$iom_to_name        000000 constant        entry                    external dcl 2-12
+iom_mailbox$                           external static fixed bin(17,0)          dcl 1-12
+iom_mailbox_seg                        based           structure                level 1 dcl 1-83
+iom_mailbox_seg_ptr                    automatic       pointer                  dcl 1-82
+n_devices                              automatic       fixed bin(17,0)          dcl 1-14
+special_status_channel                 internal static fixed bin(6,0)           initial dcl 1-105
+status_queue_ptr                       automatic       pointer                  dcl 1-91
+system_fault_channel                   internal static fixed bin(6,0)           initial dcl 1-105
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+add_channel                     000027 constant        entry                    external dcl 50
+bad_dev                         000247 constant        label                    dcl 104 ref 74
+common                          000036 constant        label                    dcl 54 ref 48
+iom_assign                      000016 constant        entry                    external dcl 14
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       426         452     316         436
+Length       660     316        24         172     110           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+iom_assign                           90 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+iom_assign               000100 add_entry                   iom_assign
+                         000101 chx                         iom_assign
+                         000102 iom                         iom_assign
+                         000103 channel                     iom_assign
+                         000104 handler                     iom_assign
+                         000110 index                       iom_assign
+                         000112 iom_data_ptr                iom_assign
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          stac_mac            ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+io_chnl_util$name_to_iom
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_arg          error_table_$io_no_permission error_table_$io_not_configured
+error_table_$noalloc          iom_data$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000010        47 000023        48 000024        50 000025        53 000034        54 000036        56 000041
+     57 000043        58 000050        59 000052        61 000055        62 000071        67 000074        70 000105
+     71 000110        74 000111        77 000117        79 000133        80 000134        82 000157        83 000164
+     84 000167        85 000173        88 000174        91 000212        92 000217        93 000221        96 000223
+     97 000232        98 000236       101 000237       103 000244       104 000247       106 000253       109 000254
+    110 000260       111 000263       113 000276       114 000306       116 000310       117 000313       119 000315
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

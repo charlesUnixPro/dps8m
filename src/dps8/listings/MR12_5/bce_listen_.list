@@ -1,0 +1,524 @@
+	COMPILATION LISTING OF SEGMENT bce_listen_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1717.78_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* bce_listen_ -- listener for BCE command level and subsystems */
+        9 /* BIM '82*/
+       10 /* Modified 8/83 by K. Loepere for new bce switches */
+       11 /* Modified 9/83 by K. Loepere for initial command */
+       12 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       13 
+       14 bce_listen_:
+       15      procedure (Info_ptr, initial_command);
+       16 
+       17 declare  bce_data$get_line		  ext variable entry (ptr, ptr, fixed bin, fixed bin, fixed bin (35));
+       18 declare  bce_execute_command_		  entry (ptr, char (*), ptr, fixed bin (35));
+       19 declare  bce_ready$nnl		  entry (char (*));
+       20 declare  com_err_			  entry options (variable);
+       21 declare  command_processor_$subsys_execute_line entry (char (*), ptr, entry, ptr, char (*), fixed bin (35));
+       22 declare  error_table_$bad_command_name    fixed bin (35) ext;
+       23 declare  wired_hardcore_data$abort_request bit (1) aligned external;
+       24 
+       25 declare  code			  fixed bin (35);
+       26 declare  n_read			  fixed bin;
+       27 declare  request_line		  char (136);
+       28 declare  request_line_read		  char (n_read) based (addr (request_line));
+       29 declare  Info_ptr			  pointer;
+       30 declare  initial_command		  char (*);
+       31 
+       32 declare  request_abort_		  condition;
+       33 declare  sub_request_abort_		  condition;
+       34 
+       35 declare  (addr, length, null, rtrim)	  builtin;
+  1     1 /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+       36 
+       37 
+       38 
+       39 	ss_info_ptr = Info_ptr;
+       40 	ss_info.abort_label = new_command;
+       41 	request_line = initial_command;
+       42 	n_read = length (rtrim (request_line));
+       43 	on request_abort_ go to new_command;
+       44 	on sub_request_abort_ go to new_command;
+       45 	do while ("1"b);
+       46 	     if request_line_read ^= "" then do;
+       47 		call command_processor_$subsys_execute_line (ss_info.name, ss_info_ptr, bce_execute_command_, null (), request_line_read, code);
+       48 		if code ^= 0 then
+       49 		     if code = error_table_$bad_command_name then call com_err_ (0, "bce", "Unrecognizable request.  Type lr for a list of requests.");
+       50 		     else if code = 100 then;
+       51 		     else call com_err_ (code, "bce_listen_: ");
+       52 	     end;
+       53 new_command:   wired_hardcore_data$abort_request = "0"b;  /* everything running has finished */
+       54 	     call bce_ready$nnl (ss_info.name);
+       55 	     call bce_data$get_line (addr (bce_data$get_line), addr (request_line), length (request_line), n_read, code);
+       56 	end;
+       57 	return;
+       58      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1717.7  bce_listen_.pl1                   >udd>sm>ds>w>ml>bce_listen_.pl1
+36           1    10/21/86  1351.6  bce_subsystem_info_.incl.pl1      >ldd>incl>bce_subsystem_info_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Info_ptr                               parameter       pointer                  dcl 29 ref 14 39
+abort_label               2            based           label variable           level 2 dcl 1-15 set ref 40*
+addr                                                   builtin function         dcl 35 ref 46 47 55 55 55 55
+bce_data$get_line               000010 external static entry variable           dcl 17 set ref 55 55 55
+bce_execute_command_            000012 constant        entry                    external dcl 18 ref 47 47
+bce_ready$nnl                   000014 constant        entry                    external dcl 19 ref 54
+code                            000100 automatic       fixed bin(35,0)          dcl 25 set ref 47* 48 48 50 51* 55*
+com_err_                        000016 constant        entry                    external dcl 20 ref 48 51
+command_processor_$subsys_execute_line
+                                000020 constant        entry                    external dcl 21 ref 47
+error_table_$bad_command_name   000022 external static fixed bin(35,0)          dcl 22 ref 48
+initial_command                        parameter       char                     packed unaligned dcl 30 ref 14 41
+length                                                 builtin function         dcl 35 ref 42 55 55
+n_read                          000101 automatic       fixed bin(17,0)          dcl 26 set ref 42* 46 47 47 55*
+name                      6            based           char(32)                 level 2 packed packed unaligned dcl 1-15 set ref 47*
+                                                                                  54*
+null                                                   builtin function         dcl 35 ref 47 47
+request_abort_                  000144 stack reference condition                dcl 32 ref 43
+request_line                    000102 automatic       char(136)                packed unaligned dcl 27 set ref 41* 42 46 47 55 55
+                                                                                  55 55
+request_line_read                      based           char                     packed unaligned dcl 28 set ref 46 47*
+rtrim                                                  builtin function         dcl 35 ref 42
+ss_info                                based           structure                level 1 dcl 1-15
+ss_info_ptr                     000160 automatic       pointer                  dcl 1-14 set ref 39* 40 47 47* 54
+sub_request_abort_              000152 stack reference condition                dcl 33 ref 44
+wired_hardcore_data$abort_request
+                                000024 external static bit(1)                   dcl 23 set ref 53*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bce_listen_                     000055 constant        entry                    external dcl 14
+new_command                     000306 constant        label                    dcl 53 ref 40 43 44
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       524         552     352         534
+Length       750     352        26         161     151           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_listen_                         166 external procedure  is an external procedure.  
+on unit on line 43                   64 on unit               
+on unit on line 44                   64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_listen_              000100 code                        bce_listen_
+                         000101 n_read                      bce_listen_
+                         000102 request_line                bce_listen_
+                         000160 ss_info_ptr                 bce_listen_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var        call_ext_out_desc   return_mac          tra_ext_1           enable_op           ext_entry_desc
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_execute_command_          bce_ready$nnl                 com_err_
+command_processor_$subsys_execute_line
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$get_line             error_table_$bad_command_name wired_hardcore_data$abort_request
+
+
+CONSTANTS
+000350  aa     077777000043
+000351  aa     000001000000
+
+
+000000  aa     524000000015
+
+000001  aa     524000000070
+
+000002  aa     524000000003
+
+000003  aa  142 143 145 000	bce
+
+000004  aa     404000000005
+
+000005  aa     404000000043
+
+000006  aa     526000000000
+
+000007  aa     500000000000
+
+000010  aa     526000000040
+
+000011  aa     526077777777
+
+000012  aa     464000000000
+
+000014  aa     077777000043
+000015  aa     000001000000
+
+000016  aa  142 143 145 137	bce_
+000017  aa  154 151 163 164	list
+000020  aa  145 156 137 072	en_:
+000021  aa  040 000 000 000	 
+
+000022  aa  162 145 161 165	requ
+000023  aa  145 163 164 137	est_
+000024  aa  141 142 157 162	abor
+000025  aa  164 137 000 000	t_
+
+000026  aa  163 165 142 137	sub_
+000027  aa  162 145 161 165	requ
+000030  aa  145 163 164 137	est_
+000031  aa  141 142 157 162	abor
+000032  aa  164 137 000 000	t_
+
+000033  aa  125 156 162 145	Unre
+000034  aa  143 157 147 156	cogn
+000035  aa  151 172 141 142	izab
+000036  aa  154 145 040 162	le r
+000037  aa  145 161 165 145	eque
+000040  aa  163 164 056 040	st. 
+000041  aa  040 124 171 160	 Typ
+000042  aa  145 040 154 162	e lr
+000043  aa  040 146 157 162	 for
+000044  aa  040 141 040 154	 a l
+000045  aa  151 163 164 040	ist 
+000046  aa  157 146 040 162	of r
+000047  aa  145 161 165 145	eque
+000050  aa  163 164 163 056	sts.
+
+BEGIN PROCEDURE bce_listen_
+ENTRY TO bce_listen_                                        STATEMENT 1 ON LINE 14
+bce_listen_:
+     procedure (Info_ptr, initial_command);
+
+000051  at     000002000012
+000052  ta     000011000000
+000053  ta     000051000000
+000054  da     000124300000
+000055  aa   000260 6270 00	eax7 	176
+000056  aa  7 00034 3521 20	epp2 	pr7|28,*
+000057  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000060  aa     000004000000
+000061  aa     000000000000
+000062  aa  6 00042 3735 20	epp7 	pr6|34,*
+000063  aa  7 00002 2361 20	ldq  	pr7|2,*
+000064  aa   000002 6040 04	tmi  	2,ic		000066
+000065  aa   777777 3760 07	anq  	262143,dl
+000066  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000067  aa  6 00162 7561 00	stq  	pr6|114
+						STATEMENT 1 ON LINE 39
+	ss_info_ptr = Info_ptr;
+
+000070  aa  6 00032 3715 20	epp5 	pr6|26,*
+000071  aa  5 00002 3535 20	epp3 	pr5|2,*		Info_ptr
+000072  aa  3 00000 3535 20	epp3 	pr3|0,*		Info_ptr
+000073  aa  6 00160 2535 00	spri3	pr6|112		ss_info_ptr
+						STATEMENT 1 ON LINE 40
+	ss_info.abort_label = new_command;
+
+000074  aa   000212 3520 04	epp2 	138,ic		000306 = 600044370120
+000075  aa  3 00002 2521 00	spri2	pr3|2		ss_info.abort_label
+000076  aa  3 00004 6521 00	spri6	pr3|4		ss_info.abort_label
+						STATEMENT 1 ON LINE 41
+	request_line = initial_command;
+
+000077  aa  5 00004 3515 20	epp1 	pr5|4,*
+000100  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000101  aa  1 00000 00 0006	desc9a	pr1|0,ql		initial_command
+000102  aa  6 00102 00 0210	desc9a	pr6|66,136	request_line
+						STATEMENT 1 ON LINE 42
+	n_read = length (rtrim (request_line));
+
+000103  aa  000 000 165 500	tctr 	(pr)
+000104  aa  6 00102 00 0210	desc9a	pr6|66,136	request_line
+000105  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000106  aa  6 00056 0001 00	arg  	pr6|46
+000107  aa  6 00056 2361 00	ldq  	pr6|46
+000110  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000111  aa  6 00163 7561 00	stq  	pr6|115
+000112  aa   000210 2360 07	ldq  	136,dl
+000113  aa  6 00163 1761 00	sbq  	pr6|115
+000114  aa  6 00101 7561 00	stq  	pr6|65		n_read
+						STATEMENT 1 ON LINE 43
+	on request_abort_ go to new_command;
+
+000115  aa   000016 7260 07	lxl6 	14,dl
+000116  aa   777704 3520 04	epp2 	-60,ic		000022 = 162145161165
+000117  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000120  aa   000004 7100 04	tra  	4,ic		000124
+000121  aa     000144000000
+000122  aa   000012 7100 04	tra  	10,ic		000134
+BEGIN CONDITION request_abort_.1
+ENTRY TO request_abort_.1                                   STATEMENT 1 ON LINE 43
+	on request_abort_ go to new_command;
+
+000123  da     000134200000
+000124  aa   000100 6270 00	eax7 	64
+000125  aa  7 00034 3521 20	epp2 	pr7|28,*
+000126  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000127  aa     000000000000
+000130  aa     000000000000
+000131  aa   000155 3520 04	epp2 	109,ic		000306 = 600044370120
+000132  aa   000001 7270 07	lxl7 	1,dl
+000133  aa  0 00657 7101 00	tra  	pr0|431		tra_ext_1
+  END CONDITION request_abort_.1
+						STATEMENT 1 ON LINE 44
+	on sub_request_abort_ go to new_command;
+
+000134  aa   000022 7260 07	lxl6 	18,dl
+000135  aa   777671 3520 04	epp2 	-71,ic		000026 = 163165142137
+000136  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000137  aa   000004 7100 04	tra  	4,ic		000143
+000140  aa     000152000000
+000141  aa   000012 7100 04	tra  	10,ic		000153
+BEGIN CONDITION sub_request_abort_.2
+ENTRY TO sub_request_abort_.2                               STATEMENT 1 ON LINE 44
+	on sub_request_abort_ go to new_command;
+
+000142  da     000145200000
+000143  aa   000100 6270 00	eax7 	64
+000144  aa  7 00034 3521 20	epp2 	pr7|28,*
+000145  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000146  aa     000000000000
+000147  aa     000000000000
+000150  aa   000136 3520 04	epp2 	94,ic		000306 = 600044370120
+000151  aa   000001 7270 07	lxl7 	1,dl
+000152  aa  0 00657 7101 00	tra  	pr0|431		tra_ext_1
+  END CONDITION sub_request_abort_.2
+						STATEMENT 1 ON LINE 45
+	do while ("1"b);
+
+000153  aa   000000 0110 03	nop  	0,du
+						STATEMENT 1 ON LINE 46
+	     if request_line_read ^= "" then do;
+
+000154  aa  6 00101 7271 00	lxl7 	pr6|65		n_read
+000155  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+000156  aa  6 00102 00 0017	desc9a	pr6|66,x7		request_line_read
+000157  aa   000175 00 0000	desc9a	125,0		000352 = 000006000000
+000160  aa   000126 6000 04	tze  	86,ic		000306
+						STATEMENT 1 ON LINE 47
+		call command_processor_$subsys_execute_line (ss_info.name, ss_info_ptr, bce_execute_command_, null (), request_line_read, code);
+
+000161  aa  6 00101 2361 00	ldq  	pr6|65		n_read
+000162  aa   526000 2760 03	orq  	175104,du
+000163  aa  6 00163 7561 00	stq  	pr6|115
+000164  aa  6 00044 3701 20	epp4 	pr6|36,*
+000165  la  4 00012 3521 20	epp2 	pr4|10,*		bce_execute_command_
+000166  aa  6 00164 2521 00	spri2	pr6|116		cp.30
+000167  aa   000161 2370 04	ldaq 	113,ic		000350 = 077777000043 000001000000
+000170  aa  6 00166 7571 00	staq 	pr6|118		cp.30
+000171  aa   777623 3734 24	epp7 	-109,ic*
+000172  aa  6 00170 6535 00	spri7	pr6|120
+000173  aa  6 00160 3715 20	epp5 	pr6|112,*		ss_info_ptr
+000174  aa  5 00006 3521 00	epp2 	pr5|6		ss_info.name
+000175  aa  6 00174 2521 00	spri2	pr6|124
+000176  aa  6 00160 3521 00	epp2 	pr6|112		ss_info_ptr
+000177  aa  6 00176 2521 00	spri2	pr6|126
+000200  aa  6 00164 3521 00	epp2 	pr6|116		cp.30
+000201  aa  6 00200 2521 00	spri2	pr6|128
+000202  aa  6 00170 3521 00	epp2 	pr6|120
+000203  aa  6 00202 2521 00	spri2	pr6|130
+000204  aa  6 00102 3521 00	epp2 	pr6|66		request_line_read
+000205  aa  6 00204 2521 00	spri2	pr6|132
+000206  aa  6 00100 3521 00	epp2 	pr6|64		code
+000207  aa  6 00206 2521 00	spri2	pr6|134
+000210  aa   777600 3520 04	epp2 	-128,ic		000010 = 526000000040
+000211  aa  6 00210 2521 00	spri2	pr6|136
+000212  aa   777600 3520 04	epp2 	-128,ic		000012 = 464000000000
+000213  aa  6 00212 2521 00	spri2	pr6|138
+000214  aa  6 00216 2521 00	spri2	pr6|142
+000215  aa   777572 3520 04	epp2 	-134,ic		000007 = 500000000000
+000216  aa  6 00214 2521 00	spri2	pr6|140
+000217  aa  6 00163 3521 00	epp2 	pr6|115
+000220  aa  6 00220 2521 00	spri2	pr6|144
+000221  aa   777564 3520 04	epp2 	-140,ic		000005 = 404000000043
+000222  aa  6 00222 2521 00	spri2	pr6|146
+000223  aa  6 00172 6211 00	eax1 	pr6|122
+000224  aa   030000 4310 07	fld  	12288,dl
+000225  la  4 00020 3521 20	epp2 	pr4|16,*		command_processor_$subsys_execute_line
+000226  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 48
+		if code ^= 0 then
+		     if code = error_table_$bad_command_name then call com_err_ (0, "bce", "Unrecognizable request.  Type lr for a list of requests.");
+
+000227  aa  6 00100 2361 00	ldq  	pr6|64		code
+000230  aa   000056 6000 04	tze  	46,ic		000306
+000231  aa  6 00044 3701 20	epp4 	pr6|36,*
+000232  la  4 00022 1161 20	cmpq 	pr4|18,*		error_table_$bad_command_name
+000233  aa   000030 6010 04	tnz  	24,ic		000263
+000234  aa  6 00163 4501 00	stz  	pr6|115
+000235  aa   777546 2350 04	lda  	-154,ic		000003 = 142143145000
+000236  aa  6 00224 7551 00	sta  	pr6|148
+000237  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000240  aa   777574 00 0070	desc9a	-132,56		000033 = 125156162145
+000241  aa  6 00172 00 0070	desc9a	pr6|122,56
+000242  aa  6 00163 3521 00	epp2 	pr6|115
+000243  aa  6 00230 2521 00	spri2	pr6|152
+000244  aa  6 00224 3521 00	epp2 	pr6|148
+000245  aa  6 00232 2521 00	spri2	pr6|154
+000246  aa  6 00172 3521 00	epp2 	pr6|122
+000247  aa  6 00234 2521 00	spri2	pr6|156
+000250  aa   777534 3520 04	epp2 	-164,ic		000004 = 404000000005
+000251  aa  6 00236 2521 00	spri2	pr6|158
+000252  aa   777530 3520 04	epp2 	-168,ic		000002 = 524000000003
+000253  aa  6 00240 2521 00	spri2	pr6|160
+000254  aa   777525 3520 04	epp2 	-171,ic		000001 = 524000000070
+000255  aa  6 00242 2521 00	spri2	pr6|162
+000256  aa  6 00226 6211 00	eax1 	pr6|150
+000257  aa   014000 4310 07	fld  	6144,dl
+000260  la  4 00016 3521 20	epp2 	pr4|14,*		com_err_
+000261  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+000262  aa   000024 7100 04	tra  	20,ic		000306
+						STATEMENT 1 ON LINE 50
+		     else if code = 100 then;
+
+000263  aa   000144 1160 07	cmpq 	100,dl
+000264  aa   000002 6010 04	tnz  	2,ic		000266
+000265  aa   000021 7100 04	tra  	17,ic		000306
+						STATEMENT 1 ON LINE 51
+		     else call com_err_ (code, "bce_listen_: ");
+
+000266  aa   777530 2370 04	ldaq 	-168,ic		000016 = 142143145137 154151163164
+000267  aa  6 00164 7571 00	staq 	pr6|116
+000270  aa   777530 2370 04	ldaq 	-168,ic		000020 = 145156137072 040000000000
+000271  aa  6 00166 7571 00	staq 	pr6|118
+000272  aa  6 00100 3521 00	epp2 	pr6|64		code
+000273  aa  6 00230 2521 00	spri2	pr6|152
+000274  aa  6 00164 3521 00	epp2 	pr6|116
+000275  aa  6 00232 2521 00	spri2	pr6|154
+000276  aa   777507 3520 04	epp2 	-185,ic		000005 = 404000000043
+000277  aa  6 00234 2521 00	spri2	pr6|156
+000300  aa   777500 3520 04	epp2 	-192,ic		000000 = 524000000015
+000301  aa  6 00236 2521 00	spri2	pr6|158
+000302  aa  6 00226 6211 00	eax1 	pr6|150
+000303  aa   010000 4310 07	fld  	4096,dl
+000304  la  4 00016 3521 20	epp2 	pr4|14,*		com_err_
+000305  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 52
+	     end;
+
+						STATEMENT 1 ON LINE 53
+new_command:   wired_hardcore_data$abort_request = "0"b;
+
+000306  aa  6 00044 3701 20	epp4 	pr6|36,*
+000307  la  4 00024 4501 20	stz  	pr4|20,*		wired_hardcore_data$abort_request
+						STATEMENT 1 ON LINE 54
+	     call bce_ready$nnl (ss_info.name);
+
+000310  aa  6 00160 3735 20	epp7 	pr6|112,*		ss_info_ptr
+000311  aa  7 00006 3521 00	epp2 	pr7|6		ss_info.name
+000312  aa  6 00230 2521 00	spri2	pr6|152
+000313  aa   777475 3520 04	epp2 	-195,ic		000010 = 526000000040
+000314  aa  6 00232 2521 00	spri2	pr6|154
+000315  aa  6 00226 6211 00	eax1 	pr6|150
+000316  aa   004000 4310 07	fld  	2048,dl
+000317  la  4 00014 3521 20	epp2 	pr4|12,*		bce_ready$nnl
+000320  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 55
+	     call bce_data$get_line (addr (bce_data$get_line), addr (request_line), length (request_line), n_read, code);
+
+000321  aa  6 00044 3701 20	epp4 	pr6|36,*
+000322  la  4 00010 3735 20	epp7 	pr4|8,*		bce_data$get_line
+000323  aa  6 00170 6535 00	spri7	pr6|120
+000324  aa  6 00102 3715 00	epp5 	pr6|66		request_line
+000325  aa  6 00244 6515 00	spri5	pr6|164
+000326  aa   000210 2360 07	ldq  	136,dl
+000327  aa  6 00224 7561 00	stq  	pr6|148
+000330  aa  6 00170 3521 00	epp2 	pr6|120
+000331  aa  6 00230 2521 00	spri2	pr6|152
+000332  aa  6 00244 3521 00	epp2 	pr6|164
+000333  aa  6 00232 2521 00	spri2	pr6|154
+000334  aa  6 00224 3521 00	epp2 	pr6|148
+000335  aa  6 00234 2521 00	spri2	pr6|156
+000336  aa  6 00101 3521 00	epp2 	pr6|65		n_read
+000337  aa  6 00236 2521 00	spri2	pr6|158
+000340  aa  6 00100 3521 00	epp2 	pr6|64		code
+000341  aa  6 00240 2521 00	spri2	pr6|160
+000342  aa  6 00226 6211 00	eax1 	pr6|150
+000343  aa   024000 4310 07	fld  	10240,dl
+000344  la  4 00010 3521 20	epp2 	pr4|8,*		bce_data$get_line
+000345  aa  0 00617 7001 00	tsx0 	pr0|399		call_ent_var
+						STATEMENT 1 ON LINE 56
+	end;
+
+000346  aa   777606 7100 04	tra  	-122,ic		000154
+						STATEMENT 1 ON LINE 57
+	return;
+
+000347  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 58
+     end;
+
+  END PROCEDURE bce_listen_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

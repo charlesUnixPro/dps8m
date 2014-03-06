@@ -1,0 +1,1421 @@
+	COMPILATION LISTING OF SEGMENT bce_copy_disk
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1023.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1986 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /****^  HISTORY COMMENTS:
+       10*  1) change(86-01-17,Fawcett), approve(86-01-17,MCR7220),
+       11*     audit(86-05-14,Farley), install(86-07-17,MR12.0-1097):
+       12*     Created by Keith Loepere March 1985 to copy a disk pack to another disk
+       13*     pack.
+       14*  2) change(86-01-17,Fawcett), approve(86-04-11,MCR7383),
+       15*     audit(86-05-14,Farley), install(86-07-17,MR12.0-1097):
+       16*     Changed to support subvolumes by adding call to disk_name_pvtx.
+       17*                                                   END HISTORY COMMENTS */
+       18 
+       19 bce_copy_disk: proc (p_ss_info_ptr);
+       20 
+       21 /* Routine to copy a disk pack to another disk pack.
+       22*Written in March 1985 by Keith Loepere. */
+       23 
+       24 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       25 
+       26 /* Parameters */
+       27 
+       28 dcl  p_ss_info_ptr			ptr parameter;
+       29 
+       30 /* Variables */
+       31 
+       32 dcl  arg_count			fixed bin;
+       33 dcl  arg_len			fixed bin (21);
+       34 dcl  arg_list_ptr			ptr;
+       35 dcl  arg_num			fixed bin;
+       36 dcl  arg_ptr			ptr;
+       37 dcl  buffer_address			fixed bin (26);
+       38 dcl  buffer_num			fixed bin;
+       39 dcl  buffer_ptr			(2) ptr;
+       40 dcl  buffer_to_read			(9) fixed bin;	/* buffer number to read in at given state */
+       41 dcl  buffer_to_write		(9) fixed bin;	/* buffer number to write out at given state */
+       42 dcl  buffer_waiting_for		(9) fixed bin;	/* buffer whose completion we are waiting for */
+       43 dcl  code				fixed bin (35);
+       44 dcl  device_type			fixed bin;
+       45 dcl  end_state			(9) fixed bin;	/* state to enter when the last read has completed */
+       46 dcl  f_record			fixed bin (18);
+       47 dcl  force			bit (1) aligned;	/* don't ask questions */
+       48 dcl  from_devname			char (8);
+       49 dcl  from_pvtx			fixed bin;
+       50 dcl  l_record			fixed bin (18);
+       51 dcl  1 my_label			aligned like label;
+       52 dcl  max_io_pages			fixed bin;	/* max pages to handle at a time - normally 3,
+       53*						but is temp set to 1 for error recovery */
+       54 dcl  normal_state			(9) fixed bin;	/* state to enter after a read/write completes */
+       55 dcl  1 record_info			aligned,
+       56        2 read			aligned,
+       57          3 new_record		fixed bin (18),
+       58          3 prev_record		fixed bin (18),
+       59          3 prev_record_in_cylinder	fixed bin,
+       60          3 records_this_cylinder	fixed bin,
+       61        2 buffer			(2) aligned like record_info.read;
+       62 dcl  state			fixed bin;
+       63 dcl  temp_astep			ptr;
+       64 dcl  temp_seg_ptr			ptr;
+       65 dcl  to_devname			char (8);
+       66 dcl  to_is_Multics			bit (1) aligned;
+       67 dcl  to_pvtx			fixed bin;
+       68 dcl  waiting_for_read		(9) bit (1) aligned;/* are we waiting for a read to complete? */
+       69 dcl  working_buffer			fixed bin;
+       70 dcl  yes_no			bit (1) aligned;
+       71 
+       72 /* Constants */
+       73 
+       74 /* State names */
+       75 
+       76 dcl  E1R2				fixed bin init (5) static options (constant);
+       77 dcl  E1W2				fixed bin init (8) static options (constant);
+       78 dcl  Me				char (32) static options (constant) init ("copy_disk");
+       79 dcl  R1E2				fixed bin init (1) static options (constant);
+       80 dcl  R1W2				fixed bin init (7) static options (constant);
+       81 dcl  START			fixed bin init (9) static options (constant);
+       82 dcl  W1E2				fixed bin init (4) static options (constant);
+       83 dcl  W1R2				fixed bin init (3) static options (constant);
+       84 
+       85 /* External */
+       86 
+       87 dcl  error_table_$bad_arg		fixed bin (35) ext static;
+       88 dcl  error_table_$not_done		fixed bin (35) ext static;
+       89 
+       90 /* Based */
+       91 
+       92 dcl  arg				char (arg_len) based (arg_ptr);
+       93 
+       94 /* Entries */
+       95 
+       96 dcl  absadr			entry (ptr, fixed bin (35)) returns (fixed bin (24));
+       97 dcl  bce_check_abort		entry;
+       98 dcl  disk_name_pvtx			entry (char (8), fixed bin, fixed bin (35));
+       99 dcl  bce_parse_disk_spec		entry (char (32), ptr, fixed bin, fixed bin, ptr, fixed bin (18), fixed bin (18), entry (ptr, fixed bin, ptr, fixed bin (35)), ptr, fixed bin (35));
+      100 dcl  bootload_disk_io$queue_read	entry (fixed bin, fixed bin (18), fixed bin, ptr, fixed bin, fixed bin (35));
+      101 dcl  bootload_disk_io$queue_write	entry (fixed bin, fixed bin (18), fixed bin, ptr, fixed bin, fixed bin (35));
+      102 dcl  bootload_disk_io$test_done	entry (fixed bin, fixed bin (35));
+      103 dcl  bce_query$yes_no		entry options (variable);
+      104 dcl  com_err_			entry () options (variable);
+      105 dcl  cu_$arg_count_rel		entry (fixed bin, ptr, fixed bin (35));
+      106 dcl  cu_$arg_ptr_rel		entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+      107 dcl  get_ptrs_$given_segno		entry (fixed bin (15)) returns (ptr);
+      108 dcl  get_temp_segment_		entry (char (*), ptr, fixed bin (35));
+      109 dcl  ioa_				entry () options (variable);
+      110 dcl  pc_abs$unwire_abs		entry (ptr, fixed bin, fixed bin);
+      111 dcl  pc_abs$wire_abs_contig		entry (ptr, fixed bin, fixed bin, fixed bin (35));
+      112 dcl  read_disk			entry (fixed bin, fixed bin (18), ptr, fixed bin (35));
+      113 dcl  release_temp_segment_		entry (char (*), ptr, fixed bin (35));
+      114 
+      115 /* Misc */
+      116 
+      117 dcl  (addr, addrel, max, min, mod, null, segno) builtin;
+      118 
+      119 dcl  cleanup			condition;
+      120 
+      121 	arg_list_ptr = p_ss_info_ptr -> ss_info.arg_list_ptr;
+      122 	pvtp = addr (pvt$);
+      123 	pvt_arrayp = addr (pvt.array);
+      124 	labelp = addr (my_label);
+      125 
+      126 	call cu_$arg_count_rel (arg_count, arg_list_ptr, code);
+      127 	if code ^= 0 then do;
+      128 	     call com_err_ (code, Me);
+      129 	     return;
+      130 	end;
+      131 	if arg_count < 2 then do;
+      132 	     call ioa_ ("Usage:^/  ^a <device> <device> (<arg1> <arg2> ...)", Me);
+      133 	     return;
+      134 	end;
+      135 
+      136 	arg_num = 2;
+      137 	call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, arg_list_ptr);
+      138 	if code ^= 0 then do;
+      139 	     call com_err_ (code, Me, "Can't get arg");
+      140 	     return;
+      141 	end;
+      142 	to_devname = arg;
+      143 
+      144 	call disk_name_pvtx (to_devname, to_pvtx, code);
+      145 	if code ^= 0 then do;
+      146 	     call com_err_ (code, Me, "^a", arg);
+      147 	     go to RETURN;
+      148 	end;
+      149 
+      150 	call read_disk (to_pvtx, (LABEL_ADDR), labelp, code);
+      151 	if code ^= 0 then do;
+      152 	     call com_err_ (code, Me, "Could not read label record of ^a.", to_devname);
+      153 	     return;
+      154 	end;
+      155 	to_is_Multics = (label.Multics = Multics_ID_String);
+      156 
+      157 	arg_num = 1;
+      158 	call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, arg_list_ptr);
+      159 	if code ^= 0 then do;
+      160 	     call com_err_ (code, Me, "Can't get arg");
+      161 	     return;
+      162 	end;
+      163 	from_devname = arg;
+      164 
+      165 	call disk_name_pvtx (from_devname, from_pvtx, code);
+      166 	if code ^= 0 then do;
+      167 	     call com_err_ (code, Me, "^a", arg);
+      168 	     go to RETURN;
+      169 	end;
+      170 
+      171 	call read_disk (from_pvtx, (LABEL_ADDR), labelp, code);
+      172 	if code ^= 0 then do;
+      173 	     call com_err_ (code, Me, "Could not read label record of ^a.", from_devname);
+      174 	     return;
+      175 	end;
+      176 
+      177 	device_type = pvt_array (from_pvtx).device_type;
+      178 	if pvt_array (to_pvtx).device_type ^= device_type then do;
+      179 	     call com_err_ (0, Me, "^a is not the same type as ^a.", from_devname, to_devname);
+      180 	     return;
+      181 	end;
+      182 	if from_pvtx = to_pvtx then do;
+      183 	     call com_err_ (0, Me, "^a is the same disk as ^a.", from_devname, to_devname);
+      184 	     return;
+      185 	end;
+      186 
+      187 	force = "0"b;
+      188 	arg_num = 3;
+      189 	call bce_parse_disk_spec (Me, arg_list_ptr, arg_num, device_type, labelp, f_record, l_record, no_parse, null, code);
+      190 	if code ^= 0 then return;
+      191 
+      192 /* Now that f_record and l_record are assigned we will give them their chance to turn back. */
+      193 
+      194 	if f_record = l_record then call ioa_ ("Writing to record number ^oo on ^a.", f_record, to_devname);
+      195 	else call ioa_ ("Writing to records ^oo through ^oo (inclusive) on ^a.", f_record, l_record, to_devname);
+      196 	if ^force then do;
+      197 	     call bce_query$yes_no (yes_no, "Do you wish to write to the ^[non ^;^]^a - ^a? ",
+      198 		^to_is_Multics, Multics_ID_String, to_devname);
+      199 	     if ^yes_no then return;
+      200 	end;
+      201 
+      202 
+      203 /* Find work area */
+      204 
+      205 	temp_seg_ptr = null;
+      206 	call get_temp_segment_ (Me, temp_seg_ptr, code);
+      207 	if code ^= 0 then do;
+      208 	     call com_err_ (code, Me, "Unable to get temp disk buffer.");
+      209 	     return;
+      210 	end;
+      211 
+      212 	buffer_ptr (1) = temp_seg_ptr;
+      213 	buffer_ptr (2) = addrel (temp_seg_ptr, 3 * 1024);
+      214 	temp_astep = get_ptrs_$given_segno (segno (temp_seg_ptr));
+      215 	call pc_abs$wire_abs_contig (temp_astep, 0, 6, code); /* double buffer of three pages */
+      216 	if code ^= 0 then do;
+      217 	     call com_err_ (code, Me, "Unable to wire temp disk buffer.");
+      218 	     call release_temp_segment_ (Me, temp_seg_ptr, code);
+      219 	     return;
+      220 	end;
+      221 
+      222 	buffer_address = absadr (temp_seg_ptr, code);
+      223 	disk_post_area_ptr = addr (bootload_disk_post_seg$);
+      224 	disk_post_area.number = 2;
+      225 
+      226 	disk_post_area.buffer_coreadd (1) = buffer_address;
+      227 	disk_post_area.buffer_coreadd (2) = buffer_address + 3 * 1024;
+      228 	disk_post_area.disk_complete (1) = "0"b;
+      229 	disk_post_area.disk_complete (2) = "0"b;
+      230 	disk_post_area.disk_error_code (1) = 0;
+      231 	disk_post_area.disk_error_code (2) = 0;
+      232 
+      233 	on cleanup call clean_up;			/* remember, this is only called during bce_check_abort */
+      234 
+      235 
+      236 /* Now for the real work.  The basic flow of this program is to keep reading
+      237*pages from the from_pvtx and write them to the to_pvtx, using relatively
+      238*standard double buffering techniques.  This process is done backwards, and
+      239*(normally) three pages at a time, to minimize latency between i/o's, to
+      240*maximize the time we have between i/o's to get our next request in, within the
+      241*constraints that bootload_disk_io can handle a maximum of 4 pages at a time.
+      242*Three pages is optimal both for 451 and 501 style drives.  However, we don't
+      243*want to read/write a set of pages that cross a cylinder boundary, so we check
+      244*for this.  As such, a set may contain less than 3 pages.  Also, in case of
+      245*error (explained below), only one page is read/written so the bad pages may be
+      246*found.
+      247*
+      248*So that the program does not become overly complicated via code, it is 
+      249*expressed as a finite state machine.  The idea is to start in a state where
+      250*both buffers are doing nothing, move to a state where buffer 1 is reading and
+      251*in which we are waiting for buffer 1's i/o to complete, move to a state in
+      252*which buffer 1 is writing and buffer 2 is reading (the next set of pages) and
+      253*in which we are waiting for buffer 1's i/o to complete, move to a state where
+      254*buffer 1 is done and we are waiting for buffer 2 to finish, etc.  At any given
+      255*state, we are waiting for the i/o of a particular buffer to complete before
+      256*moving to the next state.
+      257*
+      258*Error philosophy: when an error occurs, we want to be sure we read/write all
+      259*of the pages that we can.  When an error occurs on a multiple page read, the
+      260*read is simple retried, asking this time for only the last (since we are
+      261*reading backwards) page.  If an error occurs on a single page read, though, we
+      262*must give up on that page, and inform the user of same.  The copy is restarted,
+      263*at the record before (less than) the faulting record.
+      264*
+      265*Errors during writing are pretty much the reverse of the above.  If a single
+      266*page write fails, we must give up on the page, and inform the user.  As far as
+      267*the state goes, we pretend the write was successful and go to the
+      268*corresponding state (waiting for the next read to write out).  If a multi-page
+      269*write fails, though, we must start writing pages one at a time to find the bad
+      270*ones.  We could just do this from the data already read, but this would be too
+      271*hard to keep track of.  Besides, we are screwed, latency-wise, having to
+      272*re-write, so we wait for any read in progress to finish, and re-read the last
+      273*page of the previous read (the first page we want to write now) so that the
+      274*buffers come back into sync.
+      275*
+      276*In the finite state diagram that follows, the codes (such as e1 w2) mean that
+      277*buffer 1 is empty, and buffer 2 is in process of being written. */
+      278 
+      279 
+      280 /*    -------		     -------
+      281*      | END |		     |START|
+      282*      -------	 /-last 1 done-|r1 e2|
+      283*         ^       /--	     -------
+      284*      1 done  /-			  \ 1 done
+      285*         |   v			   v
+      286*      -------	       -------         -------	    -------
+      287*      |w1 e2|<-last 1 done-|r1 e2|-1 done->|w1 r2|	    | END |
+      288*      -------	       -------         -------	    -------
+      289*			^	      |		       ^
+      290*		       2 done	   1 done		    2 done
+      291*			|	      v		       |
+      292*		       -------         -------	    -------
+      293*		       |r1 w2|<-2 done-|e1 r2|-last 2 done->|e1 w2|
+      294*		       -------         -------	    -------
+      295**/
+      296 
+      297 	end_state (*) = 0;
+      298 	normal_state (*) = 0;
+      299 	buffer_to_read (*) = 0;
+      300 	buffer_to_write (*) = 0;
+      301 	buffer_waiting_for (*) = 0;
+      302 	waiting_for_read (*) = "0"b;
+      303 
+      304 	buffer_to_read (START) = 1;
+      305 	buffer_waiting_for (START) = 1;
+      306 	waiting_for_read (START) = "1"b;
+      307 	end_state (START) = W1E2;
+      308 	normal_state (START) = W1R2;
+      309 
+      310 	buffer_waiting_for (R1E2) = 1;
+      311 	waiting_for_read (R1E2) = "1"b;
+      312 	end_state (R1E2) = W1E2;
+      313 	normal_state (R1E2) = W1R2;
+      314 
+      315 	buffer_to_read (W1R2) = 2;
+      316 	buffer_to_write (W1R2) = 1;
+      317 	buffer_waiting_for (W1R2) = 1;
+      318 	normal_state (W1R2) = E1R2;
+      319 
+      320 	buffer_waiting_for (E1R2) = 2;
+      321 	waiting_for_read (E1R2) = "1"b;
+      322 	end_state (E1R2) = E1W2;
+      323 	normal_state (E1R2) = R1W2;
+      324 
+      325 	buffer_to_read (R1W2) = 1;
+      326 	buffer_to_write (R1W2) = 2;
+      327 	buffer_waiting_for (R1W2) = 2;
+      328 	normal_state (R1W2) = R1E2;
+      329 
+      330 	buffer_to_write (E1W2) = 2;
+      331 	buffer_waiting_for (E1W2) = 2;
+      332 
+      333 	buffer_to_write (W1E2) = 1;
+      334 	buffer_waiting_for (W1E2) = 1;
+      335 
+      336 	max_io_pages = 3;				/* normally read/write a max of three pages at a time */
+      337 
+      338 RESTART:
+      339 	record_info.read.prev_record = l_record + 1;
+      340 	record_info.read.prev_record_in_cylinder = mod (record_info.read.prev_record, rec_per_cyl (device_type));
+      341 
+      342 	if record_info.read.prev_record <= f_record then state = 0;
+      343 	else state = START;
+      344 
+      345 	do while (state ^= 0);
+      346 	     call bce_check_abort;
+      347 
+      348 	     working_buffer = buffer_to_write (state);
+      349 	     if working_buffer > 0 then		/* last read must have finished */
+      350 		call bootload_disk_io$queue_write (to_pvtx, record_info.buffer (working_buffer).new_record, record_info.buffer (working_buffer).records_this_cylinder, buffer_ptr (working_buffer), working_buffer, code);
+      351 
+      352 	     working_buffer = buffer_to_read (state);
+      353 	     if working_buffer > 0 then do;
+      354 		if record_info.read.prev_record_in_cylinder = 0 then record_info.read.prev_record_in_cylinder = rec_per_cyl (device_type); /* next cylinder */
+      355 		record_info.read.records_this_cylinder = min (record_info.read.prev_record_in_cylinder, max_io_pages); /* num pages to do this time around */
+      356 		record_info.read.new_record = max (record_info.read.prev_record - record_info.read.records_this_cylinder, f_record); /* don't go over requested area */
+      357 		record_info.read.records_this_cylinder = record_info.read.prev_record - record_info.read.new_record; /* real amt to do */
+      358 
+      359 		call bootload_disk_io$queue_read (from_pvtx, record_info.read.new_record, record_info.read.records_this_cylinder, buffer_ptr (working_buffer), working_buffer, code);
+      360 		record_info.buffer (working_buffer) = record_info.read; /* record what pages are in this buffer */
+      361 	     end;
+      362 
+      363 	     working_buffer = buffer_waiting_for (state);
+      364 	     code = error_table_$not_done;
+      365 	     do while (code = error_table_$not_done);
+      366 		call bootload_disk_io$test_done (working_buffer, code);
+      367 	     end;
+      368 	     if waiting_for_read (state) then
+      369 		if code = 0 then do;
+      370 		     record_info.read.prev_record = record_info.read.new_record; /* advance to next (prev) pages */
+      371 		     record_info.read.prev_record_in_cylinder = record_info.read.prev_record_in_cylinder - record_info.read.records_this_cylinder;
+      372 		     max_io_pages = 3;		/* allow full batch next time around -
+      373*						on error cases we keep it at 1 assuming that 
+      374*						next record will be bad also (same track?) */
+      375 		end;
+      376 		else do;
+      377 		     if record_info.read.records_this_cylinder > 1 then /* try i/o on just 1 record to find fault one */
+      378 			l_record = record_info.read.prev_record - 1; /* start with last record not processed */
+      379 		     else do;
+      380 			call com_err_ (0, Me, "Could not read record ^oo of ^a.", record_info.read.new_record, from_devname);
+      381 			l_record = record_info.read.prev_record - 2; /* skip the current record */
+      382 		     end;
+      383 		     go to IO_ERROR;
+      384 		end;
+      385 	     else if code ^= 0 then do;		/* error on write */
+      386 		if record_info.buffer (working_buffer).records_this_cylinder = 1 then /* consider page as done */
+      387 		     call com_err_ (0, Me, "Could not write record ^oo to ^a.", record_info.buffer (working_buffer).new_record, to_devname);
+      388 		else do;				/* multi-record, wait for all io to finish, restart */
+      389 		     l_record = record_info.buffer (working_buffer).prev_record - 1; /* restart read at pages attempted written */
+      390 
+      391 IO_ERROR:		     do buffer_num = 1 to 2;
+      392 			code = error_table_$not_done;
+      393 			do while (code = error_table_$not_done);
+      394 			     call bootload_disk_io$test_done (buffer_num, code);
+      395 			end;
+      396 		     end;
+      397 
+      398 		     max_io_pages = 1;		/* force just one page i/o next time */
+      399 		     go to RESTART;
+      400 		end;
+      401 	     end;
+      402 
+      403 	     if record_info.read.prev_record <= f_record then state = end_state (state);
+      404 	     else state = normal_state (state);
+      405 	end;
+      406 
+      407 	call clean_up;
+      408 RETURN:	return;
+      409 
+      410 clean_up: proc;
+      411 
+      412 	do buffer_num = 1 to 2;
+      413 	     code = error_table_$not_done;
+      414 	     do while (code = error_table_$not_done);
+      415 		call bootload_disk_io$test_done (buffer_num, code);
+      416 	     end;
+      417 	end;
+      418 	disk_post_area.number = 0;
+      419 
+      420 	call pc_abs$unwire_abs (temp_astep, 0, 3);
+      421 	call release_temp_segment_ (Me, temp_seg_ptr, code);
+      422 	return;
+      423      end;
+      424 
+      425 no_parse: proc (arg_list_ptr, arg_num, info_ptr, code);
+      426 
+      427 /* called by bce_parse_disk_spec when it doesn't like something */
+      428 
+      429 dcl  arg_list_ptr			ptr parameter;
+      430 dcl  arg_num			fixed bin parameter;
+      431 dcl  code				fixed bin (35) parameter;
+      432 dcl  info_ptr			ptr parameter;
+      433 
+      434 	call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, arg_list_ptr);
+      435 	if arg = "-force" | arg = "-fc" then force = "1"b;
+      436 	else do;
+      437 	     code = error_table_$bad_arg;
+      438 	     call com_err_ (code, Me, "^a", arg);
+      439 	end;
+      440 	return;
+      441      end no_parse;
+      442 
+  1     1 /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+      443 
+      444 
+  2     1 /* BEGIN include file bootload_post_area.incl.pl1 */
+  2     2 
+  2     3 /* Area used for posting completion of disk i/o for bootload Multics
+  2     4*operations (save, restore and pack copy). */
+  2     5 
+  2     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  2     7 
+  2     8 dcl  bootload_disk_post_seg$	        aligned ext;
+  2     9 
+  2    10 dcl  1 disk_buffer_post	        aligned based (disk_buffer_post_ptr),
+  2    11        2 buffer_coreadd	        fixed bin (26),
+  2    12        2 disk_complete	        bit (1),		/* disk i/o complete */
+  2    13        2 disk_error_code	        fixed bin (35);
+  2    14 
+  2    15 dcl  disk_buffer_post_ptr	        ptr;
+  2    16 dcl  1 disk_post_area	        aligned based (disk_post_area_ptr),
+  2    17        2 number		        fixed bin,
+  2    18        2 posted		        (0 refer (disk_post_area.number)) aligned like disk_buffer_post;
+  2    19 dcl  disk_post_area_ptr	        ptr;
+  2    20 
+  2    21 /* END include file bootload_post_area.incl.pl1 */
+      445 
+      446 
+  3     1 /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  3     2 
+  3     3 
+  3     4 
+  3     5 
+  3     6 /****^  HISTORY COMMENTS:
+  3     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  3     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  3     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  3    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  3    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  3    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  3    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  3    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  3    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  3    16*                                                   END HISTORY COMMENTS */
+  3    17 
+  3    18 
+  3    19 /*
+  3    20*   All disk packs have the standard layout described below:
+  3    21*
+  3    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  3    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  3    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  3    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  3    26*   Record  7		: formerly contained bad track list; no longer used.
+  3    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  3    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  3    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  3    30*
+  3    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  3    32*   of the particular partition.
+  3    33*
+  3    34*
+  3    35*
+  3    36*   A conceptual declaration for a disk pack could be:
+  3    37*
+  3    38*   dcl 1 disk_pack,
+  3    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  3    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  3    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  3    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  3    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  3    44*   2 vtoc_array_records	(8 : n-1),
+  3    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  3    46*   3 unused				bit(36 * 64),
+  3    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  3    48*
+  3    49*
+  3    50*
+  3    51*
+  3    52**/
+  3    53 
+  3    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  3    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  3    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  3    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  3    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  3    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  3    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  3    61 		         fixed bin (17) int static options (constant);
+  3    62 
+  3    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  3    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  3    65 /* or the physical volume table entry (pvte) device type.		      */
+  3    66 
+  3    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  3    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  3    69 
+  3    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  3    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  3    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  3    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  3    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  3    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  3    76 
+  3    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+      447 
+      448 
+  4     1 /* Begin include file ...... fs_dev_types.incl.pl1 */
+  4     2 
+  4     3 /****^  HISTORY COMMENTS:
+  4     4*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  4     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  4     6*     Add support for FIPS
+  4     7*     3380.
+  4     8*  2) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  4     9*     audit(86-05-15,Coppola), install(86-07-18,MR12.0-1098):
+  4    10*     Add the support for subvolumes for the MSU3380 and MSU3390.
+  4    11*  3) change(86-10-02,Fawcett), approve(86-10-02,PBF7383),
+  4    12*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+  4    13*     Changed 3390 to 3381, "d338" to "3380" & "d339" to "3381".
+  4    14*                                                   END HISTORY COMMENTS */
+  4    15 
+  4    16 /* Modified 5/19/76 by N. I. Morris */
+  4    17 /* Modified 12/27/78 by Michael R. Jordan to correct MSS0500 information */
+  4    18 /* Modified 4/79 by R.J.C. Kissel to add msu0501 information. */
+  4    19 /* Modified '82 by BIM for needs_alt_part */
+  4    20 /* Modified 4/84 by Chris Jones for FIPS disks */
+  4    21 /* Modified 12/84 by Paul Farley for FIPS disks formatted for 512wd sectors */
+  4    22 /* Modified 1/85 by Paul Farley to decrease the size of the 3380, until the
+  4    23*   volmap and record stock can be expanded. */
+  4    24 
+  4    25 /*
+  4    26********************************************************************************
+  4    27**							        *
+  4    28**                           WARNING:                                          *
+  4    29**							        *
+  4    30**   There exists fs_dev_types.incl.alm that must me updated when a new device *
+  4    31**   type is added.						        *
+  4    32**							        *
+  4    33**   There are other include files that contain arrays indexed by the device   *
+  4    34**   index obtained by references to MODELX or MODELN in this include file.    *
+  4    35**   These must be modified when a new device type is added:		        *
+  4    36**   disk_pack.incl.pl1					        *
+  4    37**   fs_dev_types_sector.incl.pl1 (included in this include)		        *
+  4    38**							        *
+  4    39********************************************************************************
+  4    40**/
+  4    41 
+  4    42 
+  4    43 dcl (maxdevt init (9),				/* maximum legal devt */
+  4    44      bulkdevt init (1),				/* bulk store devt */
+  4    45      msu0500devt init (2),				/* MSU0500 device type */
+  4    46      msu0451devt init (3),				/* MSU0451 device type */
+  4    47      msu0450devt init (3),				/* MSU0450 device type */
+  4    48      msu0400devt init (4),				/* MSU0400 device type */
+  4    49      dsu191devt init (4),				/* DSU191 device type */
+  4    50      dsu190devt init (5),				/* DSU190 device type */
+  4    51      dsu181devt init (6),				/* DSU181 device type */
+  4    52      msu0501devt init (7),				/* MSU0501 device type */
+  4    53      fips3380devt init (8),				/* 3380D FIPS device type */
+  4    54      fips3381devt init (9)				/* 3380E FIPS device type */
+  4    55      ) fixed bin (4) static options (constant);
+  4    56 
+  4    57 dcl  MODEL (12) fixed bin static options (constant) init	/* Known device model numbers */
+  4    58      (0, 500, 451, 450, 400, 402, 191, 190, 181, 501, 3380, 3381);
+  4    59 
+  4    60 dcl  MODELX (12) fixed bin static options (constant) init	/* translation from model number to device type */
+  4    61      (1, 2, 3, 3, 4, 4, 4, 5, 6, 7, 8, 9);
+  4    62 
+  4    63 dcl  MODELN (9) fixed bin static options (constant) init	/* translation from device type to model number */
+  4    64      (0, 500, 451, 400, 190, 181, 501, 3380, 3381);
+  4    65 
+  4    66 dcl  device_names (9) char (4) aligned static options (constant) init /* device names indexed by device type */
+  4    67      ("bulk", "d500", "d451", "d400", "d190", "d181", "d501", "3380", "3381");
+  4    68 
+  4    69 dcl  first_dev_number (9) fixed bin (17) static options (constant) init /* First valid device_number */
+  4    70      (1, 1, 1, 1, 1, 1, 1, 0, 0);
+  4    71 
+  4    72 dcl  fips_type_disk (9) bit (1) unal static options (constant) init /* ON => FIPS disk */
+  4    73      ("0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"1"b,"1"b);
+  4    74 
+  4    75 dcl  media_removable (9) bit (1) static options (constant) init /* ON => demountable pack on device */
+  4    76      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  4    77 
+  4    78 dcl  shared_spindle (9) bit (1) static options (constant) init /* ON => 2 devices per spindle */
+  4    79      ("0"b, "1"b, "0"b, "0"b, "0"b, "0"b, "1"b, "0"b, "0"b);
+  4    80 
+  4    81 dcl  needs_alt_part (9) bit (1) static options (constant) init /* ON => needs alternate partition to run alternate tracks */
+  4    82      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  4    83 
+  4    84 dcl  seek_command (9) bit (6) init /* Seek command: 00 => N/A, 30 => Seek_512, 34 => seek_64 */
+  4    85      ("00"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"30"b3, "30"b3);
+  4    86 
+  4    87 dcl  rec_per_dev (9) fixed bin (21) static options (constant) init /* table of # of records on each device */
+  4    88      (0, 38258, 38258, 19270, 14760, 4444, 67200, 112395, 224790);
+  4    89 
+  4    90 dcl  rec_per_sv (9) fixed bin static options (constant) init /* table of  # of records on each subvol */
+  4    91      (0, 38258, 38258, 19270, 14760, 4444, 67200, 56134, 74930);
+  4    92 
+  4    93 dcl  number_of_sv (9) fixed bin static options (constant) init /* table of subvolumes */
+  4    94      (0, 0, 0, 0, 0, 0, 0, 2, 3);
+  4    95 
+  4    96 dcl  valid_sv_string char (3) static options (constant) init  /* string of valid subvolume names */
+  4    97      ("abc");
+  4    98 
+  4    99 dcl  valid_sv_array (0:2) char (1) static options (constant) /* array of valid subvolume names */
+  4   100      init ("a","b","c");
+  4   101 
+  4   102 dcl  cyl_per_dev (9) fixed bin static options (constant) init /* table of # of cylinders on each device */
+  4   103      (0, 814, 814, 410, 410, 202, 840, 885, 1770);
+  4   104 
+  4   105 dcl  cyl_per_sv (9) fixed bin static options (constant) init /* table of # of cylinders on each subvolume */
+  4   106      (0, 814, 814, 410, 410, 202, 840, 442, 590);
+  4   107 
+  4   108 dcl  rec_per_cyl (9) fixed bin static options (constant) init /* table of # of records per cylinder on each device */
+  4   109      (0, 47, 47, 47, 36, 22, 80, 127, 127);
+  4   110 
+  4   111 dcl  tracks_per_cyl (9) fixed bin static options (constant) init /* table of # of tracks per cylinder on each device */
+  4   112      (0, 19, 19, 19, 19, 20, 20, 15, 15);
+  4   113 
+  4   114 
+  4   115 dcl  first_rec_num (9) fixed bin static options (constant) init /* table of # of first record on each device */
+  4   116      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  4   117 
+  4   118 dcl  last_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each device */
+  4   119      (0, 38257, 38116, 19128, 14651, 4399, 67199, 112394, 224789);
+  4   120 
+  4   121 dcl  last_sv_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each subvolume */
+  4   122      (0, 38257, 38116, 19128, 14651, 4399, 67199, 56133, 74929);
+  4   123 
+  4   124 dcl  first_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector for each device */
+  4   125      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  4   126 
+  4   127 dcl  last_sect_num (9) fixed bin (24) static options (constant) init /* table of # last sector number for each device */
+  4   128      (0, 618639, 616359, 309319, 239722, 71999, 1075199, 225674, 451349);
+  4   129 
+  4   130 dcl  first_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector of alt partition */
+  4   131      (0, 638400, 616360, 309320, 239723, 72000, 1075200, 225675, 451350);
+  4   132 
+  4   133 dcl  last_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector of alt partition */
+  4   134      (0, 639919, 618639, 311599, 241489, 72719, 1077759, 225930, 451605);
+  4   135 
+  4   136 dcl  last_physical_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector on device (includes T&D cylinders) */
+  4   137      (0, 639919, 619399, 312359, 242249, 72359, 1077759, 225674, 451859);
+  4   138 
+  4   139 dcl  dev_time (9) float bin (27) static options (constant) init /* table of average access times for each device */
+  4   140      (384e0, 33187e0, 33187e0, 34722e0, 46935e0, 52631e0, 33187e0, 26260e0, 26260e0);
+  4   141 
+  5     1 /* Begin fs_dev_types_sector.incl.pl1 */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  5     6*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  5     7*     Add the sector differance for devices that do 64 word IO and devices that
+  5     8*     do 512 word IO.
+  5     9*                                                   END HISTORY COMMENTS */
+  5    10 
+  5    11 /* Created by R. A. Fawcett for 512 word IO. for procedures that do not
+  5    12*	 need all the data in fs_dev_types. This is also included in
+  5    13*	 fs_dev_types.incl.pl1  */
+  5    14 
+  5    15 dcl  sect_per_cyl (9) fixed bin static options (constant) init /* table of # of sectors per cylinder on each device */
+  5    16     (0, 760, 760, 760, 589, 360, 1280, 255, 255);
+  5    17 
+  5    18 dcl  sect_per_sv (9) fixed bin (24) static options (constant) init /* table of # of sectors per cylinder on each subvolume */
+  5    19      (0, 0, 0, 0, 0, 0, 0, 112710, 150450);
+  5    20 
+  5    21 dcl  sect_per_rec (9) fixed bin static options (constant) init
+  5    22  /* table of # of sectors per record on each device */
+  5    23  /* coresponding array in disk_pack.incl.pl1 called SECTORS_PER_RECORD */
+  5    24     (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  5    25 
+  5    26 dcl  sect_per_vtoc (9) fixed bin static options (constant) init
+  5    27      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  5    28 	
+  5    29 dcl  vtoc_per_rec (9) fixed bin  static options  (constant) init
+  5    30 /* corespending array in disk_pack.incl.pl1 named VTOCES_PER_RECORD */
+  5    31      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  5    32 
+  5    33 dcl  sect_per_track (9) fixed bin static options (constant) init /* table of # of sectors per track on each device */
+  5    34     (0, 40, 40, 40, 31, 18, 64, 17, 17);
+  5    35 
+  5    36 dcl  words_per_sect (9) fixed bin static options (constant) init /* table of # of words per sector on each device */
+  5    37     (0, 64, 64, 64, 64, 64, 64, 512, 512);
+  5    38 
+  5    39 /* End fs_dev_types_sector.incl.pl1 */
+  5    40 
+  4   142 
+  4   143 
+  4   144 /* End of include file ...... fs_dev_types.incl.pl1 */
+      449 
+      450 
+  6     1 /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  6     2 
+  6     3 /****^  HISTORY COMMENTS:
+  6     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  6     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  6     6*     Add the subvolume info.
+  6     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  6     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  6     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  6    10*     dumper bit maps.
+  6    11*                                                   END HISTORY COMMENTS */
+  6    12 
+  6    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  6    14 /* Note: fsout_vol clears pad fields before writing the label */
+  6    15 
+  6    16 dcl  labelp ptr;
+  6    17 
+  6    18 dcl 1 label based (labelp) aligned,
+  6    19 
+  6    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  6    21 
+  6    22     2 gcos (5*64) fixed bin,
+  6    23 
+  6    24 /* Now we have the Multics label */
+  6    25 
+  6    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  6    27     2 version fixed bin,				/* Version 1 */
+  6    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  6    29     2 pv_name char (32),				/* Physical volume name. */
+  6    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  6    31     2 pvid bit (36),				/* Unique ID of this pack */
+  6    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  6    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  6    34     2 time_registered fixed bin (71),			/* time imported to system */
+  6    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  6    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  6    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  6    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  6    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  6    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  6    41     2 flagpad bit (33) unal,
+  6    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  6    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  6    44     2 password bit (72),				/* not yet used */
+  6    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  6    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  6    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  6    48     2 pad1 (13) fixed bin,
+  6    49     2 time_mounted fixed bin (71),			/* time mounted */
+  6    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  6    51 
+  6    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  6    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  6    54* */
+  6    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  6    56     2 pad6 fixed bin,				
+  6    57 
+  6    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  6    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  6    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  6    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  6    62     2 pad1a (2) fixed bin,
+  6    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  6    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  6    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  6    66     2 pad2 (40) fixed bin,
+  6    67     2 root,
+  6    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  6    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  6    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  6    71       3 pad7 bit (1) aligned,				
+  6    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  6    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  6    74       3 esd_state fixed bin,				/* State of esd */
+  6    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  6    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  6    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  6    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  6    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  6    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  6    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  6    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  6    83     2 pad3 (52) fixed bin,
+  6    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  6    85     2 parts (47),
+  6    86       3 part char (4),				/* Name of partition */
+  6    87       3 frec fixed bin,				/* First record */
+  6    88       3 nrec fixed bin,				/* Number of records */
+  6    89       3 pad5 fixed bin,
+  6    90     2 pad4 (5*64) fixed bin;
+  6    91 
+  6    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  6    93 
+  6    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+      451 
+      452 
+  7     1 /*	BEGIN INCLUDE FILE ... pvt.incl.pl1 ... last modified January 1982 */
+  7     2 
+  7     3 
+  7     4 /* The physical volume table (PVT) is a wired-down table.
+  7     5*   It has one entry for each spindle present, be it for
+  7     6*   Storage System or "I/O" use.
+  7     7**/
+  7     8 
+  7     9      dcl	   pvt$		      ext,
+  7    10 	   pvtp		      ptr;
+  7    11 
+  7    12 
+  7    13      dcl	   1 pvt		      based (pvtp) aligned,
+  7    14 
+  7    15 	     2 n_entries	      fixed bin (17),	/* number of PVT entries */
+  7    16 	     2 max_n_entries      fixed bin (17),	/* max number of PVT entries */
+  7    17 	     2 n_in_use	      fixed bin (17),	/* number of PVT entries in use */
+  7    18 	     2 rwun_pvtx	      fixed bin,		/* rewind_unloading pvtx */
+  7    19 	     2 shutdown_state     fixed bin,		/* state of previous shutdown */
+  7    20 	     2 esd_state	      fixed bin,		/* state of ESD, >0 iff in ESD */
+  7    21 	     2 prev_shutdown_state fixed bin,		/* shutdown state of previous bootload */
+  7    22 	     2 prev_esd_state     fixed bin,		/* ESD state of previous bootload */
+  7    23 
+  7    24 	     2 time_of_bootload fixed bin (71),		/* Time of bootload */
+  7    25 	     2 root_lvid	      bit (36) aligned,	/* Logical volume ID of Root Logical Volume (RLV) */
+  7    26 	     2 root_pvid	      bit (36) aligned,	/* Physical volume ID of Root Physical Volume (RPV) */
+  7    27 	     2 root_pvtx	      fixed bin,		/* Index to PVTE for Root Physical Volume (RPV) */
+  7    28 	     2 root_vtocx	      fixed bin,		/* VTOCE index for root (>) */
+  7    29 	     2 disk_table_vtocx   fixed bin,		/* VTOCE index for disk table on RPV */
+  7    30 	     2 disk_table_uid     bit (36) aligned,	/* File System UID for disk_table */
+  7    31 
+  7    32 	     2 rpvs_requested     bit (1) aligned,	/* RPVS keyword given on BOOT */
+  7    33 	     2 rpv_needs_salv     bit (1) aligned,	/* RPV required (not requested) salvage */
+  7    34 	     2 rlv_needs_salv     bit (1) aligned,	/* RLV required (not requested) salvage */
+  7    35 	     2 volmap_lock_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  7    36 	     2 volmap_idle_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  7    37 	     2 vtoc_map_lock_wait_constant bit (36) aligned, /* For constructing wait event: OR pvte_rel into lower */
+  7    38 	     2 n_volmap_locks_held fixed bin (17),	/* Current number of volmap locks held */
+  7    39 	     2 n_vtoc_map_locks_held fixed bin (17),	/* Current number of VTOC Map locks held */
+  7    40 
+  7    41 	     2 last_volmap_time   fixed bin (71),	/* Time a volmap was last locked/unlocked */
+  7    42 	     2 last_vtoc_map_time fixed bin (71),	/* Time a VTOC Map was last locked/unlocked */
+  7    43 	     2 total_volmap_lock_time fixed bin (71),	/* Total time volmap's were locked (integral) */
+  7    44 	     2 total_vtoc_map_lock_time fixed bin (71),	/* Total time VTOC Maps were locked (integral) */
+  7    45 
+  7    46 	     2 n_volmap_locks     fixed bin (35),	/* Number times a volmap was locked */
+  7    47 	     2 n_vtoc_map_locks   fixed bin (35),	/* Number times a vtoc_map was locked */
+  7    48 	     2 volmap_lock_nowait_calls fixed bin (35),	/* Number calls to lock volmap, no wait */
+  7    49 	     2 volmap_lock_nowait_fails fixed bin (35),	/* Number times lock failed */
+  7    50 	     2 volmap_lock_wait_calls fixed bin (35),	/* Number calls to lock volmap, wait */
+  7    51 	     2 volmap_lock_wait_fails fixed bin (35),	/* Number times lock failed */
+  7    52 	     2 pad (2) bit (36) aligned,
+  7    53 
+  7    54 	     2 array	      fixed bin (71);	/* Array of PVTE's -- must be double-word aligned */
+  7    55 
+  7    56 
+  7    57 
+  7    58 /*	END INCLUDE FILE ...pvt.incl.pl1 */
+      453 
+      454 
+  8     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  8     2 
+  8     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  8     4 
+  8     5 /****^  HISTORY COMMENTS:
+  8     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  8     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  8     8*     Add the support for subvolumes
+  8     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  8    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  8    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  8    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  8    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  8    14*     Added inconsistent_dbm bit for determining the status of volume
+  8    15*     dumper bit maps.
+  8    16*                                                   END HISTORY COMMENTS */
+  8    17 
+  8    18      dcl	   pvt$array	      aligned external;
+  8    19      dcl	   pvt$max_n_entries      fixed bin external;
+  8    20 
+  8    21      dcl	   pvt_arrayp	      ptr;
+  8    22      dcl	   pvtep		      ptr;
+  8    23 
+  8    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  8    25 
+  8    26      dcl	   1 pvte		      based (pvtep) aligned,
+  8    27 
+  8    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  8    29 
+  8    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  8    31 
+  8    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  8    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  8    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  8    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  8    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  8    37 	     2 pad3	      bit (2) unaligned,
+  8    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  8    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  8    40 
+  8    41 
+  8    42 
+  8    43 	     2 devname	      char (4),		/* device name */
+  8    44 
+  8    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  8    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  8    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  8    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  8    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  8    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  8    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  8    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  8    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  8    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  8    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  8    56 	     2 scav_check_address
+  8    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  8    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  8    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  8    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  8    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  8    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  8    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  8    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  8    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  8    66 
+  8    67 
+  8    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  8    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  8    70 
+  8    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  8    72 
+  8    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  8    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  8    75 
+  8    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  8    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  8    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  8    79 	     2 records_per_cyl    fixed bin,
+  8    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  8    81 	     2 sv_name            char (2) aligned,
+  8    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  8    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  8    84 
+  8    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  8    86 	     2 pad2	      bit (18) unaligned,
+  8    87 
+  8    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  8    89 
+  8    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  8    91 
+  8    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  8    93 
+  8    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  8    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  8    96 
+  8    97 
+  8    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  8    99 
+  8   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  8   101 
+  8   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  8   103 
+  8   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  8   105 
+  8   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  8   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  8   108 
+  8   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  8   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  8   111 
+  8   112 
+  8   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  8   114 	   VOLMAP_ASYNC_READ      init (1),
+  8   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  8   116 
+  8   117 
+  8   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      455 
+      456      end bce_copy_disk;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.1  bce_copy_disk.pl1                 >special_ldd>install>MR12.3-1114>bce_copy_disk.pl1
+443          1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+445          2    07/11/84  0937.3  bootload_post_area.incl.pl1       >ldd>include>bootload_post_area.incl.pl1
+447          3    10/22/86  1450.1  disk_pack.incl.pl1                >ldd>include>disk_pack.incl.pl1
+449          4    10/30/86  2010.5  fs_dev_types.incl.pl1             >ldd>include>fs_dev_types.incl.pl1
+4-142        5    07/24/86  2051.8  fs_dev_types_sector.incl.pl1      >ldd>include>fs_dev_types_sector.incl.pl1
+451          6    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+453          7    05/27/82  1525.8  pvt.incl.pl1                      >ldd>include>pvt.incl.pl1
+455          8    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+E1R2                                   constant        fixed bin(17,0)          initial dcl 76 ref 318 320 321 322 323
+E1W2                                   constant        fixed bin(17,0)          initial dcl 77 ref 322 330 331
+LABEL_ADDR                             constant        fixed bin(17,0)          initial dcl 3-54 ref 150 171
+Me                              000011 constant        char(32)                 initial packed unaligned dcl 78 set ref 128* 132*
+                                                                                  139* 146* 152* 160* 167* 173* 179* 183* 189* 206*
+                                                                                  208* 217* 218* 380* 386* 421* 438*
+Multics                 500     000172 automatic       char(32)                 initial level 2 in structure "my_label" dcl 51
+                                                                                  in procedure "bce_copy_disk" set ref 51*
+Multics                 500            based           char(32)                 initial level 2 in structure "label" dcl 6-18
+                                                                                  in procedure "bce_copy_disk" ref 155
+Multics_ID_String               000010 internal static char(32)                 initial packed unaligned dcl 6-92 set ref 155 197*
+R1E2                                   constant        fixed bin(17,0)          initial dcl 79 ref 310 311 312 313 328
+R1W2                                   constant        fixed bin(17,0)          initial dcl 80 ref 323 325 326 327 328
+START                                  constant        fixed bin(17,0)          initial dcl 81 ref 304 305 306 307 308 343
+W1E2                                   constant        fixed bin(17,0)          initial dcl 82 ref 307 312 333 334
+W1R2                                   constant        fixed bin(17,0)          initial dcl 83 ref 308 313 315 316 317 318
+absadr                          000024 constant        entry                    external dcl 96 ref 222
+addr                                                   builtin function         dcl 117 ref 122 123 124 223
+addrel                                                 builtin function         dcl 117 ref 213
+arg                                    based           char                     packed unaligned dcl 92 set ref 142 146* 163 167*
+                                                                                  435 435 438*
+arg_count                       000100 automatic       fixed bin(17,0)          dcl 32 set ref 126* 131
+arg_len                         000101 automatic       fixed bin(21,0)          dcl 33 set ref 137* 142 146 146 158* 163 167 167
+                                                                                  434* 435 435 438 438
+arg_list_ptr                    000102 automatic       pointer                  dcl 34 in procedure "bce_copy_disk" set ref 121*
+                                                                                  126* 137* 158* 189*
+arg_list_ptr             16            based           pointer                  level 2 in structure "ss_info" dcl 1-15 in procedure
+                                                                                  "bce_copy_disk" ref 121
+arg_list_ptr                           parameter       pointer                  dcl 429 in procedure "no_parse" set ref 425 434*
+arg_num                         000104 automatic       fixed bin(17,0)          dcl 35 in procedure "bce_copy_disk" set ref 136*
+                                                                                  137* 157* 158* 188* 189*
+arg_num                                parameter       fixed bin(17,0)          dcl 430 in procedure "no_parse" set ref 425 434*
+arg_ptr                         000106 automatic       pointer                  dcl 36 set ref 137* 142 146 158* 163 167 434* 435
+                                                                                  435 438
+array                    50            based           fixed bin(71,0)          level 2 dcl 7-13 set ref 123
+bce_check_abort                 000026 constant        entry                    external dcl 97 ref 346
+bce_parse_disk_spec             000032 constant        entry                    external dcl 99 ref 189
+bce_query$yes_no                000042 constant        entry                    external dcl 103 ref 197
+bootload_disk_io$queue_read     000034 constant        entry                    external dcl 100 ref 359
+bootload_disk_io$queue_write    000036 constant        entry                    external dcl 101 ref 349
+bootload_disk_io$test_done      000040 constant        entry                    external dcl 102 ref 366 394 415
+bootload_disk_post_seg$         000070 external static fixed bin(17,0)          dcl 2-8 set ref 223
+buffer                    4     002204 automatic       structure                array level 2 dcl 55 set ref 360*
+buffer_address                  000110 automatic       fixed bin(26,0)          dcl 37 set ref 222* 226 227
+buffer_coreadd            1            based           fixed bin(26,0)          array level 3 dcl 2-16 set ref 226* 227*
+buffer_num                      000111 automatic       fixed bin(17,0)          dcl 38 set ref 391* 394* 412* 415*
+buffer_ptr                      000112 automatic       pointer                  array dcl 39 set ref 212* 213* 349* 359*
+buffer_to_read                  000116 automatic       fixed bin(17,0)          array dcl 40 set ref 299* 304* 315* 325* 352
+buffer_to_write                 000127 automatic       fixed bin(17,0)          array dcl 41 set ref 300* 316* 326* 330* 333* 348
+buffer_waiting_for              000140 automatic       fixed bin(17,0)          array dcl 42 set ref 301* 305* 310* 317* 320* 327*
+                                                                                  331* 334* 363
+cleanup                         002246 stack reference condition                dcl 119 ref 233
+code                                   parameter       fixed bin(35,0)          dcl 431 in procedure "no_parse" set ref 425 434*
+                                                                                  437* 438*
+code                            000151 automatic       fixed bin(35,0)          dcl 43 in procedure "bce_copy_disk" set ref 126* 127
+                                                                                  128* 137* 138 139* 144* 145 146* 150* 151 152*
+                                                                                  158* 159 160* 165* 166 167* 171* 172 173* 189* 190
+                                                                                  206* 207 208* 215* 216 217* 218* 222* 349* 359*
+                                                                                  364* 365 366* 368 385 392* 393 394* 413* 414 415*
+                                                                                  421*
+com_err_                        000044 constant        entry                    external dcl 104 ref 128 139 146 152 160 167 173 179
+                                                                                  183 208 217 380 386 438
+cu_$arg_count_rel               000046 constant        entry                    external dcl 105 ref 126
+cu_$arg_ptr_rel                 000050 constant        entry                    external dcl 106 ref 137 158 434
+device_type                     000152 automatic       fixed bin(17,0)          dcl 44 in procedure "bce_copy_disk" set ref 177* 178
+                                                                                  189* 340 354
+device_type               4            based           fixed bin(8,0)           array level 2 in structure "pvt_array" packed packed
+                                                                                  unaligned dcl 8-24 in procedure "bce_copy_disk"
+                                                                                  ref 177 178
+disk_buffer_post                       based           structure                level 1 dcl 2-10
+disk_complete             2            based           bit(1)                   array level 3 dcl 2-16 set ref 228* 229*
+disk_error_code           3            based           fixed bin(35,0)          array level 3 dcl 2-16 set ref 230* 231*
+disk_name_pvtx                  000030 constant        entry                    external dcl 98 ref 144 165
+disk_post_area                         based           structure                level 1 dcl 2-16
+disk_post_area_ptr              002254 automatic       pointer                  dcl 2-19 set ref 223* 224 226 227 228 229 230 231
+                                                                                  418
+end_state                       000153 automatic       fixed bin(17,0)          array dcl 45 set ref 297* 307* 312* 322* 403
+error_table_$bad_arg            000020 external static fixed bin(35,0)          dcl 87 ref 437
+error_table_$not_done           000022 external static fixed bin(35,0)          dcl 88 ref 364 365 392 393 413 414
+f_record                        000164 automatic       fixed bin(18,0)          dcl 46 set ref 189* 194 194* 195* 342 356 403
+force                           000165 automatic       bit(1)                   dcl 47 set ref 187* 196 435*
+from_devname                    000166 automatic       char(8)                  packed unaligned dcl 48 set ref 163* 165* 173* 179*
+                                                                                  183* 380*
+from_pvtx                       000170 automatic       fixed bin(17,0)          dcl 49 set ref 165* 171* 177 182 359*
+get_ptrs_$given_segno           000052 constant        entry                    external dcl 107 ref 214
+get_temp_segment_               000054 constant        entry                    external dcl 108 ref 206
+info_ptr                               parameter       pointer                  dcl 432 ref 425
+ioa_                            000056 constant        entry                    external dcl 109 ref 132 194 195
+l_record                        000171 automatic       fixed bin(18,0)          dcl 50 set ref 189* 194 195* 338 377* 381* 389*
+label                                  based           structure                level 1 dcl 6-18
+labelp                          002260 automatic       pointer                  dcl 6-16 set ref 124* 150* 155 171* 189*
+max                                                    builtin function         dcl 117 ref 356
+max_io_pages                    002172 automatic       fixed bin(17,0)          dcl 52 set ref 336* 355 372* 398*
+min                                                    builtin function         dcl 117 ref 355
+mod                                                    builtin function         dcl 117 ref 340
+my_label                        000172 automatic       structure                level 1 dcl 51 set ref 124
+new_record                      002204 automatic       fixed bin(18,0)          level 3 in structure "record_info" dcl 55
+                                                                                  in procedure "bce_copy_disk" set ref 356* 357 359*
+                                                                                  370 380*
+new_record                4     002204 automatic       fixed bin(18,0)          array level 3 in structure "record_info" dcl 55
+                                                                                  in procedure "bce_copy_disk" set ref 349* 386*
+normal_state                    002173 automatic       fixed bin(17,0)          array dcl 54 set ref 298* 308* 313* 318* 323* 328*
+                                                                                  404
+null                                                   builtin function         dcl 117 ref 189 189 205
+number                                 based           fixed bin(17,0)          level 2 dcl 2-16 set ref 224* 418*
+p_ss_info_ptr                          parameter       pointer                  dcl 28 ref 19 121
+pc_abs$unwire_abs               000060 constant        entry                    external dcl 110 ref 420
+pc_abs$wire_abs_contig          000062 constant        entry                    external dcl 111 ref 215
+posted                    1            based           structure                array level 2 dcl 2-16
+prev_record               1     002204 automatic       fixed bin(18,0)          level 3 in structure "record_info" dcl 55
+                                                                                  in procedure "bce_copy_disk" set ref 338* 340 342
+                                                                                  356 357 370* 377 381 403
+prev_record               5     002204 automatic       fixed bin(18,0)          array level 3 in structure "record_info" dcl 55
+                                                                                  in procedure "bce_copy_disk" set ref 389
+prev_record_in_cylinder
+                          2     002204 automatic       fixed bin(17,0)          level 3 dcl 55 set ref 340* 354 354* 355 371* 371
+pvt                                    based           structure                level 1 dcl 7-13
+pvt$                            000072 external static fixed bin(17,0)          dcl 7-9 set ref 122
+pvt_array                              based           structure                array level 1 dcl 8-24
+pvt_arrayp                      002264 automatic       pointer                  dcl 8-21 set ref 123* 177 178
+pvte                                   based           structure                level 1 dcl 8-26
+pvtp                            002262 automatic       pointer                  dcl 7-9 set ref 122* 123
+read                            002204 automatic       structure                level 2 dcl 55 set ref 360
+read_disk                       000064 constant        entry                    external dcl 112 ref 150 171
+rec_per_cyl                     000000 constant        fixed bin(17,0)          initial array dcl 4-108 ref 340 354
+record_info                     002204 automatic       structure                level 1 dcl 55
+records_this_cylinder
+                          7     002204 automatic       fixed bin(17,0)          array level 3 in structure "record_info" dcl 55
+                                                                                  in procedure "bce_copy_disk" set ref 349* 386
+records_this_cylinder
+                          3     002204 automatic       fixed bin(17,0)          level 3 in structure "record_info" dcl 55
+                                                                                  in procedure "bce_copy_disk" set ref 355* 356 357*
+                                                                                  359* 371 377
+release_temp_segment_           000066 constant        entry                    external dcl 113 ref 218 421
+seek_command                    002256 automatic       bit(6)                   initial array packed unaligned dcl 4-84 set ref
+                                                                                  4-84* 4-84* 4-84* 4-84* 4-84* 4-84* 4-84* 4-84*
+                                                                                  4-84*
+segno                                                  builtin function         dcl 117 ref 214 214
+ss_info                                based           structure                level 1 dcl 1-15
+state                           002220 automatic       fixed bin(17,0)          dcl 62 set ref 342* 343* 345 348 352 363 368 403*
+                                                                                  403 404* 404
+temp_astep                      002222 automatic       pointer                  dcl 63 set ref 214* 215* 420*
+temp_seg_ptr                    002224 automatic       pointer                  dcl 64 set ref 205* 206* 212 213 214 214 218* 222*
+                                                                                  421*
+to_devname                      002226 automatic       char(8)                  packed unaligned dcl 65 set ref 142* 144* 152* 179*
+                                                                                  183* 194* 195* 197* 386*
+to_is_Multics                   002230 automatic       bit(1)                   dcl 66 set ref 155* 197
+to_pvtx                         002231 automatic       fixed bin(17,0)          dcl 67 set ref 144* 150* 178 182 349*
+waiting_for_read                002232 automatic       bit(1)                   array dcl 68 set ref 302* 306* 311* 321* 368
+working_buffer                  002243 automatic       fixed bin(17,0)          dcl 69 set ref 348* 349 349 349 349 349* 352* 353
+                                                                                  359 359* 360 363* 366* 386 386 389
+yes_no                          002244 automatic       bit(1)                   dcl 70 set ref 197* 199
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 3-54
+DUMPER_BIT_MAP_ADDR                    internal static fixed bin(17,0)          initial dcl 3-54
+MAX_VTOCE_PER_PACK                     internal static fixed bin(17,0)          initial dcl 3-54
+MODEL                                  internal static fixed bin(17,0)          initial array dcl 4-57
+MODELN                                 internal static fixed bin(17,0)          initial array dcl 4-63
+MODELX                                 internal static fixed bin(17,0)          initial array dcl 4-60
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 3-67
+SECTORS_PER_RECORD                     internal static fixed bin(17,0)          initial array dcl 3-74
+SECTORS_PER_VTOCE                      internal static fixed bin(17,0)          initial array dcl 3-70
+VOLMAP_ADDR                            internal static fixed bin(17,0)          initial dcl 3-54
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 8-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 8-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 8-113
+VTOCES_PER_RECORD                      internal static fixed bin(17,0)          initial array dcl 3-72
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 3-68
+VTOC_MAP_ADDR                          internal static fixed bin(17,0)          initial dcl 3-54
+VTOC_ORIGIN                            internal static fixed bin(17,0)          initial dcl 3-54
+bulkdevt                               internal static fixed bin(4,0)           initial dcl 4-43
+cyl_per_dev                            internal static fixed bin(17,0)          initial array dcl 4-102
+cyl_per_sv                             internal static fixed bin(17,0)          initial array dcl 4-105
+dev_time                               internal static float bin(27)            initial array dcl 4-139
+device_names                           internal static char(4)                  initial array dcl 4-66
+disk_buffer_post_ptr                   automatic       pointer                  dcl 2-15
+dsu181devt                             internal static fixed bin(4,0)           initial dcl 4-43
+dsu190devt                             internal static fixed bin(4,0)           initial dcl 4-43
+dsu191devt                             internal static fixed bin(4,0)           initial dcl 4-43
+fips3380devt                           internal static fixed bin(4,0)           initial dcl 4-43
+fips3381devt                           internal static fixed bin(4,0)           initial dcl 4-43
+fips_type_disk                         internal static bit(1)                   initial array packed unaligned dcl 4-72
+first_alt_sect_num                     internal static fixed bin(24,0)          initial array dcl 4-130
+first_dev_number                       internal static fixed bin(17,0)          initial array dcl 4-69
+first_rec_num                          internal static fixed bin(17,0)          initial array dcl 4-115
+first_sect_num                         internal static fixed bin(24,0)          initial array dcl 4-124
+last_alt_sect_num                      internal static fixed bin(24,0)          initial array dcl 4-133
+last_physical_sect_num                 internal static fixed bin(24,0)          initial array dcl 4-136
+last_rec_num                           internal static fixed bin(18,0)          initial array dcl 4-118
+last_sect_num                          internal static fixed bin(24,0)          initial array dcl 4-127
+last_sv_rec_num                        internal static fixed bin(18,0)          initial array dcl 4-121
+maxdevt                                internal static fixed bin(4,0)           initial dcl 4-43
+media_removable                        internal static bit(1)                   initial array packed unaligned dcl 4-75
+msu0400devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0450devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0451devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0500devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0501devt                            internal static fixed bin(4,0)           initial dcl 4-43
+needs_alt_part                         internal static bit(1)                   initial array packed unaligned dcl 4-81
+number_of_sv                           internal static fixed bin(17,0)          initial array dcl 4-93
+pvt$array                              external static fixed bin(17,0)          dcl 8-18
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 8-19
+pvtep                                  automatic       pointer                  dcl 8-22
+rec_per_dev                            internal static fixed bin(21,0)          initial array dcl 4-87
+rec_per_sv                             internal static fixed bin(17,0)          initial array dcl 4-90
+sect_per_cyl                           internal static fixed bin(17,0)          initial array dcl 5-15
+sect_per_rec                           internal static fixed bin(17,0)          initial array dcl 5-21
+sect_per_sv                            internal static fixed bin(24,0)          initial array dcl 5-18
+sect_per_track                         internal static fixed bin(17,0)          initial array dcl 5-33
+sect_per_vtoc                          internal static fixed bin(17,0)          initial array dcl 5-26
+shared_spindle                         internal static bit(1)                   initial array packed unaligned dcl 4-78
+ss_info_ptr                            automatic       pointer                  dcl 1-14
+tracks_per_cyl                         internal static fixed bin(17,0)          initial array dcl 4-111
+valid_sv_array                         internal static char(1)                  initial array packed unaligned dcl 4-99
+valid_sv_string                        internal static char(3)                  initial packed unaligned dcl 4-96
+vtoc_per_rec                           internal static fixed bin(17,0)          initial array dcl 5-29
+words_per_sect                         internal static fixed bin(17,0)          initial array dcl 5-36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+IO_ERROR                        002271 constant        label                    dcl 391 ref 383
+RESTART                         001750 constant        label                    dcl 338 ref 399
+RETURN                          002343 constant        label                    dcl 408 ref 147 168
+bce_copy_disk                   000246 constant        entry                    external dcl 19
+clean_up                        002345 constant        entry                    internal dcl 410 ref 233 407
+no_parse                        002451 constant        entry                    internal dcl 425 ref 189 189
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3062        3156    2554        3072
+Length      3562    2554        74         370     305          10
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_copy_disk                      1298 external procedure  is an external procedure.  
+on unit on line 233                  64 on unit               
+clean_up                             94 internal procedure  is called by several nonquick procedures.  
+no_parse                             96 internal procedure  is assigned to an entry variable.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 Multics_ID_String           bce_copy_disk
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_copy_disk            000100 arg_count                   bce_copy_disk
+                         000101 arg_len                     bce_copy_disk
+                         000102 arg_list_ptr                bce_copy_disk
+                         000104 arg_num                     bce_copy_disk
+                         000106 arg_ptr                     bce_copy_disk
+                         000110 buffer_address              bce_copy_disk
+                         000111 buffer_num                  bce_copy_disk
+                         000112 buffer_ptr                  bce_copy_disk
+                         000116 buffer_to_read              bce_copy_disk
+                         000127 buffer_to_write             bce_copy_disk
+                         000140 buffer_waiting_for          bce_copy_disk
+                         000151 code                        bce_copy_disk
+                         000152 device_type                 bce_copy_disk
+                         000153 end_state                   bce_copy_disk
+                         000164 f_record                    bce_copy_disk
+                         000165 force                       bce_copy_disk
+                         000166 from_devname                bce_copy_disk
+                         000170 from_pvtx                   bce_copy_disk
+                         000171 l_record                    bce_copy_disk
+                         000172 my_label                    bce_copy_disk
+                         002172 max_io_pages                bce_copy_disk
+                         002173 normal_state                bce_copy_disk
+                         002204 record_info                 bce_copy_disk
+                         002220 state                       bce_copy_disk
+                         002222 temp_astep                  bce_copy_disk
+                         002224 temp_seg_ptr                bce_copy_disk
+                         002226 to_devname                  bce_copy_disk
+                         002230 to_is_Multics               bce_copy_disk
+                         002231 to_pvtx                     bce_copy_disk
+                         002232 waiting_for_read            bce_copy_disk
+                         002243 working_buffer              bce_copy_disk
+                         002244 yes_no                      bce_copy_disk
+                         002254 disk_post_area_ptr          bce_copy_disk
+                         002256 seek_command                bce_copy_disk
+                         002260 labelp                      bce_copy_disk
+                         002262 pvtp                        bce_copy_disk
+                         002264 pvt_arrayp                  bce_copy_disk
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac
+mdfx1               enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        bce_check_abort               bce_parse_disk_spec           bce_query$yes_no
+bootload_disk_io$queue_read   bootload_disk_io$queue_write  bootload_disk_io$test_done    com_err_
+cu_$arg_count_rel             cu_$arg_ptr_rel               disk_name_pvtx                get_ptrs_$given_segno
+get_temp_segment_             ioa_                          pc_abs$unwire_abs             pc_abs$wire_abs_contig
+read_disk                     release_temp_segment_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bootload_disk_post_seg$       error_table_$bad_arg          error_table_$not_done         pvt$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     19 000243        51 000253    4   84 000256       121 000345       122 000352       123 000354       124 000356
+    126 000360       127 000372       128 000374       129 000411       131 000412       132 000415       133 000435
+    136 000436       137 000440       138 000457       139 000461       140 000506       142 000507       144 000514
+    145 000527       146 000531       147 000563       150 000564       151 000603       152 000605       153 000635
+    155 000636       157 000645       158 000647       159 000665       160 000667       161 000714       163 000715
+    165 000722       166 000735       167 000737       168 000771       171 000772       172 001011       173 001013
+    174 001043       177 001044       178 001052       179 001061       180 001115       182 001116       183 001121
+    184 001155       187 001156       188 001157       189 001161       190 001217       194 001221       195 001251
+    196 001300       197 001302       199 001340       205 001343       206 001345       207 001366       208 001370
+    209 001414       212 001415       213 001417       214 001422       215 001437       216 001457       217 001461
+    218 001505       219 001526       222 001527       223 001544       224 001547       226 001551       227 001553
+    228 001555       229 001556       230 001557       231 001560       233 001561       297 001603       298 001614
+    299 001624       300 001634       301 001644       302 001654       304 001664       305 001667       306 001670
+    307 001672       308 001674       310 001676       311 001701       312 001702       313 001704       315 001706
+    316 001711       317 001713       318 001714       320 001716       321 001721       322 001722       323 001724
+    325 001726       326 001731       327 001733       328 001734       330 001736       331 001741       333 001742
+    334 001745       336 001746       338 001750       340 001753       342 001757       343 001764       345 001766
+    346 001770       348 001775       349 002000       352 002026       353 002031       354 002032       355 002037
+    356 002043       357 002051       359 002054       360 002077       363 002110       364 002113       365 002116
+    366 002122       367 002132       368 002133       370 002140       371 002142       372 002144       375 002146
+    377 002147       380 002156       381 002212       383 002215       384 002216       385 002217       386 002221
+    389 002265       391 002271       392 002277       393 002302       394 002306       395 002316       396 002317
+    398 002321       399 002323       403 002324       404 002333       405 002336       407 002337       408 002343
+    410 002344       412 002352       413 002362       414 002365       415 002373       416 002403       417 002404
+    418 002406       420 002407       421 002425       422 002447       425 002450       434 002456       435 002476
+    437 002514       438 002520       440 002551
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

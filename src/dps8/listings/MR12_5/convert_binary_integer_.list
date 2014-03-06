@@ -1,0 +1,370 @@
+	COMPILATION LISTING OF SEGMENT convert_binary_integer_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       15 decimal_string:					/* routine to convert fixed bin(35) number to its decimal string representation,
+       16*						   as a varying string of max length 12. Digits are generated
+       17*						   by successive remainders, from right to left in a temporary string, then
+       18*						   copied into the argument.
+       19*						   Modified 7/28/71 by David Reed */
+       20 						/* Modified 9/19/74 by Steve Herbst to special-case for 100...0b */
+       21      proc (integer, string);
+       22 
+       23 dcl  (integer, number, position, scan) fixed bin (35);
+       24 dcl  (long_integer, long_number) fixed bin (71);
+       25 dcl  bits_of_arg bit (72);
+       26 dcl  oct_string char (13) varying;
+       27 dcl  long_oct_string char (25) varying;
+       28 dcl  long_dec_string char (23) varying;
+       29 dcl  lower fixed bin (63),
+       30      lower_quotient fixed bin (35),
+       31      (upper_quotient, upper) fixed bin (35),
+       32      upper_word fixed bin (35) based;
+       33 dcl  negative bit (1);
+       34 dcl  string char (12) varying;
+       35 dcl  temp_string char (25);
+       36 dcl  1 temp_string_ovly aligned based (addr (temp_string)),
+       37        2 bit9_string (0:24) bit (9) unaligned;
+       38 dcl  (substr, fixed, divide, bit, unspec, addr, mod) builtin;
+       39 						/*
+       40*						   /* decimal_string:
+       41*						   proc(integer, string);	*/
+       42 
+       43 	if unspec (integer) = "1"b then do;
+       44 	     string = "-34359738368";
+       45 	     return;
+       46 	     end;
+       47 
+       48 	negative = "0"b;				/* set flag saying number is not negative yet */
+       49 	number = integer;				/* copy argument */
+       50 	if number = 0 then do;			/* if arg = 0 then return "0" immediate */
+       51 	     string = "0";
+       52 	     return;
+       53 	     end;
+       54 
+       55 	if number < 0
+       56 	then					/* if number is negative then remember to put out sign */
+       57 	     do;
+       58 	     number = -number;			/* and make number positive */
+       59 	     negative = "1"b;
+       60 	     end;
+       61 
+       62 	do position = 11 by -1 while (number ^= 0);	/* generate digits into temp string in reverse */
+       63 	     bit9_string (position) = "00011"b || bit (fixed (mod (number, 10), 4), 4);
+       64 						/* make a digit by prefixing */
+       65 						/* appropriate bits for 9-bit code */
+       66 	     number = divide (number, 10, 35);
+       67 	end;
+       68 
+       69 	if negative
+       70 	then					/* if we rembered to put out minus sign, do so */
+       71 	     do;
+       72 	     substr (temp_string, position + 1, 1) = "-";
+       73 	     position = position - 1;
+       74 	     end;
+       75 	string = substr (temp_string, position + 2, 11 - position);
+       76 						/* copy temp string into output argument */
+       77 	return;					/*						   /* entry to convert fixed bin(35) to octal varying string representation */
+       78 
+       79 octal_string:
+       80      entry (integer, oct_string);
+       81 
+       82 
+       83 	if unspec (integer) = "1"b then do;
+       84 	     oct_string = "-400000000000";
+       85 	     return;
+       86 	     end;
+       87 
+       88 	position = 0;				/*	start at beginning of string */
+       89 	number = integer;				/* copy argument number */
+       90 	if number < 0
+       91 	then					/* make number positive, and output sign if necessary */
+       92 	     do;
+       93 	     number = -number;
+       94 	     position = 1;
+       95 	     substr (temp_string, 1, 1) = "-";
+       96 	     end;
+       97 
+       98 	substr (bits_of_arg, 1, 36) = unspec (number);	/* move number into bit string */
+       99 	do scan = 0 to 10 while (substr (bits_of_arg, 1, 3) = ""b);
+      100 						/* scan for first non-zero 3 bit byte */
+      101 	     substr (bits_of_arg, 1, 36) = substr (bits_of_arg, 4, 33);
+      102 						/* shift bit representation left */
+      103 						/* one octal digit */
+      104 	end;
+      105 	do scan = scan to 11;			/* loop over rest of number, outputting each byte as a digit */
+      106 	     bit9_string (position) = "000110"b || substr (bits_of_arg, 1, 3);
+      107 						/* make octal digit */
+      108 	     substr (bits_of_arg, 1, 36) = substr (bits_of_arg, 4, 33);
+      109 						/* shift bit representation of number */
+      110 						/* 3 bits (an octal digit) left */
+      111 	     position = position + 1;
+      112 	end;
+      113 
+      114 
+      115 	oct_string = substr (temp_string, 1, position);	/* copy result into result string */
+      116 	return;
+      117 
+      118 
+      119 
+      120 /*   /* routine to convert fixed bin(71) to octal representation as varying string */
+      121 
+      122 long_octal_string:
+      123      entry (long_integer, long_oct_string);
+      124 
+      125 
+      126 	if unspec (long_integer) = "1"b then do;
+      127 	     long_oct_string = "-400000000000000000000000";
+      128 	     return;
+      129 	     end;
+      130 
+      131 	position = 0;				/* start at left end of temp string */
+      132 	long_number = long_integer;			/* copy argument number */
+      133 
+      134 	if long_number < 0
+      135 	then					/* make sign positive, outputting minus sign if negation is necessary */
+      136 	     do;
+      137 	     long_number = -long_number;
+      138 	     position = position + 1;
+      139 	     substr (temp_string, 1, 1) = "-";
+      140 	     end;
+      141 
+      142 	bits_of_arg = unspec (long_number);		/* copy number into bit string */
+      143 	do scan = 0 to 22 while (substr (bits_of_arg, 1, 3) = ""b);
+      144 						/* scan for first non-zero 3 bit byte */
+      145 	     bits_of_arg = substr (bits_of_arg, 4);	/* shift number left one octal digit */
+      146 	end;
+      147 
+      148 	do scan = scan to 23;			/* scan rest of digits, making output as we go */
+      149 	     bit9_string (position) = "000110"b || substr (bits_of_arg, 1, 3);
+      150 						/* make octal digit */
+      151 	     bits_of_arg = substr (bits_of_arg, 4);	/* shift number left one octal digit */
+      152 	     position = position + 1;
+      153 	end;
+      154 
+      155 	long_oct_string = substr (temp_string, 1, position);
+      156 						/* copy temp string into output string */
+      157 	return;
+      158 
+      159 
+      160 
+      161 
+      162 
+      163 /*   /* convert fixed bin(71) to a decimal string representation as a varying string */
+      164 
+      165 long_decimal_string:
+      166      entry (long_integer, long_dec_string);
+      167 
+      168 	if unspec (long_integer) = "1"b then do;
+      169 	     long_dec_string = "-2361183233875680165888";
+      170 	     return;
+      171 	     end;
+      172 
+      173 	negative = ""b;				/* remember we have not yet found number < 0 */
+      174 	long_number = long_integer;			/* copy argument for convenience */
+      175 
+      176 	if long_number = 0
+      177 	then					/* if number = 0 then return 1 char string */
+      178 	     do;
+      179 	     long_dec_string = "0";
+      180 	     return;
+      181 	     end;
+      182 
+      183 	if long_number < 0
+      184 	then					/* if number is negative, remember it was negative, and make it positive */
+      185 	     do;
+      186 	     long_number = -long_number;
+      187 	     negative = "1"b;
+      188 	     end;					/* The following loop is needed because the current Multics hardware cannot
+      189*						   handle division of fixed bin(71) numbers. Thus, we handle the division
+      190*						   in two halves until the number being divided by 10 is less than 2 ** 63,
+      191*						   at which point, we may use standard pl1 division. */
+      192 
+      193 	upper = addr (long_number) -> upper_word;	/* upper gets upper half of double word integer */
+      194 	lower = long_number - 68719476736 * upper;	/* lower gets lower half */
+      195 
+      196 	do position = 22 by -1 while (upper >= 134217728);/* generate digits by hard division
+      197*						   until upper is <= 2**27 */
+      198 	     upper_quotient = divide (upper, 10, 35);
+      199 	     lower = lower + 68719476736 * (upper - 10 * upper_quotient);
+      200 	     lower_quotient = divide (lower, 10, 63);
+      201 	     bit9_string (position) = "00011"b || bit (fixed (lower - 10 * lower_quotient, 4), 4);
+      202 						/* make digit from number */
+      203 	     upper = upper_quotient;
+      204 	     lower = lower_quotient;
+      205 	end;
+      206 
+      207 /* end of hard division. now number is less than 2**63 */
+      208 
+      209 	lower = lower + 68719476736 * upper;		/* make lower contain the total result */
+      210 
+      211 	do position = position by -1 while (lower ^= 0);	/* now convert to decimal string by normal algorithm */
+      212 	     bit9_string (position) = "00011"b || bit (fixed (mod (lower, 10), 4), 4);
+      213 	     lower = divide (lower, 10, 63);
+      214 	end;
+      215 
+      216 	if negative
+      217 	then					/* if we must precede nuber by a sign character, prefix it now */
+      218 	     do;
+      219 	     substr (temp_string, position + 1, 1) = "-";
+      220 	     position = position - 1;
+      221 	     end;
+      222 
+      223 	long_dec_string = substr (temp_string, position + 2, 22 - position);
+      224 						/* copy result into return arg */
+      225 	return;
+      226      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  convert_binary_integer_.pl1       >spec>install>1111>convert_binary_integer_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 38 ref 63 106 149 193 201 212
+bit                                                    builtin function         dcl 38 ref 63 201 212
+bit9_string                            based           bit(9)                   array level 2 packed packed unaligned dcl 36 set ref
+                                                                                  63* 106* 149* 201* 212*
+bits_of_arg                     000106 automatic       bit(72)                  packed unaligned dcl 25 set ref 98* 99 101* 101 106
+                                                                                  108* 108 142* 143 145* 145 149 151* 151
+divide                                                 builtin function         dcl 38 ref 66 198 200 213
+fixed                                                  builtin function         dcl 38 ref 63 201 212
+integer                                parameter       fixed bin(35,0)          dcl 23 ref 15 43 49 79 83 89
+long_dec_string                        parameter       varying char(23)         dcl 28 set ref 165 169* 179* 223*
+long_integer                           parameter       fixed bin(71,0)          dcl 24 ref 122 126 132 165 168 174
+long_number                     000104 automatic       fixed bin(71,0)          dcl 24 set ref 132* 134 137* 137 142 174* 176 183
+                                                                                  186* 186 193 194
+long_oct_string                        parameter       varying char(25)         dcl 27 set ref 122 127* 155*
+lower                           000110 automatic       fixed bin(63,0)          dcl 29 set ref 194* 199* 199 200 201 204* 209* 209
+                                                                                  211 212 213* 213
+lower_quotient                  000112 automatic       fixed bin(35,0)          dcl 29 set ref 200* 201 204
+mod                                                    builtin function         dcl 38 ref 63 212
+negative                        000115 automatic       bit(1)                   packed unaligned dcl 33 set ref 48* 59* 69 173* 187*
+                                                                                  216
+number                          000100 automatic       fixed bin(35,0)          dcl 23 set ref 49* 50 55 58* 58 62 63 66* 66 89* 90
+                                                                                  93* 93 98
+oct_string                             parameter       varying char(13)         dcl 26 set ref 79 84* 115*
+position                        000101 automatic       fixed bin(35,0)          dcl 23 set ref 62* 63* 72 73* 73 75 75 88* 94* 106
+                                                                                  111* 111 115 131* 138* 138 149 152* 152 155 196*
+                                                                                  201* 211* 211* 212* 219 220* 220 223 223
+scan                            000102 automatic       fixed bin(35,0)          dcl 23 set ref 99* 105* 105* 143* 148* 148*
+string                                 parameter       varying char(12)         dcl 34 set ref 15 44* 51* 75*
+substr                                                 builtin function         dcl 38 set ref 72* 75 95* 98* 99 101* 101 106 108*
+                                                                                  108 115 139* 143 145 149 151 155 219* 223
+temp_string                     000116 automatic       char(25)                 packed unaligned dcl 35 set ref 63 72* 75 95* 106
+                                                                                  115 139* 149 155 201 212 219* 223
+temp_string_ovly                       based           structure                level 1 dcl 36
+unspec                                                 builtin function         dcl 38 ref 43 83 98 126 142 168
+upper                           000114 automatic       fixed bin(35,0)          dcl 29 set ref 193* 194 196 198 199 203* 209
+upper_quotient                  000113 automatic       fixed bin(35,0)          dcl 29 set ref 198* 199 203
+upper_word                             based           fixed bin(35,0)          dcl 29 ref 193
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+decimal_string                  000040 constant        entry                    external dcl 15
+long_decimal_string             000453 constant        entry                    external dcl 165
+long_octal_string               000320 constant        entry                    external dcl 122
+octal_string                    000171 constant        entry                    external dcl 79
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       760         770     676         770
+Length      1144     676        10         140      62           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+decimal_string                       86 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+decimal_string           000100 number                      decimal_string
+                         000101 position                    decimal_string
+                         000102 scan                        decimal_string
+                         000104 long_number                 decimal_string
+                         000106 bits_of_arg                 decimal_string
+                         000110 lower                       decimal_string
+                         000112 lower_quotient              decimal_string
+                         000113 upper_quotient              decimal_string
+                         000114 upper                       decimal_string
+                         000115 negative                    decimal_string
+                         000116 temp_string                 decimal_string
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          mpfx2               mpfx3               mdfx1               mdfx3               ext_entry
+divide_fx3
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000034        43 000045        44 000051        45 000057        48 000060        49 000061        50 000063
+     51 000064        52 000071        55 000072        58 000073        59 000075        62 000077        63 000104
+     66 000124        67 000127        69 000134        72 000136        73 000142        75 000150        77 000164
+     79 000165        83 000176        84 000202        85 000210        88 000211        89 000212        90 000214
+     93 000215        94 000217        95 000221        98 000223        99 000225       101 000234       104 000240
+    105 000245       106 000251       108 000264       111 000270       112 000274       115 000301       116 000313
+    122 000314       126 000325       127 000334       128 000342       131 000343       132 000344       134 000346
+    137 000347       138 000351       139 000355       142 000357       143 000361       145 000370       146 000373
+    148 000400       149 000405       151 000420       152 000423       153 000427       155 000434       157 000446
+    165 000447       168 000460       169 000467       170 000475       173 000476       174 000477       176 000501
+    179 000502       180 000507       183 000510       186 000511       187 000513       193 000515       194 000517
+    196 000524       198 000531       199 000533       200 000542       201 000546       203 000567       204 000571
+    205 000574       209 000601       211 000605       212 000612       213 000632       214 000636       216 000643
+    219 000645       220 000651       223 000657       225 000673
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

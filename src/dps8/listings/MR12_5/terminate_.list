@@ -1,0 +1,911 @@
+	COMPILATION LISTING OF SEGMENT terminate_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1040.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       13 
+       14 terminate_: proc (a_segptr, a_rsw, a_code);
+       15 
+       16 /* This procedure provides a variety of entries to remove names and segments 
+       17*   from the RNT and KST.
+       18*
+       19*   Written October 1974 by R. Bratt as a write around for the old terminate
+       20*
+       21*   Last modified:
+       22*
+       23*   R. Bratt 06/03/76 to call find_$finished
+       24*   M. Weaver 04/77 to ignore code r0_refname and to zero lot entry when appropriate
+       25*   B. Margulies May 1982 to not trash refnames with noname terminations.
+       26*   Keith Loepere July 1984 to use the new dc_find.
+       27*   Keith Loepere November 1984 to rename to terminate_; add auditing support;
+       28*	also to remove unused directory undetectability.
+       29*
+       30*   -- ->  terminate_$teseg remove the KST entry for a segment given its segment pointer.
+       31*   USAGE: call terminate_$teseg, call hcs_$terminate_seg (segptr, rsw, code)
+       32*
+       33*   -- ->  terminate_$tefile removes a segments KST entry, given its directory pathname and entry name
+       34*   USAGE: call terminate_$tefile, call hcs_$terminate_file (dirname, ename, rsw, code);
+       35*
+       36*   -- ->  terminate_$noname removes a single null name from a segment given its segment pointer.
+       37*   USAGE: call terminate_$noname call hcs_$terminate_noname (segptr, code)
+       38*
+       39*   -- ->  terminate_$name removes a reference name from a segment.
+       40*   USAGE: call terminate_$name, call hcs_$terminate_name (name, code)
+       41*   note: these last two entries will also remove the KST entry if they have
+       42*   deleted the segments last name.
+       43*
+       44*   -- ->  terminate_$id removes a segment from the kst by uid.  It is an 
+       45*   internal interface to be used by delentry.
+       46*   USAGE: call terminate_$id (uid, rsw, code);
+       47*
+       48*   1) segptr ptr - - - pointer to the segment
+       49*   2) rsw fixed bin(1) - - - =1 reserve this segment number for later use, = 0 don't bother
+       50*   3) code fixed bin - - - error code (output)
+       51*   4) dirname char(*) - - - pathname of superior directory
+       52*   5) ename char(*) - - - entry name of segment
+       53*   6) name char(*) - - - reference name of segment
+       54*   7) uid bit (36) aligned - - - unique identifier of segment
+       55*
+       56*   */
+       57 
+       58 /* Parameters */
+       59 
+       60 dcl  a_code			fixed bin (35) parameter;
+       61 dcl  a_dirname			char (*) parameter;
+       62 dcl  a_ename			char (*) parameter;
+       63 dcl  a_name			char (*) parameter;
+       64 dcl  a_rsw			fixed bin (1) parameter;
+       65 dcl  a_segptr			ptr parameter;
+       66 dcl  a_uid			bit (36) aligned parameter;
+       67 
+       68 /* Variables */
+       69 
+       70 dcl  code				fixed bin (35);
+       71 dcl  dirname			char (168);
+       72 dcl  ename			char (32);
+       73 dcl  hash_bucket			fixed bin (17);
+       74 dcl  n_names			fixed bin;
+       75 dcl  refname			char (32) var;
+       76 dcl  rsw				fixed bin (1);
+       77 dcl  segno			fixed bin (17);
+       78 dcl  segptr			ptr;
+       79 dcl  uid				bit (36) aligned;
+       80 
+       81 /* External */
+       82 
+       83 dcl  error_table_$r0_refname		ext fixed bin (35);
+       84 dcl  error_table_$root		ext fixed bin (35);
+       85 dcl  error_table_$seg_deleted		ext fixed bin (35);
+       86 dcl  pds$stacks			(0:7) ptr ext;
+       87 
+       88 /* Misc */
+       89 
+       90 dcl  (baseno, baseptr, bit, dim, fixed, mod, ptr, rel) builtin;
+       91 
+       92 /* Entries */
+       93 
+       94 dcl  level$get			ext entry () returns (fixed bin);
+       95 dcl  lock$dir_unlock		ext entry (ptr);
+       96 dcl  makeunknown_			ext entry (fixed bin (17), bit (36) aligned, bit (1) aligned, fixed bin (35));
+       97 dcl  makeunknown_$protect_names	ext entry (fixed bin, fixed bin, bit (36) aligned, bit (1) aligned, fixed bin (35));
+       98 dcl  ref_name_$delete		ext entry (char (32) varying, fixed bin (17), fixed bin (35));
+       99 dcl  ref_name_$delete_segno		ext entry (fixed bin (17), fixed bin (35));
+      100 dcl  ref_name_$get_count		ext entry (fixed bin (17), fixed bin (17), fixed bin (35));
+      101 dcl  ref_name_$get_segno		ext entry (char (32) varying, fixed bin (17), fixed bin (35));
+      102 
+      103 teseg: entry (a_segptr, a_rsw, a_code);
+      104 
+      105 	segptr = a_segptr;
+      106 	rsw = a_rsw;
+      107 	segno = fixed (baseno (segptr), 17);
+      108 	call dc_find$obj_terminate_ptr (segptr, ep, code);
+      109 	if code = 0 then call lock$dir_unlock (ptr (ep, 0));
+      110 	if code = error_table_$root then code = 0;
+      111 	if code = error_table_$seg_deleted then code = 0;
+      112 	if code = 0 then call term_seg;
+      113 	a_code = code;
+      114 	return;
+      115 
+      116 tefile: entry (a_dirname, a_ename, a_rsw, a_code);
+      117 
+      118 	dirname = a_dirname;
+      119 	ename = a_ename;
+      120 	rsw = a_rsw;
+      121 	call dc_find$obj_terminate (dirname, ename, DC_FIND_CHASE, ep, code);
+      122 	if code = 0 then do;
+      123 	     uid = entry.uid;
+      124 	     call dc_find$finished (ptr (ep, 0), "1"b);
+      125 	     call term_uid;
+      126 	end;
+      127 	a_code = code;
+      128 	return;
+      129 
+      130 noname: entry (a_segptr, a_code);
+      131 
+      132 	segptr = a_segptr;
+      133 	segno = fixed (baseno (segptr), 17);
+      134 	call dc_find$obj_terminate_ptr (segptr, ep, code);
+      135 	if code = 0 then call lock$dir_unlock (ptr (ep, 0));
+      136 	if code = error_table_$root then code = 0;
+      137 	if code = error_table_$seg_deleted then code = 0;
+      138 	if code = 0 then do;
+      139 	     call ref_name_$get_count (segno, n_names, code);
+      140 	     if code ^= 0 then				/* r0_refname */
+      141 		n_names = 0;				/* no refnames */
+      142 	     if n_names > 0 then
+      143 		call terminate_and_zero_lot$$protect (segno, ""b, n_names, code);
+      144 	     else call terminate_and_zero_lot (segno, ""b, code);
+      145 	end;
+      146 	a_code = code;
+      147 	return;
+      148 
+      149 name: entry (a_name, a_code);
+      150 
+      151 	refname = a_name;
+      152 	call ref_name_$get_segno (refname, segno, code);
+      153 	if code = 0 then do;
+      154 	     segptr = baseptr (segno);
+      155 	     call dc_find$obj_terminate_ptr (segptr, ep, code);
+      156 	     if code = 0 then call lock$dir_unlock (ptr (ep, 0));
+      157 	     if code = error_table_$root then code = 0;
+      158 	     if code = error_table_$seg_deleted then code = 0;
+      159 	     if code = 0 then do;
+      160 		call ref_name_$delete (refname, segno, code);
+      161 		if code = 0 then call terminate_and_zero_lot (segno, "0"b, (0));
+      162 	     end;
+      163 	end;
+      164 	a_code = code;
+      165 	return;
+      166 
+      167 id:  entry (a_uid, a_rsw, a_code);			/* called from hardcore */
+      168 
+      169 	uid = a_uid;
+      170 	rsw = a_rsw;
+      171 	code = 0;
+      172 	call term_uid;
+      173 	a_code = code;
+      174 	return;
+      175 
+      176 term_seg: proc;
+      177 
+      178 	call ref_name_$delete_segno (segno, code);
+      179 	if (code = 0) | (code = error_table_$r0_refname) then
+      180 	     call terminate_and_zero_lot (segno, bit (rsw, 1) || "1"b, code);
+      181 	return;
+      182      end;
+      183 
+      184 term_uid: proc;
+      185 
+      186 	kstp = pds$kstp;
+      187 	hash_bucket = mod (fixed (uid), dim (kst.uid_hash_bucket, 1));
+      188 	do kstep = ptr (kstp, kst.uid_hash_bucket (hash_bucket))
+      189 	     repeat (ptr (kstp, kste.fp)) while (rel (kstep) ^= "0"b);
+      190 	     if uid = kste.uid then do;
+      191 		segno = kste.segno;
+      192 		call term_seg;
+      193 		return;
+      194 	     end;
+      195 	end;
+      196 	return;
+      197      end;
+      198 
+      199 terminate_and_zero_lot: proc (segnum, switches, ecode);
+      200 
+      201 dcl  ecode			fixed bin (35) parameter;
+      202 dcl  segnum			fixed bin (17) parameter;
+      203 dcl  switches			bit (36) aligned parameter;
+      204 
+      205 dcl  n_names			fixed bin;
+      206 dcl  ring				fixed bin;
+      207 dcl  zero_lot			bit (1) aligned;
+      208 
+      209 	call makeunknown_ (segnum, switches, zero_lot, ecode);
+      210 	go to Join;
+      211 
+      212 terminate_and_zero_lot$$protect:
+      213      entry (segnum, switches, n_names, ecode);
+      214 
+      215 	call makeunknown_$protect_names (segnum, n_names, switches, zero_lot, ecode);
+      216 	if ecode ^= 0 then return;
+      217 
+      218 Join:
+      219 	if zero_lot then do;
+      220 	     ring = level$get ();
+      221 
+      222 	     if segnum <= pds$stacks (ring) -> stack_header.cur_lot_size then do;
+      223 						/* don't wipe out locations not in lot, isot */
+      224 		pds$stacks (ring) -> stack_header.lot_ptr -> lot.lp (segnum) = baseptr (0);
+      225 		pds$stacks (ring) -> stack_header.isot_ptr -> isot.isp (segnum) = baseptr (0);
+      226 	     end;
+      227 	end;
+      228      end;
+      229  /* BEGIN include file dc_find_dcls.incl.pl1 */
+  1     2 
+  1     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  1     4 /* Added a few more, October 1984. */
+  1     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  1     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  1     7 
+  1     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  1     9 
+  1    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  1    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  1    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  1    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  1    14 
+  1    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  1    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  1    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  1    18 
+  1    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  1    20 
+  1    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  1    22 
+  1    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  1    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  1    25 
+  1    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  1    27 
+  1    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  1    29 
+  1    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  1    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  1    32 
+  1    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  1    34 
+  1    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  1    36 
+  1    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  1    38 
+  1    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    41 
+  1    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  1    44 
+  1    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  1    47 
+  1    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  1    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  1    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  1    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  1    52 
+  1    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  1    58 
+  1    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  1    60 
+  1    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  1    62 
+  1    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  1    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  1    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  1    66 
+  1    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  1    68 
+  1    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  1    70 
+  1    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  1    72 
+  1    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    74 
+  1    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  1    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  1    82 
+  1    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  1    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  1    87 
+  1    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  1    90 
+  1    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  1    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  1    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  1    94 
+  1    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  1    96 
+  1    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  1    98 
+  1    99 /* END include file dc_find_dcls.incl.pl1 */
+      229 
+      230  /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  2     2 
+  2     3 
+  2     4 /* Template for an entry. Length = 38 words */
+  2     5 
+  2     6 dcl  ep ptr;
+  2     7 
+  2     8 dcl 1 entry based (ep) aligned,
+  2     9 
+  2    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  2    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  2    12 
+  2    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  2    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  2    15 
+  2    16     2 uid bit (36),					/* unique id of entry */
+  2    17 
+  2    18     2 dtem bit (36),				/* date-time entry modified */
+  2    19 
+  2    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  2    21     2 pad0 bit (17),
+  2    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  2    23 
+  2    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  2    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  2    26 
+  2    27     2 author,					/* user who created branch */
+  2    28       3 pers_rp bit (18),				/* name of user who created branch */
+  2    29       3 proj_rp bit (18),				/* project of user who created branch */
+  2    30 
+  2    31       3 tag char (1),				/* tag of user who created branch */
+  2    32       3 pad1 char (3),
+  2    33 
+  2    34     2 primary_name bit (504),				/* first name on name list */
+  2    35 
+  2    36     2 dtd bit (36),					/* date time dumped */
+  2    37 
+  2    38     2 pad2 bit (36),
+  2    39 
+  2    40 
+  2    41 /* the declarations below are for branch only */
+  2    42 
+  2    43 
+  2    44     2 pvid bit (36),				/* physical volume id */
+  2    45 
+  2    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    47     2 pad3 bit (18),
+  2    48 
+  2    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  2    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  2    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  2    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  2    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  2    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  2    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  2    56     2 security_oosw bit (1),				/* security out of service switch */
+  2    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  2    58     2 master_dir bit (1),				/* TRUE for master directory */
+  2    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  2    60     2 pad4 bit (11),
+  2    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  2    62 
+  2    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  2    64 
+  2    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  2    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  2    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  2    68 
+  2    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  2    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  2    71 
+  2    72     2 bc_author,					/* user who last set the bit count */
+  2    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  2    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  2    75 
+  2    76       3 tag char (1),				/* tag of user who set the bit count */
+  2    77       3 pad5 bit (2),
+  2    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  2    79 
+  2    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  2    81 
+  2    82     2 pad6 bit (36),
+  2    83 
+  2    84     2 checksum bit (36),				/* checksum from dtd */
+  2    85 
+  2    86     2 owner bit (36);				/* uid of containing directory */
+  2    87 
+  2    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      230 
+      231  /*  START OF:	kst.incl.pl1			  *  *  *  *  *  */
+  3     2 
+  3     3 /*
+  3     4*Modified March 1976 by R. Bratt 
+  3     5*Modified November 1984 to remove hdr, Keith Loepere. */
+  3     6 
+  3     7 
+  3     8 /****^  HISTORY COMMENTS:
+  3     9*  1) change(86-08-08,GDixon), approve(86-08-08,MCR7388),
+  3    10*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+  3    11*     Add warning on use of kste.entryp.
+  3    12*                                                   END HISTORY COMMENTS */
+  3    13 
+  3    14 
+  3    15 dcl  pds$kstp ext ptr,
+  3    16     (kstp, kstep) ptr;
+  3    17 
+  3    18 dcl 1 kst aligned based (kstp),			/* KST header declaration */
+  3    19     2 lowseg fixed bin (17),				/* lowest segment number described by kst */
+  3    20     2 highseg fixed bin (17),				/* highest segment number described by kst */
+  3    21     2 highest_used_segno fixed bin (17),		/* highest segment number yet used  */
+  3    22     2 lvs fixed bin (8),				/* number of private LVs this process is connected to */
+  3    23     2 time_of_bootload fixed bin (71),			/* bootload time during prelinking */
+  3    24     2 garbage_collections fixed bin (17) unaligned,	/* KST garbage collections */
+  3    25     2 entries_collected fixed bin (17) unaligned,		/* KST entries recovered by garbage collection */
+  3    26     2 free_list bit (18) unaligned,			/* relative pointer to first free kste */
+  3    27     2 prelinked_ring (7) bit (1) unaligned,		/* rings prelinked in process */
+  3    28     2 template bit (1) unaligned,			/* this is a template kst if set */
+  3    29     2 allow_256K_connect bit (1) unaligned,		/* can use 256K segments */
+  3    30     2 unused_2 bit (9) unaligned,
+  3    31     2 uid_hash_bucket (0 : 127) bit (18) unaligned,	/* hash buckets */
+  3    32     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+  3    33     2 lv (1:256) bit (36),				/* private logical volume connection list */
+  3    34     2 end_of_kst bit (36);
+  3    35 
+  3    36 dcl 1 kste based (kstep) aligned,			/* KST entry declaration */
+  3    37     2 fp bit (18) unaligned,				/* forward rel pointer */
+  3    38     2 segno fixed bin (17) unaligned,			/* segment number of this kste */
+  3    39     2 usage_count (0:7) fixed bin (8) unaligned,		/* outstanding initiates/ring */
+  3    40     2 entryp ptr unaligned,				/* branch pointer */
+  3    41 						/* See WARNING below for requirements to use entryp. */
+  3    42     2 uid bit (36) aligned,				/* unique identifier */
+  3    43     2 access_information unaligned,
+  3    44       3 dtbm bit (36),				/* date time branch modified */
+  3    45       3 extended_access bit (33),			/* extended access from the branch */
+  3    46       3 access bit (3),				/* rew */
+  3    47       3 ex_rb (3) bit (3),				/* ring brackets from branch */
+  3    48     2 pad1 bit (3) unaligned,
+  3    49     2 flags unaligned,
+  3    50       3 dirsw bit (1),				/* directory switch */
+  3    51       3 allow_write bit (1),				/* set if initiated with write permission */
+  3    52       3 priv_init bit (1),				/* privileged initiation */
+  3    53       3 tms bit (1),				/* transparent modification switch */
+  3    54       3 tus bit (1),				/* transparent usage switch */
+  3    55       3 tpd bit (1),				/* transparent paging device switch */
+  3    56       3 audit bit (1),				/* audit switch */
+  3    57       3 explicit_deact_ok bit (1),			/* set if I am willing to have a user force deactivate */
+  3    58       3 pad bit (3),
+  3    59     2 infcount fixed bin (12) unaligned;		/* _i_f dirsw _t_h_e_n inferior count _e_l_s_e lv index */
+  3    60 
+  3    61 
+  3    62 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  3    63 /*							       */
+  3    64 /* WARNING: Before using kste.entryp to get a pointer to the directory       */
+  3    65 /* entry associated with the kst entry, you must first validate its value    */
+  3    66 /* by calling sum$getbranch or sum$getbranch_root_my.  This call also locks  */
+  3    67 /* the containing directory.  The containing directory must remain locked    */
+  3    68 /* during the entire period when kste.entryp and the directory entry are     */
+  3    69 /* being referenced.  Once the directory is unlocked, kste.entryp can no     */
+  3    70 /* longer be used to get a pointer to the entry within the unlocked	       */
+  3    71 /* directory since the dir entry could have been moved within the directory  */
+  3    72 /* by another processor.					       */
+  3    73 /*							       */
+  3    74 /* If you only need a pointer to the directory containing the associated     */
+  3    75 /* dir entry (but not to the dir entry itself), you can use:	       */
+  3    76 /*    pointer (kste.entryp, 0)				       */
+  3    77 /* without calling sum to lock the directory and validate entryp.  GDixon    */
+  3    78 /*							       */
+  3    79 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  3    80 
+  3    81 /*  END OF:	kst.incl.pl1			  *  *  *  *  *  */
+      231 
+      232  /* BEGIN INCLUDE FILE --  lot.incl.pl1   S.Webber 9/74, Modified by R. Bratt 04/76, modified by M. Weaver 7/76 */
+  4     2 /* modified by M. Weaver 3/77 */
+  4     3 
+  4     4 dcl  lotp ptr;
+  4     5 
+  4     6 dcl 1 lot based (lotp) aligned,
+  4     7     2 lp (0:9999) ptr unaligned;			/* array of packed pointers to linkage sections */
+  4     8 
+  4     9 dcl lot_fault bit (36) aligned static options (constant) init ("111000000000000000000000000000000000"b);
+  4    10 						/* lot fault has fault code = 0 and offset = 0 */
+  4    11 
+  4    12 dcl  isotp ptr;
+  4    13 dcl 1 isot based (isotp) aligned,
+  4    14     2 isp (0:9999) ptr unaligned;
+  4    15 
+  4    16 dcl 1 isot1 (0 :9999) aligned based,
+  4    17     2 flags unaligned,
+  4    18       3 fault bit (2) unaligned,
+  4    19       3 system bit (1) unaligned,
+  4    20       3 mbz bit (6) unaligned,
+  4    21     2 fault_code fixed bin (8) unaligned,
+  4    22     2 static_offset bit (18) unaligned;
+  4    23 
+  4    24 
+  4    25 /* END INCLUDE FILE  lot.incl.pl1 */
+      232 
+      233  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  5     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  5     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  5     4 /*	Modified April 1983 by C. Hornig for tasking */
+  5     5 
+  5     6 /****^  HISTORY COMMENTS:
+  5     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  5     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  5     9*     added the heap_header_ptr definition.
+  5    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  5    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  5    12*     Modified to support control point management.  These changes were actually
+  5    13*     made in February 1985 by G. Palter.
+  5    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  5    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  5    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  5    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  5    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  5    19*     (ITS pair).
+  5    20*                                                   END HISTORY COMMENTS */
+  5    21 
+  5    22 /* format: style2 */
+  5    23 
+  5    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  5    25 
+  5    26      dcl	   1 stack_header	      based (sb) aligned,
+  5    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  5    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  5    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  5    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  5    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  5    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  5    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  5    34 	     2 pad4	      bit (2) unal,
+  5    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  5    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  5    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  5    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  5    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  5    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  5    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  5    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  5    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  5    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  5    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  5    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  5    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  5    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  5    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  5    50 	     2 return_no_pop_op_ptr
+  5    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  5    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  5    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  5    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  5    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  5    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  5    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  5    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  5    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  5    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  5    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  5    62 	     2 trace,
+  5    63 	       3 frames,
+  5    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  5    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  5    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  5    67 	     2 pad2	      bit (36),		/*  (61) */
+  5    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  5    69 
+  5    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  5    71 
+  5    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  5    73 						/* (551) octal */
+  5    74 
+  5    75 
+  5    76 /*	The following constants are offsets within this transfer vector table.  */
+  5    77 
+  5    78      dcl	   (
+  5    79 	   call_offset	      fixed bin init (271),
+  5    80 	   push_offset	      fixed bin init (272),
+  5    81 	   return_offset	      fixed bin init (273),
+  5    82 	   return_no_pop_offset   fixed bin init (274),
+  5    83 	   entry_offset	      fixed bin init (275)
+  5    84 	   )		      internal static;
+  5    85 
+  5    86 
+  5    87 
+  5    88 
+  5    89 
+  5    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  5    91*	move the whole stack header should use this overlay.
+  5    92**/
+  5    93 
+  5    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  5    95 
+  5    96 
+  5    97 
+  5    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      233 
+      234      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.7  terminate_.pl1                    >spec>install>1110>terminate_.pl1
+229          1    05/20/85  0848.1  dc_find_dcls.incl.pl1             >ldd>include>dc_find_dcls.incl.pl1
+230          2    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+231          3    09/18/86  1308.1  kst.incl.pl1                      >ldd>include>kst.incl.pl1
+232          4    08/05/77  1022.4  lot.incl.pl1                      >ldd>include>lot.incl.pl1
+233          5    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DC_FIND_CHASE                   000005 constant        fixed bin(1,0)           initial dcl 1-10 set ref 121*
+a_code                                 parameter       fixed bin(35,0)          dcl 60 set ref 14 103 113* 116 127* 130 146* 149
+                                                                                  164* 167 173*
+a_dirname                              parameter       char                     packed unaligned dcl 61 ref 116 118
+a_ename                                parameter       char                     packed unaligned dcl 62 ref 116 119
+a_name                                 parameter       char                     packed unaligned dcl 63 ref 149 151
+a_rsw                                  parameter       fixed bin(1,0)           dcl 64 ref 14 103 106 116 120 167 170
+a_segptr                               parameter       pointer                  dcl 65 ref 14 103 105 130 132
+a_uid                                  parameter       bit(36)                  dcl 66 ref 167 169
+baseno                                                 builtin function         dcl 90 ref 107 133
+baseptr                                                builtin function         dcl 90 ref 154 224 225
+bit                                                    builtin function         dcl 90 ref 179
+code                            000100 automatic       fixed bin(35,0)          dcl 70 set ref 108* 109 110 110* 111 111* 112 113
+                                                                                  121* 122 127 134* 135 136 136* 137 137* 138 139*
+                                                                                  140 142* 144* 146 152* 153 155* 156 157 157* 158
+                                                                                  158* 159 160* 161 164 171* 173 178* 179 179 179*
+cur_lot_size             13            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 5-26 ref 222
+dc_find$finished                000040 constant        entry                    external dcl 1-33 ref 124
+dc_find$obj_terminate           000042 constant        entry                    external dcl 1-88 ref 121
+dc_find$obj_terminate_ptr       000044 constant        entry                    external dcl 1-89 ref 108 134 155
+dim                                                    builtin function         dcl 90 ref 187
+dirname                         000101 automatic       char(168)                packed unaligned dcl 71 set ref 118* 121*
+ecode                                  parameter       fixed bin(35,0)          dcl 201 set ref 199 209* 212 215* 216
+ename                           000153 automatic       char(32)                 packed unaligned dcl 72 set ref 119* 121*
+entry                                  based           structure                level 1 dcl 2-8
+ep                              000204 automatic       pointer                  dcl 2-6 set ref 108* 109 109 121* 123 124 124 134*
+                                                                                  135 135 155* 156 156
+error_table_$r0_refname         000010 external static fixed bin(35,0)          dcl 83 ref 179
+error_table_$root               000012 external static fixed bin(35,0)          dcl 84 ref 110 136 157
+error_table_$seg_deleted        000014 external static fixed bin(35,0)          dcl 85 ref 111 137 158
+fixed                                                  builtin function         dcl 90 ref 107 133 187
+fp                                     based           bit(18)                  level 2 packed packed unaligned dcl 3-36 ref 195
+hash_bucket                     000163 automatic       fixed bin(17,0)          dcl 73 set ref 187* 188
+isot                                   based           structure                level 1 dcl 4-13
+isot_ptr                 52            based           pointer                  level 2 dcl 5-26 ref 225
+isp                                    based           pointer                  array level 2 packed packed unaligned dcl 4-13 set
+                                                                                  ref 225*
+kst                                    based           structure                level 1 dcl 3-18
+kste                                   based           structure                level 1 dcl 3-36
+kstep                           000210 automatic       pointer                  dcl 3-15 set ref 188* 188* 190 191* 195
+kstp                            000206 automatic       pointer                  dcl 3-15 set ref 186* 187 188 188 195
+level$get                       000020 constant        entry                    external dcl 94 ref 220
+lock$dir_unlock                 000022 constant        entry                    external dcl 95 ref 109 135 156
+lot                                    based           structure                level 1 dcl 4-6
+lot_ptr                  26            based           pointer                  level 2 dcl 5-26 ref 224
+lp                                     based           pointer                  array level 2 packed packed unaligned dcl 4-6 set
+                                                                                  ref 224*
+makeunknown_                    000024 constant        entry                    external dcl 96 ref 209
+makeunknown_$protect_names      000026 constant        entry                    external dcl 97 ref 215
+mod                                                    builtin function         dcl 90 ref 187
+n_names                                parameter       fixed bin(17,0)          dcl 205 in procedure "terminate_and_zero_lot" set
+                                                                                  ref 212 215*
+n_names                         000164 automatic       fixed bin(17,0)          dcl 74 in procedure "terminate_" set ref 139* 140*
+                                                                                  142 142*
+pds$kstp                        000046 external static pointer                  dcl 3-15 ref 186
+pds$stacks                      000016 external static pointer                  array dcl 86 ref 222 224 225
+ptr                                                    builtin function         dcl 90 ref 109 109 124 124 135 135 156 156 188 195
+ref_name_$delete                000030 constant        entry                    external dcl 98 ref 160
+ref_name_$delete_segno          000032 constant        entry                    external dcl 99 ref 178
+ref_name_$get_count             000034 constant        entry                    external dcl 100 ref 139
+ref_name_$get_segno             000036 constant        entry                    external dcl 101 ref 152
+refname                         000165 automatic       varying char(32)         dcl 75 set ref 151* 152* 160*
+rel                                                    builtin function         dcl 90 ref 188
+ring                            000240 automatic       fixed bin(17,0)          dcl 206 set ref 220* 222 224 225
+rsw                             000176 automatic       fixed bin(1,0)           dcl 76 set ref 106* 120* 170* 179
+segno                           000177 automatic       fixed bin(17,0)          dcl 77 in procedure "terminate_" set ref 107* 133*
+                                                                                  139* 142* 144* 152* 154 160* 161* 178* 179* 191*
+segno                     0(18)        based           fixed bin(17,0)          level 2 in structure "kste" packed packed unaligned
+                                                                                  dcl 3-36 in procedure "terminate_" ref 191
+segnum                                 parameter       fixed bin(17,0)          dcl 202 set ref 199 209* 212 215* 222 224 225
+segptr                          000200 automatic       pointer                  dcl 78 set ref 105* 107 108* 132* 133 134* 154* 155*
+stack_header                           based           structure                level 1 dcl 5-26
+switches                               parameter       bit(36)                  dcl 203 set ref 199 209* 212 215*
+uid                       4            based           bit(36)                  level 2 in structure "kste" dcl 3-36 in procedure
+                                                                                  "terminate_" ref 190
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 2-8 in procedure
+                                                                                  "terminate_" ref 123
+uid                             000202 automatic       bit(36)                  dcl 79 in procedure "terminate_" set ref 123* 169*
+                                                                                  187 190
+uid_hash_bucket          10            based           bit(18)                  array level 2 packed packed unaligned dcl 3-18 ref
+                                                                                  187 188
+zero_lot                        000241 automatic       bit(1)                   dcl 207 set ref 209* 215* 218
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DC_FIND_NO_CHASE                       internal static fixed bin(1,0)           initial dcl 1-11
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 1-12
+DC_FIND_UNLOCK_DIR                     internal static bit(1)                   initial dcl 1-13
+call_offset                            internal static fixed bin(17,0)          initial dcl 5-78
+dc_find$dir_for_append          000000 constant        entry                    external dcl 1-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 1-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 1-17
+dc_find$dir_initiate            000000 constant        entry                    external dcl 1-19
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 1-21
+dc_find$dir_read                000000 constant        entry                    external dcl 1-23
+dc_find$dir_read_priv           000000 constant        entry                    external dcl 1-24
+dc_find$dir_reclassify          000000 constant        entry                    external dcl 1-26
+dc_find$dir_salvage             000000 constant        entry                    external dcl 1-28
+dc_find$dir_write               000000 constant        entry                    external dcl 1-30
+dc_find$dir_write_priv          000000 constant        entry                    external dcl 1-31
+dc_find$link_target             000000 constant        entry                    external dcl 1-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 1-37
+dc_find$obj_access_write        000000 constant        entry                    external dcl 1-39
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 1-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 1-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 1-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 1-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 1-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 1-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 1-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 1-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 1-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 1-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 1-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 1-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 1-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 1-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 1-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 1-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 1-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 1-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 1-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 1-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 1-69
+dc_find$obj_reclassify          000000 constant        entry                    external dcl 1-71
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 1-73
+dc_find$obj_status_read         000000 constant        entry                    external dcl 1-75
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 1-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 1-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 1-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 1-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 1-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 1-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 1-83
+dc_find$obj_status_write_priv   000000 constant        entry                    external dcl 1-84
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 1-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 1-86
+dc_find$obj_truncate            000000 constant        entry                    external dcl 1-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 1-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 1-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 1-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 1-97
+entry_offset                           internal static fixed bin(17,0)          initial dcl 5-78
+isot1                                  based           structure                array level 1 dcl 4-16
+isotp                                  automatic       pointer                  dcl 4-12
+lot_fault                              internal static bit(36)                  initial dcl 4-9
+lotp                                   automatic       pointer                  dcl 4-4
+push_offset                            internal static fixed bin(17,0)          initial dcl 5-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 5-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 5-78
+sb                                     automatic       pointer                  dcl 5-24
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 5-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 5-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+Join                            000717 constant        label                    dcl 218 ref 210
+id                              000521 constant        entry                    external dcl 167
+name                            000357 constant        entry                    external dcl 149
+noname                          000237 constant        entry                    external dcl 130
+tefile                          000124 constant        entry                    external dcl 116
+term_seg                        000545 constant        entry                    internal dcl 176 ref 112 192
+term_uid                        000577 constant        entry                    internal dcl 184 ref 125 172
+terminate_                      000013 constant        entry                    external dcl 14
+terminate_and_zero_lot          000645 constant        entry                    internal dcl 199 ref 144 161 179
+terminate_and_zero_lot$$protect 000670 constant        entry                    internal dcl 212 ref 142
+teseg                           000030 constant        entry                    external dcl 103
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1252        1322    1017        1262
+Length      1624    1017        50         265     232           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+terminate_                          221 external procedure  is an external procedure.  
+term_seg                                internal procedure  shares stack frame of external procedure terminate_.  
+term_uid                                internal procedure  shares stack frame of external procedure terminate_.  
+terminate_and_zero_lot                  internal procedure  shares stack frame of external procedure terminate_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+terminate_               000100 code                        terminate_
+                         000101 dirname                     terminate_
+                         000153 ename                       terminate_
+                         000163 hash_bucket                 terminate_
+                         000164 n_names                     terminate_
+                         000165 refname                     terminate_
+                         000176 rsw                         terminate_
+                         000177 segno                       terminate_
+                         000200 segptr                      terminate_
+                         000202 uid                         terminate_
+                         000204 ep                          terminate_
+                         000206 kstp                        terminate_
+                         000210 kstep                       terminate_
+                         000240 ring                        terminate_and_zero_lot
+                         000241 zero_lot                    terminate_and_zero_lot
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          mdfx3               ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+dc_find$finished              dc_find$obj_terminate         dc_find$obj_terminate_ptr     level$get
+lock$dir_unlock               makeunknown_                  makeunknown_$protect_names    ref_name_$delete
+ref_name_$delete_segno        ref_name_$get_count           ref_name_$get_segno
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$r0_refname       error_table_$root             error_table_$seg_deleted      pds$kstp
+pds$stacks
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000007       103 000025       105 000042       106 000045       107 000047       108 000053       109 000065
+    110 000100       111 000105       112 000111       113 000114       114 000116       116 000117       118 000151
+    119 000157       120 000164       121 000166       122 000205       123 000207       124 000212       125 000227
+    127 000230       128 000232       130 000233       132 000247       133 000253       134 000257       135 000272
+    136 000305       137 000312       138 000316       139 000320       140 000332       142 000335       144 000344
+    146 000350       147 000352       149 000353       151 000375       152 000407       153 000422       154 000424
+    155 000430       156 000443       157 000456       158 000463       159 000467       160 000471       161 000503
+    164 000512       165 000514       167 000515       169 000533       170 000536       171 000540       172 000541
+    173 000542       174 000544       176 000545       178 000546       179 000557       181 000576       184 000577
+    186 000600       187 000604       188 000611       190 000624       191 000630       192 000634       193 000635
+    195 000636       196 000644       199 000645       209 000651       210 000667       212 000670       215 000674
+    216 000714       218 000717       220 000722       222 000731       224 000744       225 000751       228 000752
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

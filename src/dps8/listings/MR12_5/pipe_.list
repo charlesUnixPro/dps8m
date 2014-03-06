@@ -1,0 +1,1248 @@
+	COMPILATION LISTING OF SEGMENT pipe_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1011.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ********************************************
+        2*        *                                          *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987 *
+        4*        *                                          *
+        5*        ******************************************** */
+        6 
+        7 
+        8 /****^  HISTORY COMMENTS:
+        9*  1) change(87-07-08,GWMay), approve(87-07-08,MCR7730), audit(87-08-10,JRGray),
+       10*     install(87-09-10,MR12.1-1104):
+       11*     Created as a service routine for "command_processor_".
+       12*  2) change(87-09-10,GWMay), approve(87-09-10,MCR7730), audit(87-09-10,GDixon),
+       13*     install(87-09-10,MR12.1-1104):
+       14*     Added any_other handlers and ips interrupt masking. Added the get_word
+       15*     function for more complete analysis of the attach description. Simplified
+       16*     the pipe_info structure. Changed the pipe_info structure pointer to be
+       17*     internal static. Combined the get_string routines into one routine with a
+       18*     command branch.
+       19*                                                   END HISTORY COMMENTS */
+       20 /* format: off */
+       21 
+       22 pipe_:	proc options (main);
+       23 /* ***************************************************************************
+       24*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+       25*******************************************************************************
+       26*
+       27*   Name: pipe_
+       28*
+       29*   Function:  This subroutine supplies a set of I/O service entrypoints for
+       30*	    use by the command processor.  All iox_ calls needed to provide
+       31*	    the Multics pipe_ facility reside within this module.
+       32*
+       33*   Entrypoints:
+       34*
+       35*   pipe_$attach_pipe
+       36*      on the first entry per-process, creates the pipe storage area.
+       37*      Initializes variables and calls the iox_ entries that will attach the
+       38*      target attach description given as a parameter.
+       39*
+       40*   pipe_$close_pipe
+       41*      calls the iox_ entrys to move the standard input or output switch to the
+       42*      attach state they were in before the pipe_$open_pipe entry was called.
+       43*
+       44*   pipe_$copy
+       45*      performs a simple loop of calls to iox_ entries to get characters from
+       46*      standard input and put characters to standard output.
+       47*
+       48*   pipe_$detach_pipe
+       49*      calls the iox_ entries that detach and destroy the io control block
+       50*      created by the pipe_$attach_pipe entrypoint.  Frees the information that
+       51*      was used to describe the attachment that is being released.
+       52*
+       53*   pipe_$get_return_string
+       54*      calls iox_ to get characters from the specified input attachment and
+       55*      adds the information as is to a string defined by parameter input.
+       56*
+       57*   pipe_$get_return_string_nnl
+       58*      same as pipe_$get_return_string except strips new_line characters.
+       59*
+       60*   pipe_$initiate
+       61*      builds and returns a unique file name for use as a pipe temporary file.
+       62*
+       63*   pipe_$open_pipe
+       64*      opens the target attachment made by the pipe_$attach_pipe entry, saves
+       65*      the current attachment of the standard switch in use and attaches the
+       66*      standard switch to the target attachment.
+       67*
+       68*   pipe_$terminate
+       69*      deletes the pipe temporary files named by the pipe_$initiate entry and
+       70*      reinitializes name values
+       71*
+       72*******************************************************************************
+       73*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+       74**************************************************************************** */
+       75 
+       76 /* ***************************************************************************
+       77*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+       78*******************************************************************************
+       79*
+       80*entryname:  attach_pipe
+       81*
+       82*   syntax:  pipe_$attach_pipe (char(*), bit(1) aligned, bit(1) aligned,
+       83*	     ptr, fixed bin(35));
+       84*
+       85*  summary:  1) If the user is attempting to attach to user_input or
+       86*	     user_output, return an error.
+       87*            2) Create the pipe data area in system free area and set
+       88*	     the pointer to it.
+       89*            3) Allocate and initiate the pipe_info for this attachment.
+       90*	  4) Call iox_ to make the attachment to the parameter
+       91*	     attach description. Default to vfile_ or set the -extend
+       92*	     argument based on the parameter control.
+       93*
+       94*******************************************************************************
+       95*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+       96**************************************************************************** */
+       97 
+       98 attach_pipe: entry (atd,		/* (input)  - target attachment     */
+       99 	          Sdefault_to_vfile,	/* (input)  - ON = add "vfile_"     */
+      100 		Sextend,		/* (input)  - ON = odd "-extend"    */
+      101 		Ppipe_info,	/* (output) - pointer to pipe_info  */
+      102 		code);		/* (output) - error status	      */
+      103 
+      104        dcl atd			char(*) parameter;
+      105        dcl Sdefault_to_vfile		bit (1) aligned parameter;
+      106        dcl Sextend			bit (1) aligned parameter;
+      107        dcl match_switch		char (32) varying;
+      108 
+      109        code = 0;
+      110        Ppipe_info = null;
+      111 
+      112        if atd = "" then return;
+      113 
+      114        match_switch = get_word (atd, 2);
+      115        if match_switch = "user_input" | match_switch = "user_output" then do;
+      116 	code = error_table_$cyclic_syn;
+      117 	return;
+      118 	end;
+      119 
+      120        pipe_area_info_ptr_ = get_system_free_area_ ();
+      121 
+      122        on cleanup
+      123 	call detach_pipe (Ppipe_info, ignore_code);
+      124 
+      125        allocate pipe_info in (pipe_storage_area) set (Ppipe_info);
+      126        pipe_info.old.Piocb = null;
+      127        pipe_info.old.switch = SPACE;
+      128        pipe_info.old.Sdo_not_close = FALSE;
+      129 	
+      130 /* A unique string is used for the pipe switch to make the mechanism
+      131*   resemble the one use by the command environment when pushing an
+      132*   execution level. */
+      133 
+      134        unique_string = unique_chars_ ("0"b);
+      135        pipe_info.new.Piocb = null;
+      136        pipe_info.new.switch =	"pipe_new_" || unique_string;
+      137        pipe_info.new.Sdo_not_close = FALSE;
+      138 	
+      139        pipe_info.save.switch = "pipe_save_" || unique_string;
+      140        call iox_$find_iocb (pipe_info.save.switch, pipe_info.save.Piocb, code);
+      141        pipe_info.save.Sdo_not_close = FALSE;
+      142        pipe_info.Spipe_file = FALSE;
+      143 
+      144        if index (atd, "pipe_file_!") > 0 then
+      145 	pipe_info.Spipe_file = TRUE;
+      146 
+      147        if Sdefault_to_vfile then do;
+      148 	if Sextend then
+      149 	   call iox_$attach_name (pipe_info.new.switch, pipe_info.new.Piocb,
+      150 	      "vfile_ " || before (ltrim(atd), SPACE) || " -extend "
+      151 	      || after (ltrim(atd), SPACE), null(), code);
+      152           else 
+      153 	   call iox_$attach_name (pipe_info.new.switch, pipe_info.new.Piocb,
+      154 	      "vfile_ " || ltrim(atd),  null(), code);
+      155 	end;
+      156        else
+      157 	call iox_$attach_name (pipe_info.new.switch, pipe_info.new.Piocb,
+      158 	   atd, null(), code);
+      159 
+      160        return;
+      161 
+      162 /* Internal to attach_pipe.  This routine returns a given word in the
+      163*   character string word_list.  The string is always a Multics attach
+      164*   description. */
+      165 
+      166 get_word: proc    (word_list,
+      167 	         word_to_return)
+      168           returns (char (32) varying);
+      169 
+      170        dcl  word_list		char (*) unaligned,
+      171 	  word_to_return		fixed bin,
+      172 	  work_list		char (1024) varying,
+      173 	  word			char (32) varying,
+      174 	  i			fixed bin;
+      175 
+      176 /* If the attach description has a target attach, use only the target
+      177*   portion of the string. */
+      178 
+      179        work_list = ltrim (after (word_list, "-target "));
+      180        if work_list = "" then work_list = ltrim (word_list);
+      181        do i = 1 to word_to_return;
+      182 	word = before (work_list, SPACE);
+      183 	work_list = after (work_list, SPACE);
+      184 	work_list = ltrim (work_list);
+      185 	end;
+      186 
+      187        return (word);
+      188        end get_word;
+      189 
+      190 /* ***************************************************************************
+      191*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      192*******************************************************************************
+      193*
+      194*entryname:  close_pipe
+      195*   syntax:  pipe_$close_pipe (ptr, bit(1) aligned, fixed bin(35));
+      196*
+      197*  summary:  1) Mask interrupts because we are moving standard I/O switches.
+      198*	  2) If the standard switch was attached when we started,
+      199*	     move it back to where it was before the open.
+      200*            3) If the target attachment was opened by the pipe_ subroutine,
+      201*	     close it.
+      202*            4) If the attachment is a pipe temporary file and the truncate
+      203*	     option is given, truncate the file.
+      204*            5) Unmask interrupts.
+      205*
+      206*******************************************************************************
+      207*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      208**************************************************************************** */
+      209 
+      210 close_pipe: entry (Ppipe_info,	/* (input) - points to pipe_info    */
+      211 	         Struncate,		/* (input) - ON = truncate pipe file*/
+      212  	         code);		/* (output)- error status           */
+      213 
+      214        dcl Struncate		bit(1) aligned parameter;
+      215 
+      216        code = 0;
+      217        if Ppipe_info = null then return;
+      218        if pipe_info.old.Piocb = null then return;
+      219 
+      220        if (pipe_info.save.Piocb -> iocb.open_descrip_ptr ^= null
+      221 	& pipe_info.old.Piocb -> iocb.open_descrip_ptr ^= null) then do;
+      222 
+      223 	ips_mask = ""b;
+      224 	on any_other
+      225 	   call hcs_$reset_ips_mask (ips_mask, ips_mask);
+      226 
+      227 	call hcs_$set_ips_mask ("0"b, ips_mask);
+      228 
+      229 	call iox_$detach_iocb (pipe_info.old.Piocb, ignore_code);
+      230 
+      231 	call iox_$move_attach
+      232 	   (pipe_info.save.Piocb, pipe_info.old.Piocb, ignore_code);
+      233 
+      234 	call hcs_$reset_ips_mask (ips_mask, ips_mask);
+      235 	end;
+      236        
+      237        if pipe_info.new.Sdo_not_close then;
+      238        else
+      239 	call iox_$close (pipe_info.new.Piocb, code);
+      240 
+      241        if code = 0 then do;
+      242 	if pipe_info.Spipe_file & Struncate then do;
+      243 
+      244 	   call iox_$open (pipe_info.new.Piocb, Stream_input_output,
+      245 	      FALSE, code);
+      246 
+      247 	   if code = 0 then do;
+      248 	      call iox_$position (pipe_info.new.Piocb, 0, 0, code);
+      249 	      if code = 0 then
+      250 	         call iox_$control (pipe_info.new.Piocb, "truncate",
+      251 	         null, ignore_code);
+      252 	   
+      253 	      call iox_$close (pipe_info.new.Piocb, ignore_code);
+      254 	      end;
+      255 	   end;
+      256 	end;
+      257 
+      258        return;
+      259 
+      260 /* ***************************************************************************
+      261*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      262*******************************************************************************
+      263*
+      264*entryname:  copy
+      265*   syntax:  pipe_$copy (ptr, ptr, fixed bin(35))
+      266*
+      267*  summary:  1) If the input or output source is missing, return.
+      268*	  2) Get a temp segment to hold the data from the input source.
+      269*	  3) While there is more data available from the input source,
+      270*	     get a block of characters from the input source and
+      271*	     output it to the output source.
+      272*	  4) Release the temp segment.
+      273* 
+      274*******************************************************************************
+      275*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      276**************************************************************************** */
+      277 
+      278 copy:	entry (Pinput,		/* (input) - ptr pipe_info of input */
+      279 	       Poutput,		/* (input) - ptr pipe_info of output*/
+      280 	       code);		/* (output)- error status           */
+      281 
+      282        code = 0;
+      283        if Pinput = null | Poutput = null then
+      284 	return;
+      285 
+      286        Pbuffer = null;
+      287        on cleanup
+      288 	call release_temp_segment_ ("pipe_get_string", Pbuffer,
+      289 	   ignore_code);
+      290 
+      291        call get_temp_segment_ ("pipe_copy", Pbuffer, ignore_code);
+      292        Lbuffer = CHARS_PER_SEGMENT;
+      293        EOF = FALSE;
+      294 
+      295        do while (code = 0 & ^EOF);
+      296 	call iox_$get_chars (Pinput -> pipe_info.new.Piocb,
+      297 	   Pbuffer, Lbuffer, Lrecord, code);
+      298 
+      299 	if code = error_table_$short_record then
+      300 	   code = 0;
+      301 
+      302 	if code = error_table_$end_of_info then do;
+      303 	   code = 0;
+      304 	   EOF = TRUE;
+      305 	   end;
+      306 
+      307 	if Lrecord > 0 then
+      308 
+      309 /* If the get_chars operation did not return an error write with code
+      310*   and return any write errors. */
+      311 
+      312 	   if code = 0 then call iox_$put_chars (Poutput ->
+      313 	      pipe_info.new.Piocb, Pbuffer, Lrecord, code);
+      314 
+      315 /* Otherwise, flush the buffer and return the get_chars error. */
+      316 
+      317 	   else call iox_$put_chars (Poutput -> pipe_info.new.Piocb,
+      318 	      Pbuffer, Lrecord, ignore_code);
+      319 	end;
+      320 
+      321        call release_temp_segment_ ("pipe_copy", Pbuffer, ignore_code);
+      322        return;
+      323 
+      324 /* ***************************************************************************
+      325*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      326*******************************************************************************
+      327*
+      328*entryname:  detach_pipe
+      329*   syntax:  pipe_$detach_pipe (ptr, fixed bin(35))
+      330*
+      331*  summary:  1) If not attached, return.
+      332*	  2) Detach the target attachment established by the attach_pipe
+      333*	     entry.
+      334*            3) Destroy any work io control blocks.
+      335*	  4) Free the pipe_info structure for the attachment.
+      336*
+      337*******************************************************************************
+      338*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      339**************************************************************************** */
+      340 
+      341 detach_pipe: entry (Ppipe_info,	/* (input) - ptr to pipe_info to det*/
+      342 	          code);		/* (output)- error status	      */
+      343 
+      344       code = 0;
+      345 
+      346       if Ppipe_info = null then return;
+      347 
+      348       if unspec (pipe_info.new.Piocb) ^= ""b then do;
+      349          if pipe_info.new.Piocb ^= null then do;
+      350 	  if pipe_info.new.Piocb -> iocb.attach_descrip_ptr ^= null then
+      351 	     call iox_$detach_iocb (pipe_info.new.Piocb, code);
+      352 	  call iox_$destroy_iocb (pipe_info.new.Piocb, ignore_code);
+      353 	  end;
+      354          end;
+      355 
+      356       if unspec (pipe_info.new.Piocb) ^= ""b then
+      357          call iox_$destroy_iocb (pipe_info.save.Piocb, ignore_code);
+      358 
+      359       free pipe_info in (pipe_storage_area);
+      360       Ppipe_info = null;
+      361       return;
+      362 
+      363 /* ***************************************************************************
+      364*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      365*******************************************************************************
+      366*
+      367*entryname:  get_return_string
+      368*	  get_return_string_nnl
+      369*
+      370*   syntax:  get_return_string (ptr, ptr, fixed bin(21), fixed bin(35))
+      371*	  get_return_string_nnl (ptr, ptr, fixed bin(21), fixed bin(35))
+      372*
+      373* function:  gets characters from an input source and adds them to a character
+      374*	  string.
+      375*
+      376*  summary:  1) Get a temp segment to hold the data from the input source.
+      377*	  2) While there is more data available from the input source,
+      378*	     get a block of characters from the input source and,
+      379*               a) If the remove new line control is on remove the new
+      380*	        line character from the input string.
+      381*               b) If there is room in the return string, add the input
+      382*	        character string.  Otherwise, set the error status.
+      383*	  3) Release the temp segment.
+      384*
+      385*******************************************************************************
+      386*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      387**************************************************************************** */
+      388 
+      389 get_return_string: entry (Pinput,	/* (input) - ptr to pipe_info of src*/
+      390 		      Pret_string,	/* (input) - ptr to string storage  */
+      391 		      Lret_string,	/* (input) - available length of str*/
+      392 		      code);	/* (input) - error status	      */
+      393 
+      394        Sremove_new_lines = FALSE;
+      395        go to GET_STRING_COMMON;
+      396        
+      397 
+      398 get_return_string_nnl: entry (Pinput,	/* same as get_return_string        */
+      399 		          Pret_string,
+      400 			Lret_string,
+      401 			code);
+      402 
+      403        Sremove_new_lines = TRUE;
+      404 
+      405 GET_STRING_COMMON:
+      406         
+      407        code = 0;
+      408        if Pinput = null then
+      409 	return;
+      410 
+      411        Pbuffer = null;
+      412        on cleanup
+      413 	call release_temp_segment_ ("pipe_get_string", Pbuffer,
+      414 	   ignore_code);
+      415 
+      416        call get_temp_segment_ ("pipe_get_string", Pbuffer, ignore_code);
+      417        Lbuffer = CHARS_PER_SEGMENT;
+      418        EOF = FALSE;
+      419 
+      420        do while (code = 0 & ^EOF);
+      421 
+      422 	call iox_$get_line (Pinput -> pipe_info.new.Piocb,
+      423 	   Pbuffer, Lbuffer, Lrecord, code);
+      424 
+      425 	if code = error_table_$short_record then
+      426 	   code = 0;
+      427 	else
+      428 	   if code = error_table_$end_of_info then do;
+      429 	      code = 0;
+      430 	      EOF = TRUE;
+      431 	      end;
+      432 
+      433 	if length(record) > 0 then do;
+      434 
+      435 	   if Sremove_new_lines then do;
+      436 
+      437 	      if length(ret_string) > 0 then
+      438 	         ret_string = ret_string || SPACE;
+      439 
+      440 	      if substr (record, length(record), length (NL)) = NL then
+      441 	         Lrecord = Lrecord - length (NL);
+      442 	      end;
+      443 
+      444 	   if (length(ret_string) + length(record))
+      445 	      > maxlength(ret_string) then
+      446 	      code = error_table_$command_line_overflow;
+      447 	   else
+      448 	      ret_string = ret_string || record;
+      449 	   end;
+      450 	end;
+      451 
+      452        call release_temp_segment_ ("pipe_get_string", Pbuffer, ignore_code);
+      453        return;
+      454 
+      455 /* ***************************************************************************
+      456*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      457*******************************************************************************
+      458*
+      459*entryname:  initiate
+      460*   syntax:  pipe_$initiate (ptr)
+      461*
+      462*  summary:  1) Build a unique pipe temporary file name.
+      463*
+      464*******************************************************************************
+      465*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      466**************************************************************************** */
+      467 
+      468 initiate:  entry (Ppipe_atd);		/* (input) - ptr to storage for the */
+      469 				/*           pipe temp file pathname*/
+      470 
+      471 dcl Ppipe_atd ptr parameter;
+      472 dcl pipe_atd char(58) based (Ppipe_atd);
+      473 
+      474        if Ppipe_atd = null then
+      475 	return;
+      476 
+      477        pipe_atd = 
+      478 	rtrim(get_pdir_ ()) || ">pipe_file_" || rtrim(unique_chars_ ("0"b));
+      479 
+      480        return;
+      481 
+      482 /* ***************************************************************************
+      483*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      484*******************************************************************************
+      485*
+      486*entryname:  open_pipe
+      487*   syntax:  pipe_$open_pipe (ptr, bit(1) aligned, fixed bin(35))
+      488*
+      489*  summary:  1) Determine which standard I/O switch to use based on the
+      490*	     INPUT control parameter.
+      491*            2) Locate the io control block of the switch to be opened.
+      492*	     If the iocb cannot be located, there is something wrong,
+      493*	     return.
+      494*            3) Open the target attachment.
+      495*	  4) Save the current attach description of the standard switch
+      496*	     so that it can restored by the close_pipe entrypoint.
+      497*	  5) Attach the standard switch "syn_" to the target attachment.
+      498*
+      499*******************************************************************************
+      500*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      501**************************************************************************** */
+      502 
+      503 open_pipe: entry (Ppipe_info,		/* (input) - ptr to pipe_info of src*/
+      504 	        INPUT,		/* (input) - ON = open for input    */
+      505 	        code);		/* (output)- error status	      */
+      506 
+      507        dcl INPUT			bit(1) aligned parameter;
+      508        dcl mode			fixed bin;
+      509 
+      510        code = 0;
+      511        if Ppipe_info = null then
+      512 	return;
+      513 
+      514        if INPUT then do;
+      515 	pipe_info.old.switch = "user_input";
+      516 	mode = Stream_input;
+      517 	end;
+      518        else do;
+      519 	pipe_info.old.switch = "user_output";
+      520 	mode = Stream_output;
+      521 	end;
+      522 
+      523        call iox_$look_iocb (pipe_info.old.switch, pipe_info.old.Piocb, code);
+      524 
+      525        if code ^= 0 then return;
+      526 	
+      527        on cleanup
+      528 	call iox_$close(pipe_info.new.Piocb, code);
+      529 
+      530        call iox_$open (pipe_info.new.Piocb, mode, "0"b, code);
+      531 
+      532        if code = error_table_$file_already_opened |
+      533 	code = error_table_$not_closed then do;
+      534 	pipe_info.new.Sdo_not_close = TRUE;
+      535 	code = 0;
+      536 	end;
+      537 
+      538        if code ^= 0 then return;
+      539 
+      540        on cleanup
+      541 	call close_pipe (Ppipe_info, FALSE, ignore_code);
+      542 
+      543        ips_mask = ""b;
+      544        on any_other
+      545 	call hcs_$reset_ips_mask (ips_mask, ips_mask);
+      546 
+      547        call hcs_$set_ips_mask ("0"b, ips_mask);
+      548 
+      549        call iox_$move_attach (pipe_info.old.Piocb, pipe_info.save.Piocb, code);
+      550 
+      551        if code = 0 then do;
+      552 
+      553 	call iox_$attach_ptr (pipe_info.old.Piocb,
+      554 	   "syn_ " || pipe_info.new.switch, null(), code);
+      555 
+      556 	if code ^= 0 then
+      557 	   call close_pipe (Ppipe_info, FALSE, ignore_code);
+      558 
+      559 	revert cleanup;
+      560 	end;
+      561 
+      562        else
+      563 	call iox_$close(pipe_info.new.Piocb, code);
+      564 
+      565        call hcs_$reset_ips_mask (ips_mask, ips_mask);
+      566        return;
+      567 
+      568 /* ***************************************************************************
+      569*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      570*******************************************************************************
+      571*
+      572*entryname:  terminate
+      573*   syntax:  pipe_$terminate (ptr, ptr, fixed bin(35))
+      574*
+      575*  summary:  1) If there in an input path, expand the pathname and
+      576*	     delete it. Set the pathname to SPACE.
+      577*	  2) If there in an output path, expand the pathname and
+      578*	     delete it. Set the pathname to SPACE.
+      579*
+      580*******************************************************************************
+      581*----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---
+      582**************************************************************************** */
+      583 
+      584 terminate: entry (Ppipein_path,	/* (input) - ptr to input path      */
+      585 	        Ppipeout_path,	/* (input) - ptr to output path     */
+      586 	        code);		/* (output)- error status	      */
+      587 
+      588        dcl Ppipein_path		ptr parameter,
+      589 	 Ppipeout_path		ptr parameter;
+      590 
+      591        dcl pipe_path		char (58) based;
+      592 
+      593        code = 0;
+      594 
+      595        if Ppipein_path ^= null then
+      596 	if Ppipein_path -> pipe_path ^= SPACE then do;
+      597 	   call delete_$path (Ppipein_path -> pipe_path, "",
+      598 	      FILES_ONLY_FORCE_NO_QUERY, "", code);
+      599 	   Ppipein_path -> pipe_path = SPACE;
+      600 	   end;
+      601 
+      602        if Ppipeout_path ^= null then
+      603 	if Ppipeout_path -> pipe_path ^= SPACE then do;
+      604 	   call delete_$path (Ppipeout_path-> pipe_path, "",
+      605 	      FILES_ONLY_FORCE_NO_QUERY, "", code);
+      606 	   Ppipeout_path -> pipe_path = SPACE;
+      607 	   end;
+      608        return;
+      609 
+      610        dcl Lret_string		fixed bin parameter,
+      611 	 Pinput			ptr parameter,
+      612 	 Poutput			ptr parameter,
+      613            Pret_string		ptr parameter,
+      614 	 code			fixed bin(35) parameter,
+      615 	 Ppipe_info		ptr parameter;
+      616 
+      617        dcl pipe_area_info_ptr_	ptr internal static init (null),
+      618 	 pipe_storage_area		area based (pipe_area_info_ptr_);
+      619 
+      620        dcl 1 pipe_info		aligned based (Ppipe_info),
+      621 	   2 old,
+      622 	     3 Piocb		ptr,
+      623 	     3 switch		char(32) unaligned,
+      624 	     3 Sdo_not_close	bit (1),
+      625              2 new			aligned like old,
+      626 	   2 save			aligned like old,
+      627 	   2 Spipe_file		bit (1);
+      628 
+      629        dcl ret_string		char (Lret_string) varying 
+      630 				based (Pret_string);
+      631 
+      632        dcl Pbuffer			ptr,
+      633 	 Lbuffer			fixed bin(21),
+      634 	 Lrecord			fixed bin(21),
+      635 	 record			char (Lrecord) based (Pbuffer);
+      636 
+      637        dcl EOF			bit (1) aligned;
+      638        dcl Sremove_new_lines		bit (1) aligned;
+      639        dcl ignore_code		fixed bin (35);
+      640        dcl ips_mask			bit(36) aligned;
+      641        dcl unique_string		char (15);
+      642 
+      643        dcl (after, before, index, length, ltrim, maxlength, null, rtrim,
+      644 	 substr, unspec)		builtin;
+      645 
+      646        dcl (any_other, cleanup)	condition;
+      647 
+      648        dcl FALSE			bit (1) aligned internal static
+      649 				options (constant) init ("0"b),
+      650 	 NL			char (1) aligned internal static
+      651 				options (constant) init ("
+      652 "),
+      653            FILES_ONLY_FORCE_NO_QUERY	bit (36) aligned internal static
+      654 				options (constant) init
+      655            ("100100000000000000000000000000000000"b),
+      656            SPACE			char (1) aligned internal static
+      657 				options (constant) init (" "),
+      658            TRUE			bit (1) aligned internal static
+      659 				options (constant) init ("1"b);
+      660 
+      661       dcl (error_table_$command_line_overflow,
+      662 	error_table_$cyclic_syn,
+      663 	error_table_$end_of_info,
+      664 	error_table_$file_already_opened,
+      665 	error_table_$not_closed,
+      666 	error_table_$short_record)
+      667 				fixed bin(35) ext static;
+      668 
+      669       dcl	delete_$path		entry (char(*), char(*), bit(36) aligned, char(*), fixed bin(35)),
+      670 	get_pdir_			entry() returns(char(168)),
+      671 	get_system_free_area_	entry() returns(ptr),
+      672 	get_temp_segment_		entry (char(*), ptr, fixed bin(35)),
+      673 	hcs_$reset_ips_mask		entry (bit(36) aligned, bit(36) aligned),
+      674 	hcs_$set_ips_mask		entry (bit(36) aligned, bit(36) aligned),
+      675 	release_temp_segment_	entry (char(*), ptr, fixed bin(35)),
+      676 	unique_chars_		entry (bit(*)) returns(char(15));
+      677 
+  1     1 /* BEGIN INCLUDE FILE ..... iocb.incl.pl1 ..... 13 Feb 1975, M. Asherman */
+  1     2 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+  1     3*      version number to IOX2. */
+  1     4 /* format: style2 */
+  1     5 
+  1     6      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  1     7 	     2 version	      character (4) aligned,	/* IOX2 */
+  1     8 	     2 name	      char (32),		/* I/O name of this block. */
+  1     9 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  1    10 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  1    11 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  1    12 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  1    13 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  1    14 	     2 reserved	      bit (72),		/* Reserved for future use. */
+  1    15 	     2 detach_iocb	      entry (ptr, fixed (35)),/* detach_iocb(p,s) */
+  1    16 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed (35)),
+  1    17 						/* open(p,mode,not_used,s) */
+  1    18 	     2 close	      entry (ptr, fixed (35)),/* close(p,s) */
+  1    19 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  1    20 						/* get_line(p,bufptr,buflen,actlen,s) */
+  1    21 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  1    22 						/* get_chars(p,bufptr,buflen,actlen,s) */
+  1    23 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed (35)),
+  1    24 						/* put_chars(p,bufptr,buflen,s) */
+  1    25 	     2 modes	      entry (ptr, char (*), char (*), fixed (35)),
+  1    26 						/* modes(p,newmode,oldmode,s) */
+  1    27 	     2 position	      entry (ptr, fixed, fixed (21), fixed (35)),
+  1    28 						/* position(p,u1,u2,s) */
+  1    29 	     2 control	      entry (ptr, char (*), ptr, fixed (35)),
+  1    30 						/* control(p,order,infptr,s) */
+  1    31 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  1    32 						/* read_record(p,bufptr,buflen,actlen,s) */
+  1    33 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed (35)),
+  1    34 						/* write_record(p,bufptr,buflen,s) */
+  1    35 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed (35)),
+  1    36 						/* rewrite_record(p,bufptr,buflen,s) */
+  1    37 	     2 delete_record      entry (ptr, fixed (35)),/* delete_record(p,s) */
+  1    38 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  1    39 						/* seek_key(p,key,len,s) */
+  1    40 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  1    41 						/* read_key(p,key,len,s) */
+  1    42 	     2 read_length	      entry (ptr, fixed (21), fixed (35)),
+  1    43 						/* read_length(p,len,s) */
+  1    44 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+  1    45 						/* open_file(p,mode,desc,not_used,s) */
+  1    46 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+  1    47 						/* close_file(p,desc,s) */
+  1    48 	     2 detach	      entry (ptr, char (*), fixed bin (35));
+  1    49 						/* detach(p,desc,s) */
+  1    50 
+  1    51      declare iox_$iocb_version_sentinel
+  1    52 			      character (4) aligned external static;
+  1    53 
+  1    54 /* END INCLUDE FILE ..... iocb.incl.pl1 ..... */
+      678 
+      679 
+  2     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  2     2 
+  2     3 /* Written 05/04/78 by C. D. Tavares */
+  2     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  2     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  2     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  2     7 
+  2     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  2     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  2    10      iox_$close entry (pointer, fixed bin (35)),
+  2    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  2    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  2    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  2    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  2    15      iox_$err_not_attached entry options (variable),
+  2    16      iox_$err_not_closed entry options (variable),
+  2    17      iox_$err_no_operation entry options (variable),
+  2    18      iox_$err_not_open entry options (variable),
+  2    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  2    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  2    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  2    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  2    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  2    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  2    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  2    28      iox_$propagate entry (pointer),
+  2    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  2    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  2    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  2    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  2    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  2    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  2    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  2    40 
+  2    41 dcl (iox_$user_output,
+  2    42      iox_$user_input,
+  2    43      iox_$user_io,
+  2    44      iox_$error_output) external static pointer;
+  2    45 
+  2    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      680 
+      681 
+  3     1 /* Begin include file ..... iox_modes.incl.pl1 */
+  3     2 
+  3     3 /* Written by C. D. Tavares, 03/17/75 */
+  3     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+  3     5 
+  3     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+  3     7     ("stream_input", "stream_output", "stream_input_output",
+  3     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+  3     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+  3    10      "direct_input", "direct_output", "direct_update");
+  3    11 
+  3    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+  3    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+  3    14 
+  3    15 dcl (Stream_input initial (1),
+  3    16      Stream_output initial (2),
+  3    17      Stream_input_output initial (3),
+  3    18      Sequential_input initial (4),
+  3    19      Sequential_output initial (5),
+  3    20      Sequential_input_output initial (6),
+  3    21      Sequential_update initial (7),
+  3    22      Keyed_sequential_input initial (8),
+  3    23      Keyed_sequential_output initial (9),
+  3    24      Keyed_sequential_update initial (10),
+  3    25      Direct_input initial (11),
+  3    26      Direct_output initial (12),
+  3    27      Direct_update initial (13)) fixed bin int static options (constant);
+  3    28 
+  3    29 /* End include file ..... iox_modes.incl.pl1 */
+      682 
+      683 
+  4     1 /* BEGIN INCLUDE FILE ... system_constants.incl.pl1 */
+  4     2 
+  4     3 /****^  HISTORY COMMENTS:
+  4     4*  1) change(86-11-12,GWMay), approve(86-11-12,MCR7445), audit(86-11-19,GDixon),
+  4     5*     install(86-11-21,MR12.0-1223):
+  4     6*     created.
+  4     7*                                                   END HISTORY COMMENTS */
+  4     8 
+  4     9 /* format: off */
+  4    10 
+  4    11 /* ************************************************************************ */
+  4    12 /*							      */
+  4    13 /* Function: Provides constants for commonly used Multics system values.    */
+  4    14 /*							      */
+  4    15 /* Usage: These values are available for use in place of "magic" numbers    */
+  4    16 /*        (unexplained numbers) in programming applications.	      */
+  4    17 /*							      */
+  4    18 /* Definitions:						      */
+  4    19 /*							      */
+  4    20 /*   PER             bit     character/byte     word     page     segment   */
+  4    21 /*		 					      */
+  4    22 /*   bits              1            9             36     36864    9400320   */
+  4    23 /*   characters/bytes	      1	           4      4096    1044480   */
+  4    24 /*   words				 1      1024     261120   */
+  4    25 /*   pages				           1        255   */
+  4    26 /*   segments						  1   */
+  4    27 /*							      */
+  4    28 /*  The base values for a bit, char, word and page are determined by the    */
+  4    29 /*  Multics hardware implementation.  The other values are calculated from  */
+  4    30 /*  their relation to one another as shown in the matrix above.	      */
+  4    31 /*							      */
+  4    32 /*  BITS_PER_CHAR     = 9 (defined by the hardware)		      */
+  4    33 /*  BITS_PER_WORD     = BITS_PER_CHAR * CHARS_PER_WORD		      */
+  4    34 /*		  = 9 * 4					      */
+  4    35 /*		  = 36					      */
+  4    36 /*  BITS_PER_PAGE     = BITS_PER_CHAR * CHARS_PER_WORD * CHARS_PER_PAGE     */
+  4    37 /*		  = 9 * 4 * 1024				      */
+  4    38 /*		  = 36864					      */
+  4    39 /*  BITS_PER_SEGMENT  = BITS_PER_CHAR * CHARS_PER_WORD * CHARS_PER_PAGE *   */
+  4    40 /*		    PAGES_PER_SEGMENT			      */
+  4    41 /*		  = 9 * 4 * 1024 * 255			      */
+  4    42 /*		  = 9400320				      */
+  4    43 /*							      */
+  4    44 /*  CHARS_PER_WORD    = 4 (defined by the hardware)		      */
+  4    45 /*  CHARS_PER_PAGE    = CHARS_PER_WORD * WORDS_PER_PAGE		      */
+  4    46 /*		  = 4 * 1024				      */
+  4    47 /*		  = 4096					      */
+  4    48 /*  CHARS_PER_SEGMENT = CHARS_PER_WORD * WORDS_PER_PAGE * PAGES_PER_SEGMENT */
+  4    49 /*		  = 4 * 1024 * 255				      */
+  4    50 /*		  = 1044480				      */
+  4    51 /*							      */
+  4    52 /*  WORDS_PER_PAGE    = 1024 (defined by the hardware)		      */
+  4    53 /*  WORDS_PER_SEGMENT = WORDS_PER_PAGE * PAGES_PER_SEGMENT		      */
+  4    54 /*		  = 1024 * 255				      */
+  4    55 /*		  = 261120				      */
+  4    56 /*							      */
+  4    57 /*  PAGES_PER_SEGMENT = 255 (defined by system standard)		      */
+  4    58 /*							      */
+  4    59 /* ************************************************************************ */
+  4    60 
+  4    61        declare BITS_PER_CHAR		fixed bin (4) internal static
+  4    62 				options (constant) initial (9);
+  4    63 
+  4    64        declare BITS_PER_WORD		fixed bin (6) internal static
+  4    65 				options (constant) initial (36);
+  4    66 
+  4    67        declare BITS_PER_PAGE		fixed bin (16) internal static
+  4    68 				options (constant) initial (36864);
+  4    69 
+  4    70        declare BITS_PER_SEGMENT	fixed bin (24) internal static
+  4    71 				options (constant) initial (9400320);
+  4    72 
+  4    73        declare CHARS_PER_WORD		fixed bin (3) internal static
+  4    74 				options (constant) initial (4);
+  4    75 
+  4    76        declare CHARS_PER_PAGE		fixed bin (13) internal static
+  4    77 				options (constant) initial (4096);
+  4    78 
+  4    79        declare CHARS_PER_SEGMENT	fixed bin (21) internal static
+  4    80 				options (constant) initial (1044480);
+  4    81 
+  4    82        /* Note: WORDS_PER_PAGE should be equal to sys_info$max_page_size    */
+  4    83 
+  4    84        declare WORDS_PER_PAGE		fixed bin (11) internal static
+  4    85 				options (constant) initial (1024);
+  4    86 
+  4    87        /* Note: WORDS_PER_SEGMENT should be equal to sys_info$max_seg_size  */
+  4    88 
+  4    89        declare WORDS_PER_SEGMENT	fixed bin (21) internal static
+  4    90 				options (constant) initial (261120);
+  4    91 
+  4    92        declare PAGES_PER_SEGMENT	fixed bin (8) internal static
+  4    93 				options (constant) initial (255);
+  4    94 
+  4    95 /* END INCLUDE FILE ... system_constants.incl.pl1 */
+  4    96 
+      684 
+      685 
+      686 end pipe_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  pipe_.pl1                         >spec>install>1111>pipe_.pl1
+678          1    05/20/83  1846.4  iocb.incl.pl1                     >ldd>include>iocb.incl.pl1
+680          2    05/23/83  0916.6  iox_dcls.incl.pl1                 >ldd>include>iox_dcls.incl.pl1
+682          3    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+684          4    11/24/86  1243.9  system_constants.incl.pl1         >ldd>include>system_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CHARS_PER_SEGMENT               000000 constant        fixed bin(21,0)          initial dcl 4-79 ref 292 417
+EOF                             000116 automatic       bit(1)                   dcl 637 set ref 293* 295 304* 418* 420 430*
+FALSE                           000012 constant        bit(1)                   initial dcl 648 set ref 128 137 141 142 244* 293 394
+                                                                                  418 540* 556*
+FILES_ONLY_FORCE_NO_QUERY       000001 constant        bit(36)                  initial dcl 648 set ref 597* 604*
+INPUT                                  parameter       bit(1)                   dcl 507 ref 503 514
+Lbuffer                         000114 automatic       fixed bin(21,0)          dcl 632 set ref 292* 296* 417* 422*
+Lrecord                         000115 automatic       fixed bin(21,0)          dcl 632 set ref 296* 307 307* 317* 422* 433 440 440
+                                                                                  440* 440 444 447
+Lret_string                            parameter       fixed bin(17,0)          dcl 610 ref 389 398 437 444 447
+NL                              003150 constant        char(1)                  initial dcl 648 ref 440 440 440
+Pbuffer                         000112 automatic       pointer                  dcl 632 set ref 286* 287* 291* 296* 307* 317* 321*
+                                                                                  411* 412* 416* 422* 433 440 440 444 447 452*
+Pinput                                 parameter       pointer                  dcl 610 ref 278 283 296 389 398 408 422
+Piocb                                  based           pointer                  level 3 in structure "pipe_info" dcl 620
+                                                                                  in procedure "pipe_" set ref 126* 218 220 229*
+                                                                                  231* 523* 549* 553*
+Piocb                    30            based           pointer                  level 3 in structure "pipe_info" dcl 620
+                                                                                  in procedure "pipe_" set ref 140* 220 231* 356*
+                                                                                  549*
+Piocb                    14            based           pointer                  level 3 in structure "pipe_info" dcl 620
+                                                                                  in procedure "pipe_" set ref 135* 148* 152* 156*
+                                                                                  238* 244* 248* 249* 253* 296* 307* 317* 348 349
+                                                                                  350 350* 352* 356 422* 527* 530* 562*
+Poutput                                parameter       pointer                  dcl 610 ref 278 283 307 317
+Ppipe_atd                              parameter       pointer                  dcl 471 ref 468 474 477
+Ppipe_info                             parameter       pointer                  dcl 610 set ref 98 110* 122* 125* 126 127 128 135
+                                                                                  136 137 139 140 140 141 142 144 148 148 152 152
+                                                                                  156 156 210 217 218 220 220 229 231 231 237 238
+                                                                                  242 244 248 249 253 341 346 348 349 350 350 352
+                                                                                  356 356 359 360* 503 511 515 519 523 523 527 530
+                                                                                  534 540* 549 549 553 553 556* 562
+Ppipein_path                           parameter       pointer                  dcl 588 ref 584 595 595 597 599
+Ppipeout_path                          parameter       pointer                  dcl 588 ref 584 602 602 604 606
+Pret_string                            parameter       pointer                  dcl 610 ref 389 398 437 437 437 444 444 447 447
+SPACE                           003147 constant        char(1)                  initial dcl 648 ref 127 148 148 182 183 437 595 599
+                                                                                  602 606
+Sdefault_to_vfile                      parameter       bit(1)                   dcl 105 ref 98 147
+Sdo_not_close            26            based           bit(1)                   level 3 in structure "pipe_info" dcl 620
+                                                                                  in procedure "pipe_" set ref 137* 237 534*
+Sdo_not_close            42            based           bit(1)                   level 3 in structure "pipe_info" dcl 620
+                                                                                  in procedure "pipe_" set ref 141*
+Sdo_not_close            12            based           bit(1)                   level 3 in structure "pipe_info" dcl 620
+                                                                                  in procedure "pipe_" set ref 128*
+Sextend                                parameter       bit(1)                   dcl 106 ref 98 148
+Spipe_file               43            based           bit(1)                   level 2 dcl 620 set ref 142* 144* 242
+Sremove_new_lines               000117 automatic       bit(1)                   dcl 638 set ref 394* 403* 435
+Stream_input                           constant        fixed bin(17,0)          initial dcl 3-15 ref 516
+Stream_input_output             000021 constant        fixed bin(17,0)          initial dcl 3-15 set ref 244*
+Stream_output                          constant        fixed bin(17,0)          initial dcl 3-15 ref 520
+Struncate                              parameter       bit(1)                   dcl 214 ref 210 242
+TRUE                                   constant        bit(1)                   initial dcl 648 ref 144 304 403 430 534
+after                                                  builtin function         dcl 643 ref 148 179 183
+any_other                       000126 stack reference condition                dcl 646 ref 224 544
+atd                                    parameter       char                     packed unaligned dcl 104 set ref 98 112 114* 144 148
+                                                                                  148 152 156*
+attach_descrip_ptr       14            based           pointer                  level 2 dcl 1-6 ref 350
+before                                                 builtin function         dcl 643 ref 148 182
+cleanup                         000134 stack reference condition                dcl 646 ref 122 287 412 527 540 559
+code                                   parameter       fixed bin(35,0)          dcl 610 set ref 98 109* 116* 140* 148* 152* 156* 210
+                                                                                  216* 238* 241 244* 247 248* 249 278 282* 295 296*
+                                                                                  299 299* 302 303* 307 307* 341 344* 350* 389 398
+                                                                                  405* 420 422* 425 425* 427 429* 444* 503 510* 523*
+                                                                                  525 527* 530* 532 532 535* 538 549* 551 553* 556
+                                                                                  562* 584 593* 597* 604*
+delete_$path                    000026 constant        entry                    external dcl 669 ref 597 604
+error_table_$command_line_overflow
+                                000012 external static fixed bin(35,0)          dcl 661 ref 444
+error_table_$cyclic_syn         000014 external static fixed bin(35,0)          dcl 661 ref 116
+error_table_$end_of_info        000016 external static fixed bin(35,0)          dcl 661 ref 302 427
+error_table_$file_already_opened
+                                000020 external static fixed bin(35,0)          dcl 661 ref 532
+error_table_$not_closed         000022 external static fixed bin(35,0)          dcl 661 ref 532
+error_table_$short_record       000024 external static fixed bin(35,0)          dcl 661 ref 299 425
+get_pdir_                       000030 constant        entry                    external dcl 669 ref 477
+get_system_free_area_           000032 constant        entry                    external dcl 669 ref 120
+get_temp_segment_               000034 constant        entry                    external dcl 669 ref 291 416
+hcs_$reset_ips_mask             000036 constant        entry                    external dcl 669 ref 224 234 544 565
+hcs_$set_ips_mask               000040 constant        entry                    external dcl 669 ref 227 547
+i                               000566 automatic       fixed bin(17,0)          dcl 170 set ref 181*
+ignore_code                     000120 automatic       fixed bin(35,0)          dcl 639 set ref 122* 229* 231* 249* 253* 287* 291*
+                                                                                  317* 321* 352* 356* 412* 416* 452* 540* 556*
+index                                                  builtin function         dcl 643 ref 144
+iocb                                   based           structure                level 1 dcl 1-6
+iox_$attach_name                000046 constant        entry                    external dcl 2-8 ref 148 152 156
+iox_$attach_ptr                 000050 constant        entry                    external dcl 2-8 ref 553
+iox_$close                      000052 constant        entry                    external dcl 2-8 ref 238 253 527 562
+iox_$control                    000054 constant        entry                    external dcl 2-8 ref 249
+iox_$destroy_iocb               000056 constant        entry                    external dcl 2-8 ref 352 356
+iox_$detach_iocb                000060 constant        entry                    external dcl 2-8 ref 229 350
+iox_$find_iocb                  000062 constant        entry                    external dcl 2-8 ref 140
+iox_$get_chars                  000064 constant        entry                    external dcl 2-8 ref 296
+iox_$get_line                   000066 constant        entry                    external dcl 2-8 ref 422
+iox_$look_iocb                  000070 constant        entry                    external dcl 2-8 ref 523
+iox_$move_attach                000072 constant        entry                    external dcl 2-8 ref 231 549
+iox_$open                       000074 constant        entry                    external dcl 2-8 ref 244 530
+iox_$position                   000076 constant        entry                    external dcl 2-8 ref 248
+iox_$put_chars                  000100 constant        entry                    external dcl 2-8 ref 307 317
+ips_mask                        000121 automatic       bit(36)                  dcl 640 set ref 223* 224* 224* 227* 234* 234* 543*
+                                                                                  544* 544* 547* 565* 565*
+length                                                 builtin function         dcl 643 ref 433 437 440 440 440 444 444
+ltrim                                                  builtin function         dcl 643 ref 148 148 152 179 180 184
+match_switch                    000100 automatic       varying char(32)         dcl 107 set ref 114* 115 115
+maxlength                                              builtin function         dcl 643 ref 444
+mode                            000111 automatic       fixed bin(17,0)          dcl 508 set ref 516* 520* 530*
+new                      14            based           structure                level 2 dcl 620
+null                                                   builtin function         dcl 643 ref 110 126 135 148 148 152 152 156 156 217
+                                                                                  218 220 220 249 249 283 283 286 346 349 350 360
+                                                                                  408 411 474 511 553 553 595 602
+old                                    based           structure                level 2 dcl 620
+open_descrip_ptr         20            based           pointer                  level 2 dcl 1-6 ref 220 220
+pipe_area_info_ptr_             000010 internal static pointer                  initial dcl 617 set ref 120* 125 359
+pipe_atd                               based           char(58)                 packed unaligned dcl 472 set ref 477*
+pipe_info                              based           structure                level 1 dcl 620 set ref 125 359
+pipe_path                              based           char(58)                 packed unaligned dcl 591 set ref 595 597* 599* 602
+                                                                                  604* 606*
+pipe_storage_area                      based           area(1024)               dcl 617 ref 125 359
+record                                 based           char                     packed unaligned dcl 632 ref 433 440 440 444 447
+release_temp_segment_           000042 constant        entry                    external dcl 669 ref 287 321 412 452
+ret_string                             based           varying char             dcl 629 set ref 437 437* 437 444 444 447* 447
+rtrim                                                  builtin function         dcl 643 ref 477 477
+save                     30            based           structure                level 2 dcl 620
+substr                                                 builtin function         dcl 643 ref 440
+switch                   16            based           char(32)                 level 3 in structure "pipe_info" packed packed
+                                                                                  unaligned dcl 620 in procedure "pipe_" set ref
+                                                                                  136* 148* 152* 156* 553
+switch                    2            based           char(32)                 level 3 in structure "pipe_info" packed packed
+                                                                                  unaligned dcl 620 in procedure "pipe_" set ref
+                                                                                  127* 515* 519* 523*
+switch                   32            based           char(32)                 level 3 in structure "pipe_info" packed packed
+                                                                                  unaligned dcl 620 in procedure "pipe_" set ref
+                                                                                  139* 140*
+unique_chars_                   000044 constant        entry                    external dcl 669 ref 134 477
+unique_string                   000122 automatic       char(15)                 packed unaligned dcl 641 set ref 134* 136 139
+unspec                                                 builtin function         dcl 643 ref 348 356
+word                            000555 automatic       varying char(32)         dcl 170 set ref 182* 187
+word_list                              parameter       char                     packed unaligned dcl 170 ref 166 179 180
+word_to_return                         parameter       fixed bin(17,0)          dcl 170 ref 166 181
+work_list                       000154 automatic       varying char(1024)       dcl 170 set ref 179* 180 180* 182 183* 183 184* 184
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BITS_PER_CHAR                          internal static fixed bin(4,0)           initial dcl 4-61
+BITS_PER_PAGE                          internal static fixed bin(16,0)          initial dcl 4-67
+BITS_PER_SEGMENT                       internal static fixed bin(24,0)          initial dcl 4-70
+BITS_PER_WORD                          internal static fixed bin(6,0)           initial dcl 4-64
+CHARS_PER_PAGE                         internal static fixed bin(13,0)          initial dcl 4-76
+CHARS_PER_WORD                         internal static fixed bin(3,0)           initial dcl 4-73
+Direct_input                           internal static fixed bin(17,0)          initial dcl 3-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 3-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 3-15
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 3-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 3-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 3-15
+PAGES_PER_SEGMENT                      internal static fixed bin(8,0)           initial dcl 4-92
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 3-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 3-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 3-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 3-15
+WORDS_PER_PAGE                         internal static fixed bin(11,0)          initial dcl 4-84
+WORDS_PER_SEGMENT                      internal static fixed bin(21,0)          initial dcl 4-89
+iox_$attach_loud                000000 constant        entry                    external dcl 2-8
+iox_$close_file                 000000 constant        entry                    external dcl 2-8
+iox_$delete_record              000000 constant        entry                    external dcl 2-8
+iox_$detach                     000000 constant        entry                    external dcl 2-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 2-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 2-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 2-8
+iox_$err_not_open               000000 constant        entry                    external dcl 2-8
+iox_$error_output                      external static pointer                  dcl 2-41
+iox_$find_iocb_n                000000 constant        entry                    external dcl 2-8
+iox_$iocb_version_sentinel             external static char(4)                  dcl 1-51
+iox_$modes                      000000 constant        entry                    external dcl 2-8
+iox_$open_file                  000000 constant        entry                    external dcl 2-8
+iox_$propagate                  000000 constant        entry                    external dcl 2-8
+iox_$read_key                   000000 constant        entry                    external dcl 2-8
+iox_$read_length                000000 constant        entry                    external dcl 2-8
+iox_$read_record                000000 constant        entry                    external dcl 2-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 2-8
+iox_$seek_key                   000000 constant        entry                    external dcl 2-8
+iox_$user_input                        external static pointer                  dcl 2-41
+iox_$user_io                           external static pointer                  dcl 2-41
+iox_$user_output                       external static pointer                  dcl 2-41
+iox_$write_record               000000 constant        entry                    external dcl 2-8
+iox_modes                              internal static char(24)                 initial array dcl 3-6
+short_iox_modes                        internal static char(4)                  initial array dcl 3-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+GET_STRING_COMMON               001617 constant        label                    dcl 405 ref 395
+attach_pipe                     000114 constant        entry                    external dcl 98
+close_pipe                      000671 constant        entry                    external dcl 210 ref 540 556
+copy                            001174 constant        entry                    external dcl 278
+detach_pipe                     001456 constant        entry                    external dcl 341 ref 122
+get_return_string               001571 constant        entry                    external dcl 389
+get_return_string_nnl           001605 constant        entry                    external dcl 398
+get_word                        002742 constant        entry                    internal dcl 166 ref 114
+initiate                        002101 constant        entry                    external dcl 468
+open_pipe                       002222 constant        entry                    external dcl 503
+pipe_                           000100 constant        entry                    external dcl 22
+terminate                       002607 constant        entry                    external dcl 584
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3640        3742    3151        3650
+Length      4302    3151       102         323     467           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+pipe_                               474 external procedure  is an external procedure.  
+on unit on line 122                  70 on unit               
+get_word                                internal procedure  shares stack frame of external procedure pipe_.  
+on unit on line 224                  70 on unit               
+on unit on line 287                  82 on unit               
+on unit on line 412                  82 on unit               
+on unit on line 527                  70 on unit               
+on unit on line 540                  72 on unit               
+on unit on line 544                  70 on unit               
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 pipe_area_info_ptr_         pipe_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+pipe_                    000100 match_switch                pipe_
+                         000111 mode                        pipe_
+                         000112 Pbuffer                     pipe_
+                         000114 Lbuffer                     pipe_
+                         000115 Lrecord                     pipe_
+                         000116 EOF                         pipe_
+                         000117 Sremove_new_lines           pipe_
+                         000120 ignore_code                 pipe_
+                         000121 ips_mask                    pipe_
+                         000122 unique_string               pipe_
+                         000154 work_list                   get_word
+                         000555 word                        get_word
+                         000566 i                           get_word
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_in         call_ext_out_desc   call_ext_out        return_mac
+enable_op           shorten_stack       ext_entry           ext_entry_desc      int_entry           set_chars_eis
+index_chars_eis     op_alloc_           op_freen_           index_after_cs      return_main         set_main_flag
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+delete_$path                  get_pdir_                     get_system_free_area_         get_temp_segment_
+hcs_$reset_ips_mask           hcs_$set_ips_mask             iox_$attach_name              iox_$attach_ptr
+iox_$close                    iox_$control                  iox_$destroy_iocb             iox_$detach_iocb
+iox_$find_iocb                iox_$get_chars                iox_$get_line                 iox_$look_iocb
+iox_$move_attach              iox_$open                     iox_$position                 iox_$put_chars
+release_temp_segment_         unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$command_line_overflow                          error_table_$cyclic_syn       error_table_$end_of_info
+error_table_$file_already_opened                            error_table_$not_closed       error_table_$short_record
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     22 000077        98 000106       109 000134       110 000135       112 000137       114 000146       115 000171
+    116 000203       117 000206       120 000207       122 000216       125 000244       126 000252       127 000254
+    128 000261       134 000262       135 000301       136 000305       137 000322       139 000324       140 000337
+    141 000361       142 000364       144 000365       147 000377       148 000402       152 000543       155 000627
+    156 000631       160 000664       210 000665       216 000703       217 000704       218 000710       220 000715
+    223 000730       224 000731       227 000756       229 000771       231 001003       234 001020       237 001030
+    238 001035       241 001046       242 001050       244 001060       247 001075       248 001077       249 001120
+    253 001154       258 001167       278 001170       282 001204       283 001205       286 001216       287 001220
+    291 001264       292 001312       293 001314       295 001315       296 001322       299 001344       302 001351
+    303 001354       304 001355       307 001357       317 001403       319 001422       321 001423       322 001451
+    341 001452       344 001470       346 001471       348 001475       349 001503       350 001507       352 001525
+    356 001540       359 001557       360 001561       361 001563       389 001564       394 001601       395 001602
+    398 001603       403 001615       405 001617       408 001620       411 001625       412 001627       416 001673
+    417 001722       418 001724       420 001725       422 001732       425 001754       427 001762       429 001764
+    430 001765       433 001767       435 001771       437 001773       440 002007       444 002017       447 002031
+    450 002045       452 002046       453 002075       468 002076       474 002106       477 002113       480 002216
+    503 002220       510 002234       511 002235       514 002241       515 002245       516 002252       517 002254
+    519 002255       520 002262       523 002264       525 002305       527 002307       530 002337       532 002360
+    534 002366       535 002372       538 002373       540 002375       543 002425       544 002426       547 002453
+    549 002466       551 002503       553 002505       556 002543       559 002557       560 002560       562 002561
+    565 002574       566 002604       584 002605       593 002617       595 002620       597 002633       599 002663
+    602 002671       604 002703       606 002733       608 002741       166 002742       179 002753       180 003015
+    181 003044       182 003053       183 003070       184 003113       185 003135       187 003137
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

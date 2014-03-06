@@ -1,0 +1,703 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXmgBqCdh
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1100.0 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 
+       14 /* HISTORY COMMENTS:
+       15*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+       16*     audit(85-12-02,CLJones), install(86-03-21,MR12.0-1033):
+       17*     Support FIPS by
+       18*     changing tape 02/04 tp not log detail.
+       19*                                                   END HISTORY COMMENTS */
+       20 
+       21 /* IO_LOG_STATUS_INFO - Database for determining what i/O status should be logged */
+       22 /* Based, generally, on ELAN PFS */
+       23 /* Written December 1979 by Larry Johnson */
+       24 /* Modified June 1983 by Rick Kovalcik to add hyperchannel */
+       25 /*
+       26*   Modifed October 1983 by Paul Farley to add "blank tape on write" to tape
+       27*   detail section.
+       28*   Modified FEB 1985 by Paul Farley to change tape 02/04 tp not log detail.
+       29**/
+       30 
+       31 io_log_status_info: proc;
+       32 
+       33 /* Automatic */
+       34 
+       35 dcl  cur_major fixed bin;
+       36 dcl  code fixed bin (35);
+       37 dcl 1 cds like cds_args automatic;
+       38 
+       39 dcl 1 dummy_struct aligned,
+       40     2 io_log_status_info fixed bin init (0);
+       41 
+       42 /* Constants */
+       43 
+       44 dcl  name char (18) int static options (constant) init ("io_log_status_info");
+       45 
+       46 /* External */
+       47 
+       48 dcl  com_err_ entry options (variable);
+       49 dcl  get_temp_segment_ entry (char (*), pointer, fixed bin (35));
+       50 dcl  release_temp_segment_ entry (char (*), pointer, fixed bin (35));
+       51 dcl  create_data_segment_ entry (ptr, fixed bin (35));
+       52 
+       53 dcl  cleanup condition;
+       54 
+       55 
+       56 dcl (addr, bin, bit, currentsize, length, null, string, substr, verify) builtin;
+       57 
+       58 
+       59 	io_log_infop = null ();
+       60 	on cleanup call clean_up;
+       61 
+       62 	call get_temp_segment_ (name, io_log_infop, code);
+       63 	if code ^= 0 then do;
+       64 	     call com_err_ (code, name, "Unable to get temp segment.");
+       65 	     return;
+       66 	end;
+       67 
+       68 	call build_data;
+       69 
+       70 /* Now create the data segment */
+       71 
+       72 	cds.p (1) = io_log_infop;
+       73 	cds.len (1) = currentsize (io_log_info);
+       74 	cds.struct_name (1) = "dummy_struct";
+       75 	cds.p (2) = null;
+       76 	cds.len (2) = 0;
+       77 	cds.struct_name (2) = "";
+       78 	cds.seg_name = name;
+       79 	cds.num_exclude_names = 0;
+       80 	cds.exclude_array_ptr = null ();
+       81 	string (cds.switches) = "0"b;
+       82 	cds.have_text = "1"b;
+       83 	call create_data_segment_ (addr (cds), code);
+       84 	if code ^= 0 then call com_err_ (name, code);
+       85 
+       86 done:	call clean_up;
+       87 	return;
+       88 
+       89 build_data: proc;
+       90 
+       91 /* Disk */
+       92 
+       93 	     call set_device ("dsk");
+       94 
+       95 	     call set_major (0000b);			/* Ready */
+       96 	     call log_detail ("000001");		/* 1 retry */
+       97 	     call log_detail ("000010");		/* 2 retries */
+       98 	     call log_detail ("000011");		/* 3 retries */
+       99 	     call log_detail ("010000");		/* EDAC correction */
+      100 
+      101 	     call set_major (0001b);			/* Channel ready */
+      102 
+      103 	     call set_major (0010b);			/* Attention */
+      104 	     call log_detail ("001000");		/* Dev inop */
+      105 	     call log_detail ("001101");		/* CA EN1 error */
+      106 	     call log_detail ("00001X");		/* Seek incomplete */
+      107 	     call log_detail ("001110");		/* CA alert */
+      108 	     call log_detail ("010000");		/* Device in standby */
+      109 
+      110 	     call set_major (0011b);			/* Data alert */
+      111 	     call log_detail ("000010");		/* Transmission parity */
+      112 	     call log_detail ("000100");		/* Invalid seek address */
+      113 	     call log_detail ("0X1000");		/* Header verification error */
+      114 	     call log_detail ("X1X000");		/* Check character alert */
+      115 	     call log_detail ("1X0000");		/* Compare alert */
+      116 
+      117 	     call set_major (0100b);			/* End of file */
+      118 
+      119 	     call set_major (0101b);			/* Command reject */
+      120 
+      121 	     call set_major (1010b);			/* Mpc device attention */
+      122 	     call log_detail ("001011");		/* CA unexpected interrupt */
+      123 
+      124 	     call set_major (1011b);			/* Mpc device data alert */
+      125 	     call log_detail ("001110");		/* Edac parity */
+      126 	     call log_detail ("000010");		/* Inconsistent command */
+      127 	     call log_detail ("010011");		/* Search alert */
+      128 	     call log_detail ("000011");		/* Sumcheck error */
+      129 	     call log_detail ("010100");		/* Cyc code not 1 st */
+      130 	     call log_detail ("001001");		/* Error correction rquired */
+      131 	     call log_detail ("010110");		/* Sync byte not hex 19 */
+      132 	     call log_detail ("001010");		/* Edac error uncorrectable */
+      133 	     call log_detail ("010111");		/* Error, alt track */
+      134 	     call log_detail ("010001");		/* Sector size error */
+      135 	     call log_detail ("011001");		/* Edac correction (last ) */
+      136 	     call log_detail ("010010");		/* Non-std secotr size */
+      137 	     call log_detail ("011010");		/* Edac correction (last ) */
+      138 
+      139 	     call set_major (1101b);			/* Mpc command reject */
+      140 
+      141 /* Tape */
+      142 
+      143 	     call set_device ("tap");
+      144 
+      145 	     call set_major (0000b);			/* Ready */
+      146 	     call log_status ("001100");		/* Code alert */
+      147 
+      148 	     call set_major (0010b);			/* Attention */
+      149 	     call log_status ("0XX10X");		/* Handler in standby */
+      150 	     call log_detail ("0X1X0X");		/* Dev fault */
+      151 	     call log_detail ("01XX00");		/* Blank tape on write */
+      152 
+      153 	     call set_major (0011b);			/* Device data alert */
+      154 	     call log_detail ("XXXX11");		/* Bit detected on erase */
+      155 	     call log_detail ("XX1XXX");		/* Lateral parity alert */
+      156 	     call log_detail ("X1XXXX");		/* Longitudinal parity alert */
+      157 	     call log_detail ("001000");		/* Frame drop */
+      158 
+      159 	     call set_major (0100b);			/* End of file */
+      160 	     call suppress_log ("001111");		/* Eof - 7trk */
+      161 	     call suppress_log ("010011");		/* Eof - 9trk */
+      162 	     call log_detail ("111111");		/* Data alert */
+      163 
+      164 	     call set_major (1010b);			/* Mpc device attention */
+      165 	     call log_detail ("0011XX");		/* TCA malfunction */
+      166 	     call log_detail ("010000");		/* Device malfunction */
+      167 
+      168 	     call set_major (1011b);			/* Mpc datra alert */
+      169 	     call log_detail ("001000");		/* Pe burst error */
+      170 	     call log_detail ("001001");		/* Preamble error */
+      171 	     call log_detail ("010000");		/* Multi track error */
+      172 	     call log_detail ("010001");		/* Skew error */
+      173 	     call log_detail ("010010");		/* Postamble error */
+      174 	     call log_detail ("010011");		/* Nrzi ccc err */
+      175 	     call log_detail ("100000");		/* Marginal condition */
+      176 
+      177 /* Printer */
+      178 
+      179 	     call set_device ("prt");
+      180 
+      181 	     call set_major (0010b);			/* Attention */
+      182 	     call log_detail ("000000");		/* Power fault */
+      183 	     call log_detail ("XXXX1X");		/* Stopped */
+      184 	     call log_detail ("XXX1XX");		/* VFU/VFC alert */
+      185 	     call log_detail ("XX1XXX");		/* Check alert */
+      186 
+      187 	     call set_major (0011b);			/* Data alert */
+      188 	     call log_detail ("000000");		/* Image buffer alert */
+      189 	     call log_detail ("0XX01X");		/* Alert before printing start */
+      190 	     call log_detail ("XXX10X");		/* Alert after printing started */
+      191 	     call log_detail ("XX1XXX");		/* Warning */
+      192 	     call log_detail ("X1XXXX");		/* Motion alert */
+      193 
+      194 	     call set_major (0101b);			/* Command reject */
+      195 	     call suppress_log ("100000");		/* Top page echo */
+      196 
+      197 /* Reader */
+      198 
+      199 	     call set_device ("rdr");
+      200 
+      201 	     call set_major (0010b);			/* Attention */
+      202 	     call log_detail ("000000");		/* Off line */
+      203 	     call log_detail ("XX1XXX");		/* Feed alert */
+      204 	     call log_detail ("X1XXXX");		/* Jam */
+      205 	     call log_detail ("1X0XXX");		/* Read alert */
+      206 
+      207 	     call set_major (0011b);			/* Data alert */
+      208 	     call log_detail ("000X10");		/* Validaty alert */
+      209 	     call log_detail ("0001X0");		/* Dual read */
+      210 
+      211 /* Punch */
+      212 
+      213 	     call set_device ("pun");
+      214 	     call set_major (0010b);			/* Attention */
+      215 	     call log_detail ("000000");		/* Off line */
+      216 	     call log_detail ("0X1XXX");		/* Feed alert */
+      217 	     call log_detail ("X1XXXX");		/* Jam */
+      218 
+      219 	   	call set_device ("hch");		/* hyperchannel */
+      220 
+      221 		call set_major (0001b);		/* Busy */
+      222 		call set_major (0011b);		/* Data Alert */
+      223 		call set_major (0100b);		/* EOF */
+      224 		call set_major (0101b);		/* Interstruction Reject */
+      225 		call suppress_log ("100000");		/* 40 - in use ? */
+      226 		call set_major (1011b);		/* Adapter Alert */
+      227 		call suppress_log ("001000");		/* 10 - timeout */
+      228 
+      229 	     return;
+      230 
+      231 	end build_data;
+      232 
+      233 set_device: proc (arg_device);
+      234 
+      235 dcl  arg_device char (*);
+      236 
+      237 dcl  i fixed bin;
+      238 
+      239 	     if length (arg_device) ^= 3 then do;
+      240 		call com_err_ (0, name, "Invalid device name: ^a", arg_device);
+      241 		go to done;
+      242 	     end;
+      243 	     do i = 1 to io_log_info.ndev;
+      244 		logp = addr (io_log_info.log_entry (i));
+      245 		if log.dev_name = arg_device then do;
+      246 		     call com_err_ (0, name, "Duplicated device name: ^a", arg_device);
+      247 		     go to done;
+      248 		end;
+      249 	     end;
+      250 
+      251 	     io_log_info.ndev = io_log_info.ndev + 1;
+      252 	     logp = addr (io_log_info.log_entry (io_log_info.ndev));
+      253 	     log.dev_name = arg_device;
+      254 	     log.status (*, *) = "1"b;		/* Log all status */
+      255 	     log.status (0, *) = "0"b;		/* Except ready */
+      256 	     log.detail (*, *) = "0"b;
+      257 
+      258 	     return;
+      259 
+      260 	end set_device;
+      261 
+      262 
+      263 set_major: proc (arg_major);
+      264 
+      265 dcl  arg_major fixed bin;
+      266 
+      267 	     if arg_major < 0 | arg_major > 15 then do;
+      268 		call com_err_ (0, name, "Invalid major status level: ^d", arg_major);
+      269 		go to done;
+      270 	     end;
+      271 	     cur_major = arg_major;
+      272 
+      273 	     return;
+      274 
+      275 	end set_major;
+      276 
+      277 suppress_log: proc (arg_status);
+      278 
+      279 dcl  arg_status char (*);
+      280 
+      281 	     call off (arg_status, log.status);
+      282 
+      283 	     return;
+      284 
+      285 	end suppress_log;
+      286 
+      287 log_detail: proc (arg_status);
+      288 
+      289 dcl  arg_status char (*);
+      290 
+      291 	     call on (arg_status, log.detail);
+      292 	     call on (arg_status, log.status);
+      293 
+      294 	     return;
+      295 
+      296 	end log_detail;
+      297 
+      298 
+      299 log_status: proc (arg_status);
+      300 
+      301 dcl  arg_status char (6);
+      302 
+      303 	     call on (arg_status, log.status);
+      304 
+      305 	     return;
+      306 
+      307 	end log_status;
+      308 
+      309 /* Routines that minipulate the tables */
+      310 
+      311 on:	proc (arg_status, arg_table);
+      312 
+      313 dcl  arg_status char (*);
+      314 dcl  arg_table (*, *) bit (1) unal;
+      315 
+      316 	     call set (arg_status, arg_table, "1"b);
+      317 	     return;
+      318 
+      319 	end on;
+      320 
+      321 off:	proc (arg_status, arg_table);
+      322 
+      323 dcl  arg_status char (*);
+      324 dcl  arg_table (*, *) bit (1) unal;
+      325 
+      326 	     call set (arg_status, arg_table, "0"b);
+      327 	     return;
+      328 
+      329 	end off;
+      330 
+      331 set:	proc (arg_status, arg_table, arg_state);
+      332 
+      333 dcl  arg_status char (*);
+      334 dcl  arg_table (*, *) bit (1) unal;
+      335 dcl  arg_state bit (1);
+      336 
+      337 dcl (i, j, k) fixed bin;
+      338 dcl  x_count fixed bin;
+      339 dcl  basic_mask bit (6);
+      340 dcl  work_mask bit (6);
+      341 dcl  n_x_states fixed bin;
+      342 dcl  x_bits bit (6);
+      343 
+      344 	     if length (arg_status) ^= 6 then do;
+      345 bad_status:	call com_err_ (0, name, "Invalid status mask: ^a", arg_status);
+      346 		go to done;
+      347 	     end;
+      348 	     if verify (arg_status, "01X") ^= 0 then go to bad_status;
+      349 
+      350 	     basic_mask = "0"b;
+      351 	     x_count = 0;
+      352 	     do i = 1 to 6;
+      353 		if substr (arg_status, i, 1) = "1" then
+      354 		     substr (basic_mask, i, 1) = "1"b;
+      355 		else if substr (arg_status, i, 1) = "X" then
+      356 		     x_count = x_count + 1;
+      357 	     end;
+      358 
+      359 	     if x_count = 0 then do;			/* Easy case */
+      360 		arg_table (cur_major, bin (basic_mask)) = arg_state;
+      361 		return;
+      362 	     end;
+      363 
+      364 	     n_x_states = 2 ** x_count;
+      365 	     do i = 1 to n_x_states;
+      366 		work_mask = basic_mask;
+      367 		x_bits = bit (bin (i - 1, 6), 6);
+      368 		k = 7 - x_count;
+      369 		do j = 1 to 6;
+      370 		     if substr (arg_status, j, 1) = "X" then do;
+      371 			substr (work_mask, j, 1) = substr (x_bits, k, 1);
+      372 			k = k + 1;
+      373 		     end;
+      374 		end;
+      375 		arg_table (cur_major, bin (work_mask)) = arg_state;
+      376 	     end;
+      377 
+      378 	     return;
+      379 
+      380 	end set;
+      381 
+      382 clean_up:	proc;
+      383 
+      384 	     if io_log_infop ^= null () then call release_temp_segment_ (name, io_log_infop, code);
+      385 	     return;
+      386 
+      387 	end clean_up;
+      388 
+  1     1 /* Begin include file ..... io_log_status_info.incl.pl1 */
+  1     2 
+  1     3 /* This include file defines a data base used to determine whether or not a
+  1     4*   particular I/O error should be logged, and whether or not detailed device
+  1     5*   status should be logged with it. */
+  1     6 /* Prepared December 1979 by Larry Johnson */
+  1     7 
+  1     8 dcl  io_log_status_info$io_log_status_info ext;
+  1     9 
+  1    10 dcl  io_log_infop ptr;
+  1    11 
+  1    12 dcl 1 io_log_info aligned based (io_log_infop),
+  1    13     2 ndev fixed bin,				/* Number of devices in table */
+  1    14     2 log_entry (0 refer (io_log_info.ndev)) like log;
+  1    15 
+  1    16 dcl  logp ptr;
+  1    17 
+  1    18 dcl 1 log aligned based (logp),
+  1    19     2 dev_name char (3) unal,				/* Tap, dsk, prt, etc. */
+  1    20     2 status (0:15, 0:63) bit (1) unal,			/* For loggin status */
+  1    21     2 detail (0:15, 0:63) bit (1) unal;			/* For logging detaied status */
+  1    22 
+  1    23 /* End include file io_log_status_info.incl.pl1 */
+  1    24 
+      389 
+      390 
+  2     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  2     2 
+  2     3 dcl 1 cds_args based aligned,
+  2     4     2 sections (2),
+  2     5       3 p ptr,					/* pointer to data for text/static section */
+  2     6       3 len fixed bin (18),				/* size of text/static section */
+  2     7       3 struct_name char (32),			/* name of declared structure for this section */
+  2     8     2 seg_name char (32),				/* name to create segment by */
+  2     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  2    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  2    11     2 switches,					/* control switches */
+  2    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  2    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  2    14       3 have_text bit (1) unal,			/* ON if text section given */
+  2    15       3 have_static bit (1) unal,			/* ON if static section given */
+  2    16       3 pad bit (32) unal;
+  2    17 
+  2    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  2    19 
+  2    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+      391 
+      392 
+      393      end io_log_status_info;
+      394 
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.5  !BBBJZjXmgBqCdh.pl1               >spec>install>1110>io_log_status_info.cds
+389          1    02/11/80  0911.3  io_log_status_info.incl.pl1       >ldd>include>io_log_status_info.incl.pl1
+391          2    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 56 ref 83 83 244 252
+arg_device                             parameter       char                     packed unaligned dcl 235 set ref 233 239 240* 245
+                                                                                  246* 253
+arg_major                              parameter       fixed bin(17,0)          dcl 265 set ref 263 267 267 268* 271
+arg_state                              parameter       bit(1)                   packed unaligned dcl 335 ref 331 360 375
+arg_status                             parameter       char                     packed unaligned dcl 279 in procedure "suppress_log"
+                                                                                  set ref 277 281*
+arg_status                             parameter       char                     packed unaligned dcl 313 in procedure "on" set ref
+                                                                                  311 316*
+arg_status                             parameter       char(6)                  packed unaligned dcl 301 in procedure "log_status"
+                                                                                  set ref 299 303*
+arg_status                             parameter       char                     packed unaligned dcl 323 in procedure "off" set ref
+                                                                                  321 326*
+arg_status                             parameter       char                     packed unaligned dcl 289 in procedure "log_detail"
+                                                                                  set ref 287 291* 292*
+arg_status                             parameter       char                     packed unaligned dcl 333 in procedure "set" set ref
+                                                                                  331 344 345* 348 353 355 370
+arg_table                              parameter       bit(1)                   array packed unaligned dcl 324 in procedure "off"
+                                                                                  set ref 321 326*
+arg_table                              parameter       bit(1)                   array packed unaligned dcl 314 in procedure "on" set
+                                                                                  ref 311 316*
+arg_table                              parameter       bit(1)                   array packed unaligned dcl 334 in procedure "set"
+                                                                                  set ref 331 360* 375*
+basic_mask                      000260 automatic       bit(6)                   packed unaligned dcl 339 set ref 350* 353* 360 366
+bin                                                    builtin function         dcl 56 ref 360 367 375
+bit                                                    builtin function         dcl 56 ref 367
+cds                             000102 automatic       structure                level 1 unaligned dcl 37 set ref 83 83
+cds_args                               based           structure                level 1 dcl 2-3
+cleanup                         000150 stack reference condition                dcl 53 ref 60
+code                            000101 automatic       fixed bin(35,0)          dcl 36 set ref 62* 63 64* 83* 84 84* 384*
+com_err_                        000014 constant        entry                    external dcl 48 ref 64 84 240 246 268 345
+create_data_segment_            000022 constant        entry                    external dcl 51 ref 83
+cur_major                       000100 automatic       fixed bin(17,0)          dcl 35 set ref 271* 360 375
+currentsize                                            builtin function         dcl 56 ref 73
+detail                   35(07)        based           bit(1)                   array level 2 packed packed unaligned dcl 1-18 set
+                                                                                  ref 256* 291*
+dev_name                               based           char(3)                  level 2 packed packed unaligned dcl 1-18 set ref 245
+                                                                                  253*
+dummy_struct                    000147 automatic       structure                level 1 dcl 39
+exclude_array_ptr        42     000102 automatic       pointer                  level 2 dcl 37 set ref 80*
+get_temp_segment_               000016 constant        entry                    external dcl 49 ref 62
+have_text                44(02) 000102 automatic       bit(1)                   level 3 packed packed unaligned dcl 37 set ref 82*
+i                               000254 automatic       fixed bin(17,0)          dcl 337 in procedure "set" set ref 352* 353 353 355*
+                                                                                  365* 367*
+i                               000176 automatic       fixed bin(17,0)          dcl 237 in procedure "set_device" set ref 243* 244*
+io_log_info                            based           structure                level 1 dcl 1-12 set ref 73
+io_log_infop                    000156 automatic       pointer                  dcl 1-10 set ref 59* 62* 72 73 243 244 251 251 252
+                                                                                  252 384 384* 1-12 1-12 1-12 1-12 1-12 1-12
+io_log_status_info              000147 automatic       fixed bin(17,0)          initial level 2 dcl 39 set ref 39*
+j                               000255 automatic       fixed bin(17,0)          dcl 337 set ref 369* 370 371*
+k                               000256 automatic       fixed bin(17,0)          dcl 337 set ref 368* 371 372* 372
+len                       2     000102 automatic       fixed bin(18,0)          array level 3 dcl 37 set ref 73* 76*
+length                                                 builtin function         dcl 56 ref 239 344
+log                                    based           structure                level 1 dcl 1-18
+log_entry                 1            based           structure                array level 2 dcl 1-12 set ref 244 252
+logp                            000160 automatic       pointer                  dcl 1-16 set ref 244* 245 252* 253 254 255 256 281
+                                                                                  291 292 303 1-18 1-18 1-18 1-18
+n_x_states                      000262 automatic       fixed bin(17,0)          dcl 341 set ref 364* 365
+name                            000000 constant        char(18)                 initial packed unaligned dcl 44 set ref 62* 64* 78
+                                                                                  84* 240* 246* 268* 345* 384*
+ndev                                   based           fixed bin(17,0)          level 2 dcl 1-12 set ref 73 243 251* 251 252 1-12
+                                                                                  1-12 1-12 1-12
+null                                                   builtin function         dcl 56 ref 59 75 80 384
+num_exclude_names        40     000102 automatic       fixed bin(17,0)          level 2 dcl 37 set ref 79*
+p                               000102 automatic       pointer                  array level 3 dcl 37 set ref 72* 75*
+release_temp_segment_           000020 constant        entry                    external dcl 50 ref 384
+sections                        000102 automatic       structure                array level 2 unaligned dcl 37
+seg_name                 30     000102 automatic       char(32)                 level 2 packed packed unaligned dcl 37 set ref 78*
+status                    0(27)        based           bit(1)                   array level 2 packed packed unaligned dcl 1-18 set
+                                                                                  ref 254* 255* 281* 292* 303*
+string                                                 builtin function         dcl 56 set ref 81*
+struct_name               3     000102 automatic       char(32)                 array level 3 packed packed unaligned dcl 37 set ref
+                                                                                  74* 77*
+substr                                                 builtin function         dcl 56 set ref 353 353* 355 370 371* 371
+switches                 44     000102 automatic       structure                level 2 packed packed unaligned dcl 37 set ref 81*
+verify                                                 builtin function         dcl 56 ref 348
+work_mask                       000261 automatic       bit(6)                   packed unaligned dcl 340 set ref 366* 371* 375
+x_bits                          000263 automatic       bit(6)                   packed unaligned dcl 342 set ref 367* 371
+x_count                         000257 automatic       fixed bin(17,0)          dcl 338 set ref 351* 355* 355 359 364 368
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 2-18
+io_log_status_info$io_log_status_info
+                                000024 external static fixed bin(17,0)          dcl 1-8
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_status                      002235 constant        label                    dcl 345 ref 348
+build_data                      000534 constant        entry                    internal dcl 89 ref 68
+clean_up                        002530 constant        entry                    internal dcl 382 ref 60 86
+done                            000527 constant        label                    dcl 86 ref 241 247 269 346
+io_log_status_info              000343 constant        entry                    external dcl 31
+log_detail                      002032 constant        entry                    internal dcl 287 ref 96 97 98 99 104 105 106 107 108
+                                                                                  111 112 113 114 115 122 125 126 127 128 129 130
+                                                                                  131 132 133 134 135 136 137 150 151 154 155 156
+                                                                                  157 162 165 166 169 170 171 172 173 174 175 182
+                                                                                  183 184 185 188 189 190 191 192 202 203 204 205
+                                                                                  208 209 215 216 217
+log_status                      002105 constant        entry                    internal dcl 299 ref 146 149
+off                             002164 constant        entry                    internal dcl 321 ref 281
+on                              002126 constant        entry                    internal dcl 311 ref 291 292 303
+set                             002222 constant        entry                    internal dcl 331 ref 316 326
+set_device                      001471 constant        entry                    internal dcl 233 ref 93 143 179 199 213 219
+set_major                       001730 constant        entry                    internal dcl 263 ref 95 101 103 110 117 119 121 124
+                                                                                  139 145 148 153 159 164 168 181 187 194 201 207
+                                                                                  214 221 222 223 224 226
+suppress_log                    002000 constant        entry                    internal dcl 277 ref 160 161 195 225 227
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3150        3176    3025        3160
+Length      6052    3025        26        2640     123           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+io_log_status_info                  418 external procedure  is an external procedure.  
+on unit on line 60                   64 on unit               
+build_data                              internal procedure  shares stack frame of external procedure io_log_status_info.  
+set_device                              internal procedure  shares stack frame of external procedure io_log_status_info.  
+set_major                               internal procedure  shares stack frame of external procedure io_log_status_info.  
+suppress_log                            internal procedure  shares stack frame of external procedure io_log_status_info.  
+log_detail                              internal procedure  shares stack frame of external procedure io_log_status_info.  
+log_status                              internal procedure  shares stack frame of external procedure io_log_status_info.  
+on                                      internal procedure  shares stack frame of external procedure io_log_status_info.  
+off                                     internal procedure  shares stack frame of external procedure io_log_status_info.  
+set                                     internal procedure  shares stack frame of external procedure io_log_status_info.  
+clean_up                             78 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+io_log_status_info       000100 cur_major                   io_log_status_info
+                         000101 code                        io_log_status_info
+                         000102 cds                         io_log_status_info
+                         000147 dummy_struct                io_log_status_info
+                         000156 io_log_infop                io_log_status_info
+                         000160 logp                        io_log_status_info
+                         000176 i                           set_device
+                         000254 i                           set
+                         000255 j                           set
+                         000256 k                           set
+                         000257 x_count                     set
+                         000260 basic_mask                  set
+                         000261 work_mask                   set
+                         000262 n_x_states                  set
+                         000263 x_bits                      set
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_l_a               r_g_a               call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          mpfx2               enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_          decimal_exp_                  get_temp_segment_
+release_temp_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     31 000342        39 000350        59 000351        60 000353        62 000375        63 000416        64 000420
+     65 000444        68 000445        72 000446        73 000450        74 000454        75 000457        76 000461
+     77 000462        78 000465        79 000470        80 000471        81 000472        82 000473        83 000475
+     84 000510        86 000527        87 000533        89 000534        93 000535        95 000542        96 000545
+     97 000552        98 000557        99 000564       101 000571       103 000575       104 000601       105 000606
+    106 000613       107 000620       108 000625       110 000632       111 000636       112 000643       113 000650
+    114 000655       115 000662       117 000667       119 000673       121 000677       122 000703       124 000710
+    125 000714       126 000721       127 000726       128 000733       129 000740       130 000745       131 000752
+    132 000757       133 000764       134 000771       135 000776       136 001003       137 001010       139 001015
+    143 001021       145 001026       146 001031       148 001035       149 001041       150 001045       151 001052
+    153 001057       154 001063       155 001070       156 001075       157 001102       159 001107       160 001113
+    161 001120       162 001125       164 001132       165 001136       166 001143       168 001150       169 001154
+    170 001161       171 001166       172 001173       173 001200       174 001205       175 001212       179 001217
+    181 001224       182 001230       183 001235       184 001242       185 001247       187 001254       188 001260
+    189 001265       190 001272       191 001277       192 001304       194 001311       195 001315       199 001322
+    201 001327       202 001333       203 001340       204 001345       205 001352       207 001357       208 001363
+    209 001370       213 001375       214 001402       215 001406       216 001413       217 001420       219 001425
+    221 001432       222 001436       223 001442       224 001446       225 001452       226 001457       227 001463
+    229 001470       233 001471       239 001502       240 001504       241 001537       243 001540       244 001547
+    245 001553       246 001562       247 001614       249 001615       251 001617       252 001620       253 001625
+    254 001633       255 001663       256 001677       258 001727       263 001730       267 001732       268 001742
+    269 001774       271 001775       273 001777       277 002000       281 002011       283 002031       287 002032
+    291 002043       292 002064       294 002104       299 002105       303 002107       305 002125       311 002126
+    316 002137       317 002163       321 002164       326 002175       327 002221       331 002222       344 002233
+    345 002235       346 002270       348 002271       350 002306       351 002307       352 002310       353 002315
+    355 002327       357 002334       359 002336       360 002340       361 002374       364 002375       365 002421
+    366 002431       367 002434       368 002443       369 002446       370 002453       371 002461       372 002465
+    374 002466       375 002470       376 002524       378 002526       382 002527       384 002535       385 002562
+
+
+Object Segment >spec>install>1110>io_log_status_info
+Created on 11/11/89  1100.2 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0     536     570     600     600
+Length    1007     536      32      10     173       0
+
+
+3 Definitions:
+
+
+segname:    io_log_status_info
+
+text|0          io_log_status_info
+symb|0          symbol_table
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

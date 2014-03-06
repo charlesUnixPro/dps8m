@@ -1,3 +1,59 @@
+Fri Feb 21 20:50:14 PST 2014
+
+Latest simulator statistics.
+
+20184:       1,202,407 Cycles
+   8Feb14:   1,232,719
+  15Feb14:   1,587,430
+  16Feb14:   1,589,171
+  18Feb14:   2,681,244
+  20Feb14:   2,681,479
+  21Feb14:   2,741,968
+
+t4d_b.2:    33,299,676 Cycles, up from 31,360,622
+   8Feb14:  33,366,858
+
+UnitTests:              Pass
+
+t4d/faults: 30,791,956 Cycles
+
+
+Changes & Fixes
+
+Updated as8 to accomodate alternate index/address register syntax where the register number is an operand.
+
+Updated dps8 to include PL/I source-level tracing!
+
+Various fixes generally caused by typos or sleepy typists :-)
+
+
+
+Wed Feb 19 00:08:31 PST 2014
+Latest installment of simulator.
+
+20184:       1,202,407 Cycles
+   8Feb14:   1,232,719
+  15Feb14:   1,587,430
+  16Feb14:   1,589,171
+  18Feb14:   2,681,244
+
+t4d_b.2:    33,299,676 Cycles, up from 31,360,622
+   8Feb14:  33,366,858
+
+UnitTests:              Pass
+
+t4d/faults: 30,791,956 Cycles
+
+
+Sat Feb  8 21:26:52 PST 2014
+Latest installment of simulator. Fixed undocumented feature in MVT. TALLY flag is apparently set along with the TRUNC flag.
+
+Jan 31 21:47:56 PST 2014 
+Latest installment of simulator. Fixed a few bugs in the address register arithmetic instructions brought about by the rewrite. 
+
+Sun Jan 26 21:28:37 PST 2014 
+Fixed reimplemented address preparation code. Previously I was under the delusion that absolute mode never made use of the APU functions. Oh, how wrong and blind I was. ABSOLUTE mode now has the same access to APU functions as does APPEND mode.
+
 Mon Jan  6 21:27:51 PST 2014
 Rewrote/reimplemented address preparation code to handle R/M/W cycles and
 operand sizes > 1 much better. Fixed undetected bug in ORSQ instruction.

@@ -1,0 +1,1476 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXmdwZZlh
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1059.4 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*   *                                                         *
+        7*   *********************************************************** */
+        8 /* HISTORY COMMENTS:
+        9*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+       10*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+       11*     Add support for FIPS
+       12*     type controlers and devices.
+       13*  2) change(86-04-21,Fawcett), approve(86-04-21,MCR7381),
+       14*     audit(86-05-13,LJAdams), install(86-07-17,MR12.0-1097):
+       15*     Correct the model for the FIPS tape drives for the 4600 series to 8200
+       16*     only for all drives.
+       17*  3) change(86-10-02,Fawcett), approve(86-10-02,PBF7383),
+       18*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+       19*     Changed 3390 to 3381.
+       20*  4) change(86-10-21,Fawcett), approve(86-10-21,PBF7381),
+       21*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+       22*     Removed tape drive models 3430, 3470 & 3670. The only supported
+       23*     FIPS tape drive is the STC 8200.
+       24*                                                   END HISTORY COMMENTS */
+       25 /* config_data_ -- Database of config cards, model number, etc. */
+       26 /* format: style2 */
+       27 /* Modified 830523 to add console io_type and line_leng fields for different 
+       28*   operator's consoles and to fix a size bug... -E. A. Ranzenbach */
+       29 /* Modified 840827 by Paul Farley for DAU (msp800) support. */
+       30 /* Modified 841101 by Paul Farley to add device_0_valid for disk & tape
+       31*   devices, controller entries for the IBM 3300 and the STC 3600 & 4600, and
+       32*   device entries for the IBM 3380 & 3390 and STC 3430, 3470, 3670, 4654,
+       33*   4655 & 4670. Also to remove support of the 191 & 400 disk drive. */
+       34 /* Modified 850812 by Paul Farley to change IBM3300 to IBM3880. */
+       35 (size,stringsize,stringrange,subscriptrange):
+       36 config_data_:
+       37      procedure;
+       38 
+       39 
+       40 	declare c_ptr		 pointer;
+       41 	declare 1 c		 aligned based (c_ptr),
+       42 		2 chnl_cardx	 fixed binary,
+       43 		2 clok_cardx	 fixed binary,
+       44 		2 cpu_cardx	 fixed binary,
+       45 		2 fnp_cardx	 fixed binary,
+       46 		2 intk_cardx	 fixed binary,
+       47 		2 iom_cardx	 fixed binary,
+       48 		2 mem_cardx	 fixed binary,
+       49 		2 mpc_msp_cardx	 fixed binary,
+       50 		2 mpc_mtp_cardx	 fixed binary,
+       51 		2 ipc_fips_cardx	 fixed binary,
+       52 		2 mpc_urp_cardx	 fixed binary,
+       53 		2 mpc_cardx	 fixed binary,
+       54 		2 mpcs_msp_cardx	 fixed binary,
+       55 		2 mpcs_mtp_cardx	 fixed binary,
+       56 		2 mpcs_urp_cardx	 fixed binary,
+       57 		2 mpcs_cardx	 fixed binary,
+       58 		2 parm_cardx	 fixed binary,
+       59 		2 part_cardx	 fixed binary,
+       60 		2 prph_dsk_cardx	 fixed binary,
+       61 		2 prph_prt_cardx	 fixed binary,
+       62 		2 prph_rdr_cardx	 fixed binary,
+       63 		2 prph_pun_cardx	 fixed binary,
+       64 		2 prph_ccu_cardx	 fixed binary,
+       65 		2 prph_tap_cardx	 fixed binary,
+       66 		2 prph_opc_cardx	 fixed binary,
+       67 		2 prph_cardx	 fixed binary,
+       68 		2 root_cardx	 fixed binary,
+       69 		2 salv_cardx	 fixed binary,
+       70 		2 schd_cardx	 fixed binary,
+       71 		2 sst_cardx	 fixed binary,
+       72 		2 stok_cardx	 fixed binary,
+       73 		2 tbls_cardx	 fixed binary,
+       74 		2 udsk_cardx	 fixed binary,
+       75 /***** grand data base */
+       76 		2 config_cards
+       77                          like config_data_$config_cards aligned,
+       78 		2 mpc_msp_model_names
+       79                          like config_data_$mpc_msp_model_names aligned,
+       80 		2 mpc_mtp_model_names
+       81 		     like config_data_$mpc_mtp_model_names aligned,
+       82 		2 mpc_urp_model_names
+       83 		      like config_data_$mpc_urp_model_names aligned,
+       84 		2 ipc_msp_model_names
+       85 		      like config_data_$ipc_msp_model_names aligned,
+       86 		2 ipc_mtp_model_names
+       87 		      like config_data_$ipc_mtp_model_names aligned,
+       88 		2 disk_drive_model_names
+       89 		      like config_data_$disk_drive_model_names aligned,
+       90 		2 tape_drive_model_names
+       91 		      like config_data_$tape_drive_model_names aligned,
+       92 		2 printer_model_names
+       93 		      like config_data_$printer_model_names aligned,
+       94 		2 reader_model_names
+       95 		      like config_data_$reader_model_names aligned,
+       96 		2 ccu_model_names
+       97 		      like config_data_$ccu_model_names aligned,
+       98 		2 punch_model_names 
+       99 		      like config_data_$punch_model_names aligned,
+      100 		2 console_model_names
+      101 		      like config_data_$console_model_names aligned;
+      102 
+      103 
+      104 	declare (get_temp_segment_, release_temp_segment_)
+      105 				 entry (char (*), ptr, fixed bin (35));
+      106 	declare com_err_		 entry () options (variable);
+      107 	declare create_data_segment_	 entry (ptr, fixed bin (35));
+      108 	declare code		 fixed bin (35);
+      109 	declare (ccx, m)		 fixed bin;
+      110 	declare PADSTAR		 (1) char (32) init ("pad*") int static options (constant);
+      111 
+      112 dcl (addr, char, hbound, ltrim, null, size, string, unspec) builtin;
+      113 
+      114 dcl cleanup condition;
+      115 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+      116 
+  2     1 /* Begin include file config_data_dcls.incl.pl1 BIM 9/82 */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  2     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  2     6*     Add changes made to
+  2     7*     config_data_.cds.
+  2     8*  2) change(86-10-21,Fawcett), approve(86-10-21,PBF7381),
+  2     9*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+  2    10*     Corrected the number of tape drive models supported.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 
+  2    13 /* format: style3 */
+  2    14 /* Modified 830523 to add console io_type and line_leng fields for different 
+  2    15*   operator's consoles and to fix a size bug... -E. A. Ranzenbach */
+  2    16 /* Modified 841101 by Paul Farley to add changes made to config_data_.cds */
+  2    17 
+  2    18 /* WARNING WARNING */
+  2    19 
+  2    20 /* Due to the awful PL/I restriction that prohibits any expressions */
+  2    21 /* in external variable extents, the arrays here have integers for */
+  2    22 /* extents. Changes to config_data_.cds should be reflected here, */
+  2    23 /* Because the declares in config_data_.cds use the "like" attribute. */
+  2    24 /* Just in case, though, do NOT use hbound. Use the .count fields */
+  2    25 /* in the structures instead. */
+  2    26 
+  2    27 declare	config_data_$chnl_cardx
+  2    28 			fixed binary external static;
+  2    29 declare	config_data_$clok_cardx
+  2    30 			fixed binary external static;
+  2    31 declare	config_data_$cpu_cardx
+  2    32 			fixed binary external static;
+  2    33 declare	config_data_$fnp_cardx
+  2    34 			fixed binary external static;
+  2    35 declare	config_data_$intk_cardx
+  2    36 			fixed binary external static;
+  2    37 declare	config_data_$iom_cardx
+  2    38 			fixed binary external static;
+  2    39 declare	config_data_$mem_cardx
+  2    40 			fixed binary external static;
+  2    41 declare	config_data_$mpc_msp_cardx
+  2    42 			fixed binary external static;
+  2    43 declare	config_data_$mpc_mtp_cardx
+  2    44 			fixed binary external static;
+  2    45 declare	config_data_$ipc_fips_cardx
+  2    46 			fixed binary external static;
+  2    47 declare	config_data_$mpc_urp_cardx
+  2    48 			fixed binary external static;
+  2    49 declare	config_data_$mpc_cardx
+  2    50 			fixed binary external static;
+  2    51 declare	config_data_$mpcs_msp_cardx
+  2    52 			fixed binary external static;
+  2    53 declare	config_data_$mpcs_mtp_cardx
+  2    54 			fixed binary external static;
+  2    55 declare	config_data_$mpcs_urp_cardx
+  2    56 			fixed binary external static;
+  2    57 declare	config_data_$mpcs_cardx
+  2    58 			fixed binary external static;
+  2    59 declare	config_data_$parm_cardx
+  2    60 			fixed binary external static;
+  2    61 declare	config_data_$part_cardx
+  2    62 			fixed binary external static;
+  2    63 declare	config_data_$prph_dsk_cardx
+  2    64 			fixed binary external static;
+  2    65 declare	config_data_$prph_prt_cardx
+  2    66 			fixed binary external static;
+  2    67 declare	config_data_$prph_rdr_cardx
+  2    68 			fixed binary external static;
+  2    69 declare	config_data_$prph_pun_cardx
+  2    70 			fixed binary external static;
+  2    71 declare	config_data_$prph_ccu_cardx
+  2    72 			fixed binary external static;
+  2    73 declare	config_data_$prph_tap_cardx
+  2    74 			fixed binary external static;
+  2    75 declare	config_data_$prph_opc_cardx
+  2    76 			fixed binary external static;
+  2    77 declare	config_data_$prph_cardx
+  2    78 			fixed binary external static;
+  2    79 declare	config_data_$root_cardx
+  2    80 			fixed binary external static;
+  2    81 declare	config_data_$salv_cardx
+  2    82 			fixed binary external static;
+  2    83 declare	config_data_$schd_cardx
+  2    84 			fixed binary external static;
+  2    85 declare	config_data_$sst_cardx
+  2    86 			fixed binary external static;
+  2    87 declare	config_data_$stok_cardx
+  2    88 			fixed binary external static;
+  2    89 declare	config_data_$tbls_cardx
+  2    90 			fixed binary external static;
+  2    91 declare	config_data_$udsk_cardx
+  2    92 			fixed binary external static;
+  2    93 
+  2    94 declare	1 config_data_$config_cards
+  2    95 			aligned external static,
+  2    96 	2 count		fixed binary,
+  2    97 	2 per_card	(32) aligned,
+  2    98 	  3 name		char (4) aligned,
+  2    99 	  3 second_field	char (4) aligned,
+  2   100 	  3 flags		aligned,
+  2   101 	    4 match_second	bit (1) unaligned,		/* PRPH FOO */
+  2   102 	    4 match_only_3	bit (1) unaligned;		/* XXXn type */
+  2   103 
+  2   104 declare	1 config_data_$mpc_msp_model_names
+  2   105 			aligned external static,
+  2   106 	2 count		fixed binary,
+  2   107 	2 names		(9) aligned,
+  2   108 	  3 model		fixed binary,
+  2   109 	  3 name		character (8),
+  2   110 	  3 fw_tag	character (16),
+  2   111 	  3 valid_drives	(16) fixed binary unaligned;
+  2   112 
+  2   113 declare	1 config_data_$mpc_mtp_model_names
+  2   114 			aligned external static,
+  2   115 	2 count		fixed binary,
+  2   116 	2 names		(7) aligned,
+  2   117 	  3 model		fixed binary,
+  2   118 	  3 name		character (8),
+  2   119 	  3 fw_tag	character (16),
+  2   120 	  3 valid_drives	(16) fixed binary unaligned;
+  2   121 
+  2   122 declare	1 config_data_$mpc_urp_model_names
+  2   123 			aligned external static,
+  2   124 	2 count		fixed binary,
+  2   125 	2 names		(6) aligned,
+  2   126 	  3 model		fixed binary,
+  2   127 	  3 name		character (8),
+  2   128 	  3 fw_tag	character (16); /* "EURC" for EURC */
+  2   129 
+  2   130 declare	1 config_data_$ipc_msp_model_names
+  2   131 			aligned external static,
+  2   132 	2 count		fixed binary,
+  2   133 	2 names		(1) aligned,
+  2   134 	  3 model		fixed binary,
+  2   135 	  3 name		character (8),
+  2   136 	  3 fw_tag	character (16),
+  2   137 	  3 valid_drives	(16) fixed binary unaligned;
+  2   138 
+  2   139 declare	1 config_data_$ipc_mtp_model_names 
+  2   140 			aligned external static,
+  2   141 	2 count		fixed binary,
+  2   142 	2 names		(1) aligned,
+  2   143 	  3 model		fixed binary,
+  2   144 	  3 name		character (8),
+  2   145 	  3 fw_tag	character (16),
+  2   146 	  3 valid_drives	(16) fixed binary unaligned;
+  2   147 
+  2   148 declare	1 config_data_$disk_drive_model_names
+  2   149 			aligned external static,
+  2   150 	2 count		fixed binary,
+  2   151 	2 names		(5) aligned,
+  2   152 	  3 model		fixed binary,
+  2   153 	  3 name		character (8),
+  2   154 	  3 device_0_valid	bit (1);
+  2   155 
+  2   156 declare	1 config_data_$tape_drive_model_names
+  2   157 			aligned external static,
+  2   158 	2 count		fixed binary,
+  2   159 	2 names		(9) aligned,
+  2   160 	  3 model		fixed binary,
+  2   161 	  3 name		character (8),
+  2   162 	  3 device_0_valid	bit (1);
+  2   163 
+  2   164 declare	1 config_data_$printer_model_names
+  2   165 			aligned external static,
+  2   166 	2 count		fixed binary,
+  2   167 	2 names		(5) aligned,
+  2   168 	  3 model		fixed binary,
+  2   169 	  3 name		character (8);
+  2   170 
+  2   171 declare	1 config_data_$reader_model_names
+  2   172 			aligned external static,
+  2   173 	2 count		fixed binary,
+  2   174 	2 names		(4) aligned,
+  2   175 	  3 model		fixed binary,
+  2   176 	  3 name		character (8);
+  2   177 
+  2   178 declare	1 config_data_$ccu_model_names
+  2   179 			aligned external static,
+  2   180 	2 count		fixed binary,
+  2   181 	2 names		(1) aligned,
+  2   182 	  3 model		fixed binary,
+  2   183 	  3 name		character (8);
+  2   184 
+  2   185 declare	1 config_data_$punch_model_names
+  2   186 			aligned external static,
+  2   187 	2 count		fixed binary,
+  2   188 	2 names		(3) aligned,
+  2   189 	  3 model		fixed binary,
+  2   190 	  3 name		character (8);
+  2   191 
+  2   192 declare	1 config_data_$console_model_names
+  2   193 			aligned external static,
+  2   194           2 count		fixed binary,
+  2   195 	2 names		(3) aligned,
+  2   196 	  3 model		fixed binary,
+  2   197 	  3 name		character (8),
+  2   198 	  3 line_leng	fixed bin (17),
+  2   199 	  3 io_type	character (4);
+  2   200 
+  2   201 /* End include file config_data_dcls.incl.pl1 */
+      117 
+      118 	declare 1 CDSA		 aligned like cds_args;
+      119 
+      120 
+      121 	c_ptr = null ();
+      122 
+      123 	on cleanup begin;
+      124              goto clean_up;
+      125 	end;
+      126 
+      127 	call get_temp_segment_ ("config_data_", c_ptr, code);
+      128 	if code ^= 0
+      129 	then call com_err_ (code, "config_data_", "Could not get a temp segment.");
+      130 	unspec (c) = ""b;
+      131 
+      132 	c.config_cards.count = hbound (c.config_cards.per_card,1);
+      133 	c.chnl_cardx = 1;
+      134 
+      135 	c.per_card.second_field = "";
+      136 	string (c.per_card.flags) = ""b;
+      137 	ccx = 1;
+      138 
+      139 	c.per_card (ccx).name = "chnl";
+      140 
+      141 	ccx = ccx + 1;
+      142 	c.clok_cardx = ccx;
+      143 	c.per_card (ccx).name = "clok";
+      144 
+      145 	ccx = ccx + 1;
+      146 	c.cpu_cardx = ccx;
+      147 	c.per_card (ccx).name = "cpu";
+      148 
+      149 	ccx = ccx + 1;
+      150 	c.fnp_cardx = ccx;
+      151 	c.per_card (ccx).name = "fnp";
+      152 
+      153 	ccx = ccx + 1;
+      154 	c.intk_cardx = ccx;
+      155 	c.per_card (ccx).name = "intk";
+      156 
+      157 	ccx = ccx + 1;
+      158 	c.iom_cardx = ccx;
+      159 	c.per_card (ccx).name = "iom";
+      160 
+      161 	ccx = ccx + 1;
+      162 	c.mem_cardx = ccx;
+      163 	c.per_card (ccx).name = "mem";
+      164 
+      165 	ccx = ccx + 1;
+      166 	c.mpc_msp_cardx = ccx;
+      167 	c.per_card (ccx).name = "mpc";
+      168 	c.per_card (ccx).second_field = "msp";
+      169 	c.per_card (ccx).match_second, c.per_card (ccx).match_only_3 = "1"b;
+      170 
+      171 	ccx = ccx + 1;
+      172 	c.mpc_mtp_cardx = ccx;
+      173 	c.per_card (ccx).name = "mpc";
+      174 	c.per_card (ccx).second_field = "mtp";
+      175 	c.per_card (ccx).match_second, c.per_card (ccx).match_only_3 = "1"b;
+      176 
+      177 	ccx = ccx + 1;
+      178 	c.ipc_fips_cardx = ccx;
+      179 	c.per_card (ccx).name = "ipc";
+      180 	c.per_card (ccx).second_field = "fips";
+      181 	c.per_card (ccx).match_second = "1"b;
+      182 
+      183 	ccx = ccx + 1;
+      184 	c.mpc_urp_cardx = ccx;
+      185 	c.per_card (ccx).name = "mpc";
+      186 	c.per_card (ccx).second_field = "urp";
+      187 	c.per_card (ccx).match_second, c.per_card (ccx).match_only_3 = "1"b;
+      188 
+      189 	ccx = ccx + 1;
+      190 	c.mpc_cardx = ccx;
+      191 	c.per_card (ccx).name = "mpc";
+      192 
+      193 	ccx = ccx + 1;
+      194 	c.mpcs_msp_cardx = ccx;
+      195 	c.per_card (ccx).name = "mpcs";
+      196 	c.per_card (ccx).second_field = "msp";
+      197 	c.per_card (ccx).match_second, c.per_card (ccx).match_only_3 = "1"b;
+      198 
+      199 	ccx = ccx + 1;
+      200 	c.mpcs_mtp_cardx = ccx;
+      201 	c.per_card (ccx).name = "mpcs";
+      202 	c.per_card (ccx).second_field = "mtp";
+      203 	c.per_card (ccx).match_second, c.per_card (ccx).match_only_3 = "1"b;
+      204 
+      205 	ccx = ccx + 1;
+      206 	c.mpcs_urp_cardx = ccx;
+      207 	c.per_card (ccx).name = "mpcs";
+      208 	c.per_card (ccx).second_field = "urp";
+      209 	c.per_card (ccx).match_second, c.per_card (ccx).match_only_3 = "1"b;
+      210 
+      211 	ccx = ccx + 1;
+      212 	c.mpcs_cardx = ccx;
+      213 	c.per_card (ccx).name = "mpcs";
+      214 
+      215 	ccx = ccx + 1;
+      216 	c.parm_cardx = ccx;
+      217 	c.per_card (ccx).name = "parm";
+      218 
+      219 	ccx = ccx + 1;
+      220 	c.prph_dsk_cardx = ccx;
+      221 	c.per_card (ccx).name = "prph";
+      222 	c.per_card (ccx).second_field = "dsk";
+      223 	c.per_card (ccx).match_second = "1"b;
+      224 	c.per_card (ccx).match_only_3 = "1"b;
+      225 
+      226 	ccx = ccx + 1;
+      227 	c.prph_prt_cardx = ccx;
+      228 	c.per_card (ccx).name = "prph";
+      229 	c.per_card (ccx).second_field = "prt";
+      230 	c.per_card (ccx).match_second = "1"b;
+      231 	c.per_card (ccx).match_only_3 = "1"b;
+      232 
+      233 	ccx = ccx + 1;
+      234 	c.prph_rdr_cardx = ccx;
+      235 	c.per_card (ccx).name = "prph";
+      236 	c.per_card (ccx).second_field = "rdr";
+      237 	c.per_card (ccx).match_second = "1"b;
+      238 	c.per_card (ccx).match_only_3 = "1"b;
+      239 
+      240 	ccx = ccx + 1;
+      241 	c.prph_pun_cardx = ccx;
+      242 	c.per_card (ccx).name = "prph";
+      243 	c.per_card (ccx).second_field = "pun";
+      244 	c.per_card (ccx).match_second = "1"b;
+      245 	c.per_card (ccx).match_only_3 = "1"b;
+      246 
+      247 	ccx = ccx + 1;
+      248 	c.prph_ccu_cardx = ccx;
+      249 	c.per_card (ccx).name = "prph";
+      250 	c.per_card (ccx).second_field = "ccu";
+      251 	c.per_card (ccx).match_second = "1"b;
+      252 	c.per_card (ccx).match_only_3 = "1"b;
+      253 
+      254 	ccx = ccx + 1;
+      255 	c.prph_tap_cardx = ccx;
+      256 	c.per_card (ccx).name = "prph";
+      257 	c.per_card (ccx).second_field = "tap";
+      258 	c.per_card (ccx).match_second = "1"b;
+      259 	c.per_card (ccx).match_only_3 = "1"b;
+      260 
+      261 	ccx = ccx + 1;
+      262 	c.prph_opc_cardx = ccx;
+      263 	c.per_card (ccx).name = "prph";
+      264 	c.per_card (ccx).second_field = "opc";
+      265 	c.per_card (ccx).match_second = "1"b;
+      266 	c.per_card (ccx).match_only_3 = "1"b;
+      267 
+      268 	ccx = ccx + 1;
+      269 	c.prph_cardx = ccx;
+      270 	c.per_card (ccx).name = "prph";
+      271 
+      272 	ccx = ccx + 1;
+      273 	c.root_cardx = ccx;
+      274 	c.per_card (ccx).name = "root";
+      275 
+      276 	ccx = ccx + 1;
+      277 	c.salv_cardx = ccx;
+      278 	c.per_card (ccx).name = "salv";
+      279 
+      280 	ccx = ccx + 1;
+      281 	c.schd_cardx = ccx;
+      282 	c.per_card (ccx).name = "schd";
+      283 
+      284 	ccx = ccx + 1;
+      285 	c.sst_cardx = ccx;
+      286 	c.per_card (ccx).name = "sst";
+      287 
+      288 	ccx = ccx + 1;
+      289 	c.stok_cardx = ccx;
+      290 	c.per_card (ccx).name = "stok";
+      291 
+      292 	ccx = ccx + 1;
+      293 	c.tbls_cardx = ccx;
+      294 	c.per_card (ccx).name = "tcd";
+      295 
+      296 	ccx = ccx + 1;
+      297 	c.udsk_cardx = ccx;
+      298 	c.per_card (ccx).name = "udsk";
+      299 
+      300 	ccx = 1;
+      301 
+      302 	c.mpc_msp_model_names.count = hbound (c.mpc_msp_model_names.names,1);
+      303 
+      304 	c.mpc_msp_model_names (ccx).model = 451;
+      305 	c.mpc_msp_model_names (ccx).name = "dsc0451";
+      306 	c.mpc_msp_model_names (ccx).fw_tag = "dsc191.m191";
+      307 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      308 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      309 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      310 
+      311 	ccx = ccx + 1;
+      312 	c.mpc_msp_model_names (ccx).model = 451;
+      313 	c.mpc_msp_model_names (ccx).name = "msp0451";
+      314 	c.mpc_msp_model_names (ccx).fw_tag = "dsc191.m191";
+      315 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      316 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      317 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      318 
+      319 	ccx = ccx + 1;
+      320 	c.mpc_msp_model_names (ccx).model = 601;
+      321 	c.mpc_msp_model_names (ccx).name = "msp0601";
+      322 	c.mpc_msp_model_names (ccx).fw_tag = "dsc500.d500";
+      323 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      324 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      325 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      326 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      327 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      328 
+      329 	ccx = ccx + 1;
+      330 	c.mpc_msp_model_names (ccx).model = 603;
+      331 	c.mpc_msp_model_names (ccx).name = "msp0603";
+      332 	c.mpc_msp_model_names (ccx).fw_tag = "dsc500.d500";
+      333 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      334 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      335 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      336 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      337 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      338 
+      339 	ccx = ccx + 1;
+      340 	c.mpc_msp_model_names (ccx).model = 607;
+      341 	c.mpc_msp_model_names (ccx).name = "msp0607";
+      342 	c.mpc_msp_model_names (ccx).fw_tag = "dsc500.d500";
+      343 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      344 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      345 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      346 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      347 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      348 
+      349 	ccx = ccx + 1;
+      350 	c.mpc_msp_model_names (ccx).model = 609;
+      351 	c.mpc_msp_model_names (ccx).name = "msp0609";
+      352 	c.mpc_msp_model_names (ccx).fw_tag = "dsc500.d500";
+      353 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      354 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      355 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      356 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      357 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      358 
+      359 	ccx = ccx + 1;
+      360 	c.mpc_msp_model_names (ccx).model = 611;
+      361 	c.mpc_msp_model_names (ccx).name = "msp0611";
+      362 	c.mpc_msp_model_names (ccx).fw_tag = "dsc500.d500";
+      363 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      364 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      365 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      366 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      367 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      368 
+      369 	ccx = ccx + 1;
+      370 	c.mpc_msp_model_names (ccx).model = 612;
+      371 	c.mpc_msp_model_names (ccx).name = "msp0612";
+      372 	c.mpc_msp_model_names (ccx).fw_tag = "dsc500.d500";
+      373 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      374 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      375 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      376 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      377 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      378 
+      379 	ccx = ccx + 1;
+      380 	c.mpc_msp_model_names (ccx).model = 800;
+      381 	c.mpc_msp_model_names (ccx).name = "msp800";
+      382 	c.mpc_msp_model_names (ccx).fw_tag = "msp800.msp8";
+      383 	c.mpc_msp_model_names (ccx).valid_drives (*) = 0;
+      384 	c.mpc_msp_model_names (ccx).valid_drives (1) = 450;
+      385 	c.mpc_msp_model_names (ccx).valid_drives (2) = 451;
+      386 	c.mpc_msp_model_names (ccx).valid_drives (3) = 500;
+      387 	c.mpc_msp_model_names (ccx).valid_drives (4) = 501;
+      388 
+      389 	c.mpc_mtp_model_names.count = hbound (c.mpc_mtp_model_names.names,1);
+      390 	ccx = 1;
+      391 	c.mpc_mtp_model_names (ccx).model = 501;
+      392 	c.mpc_mtp_model_names (ccx).name = "mtc501";
+      393 	c.mpc_mtp_model_names (ccx).fw_tag = "mtc500.m500";
+      394 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      395 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      396 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      397 
+      398 	ccx = ccx + 1;
+      399 	c.mpc_mtp_model_names (ccx).model = 502;
+      400 	c.mpc_mtp_model_names (ccx).name = "mtc502";
+      401 	c.mpc_mtp_model_names (ccx).fw_tag = "mtc500.m500";
+      402 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      403 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      404 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      405 
+      406 	ccx = ccx + 1;
+      407 	c.mpc_mtp_model_names (ccx).model = 600;
+      408 	c.mpc_mtp_model_names (ccx).name = "mtp0600";
+      409 	c.mpc_mtp_model_names (ccx).fw_tag = "mtp601.m601";
+      410 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      411 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      412 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      413 	c.mpc_mtp_model_names (ccx).valid_drives (3) = 600;
+      414 	c.mpc_mtp_model_names (ccx).valid_drives (4) = 601;
+      415 	c.mpc_mtp_model_names (ccx).valid_drives (5) = 602;
+      416 
+      417 
+      418 	ccx = ccx + 1;
+      419 	c.mpc_mtp_model_names (ccx).model = 601;
+      420 	c.mpc_mtp_model_names (ccx).name = "mtp0601";
+      421 	c.mpc_mtp_model_names (ccx).fw_tag = "mtp601.m601";
+      422 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      423 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      424 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      425 	c.mpc_mtp_model_names (ccx).valid_drives (3) = 600;
+      426 	c.mpc_mtp_model_names (ccx).valid_drives (4) = 601;
+      427 	c.mpc_mtp_model_names (ccx).valid_drives (5) = 602;
+      428 
+      429 
+      430 	ccx = ccx + 1;
+      431 	c.mpc_mtp_model_names (ccx).model = 602;
+      432 	c.mpc_mtp_model_names (ccx).name = "mtc0602";
+      433 	c.mpc_mtp_model_names (ccx).fw_tag = "mtp601.m601";
+      434 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      435 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      436 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      437 	c.mpc_mtp_model_names (ccx).valid_drives (3) = 600;
+      438 	c.mpc_mtp_model_names (ccx).valid_drives (4) = 601;
+      439 	c.mpc_mtp_model_names (ccx).valid_drives (5) = 602;
+      440 
+      441 
+      442 	ccx = ccx + 1;
+      443 	c.mpc_mtp_model_names (ccx).model = 610;
+      444 	c.mpc_mtp_model_names (ccx).name = "mtp0610";
+      445 	c.mpc_mtp_model_names (ccx).fw_tag = "mtp610.m610";
+      446 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      447 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      448 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      449 	c.mpc_mtp_model_names (ccx).valid_drives (3) = 600;
+      450 	c.mpc_mtp_model_names (ccx).valid_drives (4) = 601;
+      451 	c.mpc_mtp_model_names (ccx).valid_drives (5) = 602;
+      452 	c.mpc_mtp_model_names (ccx).valid_drives (6) = 610;
+      453 	c.mpc_mtp_model_names (ccx).valid_drives (7) = 630;
+      454 
+      455 	ccx = ccx + 1;
+      456 	c.mpc_mtp_model_names (ccx).model = 611;
+      457 	c.mpc_mtp_model_names (ccx).name = "mtp0611";
+      458 	c.mpc_mtp_model_names (ccx).fw_tag = "mtp610.m610";
+      459 	c.mpc_mtp_model_names (ccx).valid_drives (*) = 0;
+      460 	c.mpc_mtp_model_names (ccx).valid_drives (1) = 500;
+      461 	c.mpc_mtp_model_names (ccx).valid_drives (2) = 507;
+      462 	c.mpc_mtp_model_names (ccx).valid_drives (3) = 600;
+      463 	c.mpc_mtp_model_names (ccx).valid_drives (4) = 601;
+      464 	c.mpc_mtp_model_names (ccx).valid_drives (5) = 602;
+      465 	c.mpc_mtp_model_names (ccx).valid_drives (6) = 610;
+      466 	c.mpc_mtp_model_names (ccx).valid_drives (7) = 630;
+      467 
+      468 	ccx = 1;
+      469 
+      470 	c.ipc_msp_model_names.count = 1;
+      471 
+      472 	c.ipc_msp_model_names (ccx).model = -1;
+      473 	c.ipc_msp_model_names (ccx).name = "fips-ipc";
+      474 	c.ipc_msp_model_names (ccx).fw_tag = "";
+      475 	c.ipc_msp_model_names (ccx).valid_drives (*) = 0;
+      476 	c.ipc_msp_model_names (ccx).valid_drives (1) = 3380;
+      477 	c.ipc_msp_model_names (ccx).valid_drives (2) = 3381;
+      478 
+      479 	c.ipc_mtp_model_names.count = 1;
+      480 	ccx = 1;
+      481 	c.ipc_mtp_model_names (ccx).model = -1;
+      482 	c.ipc_mtp_model_names (ccx).name = "fips-ipc";
+      483 	c.ipc_mtp_model_names (ccx).fw_tag = "";
+      484 	c.ipc_mtp_model_names (ccx).valid_drives (*) = 0;
+      485 	c.ipc_mtp_model_names (ccx).valid_drives (1) = 8200;
+      486 
+      487 
+      488 	c.mpc_urp_model_names.count = hbound (c.mpc_urp_model_names.names,1);
+      489 	c.mpc_urp_model_names.model (1) = 2;
+      490 	c.mpc_urp_model_names.name (1) = "urc002";
+      491 	c.mpc_urp_model_names.fw_tag (1) = "urcmpc.ucmn";
+      492 
+      493 	c.mpc_urp_model_names.model (2) = 600;
+      494 	c.mpc_urp_model_names.name (2) = "urp0600";
+      495 	c.mpc_urp_model_names.fw_tag (2) = "urcmpc.ucmn";
+      496 
+      497 	ccx = 2;
+      498 	do m = 8001 to 8004;
+      499 	     ccx = ccx + 1;
+      500 	     c.mpc_urp_model_names.model (ccx) = m;
+      501 	     c.mpc_urp_model_names.name (ccx) = "urp" || ltrim (char (m));
+      502 	     c.mpc_urp_model_names.fw_tag (ccx) = "EURC";
+      503 	end;
+      504 
+      505 	c.disk_drive_model_names.count = hbound (c.disk_drive_model_names.names,1);
+      506 	ccx = 1;
+      507 	c.disk_drive_model_names.model (ccx) = 451;
+      508 	c.disk_drive_model_names.name (ccx) = "msu0451";
+      509 	c.disk_drive_model_names.device_0_valid (ccx) = "0"b;
+      510 	ccx = ccx + 1;
+      511 	c.disk_drive_model_names.model (ccx) = 500;
+      512 	c.disk_drive_model_names.name (ccx) = "msu0500";
+      513 	c.disk_drive_model_names.device_0_valid (ccx) = "0"b;
+      514 	ccx = ccx + 1;
+      515 	c.disk_drive_model_names.model (ccx) = 501;
+      516 	c.disk_drive_model_names.name (ccx) = "msu0501";
+      517 	c.disk_drive_model_names.device_0_valid (ccx) = "0"b;
+      518 	ccx = ccx + 1;
+      519 	c.disk_drive_model_names.model (ccx) = 3380;
+      520 	c.disk_drive_model_names.name (ccx) = "msu3380";
+      521 	c.disk_drive_model_names.device_0_valid (ccx) = "1"b;
+      522 	ccx = ccx + 1;
+      523 	c.disk_drive_model_names.model (ccx) = 3381;
+      524 	c.disk_drive_model_names.name (ccx) = "msu3381";
+      525 	c.disk_drive_model_names.device_0_valid (ccx) = "1"b;
+      526 
+      527 	ccx = 1;
+      528 	c.tape_drive_model_names.count = hbound (c.tape_drive_model_names.names,1);
+      529 	c.tape_drive_model_names.model (ccx) = 500;
+      530 	c.tape_drive_model_names.name (ccx) = "mtc501";
+      531 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      532 
+      533 	ccx = ccx + 1;
+      534 	c.tape_drive_model_names.model (ccx) = 500;
+      535 	c.tape_drive_model_names.name (ccx) = "mtc502";
+      536 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      537 
+      538 	ccx = ccx + 1;
+      539 	c.tape_drive_model_names.model (ccx) = 507;
+      540 	c.tape_drive_model_names.name (ccx) = "mtc502";
+      541 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      542 
+      543 	ccx = ccx + 1;
+      544 	c.tape_drive_model_names.model (ccx) = 600;
+      545 	c.tape_drive_model_names.name (ccx) = "mtp0600";
+      546 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      547 
+      548 	ccx = ccx + 1;
+      549 	c.tape_drive_model_names.model (ccx) = 601;
+      550 	c.tape_drive_model_names.name (ccx) = "mtp0601";
+      551 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      552 
+      553 	ccx = ccx + 1;
+      554 	c.tape_drive_model_names.model (ccx) = 602;
+      555 	c.tape_drive_model_names.name (ccx) = "mtp0602";
+      556 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      557 
+      558 	ccx = ccx + 1;
+      559 	c.tape_drive_model_names.model (ccx) = 610;
+      560 	c.tape_drive_model_names.name (ccx) = "mtp0610";
+      561 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      562 
+      563 	ccx = ccx + 1;
+      564 	c.tape_drive_model_names.model (ccx) = 630;
+      565 	c.tape_drive_model_names.name (ccx) = "mtp0630";
+      566 	c.tape_drive_model_names.device_0_valid (ccx) = "0"b;
+      567 
+      568 	ccx = ccx + 1;
+      569 	c.tape_drive_model_names.model (ccx) = 8200;
+      570 	c.tape_drive_model_names.name (ccx) = "mtu8200";
+      571 	c.tape_drive_model_names.device_0_valid (ccx) = "1"b;
+      572 
+      573 	ccx = 1;
+      574 	c.printer_model_names.count = hbound (c.printer_model_names.names,1);
+      575 	c.printer_model_names.model (ccx) = 301;
+      576 	c.printer_model_names.name (ccx) = "prt301";
+      577 	ccx = ccx + 1;
+      578 	c.printer_model_names.model (ccx) = 1000;
+      579 	c.printer_model_names.name (ccx) = "pru1000";
+      580 	ccx = ccx + 1;
+      581 	c.printer_model_names.model (ccx) = 1200;
+      582 	c.printer_model_names.name (ccx) = "pru1200";
+      583 	ccx = ccx + 1;
+      584 	c.printer_model_names.model (ccx) = 1600;
+      585 	c.printer_model_names.name (ccx) = "pru1600";
+      586 	ccx = ccx + 1;
+      587 	c.printer_model_names.model (ccx) = 901;
+      588 	c.printer_model_names.name (ccx) = "pru0901";
+      589 
+      590 	c.reader_model_names.count = hbound (c.reader_model_names.names,1);
+      591 	ccx = 1;
+      592 	c.reader_model_names.model (ccx) = 500;
+      593 	c.reader_model_names.name (ccx) = "cru0500";
+      594 	ccx = ccx + 1;
+      595 	c.reader_model_names.model (ccx) = 501;
+      596 	c.reader_model_names.name (ccx) = "cru0501";
+      597 	ccx = ccx + 1;
+      598 	c.reader_model_names.model (ccx) = 301;
+      599 	c.reader_model_names.name (ccx) = "crz301";
+      600 	ccx = ccx + 1;
+      601 	c.reader_model_names.model (ccx) = 201;
+      602 	c.reader_model_names.name (ccx) = "crz201";
+      603 
+      604 	c.ccu_model_names.count = hbound (c.ccu_model_names.names,1);
+      605 	c.ccu_model_names.model (1) = 401;
+      606 	c.ccu_model_names.name (1) = "ccu401";
+      607 
+      608 	c.punch_model_names.count = hbound (c.punch_model_names.names,1);
+      609 	ccx = 1;
+      610 	c.punch_model_names.model (ccx) = 301;
+      611 	c.punch_model_names.name (ccx) = "cpz301";
+      612 	ccx = ccx + 1;
+      613 	c.punch_model_names.model (ccx) = 300;
+      614 	c.punch_model_names.name (ccx) = "cpz300";
+      615 	ccx = ccx + 1;
+      616 	c.punch_model_names.model (ccx) = 201;
+      617 	c.punch_model_names.name (ccx) = "cpz201";
+      618 
+      619 	c.console_model_names.count = hbound (c.console_model_names.names,1);
+      620 	ccx = 1;
+      621 
+      622 	c.console_model_names.model (ccx) = 6001;
+      623 	c.console_model_names.name (ccx) = "csu6001";
+      624 	c.console_model_names.io_type (ccx) = "pcw";
+      625 	ccx = ccx + 1;
+      626 	
+      627 	c.console_model_names.model (ccx) = 6004;
+      628 	c.console_model_names.name (ccx) = "csu6004";
+      629 	c.console_model_names.io_type (ccx) = "pcw";
+      630 	ccx = ccx + 1;
+      631 	
+      632 	c.console_model_names.model (ccx) = 6601;
+      633 	c.console_model_names.name (ccx) = "csu6601";
+      634 	c.console_model_names.io_type (ccx) = "idcw";
+      635 
+      636 	unspec (CDSA) = ""b;
+      637 	CDSA.sections (1).p = addr (c);
+      638 	CDSA.sections (1).len = size (c);
+      639 	CDSA.sections (2).p = null ();
+      640 	CDSA.sections (2).len = 0;
+      641 	CDSA.sections (1).struct_name = "c";
+      642 	CDSA.num_exclude_names = 1;
+      643 	CDSA.exclude_array_ptr = addr (PADSTAR);
+      644 	CDSA.have_text = "1"b;
+      645 	CDSA.seg_name = "config_data_";
+      646 
+      647 	call create_data_segment_ (addr (CDSA), code);
+      648 	if code ^= 0
+      649 	then call com_err_ (code, "config_data_");
+      650 
+      651 clean_up:
+      652 	if c_ptr ^= null () then call release_temp_segment_  ("config_data_", c_ptr, code);
+      653 	return;
+      654 
+      655 
+      656 	end config_data_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  !BBBJZjXmdwZZlh.pl1               >spec>install>1110>config_data_.cds
+116          1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+117          2    10/30/86  2010.5  config_data_dcls.incl.pl1         >ldd>include>config_data_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CDSA                            000114 automatic       structure                level 1 dcl 118 set ref 636* 647 647
+PADSTAR                         000000 constant        char(32)                 initial array packed unaligned dcl 110 set ref 643
+addr                                                   builtin function         dcl 112 ref 637 643 647 647
+c                                      based           structure                level 1 dcl 41 set ref 130* 637 638
+c_ptr                           000100 automatic       pointer                  dcl 40 set ref 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41 41
+                                                                                  41 121* 127* 130 132 132 133 135 136 139 142 143
+                                                                                  146 147 150 151 154 155 158 159 162 163 166 167
+                                                                                  168 169 169 172 173 174 175 175 178 179 180 181
+                                                                                  184 185 186 187 187 190 191 194 195 196 197 197
+                                                                                  200 201 202 203 203 206 207 208 209 209 212 213
+                                                                                  216 217 220 221 222 223 224 227 228 229 230 231
+                                                                                  234 235 236 237 238 241 242 243 244 245 248 249
+                                                                                  250 251 252 255 256 257 258 259 262 263 264 265
+                                                                                  266 269 270 273 274 277 278 281 282 285 286 289
+                                                                                  290 293 294 297 298 302 302 304 305 306 307 308
+                                                                                  309 312 313 314 315 316 317 320 321 322 323 324
+                                                                                  325 326 327 330 331 332 333 334 335 336 337 340
+                                                                                  341 342 343 344 345 346 347 350 351 352 353 354
+                                                                                  355 356 357 360 361 362 363 364 365 366 367 370
+                                                                                  371 372 373 374 375 376 377 380 381 382 383 384
+                                                                                  385 386 387 389 389 391 392 393 394 395 396 399
+                                                                                  400 401 402 403 404 407 408 409 410 411 412 413
+                                                                                  414 415 419 420 421 422 423 424 425 426 427 431
+                                                                                  432 433 434 435 436 437 438 439 443 444 445 446
+                                                                                  447 448 449 450 451 452 453 456 457 458 459 460
+                                                                                  461 462 463 464 465 466 470 472 473 474 475 476
+                                                                                  477 479 481 482 483 484 485 488 488 489 490 491
+                                                                                  493 494 495 500 501 502 505 505 507 508 509 511
+                                                                                  512 513 515 516 517 519 520 521 523 524 525 528
+                                                                                  528 529 530 531 534 535 536 539 540 541 544 545
+                                                                                  546 549 550 551 554 555 556 559 560 561 564 565
+                                                                                  566 569 570 571 574 574 575 576 578 579 581 582
+                                                                                  584 585 587 588 590 590 592 593 595 596 598 599
+                                                                                  601 602 604 604 605 606 608 608 610 611 613 614
+                                                                                  616 617 619 619 622 623 624 627 628 629 632 633
+                                                                                  634 637 638 651 651*
+ccu_model_names        1026            based           structure                level 2 dcl 41
+ccx                             000103 automatic       fixed bin(17,0)          dcl 109 set ref 137* 139 141* 141 142 143 145* 145
+                                                                                  146 147 149* 149 150 151 153* 153 154 155 157* 157
+                                                                                  158 159 161* 161 162 163 165* 165 166 167 168 169
+                                                                                  169 171* 171 172 173 174 175 175 177* 177 178 179
+                                                                                  180 181 183* 183 184 185 186 187 187 189* 189 190
+                                                                                  191 193* 193 194 195 196 197 197 199* 199 200 201
+                                                                                  202 203 203 205* 205 206 207 208 209 209 211* 211
+                                                                                  212 213 215* 215 216 217 219* 219 220 221 222 223
+                                                                                  224 226* 226 227 228 229 230 231 233* 233 234 235
+                                                                                  236 237 238 240* 240 241 242 243 244 245 247* 247
+                                                                                  248 249 250 251 252 254* 254 255 256 257 258 259
+                                                                                  261* 261 262 263 264 265 266 268* 268 269 270 272*
+                                                                                  272 273 274 276* 276 277 278 280* 280 281 282 284*
+                                                                                  284 285 286 288* 288 289 290 292* 292 293 294 296*
+                                                                                  296 297 298 300* 304 305 306 307 308 309 311* 311
+                                                                                  312 313 314 315 316 317 319* 319 320 321 322 323
+                                                                                  324 325 326 327 329* 329 330 331 332 333 334 335
+                                                                                  336 337 339* 339 340 341 342 343 344 345 346 347
+                                                                                  349* 349 350 351 352 353 354 355 356 357 359* 359
+                                                                                  360 361 362 363 364 365 366 367 369* 369 370 371
+                                                                                  372 373 374 375 376 377 379* 379 380 381 382 383
+                                                                                  384 385 386 387 390* 391 392 393 394 395 396 398*
+                                                                                  398 399 400 401 402 403 404 406* 406 407 408 409
+                                                                                  410 411 412 413 414 415 418* 418 419 420 421 422
+                                                                                  423 424 425 426 427 430* 430 431 432 433 434 435
+                                                                                  436 437 438 439 442* 442 443 444 445 446 447 448
+                                                                                  449 450 451 452 453 455* 455 456 457 458 459 460
+                                                                                  461 462 463 464 465 466 468* 472 473 474 475 476
+                                                                                  477 480* 481 482 483 484 485 497* 499* 499 500 501
+                                                                                  502 506* 507 508 509 510* 510 511 512 513 514* 514
+                                                                                  515 516 517 518* 518 519 520 521 522* 522 523 524
+                                                                                  525 527* 529 530 531 533* 533 534 535 536 538* 538
+                                                                                  539 540 541 543* 543 544 545 546 548* 548 549 550
+                                                                                  551 553* 553 554 555 556 558* 558 559 560 561 563*
+                                                                                  563 564 565 566 568* 568 569 570 571 573* 575 576
+                                                                                  577* 577 578 579 580* 580 581 582 583* 583 584 585
+                                                                                  586* 586 587 588 591* 592 593 594* 594 595 596
+                                                                                  597* 597 598 599 600* 600 601 602 609* 610 611
+                                                                                  612* 612 613 614 615* 615 616 617 620* 622 623 624
+                                                                                  625* 625 627 628 629 630* 630 632 633 634
+cds_args                               based           structure                level 1 dcl 1-3
+char                                                   builtin function         dcl 112 ref 501
+chnl_cardx                             based           fixed bin(17,0)          level 2 dcl 41 set ref 133*
+cleanup                         000106 stack reference condition                dcl 114 ref 123
+clok_cardx                1            based           fixed bin(17,0)          level 2 dcl 41 set ref 142*
+code                            000102 automatic       fixed bin(35,0)          dcl 108 set ref 127* 128 128* 647* 648 648* 651*
+com_err_                        000016 constant        entry                    external dcl 106 ref 128 648
+config_cards             41            based           structure                level 2 dcl 41
+config_data_$ccu_model_names    000150 external static structure                level 1 dcl 2-178
+config_data_$config_cards       000124 external static structure                level 1 dcl 2-94
+config_data_$console_model_names
+                                000154 external static structure                level 1 dcl 2-192
+config_data_$disk_drive_model_names
+                                000140 external static structure                level 1 dcl 2-148
+config_data_$ipc_msp_model_names
+                                000134 external static structure                level 1 dcl 2-130
+config_data_$ipc_mtp_model_names
+                                000136 external static structure                level 1 dcl 2-139
+config_data_$mpc_msp_model_names
+                                000126 external static structure                level 1 dcl 2-104
+config_data_$mpc_mtp_model_names
+                                000130 external static structure                level 1 dcl 2-113
+config_data_$mpc_urp_model_names
+                                000132 external static structure                level 1 dcl 2-122
+config_data_$printer_model_names
+                                000144 external static structure                level 1 dcl 2-164
+config_data_$punch_model_names  000152 external static structure                level 1 dcl 2-185
+config_data_$reader_model_names 000146 external static structure                level 1 dcl 2-171
+config_data_$tape_drive_model_names
+                                000142 external static structure                level 1 dcl 2-156
+console_model_names    1044            based           structure                level 2 dcl 41
+count                  1011            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 590*
+count                  1044            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 619*
+count                   564            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 488*
+count                  1032            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 608*
+count                   202            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 302*
+count                   724            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 528*
+count                   677            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 505*
+count                   657            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 479*
+count                  1026            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 604*
+count                    41            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 132*
+count                   412            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 389*
+count                   771            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 574*
+count                   637            based           fixed bin(17,0)          level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 470*
+cpu_cardx                 2            based           fixed bin(17,0)          level 2 dcl 41 set ref 146*
+create_data_segment_            000020 constant        entry                    external dcl 107 ref 647
+device_0_valid          730            based           bit(1)                   array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 531* 536* 541* 546* 551*
+                                                                                  556* 561* 566* 571*
+device_0_valid          703            based           bit(1)                   array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 509* 513* 517* 521* 525*
+disk_drive_model_names
+                        677            based           structure                level 2 dcl 41
+exclude_array_ptr        42     000114 automatic       pointer                  level 2 dcl 118 set ref 643*
+flags                    44            based           structure                array level 4 dcl 41 set ref 136*
+fnp_cardx                 3            based           fixed bin(17,0)          level 2 dcl 41 set ref 150*
+fw_tag                  643            based           char(16)                 array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 474*
+fw_tag                  570            based           char(16)                 array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 491* 495* 502*
+fw_tag                  663            based           char(16)                 array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 483*
+fw_tag                  206            based           char(16)                 array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 306* 314* 322* 332* 342*
+                                                                                  352* 362* 372* 382*
+fw_tag                  416            based           char(16)                 array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 393* 401* 409* 421* 433*
+                                                                                  445* 458*
+get_temp_segment_               000012 constant        entry                    external dcl 104 ref 127
+have_text                44(02) 000114 automatic       bit(1)                   level 3 packed packed unaligned dcl 118 set ref 644*
+hbound                                                 builtin function         dcl 112 ref 132 302 389 488 505 528 574 590 604 608
+                                                                                  619
+intk_cardx                4            based           fixed bin(17,0)          level 2 dcl 41 set ref 154*
+io_type                1051            based           char(4)                  array level 4 dcl 41 set ref 624* 629* 634*
+iom_cardx                 5            based           fixed bin(17,0)          level 2 dcl 41 set ref 158*
+ipc_fips_cardx           11            based           fixed bin(17,0)          level 2 dcl 41 set ref 178*
+ipc_msp_model_names     637            based           structure                level 2 dcl 41
+ipc_mtp_model_names     657            based           structure                level 2 dcl 41
+len                       2     000114 automatic       fixed bin(18,0)          array level 3 dcl 118 set ref 638* 640*
+ltrim                                                  builtin function         dcl 112 ref 501
+m                               000104 automatic       fixed bin(17,0)          dcl 109 set ref 498* 500 501*
+match_only_3             44(01)        based           bit(1)                   array level 5 packed packed unaligned dcl 41 set ref
+                                                                                  169* 175* 187* 197* 203* 209* 224* 231* 238* 245*
+                                                                                  252* 259* 266*
+match_second             44            based           bit(1)                   array level 5 packed packed unaligned dcl 41 set ref
+                                                                                  169* 175* 181* 187* 197* 203* 209* 223* 230* 237*
+                                                                                  244* 251* 258* 265*
+mem_cardx                 6            based           fixed bin(17,0)          level 2 dcl 41 set ref 162*
+model                   725            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 529* 534* 539* 544* 549*
+                                                                                  554* 559* 564* 569*
+model                   700            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 507* 511* 515* 519* 523*
+model                  1033            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 610* 613* 616*
+model                   203            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 304* 312* 320* 330* 340*
+                                                                                  350* 360* 370* 380*
+model                  1027            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 605*
+model                  1045            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 622* 627* 632*
+model                   565            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 489* 493* 500*
+model                   660            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 481*
+model                   640            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 472*
+model                  1012            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 592* 595* 598* 601*
+model                   413            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 391* 399* 407* 419* 431*
+                                                                                  443* 456*
+model                   772            based           fixed bin(17,0)          array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 575* 578* 581* 584* 587*
+mpc_cardx                13            based           fixed bin(17,0)          level 2 dcl 41 set ref 190*
+mpc_msp_cardx             7            based           fixed bin(17,0)          level 2 dcl 41 set ref 166*
+mpc_msp_model_names     202            based           structure                level 2 dcl 41
+mpc_mtp_cardx            10            based           fixed bin(17,0)          level 2 dcl 41 set ref 172*
+mpc_mtp_model_names     412            based           structure                level 2 dcl 41
+mpc_urp_cardx            12            based           fixed bin(17,0)          level 2 dcl 41 set ref 184*
+mpc_urp_model_names     564            based           structure                level 2 dcl 41
+mpcs_cardx               17            based           fixed bin(17,0)          level 2 dcl 41 set ref 212*
+mpcs_msp_cardx           14            based           fixed bin(17,0)          level 2 dcl 41 set ref 194*
+mpcs_mtp_cardx           15            based           fixed bin(17,0)          level 2 dcl 41 set ref 200*
+mpcs_urp_cardx           16            based           fixed bin(17,0)          level 2 dcl 41 set ref 206*
+name                    773            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 576* 579* 582* 585* 588*
+name                    641            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 473*
+name                     42            based           char(4)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 139* 143* 147* 151* 155*
+                                                                                  159* 163* 167* 173* 179* 185* 191* 195* 201* 207*
+                                                                                  213* 217* 221* 228* 235* 242* 249* 256* 263* 270*
+                                                                                  274* 278* 282* 286* 290* 294* 298*
+name                    566            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 490* 494* 501*
+name                   1046            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 623* 628* 633*
+name                    726            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 530* 535* 540* 545* 550*
+                                                                                  555* 560* 565* 570*
+name                   1034            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 611* 614* 617*
+name                   1030            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 606*
+name                    414            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 392* 400* 408* 420* 432*
+                                                                                  444* 457*
+name                    701            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 508* 512* 516* 520* 524*
+name                   1013            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 593* 596* 599* 602*
+name                    661            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 482*
+name                    204            based           char(8)                  array level 4 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 305* 313* 321* 331* 341*
+                                                                                  351* 361* 371* 381*
+names                  1045            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 619
+names                  1027            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 604
+names                   660            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_"
+names                  1033            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 608
+names                   565            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 488
+names                   725            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 528
+names                   700            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 505
+names                  1012            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 590
+names                   772            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 574
+names                   413            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 389
+names                   203            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_" set ref 302
+names                   640            based           structure                array level 3 in structure "c" dcl 41 in procedure
+                                                                                  "config_data_"
+null                                                   builtin function         dcl 112 ref 121 639 651
+num_exclude_names        40     000114 automatic       fixed bin(17,0)          level 2 dcl 118 set ref 642*
+p                               000114 automatic       pointer                  array level 3 dcl 118 set ref 637* 639*
+parm_cardx               20            based           fixed bin(17,0)          level 2 dcl 41 set ref 216*
+per_card                 42            based           structure                array level 3 dcl 41 set ref 132
+printer_model_names     771            based           structure                level 2 dcl 41
+prph_cardx               31            based           fixed bin(17,0)          level 2 dcl 41 set ref 269*
+prph_ccu_cardx           26            based           fixed bin(17,0)          level 2 dcl 41 set ref 248*
+prph_dsk_cardx           22            based           fixed bin(17,0)          level 2 dcl 41 set ref 220*
+prph_opc_cardx           30            based           fixed bin(17,0)          level 2 dcl 41 set ref 262*
+prph_prt_cardx           23            based           fixed bin(17,0)          level 2 dcl 41 set ref 227*
+prph_pun_cardx           25            based           fixed bin(17,0)          level 2 dcl 41 set ref 241*
+prph_rdr_cardx           24            based           fixed bin(17,0)          level 2 dcl 41 set ref 234*
+prph_tap_cardx           27            based           fixed bin(17,0)          level 2 dcl 41 set ref 255*
+punch_model_names      1032            based           structure                level 2 dcl 41
+reader_model_names     1011            based           structure                level 2 dcl 41
+release_temp_segment_           000014 constant        entry                    external dcl 104 ref 651
+root_cardx               32            based           fixed bin(17,0)          level 2 dcl 41 set ref 273*
+salv_cardx               33            based           fixed bin(17,0)          level 2 dcl 41 set ref 277*
+schd_cardx               34            based           fixed bin(17,0)          level 2 dcl 41 set ref 281*
+second_field             43            based           char(4)                  array level 4 dcl 41 set ref 135* 168* 174* 180*
+                                                                                  186* 196* 202* 208* 222* 229* 236* 243* 250* 257*
+                                                                                  264*
+sections                        000114 automatic       structure                array level 2 dcl 118
+seg_name                 30     000114 automatic       char(32)                 level 2 dcl 118 set ref 645*
+size                                                   builtin function         dcl 112 ref 638
+sst_cardx                35            based           fixed bin(17,0)          level 2 dcl 41 set ref 285*
+stok_cardx               36            based           fixed bin(17,0)          level 2 dcl 41 set ref 289*
+string                                                 builtin function         dcl 112 set ref 136*
+struct_name               3     000114 automatic       char(32)                 array level 3 dcl 118 set ref 641*
+switches                 44     000114 automatic       structure                level 2 dcl 118
+tape_drive_model_names
+                        724            based           structure                level 2 dcl 41
+tbls_cardx               37            based           fixed bin(17,0)          level 2 dcl 41 set ref 293*
+udsk_cardx               40            based           fixed bin(17,0)          level 2 dcl 41 set ref 297*
+unspec                                                 builtin function         dcl 112 set ref 130* 636*
+valid_drives            647            based           fixed bin(17,0)          array level 4 in structure "c" packed packed
+                                                                                  unaligned dcl 41 in procedure "config_data_" set
+                                                                                  ref 475* 476* 477*
+valid_drives            422            based           fixed bin(17,0)          array level 4 in structure "c" packed packed
+                                                                                  unaligned dcl 41 in procedure "config_data_" set
+                                                                                  ref 394* 395* 396* 402* 403* 404* 410* 411* 412*
+                                                                                  413* 414* 415* 422* 423* 424* 425* 426* 427* 434*
+                                                                                  435* 436* 437* 438* 439* 446* 447* 448* 449* 450*
+                                                                                  451* 452* 453* 459* 460* 461* 462* 463* 464* 465*
+                                                                                  466*
+valid_drives            212            based           fixed bin(17,0)          array level 4 in structure "c" packed packed
+                                                                                  unaligned dcl 41 in procedure "config_data_" set
+                                                                                  ref 307* 308* 309* 315* 316* 317* 323* 324* 325*
+                                                                                  326* 327* 333* 334* 335* 336* 337* 343* 344* 345*
+                                                                                  346* 347* 353* 354* 355* 356* 357* 363* 364* 365*
+                                                                                  366* 367* 373* 374* 375* 376* 377* 383* 384* 385*
+                                                                                  386* 387*
+valid_drives            667            based           fixed bin(17,0)          array level 4 in structure "c" packed packed
+                                                                                  unaligned dcl 41 in procedure "config_data_" set
+                                                                                  ref 484* 485*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+config_data_$chnl_cardx         000022 external static fixed bin(17,0)          dcl 2-27
+config_data_$clok_cardx         000024 external static fixed bin(17,0)          dcl 2-29
+config_data_$cpu_cardx          000026 external static fixed bin(17,0)          dcl 2-31
+config_data_$fnp_cardx          000030 external static fixed bin(17,0)          dcl 2-33
+config_data_$intk_cardx         000032 external static fixed bin(17,0)          dcl 2-35
+config_data_$iom_cardx          000034 external static fixed bin(17,0)          dcl 2-37
+config_data_$ipc_fips_cardx     000044 external static fixed bin(17,0)          dcl 2-45
+config_data_$mem_cardx          000036 external static fixed bin(17,0)          dcl 2-39
+config_data_$mpc_cardx          000050 external static fixed bin(17,0)          dcl 2-49
+config_data_$mpc_msp_cardx      000040 external static fixed bin(17,0)          dcl 2-41
+config_data_$mpc_mtp_cardx      000042 external static fixed bin(17,0)          dcl 2-43
+config_data_$mpc_urp_cardx      000046 external static fixed bin(17,0)          dcl 2-47
+config_data_$mpcs_cardx         000060 external static fixed bin(17,0)          dcl 2-57
+config_data_$mpcs_msp_cardx     000052 external static fixed bin(17,0)          dcl 2-51
+config_data_$mpcs_mtp_cardx     000054 external static fixed bin(17,0)          dcl 2-53
+config_data_$mpcs_urp_cardx     000056 external static fixed bin(17,0)          dcl 2-55
+config_data_$parm_cardx         000062 external static fixed bin(17,0)          dcl 2-59
+config_data_$part_cardx         000064 external static fixed bin(17,0)          dcl 2-61
+config_data_$prph_cardx         000104 external static fixed bin(17,0)          dcl 2-77
+config_data_$prph_ccu_cardx     000076 external static fixed bin(17,0)          dcl 2-71
+config_data_$prph_dsk_cardx     000066 external static fixed bin(17,0)          dcl 2-63
+config_data_$prph_opc_cardx     000102 external static fixed bin(17,0)          dcl 2-75
+config_data_$prph_prt_cardx     000070 external static fixed bin(17,0)          dcl 2-65
+config_data_$prph_pun_cardx     000074 external static fixed bin(17,0)          dcl 2-69
+config_data_$prph_rdr_cardx     000072 external static fixed bin(17,0)          dcl 2-67
+config_data_$prph_tap_cardx     000100 external static fixed bin(17,0)          dcl 2-73
+config_data_$root_cardx         000106 external static fixed bin(17,0)          dcl 2-79
+config_data_$salv_cardx         000110 external static fixed bin(17,0)          dcl 2-81
+config_data_$schd_cardx         000112 external static fixed bin(17,0)          dcl 2-83
+config_data_$sst_cardx          000114 external static fixed bin(17,0)          dcl 2-85
+config_data_$stok_cardx         000116 external static fixed bin(17,0)          dcl 2-87
+config_data_$tbls_cardx         000120 external static fixed bin(17,0)          dcl 2-89
+config_data_$udsk_cardx         000122 external static fixed bin(17,0)          dcl 2-91
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+clean_up                        010774 constant        label                    dcl 651 ref 124
+config_data_                    000253 constant        entry                    external dcl 35
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0     11650       12026   11051       11660
+Length     21032   11051       156        6767     576           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+config_data_                        151 external procedure  is an external procedure.  
+on unit on line 123                  64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+config_data_             000100 c_ptr                       config_data_
+                         000102 code                        config_data_
+                         000103 ccx                         config_data_
+                         000104 m                           config_data_
+                         000114 CDSA                        config_data_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           bound_ck_signal
+enable_op           shorten_stack       ext_entry           int_entry           size_check_fx1      signal_stringrange
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_          get_temp_segment_             release_temp_segment_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+config_data_$ccu_model_names  config_data_$config_cards     config_data_$console_model_names
+config_data_$disk_drive_model_names                         config_data_$ipc_msp_model_names
+config_data_$ipc_mtp_model_names                            config_data_$mpc_msp_model_names
+config_data_$mpc_mtp_model_names                            config_data_$mpc_urp_model_names
+config_data_$printer_model_names                            config_data_$punch_model_names
+config_data_$reader_model_names                             config_data_$tape_drive_model_names
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     35 000252       121 000260       123 000262       124 000276       127 000301       128 000327       130 000362
+    132 000366       133 000372       135 000375       136 000416       137 000417       139 000423       141 000434
+    142 000440       143 000442       145 000453       146 000457       147 000461       149 000472       150 000476
+    151 000500       153 000511       154 000515       155 000517       157 000530       158 000534       159 000536
+    161 000547       162 000553       163 000555       165 000566       166 000572       167 000574       168 000605
+    169 000616       171 000640       172 000644       173 000646       174 000657       175 000670       177 000712
+    178 000716       179 000720       180 000731       181 000742       183 000753       184 000757       185 000761
+    186 000772       187 001003       189 001025       190 001031       191 001033       193 001044       194 001050
+    195 001052       196 001063       197 001074       199 001116       200 001122       201 001124       202 001135
+    203 001146       205 001170       206 001174       207 001176       208 001207       209 001220       211 001242
+    212 001246       213 001250       215 001261       216 001265       217 001267       219 001300       220 001304
+    221 001306       222 001317       223 001330       224 001341       226 001352       227 001356       228 001360
+    229 001371       230 001402       231 001413       233 001424       234 001430       235 001432       236 001443
+    237 001454       238 001465       240 001476       241 001502       242 001504       243 001515       244 001526
+    245 001537       247 001550       248 001554       249 001556       250 001567       251 001600       252 001611
+    254 001622       255 001626       256 001630       257 001641       258 001652       259 001663       261 001674
+    262 001700       263 001702       264 001713       265 001724       266 001735       268 001746       269 001752
+    270 001754       272 001765       273 001771       274 001773       276 002004       277 002010       278 002012
+    280 002023       281 002027       282 002031       284 002042       285 002046       286 002050       288 002061
+    289 002065       290 002067       292 002100       293 002104       294 002106       296 002117       297 002123
+    298 002125       300 002136       302 002141       304 002144       305 002157       306 002172       307 002205
+    308 002240       309 002262       311 002304       312 002311       313 002324       314 002337       315 002352
+    316 002404       317 002426       319 002450       320 002455       321 002470       322 002503       323 002516
+    324 002550       325 002572       326 002614       327 002636       329 002660       330 002665       331 002700
+    332 002713       333 002726       334 002760       335 003002       336 003024       337 003046       339 003070
+    340 003075       341 003110       342 003123       343 003136       344 003170       345 003212       346 003234
+    347 003256       349 003300       350 003305       351 003320       352 003333       353 003346       354 003400
+    355 003422       356 003444       357 003466       359 003510       360 003515       361 003530       362 003543
+    363 003556       364 003610       365 003632       366 003654       367 003676       369 003720       370 003725
+    371 003740       372 003753       373 003766       374 004020       375 004042       376 004064       377 004106
+    379 004130       380 004135       381 004150       382 004163       383 004176       384 004230       385 004252
+    386 004274       387 004316       389 004340       390 004344       391 004347       392 004362       393 004375
+    394 004410       395 004442       396 004464       398 004506       399 004513       400 004526       401 004541
+    402 004554       403 004606       404 004630       406 004652       407 004657       408 004672       409 004705
+    410 004720       411 004752       412 004774       413 005016       414 005040       415 005062       418 005104
+    419 005111       420 005124       421 005137       422 005152       423 005204       424 005226       425 005250
+    426 005272       427 005314       430 005336       431 005343       432 005356       433 005371       434 005404
+    435 005436       436 005460       437 005502       438 005524       439 005546       442 005570       443 005575
+    444 005610       445 005623       446 005636       447 005670       448 005712       449 005734       450 005756
+    451 006000       452 006022       453 006044       455 006066       456 006073       457 006106       458 006121
+    459 006134       460 006166       461 006210       462 006232       463 006254       464 006276       465 006320
+    466 006342       468 006364       470 006370       472 006372       473 006405       474 006420       475 006433
+    476 006466       477 006510       479 006532       480 006536       481 006540       482 006553       483 006566
+    484 006601       485 006634       488 006656       489 006662       490 006665       491 006670       493 006673
+    494 006676       495 006701       497 006704       498 006707       499 006715       500 006722       501 006736
+    502 007023       503 007037       505 007044       506 007051       507 007054       508 007067       509 007102
+    510 007112       511 007116       512 007131       513 007144       514 007154       515 007160       516 007173
+    517 007206       518 007216       519 007222       520 007235       521 007250       522 007261       523 007265
+    524 007300       525 007313       527 007324       528 007330       529 007333       530 007346       531 007361
+    533 007371       534 007375       535 007410       536 007423       538 007433       539 007437       540 007452
+    541 007465       543 007475       544 007502       545 007515       546 007530       548 007540       549 007544
+    550 007557       551 007572       553 007602       554 007606       555 007621       556 007634       558 007644
+    559 007651       560 007664       561 007677       563 007707       564 007713       565 007726       566 007741
+    568 007751       569 007755       570 007770       571 010003       573 010014       574 010020       575 010023
+    576 010036       577 010051       578 010055       579 010070       580 010103       581 010107       582 010122
+    583 010135       584 010142       585 010155       586 010170       587 010174       588 010207       590 010222
+    591 010225       592 010230       593 010243       594 010256       595 010263       596 010276       597 010311
+    598 010315       599 010330       600 010343       601 010347       602 010362       604 010375       605 010401
+    606 010404       608 010407       609 010412       610 010415       611 010430       612 010443       613 010447
+    614 010462       615 010475       616 010501       617 010514       619 010527       620 010533       622 010536
+    623 010551       624 010564       625 010575       627 010601       628 010614       629 010627       630 010640
+    632 010644       633 010657       634 010672       636 010703       637 010706       638 010710       639 010714
+    640 010716       641 010717       642 010722       643 010726       644 010730       645 010732       647 010735
+    648 010750       651 010774       653 011026
+
+
+Object Segment >spec>install>1110>config_data_
+Created on 11/11/89  1059.8 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0    1064    1602    1612    1612
+Length    2103    1064     516      10     255       0
+
+
+48 Definitions:
+
+
+segname:    config_data_
+
+text|1026       ccu_model_names
+text|0          chnl_cardx
+text|1          clok_cardx
+text|41         config_cards
+text|1044       console_model_names
+text|2          cpu_cardx
+text|677        disk_drive_model_names
+text|3          fnp_cardx
+text|4          intk_cardx
+text|5          iom_cardx
+text|11         ipc_fips_cardx
+text|637        ipc_msp_model_names
+text|657        ipc_mtp_model_names
+text|6          mem_cardx
+text|13         mpc_cardx
+text|7          mpc_msp_cardx
+text|202        mpc_msp_model_names
+text|10         mpc_mtp_cardx
+text|412        mpc_mtp_model_names
+text|12         mpc_urp_cardx
+text|564        mpc_urp_model_names
+text|17         mpcs_cardx
+text|14         mpcs_msp_cardx
+text|15         mpcs_mtp_cardx
+text|16         mpcs_urp_cardx
+text|20         parm_cardx
+text|21         part_cardx
+text|771        printer_model_names
+text|31         prph_cardx
+text|26         prph_ccu_cardx
+text|22         prph_dsk_cardx
+text|30         prph_opc_cardx
+text|23         prph_prt_cardx
+text|25         prph_pun_cardx
+text|24         prph_rdr_cardx
+text|27         prph_tap_cardx
+text|1032       punch_model_names
+text|1011       reader_model_names
+text|32         root_cardx
+text|33         salv_cardx
+text|34         schd_cardx
+text|35         sst_cardx
+text|36         stok_cardx
+symb|0          symbol_table
+text|724        tape_drive_model_names
+text|37         tbls_cardx
+text|40         udsk_cardx
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

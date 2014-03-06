@@ -1,21 +1,24 @@
-!SIZE 000162
+!INFO date Tue Feb 18 04:16:48 2014 UTC
+!INFO src TestBugs.as8
+!SIZE 000200
 !SEGNAME main
 !SEGDEF main 000000
-!LINKAGE 000134 11
-!SEGREF UtilsA ioa 000134
-!SEGREF UtilsA rd_clockA 000136
-!SEGREF lot_ lot_ 000140
-!SEGREF stack_0 stack_0 000142
-!SEGREF Bug_B_Gone_1 _main_BBG_1 000144
-!SEGREF simh_operators_ operator_table 000146
-!SEGREF simh_operators_ operator_table 000150 +632
-!SEGREF simh_operators_ operator_table 000152 +633
-!SEGREF simh_operators_ operator_table 000154 +634
-!SEGREF simh_operators_ operator_table 000156 +635
-!SEGREF simh_operators_ operator_table 000160 +636
+!LINKAGE 000150 12
+!SEGREF UtilsA ioa 000150
+!SEGREF UtilsA rd_clockA 000152
+!SEGREF lot_ lot_ 000154
+!SEGREF stack_0 stack_0 000156
+!SEGREF Bug_B_Gone_1 _main_BBG_1 000160
+!SEGREF Bug_B_Gone_2 _main_BBG_2 000162
+!SEGREF simh_operators_ operator_table 000164
+!SEGREF simh_operators_ operator_table 000166 +632
+!SEGREF simh_operators_ operator_table 000170 +633
+!SEGREF simh_operators_ operator_table 000172 +634
+!SEGREF simh_operators_ operator_table 000174 +635
+!SEGREF simh_operators_ operator_table 000176 +636
 !GO 000000
-000000 xxxx 000064702000     tsx2    setupFXE
-000001 xxxx 000036710000     tra     call_main
+000000 xxxx 000074352020     epp2	l43170,n*
+000001 xxxx 000100702000     tsx2    setupFXE
 000002 xxxx 000000235000     LDA     I
 000003 xxxx 400000272120     tsp2	pr4|I, *        " ioa
 000004 xxxx 105124150151     acc     /This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's /
@@ -37,13 +40,13 @@
 000024 xxxx 040111164047 
 000025 xxxx 163040040040 
 000026 xxxx 400002272120     tsp2    rd_clockA
-000027 xxxx 000062757000     staq	Date        " MM/DD HH:MM
+000027 xxxx 000070757000     staq	Date        " MM/DD HH:MM
 000030 xxxx 400000272120     tsp2	ioa
 000031 xxxx 010047136147     acc     /'^g^g'\r\n/
 000032 xxxx 136147047015 
 000033 xxxx 012040040040 
-000034 xxxx 000062011000     nop     Date
-000035 xxxx 000063011000     nop     Date+1
+000034 xxxx 000070011000     nop     Date
+000035 xxxx 000071011000     nop     Date+1
 000036 xxxx 600000254100     call    _main_BBG_1(ap|0)
 000037 xxxx 600040753100 
 000040 xxxx 000000350100 
@@ -51,78 +54,93 @@
 000042 xxxx 700036670120 
 000043 xxxx 600000173100 
 000044 xxxx 600040073100 
-000045 xxxx 400000272120     tsp2	ioa
-000046 xxxx 046124055110     acc     /T-H-A-T-S all folks (from 0|main) !!! /
-000047 xxxx 055101055124 
-000050 xxxx 055123040141 
-000051 xxxx 154154040146 
-000052 xxxx 157154153163 
-000053 xxxx 040050146162 
-000054 xxxx 157155040060 
-000055 xxxx 174155141151 
-000056 xxxx 156051040041 
-000057 xxxx 041041040040 
-000060 xxxx 000000616000 	dis
-000061 xxxx 000000011000 even "(allocating 1 nop)
-000062 xxxx 000000000000 Date:   bss     2
-000064 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
-000065 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
-000066 xxxx 400006373520         eppsb   stack_0         " set-up stack base
-000067 xxxx 400006373520     eppsb   stack_0
-000070 xxxx 400006372120     eppsp   stack_0
-000071 xxxx 000100152003     adwpsp  =0100,du
-000072 xxxx 700022652100     sprisp	sb|stack_header.stack_begin_ptr 		" save beginning of 1st stack frame
-000073 xxxx 700024652100     sprisp	sb|stack_header.stack_end_ptr
-000074 xxxx 400004352120 	eppbp	lot_						" set the lot ptrs
-000075 xxxx 700026252100 	spribp	sb|stack_header.lot_ptr
-000076 xxxx 700052252100 	spribp	sb|stack_header.isot_ptr
-000077 xxxx 000130352020 	eppbp	=its(-2,2),*		" signal ptr terminates process
-000100 xxxx 700030252100 	spribp	sb|stack_header.signal_ptr
-000101 xxxx 400012352120 	eppbp	simh_operators_$operator_table  		" Get a ptr to  PL/I operators table.
-000102 xxxx 700034252100 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
-000103 xxxx 400014352120 	eppbp	simh_operators_$operator_table+call_offset,*
-000104 xxxx 700036252100 	spribp	sb|stack_header.call_op_ptr
-000105 xxxx 400016352120 	eppbp	simh_operators_$operator_table+push_offset,*
-000106 xxxx 700040252100 	spribp	sb|stack_header.push_op_ptr
-000107 xxxx 400020352120 	eppbp	simh_operators_$operator_table+return_offset,*
-000110 xxxx 700042252100 	spribp	sb|stack_header.return_op_ptr
-000111 xxxx 400022352120 	eppbp	simh_operators_$operator_table+return_no_pop_offset,*
-000112 xxxx 700044252100 	spribp	sb|stack_header.ret_no_pop_op_ptr
-000113 xxxx 400024352120 	eppbp	simh_operators_$operator_table+entry_offset,*
-000114 xxxx 700046252100 	spribp	sb|stack_header.entry_op_ptr
-000115 xxxx 000132352020 	eppbp	=its(-1,1),*
-000116 xxxx 700070252100 	spribp	sb|stack_header.heap_header_ptr
-000117 xxxx 700046272120     tsp2 pr7|stack_header.entry_op_ptr,*
-000120 xxxx 000060627000     push
-000121 xxxx 700040272120 
-000122 xxxx 000000710012 	tra		0,2				" ... and return to caller
-000123 xxxx 000000011000 	even "(allocating 1 nop)
-000124 xxxx 000000000004 no_args:	zero	0,4
-000125 xxxx 000000000000 	zero	0,0
-000126 xxxx 000000000000 decimal literal (=0)
-000130 xxxx 077776000043 its literal (=its(77776,000002,00))
-000131 xxxx 000002000000 
-000132 xxxx 077777000043 its literal (=its(77777,000001,00))
-000133 xxxx 000001000000 
-000134 xxxx 000000000043 link UtilsA$ioa
-000135 xxxx 000000000000 
-000136 xxxx 000000000043 link UtilsA$rd_clockA
-000137 xxxx 000000000000 
-000140 xxxx 000000000043 link lot_$lot_
-000141 xxxx 000000000000 
-000142 xxxx 000000000043 link stack_0$stack_0
-000143 xxxx 000000000000 
-000144 xxxx 000000000043 link Bug_B_Gone_1$_main_BBG_1
-000145 xxxx 000000000000 
-000146 xxxx 000000000043 link simh_operators_$operator_table
-000147 xxxx 000000000000 
-000150 xxxx 000000000043 link simh_operators_$operator_table+632
-000151 xxxx 001170000000 
-000152 xxxx 000000000043 link simh_operators_$operator_table+633
-000153 xxxx 001171000000 
-000154 xxxx 000000000043 link simh_operators_$operator_table+634
-000155 xxxx 001172000000 
-000156 xxxx 000000000043 link simh_operators_$operator_table+635
-000157 xxxx 001173000000 
-000160 xxxx 000000000043 link simh_operators_$operator_table+636
-000161 xxxx 001174000000 
+000045 xxxx 600000254100     call    _main_BBG_2(ap|0)
+000046 xxxx 600040753100 
+000047 xxxx 000000350100 
+000050 xxxx 400012352120 
+000051 xxxx 700036670120 
+000052 xxxx 600000173100 
+000053 xxxx 600040073100 
+000054 xxxx 400000272120     tsp2	ioa
+000055 xxxx 046124055110     acc     /T-H-A-T-S all folks (from 0|main) !!! /
+000056 xxxx 055101055124 
+000057 xxxx 055123040141 
+000060 xxxx 154154040146 
+000061 xxxx 157154153163 
+000062 xxxx 040050146162 
+000063 xxxx 157155040060 
+000064 xxxx 174155141151 
+000065 xxxx 156051040041 
+000066 xxxx 041041040040 
+000067 xxxx 000000616000 	dis
+000070 xxxx 000000000000 Date:   bss     2
+000072 xxxx 000072616000 	dis	*
+000073 xxxx 000000011000     even "(allocating 1 nop)
+000074 xxxx 000011000043         ITS 9, 16
+000075 xxxx 000020000000 
+000076 xxxx 000400000043         oct	000400000043
+000077 xxxx 000000000000         oct	000000000000
+000100 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
+000101 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
+000102 xxxx 400006373520         eppsb   stack_0         " set-up stack base
+000103 xxxx 400006373520     eppsb   stack_0
+000104 xxxx 400006372120     eppsp   stack_0
+000105 xxxx 000100152003     adwpsp  =0100,du
+000106 xxxx 700022652100     sprisp	sb|stack_header.stack_begin_ptr 		" save beginning of 1st stack frame
+000107 xxxx 700024652100     sprisp	sb|stack_header.stack_end_ptr
+000110 xxxx 400004352120 	eppbp	lot_						" set the lot ptrs
+000111 xxxx 700026252100 	spribp	sb|stack_header.lot_ptr
+000112 xxxx 700052252100 	spribp	sb|stack_header.isot_ptr
+000113 xxxx 000144352020 	eppbp	=its(-2,2),*		" signal ptr terminates process
+000114 xxxx 700030252100 	spribp	sb|stack_header.signal_ptr
+000115 xxxx 400014352120 	eppbp	simh_operators_$operator_table  		" Get a ptr to  PL/I operators table.
+000116 xxxx 700034252100 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
+000117 xxxx 400016352120 	eppbp	simh_operators_$operator_table+call_offset,*
+000120 xxxx 700036252100 	spribp	sb|stack_header.call_op_ptr
+000121 xxxx 400020352120 	eppbp	simh_operators_$operator_table+push_offset,*
+000122 xxxx 700040252100 	spribp	sb|stack_header.push_op_ptr
+000123 xxxx 400022352120 	eppbp	simh_operators_$operator_table+return_offset,*
+000124 xxxx 700042252100 	spribp	sb|stack_header.return_op_ptr
+000125 xxxx 400024352120 	eppbp	simh_operators_$operator_table+return_no_pop_offset,*
+000126 xxxx 700044252100 	spribp	sb|stack_header.ret_no_pop_op_ptr
+000127 xxxx 400026352120 	eppbp	simh_operators_$operator_table+entry_offset,*
+000130 xxxx 700046252100 	spribp	sb|stack_header.entry_op_ptr
+000131 xxxx 000146352020 	eppbp	=its(-1,1),*
+000132 xxxx 700070252100 	spribp	sb|stack_header.heap_header_ptr
+000133 xxxx 700046272120     tsp2 pr7|stack_header.entry_op_ptr,*
+000134 xxxx 000060627000     push
+000135 xxxx 700040272120 
+000136 xxxx 000000710012 	tra		0,2				" ... and return to caller
+000137 xxxx 000000011000 	even "(allocating 1 nop)
+000140 xxxx 000000000004 no_args:	zero	0,4
+000141 xxxx 000000000000 	zero	0,0
+000142 xxxx 000000000000 decimal literal (=0)
+000143 xxxx 000000000000 decimal literal (=0)
+000144 xxxx 077776000043 its literal (=its(77776,000002,00))
+000145 xxxx 000002000000 
+000146 xxxx 077777000043 its literal (=its(77777,000001,00))
+000147 xxxx 000001000000 
+000150 xxxx 000000000043 link UtilsA$ioa
+000151 xxxx 000000000000 
+000152 xxxx 000000000043 link UtilsA$rd_clockA
+000153 xxxx 000000000000 
+000154 xxxx 000000000043 link lot_$lot_
+000155 xxxx 000000000000 
+000156 xxxx 000000000043 link stack_0$stack_0
+000157 xxxx 000000000000 
+000160 xxxx 000000000043 link Bug_B_Gone_1$_main_BBG_1
+000161 xxxx 000000000000 
+000162 xxxx 000000000043 link Bug_B_Gone_2$_main_BBG_2
+000163 xxxx 000000000000 
+000164 xxxx 000000000043 link simh_operators_$operator_table
+000165 xxxx 000000000000 
+000166 xxxx 000000000043 link simh_operators_$operator_table+632
+000167 xxxx 001170000000 
+000170 xxxx 000000000043 link simh_operators_$operator_table+633
+000171 xxxx 001171000000 
+000172 xxxx 000000000043 link simh_operators_$operator_table+634
+000173 xxxx 001172000000 
+000174 xxxx 000000000043 link simh_operators_$operator_table+635
+000175 xxxx 001173000000 
+000176 xxxx 000000000043 link simh_operators_$operator_table+636
+000177 xxxx 001174000000 

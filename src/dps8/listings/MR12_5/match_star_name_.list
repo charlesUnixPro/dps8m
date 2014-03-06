@@ -1,0 +1,2273 @@
+	COMPILATION LISTING OF SEGMENT match_star_name_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1004.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  *****************************************************
+        2*        *                                                   *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987          *
+        4*        *                                                   *
+        5*        * Copyright (C) 1982 by Massachusetts Institute of  *
+        6*        * Technology and Honeywell Information Systems Inc. *
+        7*        *                                                   *
+        8*        ***************************************************** */
+        9 
+       10 /*^			Match Star Name
+       11*
+       12*   This module implements the Multics Star Convention, as described in the
+       13*   MPM Reference Guide, Honeywell publication AG91.  It is a complete
+       14*   reimplementation of the Star Convention for MR12, and is redefined in an
+       15*   upward compatible manner to accept previously invalid input.
+       16*
+       17*   The Star Convention is used to partition sets of names or named entities
+       18*   into two subsets: those that match, and those that don't.  Either subset
+       19*   may be empty.  For example, a directory may contain a set of files, and
+       20*   each file may have several entrynames.  A starname can be used to select
+       21*   all the files which have at least one entryname which matches the
+       22*   starname.  Further processing is generally done on the selected subset.
+       23*
+       24*   This procedure implements the comparison of a single starname to an
+       25*   entryname.  Two results are interesting: either they match, or they do
+       26*   not.  It is left to the caller to iterate over sets of entrynames and
+       27*   starnames as appropriate.  The starname may be invalid, in which case a
+       28*   match is impossible, although a mismatch can in some cases be detected
+       29*   before the syntax error is found.
+       30*
+       31*   The Star Convention is defined as follows:
+       32*
+       33*    1.  Names, whether entrynames or starnames, are PL/I character strings.
+       34*        Trailing ASCII space characters are not significant for purposes of
+       35*        comparison, so that names stored in variables of different length can
+       36*        be considered equal.  The end of the name precedes any such spaces.
+       37*
+       38*    2.  Names are divided into components.  Any name has at least one
+       39*        component, which is bounded by the beginning and end of the name.  If
+       40*        Dots (periods) are present, they delimit the name into multiple
+       41*        components.  If two component boundaries are consecutive, they define
+       42*        a null component between them.
+       43*
+       44*    3.  Starnames are comparison templates which contain literal characters,
+       45*        component delimiters, and wildcard characters.  Components are
+       46*        delimited by Dots.  Star (asterisk) and Query (question mark)
+       47*        characters can be grouped to form four different wildcard constructs.
+       48*        Any character other than Dot, Star, Query or a trailing space matches
+       49*        itself only.
+       50*        
+       51*    4.  A starname which contains no wildcard characters can be compared to
+       52*        an entryname using standard PL/I rules for character string equality.
+       53*       
+       54*    5.  Each Query character stands alone, so a string of three Query
+       55*        characters is three occurences of the Query construct.  Each Query
+       56*        matches exactly one character in the entryname, but may not match a
+       57*        Dot, so that it can't cross a component boundary.
+       58*
+       59*    6.  Each isolated Star character can match any number of characters
+       60*        within a component, including none at all.  A single Star may not
+       61*        match a Dot in the entryname, so that it can't cross component
+       62*        boundaries.
+       63*
+       64*    7.  A Doublestar consists of two consecutive Star characters.  A run of
+       65*        more than two consecutive Star characters is illegal.  A Doublestar
+       66*        has one of two meanings, depending on its context.
+       67*
+       68*    8.  A Doublestar component is a Doublestar which has a component boundary
+       69*        on both sides.  Any other Doublestar is said to be floating.
+       70*
+       71*    9.  A floating Doublestar matches any number of characters in the
+       72*        entryname, including none.  It can even match a Dot, so that it can
+       73*        cross component boundaries.
+       74*
+       75*   10.  A Doublestar component matches any number of entire components in the
+       76*        entryname, including none.  It can't match partial components.  Dots
+       77*        in the starname act like literal characters in all other situations,
+       78*        but when they delimit a Doublestar component they need not correspond
+       79*        to a Dot in the entryname.  When a Doublestar component matches zero
+       80*        components in the entryname, it nevertheless must occur at a
+       81*        component boundary in the entryname.
+       82*
+       83*   Examples:
+       84*
+       85*      "foobar" and "foo?ar" each match "foobar",
+       86*		        but do not match "fobar", "foo.ar" or "fooobar".
+       87*
+       88*      "foo*" matches "foo" and "foobar" but does not match "foo.bar".
+       89*
+       90*      "**bar" matches "foobar" and "foo.bar" but does not match "bar.foo".
+       91*
+       92*      ".**." matches ".", ".." and ".foo." but does not match "" or "foo.".
+       93*
+       94*      "foo***" and "*.***" are invalid.
+       95*
+       96*			Implementation
+       97*
+       98*   The old match_star_name_ completely parsed the starname into components
+       99*   and subcomponents (delimited by a Star in the component) before starting
+      100*   comparison.  That implementation imposed a number of restrictions which
+      101*   have been removed.  Starnames and entrynames were limited to 32
+      102*   characters in length; null in starnames components were illegal; only one
+      103*   Star was permitted in each component, except for a single Doublestar
+      104*   component.
+      105*
+      106*   Permitting the starname and entryname to each be up to a segment in
+      107*   length, permitting multiple Stars per component and permitting multiple
+      108*   Doublestars per starname required a complete rethinking of the matching
+      109*   strategy.  Since the description of a parsed starname can easily take up
+      110*   more space than the starname does, parsing the whole name in advance is
+      111*   no longer feasible.  Instead, the parser obtains a certain amount of
+      112*   information, and then the matching routines are called.  If they succeed,
+      113*   more parse and match iterations are done until either a mismatch is
+      114*   found, the star name is exhausted, or an invalid construct is found.
+      115*
+      116*   The parser is designed to recover as much information as can be easily
+      117*   represented.  What is returns is an encoding which is described by the
+      118*   following diagram:
+      119*
+      120*      [Star construct][Query count][literal string][boundary]
+      121*
+      122*   First, combinations of Stars and Dots are parsed, to develop the Star
+      123*   construct.  This phase ends if a character other than Dot or Star is
+      124*   found, the starname is exhausted, if two consecutive dots are found, or
+      125*   if more than two consecutive Star components are found.  If the
+      126*   terminating character is a Query, a count of consecutive Queries is made
+      127*   in phase 2.  Stars embeded in Queries in most cases can be either ignored
+      128*   or added to the Star construct, because "?*" is equivalent to "*?".  When
+      129*   a character which is neither a Query not a Star is encountered, we begin
+      130*   phase 3, the collection of a literal character string.  The literal
+      131*   string ends when a Query or a Star is found, or when the starname is
+      132*   exhausted.  If the string is terminated by a Star which is immediately
+      133*   preceded by a Dot, that final Dot is part of the Star construct and not
+      134*   part of the literal string.
+      135*
+      136*   The parser returns this information in an integer which encodes the Star
+      137*   construct and several binary choices.  Were there any Queries?  Any
+      138*   literal string?  Is the starname exhausted?  Did the literal string end
+      139*   on a component boundary?  In addition, a Query count is returned.  If
+      140*   there was a literal string, its position and length are returned.  The
+      141*   encoded value is used to select a comparison routine.  If the comparison
+      142*   succeeds, and the star name is not exhausted, then the parser will be
+      143*   reinvoked to continue parsing from where it left off.  The parser
+      144*   position and state are remembered against this eventuality.  For example,
+      145*   if a Star is found following a literal string, then parsing resumes with
+      146*   the first character beyond that Star; the Star is already remembered in
+      147*   the new parser state that will be used if the literal compares
+      148*   sucessfully.
+      149*
+      150*   When matching following a Star or a Doublestar, a mismatch might not be
+      151*   detected until the parser had been reinvoked, perhaps several times.  For
+      152*   example, the starname "*x?y" would first parse the first two characters,
+      153*   then match the first two, next parse the last two characters, and finally
+      154*   match the last two.  If the second comparison step failed, it might be
+      155*   possible for the first comparison step to match at different place where
+      156*   the second comparison could succeed.  In this case, a failing comparison
+      157*   invokes a backup routine which tries to find an alternative match and
+      158*   restores the parser to a former position and state.  Because Stars match
+      159*   within a component, and Doublestars match the whole name, there are two
+      160*   possible retry levels.  If Star retry fails, Doublestar retry can attempt
+      161*   another component.
+      162*
+      163*   Extensive optimizations have been performed to permit the PL/I compiler
+      164*   to generate the most efficient possible code.  The most streamlined
+      165*   operation is matching, which may be used to iterate over large locked
+      166*   directories in ring zero.  The parser recognizes starnames which match
+      167*   all possible names in a single call, so it isn't even necessary to look
+      168*   at the entryname in that case.  The parser is also used for analyzing
+      169*   names, which is less time critical.  To improve space efficiency without
+      170*   hurting performance, some tables have been paired so that each word
+      171*   contains one entry from each table, one in the high halfword and the
+      172*   other in the low halfword.
+      173*
+      174*			Check Star Name
+      175*
+      176*   There are 4 classes of star names: 1) names which contain no wildcard
+      177*   characters, 2) names which match all possible names, 3) invalid names,
+      178*   and 4) names which contain wildcard characters but don't match all
+      179*   possible names.  If there are no wildcard characters, then PL/I
+      180*   comparison can be used.  Indeed, the name can be looked up in a hash
+      181*   table, or by binary search.  Detecting and specially processing such
+      182*   names can greatly improve performance.  If a starname matches all
+      183*   possible names, then there is no need to actually compare them; all the
+      184*   entities are selected for processing.  Names which contain three or more
+      185*   consecutive Stars are invalid; such names select nothing.  Only the
+      186*   remaining class of names *requires* the use of match_star_name_.
+      187*
+      188*   Although all four classes of names can be used with match_star_name_, it
+      189*   may be much more efficient to classify them in advance.  The
+      190*   check_star_name_ subroutine is provided for this purpose.  However,
+      191*   because starnames are often used with the Multics file system, a number
+      192*   of optional validity checks can be performed by check_star_name_.
+      193*
+      194*   There are three entrypoints:
+      195*
+      196*   1.  check_star_name_ is the most general and convenient.  It validates
+      197*       and classifies star names.  A bit string parameter permits an
+      198*       arbitrary combination of the optional tests.  An include file,
+      199*       check_star_name.incl.pl1, exists to aid in constructing control bit
+      200*       strings and interpreting the classification.  A number of error codes
+      201*       can be returned depending on the tests selected.
+      202*
+      203*   2.  check_star_name_$entry is an obsolete entrypoint retained for
+      204*       compatibility with the many existing programs which call it.  It is
+      205*       used to validate file system entrynames.  A fixed set of validity
+      206*       checks is always made.  The starname classification is returned as a
+      207*       nonstandard error code rather than as a separate argument.  The only
+      208*       standard error code returned is error_table_$badstar, which for
+      209*       compatibility must cover all error cases.  The selected tests include
+      210*       rejecting null components, nonASCII characters, pathname delimiters,
+      211*       the archive pathname delimiter, and names more than 32 characters
+      212*       long.
+      213*
+      214*   3.  check_star_name_$path is an obsolete entrypoint retained for
+      215*       compatibility with the many existing programs which call it.  It is
+      216*       used to validate file system pathnames.  A fixed set of validity
+      217*       checks is always made.  The starname classification is returned as a
+      218*       nonstandard error code rather than as a separate argument.  The only
+      219*       standard error code returned is error_table_$badstar, which for
+      220*       compatibility must cover all error cases.  The selected tests include
+      221*       processing pathname delimiters and the archive convention, and
+      222*       rejecting null components, nonASCII characters and names more than 32
+      223*       characters long.
+      224*
+      225*   The checks for invalid delimiters and null components could have been
+      226*   added as additional steps in the testing process.  However, a separate
+      227*   TCT table for finding the various delimiters would have increased the
+      228*   size of the program, and the additional tests would have made
+      229*   check_star_name_ slower.  Instead, these tests are made in the parsing
+      230*   routine at the cost of some additional complexity.
+      231*
+      232*   History      Author            Modification
+      233*    8 Jul 1982  J. Spencer Love   Initial coding.
+      234*   19 Nov 1984  J. Spencer Love   Audit and MCR changes for MR11.
+      235*   25 Jan 1985  J. Spencer Love   Fix bug in check_star_name_$path.
+      236**/
+      237 
+      238 
+      239 /****^  HISTORY COMMENTS:
+      240*  1) change(86-08-12,JSLove), approve(86-08-14,MCR7518),
+      241*     audit(86-08-14,FCSmith), install(86-10-02,MR12.0-1174):
+      242*     Changed new check_star_name_ entrypoint to take 4 arguments, adding the
+      243*     test selection control mask and separate star_type arguments.
+      244*  2) change(88-03-15,Parisek), approve(88-03-29,MCR7872),
+      245*     audit(88-04-14,LJAdams), install(88-04-26,MR12.2-1042):
+      246*     Set pi.match_name_exhausted during COMPARE_STAR_UNDOTTED_LITERAL_DOT when
+      247*     all of the match_name has been parsed. phx21106.
+      248*                                                   END HISTORY COMMENTS */
+      249 
+      250 
+      251 /* format: style3,ifthenstmt,indcomtxt,indproc,idind30 */
+      252 
+      253 match_star_name_:
+      254      procedure (P_match_entry_name, P_match_star_name, P_match_status);
+      255 
+      256 declare	P_check_control		bit (36) parameter,
+      257 	P_check_star_name		char (*) parameter,
+      258 	P_check_star_type		fixed bin (2) parameter,
+      259 	P_check_status		fixed bin (35) parameter,
+      260 	P_match_entry_name		char (*) parameter,
+      261 	P_match_star_name		char (*) parameter,
+      262 	P_match_status		fixed bin (35) parameter,
+      263 	P_nonstandard_status	fixed bin (35) parameter;
+      264 
+      265 declare	(addr, index, length, maxlength, rank, reverse, rtrim, search, string, substr, unspec)
+      266 				builtin;
+      267 
+      268 declare	match_name_length		fixed bin (21),	/* The length of the string to be matched to the star name. */
+      269 	match_name_ptr		ptr,		/* The address of the string to be matched to the starname. */
+      270 	star_name_length		fixed bin (21),	/* The length of the star name to be parsed.		*/
+      271 	star_name_ptr		ptr,		/* The address of the star name to be parsed.		*/
+      272 	star_type			fixed bin (2),	/* The classification according to check_star_name_.	*/
+      273 	status			fixed bin (35),	/* Internal error code for the check procedures.		*/
+      274 	temp			fixed bin (21);	/* Temporary used in comparison routines.		*/
+      275 
+      276 declare	1 cs			aligned like check_star;
+      277 
+      278 declare	1 pi			aligned,		/* The complete current state of the parse and match.	*/
+      279 	  2 starstar,				/* The state subset that must be restored for ** retry.	*/
+      280 	    3 star,				/* The state subset that must be restored for * retry.	*/
+      281 	      4 operations,				/* These two are grouped for efficient assignment.	*/
+      282 	        5 comparison	fixed bin unaligned,/* The comparison routine to be invoked.		*/
+      283 	        5 state		fixed bin unaligned,/* The state of the parser Finite State Machine.		*/
+      284 	      4 parse_position	fixed bin (21),	/* Zero origin index of the next star name char to parse.	*/
+      285 	      4 parse_query_count	fixed bin (21),	/* The number of Queries for the next or final comparison.	*/
+      286 	      4 literal_position	fixed bin (21),	/* Zero origin index of a literal substring of star name.	*/
+      287 	      4 literal_length	fixed bin (21),	/* Length of a literal substring of the star name.	*/
+      288 	      4 dot_count		fixed bin (21),	/* The number of Dots in the current literal substring.	*/
+      289 	      4 match_position	fixed bin (21),	/* Zero origin position of the remaining match string.	*/
+      290 	      4 match_length	fixed bin (21),	/* The length of the remaining match string.		*/
+      291 	    3 compare_query_count	fixed bin (21),	/* The number of Queries for the current comparison.	*/
+      292 	  2 match_name_exhausted	bit (1) aligned;	/* Have already matched against last component.		*/
+      293 
+      294 declare	1 star_retry_info		aligned like pi.star,
+      295 	1 starstar_retry_info	aligned like pi.starstar;
+      296 
+      297 declare	match_name		char (match_name_length) based (match_name_ptr),
+      298 	star_name			char (star_name_length) based (star_name_ptr);
+      299 
+      300 declare	ARCHIVE_DELIM		initial ("::") char (2) static options (constant),
+      301 	ASCII_HIGH		initial (127) fixed bin (9) static options (constant),
+      302 	DOT			initial (".") char (1) static options (constant),
+      303 	ENTRYPOINT_CHARS		initial ("$|") char (2) static options (constant),
+      304 	EQUAL_CHARS		initial ("=%") char (2) static options (constant),
+      305 	MAXIMUM_FILESYS_LENGTH	initial (32) fixed bin (17) static options (constant),
+      306 	PATH_CHARS		initial ("<>") char (2) static options (constant);
+      307 
+      308 declare	(
+      309 	error_table_$archive_pathname,
+      310 	error_table_$bad_arg,
+      311 	error_table_$bad_file_name,
+      312 	error_table_$badequal,
+      313 	error_table_$badpath,
+      314 	error_table_$badstar,
+      315 	error_table_$entlong,
+      316 	error_table_$inconsistent,
+      317 	error_table_$invalid_ascii,
+      318 	error_table_$nostars,
+      319 	error_table_$nomatch,
+      320 	error_table_$null_name_component
+      321 	)			fixed bin (35) external;
+      322 
+      323 /* The comparison codes are generated by tables in the parse subroutine, and
+      324*   used as subscripts on the COMPARE label array.  The following particular
+      325*   codes are used by the check_star_name_ entrypoints.  MATCHES_EVERYTHING
+      326*   identifies a type 2 star name if it is returned on the first call to the
+      327*   parser.  MATCHES_LITERAL and MATCHES_NOTHING identify a type 0 star name
+      328*   if either is returned on the first call to the parser.  Comparisons less
+      329*   than MATCHES_ERROR indicate that the end of the star name has been
+      330*   reached, and comparisons greater than MATCHES_ERROR indicate that further
+      331*   parsing remains to be done.				       */
+      332 
+      333 declare	(
+      334 	MATCHES_ANYTHING		initial (-17),
+      335 	MATCHES_ERROR		initial (0),
+      336 	MATCHES_LITERAL		initial (-1),
+      337 	MATCHES_NOTHING		initial (-4)
+      338 	)			fixed bin static options (constant);
+      339 
+  1     1 /*  BEGIN:   check_star_name.incl.pl1			  *  *  *  *  *  */
+  1     2 
+  1     3 /****^  HISTORY COMMENTS:
+  1     4*  1) change(86-08-14,JSLove), approve(86-08-14,MCR7518),
+  1     5*     audit(86-08-14,FCSmith), install(86-10-02,MR12.0-1174):
+  1     6*     Created, to support check_star_name_ entrypoint.
+  1     7*  2) change(87-06-01,GDixon), approve(87-07-13,MCR7740),
+  1     8*     audit(87-06-24,Hartogs), install(87-08-04,MR12.1-1056):
+  1     9*     Change structures and bit structures to be unaligned, to match the
+  1    10*     check_star_name_ parameters to which such strings are passed.
+  1    11*                                                   END HISTORY COMMENTS */
+  1    12 
+  1    13 /* format: style3,comcol71,ifthenstmt,indcomtxt,indproc,idind30 */
+  1    14 
+  1    15 declare	1 check_star		aligned based,
+  1    16 	  2 reject_wild		bit (1) unaligned,
+  1    17 	  2 ignore_archive		bit (1) unaligned,
+  1    18 	  2 process_archive		bit (1) unaligned,
+  1    19 	  2 ignore_entrypoint	bit (1) unaligned,
+  1    20 	  2 process_entrypoint	bit (1) unaligned,
+  1    21 	  2 ignore_path		bit (1) unaligned,
+  1    22 	  2 process_path		bit (1) unaligned,
+  1    23 	  2 ignore_equal		bit (1) unaligned,
+  1    24 	  2 ignore_length		bit (1) unaligned,
+  1    25 	  2 ignore_nonascii		bit (1) unaligned,
+  1    26 	  2 ignore_null		bit (1) unaligned,
+  1    27 	  2 unimplemented		bit (25) unaligned;
+  1    28 
+  1    29 declare	(
+  1    30 	CHECK_STAR_ENTRY_DEFAULT	initial ("00010001000"b),	/* Behavior of check_star_name_$entry (obsolete). */
+  1    31 	CHECK_STAR_IGNORE_ALL	initial ("01010101111"b),	/* Check for *** and classify only.		*/
+  1    32 	CHECK_STAR_IGNORE_ARCHIVE	initial ("01000000000"b),	/* Do not reject archive convention "::".	*/
+  1    33 	CHECK_STAR_IGNORE_ENTRYPOINT	initial ("00010000000"b),	/* Do not reject "$" or "|" characters.		*/
+  1    34 	CHECK_STAR_IGNORE_EQUAL	initial ("00000001000"b),	/* Do not reject "=" or "%" characters.		*/
+  1    35 	CHECK_STAR_IGNORE_LENGTH	initial ("00000000100"b),	/* Do not reject star names longer than 32 chars.	*/
+  1    36 	CHECK_STAR_IGNORE_NONASCII	initial ("00000000010"b),	/* No not reject star names with nonASCII chars.	*/
+  1    37 	CHECK_STAR_IGNORE_NULL	initial ("00000000001"b),	/* Do not reject names with null components.	*/
+  1    38 	CHECK_STAR_IGNORE_PATH	initial ("00000100000"b),	/* Do not reject "<" or ">" characters.		*/
+  1    39 	CHECK_STAR_PATH_DEFAULT	initial ("00110011100"b),	/* Behavior of check_star_name_$path (obsolete).	*/
+  1    40 	CHECK_STAR_PROCESS_ARCHIVE	initial ("00100000000"b),	/* Process "::" as archive delimiter.		*/
+  1    41 	CHECK_STAR_PROCESS_ENTRYPOINT initial ("00001000000"b),	/* Ignore trailing entrypoint if present.	*/
+  1    42 	CHECK_STAR_PROCESS_PATH	initial ("00000010000"b),	/* Ignore leading directory path if present.	*/
+  1    43 	CHECK_STAR_REJECT_WILD	initial ("10000000000"b),	/* Return error_table_$nostars if type not zero.	*/
+  1    44 	CHECK_STAR_UNIMPLEMENTED	initial ("001FFFFFF"b4)	/* Nonexistent test flags.  Reject them.	*/
+  1    45 	)			bit (36) static options (constant);
+  1    46 
+  1    47 declare	(
+  1    48 	STAR_TYPE_MATCHES_EVERYTHING	initial (2),
+  1    49 	STAR_TYPE_USE_MATCH_PROCEDURE	initial (1),
+  1    50 	STAR_TYPE_USE_PL1_COMPARE	initial (0)
+  1    51 	)			fixed bin (2) static options (constant);
+  1    52 
+  1    53 /*  END OF:  check_star_name.incl.pl1			  *  *  *  *  *  */
+      340 
+      341 
+      342 /* match_star_name_:  procedure (P_match_entry_name, P_match_star_name, P_match_status);				*/
+      343 
+      344 	star_name_length = maxlength (P_match_star_name); /* Pick up star name parameter for analysis.  Here we get	*/
+      345 	star_name_ptr = addr (P_match_star_name);	/* the length and the address, then trim off trailing	*/
+      346 	star_name_length = length (rtrim (star_name));	/* blanks.  We look at the parameter only once.		*/
+      347 
+      348 	string (cs) = CHECK_STAR_IGNORE_ALL;
+      349 
+      350 	unspec (pi.operations) = ""b;			/* Initialize parser.				*/
+      351 	pi.parse_position, pi.parse_query_count = 0;
+      352 
+      353 	call parse ();				/* Take our first look at the starname.			*/
+      354 
+      355 	if pi.comparison = MATCHES_ANYTHING then go to MATCH_EXIT;
+      356 
+      357 	match_name_length = maxlength (P_match_entry_name);
+      358 						/* We have to look at the string to match, so get it and	*/
+      359 	match_name_ptr = addr (P_match_entry_name);	/* rtrim it.  We don't copy the match name; it costs too	*/
+      360 	match_name_length = length (rtrim (match_name));	/* much and can be of any length.			*/
+      361 
+      362 	pi.match_name_exhausted = "0"b;		/* Initialize for the comparison routines.		*/
+      363 	pi.match_length = match_name_length;
+      364 	pi.match_position = 0;			/* Start here.					*/
+      365 	unspec (star_retry_info.operations) = ""b;	/* No checkpoint yet.				*/
+      366 	unspec (starstar_retry_info.operations) = ""b;	/* Bo checkpoint yet.				*/
+      367 
+      368 	go to COMPARE (pi.comparison);		/* Start comparing star name to match name.		*/
+      369 
+      370 COMPARE (-29):					/* Compare  **.?oE					*/
+      371 	call literal_end ();			/* Reduce to **.?E					*/
+      372 
+      373 COMPARE (-28):					/* Compare  **.?E					*/
+      374 	pi.match_length = pi.match_length - pi.parse_query_count;
+      375 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* Make sure there is enough room for the Queries.	*/
+      376 
+      377 	if index (substr (match_name, pi.match_position + pi.match_length + 1, pi.parse_query_count), DOT) - 1 >= 0
+      378 	then go to NO_MATCH_EXIT;			/* Reject if a Dot is found where one shouldn't be.	*/
+      379 
+      380 	go to COMPARE_MUST_END_ON_COMPONENT_BOUNDARY;
+      381 
+      382 
+      383 COMPARE (-27):					/* Compare  *.**.E					*/
+      384 	call skip_component ();			/* Reduce to C**.E					*/
+      385 
+      386 	if ^pi.match_name_exhausted
+      387 	then go to COMPARE_MUST_END_ON_COMPONENT_BOUNDARY;
+      388 	else go to NO_MATCH_EXIT;			/* Final component must be null, but if we have already	*/
+      389 						/* matched END then we are short on components.		*/
+      390 
+      391 COMPARE (-26):					/* Compare  *.**.oE					*/
+      392 	call skip_component ();			/* Reduce to **.oE					*/
+      393 
+      394 COMPARE (-25):					/* Compare  **.oE					*/
+      395 	call literal_end ();			/* Reduce to **.E					*/
+      396 
+      397 COMPARE (-24):					/* Compare  **.E					*/
+      398 COMPARE_MUST_END_ON_COMPONENT_BOUNDARY:
+      399 	if pi.match_length = 0
+      400 	then if ^pi.match_name_exhausted
+      401 	     then go to MATCH_EXIT;			/* If we are at end, nevertheless the END must not have	*/
+      402 	     else go to NO_MATCH_EXIT;		/* already been matched, or we are short on components.	*/
+      403 
+      404 	if substr (match_name, pi.match_position + pi.match_length, 1) = DOT then go to MATCH_EXIT;
+      405 						/* Since not at end, must have literal Dot.		*/
+      406 
+      407 NO_MATCH_EXIT:					/* Indicate that star name does not match string.		*/
+      408 	P_match_status = error_table_$nomatch;
+      409 
+      410 	return;
+      411 
+      412 COMPARE (-23):					/* Compare  **?oE					*/
+      413 	call literal_end ();			/* Reduce to **?E					*/
+      414 
+      415 COMPARE (-22):					/* Compare  **?E					*/
+      416 	pi.match_length = pi.match_length - pi.parse_query_count;
+      417 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* Make sure there is enough room for the Queries.	*/
+      418 
+      419 	if index (substr (match_name, pi.match_position + pi.match_length + 1, pi.parse_query_count), DOT) - 1 >= 0
+      420 	then go to NO_MATCH_EXIT;			/* Reject if a Dot is found where one shouldn't be.	*/
+      421 
+      422 	go to MATCH_EXIT;
+      423 
+      424 
+      425 COMPARE (-21):					/* Compare  *.**oE					*/
+      426 	call skip_component ();			/* Reduce to **oE					*/
+      427 
+      428 COMPARE (-20):					/* Compare  **oE					*/
+      429 	call literal_end ();			/* Reduce to **E					*/
+      430 
+      431 	go to MATCH_EXIT;
+      432 
+      433 
+      434 COMPARE (-19):					/* Compare  *.**.*E					*/
+      435 	call skip_component ();			/* Reduce to C**.*E					*/
+      436 
+      437 COMPARE (-18):					/* Compare  C**.*E					*/
+      438 	if pi.match_name_exhausted then go to NO_MATCH_EXIT;
+      439 						/* There must be at least one component left.		*/
+      440 
+      441 COMPARE (-17):					/* Compare  **	(MATCHES_ANYTHING)			*/
+      442 MATCH_EXIT:					/* Indicate that star name matches string.		*/
+      443 	P_match_status = 0;
+      444 
+      445 	return;
+      446 
+      447 COMPARE (-16):					/* Compare  o.*oE					*/
+      448 	call literal_end ();			/* Reduce to o.*E					*/
+      449 
+      450 COMPARE (-15):					/* Compare  o.*E					*/
+      451 	call must_be_at_dot ();			/* Reduce to *E					*/
+      452 
+      453 	go to COMPARE_MUST_BE_LAST_COMPONENT;
+      454 
+      455 
+      456 COMPARE (-14):					/* Compare  *.*E					*/
+      457 	call skip_component ();			/* Reduce to C*E					*/
+      458 
+      459 COMPARE (-13):					/* Compare  C*E					*/
+      460 	if ^pi.match_name_exhausted
+      461 	then go to COMPARE_MUST_BE_LAST_COMPONENT;	/* END of match name must not already have been matched or	*/
+      462 	else go to NO_MATCH_EXIT;			/* match name has too few components.			*/
+      463 
+      464 
+      465 COMPARE (-12):					/* Compare  *?oE					*/
+      466 	call literal_end ();			/* Reduce to *?E					*/
+      467 
+      468 COMPARE (-11):					/* Compare  *?E					*/
+      469 	if pi.match_length >= pi.parse_query_count
+      470 	then go to COMPARE_MUST_BE_LAST_COMPONENT;	/* There must be enough room for the Queries.		*/
+      471 	else go to NO_MATCH_EXIT;
+      472 
+      473 
+      474 COMPARE (-10):					/* Compare  *.*oE					*/
+      475 	call skip_component ();			/* Reduce to *oE					*/
+      476 
+      477 COMPARE (-9):					/* Compare  *oE					*/
+      478 	call literal_end ();			/* Reduce to *E					*/
+      479 
+      480 COMPARE (-8):					/* Compare  *E					*/
+      481 COMPARE_MUST_BE_LAST_COMPONENT:
+      482 	if index (substr (match_name, pi.match_position + 1, pi.match_length), DOT) - 1 < 0
+      483 	then go to MATCH_EXIT;			/* Last component can't contain any Dots.		*/
+      484 	else go to RETRY_STARSTAR;
+      485 
+      486 COMPARE (-7):					/* Compare  ?E					*/
+      487 	if pi.match_length ^= pi.parse_query_count
+      488 	then if pi.match_length < pi.parse_query_count
+      489 	     then go to NO_MATCH_EXIT;		/* There must be exactly enough room.  If there is too much */
+      490 	     else go to RETRY_STAR;			/* we can retry but too little is immediately fatal.	*/
+      491 
+      492 	if index (substr (match_name, pi.match_position + 1, pi.match_length), DOT) - 1 < 0
+      493 	then go to MATCH_EXIT;			/* Queries can't match Dots.				*/
+      494 	else go to NO_MATCH_EXIT;
+      495 
+      496 
+      497 COMPARE (-6):					/* Compare  *.E					*/
+      498 	call skip_component ();			/* Reduce to CE					*/
+      499 
+      500 COMPARE (-5):					/* Compare  CE					*/
+      501 	if pi.match_name_exhausted then go to NO_MATCH_EXIT;
+      502 						/* We must be at end, but END must not already have been	*/
+      503 						/* matched.					*/
+      504 
+      505 COMPARE (-4):					/* Compare  BE	(MATCHES_NOTHING)			*/
+      506 	if pi.match_length = 0
+      507 	then go to MATCH_EXIT;			/* Requires that no match name be left.			*/
+      508 	else go to RETRY_STARSTAR;			/* Needed for CE but Doublestars can't preceded BE	*/
+      509 
+      510 COMPARE (-3):					/* Compare  ?oE					*/
+      511 	pi.compare_query_count = pi.parse_query_count;	/* Adjust environment for (non-terminal) skip_queries.	*/
+      512 	call skip_queries ();			/* Reduce to oE					*/
+      513 
+      514 	go to COMPARE_LITERAL_END;
+      515 
+      516 
+      517 COMPARE (-2):					/* Compare  *.oE					*/
+      518 	call skip_component ();			/* Reduce to oE					*/
+      519 
+      520 	unspec (star_retry_info.operations) = ""b;	/* We are in a new component, so no Star retry is possible. */
+      521 
+      522 COMPARE (-1):					/* Compare  oE	(MATCHES_LITERAL)			*/
+      523 COMPARE_LITERAL_END:
+      524 	if substr (star_name, pi.literal_position + 1) = substr (match_name, pi.match_position + 1, pi.match_length)
+      525 	then go to MATCH_EXIT;
+      526 	else go to RETRY_STAR;
+      527 
+      528 
+      529 COMPARE (0):					/* MATCHES_ERROR					*/
+      530 	P_match_status = error_table_$badstar;		/* Indicate that star name is not valid.		*/
+      531 
+      532 	return;
+      533 
+      534 /* Here follows a procedure which is used to match literals found at the
+      535*   ends of star names.  The following restrictions apply to its use:  if
+      536*   used by the same star name, components must be skipped by calling
+      537*   skip_component BEFORE calling literal_end, and the literal must be
+      538*   matched first, which effectively shortens the match name by subtracting
+      539*   from pi.match_length, before Queries can be matched.		       */
+      540 
+      541 
+      542 literal_end:
+      543      procedure ();					/* Procedure to match string at end of match name.	*/
+      544 
+      545 	pi.literal_length = star_name_length - pi.literal_position;
+      546 						/* Trim characters to be matched for Queries, if any.	*/
+      547 
+      548 	pi.match_length = pi.match_length - pi.literal_length;
+      549 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* Make sure there is enough room for the literal.	*/
+      550 
+      551 	if substr (star_name, pi.literal_position + 1, pi.literal_length)
+      552 	     ^= substr (match_name, pi.match_position + pi.match_length + 1, pi.literal_length)
+      553 	then go to NO_MATCH_EXIT;			/* Reject if character mismatch.			*/
+      554 
+      555 	return;
+      556 
+      557      end literal_end;
+      558 
+      559 RETRY_COMPARE (1):					/* Retry    **.?o					*/
+      560 RETRY_STARSTAR_DOT_QUERY_LITERAL:			/* CROCK:  Saved pi.match_length is adjustment value.	*/
+      561 	pi.match_position = pi.match_position + pi.match_length + 1;
+      562 	pi.match_length = match_name_length - pi.match_position;
+      563 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* Punt if match name is exhausted.			*/
+      564 
+      565 COMPARE (1):					/* Compare  **.?o					*/
+      566 COMPARE_STARSTAR_DOT_QUERY_LITERAL:
+      567 	temp = index (substr (match_name, pi.match_position + 1, pi.match_length), DOT) - 1;
+      568 	if temp < 0 then temp = pi.match_length;	/* Find end of current component.			*/
+      569 	else if temp < pi.compare_query_count
+      570 	then do;					/* Loop until component holds Queries or last component.	*/
+      571 		pi.match_position = pi.match_position + (temp + 1);
+      572 		pi.match_length = pi.match_length - (temp + 1);
+      573 		go to COMPARE_STARSTAR_DOT_QUERY_LITERAL;
+      574 	     end;
+      575 
+      576 	pi.match_position = pi.match_position + pi.compare_query_count;
+      577 	pi.match_length = pi.match_length - pi.compare_query_count;
+      578 						/* Skip over Queries.				*/
+      579 	if pi.literal_length > pi.match_length then go to NO_MATCH_EXIT;
+      580 						/* Give up if match name exhausted.			*/
+      581 
+      582 	if substr (star_name, pi.literal_position + 1, pi.literal_length)
+      583 	     ^= substr (match_name, pi.match_position + 1, pi.literal_length)
+      584 	then do;					/* Does match name match literal substring at this point?	*/
+      585 		pi.match_length = temp - pi.compare_query_count;
+      586 						/* Calculate retry offset.				*/
+      587 		go to RETRY_STARSTAR_DOT_QUERY_LITERAL; /* If not, try next component.			*/
+      588 	     end;
+      589 
+      590 	starstar_retry_info = pi.starstar;		/* Save in case of retry and calculate retry offset.	*/
+      591 	starstar_retry_info.match_length = temp - pi.compare_query_count;
+      592 
+      593 	pi.match_position = pi.match_position + pi.literal_length;
+      594 	pi.match_length = pi.match_length - pi.literal_length;
+      595 						/* Skip literal substring and get next installment.	*/
+      596 	go to PARSE_NEW_COMPONENT;
+      597 
+      598 COMPARE (2):					/* Compare  **?o					*/
+      599 	pi.match_position = pi.match_position + pi.compare_query_count;
+      600 	pi.match_length = pi.match_length - pi.compare_query_count;
+      601 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* There must be at least Query count characters left.	*/
+      602 						/* Skip over them ONCE before doing first index.		*/
+      603 
+      604 COMPARE_STARSTAR_QUERY_LITERAL:			/* Retry enters here.				*/
+      605 	temp =
+      606 	     index (substr (match_name, pi.match_position + 1, pi.match_length),
+      607 	     substr (star_name, pi.literal_position + 1, pi.literal_length)) - 1;
+      608 	if temp < 0
+      609 	then do;					/* Check for zero length literal substring.		*/
+      610 		if pi.literal_length > 0 then go to NO_MATCH_EXIT;
+      611 						/* If there is a literal string then index failed.	*/
+      612 						/* Otherwise skip to end of component, but not over Dot.	*/
+      613 						/* This is valid because the only way we can have a null	*/
+      614 						/* literal string is if the next thing is a Dot Star.	*/
+      615 		temp = index (substr (match_name, pi.match_position + 1, pi.match_length), DOT) - 1;
+      616 		if temp < 0 then temp = pi.match_length;/* Make it the whole rest of the last component.		*/
+      617 	     end;
+      618 
+      619 	pi.match_position = pi.match_position + temp;	/* Skip over the intervening characters.		*/
+      620 	pi.match_length = pi.match_length - temp;
+      621 
+      622 	if index (substr (match_name, pi.match_position - pi.compare_query_count + 1, pi.compare_query_count), DOT) - 1
+      623 	     < 0
+      624 	then go to HAVE_STARSTAR_MATCH;		/* If no Dot is found where Queries are, then success.	*/
+      625 
+      626 RETRY_COMPARE (2):					/* Retry	  **?o					*/
+      627 	pi.match_position = pi.match_position + 1;	/* Space ove character beyond previous match to try again.	*/
+      628 	pi.match_length = pi.match_length - 1;		/* Give up if the match name is exhausted.		*/
+      629 	if pi.match_length < 0 then go to NO_MATCH_EXIT;
+      630 
+      631 	go to COMPARE_STARSTAR_QUERY_LITERAL;		/* Go search for literal substring.			*/
+      632 
+      633 COMPARE (5):					/* Compare  *.**.o					*/
+      634 	call skip_component ();			/* Convert to  **.o					*/
+      635 
+      636 	pi.comparison = 3;				/* Update comparison index for retry if needed.		*/
+      637 
+      638 COMPARE (3):					/* Compare  **.o					*/
+      639 	if pi.literal_length > pi.match_length then go to NO_MATCH_EXIT;
+      640 
+      641 	if substr (match_name, pi.match_position + 1, pi.literal_length)
+      642 	     = substr (star_name, pi.literal_position + 1, pi.literal_length)
+      643 	then go to HAVE_STARSTAR_MATCH;
+      644 
+      645 RETRY_COMPARE (3):					/* Retry	  **.o					*/
+      646 	pi.comparison = 4;				/* Change to **o					*/
+      647 	pi.literal_position = pi.literal_position - 1;	/* Since it wasn't immediate, include the Dot into the	*/
+      648 	pi.literal_length = pi.literal_length + 1;	/* literal substring and use **o comparison.		*/
+      649 
+      650 	go to COMPARE_STARSTAR_LITERAL;
+      651 
+      652 
+      653 RETRY_COMPARE (4):					/* Retry	  **o					*/
+      654 	pi.match_position = pi.match_position + 1;	/* Set position one character beyond previous match and try */
+      655 	pi.match_length = pi.match_length - 1;		/* again.  Give up if match name is exhausted.		*/
+      656 	if pi.match_length <= 0 then go to NO_MATCH_EXIT;
+      657 
+      658 COMPARE (4):					/* Compare  **o					*/
+      659 COMPARE_STARSTAR_LITERAL:
+      660 	temp =
+      661 	     index (substr (match_name, pi.match_position + 1, pi.match_length),
+      662 	     substr (star_name, pi.literal_position + 1, pi.literal_length)) - 1;
+      663 	if temp < 0 then go to NO_MATCH_EXIT;		/* Find the next occurance of the literal string, if any.	*/
+      664 
+      665 	pi.match_position = pi.match_position + temp;	/* Skip over intervening characters.			*/
+      666 	pi.match_length = pi.match_length - temp;
+      667 
+      668 HAVE_STARSTAR_MATCH:
+      669 	starstar_retry_info = pi.starstar;		/* Save current state in case this match attempt fails.	*/
+      670 
+      671 	pi.match_position = pi.match_position + pi.literal_length;
+      672 	pi.match_length = pi.match_length - pi.literal_length;
+      673 						/* Skip over the actual literal string.			*/
+      674 	go to PARSE_NEW_COMPONENT;			/* Doublestar supercedes any previous Star construct info.	*/
+      675 
+      676 
+      677 COMPARE (6):					/* Compare  *.**o					*/
+      678 	call skip_component ();			/* Convert to  **o					*/
+      679 
+      680 	pi.comparison = 4;				/* Update comparison index for retry if needed.		*/
+      681 	go to COMPARE_STARSTAR_LITERAL;		/* Finish comparison.				*/
+      682 
+      683 COMPARE (7):					/* Compare  ?o					*/
+      684 	call skip_queries ();			/* Reduce to o					*/
+      685 
+      686 	go to COMPARE_LITERAL;
+      687 
+      688 
+      689 COMPARE (8):					/* Compare  *.o					*/
+      690 	call skip_component ();			/* Reduce to o					*/
+      691 
+      692 	unspec (star_retry_info.operations) = ""b;	/* We are in a new component now.			*/
+      693 
+      694 COMPARE (9):					/* Compare  o					*/
+      695 COMPARE_LITERAL:
+      696 	pi.match_length = pi.match_length - pi.literal_length;
+      697 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* Give up if there isn't room for literal substring.	*/
+      698 
+      699 	if substr (star_name, pi.literal_position + 1, pi.literal_length)
+      700 	     ^= substr (match_name, pi.match_position + 1, pi.literal_length)
+      701 	then go to RETRY_STAR;			/* Try again if the literal substring doesn't match here.	*/
+      702 
+      703 	pi.match_position = pi.match_position + pi.literal_length;
+      704 						/* Skip over matched literal string.			*/
+      705 
+      706 	call parse ();				/* Get next installment.				*/
+      707 
+      708 	go to COMPARE (pi.comparison);		/* Deliver it.					*/
+      709 
+      710 
+      711 RETRY_STAR:					/* Retry	  *o	(not at component boundary)		*/
+      712 	if unspec (star_retry_info.operations) ^= ""b
+      713 	then do;					/* Handle Star checkpoint, if any.			*/
+      714 		pi.star = star_retry_info;		/* Restore parser to point of most recent Star.		*/
+      715 		pi.match_position = pi.match_position + 1;
+      716 		pi.match_length = pi.match_length - 1;	/* Start scanning beyond previous match.		*/
+      717 
+      718 		go to COMPARE_STAR_LITERAL;		/* We know that literal is Dotless, of nonzero length and	*/
+      719 						/* that it is not followed by a Dot, or we couldn't be	*/
+      720 						/* here, so we needn't check.				*/
+      721 
+      722 RETRY_STARSTAR:
+      723 		unspec (star_retry_info.operations) = ""b;
+      724 	     end;					/* Doublestar retry supercedes Star checkpoint info.	*/
+      725 
+      726 	if unspec (starstar_retry_info.operations) = ""b then go to NO_MATCH_EXIT;
+      727 						/* If no saved checkpoint, match fails.			*/
+      728 
+      729 	pi.starstar = starstar_retry_info;		/* Restore parser to point of most recent DoubleStar.	*/
+      730 						/* One of comparisons 1 to 4 will be retried.		*/
+      731 	go to RETRY_COMPARE (pi.comparison);
+      732 
+      733 COMPARE (10):					/* Compare  o.*o	(not at component boundary)		*/
+      734 	call must_be_at_dot ();			/* Reduce to *o					*/
+      735 
+      736 	go to COMPARE_STAR_LITERAL;
+      737 
+      738 
+      739 COMPARE (11):					/* Compare  ?*o	(not at component boundary)		*/
+      740 	call skip_queries ();			/* Reduce to *o					*/
+      741 
+      742 	go to COMPARE_STAR_LITERAL;
+      743 
+      744 
+      745 COMPARE (12):					/* Compare  *.*o	(not at component boundary)		*/
+      746 	call skip_component ();			/* Reduce to *o					*/
+      747 
+      748 COMPARE (13):					/* Compare  *o	(not at component boundary)		*/
+      749 COMPARE_STAR_LITERAL:				/* Retry comes here.				*/
+      750 	if pi.dot_count > 0
+      751 	then do;					/* If crossed component boundary, can't retry.		*/
+      752 		call compare_star_dotted_literal ();
+      753 		go to PARSE_NEW_COMPONENT;		/* Skip over literal and get next installment.		*/
+      754 	     end;
+      755 
+      756 	temp = index (substr (match_name, pi.match_position + 1, pi.match_length), DOT) - 1;
+      757 	if temp < 0 then temp = pi.match_length;	/* Find out length of this component.			*/
+      758 
+      759 	temp =
+      760 	     index (substr (match_name, pi.match_position + 1, temp),
+      761 	     substr (star_name, pi.literal_position + 1, pi.literal_length)) - 1;
+      762 	if temp < 0 then go to RETRY_STARSTAR;		/* Search this component for the literal string.		*/
+      763 
+      764 	pi.match_position = pi.match_position + temp;	/* Skip intervening characters.			*/
+      765 	pi.match_length = pi.match_length - temp;
+      766 
+      767 	star_retry_info = pi.star;			/* Save in case of retry.				*/
+      768 
+      769 	pi.match_position = pi.match_position + pi.literal_length;
+      770 	pi.match_length = pi.match_length - pi.literal_length;
+      771 						/* Skip over literal AFTER save.			*/
+      772 
+      773 	call parse ();				/* Get next installment.				*/
+      774 
+      775 	go to COMPARE (pi.comparison);		/* Deliver it.					*/
+      776 
+      777 COMPARE (14):					/* Compare  o.*oC					*/
+      778 	call must_be_at_dot ();			/* Reduce to *oC					*/
+      779 
+      780 	if pi.dot_count = 0
+      781 	then go to COMPARE_STAR_UNDOTTED_LITERAL_DOT;	/* Select easy or hard comparison based on whether literal	*/
+      782 	else go to COMPARE_STAR_DOTTED_LITERAL_DOT;	/* string crosses component boundary.			*/
+      783 
+      784 
+      785 COMPARE (15):					/* Compare  ?*oC					*/
+      786 	if pi.dot_count = 0 then go to COMPARE_STAR_UNDOTTED_LITERAL_DOT;
+      787 						/* If easy case, don't need to explicitly skip Queries.	*/
+      788 	call skip_queries ();
+      789 
+      790 COMPARE_STAR_DOTTED_LITERAL_DOT:
+      791 	call compare_star_dotted_literal ();
+      792 
+      793 	if pi.match_length > 0
+      794 	then do;					/* Must be at component boundary.			*/
+      795 		unspec (star_retry_info.operations) = ""b;
+      796 		call must_be_at_dot ();
+      797 	     end;
+      798 
+      799 	go to PARSE_NEW_COMPONENT;			/* Get next installment.				*/
+      800 
+      801 
+      802 compare_star_dotted_literal:
+      803      procedure ();					/* Take advantage of knowing literal contains a Dot to	*/
+      804 						/* avoid using multi-char index operators which are slower. */
+      805 
+      806 	temp = index (substr (match_name, pi.match_position + 1, pi.match_length), DOT)
+      807 	     - index (substr (star_name, pi.literal_position + 1, pi.literal_length), DOT);
+      808 	if temp < 0 then go to RETRY_STARSTAR;		/* Line up the first Dots, if any in match name.		*/
+      809 
+      810 	pi.match_position = pi.match_position + temp;	/* Skip over intervening characters.			*/
+      811 	pi.match_length = pi.match_length - temp;
+      812 
+      813 	if substr (star_name, pi.literal_position + 1, pi.literal_length)
+      814 	     ^= substr (match_name, pi.match_position + 1, pi.literal_length)
+      815 	then go to RETRY_STARSTAR;			/* See if literal string is at designated position.  If	*/
+      816 						/* not, no RETRY_STAR because component bound crossed.	*/
+      817 
+      818 	pi.match_position = pi.match_position + pi.literal_length;
+      819 	pi.match_length = pi.match_length - pi.literal_length;
+      820 						/* Skip over literal substring.			*/
+      821 
+      822 	return;
+      823 
+      824      end compare_star_dotted_literal;
+      825 
+      826 COMPARE (16):					/* Compare  *.*oC					*/
+      827 	call skip_component ();			/* Reduce to *oC					*/
+      828 
+      829 COMPARE (17):					/* Compare  *oC					*/
+      830 COMPARE_STAR_LITERAL_DOT:				/* If there are any Dots in the literal then it crosses	*/
+      831 						/* component boundaries.  Use the harder comparison.	*/
+      832 	if pi.dot_count > 0 then go to COMPARE_STAR_DOTTED_LITERAL_DOT;
+      833 
+      834 COMPARE_STAR_UNDOTTED_LITERAL_DOT:			/* Fast comparison for simple case.			*/
+      835 	temp = index (substr (match_name, pi.match_position + 1, pi.match_length), DOT) - 1;
+      836 	if temp < 0 then temp = pi.match_length;	/* Find the end of the current component.		*/
+      837 
+      838 	temp = temp - pi.literal_length;		/* Back up by the number of literal characters.		*/
+      839 	if temp < pi.compare_query_count then go to NO_MATCH_EXIT;
+      840 						/* There must be room in the component for all Queries and	*/
+      841 	pi.match_position = pi.match_position + temp;	/* literals.  Skip over intervening characters.		*/
+      842 
+      843 	if substr (star_name, pi.literal_position + 1, pi.literal_length)
+      844 	     ^= substr (match_name, pi.match_position + 1, pi.literal_length)
+      845 	then go to RETRY_STARSTAR;			/* If it doesn't match, can't be in this component.	*/
+      846 
+      847 	pi.match_position = pi.match_position + pi.literal_length;
+      848 	pi.match_length = match_name_length - pi.match_position;
+      849 
+      850 	if pi.match_length > 0
+      851 	then do;					/* Skip over Dot if present.  End of match name is OK too.	*/
+      852 		pi.match_position = pi.match_position + 1;
+      853 		pi.match_length = pi.match_length - 1;
+      854 	     end;
+      855 	else pi.match_name_exhausted = "1"b;		/* End of match name */
+      856 
+      857 	go to PARSE_NEW_COMPONENT;			/* Get next installment.				*/
+      858 
+      859 COMPARE (18):					/* Compare at boundary (for case  o.** => C**)		*/
+      860 	if pi.match_position < match_name_length
+      861 	then call must_be_at_dot ();			/* If any chars left, then boundary is literal Dot.	*/
+      862 	else pi.match_name_exhausted = "1"b;		/* Otherwise end of match name is boundary.		*/
+      863 
+      864 	go to PARSE_NEW_COMPONENT;			/* Get next installment.				*/
+      865 
+      866 
+      867 COMPARE (19):					/* Compare  .	(for case o.*? => *?)		*/
+      868 	call must_be_at_dot ();			/* Reduce to C					*/
+      869 
+      870 	go to PARSE_NEW_COMPONENT;			/* Get next installment.				*/
+      871 
+      872 
+      873 COMPARE (20):					/* Compare  o.*.					*/
+      874 	call must_be_at_dot ();			/* Reduce to *.					*/
+      875 	call skip_component ();			/* Reduce to C					*/
+      876 
+      877 	go to PARSE_NEW_COMPONENT;			/* Get next installment.				*/
+      878 
+      879 
+      880 must_be_at_dot:
+      881      procedure ();					/* The Dot turned out to be a literal one.		*/
+      882 
+      883 	pi.match_length = pi.match_length - 1;		/* See if the Dot fits in the name.			*/
+      884 	if pi.match_length < 0 then go to NO_MATCH_EXIT;
+      885 
+      886 	if substr (match_name, pi.match_position + 1, 1) ^= DOT then go to RETRY_STAR;
+      887 						/* If not a Dot, then still in the same component.	*/
+      888 
+      889 	pi.match_position = pi.match_position + 1;	/* Yup.  Skip over the Dot.				*/
+      890 
+      891 	return;
+      892 
+      893      end must_be_at_dot;
+      894 
+      895 COMPARE (21):					/* Compare  *.*.					*/
+      896 	call skip_component ();			/* Reduce to *.					*/
+      897 
+      898 COMPARE (22):					/* Compare  *.	(for cases *.? => ? and o**. => C**.)	*/
+      899 	call skip_component ();			/* Reduce to C					*/
+      900 
+      901 PARSE_NEW_COMPONENT:
+      902 	unspec (star_retry_info.operations) = ""b;	/* In a new component, now, so no Star can be retried.	*/
+      903 
+      904 	call parse ();				/* Continue with next installment of the star name.	*/
+      905 
+      906 	go to COMPARE (pi.comparison);
+      907 
+      908 
+      909 
+      910 skip_component:
+      911      procedure ();					/* Find the next Dot in the match name or its end.  If the	*/
+      912 						/* end has already been reached by a previous call, there	*/
+      913 						/* are not enough components.  pi.match_name_exhausted is	*/
+      914 						/* required to indicate that an imaginary END character	*/
+      915 						/* beyond the end of the match name has also been matched.	*/
+      916 
+      917 	temp = index (substr (match_name, pi.match_position + 1, pi.match_length), DOT);
+      918 	if temp = 0
+      919 	then do;					/* No Dots left.					*/
+      920 		if pi.match_name_exhausted then go to NO_MATCH_EXIT;
+      921 		pi.match_name_exhausted = "1"b;	/* Have matched END as well as last character.		*/
+      922 		pi.match_length = 0;		/* Nothing left.					*/
+      923 	     end;
+      924 	else do;					/* Skip over component.				*/
+      925 		pi.match_position = pi.match_position + temp;
+      926 		pi.match_length = pi.match_length - temp;
+      927 	     end;
+      928 
+      929 	return;
+      930 
+      931      end skip_component;
+      932 
+      933 COMPARE (23):					/* Compare  ?	(for case ?** => o**)		*/
+      934 	call skip_queries ();			/* After this comparison, we can't depend on being at a	*/
+      935 						/* component boundary in the match name.		*/
+      936 
+      937 	call parse ();				/* Get next installment.				*/
+      938 
+      939 	go to COMPARE (pi.comparison);		/* Deliver it.					*/
+      940 
+      941 
+      942 COMPARE (24):					/* Compare  **?	(for case **?** => o**)		*/
+      943 	do while (pi.match_length >= pi.compare_query_count);
+      944 						/* Find the first Dotless substring at least long enough	*/
+      945 						/* to contain the designated number of consecutive Queries. */
+      946 	     temp = index (substr (match_name, pi.match_position + 1, pi.compare_query_count), DOT);
+      947 	     if temp = 0 | temp > pi.compare_query_count
+      948 	     then do;				/* Eureka.					*/
+      949 		     pi.match_position = pi.match_position + pi.compare_query_count;
+      950 		     pi.match_length = pi.match_length - pi.compare_query_count;
+      951 
+      952 		     go to PARSE_NEW_COMPONENT;	/* Get next installment.				*/
+      953 		end;
+      954 
+      955 	     pi.match_position = pi.match_position + temp;/* Skip past the Dot we found and try again.		*/
+      956 	     pi.match_length = pi.match_length - temp;
+      957 	end;
+      958 
+      959 	go to NO_MATCH_EXIT;
+      960 
+      961 
+      962 
+      963 skip_queries:
+      964      procedure ();					/* See if the match name has enough non-Dot characters at	*/
+      965 						/* the current position to match the star name here.	*/
+      966 
+      967 	pi.match_length = pi.match_length - pi.compare_query_count;
+      968 	if pi.match_length < 0 then go to NO_MATCH_EXIT;	/* There must be at least the requisite number of chars.	*/
+      969 
+      970 	if index (substr (match_name, pi.match_position + 1, pi.compare_query_count), DOT) - 1 >= 0
+      971 	then go to RETRY_STARSTAR;			/* If we found a Dot then RETRY_STAR is out of the running. */
+      972 
+      973 	pi.match_position = pi.match_position + pi.compare_query_count;
+      974 						/* Skip over the designated substring.			*/
+      975 	return;
+      976 
+      977      end skip_queries;
+      978 
+      979 /* The check_star_name_ entrypoint permits flexible validation and
+      980*   classification of starnames.  See check_star_name.incl.pl1 for the values
+      981*   which can be used to construct the P_check_control argument and the
+      982*   values which can be returned in the P_check_star_type argument.  Please
+      983*   refer to the code in the following procedures for comments explaining the
+      984*   action of each control flag in detail.  */
+      985 
+      986 check_star_name_:
+      987      entry (P_check_star_name, P_check_control, P_check_star_type, P_check_status);
+      988 
+      989 	string (cs) = P_check_control;		/* This entrypoint lets caller specify.			*/
+      990 
+      991 	call check ();				/* Do the work.					*/
+      992 
+      993 	P_check_star_type = star_type;
+      994 	P_check_status = status;
+      995 
+      996 	return;
+      997 
+      998 /* The check_star_name_$entry entrypoint is obsolete and is retained for
+      999*   compatibility with its many callers.  The use of the check_star_name_
+     1000*   entrypoint (next page) is recommended for new applications and when
+     1001*   updating old programs.  Except for returning a nonstandard code, its
+     1002*   operation is the same as check_star_name_ with the following control bits
+     1003*   set: IGNORE_ENTRYPOINT, IGNORE_EQUAL.  */
+     1004 
+     1005 check_star_name_$entry:
+     1006      entry (P_check_star_name, P_nonstandard_status);
+     1007 
+     1008 	string (cs) = CHECK_STAR_ENTRY_DEFAULT;		/* Select options as listed above.			*/
+     1009 
+     1010 	go to CHECK_FILESYS_COMMON;
+     1011 
+     1012 
+     1013 /* The check_star_name_$path entrypoint is obsolete and is retained for
+     1014*   compatibility with its many callers.  The use of the check_star_name_
+     1015*   entrypoint (next page) is recommended for new applications and when
+     1016*   updating old programs.  Except for returning a nonstandard code, its
+     1017*   operation is the same as check_star_name_ with the following control bits
+     1018*   set: IGNORE_ENTRYPOINT, IGNORE_EQUAL, PROCESS_ARCHIVE, PROCESS_PATH.  */
+     1019 
+     1020 check_star_name_$path:
+     1021      entry (P_check_star_name, P_nonstandard_status);
+     1022 
+     1023 	string (cs) = CHECK_STAR_PATH_DEFAULT;		/* Select options as listed above.			*/
+     1024 
+     1025 CHECK_FILESYS_COMMON:
+     1026 	call check ();				/* Do the work.					*/
+     1027 
+     1028 	if status = 0
+     1029 	then P_nonstandard_status = star_type;		/* Construct nonstandard code.			*/
+     1030 	else P_nonstandard_status = error_table_$badstar;
+     1031 
+     1032 	return;
+     1033 
+     1034 check:
+     1035      procedure ();
+     1036 
+     1037 declare	idx			fixed bin (21),
+     1038 	multi_part_name		bit (1) aligned,
+     1039 	saved_length		fixed bin (21),
+     1040 	saved_position		fixed bin (21);
+     1041 
+     1042 	if cs.unimplemented ^= ""b
+     1043 	then do;
+     1044 		status = error_table_$bad_arg;	/* UNIMPLEMENTED test(s) were selected.			*/
+     1045 		go to ERROR;
+     1046 	     end;
+     1047 
+     1048 	if (cs.ignore_archive & cs.process_archive) | (cs.ignore_entrypoint & cs.process_entrypoint)
+     1049 	     | (cs.ignore_path & cs.process_path)
+     1050 	then do;					/* Incompatible tests were selected.			*/
+     1051 		status = error_table_$inconsistent;
+     1052 		go to ERROR;
+     1053 	     end;
+     1054 
+     1055 	star_name_length = maxlength (P_check_star_name); /* Pick up star name and rtrim it.  The check entrypoints	*/
+     1056 	star_name_ptr = addr (P_check_star_name);	/* use different parameter names so the compiler doesn't	*/
+     1057 	star_name_length = length (rtrim (star_name));	/* helpfully generate useless code to permit the same	*/
+     1058 						/* parameter to appear in more than one position.		*/
+     1059 
+     1060 	multi_part_name = "0"b;
+     1061 	pi.parse_position = 0;			/* Initially assume that the whole string is to be tested.	*/
+     1062 	star_type = STAR_TYPE_USE_PL1_COMPARE;
+     1063 	status = 0;
+     1064 
+     1065 /**** The absolute pathname of the root (">") and relative pathnames
+     1066*      consisting only of one or more "<" characters are valid, so accept a
+     1067*      null entryname after either delimiter.  Do not automatically accept
+     1068*      an entirely null path.  We are not responsible for validating
+     1069*      pathname syntax, as expand_pathname_ can do a better job. */
+     1070 
+     1071 	if cs.process_path
+     1072 	then do;
+     1073 		pi.parse_position = search (reverse (star_name), PATH_CHARS) - 1;
+     1074 		if pi.parse_position < 0
+     1075 		then pi.parse_position = 0;
+     1076 		else pi.parse_position = star_name_length - pi.parse_position;
+     1077 
+     1078 		if pi.parse_position > 0
+     1079 		then do;
+     1080 			if ^cs.ignore_nonascii
+     1081 			then do idx = 1 to pi.parse_position;
+     1082 
+     1083 				if rank (substr (star_name, idx, 1)) > ASCII_HIGH
+     1084 				then do;
+     1085 					status = error_table_$badpath;
+     1086 					go to ERROR;
+     1087 				     end;
+     1088 			     end;
+     1089 
+     1090 			if pi.parse_position = star_name_length then return;
+     1091 		     end;
+     1092 	     end;
+     1093 
+     1094 	if cs.process_archive
+     1095 	then do;
+     1096 		idx = index (substr (star_name, pi.parse_position + 1), ARCHIVE_DELIM) - 1;
+     1097 		if idx >= 0
+     1098 		then do;
+     1099 			saved_length = star_name_length;
+     1100 			star_name_length = pi.parse_position + idx;
+     1101 			saved_position = star_name_length + length (ARCHIVE_DELIM);
+     1102 
+     1103 			call check_substring ();
+     1104 			if status ^= 0 then go to ERROR;
+     1105 
+     1106 			pi.parse_position = saved_position;
+     1107 			star_name_length = saved_length;
+     1108 			if pi.parse_position = star_name_length then go to BAD_FILE_NAME;
+     1109 			multi_part_name = "1"b;
+     1110 		     end;
+     1111 	     end;
+     1112 
+     1113 	if cs.process_entrypoint
+     1114 	then do;
+     1115 		idx = search (substr (star_name, pi.parse_position + 1), ENTRYPOINT_CHARS) - 1;
+     1116 		if idx = 0 then go to BAD_FILE_NAME;
+     1117 		else if idx > 0
+     1118 		then do;
+     1119 			saved_length = star_name_length;
+     1120 			star_name_length = pi.parse_position + idx;
+     1121 			saved_position = star_name_length + 1;
+     1122 
+     1123 			call check_substring ();
+     1124 			if status ^= 0 then go to ERROR;
+     1125 
+     1126 			pi.parse_position = saved_position;
+     1127 			star_name_length = saved_length;
+     1128 			cs.ignore_length = "1"b;
+     1129 			if pi.parse_position = star_name_length then cs.ignore_null = "1"b;
+     1130 			multi_part_name = "1"b;
+     1131 		     end;
+     1132 	     end;
+     1133 
+     1134 	call check_substring ();
+     1135 	if status ^= 0 then go to ERROR;
+     1136 
+     1137 	if star_type ^= STAR_TYPE_USE_PL1_COMPARE
+     1138 	then if cs.reject_wild then status = error_table_$nostars;
+     1139 	     else if multi_part_name then star_type = STAR_TYPE_USE_MATCH_PROCEDURE;
+     1140 
+     1141 	return;
+     1142 
+     1143 BAD_FILE_NAME:
+     1144 	status = error_table_$bad_file_name;
+     1145 
+     1146 ERROR:
+     1147 	star_type = STAR_TYPE_USE_PL1_COMPARE;
+     1148 	if status = 0 then status = error_table_$badstar;
+     1149 
+     1150 	return;
+     1151 
+     1152 /*^This routine analyzes star names for the check_star_name_ entrypoints.
+     1153*   It does no matching, and is not as speed critical as the match_star_name_
+     1154*   entrypoint.  It doesn't know much about the parser.  It knows enough to
+     1155*   put the parser in its initial state, and it knows three comparison index
+     1156*   values and the fact that comparison values greater than MATCH_ERROR mean
+     1157*   that the star name is not yet entirely parsed.  */
+     1158 
+     1159 
+     1160 check_substring:
+     1161 	procedure ();
+     1162 
+     1163 	     if ^cs.ignore_length & star_name_length - pi.parse_position > MAXIMUM_FILESYS_LENGTH
+     1164 	     then do;
+     1165 		     status = error_table_$entlong;
+     1166 		     return;
+     1167 		end;
+     1168 
+     1169 	     if ^cs.ignore_archive & index (substr (star_name, pi.parse_position + 1), ARCHIVE_DELIM) ^= 0
+     1170 	     then do;
+     1171 		     status = error_table_$archive_pathname;
+     1172 		     return;
+     1173 		end;
+     1174 
+     1175 	     if ^cs.ignore_nonascii & ^multi_part_name
+     1176 	     then do idx = pi.parse_position + 1 to star_name_length;
+     1177 
+     1178 		     if rank (substr (star_name, idx, 1)) > ASCII_HIGH
+     1179 		     then do;
+     1180 			     status = error_table_$invalid_ascii;
+     1181 			     return;
+     1182 			end;
+     1183 		end;
+     1184 
+     1185 	     unspec (pi.operations) = ""b;		/* Initialize parser.				*/
+     1186 	     pi.parse_query_count = 0;
+     1187 	     status = 0;
+     1188 
+     1189 	     call parse ();				/* Start scanning the star name.			*/
+     1190 
+     1191 	     if pi.comparison = MATCHES_ANYTHING
+     1192 	     then do;
+     1193 		     star_type = STAR_TYPE_MATCHES_EVERYTHING;
+     1194 		     return;
+     1195 		end;
+     1196 
+     1197 	     if pi.comparison = MATCHES_LITERAL | pi.comparison = MATCHES_NOTHING then return;
+     1198 
+     1199 	     do while ("1"b);
+     1200 
+     1201 		if pi.comparison <= MATCHES_ERROR
+     1202 		then do;
+     1203 			if pi.comparison = MATCHES_ERROR then go to ERROR;
+     1204 			star_type = STAR_TYPE_USE_MATCH_PROCEDURE;
+     1205 			return;
+     1206 		     end;
+     1207 
+     1208 		call parse ();			/* Continue scanning the star name.			*/
+     1209 	     end;
+     1210 
+     1211 	end check_substring;
+     1212 
+     1213      end check;
+     1214 
+     1215 /*^This is where the knowledge of star name format resides.  The contract of
+     1216*   the parser is to be able to identify type 0 and type 2 star names in a
+     1217*   single call, to detect bad star names, and to provide information to
+     1218*   drive the comparison routines when called repeatedly while matching type
+     1219*   1 star names.  The parser states are shown on the next page.  Each time
+     1220*   the parser is called, it returns up to four items of information:
+     1221*   
+     1222*   1) a Star construct (made up of Stars and Dots),
+     1223*   2) a string of Queries,
+     1224*   3) a literal string, and
+     1225*   4) why parsing stopped.
+     1226*
+     1227*   The parser returns when:
+     1228*
+     1229*   1) the Star construct becomes more complex than can be represented in an
+     1230*      assigned state value,
+     1231*   2) a string of Queries is ended by a Star,
+     1232*   3) a literal string is ended by a Star or a Query, or
+     1233*   4) the end of the star name is encountered.
+     1234*
+     1235*   Once as much of the star name as possible has been parsed, we return up
+     1236*   to 5 numbers.  The index of the comparison routine for a subscripted
+     1237*   goto, the count of Queries, and the position, and length of a literal
+     1238*   substring of the star name.  The count of the number of Dots in the
+     1239*   literal string is also returned to determine whether the literal crosses
+     1240*   a component boundary (an actual count is used rather than just a flag,
+     1241*   because the count can be decremented if a Star follows a Dot at the end
+     1242*   of a literal).  The comparison index is based on the Star construct (if
+     1243*   any) and whether Queries or a Literal are present.  In many cases, only
+     1244*   some of the numbers are valid, but the comparison index is always valid.
+     1245*
+     1246*   The parser postpones the comparison of a Doublestar as long as possible
+     1247*   in the hope of finding a literal to index for or reaching the end of the
+     1248*   star name.  This is done purely for reasons of efficiency: the Doublestar
+     1249*   compare routines must back up the parser if certain kinds of mismatch
+     1250*   occur so they can retry the comparison farther down the match name.  An
+     1251*   example of a star name that might require this is "**a?a".  The first "a"
+     1252*   is indexed for, then the parser is called again to get the "?a".  If it
+     1253*   doesn't match, the parser is backed up and the next "a" is indexed for.
+     1254*   An example of such postponement is converting "**.*.*.a" effectively into
+     1255*   "*.*.**.a".  The parser also postpones comparison of Stars by commuting
+     1256*   Stars and Queries (e.g., "?*?*?" is the same as "*???") because they may
+     1257*   need to also back up within a component.  Star names like "*a?a" can fail
+     1258*   at the query and require repositioning.			       */
+     1259 
+     1260 parse:
+     1261      procedure ();
+     1262 
+     1263 declare	break_pos			fixed bin (21);
+     1264 
+     1265 declare	BREAK_CHARS		initial (".*?<>=%$|") char (9) static options (constant),
+     1266 	STAR_CHARS		initial (".*?") char (3) static options (constant);
+     1267 
+     1268 /* format: off */
+     1269 
+     1270 /*			PARSE STATE TABLE
+     1271*
+     1272*      0  B               12  **?*            24  o               37  o.
+     1273*      1  B*              13  *?              25  *o              38  *o.
+     1274*      2  *.              14  ?               26  *.o             39  *.o.
+     1275*      3  *.*             15  ?*              27  *.*o            40  *.*o.
+     1276*      4  *.**            16  C               28  *.**o           41  *.**o.
+     1277*      5  *.**.           17  C*              29  *.**.o          42  *.**.o.
+     1278*      6  *.**.*          18  C**             30  **o             43  **o.
+     1279*      7  B**             19  C**.            31  **.o            44  **.o.
+     1280*      8  B**.            20  C**.*           32  **.?o           45  **.?o.
+     1281*      9  B**.*           21  o*              33  **?o            46  **?o.
+     1282*     10  **.?            22  o**             34  *?o             47  *?o.
+     1283*     11  **?             23  o.*             35  ?o              48  ?o.
+     1284*                                             36  o.*o            49  o.*o.
+     1285*
+     1286*   Notes on nomenclature:
+     1287*
+     1288*   B   Represents the beginning of the star name.
+     1289*   C   Represents a component boundary (may include B).
+     1290*   o   Represents a literal, which may be null.  See next paragraph.
+     1291*   E   (not shown here, but in the comparison routines) represents the end
+     1292*       of the star name.
+     1293*
+     1294*   The Star, Dot and Query characters represent themselves.
+     1295*
+     1296*   When a literal is shown to the left of a star construct, it means that
+     1297*   a literal or Query preceded the star construct.  The comparison routine
+     1298*   has already matched that literal or Query.  However, its presence must
+     1299*   still be remembered.  State 21 exists so that state 22 can be detected.
+     1300*   State 22 is required in order to handle a Doublestar which does not begin
+     1301*   at a component boundary.  States 23, 36 and 49 are used when a literal
+     1302*   is ended by a ".*" because the Dot hasn't yet been compared but may not
+     1303*   be a literal dot.  States 18 and 19 exist so that state 20 can be
+     1304*   detected.  States 16, 17 and 20 respectively differ from states 0, 1 and
+     1305*   9 because they have already skipped to the end of the preceding component
+     1306*   in the match name and must check that the end of the match name has not
+     1307*   already been reached.
+     1308*
+     1309*   One of the design constraints of the parser is that it be able to digest
+     1310*   any type 0 or type 2 star names in the first call.  This is done for
+     1311*   higher performance.  This requires the most complex state 6 "*.**.*"
+     1312*   to parse type 2 names like "**.*.**.**".
+     1313*
+     1314*   Queries where they occur indicate the presence of at least one Query.
+     1315*   The actual number of Queries is in pi.compare_query_count for
+     1316*   nonterminal comparisons, and pi.parse_query_count at the end.
+     1317*
+     1318*   Although 24 states are needed to represent all the distinct Star
+     1319*   constructs which don't have literals, only 13 are needed when a literal
+     1320*   is present, because some state information can be discarded.
+     1321*
+     1322*   To keep track of null components and to recognize state 23 "o.*", an
+     1323*   additional 13 states are used which indicate that a Dot is the last
+     1324*   character of the literal.					       */
+     1325 
+     1326 /* The END_OPS array selects the comparison routine for the last part of the
+     1327*   star name.  All the values are negative numbers, so that the
+     1328*   check_star_name_ entrypoints can tell that the end of the star name has
+     1329*   been reached.  A value of zero (i.e., MATCHES_ERROR) is also interpreted
+     1330*   as the end of the star name, but a positive value indicates that further
+     1331*   parsing is required.
+     1332*
+     1333*   The END_OPS array does not need a "state" value, since the parser is
+     1334*   never reentered when the end of the star name is reached.  The
+     1335*   HAVE_LITERAL array has been combined with it in place of the unneeded
+     1336*   state table to save space.  The HAVE_LITERAL array is used without
+     1337*   structure qualification because I judged it more confusing to emphasize
+     1338*   the irrelevant connection to END_OPS.
+     1339*
+     1340*   HAVE_LITERAL is used to change the parser state when a literal is
+     1341*   started.  It is used in a number of action routines to save creating
+     1342*   additional state tables.					       */
+     1343 
+     1344 
+     1345 declare	1 END_OPS		(0:49) aligned static options (constant),
+     1346 
+     1347 	  2 comparison		fixed bin unaligned initial
+     1348 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1349 /* NO LITERAL 		  0+   */ ( -4,   -8,   -6,  -14,  -17,  -27,  -19,  -17,  -24,  -17,  -28,  -22,
+     1350 /*			 12+   */  -22,  -11,   -7,  -11,   -5,  -13,  -17,  -24,  -18,   -8,  -17,  -15,
+     1351 /* LITERAL LAST		 24+   */   -1,   -9,   -2,  -10,  -21,  -26,  -20,  -25,  -29,  -23,  -12,   -3,  -16,
+     1352 /* DOT LAST		 37+   */   -1,   -9,   -2,  -10,  -21,  -26,  -20,  -25,  -29,  -23,  -12,   -3,  -16),
+     1353 
+     1354 	  2 HAVE_LITERAL		fixed bin unaligned initial
+     1355 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11,  +12	*/
+     1356 /* NO LITERAL 		  0+   */ ( 24,   25,   26,   27,   28,   29,   28,   30,   31,   30,   32,   33,
+     1357 /*			 12+   */   33,   34,   35,   34,   24,   25,   30,   31,   30,   25,   30,   36,
+     1358 /* LITERAL LAST		 24+   */   24,   25,   26,   27,   28,   29,   30,   31,   32,   33,   34,   35,   36,
+     1359 /* DOT LAST		 37+   */   24,   25,   26,   27,   28,   29,   30,   31,   32,   33,   34,   35,   36);
+     1360 
+     1361 /*^This array contains the comparison and future state values used when Dots
+     1362*   are encountered.  The comparison value is negative when no comparison is
+     1363*   to be performed.  In this case, the state is updated and the parser
+     1364*   continues.  However, in some cases, the Dot must be interpreted as a
+     1365*   literal Dot, (e.g. following a Query).  In this case, the Dot could cause
+     1366*   a null component (either at the beginning of the star name or two
+     1367*   consecutive Dots).  So there are three negative values:
+     1368*
+     1369*   -1) The parser continues with only a state change.
+     1370*   -2) A literal starts, but it is a null component.
+     1371*   -3) A literal starts.
+     1372*
+     1373*   When there is no literal, a positive comparison value causes the
+     1374*   corresponding comparison routine to be invoked.  This reduces the amount
+     1375*   of encoded state we have to remember.  For example, if we have state 3
+     1376*   "*.*" then we invoke a comparison routine.  This means we don't need a
+     1377*   state value for "*.*.".
+     1378*
+     1379*   When there is already a literal, no comparison routine is ever invoked.
+     1380*   The dot is simply added to the end of the literal.  There are 13 basic
+     1381*   literal prefix states (see states 24 through 36), but an additional
+     1382*   13 states are used to remember that the literal ends with a Dot.  This
+     1383*   is used to detect null components and literals anding in ".*".	       */
+     1384 
+     1385 
+     1386 declare	1 DOT_OPS		(0:49) aligned static options (constant),
+     1387 
+     1388 	  2 comparison		fixed bin unaligned initial
+     1389 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1390 /* NO LITERAL 		  0+   */ ( -2,   -1,   -2,   21,   -1,   -2,   21,   -1,   -2,   -1,   -3,   -3,
+     1391 /*			 12+   */   -3,   -3,   -3,   -3,   -2,   22,   -1,   -2,   22,   -1,   22,   20,
+     1392 /* LITERAL LAST		 24+   */    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+     1393 /* DOT LAST		 37+   */    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0),
+     1394 
+     1395 	  2 state			fixed bin unaligned initial
+     1396 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1397 /* NO LITERAL 		  0+   */ ( 37,    2,   39,   16,    5,   42,   19,    8,   44,    5,   45,   46,
+     1398 /*			 12+   */   46,   47,   48,   47,   37,   16,   19,   44,   19,    2,   19,   16,
+     1399 /* LITERAL LAST		 24+   */   37,   38,   39,   40,   41,   42,   43,   44,   45,   46,   47,   48,   49,
+     1400 /* DOT LAST		 37+   */   37,   38,   39,   40,   41,   42,   43,   44,   45,   46,   47,   48,   49);
+     1401 
+     1402 
+     1403 /* The DOT_LAST table below is used to detect null components and to
+     1404*   determine when a Star following a literal is immediately preceded by a
+     1405*   Dot. When detecting null components, it is convenient to assume that
+     1406*   a Dot precedes the beginning of the star name, but no literal is present
+     1407*   in this case so it does not affect the parsing of an initial Star.	       */
+     1408 
+     1409 
+     1410 declare	DOT_LAST			(0:49) bit (1) aligned static options (constant) initial
+     1411 
+     1412 /*                                    +0     +1     +2     +3     +4     +5     +6     +7     +8     +9    +10    +11	*/
+     1413 /* NO LITERAL              0+   */ (  "1"b,  "0"b,  "1"b,  "0"b,  "0"b,  "1"b,  "0"b,  "0"b,  "1"b,  "0"b,  "0"b,  "0"b,
+     1414 /*                        12+   */    "0"b,  "0"b,  "0"b,  "0"b,  "1"b,  "0"b,  "0"b,  "1"b,  "0"b,  "0"b,  "0"b,  "0"b,
+     1415 /* LITERAL LAST	*/	  (13) ("0"b),
+     1416 /* DOT LAST	*/	  (13) ("1"b));
+     1417 
+     1418 /* This array contains the comparison and future state values used when
+     1419*   Stars are encountered.  It can be thought of as conceptually divided into
+     1420*   three regions.  The first 24 values are used when there is no literal.
+     1421*   The next 13 values are used when there is a literal which does not end
+     1422*   in a Dot, and the last 13 values are used when there is a literal which
+     1423*   ends in a Dot.  When the comparison value is negative, it means that no
+     1424*   comparison is performed.  In this case, the state is updated and parsing
+     1425*   continues.  In all other cases, parsing is suspended and some comparison
+     1426*   is selected.  When there is no literal, parsing is suspended either
+     1427*   because the Star construct has become obviously not of type 2 (matches
+     1428*   anything), or because a Doublestar has been detected following a Query.
+     1429*
+     1430*   Any Star following a literal forces comparison.  When the literal ends in
+     1431*   a Dot, the Dot is removed from the literal and becomes part of the new
+     1432*   Star construct if comparison succeeds, since the Dot could be followed by
+     1433*   a Doublestar.  NOTE: the literal may be reduced to zero length by the
+     1434*   removal of the Dot.
+     1435*
+     1436*   Identities are used to minimize the number of parser states:
+     1437*
+     1438*     Simplest      More complex
+     1439*      B**		B**.**
+     1440*      C**		C**.**
+     1441*      *.**	*.**.**
+     1442*      *.**.	B**.*.
+     1443*      *?		?*	*?*
+     1444*      **?		**?*					       */
+     1445 
+     1446 
+     1447 declare	1 STAR_OPS		(0:49) aligned static options (constant),
+     1448 
+     1449 	  2 comparison		fixed bin unaligned initial
+     1450 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1451 /* NO LITERAL 		  0+   */ ( -1,   -1,   -1,   -1,    0,   -1,   -1,    0,   -1,   -1,   -1,   -1,
+     1452 /*			 12+   */   24,   -1,   -1,   23,   -1,   -1,    0,   -1,   -1,   -1,    0,   18,
+     1453 /* LITERAL LAST		 24+   */    9,   13,    8,   12,    6,    5,    4,    3,    1,    2,   11,    7,   10,
+     1454 /* DOT LAST		 37+   */    9,   17,    8,   16,    6,    5,    4,    3,    1,    2,   15,    7,   14),
+     1455 				   
+     1456 	  2 state			fixed bin unaligned initial
+     1457 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1458 /* NO LITERAL 		  0+   */ (  1,    7,    3,    4,    0,    6,    4,    0,    9,    7,   12,   12,
+     1459 /*			 12+   */   22,   15,   15,   22,   17,   18,    0,   20,   18,   22,    0,   18,
+     1460 /* LITERAL LAST		 24+   */   21,   21,   21,   21,   21,   21,   21,   21,   21,   21,   21,   21,   21,
+     1461 /* DOT LAST		 37+   */   23,   17,   23,   17,   23,   23,   23,   23,   23,   23,   17,   23,   17);
+     1462 
+     1463 /* Here are the state and comparison values used when Queries are
+     1464*   encountered.  The comparison value is negative when no comparison need be
+     1465*   performed.  In this case, the Query is counted, the state is updated, and
+     1466*   parsing continues.  The cases where a Query forces a comparison when
+     1467*   there is no literal are all cases where a complex Star construct must be
+     1468*   simplified before the Query can be assimilated.  For example, "*.*?" is
+     1469*   reduced to "*?" by doing the comparison for "*.".  This helps keep the
+     1470*   number of states down.  Queries always force comparisons when there is
+     1471*   already a literal since it would be too complex to try to continue
+     1472*   accumulating state information.  No table entries are needed for the
+     1473*   cases where a literal is ended by a Dot because when the Query is
+     1474*   preceded by a literal the state value is obtained from the
+     1475*   HAVE_LITERAL array, which doesn't contain those values.		       */
+     1476 
+     1477 
+     1478 declare	1 QUERY_OPS		(0:36) aligned static options (constant),
+     1479 
+     1480 	  2 comparison		fixed bin unaligned initial
+     1481 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1482 /* NO LITERAL 		  0+   */ ( -1,   -1,   22,   22,   22,   22,   22,   -1,   -1,   -1,   -1,   -1,
+     1483 /*			 12+   */   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   19,
+     1484 /* LITERAL LAST		 24+   */    9,   13,    8,   12,    6,    5,    4,    3,    1,    2,   11,    7,   10),
+     1485 
+     1486 	  2 state			fixed bin unaligned initial
+     1487 /*                                        +0    +1    +2    +3    +4    +5    +6    +7    +8    +9   +10   +11   +12	*/
+     1488 /* NO LITERAL 		  0+   */ ( 14,   13,   14,   13,   11,   10,   11,   11,   10,   11,   10,   11,
+     1489 /*			 12+   */   11,   13,   14,   13,   14,   13,   11,   10,   11,   13,   11,   13,
+     1490 /* LITERAL LAST		 24+   */   14,   14,   14,   14,   14,   14,   14,   14,   14,   14,   14,   14,   14);
+     1491 
+     1492 /* format: on */
+     1493 
+     1494 /*^Here is where we start parsing.  When the parser is entered, we have no
+     1495*   literal, and to keep the size of some of the dispatch tables down and
+     1496*   increase efficiency we have two different scanners: this one and another
+     1497*   for when we have a literal.  We find the first break character, if any.
+     1498*   There are three cases:
+     1499*
+     1500*   1.  If there is no break character, we branch to an action routine which
+     1501*       determines whether there is a trailing literal and sets up the final
+     1502*       comparison.
+     1503*   2.  If there is a break character but no literal, we branch to the
+     1504*       appropriate action routine which will arrange any state
+     1505*       transformations and comparisons.
+     1506*   3.  If there is a break character with a preceding literal, we branch to
+     1507*       a different action routine, after first saving the position of the
+     1508*       start of the literal and stepping the parser over the new literal and
+     1509*       break char.						       */
+     1510 
+     1511 
+     1512 SCAN_NO_LITERAL:
+     1513 	break_pos = search (substr (star_name, pi.parse_position + 1), BREAK_CHARS) - 1;
+     1514 	if break_pos < 0 then go to STAR_NAME_EXHAUSTED;
+     1515 	if break_pos = 0
+     1516 	then do;					/* Skip parser over break char, and dispatch on it.	*/
+     1517 		pi.parse_position = pi.parse_position + 1;
+     1518 		go to BREAK (index (STAR_CHARS, substr (star_name, pi.parse_position, 1)));
+     1519 	     end;
+     1520 
+     1521 	pi.literal_position = pi.parse_position;	/* Remember where the literal starts.			*/
+     1522 
+     1523 	pi.parse_position = pi.parse_position + break_pos + 1;
+     1524 						/* Skip parser over literal substring and following break.	*/
+     1525 
+     1526 	go to LITERAL_BREAK (index (STAR_CHARS, substr (star_name, pi.parse_position, 1)));
+     1527 
+     1528 
+     1529 /* We come here when we are finished parsing the star name.  If we never
+     1530*   before encountered a literal, we come to STAR_NAME_EXHAUSTED, otherwise
+     1531*   to LITERAL_EXHAUSTED on the next page.  On this page, there is no old
+     1532*   literal, but there may be a new literal.  If we were already at the end
+     1533*   of the star name, there is no literal.			       */
+     1534 
+     1535 
+     1536 STAR_NAME_EXHAUSTED:				/* No breaks left in star name.			*/
+     1537 	if pi.parse_position = star_name_length
+     1538 	then do;					/* Star name ends with Dot, Star or Query.		*/
+     1539 		if DOT_LAST (pi.state) & ^cs.ignore_null then go to REJECT_NULL;
+     1540 		pi.operations = END_OPS (pi.state);	/* Set final comparison type.				*/
+     1541 		return;				/* Go to final comparison.				*/
+     1542 	     end;
+     1543 
+     1544 	pi.operations = END_OPS (HAVE_LITERAL (pi.state));/* First note existence of literal, and then select the	*/
+     1545 						/* comparison.					*/
+     1546 
+     1547 	pi.literal_position = pi.parse_position;	/* Remember where literal begins.			*/
+     1548 
+     1549 	return;					/* Go to final comparison.				*/
+     1550 
+     1551 /*^Here is the other scanner.  In this case, we know we have scanned before,
+     1552*   and that we have a literal.  The three cases are slightly different:
+     1553*
+     1554*   1.  There is no break character.  The star name is known to end in a
+     1555*       literal, but we must check that it does not end in a null component.
+     1556*   2.  There is no new literal string, so this break follows the preceding
+     1557*       one consecutively.  A dispatch table is used which aids in detecting
+     1558*       null components (two Dots in a row), since the first break must
+     1559*       be valid in a literal (i.e., not a Star or a Query).
+     1560*   3.  Like #3 above, but dispatched differently to extend the literal.      */
+     1561 
+     1562 
+     1563 SCAN_LITERAL:
+     1564 	break_pos = search (substr (star_name, pi.parse_position + 1), BREAK_CHARS) - 1;
+     1565 	if break_pos < 0 then go to LITERAL_EXHAUSTED;	/* If none left then finish up star name.		*/
+     1566 	if break_pos = 0
+     1567 	then do;					/* Skip parser over break char, and dispatch on it.	*/
+     1568 		pi.parse_position = pi.parse_position + 1;
+     1569 		go to LITERAL_BREAK_BREAK (index (STAR_CHARS, substr (star_name, pi.parse_position, 1)));
+     1570 	     end;
+     1571 
+     1572 	pi.parse_position = pi.parse_position + break_pos + 1;
+     1573 						/* Skip parser over literal substring and following break.	*/
+     1574 
+     1575 	go to LITERAL_LITERAL_BREAK (index (STAR_CHARS, substr (star_name, pi.parse_position, 1)));
+     1576 
+     1577 
+     1578 /* If the last component is null, we may reject it.  This was not an issue
+     1579*   above since the trailing literal ensured a nonnull last component.  For
+     1580*   LITERAL_EXHAUSTED, trailing nonbreak characters ensure that a Dot can't
+     1581*   be the final character.  If a Dot is last, and we are checking a file
+     1582*   system name, we reject it.  Otherwise, we have a simpler state transition
+     1583*   than on the preceding page.				       */
+     1584 
+     1585 
+     1586 LITERAL_EXHAUSTED:					/* Literal terminated by end of star name.		*/
+     1587 	if pi.parse_position = star_name_length
+     1588 	then if DOT_LAST (pi.state) & ^cs.ignore_null then go to REJECT_NULL;
+     1589 						/* Null final components forbidden in file names.		*/
+     1590 
+     1591 	pi.operations = END_OPS (pi.state);		/* Set final comparison type.				*/
+     1592 
+     1593 	return;					/* Go to final comparison.				*/
+     1594 
+     1595 /* Here we handle Dots.					       */
+     1596 
+     1597 
+     1598 BREAK (1):					/* Dot, with no literal under construction.		*/
+     1599 	pi.operations = DOT_OPS (pi.state);		/* Update FSM.  UNSPEC used for benefit of the following	*/
+     1600 						/* statement after -list and -long_profile.		*/
+     1601 
+     1602 	if substr (unspec (pi.operations), 1, 1) then go to DOT_ACTION (pi.comparison);
+     1603 						/* If comparison is negative, then scanning may continue	*/
+     1604 						/* with one of the following three actions.  Otherwise,	*/
+     1605 						/* we must return and perform the comparison first.	*/
+     1606 	return;
+     1607 
+     1608 
+     1609 DOT_ACTION (-1):					/* Dot is part of Star construct (e.g., "*." or "**.")	*/
+     1610 	go to SCAN_NO_LITERAL;			/* Find the NEXT break character.			*/
+     1611 
+     1612 
+     1613 DOT_ACTION (-2):					/* Dot is first character of star name or follows another	*/
+     1614 	if ^cs.ignore_null then go to REJECT_NULL;	/* Dot immediately.  Null components are forbidden in	*/
+     1615 						/* file system names and this may be enforced by the	*/
+     1616 						/* check_star_name_ entrypoints.			*/
+     1617 
+     1618 DOT_ACTION (-3):					/* Dot is first character of literal.			*/
+     1619 	pi.literal_position = pi.parse_position - 1;	/* Remember that literal begins here, and includes Dot.	*/
+     1620 
+     1621 	pi.dot_count = 1;				/* There is one Dot in this literal so far (this one).	*/
+     1622 
+     1623 	go to SCAN_LITERAL;				/* Find the NEXT break character, if any.		*/
+     1624 
+     1625 
+     1626 LITERAL_BREAK (1):					/* Dot, preceded by one or more nobreak characters.	*/
+     1627 	pi.operations = DOT_OPS (HAVE_LITERAL (pi.state));/* Note existence of literal and that Dot is last.	*/
+     1628 
+     1629 	pi.dot_count = 1;				/* This literal has one Dot in it (this one) so far.	*/
+     1630 
+     1631 	go to SCAN_LITERAL;				/* Go scan some more.				*/
+     1632 
+     1633 
+     1634 LITERAL_BREAK_BREAK (1):				/* Dot, preceded by a literal Dot or invalid char.	*/
+     1635 	if DOT_LAST (pi.state) & ^cs.ignore_null then go to REJECT_NULL;
+     1636 						/* Have ".." and null components are prohibited in filesys. */
+     1637 
+     1638 LITERAL_LITERAL_BREAK (1):				/* Dot, preceded by two or more nonbreak characters.	*/
+     1639 	pi.operations = DOT_OPS (pi.state);		/* Remember that literal now ends in a Dot.		*/
+     1640 
+     1641 	pi.dot_count = pi.dot_count + 1;
+     1642 
+     1643 	go to SCAN_LITERAL;				/* Find NEXT break character.				*/
+     1644 
+     1645 /* Here we handle Stars.					       */
+     1646 
+     1647 
+     1648 BREAK (2):					/* Star, with no literal under construction.		*/
+     1649 	pi.operations = STAR_OPS (pi.state);		/* Update FSM.  UNSPEC used for benefit of the following	*/
+     1650 						/* statement after -list and -long_profile.		*/
+     1651 
+     1652 	if substr (unspec (pi.operations), 1, 1) then go to SCAN_NO_LITERAL;
+     1653 						/* If comparison is negative (high bit set) then no	*/
+     1654 						/* comparison need be performed, and scanning continues.	*/
+     1655 						/* (Negative comparisons indicate that the star name has	*/
+     1656 						/* ended, which can't happen here.)			*/
+     1657 	go to JOIN_STAR;				/* Otherwise, merge into return path.			*/
+     1658 
+     1659 LITERAL_BREAK_BREAK (2):				/* Star, preceded by a literal Dot or invalid char.	*/
+     1660 	if ^DOT_LAST (pi.state) then go to LITERAL_STAR;
+     1661 
+     1662 	pi.operations = STAR_OPS (pi.state);		/* We know that the last character was a Dot.		*/
+     1663 
+     1664 	pi.literal_length = pi.parse_position - pi.literal_position - 2;
+     1665 						/* Compute literal length not to include the Dot and Star.	*/
+     1666 	pi.dot_count = pi.dot_count - 1;		/* And uncount the Dot we removed.			*/
+     1667 
+     1668 	go to JOIN_STAR;				/* Merge into return path.				*/
+     1669 
+     1670 LITERAL_BREAK (2):					/* Star, preceded by one or more nonbreak chars.		*/
+     1671 	pi.dot_count = 0;				/* Literal has no Dots in it and never will.		*/
+     1672 
+     1673 LITERAL_LITERAL_BREAK (2):				/* Star, preceded by two or more nonbreak characters.	*/
+     1674 LITERAL_STAR:					/* Note we have a literal, which does not end in a Dot.	*/
+     1675 	pi.operations = STAR_OPS (HAVE_LITERAL (pi.state));
+     1676 
+     1677 	pi.literal_length = pi.parse_position - pi.literal_position - 1;
+     1678 						/* Calculate length of literal, not to include the Star.	*/
+     1679 
+     1680 JOIN_STAR:					/* Do final accounting and exit.			*/
+     1681 	pi.compare_query_count = pi.parse_query_count;	/* Tell compare routines about Queries, if any.		*/
+     1682 	pi.parse_query_count = 0;			/* No Queries for next parse since break is a Star.	*/
+     1683 
+     1684 	return;					/* Go to the comparison routine.			*/
+     1685 
+     1686 /* Here we handle Queries that are not immediately preceded by literals.  In
+     1687*   most cases, we can adjust the FSM state to note that the last character
+     1688*   is a Query, increment the count of Queries, and continue parsing.  In
+     1689*   some cases, a comparison is required to simplify the state (e.g., turning
+     1690*   "*.*?" into "*?").					       */
+     1691 
+     1692 
+     1693 BREAK (3):					/* Query, with no literal under construction.		*/
+     1694 	pi.parse_query_count = pi.parse_query_count + 1;	/* Count the query.					*/
+     1695 
+     1696 	pi.operations = QUERY_OPS (pi.state);		/* Update FSM state.  UNSPEC used here for next statement	*/
+     1697 						/* after examining -list file and -long_profile.		*/
+     1698 
+     1699 	if substr (unspec (pi.operations), 1, 1) then go to SCAN_NO_LITERAL;
+     1700 						/* Indicates no comparison case.			*/
+     1701 
+     1702 	return;					/* Go to the comparison routine.			*/
+     1703 						/* Needn't set pi.compare_query_count because the selected	*/
+     1704 						/* comparison will never check for Queries.		*/
+     1705 
+     1706 
+     1707 /* Here we handle Queries that are immediately preceded by literals.  In
+     1708*   this case, it is always necessary to do a comparison, since the parser is
+     1709*   gravid with state information and cannot continue.  So we make all the
+     1710*   preparations for a full blown comparison, including calculating the
+     1711*   length of the literal (which is always nonzero) and making the old Query
+     1712*   count available (which may be zero).  The parser's internal Query count
+     1713*   is set to one so that this Query need not be reparsed.		       */
+     1714 
+     1715 
+     1716 LITERAL_BREAK (3):					/* Query preceded by one or more nonbreak characters.	*/
+     1717 	pi.dot_count = 0;				/* Literal has no Dots in it and never can.		*/
+     1718 
+     1719 LITERAL_BREAK_BREAK (3):				/* Query preceded by a literal Dot or invalid char.	*/
+     1720 LITERAL_LITERAL_BREAK (3):				/* Query preceded by two or more nonbreak characters.	*/
+     1721 	pi.operations = QUERY_OPS (HAVE_LITERAL (pi.state));
+     1722 						/* Arrange to invoke the correct comparison routine and	*/
+     1723 						/* update the FSM state for later.			*/
+     1724 
+     1725 	pi.literal_length = pi.parse_position - pi.literal_position - 1;
+     1726 						/* Calculate length of literal string not to include Query. */
+     1727 
+     1728 	pi.compare_query_count = pi.parse_query_count;	/* Copy count of leading Queries for compare routines.	*/
+     1729 	pi.parse_query_count = 1;			/* Count this new Query for later.			*/
+     1730 
+     1731 	return;					/* Go to the comparison routine.			*/
+     1732 
+     1733 /* We come here if we encounter an invalid break character.  If we are
+     1734*   matching, or checking with all invalid character tests disabled, then we
+     1735*   just treat the invalid break as a literal character.  Otherwise, we must
+     1736*   identify the invalid break character, and reject it if so required.
+     1737*   Because this is only required when checking star names, it could be argued
+     1738*   that this might be better done outside the parser.  This is faster, more
+     1739*   compact, and perhaps illustrative of literal processing.  */
+     1740 
+     1741 
+     1742 BREAK (0):					/* Invalid break, with no literal started yet.		*/
+     1743 	pi.literal_position = pi.parse_position - 1;	/* Remember literal starts here, and includes invalid char. */
+     1744 
+     1745 LITERAL_BREAK (0):					/* Invalid break, preceded by one or more nonbreaks.	*/
+     1746 	pi.dot_count = 0;				/* Constant has no Dots in it yet.			*/
+     1747 
+     1748 LITERAL_BREAK_BREAK (0):				/* Invalid break, preceded by a literal ending in a break.	*/
+     1749 LITERAL_LITERAL_BREAK (0):				/* Invalid break, preceded by two or more nonbreaks.	*/
+     1750 	pi.operations = END_OPS (pi.state);		/* Set state to HAVE_LITERAL, which is folded into the	*/
+     1751 						/* END_OPS structure to save space.  This assignment is	*/
+     1752 						/* more efficient than pi.state = HAVE_LITERAL (pi.state);	*/
+     1753 
+     1754 	if index (ENTRYPOINT_CHARS, substr (star_name, pi.parse_position, 1)) ^= 0
+     1755 	then do;
+     1756 		if cs.ignore_entrypoint then go to SCAN_LITERAL;
+     1757 		status = error_table_$bad_file_name;
+     1758 		go to REJECT;
+     1759 	     end;
+     1760 
+     1761 	if index (EQUAL_CHARS, substr (star_name, pi.parse_position, 1)) ^= 0
+     1762 	then do;
+     1763 		if cs.ignore_equal then go to SCAN_LITERAL;
+     1764 		status = error_table_$badequal;
+     1765 		go to REJECT;
+     1766 	     end;
+     1767 
+     1768 	if index (PATH_CHARS, substr (star_name, pi.parse_position, 1)) ^= 0
+     1769 	then do;
+     1770 		if cs.ignore_path then go to SCAN_LITERAL;
+     1771 		status = error_table_$bad_file_name;
+     1772 		go to REJECT;
+     1773 	     end;
+     1774 
+     1775 REJECT_NULL:					/* Here for null component or reserved characters.	*/
+     1776 	status = error_table_$null_name_component;
+     1777 
+     1778 REJECT:
+     1779 	pi.comparison = MATCHES_ERROR;		/* Set fatal comparison type.				*/
+     1780 
+     1781 	return;					/* Go to fatal comparison routine.			*/
+     1782 
+     1783      end parse;
+     1784 
+     1785      end match_star_name_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.1  match_star_name_.pl1              >spec>install>1110>match_star_name_.pl1
+340          1    08/06/87  0913.4  check_star_name.incl.pl1          >ldd>include>check_star_name.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ARCHIVE_DELIM                          constant        char(2)                  initial packed unaligned dcl 300 ref 1096 1101 1169
+ASCII_HIGH                             constant        fixed bin(9,0)           initial dcl 300 ref 1083 1178
+BREAK_CHARS                     000473 constant        char(9)                  initial packed unaligned dcl 1265 ref 1512 1563
+CHECK_STAR_ENTRY_DEFAULT               constant        bit(36)                  initial packed unaligned dcl 1-29 ref 1008
+CHECK_STAR_IGNORE_ALL                  constant        bit(36)                  initial packed unaligned dcl 1-29 ref 348
+CHECK_STAR_PATH_DEFAULT                constant        bit(36)                  initial packed unaligned dcl 1-29 ref 1023
+DOT                             003771 constant        char(1)                  initial packed unaligned dcl 300 ref 377 404 419 480
+                                                                                  492 565 615 622 756 806 806 834 886 917 946 970
+DOT_LAST                        000410 constant        bit(1)                   initial array dcl 1410 ref 1539 1586 1634 1659
+DOT_OPS                         000154 constant        structure                array level 1 dcl 1386 ref 1598 1626 1638
+END_OPS                         000072 constant        structure                array level 1 dcl 1345 ref 1540 1544 1591 1748
+ENTRYPOINT_CHARS                003770 constant        char(2)                  initial packed unaligned dcl 300 ref 1115 1754
+EQUAL_CHARS                     003767 constant        char(2)                  initial packed unaligned dcl 300 ref 1761
+HAVE_LITERAL              0(18) 000072 constant        fixed bin(17,0)          initial array level 2 packed packed unaligned
+                                                                                  dcl 1345 ref 1544 1626 1673 1719
+MATCHES_ANYTHING                003765 constant        fixed bin(17,0)          initial dcl 333 ref 355 1191
+MATCHES_ERROR                          constant        fixed bin(17,0)          initial dcl 333 ref 1201 1203 1778
+MATCHES_LITERAL                 003764 constant        fixed bin(17,0)          initial dcl 333 ref 1197
+MATCHES_NOTHING                 003763 constant        fixed bin(17,0)          initial dcl 333 ref 1197
+MAXIMUM_FILESYS_LENGTH                 constant        fixed bin(17,0)          initial dcl 300 ref 1163
+PATH_CHARS                      003766 constant        char(2)                  initial packed unaligned dcl 300 ref 1073 1768
+P_check_control                        parameter       bit(36)                  packed unaligned dcl 256 ref 986 989
+P_check_star_name                      parameter       char                     packed unaligned dcl 256 set ref 986 1005 1020 1055
+                                                                                  1056
+P_check_star_type                      parameter       fixed bin(2,0)           dcl 256 set ref 986 993*
+P_check_status                         parameter       fixed bin(35,0)          dcl 256 set ref 986 994*
+P_match_entry_name                     parameter       char                     packed unaligned dcl 256 set ref 253 357 359
+P_match_star_name                      parameter       char                     packed unaligned dcl 256 set ref 253 344 345
+P_match_status                         parameter       fixed bin(35,0)          dcl 256 set ref 253 407* 441* 529*
+P_nonstandard_status                   parameter       fixed bin(35,0)          dcl 256 set ref 1005 1020 1028* 1030*
+QUERY_OPS                       000320 constant        structure                array level 1 dcl 1478 ref 1696 1719
+STAR_CHARS                      000472 constant        char(3)                  initial packed unaligned dcl 1265 ref 1518 1526 1569
+                                                                                  1575
+STAR_OPS                        000236 constant        structure                array level 1 dcl 1447 ref 1648 1662 1673
+STAR_TYPE_MATCHES_EVERYTHING           constant        fixed bin(2,0)           initial dcl 1-47 ref 1193
+STAR_TYPE_USE_MATCH_PROCEDURE          constant        fixed bin(2,0)           initial dcl 1-47 ref 1139 1204
+STAR_TYPE_USE_PL1_COMPARE              constant        fixed bin(2,0)           initial dcl 1-47 ref 1062 1137 1146
+addr                                                   builtin function         dcl 265 ref 345 359 1056
+break_pos                       000240 automatic       fixed bin(21,0)          dcl 1263 set ref 1512* 1514 1515 1523 1563* 1565
+                                                                                  1566 1572
+check_star                             based           structure                level 1 dcl 1-15
+compare_query_count      10     000114 automatic       fixed bin(21,0)          level 3 dcl 278 set ref 510* 569 576 577 585 591 598
+                                                                                  600 622 622 839 942 946 947 949 950 967 970 973
+                                                                                  1680* 1728*
+comparison                      000114 automatic       fixed bin(17,0)          level 5 packed packed unaligned dcl 278 set ref 355
+                                                                                  368 636* 645* 680* 708 731 775 906 939 1191 1197
+                                                                                  1197 1201 1203 1602 1778*
+cs                              000113 automatic       structure                level 1 dcl 276 set ref 348* 989* 1008* 1023*
+dot_count                 5     000114 automatic       fixed bin(21,0)          level 4 dcl 278 set ref 748 780 785 829 1621* 1629*
+                                                                                  1641* 1641 1666* 1666 1670* 1716* 1745*
+error_table_$archive_pathname   000010 external static fixed bin(35,0)          dcl 308 ref 1171
+error_table_$bad_arg            000012 external static fixed bin(35,0)          dcl 308 ref 1044
+error_table_$bad_file_name      000014 external static fixed bin(35,0)          dcl 308 ref 1143 1757 1771
+error_table_$badequal           000016 external static fixed bin(35,0)          dcl 308 ref 1764
+error_table_$badpath            000020 external static fixed bin(35,0)          dcl 308 ref 1085
+error_table_$badstar            000022 external static fixed bin(35,0)          dcl 308 ref 529 1030 1148
+error_table_$entlong            000024 external static fixed bin(35,0)          dcl 308 ref 1165
+error_table_$inconsistent       000026 external static fixed bin(35,0)          dcl 308 ref 1051
+error_table_$invalid_ascii      000030 external static fixed bin(35,0)          dcl 308 ref 1180
+error_table_$nomatch            000034 external static fixed bin(35,0)          dcl 308 ref 407
+error_table_$nostars            000032 external static fixed bin(35,0)          dcl 308 ref 1137
+error_table_$null_name_component
+                                000036 external static fixed bin(35,0)          dcl 308 ref 1775
+idx                             000214 automatic       fixed bin(21,0)          dcl 1037 set ref 1080* 1083* 1096* 1097 1100 1115*
+                                                                                  1116 1117 1120 1175* 1178*
+ignore_archive            0(01) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1048
+                                                                                  1169
+ignore_entrypoint         0(03) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1048
+                                                                                  1756
+ignore_equal              0(07) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1763
+ignore_length             0(08) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref
+                                                                                  1128* 1163
+ignore_nonascii           0(09) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1080
+                                                                                  1175
+ignore_null               0(10) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref
+                                                                                  1129* 1539 1586 1613 1634
+ignore_path               0(05) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1048
+                                                                                  1770
+index                                                  builtin function         dcl 265 ref 377 419 480 492 565 604 615 622 658 756
+                                                                                  759 806 806 834 917 946 970 1096 1169 1518 1526
+                                                                                  1569 1575 1754 1761 1768
+length                                                 builtin function         dcl 265 ref 346 360 1057 1101
+literal_length            4     000114 automatic       fixed bin(21,0)          level 4 dcl 278 set ref 545* 548 551 551 579 582 582
+                                                                                  593 594 604 610 638 641 641 648* 648 658 671 672
+                                                                                  694 699 699 703 759 769 770 806 813 813 818 819
+                                                                                  838 843 843 847 1664* 1677* 1725*
+literal_position          3     000114 automatic       fixed bin(21,0)          level 4 dcl 278 set ref 522 545 551 582 604 641 647*
+                                                                                  647 658 699 759 806 813 843 1521* 1547* 1618* 1664
+                                                                                  1677 1725 1742*
+match_length              7     000114 automatic       fixed bin(21,0)          level 4 in structure "pi" dcl 278 in procedure
+                                                                                  "match_star_name_" set ref 363* 373* 373 375 377
+                                                                                  397 404 415* 415 417 419 468 480 486 486 492 505
+                                                                                  522 548* 548 549 551 559 562* 563 565 568 572* 572
+                                                                                  577* 577 579 585* 594* 594 600* 600 601 604 615
+                                                                                  616 620* 620 628* 628 629 638 655* 655 656 658
+                                                                                  666* 666 672* 672 694* 694 697 716* 716 756 757
+                                                                                  765* 765 770* 770 793 806 811* 811 819* 819 834
+                                                                                  836 848* 850 853* 853 883* 883 884 917 922* 926*
+                                                                                  926 942 950* 950 956* 956 967* 967 968
+match_length              7     000136 automatic       fixed bin(21,0)          level 3 in structure "starstar_retry_info" dcl 294
+                                                                                  in procedure "match_star_name_" set ref 591*
+match_name                             based           char                     packed unaligned dcl 297 ref 360 377 404 419 480 492
+                                                                                  522 551 565 582 604 615 622 641 658 699 756 759
+                                                                                  806 813 834 843 886 917 946 970
+match_name_exhausted     11     000114 automatic       bit(1)                   level 2 dcl 278 set ref 362* 386 397 437 459 500
+                                                                                  855* 862* 920 921*
+match_name_length               000100 automatic       fixed bin(21,0)          dcl 268 set ref 357* 360* 360 363 377 404 419 480
+                                                                                  492 522 551 562 565 582 604 615 622 641 658 699
+                                                                                  756 759 806 813 834 843 848 859 886 917 946 970
+match_name_ptr                  000102 automatic       pointer                  dcl 268 set ref 359* 360 377 404 419 480 492 522 551
+                                                                                  565 582 604 615 622 641 658 699 756 759 806 813
+                                                                                  834 843 886 917 946 970
+match_position            6     000114 automatic       fixed bin(21,0)          level 4 dcl 278 set ref 364* 377 404 419 480 492 522
+                                                                                  551 559* 559 562 565 571* 571 576* 576 582 593*
+                                                                                  593 598* 598 604 615 619* 619 622 626* 626 641
+                                                                                  653* 653 658 665* 665 671* 671 699 703* 703 715*
+                                                                                  715 756 759 764* 764 769* 769 806 810* 810 813
+                                                                                  818* 818 834 841* 841 843 847* 847 848 852* 852
+                                                                                  859 886 889* 889 917 925* 925 946 949* 949 955*
+                                                                                  955 970 973* 973
+maxlength                                              builtin function         dcl 265 ref 344 357 1055
+multi_part_name                 000215 automatic       bit(1)                   dcl 1037 set ref 1060* 1109* 1130* 1139 1175
+operations                      000126 automatic       structure                level 2 in structure "star_retry_info" dcl 294
+                                                                                  in procedure "match_star_name_" set ref 365* 520*
+                                                                                  692* 711 722* 795* 901*
+operations                      000136 automatic       structure                level 3 in structure "starstar_retry_info" dcl 294
+                                                                                  in procedure "match_star_name_" set ref 366* 726
+operations                      000114 automatic       structure                level 4 in structure "pi" dcl 278 in procedure
+                                                                                  "match_star_name_" set ref 350* 1185* 1540* 1544*
+                                                                                  1591* 1598* 1602 1626* 1638* 1648* 1652 1662*
+                                                                                  1673* 1696* 1699 1719* 1748*
+parse_position            1     000114 automatic       fixed bin(21,0)          level 4 dcl 278 set ref 351* 1061* 1073* 1074 1074*
+                                                                                  1076* 1076 1078 1080 1090 1096 1100 1106* 1108
+                                                                                  1115 1120 1126* 1129 1163 1169 1175 1512 1517*
+                                                                                  1517 1518 1521 1523* 1523 1526 1536 1547 1563
+                                                                                  1568* 1568 1569 1572* 1572 1575 1586 1618 1664
+                                                                                  1677 1725 1742 1754 1761 1768
+parse_query_count         2     000114 automatic       fixed bin(21,0)          level 4 dcl 278 set ref 351* 373 377 415 419 468 486
+                                                                                  486 510 1186* 1680 1682* 1693* 1693 1728 1729*
+pi                              000114 automatic       structure                level 1 dcl 278
+process_archive           0(02) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1048
+                                                                                  1094
+process_entrypoint        0(04) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1048
+                                                                                  1113
+process_path              0(06) 000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1048
+                                                                                  1071
+rank                                                   builtin function         dcl 265 ref 1083 1178
+reject_wild                     000113 automatic       bit(1)                   level 2 packed packed unaligned dcl 276 set ref 1137
+reverse                                                builtin function         dcl 265 ref 1073
+rtrim                                                  builtin function         dcl 265 ref 346 360 1057
+saved_length                    000216 automatic       fixed bin(21,0)          dcl 1037 set ref 1099* 1107 1119* 1127
+saved_position                  000217 automatic       fixed bin(21,0)          dcl 1037 set ref 1101* 1106 1121* 1126
+search                                                 builtin function         dcl 265 ref 1073 1115 1512 1563
+star                            000136 automatic       structure                level 2 in structure "starstar_retry_info" dcl 294
+                                                                                  in procedure "match_star_name_"
+star                            000114 automatic       structure                level 3 in structure "pi" dcl 278 in procedure
+                                                                                  "match_star_name_" set ref 714* 767
+star_name                              based           char                     packed unaligned dcl 297 ref 346 522 551 582 604 641
+                                                                                  658 699 759 806 813 843 1057 1073 1083 1096 1115
+                                                                                  1169 1178 1512 1518 1526 1563 1569 1575 1754 1761
+                                                                                  1768
+star_name_length                000104 automatic       fixed bin(21,0)          dcl 268 set ref 344* 346* 346 522 545 551 582 604
+                                                                                  641 658 699 759 806 813 843 1055* 1057* 1057 1073
+                                                                                  1076 1083 1090 1096 1099 1100* 1101 1107* 1108
+                                                                                  1115 1119 1120* 1121 1127* 1129 1163 1169 1175
+                                                                                  1178 1512 1518 1526 1536 1563 1569 1575 1586 1754
+                                                                                  1761 1768
+star_name_ptr                   000106 automatic       pointer                  dcl 268 set ref 345* 346 522 551 582 604 641 658 699
+                                                                                  759 806 813 843 1056* 1057 1073 1083 1096 1115
+                                                                                  1169 1178 1512 1518 1526 1563 1569 1575 1754 1761
+                                                                                  1768
+star_retry_info                 000126 automatic       structure                level 1 dcl 294 set ref 714 767*
+star_type                       000110 automatic       fixed bin(2,0)           dcl 268 set ref 993 1028 1062* 1137 1139* 1146*
+                                                                                  1193* 1204*
+starstar                        000114 automatic       structure                level 2 dcl 278 set ref 590 668 729*
+starstar_retry_info             000136 automatic       structure                level 1 dcl 294 set ref 590* 668* 729
+state                     0(18) 000114 automatic       fixed bin(17,0)          level 5 packed packed unaligned dcl 278 set ref 1539
+                                                                                  1540 1544 1586 1591 1598 1626 1634 1638 1648 1659
+                                                                                  1662 1673 1696 1719 1748
+status                          000111 automatic       fixed bin(35,0)          dcl 268 set ref 994 1028 1044* 1051* 1063* 1085*
+                                                                                  1104 1124 1135 1137* 1143* 1148 1148* 1165* 1171*
+                                                                                  1180* 1187* 1757* 1764* 1771* 1775*
+string                                                 builtin function         dcl 265 set ref 348* 989* 1008* 1023*
+substr                                                 builtin function         dcl 265 ref 377 404 419 480 492 522 522 551 551 565
+                                                                                  582 582 604 604 615 622 641 641 658 658 699 699
+                                                                                  756 759 759 806 806 813 813 834 843 843 886 917
+                                                                                  946 970 1083 1096 1115 1169 1178 1512 1518 1526
+                                                                                  1563 1569 1575 1602 1652 1699 1754 1761 1768
+temp                            000112 automatic       fixed bin(21,0)          dcl 268 set ref 565* 568 568* 569 571 572 585 591
+                                                                                  604* 608 615* 616 616* 619 620 658* 663 665 666
+                                                                                  756* 757 757* 759* 759 762 764 765 806* 808 810
+                                                                                  811 834* 836 836* 838* 838 839 841 917* 918 925
+                                                                                  926 946* 947 947 955 956
+unimplemented             0(11) 000113 automatic       bit(25)                  level 2 packed packed unaligned dcl 276 set ref 1042
+unspec                                                 builtin function         dcl 265 set ref 350* 365* 366* 520* 692* 711 722*
+                                                                                  726 795* 901* 1185* 1602 1652 1699
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+CHECK_STAR_IGNORE_ARCHIVE              internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_IGNORE_ENTRYPOINT           internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_IGNORE_EQUAL                internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_IGNORE_LENGTH               internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_IGNORE_NONASCII             internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_IGNORE_NULL                 internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_IGNORE_PATH                 internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_PROCESS_ARCHIVE             internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_PROCESS_ENTRYPOINT          internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_PROCESS_PATH                internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_REJECT_WILD                 internal static bit(36)                  initial packed unaligned dcl 1-29
+CHECK_STAR_UNIMPLEMENTED               internal static bit(36)                  initial packed unaligned dcl 1-29
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BAD_FILE_NAME                   002377 constant        label                    dcl 1143 ref 1108 1116
+BREAK                           000365 constant        label                    array(0:3) dcl 1598 ref 1518
+CHECK_FILESYS_COMMON            001703 constant        label                    dcl 1025 ref 1010
+COMPARE                         000000 constant        label                    array(-29:24) dcl 370 ref 368 708 775 906 939
+COMPARE_LITERAL                 001304 constant        label                    dcl 694 ref 686
+COMPARE_LITERAL_END             000772 constant        label                    dcl 522 ref 514
+COMPARE_MUST_BE_LAST_COMPONENT  000722 constant        label                    dcl 480 ref 453 459 468
+COMPARE_MUST_END_ON_COMPONENT_BOUNDARY
+                                000632 constant        label                    dcl 397 ref 380 386
+COMPARE_STARSTAR_DOT_QUERY_LITERAL
+                                001031 constant        label                    dcl 565 ref 573
+COMPARE_STARSTAR_LITERAL        001244 constant        label                    dcl 658 ref 650 681
+COMPARE_STARSTAR_QUERY_LITERAL  001126 constant        label                    dcl 604 ref 631
+COMPARE_STAR_DOTTED_LITERAL_DOT 001437 constant        label                    dcl 790 ref 782 829
+COMPARE_STAR_LITERAL            001356 constant        label                    dcl 748 ref 718 736 742
+COMPARE_STAR_LITERAL_DOT        001446 constant        label                    dcl 829
+COMPARE_STAR_UNDOTTED_LITERAL_DOT
+                                001450 constant        label                    dcl 834 ref 780 785
+DOT_ACTION                      000371 constant        label                    array(-3:-1) dcl 1609 ref 1602
+ERROR                           002402 constant        label                    dcl 1146 ref 1045 1052 1086 1104 1124 1135 1203
+HAVE_STARSTAR_MATCH             001264 constant        label                    dcl 668 ref 622 641
+JOIN_STAR                       003027 constant        label                    dcl 1680 ref 1657 1668
+LITERAL_BREAK                   000374 constant        label                    array(0:3) dcl 1626 ref 1526
+LITERAL_BREAK_BREAK             000400 constant        label                    array(0:3) dcl 1634 ref 1569
+LITERAL_EXHAUSTED               002705 constant        label                    dcl 1586 ref 1565
+LITERAL_LITERAL_BREAK           000404 constant        label                    array(0:3) dcl 1638 ref 1575
+LITERAL_STAR                    003017 constant        label                    dcl 1673 ref 1659
+MATCH_EXIT                      000701 constant        label                    dcl 441 ref 355 397 404 422 431 480 492 505 522
+NO_MATCH_EXIT                   000645 constant        label                    dcl 407 ref 375 377 388 402 417 419 437 462 471 486
+                                                                                  494 500 549 551 563 579 601 610 629 638 656 663
+                                                                                  697 726 839 884 920 959 968
+PARSE_NEW_COMPONENT             001542 constant        label                    dcl 901 ref 596 674 753 799 857 864 870 877 952
+REJECT                          003157 constant        label                    dcl 1778 ref 1758 1765 1772
+REJECT_NULL                     003154 constant        label                    dcl 1775 ref 1539 1586 1613 1634
+RETRY_COMPARE                   000066 constant        label                    array(4) dcl 559 ref 731
+RETRY_STAR                      001330 constant        label                    dcl 711 ref 490 526 699 886
+RETRY_STARSTAR                  001341 constant        label                    dcl 722 ref 484 508 762 808 813 843 970
+RETRY_STARSTAR_DOT_QUERY_LITERAL
+                                001021 constant        label                    dcl 559 ref 587
+SCAN_LITERAL                    002637 constant        label                    dcl 1563 ref 1623 1631 1643 1756 1763 1770
+SCAN_NO_LITERAL                 002542 constant        label                    dcl 1512 ref 1609 1652 1699
+STAR_NAME_EXHAUSTED             002612 constant        label                    dcl 1536 ref 1514
+check                           002107 constant        entry                    internal dcl 1034 ref 991 1025
+check_star_name_                001613 constant        entry                    external dcl 986
+check_star_name_$entry          001646 constant        entry                    external dcl 1005
+check_star_name_$path           001666 constant        entry                    external dcl 1020
+check_substring                 002412 constant        entry                    internal dcl 1160 ref 1103 1123 1134
+compare_star_dotted_literal     001743 constant        entry                    internal dcl 802 ref 752 790
+literal_end                     001717 constant        entry                    internal dcl 542 ref 370 394 412 428 447 465 477
+match_star_name_                000506 constant        entry                    external dcl 253
+must_be_at_dot                  002017 constant        entry                    internal dcl 880 ref 450 733 777 796 859 867 873
+parse                           002541 constant        entry                    internal dcl 1260 ref 353 706 773 904 937 1189 1208
+skip_component                  002034 constant        entry                    internal dcl 910 ref 383 391 425 434 456 474 497 517
+                                                                                  633 677 689 745 826 875 895 898
+skip_queries                    002064 constant        entry                    internal dcl 963 ref 512 683 739 788 933
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4202        4242    3772        4212
+Length      4474    3772        40         216     207           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+match_star_name_                    170 external procedure  is an external procedure.  
+literal_end                             internal procedure  shares stack frame of external procedure match_star_name_.  
+compare_star_dotted_literal             internal procedure  shares stack frame of external procedure match_star_name_.  
+must_be_at_dot                          internal procedure  shares stack frame of external procedure match_star_name_.  
+skip_component                          internal procedure  shares stack frame of external procedure match_star_name_.  
+skip_queries                            internal procedure  shares stack frame of external procedure match_star_name_.  
+check                                   internal procedure  shares stack frame of external procedure match_star_name_.  
+check_substring                         internal procedure  shares stack frame of external procedure match_star_name_.  
+parse                                   internal procedure  shares stack frame of external procedure match_star_name_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+match_star_name_         000100 match_name_length           match_star_name_
+                         000102 match_name_ptr              match_star_name_
+                         000104 star_name_length            match_star_name_
+                         000106 star_name_ptr               match_star_name_
+                         000110 star_type                   match_star_name_
+                         000111 status                      match_star_name_
+                         000112 temp                        match_star_name_
+                         000113 cs                          match_star_name_
+                         000114 pi                          match_star_name_
+                         000126 star_retry_info             match_star_name_
+                         000136 starstar_retry_info         match_star_name_
+                         000214 idx                         check
+                         000215 multi_part_name             check
+                         000216 saved_length                check
+                         000217 saved_position              check
+                         000240 break_pos                   parse
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry_desc      set_chars_eis       index_chars_eis
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$archive_pathname error_table_$bad_arg          error_table_$bad_file_name    error_table_$badequal
+error_table_$badpath          error_table_$badstar          error_table_$entlong          error_table_$inconsistent
+error_table_$invalid_ascii    error_table_$nomatch          error_table_$nostars
+error_table_$null_name_component
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+    253 000502       344 000526       345 000527       346 000532       348 000543       350 000545       351 000546
+    353 000550       355 000551       357 000555       359 000560       360 000563       362 000574       363 000575
+    364 000577       365 000600       366 000601       368 000602       370 000603       373 000604       375 000606
+    377 000610       380 000623       383 000624       386 000625       388 000627       391 000630       394 000631
+    397 000632       402 000636       404 000637       407 000645       410 000651       412 000652       415 000653
+    417 000655       419 000657       422 000672       425 000673       428 000674       431 000675       434 000676
+    437 000677       441 000701       445 000703       447 000704       450 000705       453 000706       456 000707
+    459 000710       462 000712       465 000713       468 000714       471 000717       474 000720       477 000721
+    480 000722       484 000735       486 000736       490 000742       492 000743       494 000755       497 000756
+    500 000757       505 000761       508 000763       510 000764       512 000766       514 000767       517 000770
+    520 000771       522 000772       526 001013       529 001014       532 001020       559 001021       562 001025
+    563 001030       565 001031       568 001044       569 001050       571 001052       572 001054       573 001057
+    576 001060       577 001062       579 001064       582 001067       585 001101       587 001104       590 001105
+    591 001110       593 001113       594 001115       596 001117       598 001120       600 001122       601 001124
+    604 001126       608 001142       610 001143       615 001145       616 001160       619 001163       620 001164
+    622 001166       626 001202       628 001203       629 001205       631 001207       633 001210       636 001211
+    638 001213       641 001216       645 001231       647 001233       648 001235       650 001236       653 001237
+    655 001240       656 001242       658 001244       663 001260       665 001261       666 001262       668 001264
+    671 001267       672 001271       674 001273       677 001274       680 001275       681 001277       683 001300
+    686 001301       689 001302       692 001303       694 001304       697 001306       699 001310       703 001323
+    706 001325       708 001326       711 001330       714 001332       715 001335       716 001336       718 001340
+    722 001341       726 001342       729 001344       731 001347       733 001351       736 001352       739 001353
+    742 001354       745 001355       748 001356       752 001360       753 001361       756 001362       757 001375
+    759 001400       762 001412       764 001413       765 001414       767 001416       769 001421       770 001423
+    773 001425       775 001426       777 001430       780 001431       782 001433       785 001434       788 001436
+    790 001437       793 001440       795 001442       796 001443       799 001444       826 001445       829 001446
+    834 001450       836 001463       838 001466       839 001470       841 001473       843 001474       847 001506
+    848 001510       850 001513       852 001514       853 001515       854 001517       855 001520       857 001522
+    859 001523       862 001530       864 001532       867 001533       870 001534       873 001535       875 001536
+    877 001537       895 001540       898 001541       901 001542       904 001543       906 001544       933 001546
+    937 001547       939 001550       942 001552       946 001555       947 001571       949 001574       950 001576
+    952 001600       955 001601       956 001602       957 001604       959 001605       986 001606       989 001626
+    991 001633       993 001634       994 001637       996 001641      1005 001642      1008 001661      1010 001663
+   1020 001664      1023 001701      1025 001703      1028 001704      1030 001712      1032 001716       542 001717
+    545 001720       548 001723       549 001725       551 001727       555 001742       802 001743       806 001744
+    808 001775       810 001776       811 001777       813 002001       818 002012       819 002014       822 002016
+    880 002017       883 002020       884 002022       886 002024       889 002032       891 002033       910 002034
+    917 002035       918 002051       920 002052       921 002054       922 002056       923 002057       925 002060
+    926 002061       929 002063       963 002064       967 002065       968 002067       970 002071       973 002104
+    975 002106      1034 002107      1042 002110      1044 002113      1045 002116      1048 002117      1051 002140
+   1052 002143      1055 002144      1056 002146      1057 002151      1060 002162      1061 002163      1062 002164
+   1063 002166      1071 002167      1073 002171      1074 002203      1076 002206      1078 002210      1080 002212
+   1083 002223      1085 002232      1086 002235      1088 002236      1090 002240      1094 002244      1096 002247
+   1097 002263      1099 002264      1100 002266      1101 002271      1103 002273      1104 002274      1106 002276
+   1107 002300      1108 002302      1109 002304      1113 002306      1115 002311      1116 002326      1117 002327
+   1119 002330      1120 002332      1121 002335      1123 002337      1124 002340      1126 002342      1127 002344
+   1128 002346      1129 002350      1130 002354      1134 002356      1135 002357      1137 002361      1139 002372
+   1141 002376      1143 002377      1146 002402      1148 002404      1150 002411      1160 002412      1163 002413
+   1165 002423      1166 002426      1169 002427      1171 002445      1172 002450      1175 002451      1178 002467
+   1180 002476      1181 002501      1183 002502      1185 002504      1186 002505      1187 002506      1189 002507
+   1191 002510      1193 002515      1194 002517      1197 002520      1199 002525      1201 002526      1203 002532
+   1204 002533      1205 002535      1208 002536      1209 002537      1211 002540      1260 002541      1512 002542
+   1514 002557      1515 002560      1517 002561      1518 002562      1521 002574      1523 002576      1526 002601
+   1536 002612      1539 002615      1540 002626      1541 002630      1544 002631      1547 002635      1549 002636
+   1563 002637      1565 002654      1566 002655      1568 002656      1569 002657      1572 002671      1575 002674
+   1586 002705      1591 002717      1593 002722      1598 002723      1602 002726      1606 002733      1609 002734
+   1613 002735      1618 002740      1621 002743      1623 002745      1626 002746      1629 002752      1631 002754
+   1634 002755      1638 002764      1641 002767      1643 002770      1648 002771      1652 002774      1657 002777
+   1659 003000      1662 003005      1664 003007      1666 003013      1668 003015      1670 003016      1673 003017
+   1677 003023      1680 003027      1682 003031      1684 003032      1693 003033      1696 003034      1699 003037
+   1702 003042      1716 003043      1719 003044      1725 003050      1728 003054      1729 003056      1731 003060
+   1742 003061      1745 003064      1748 003065      1754 003070      1756 003105      1757 003110      1758 003113
+   1761 003114      1763 003125      1764 003130      1765 003133      1768 003134      1770 003145      1771 003150
+   1772 003153      1775 003154      1778 003157      1781 003161
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

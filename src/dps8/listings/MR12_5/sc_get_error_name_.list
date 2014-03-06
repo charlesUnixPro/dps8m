@@ -1,0 +1,490 @@
+	COMPILATION LISTING OF SEGMENT sc_get_error_name_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1017.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* procedure used to replace ssu_$get_subsystem_and_request_name */
+       10 /* format: style2,idind30 */
+       11 
+       12 /* Created 1984-12, BIM */
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(87-02-07,GDixon), approve(87-05-25,MCR7680),
+       17*     audit(87-05-06,Parisek), install(87-08-04,MR12.1-1055):
+       18*     Modified to correct coding standard violations.
+       19*                                                   END HISTORY COMMENTS */
+       20 
+       21 
+       22 sc_get_error_name_:
+       23      procedure (SCI_ptr) returns (char (72) varying);
+       24 
+       25 	declare SCI_ptr		        pointer;
+       26 
+       27 	dcl     (addr, rtrim)	        builtin;
+       28 
+       29 	call ssu_check_sci (SCI_ptr);
+       30 	sci_ptr = SCI_ptr;
+       31 	if ^sci.executing_request
+       32 	then return ("system_control");
+       33 	else return (rtrim (sci.request_data_ptr -> request_data.full_name));
+       34 
+  1     1 /* BEGIN INCLUDE FILE ... _ssu_sci.incl.pl1 */
+  1     2 /* Created:  31 April 1980 by W. Olin Sibert */
+  1     3 /* Modified: 17 November 1981 by Jay Pattin to add info_prefix */
+  1     4 /* Modified: 10 December 1981 by G. Palter to make arg_count, arg_ptr, return_arg, and arg_list_ptr replaceable */
+  1     5 /* Modified: 10 February 1982 by G. Palter to reorganize and make changes required for installation */
+  1     6 /* Modified: June 1982 by G. Palter for version 2 (new request processor options and replaceable procedures) */
+  1     7 /* Modified: 6 November 1984 by G. Palter for version 3 (get_subsystem_and_request_name is now replaceable) */
+  1     8 
+  1     9 /* format: style4,^delnl */
+  1    10 
+  1    11 
+  1    12 /* Structure used internally by subsystem utilities to contain control information about a single invocation */
+  1    13 
+  1    14 dcl  1 sci aligned based (sci_ptr),
+  1    15        2 version character (8),
+  1    16        2 parent_area_ptr pointer,			/* -> area holding this data and referenced structures */
+  1    17 
+  1    18        2 global_info,				/* global information about this subsystem ... */
+  1    19          3 subsystem_name char (32) unaligned,		/* ... its name (eg: read_mail) */
+  1    20          3 subsystem_version char (32) unaligned,		/* ... its version numer (eg: 4.3j) */
+  1    21          3 info_ptr pointer,				/* ... -> data maintained by the subsystem */
+  1    22          3 standalone_abort_entry entry () variable,	/* ... for standalone invocations: called by ssu_$abort_* */
+  1    23          3 flags,
+  1    24 	 4 standalone_invocation bit (1) unaligned,	/* ... ON => ssu_$standalone_invocation was used */
+  1    25 	 4 in_listener bit (1) unaligned,		/* ... ON => in subsystem listener loop */
+  1    26 	 4 executing_request bit (1) unaligned,		/* ... ON => executing a request */
+  1    27 	 4 debug_mode bit (1) unaligned,		/* ... ON => debugging the subsystem */
+  1    28 	 4 pad bit (32) unaligned,
+  1    29 
+  1    30        2 recursion_info,				/* describes relationship of this invocation to other active
+  1    31*						   invocations of the same subsystem ... */
+  1    32          3 invocation_data_idx fixed binary,		/* ... locates the list of active invocations */
+  1    33          3 level fixed binary,			/* ... # of active invocations when this one created + 1 */
+  1    34          3 previous_sci_ptr pointer,			/* ... -> description of previous invocation */
+  1    35          3 next_sci_ptr pointer,			/* ... -> description of next invocation */
+  1    36 
+  1    37        2 request_processor_info,			/* information related to request line processing ... */
+  1    38          3 request_tables_ptr pointer,			/* ... -> list of request tables in use */
+  1    39          3 rp_options_ptr pointer,			/* ... -> options controlling the processor */
+  1    40          3 abort_line_label label variable,
+  1    41          3 request_data_ptr pointer,			/* ... -> request_data structure for current request */
+  1    42 
+  1    43        2 prompt_and_ready_info,			/* information related to prompts and ready messages ... */
+  1    44          3 prompt character (64) varying,		/* the prompt (if any): an ioa_ control string */
+  1    45          3 prompt_mode,				/* controls prompting ... */
+  1    46 	 4 dont_prompt bit (1) unaligned,		/* ... ON => never prompt */
+  1    47 	 4 prompt_after_null_lines bit (1) unaligned,	/* ... ON => prompt after a blank line if prompts enabled */
+  1    48 	 4 dont_prompt_if_typeahead bit (1) unaligned,	/* ... ON => suppress prompts if request line available */
+  1    49 	 4 pad bit (33) unaligned,
+  1    50          3 ready_enabled bit (1) aligned,		/* ... ON => ready procedure should be invoked */
+  1    51 
+  1    52        2 listener_info,				/* information used by the listener ... */
+  1    53          3 abort_subsystem_label label variable,
+  1    54          3 temp_seg_ptr pointer,			/* ... -> temporary segment used for long request lines */
+  1    55 
+  1    56        2 temp_info_ptr pointer,			/* pointer to data used by ssu_temp_mgr_ */
+  1    57 
+  1    58        2 info_info,					/* information related to self-documentation ... */
+  1    59          3 info_dirs_ptr pointer,			/* ... -> list of info directories */
+  1    60          3 info_prefix character (32),			/* ... prefix used to form info segment names */
+  1    61 
+  1    62        2 ec_info,					/* data for subsystem exec_com processing ... */
+  1    63          3 ec_suffix char (32) unaligned,		/* ... suffix of exec_com segments */
+  1    64          3 ec_search_list char (32) unaligned,		/* ... search list used to find exec_coms */
+  1    65          3 subsystem_dir_ptr pointer,			/* ... defines referencing_dir rule for above search list */
+  1    66 
+  1    67        2 entries,					/* all replaceable entries ... */
+  1    68          (
+  1    69          3 abort_line,				/* ... invoked by ssu_$abort_line */
+  1    70          3 abort_subsystem,				/* ... invoked by ssu_$abort_subsystem */
+  1    71          3 print_message,				/* ... invoked by ssu_$print_message */
+  1    72          3 program_interrupt,				/* ... cannot be called externally */
+  1    73          3 pre_request_line,				/* ... cannot be called externally */
+  1    74          3 post_request_line,				/* ... cannot be called externally */
+  1    75          3 ready,					/* ... invoked by ssu_$ready_proc */
+  1    76          3 cpescape,				/* ... cannot be called externally */
+  1    77          3 unknown_request,				/* ... invoked by ssu_$unknown_request */
+  1    78          3 listen,					/* ... invoked by ssu_$listen */
+  1    79          3 execute_line,				/* ... invoked by ssu_$execute_line */
+  1    80          3 evaluate_active_string,			/* ... invoked by ssu_$evaluate_active_string */
+  1    81          3 invoke_request,				/* ... invoked by ssu_$invoke_request */
+  1    82          3 locate_request,				/* ... invoked by ssu_$locate_request */
+  1    83          3 arg_count,				/* ... invoked by ssu_$arg_count */
+  1    84          3 arg_ptr,					/* ... invoked by ssu_$arg_ptr */
+  1    85          3 return_arg,				/* ... invoked by ssu_$return_arg */
+  1    86          3 arg_list_ptr,				/* ... invoked by ssu_$arg_list_ptr */
+  1    87          3 get_default_rp_options,			/* ... invoked by ssu_$get_default_rp_options */
+  1    88          3 get_rp_options,				/* ... invoked by ssu_$get_request_processor_options */
+  1    89          3 set_rp_options,				/* ... invoked by ssu_$set_request_processor_options */
+  1    90          3 reset_rp_options,				/* ... invoked by ssu_$reset_request_processor_options */
+  1    91          3 get_subsys_and_request_name			/* ... invoked by ssu_$get_subsystem_and_request_name */
+  1    92          ) entry () variable options (variable);
+  1    93 
+  1    94 dcl  sci_ptr pointer;
+  1    95 
+  1    96 dcl  sci_parent_area area based (sci.parent_area_ptr);
+  1    97 
+  1    98 dcl  SCI_VERSION_3 character (8) static options (constant) init ("sci_0003");
+  1    99 
+  1   100 /* END INCLUDE FILE ... _ssu_sci.incl.pl1 */
+       35 
+       36 
+  2     1 /*  BEGIN:   _ssu_check_sci.incl.pl1			  *  *  *  *  *  */
+  2     2 
+  2     3 /* Created:  25 February 1982 by G. Palter */
+  2     4 /* Modified: 6 November 1984 by G. Palter for version 3 and new sub_err_ 
+  2     5*				  calling sequence */
+  2     6 
+  2     7 
+  2     8 /****^  HISTORY COMMENTS:
+  2     9*  1) change(87-02-07,GDixon), approve(87-05-25,MCR7680),
+  2    10*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  2    11*     Modified to verify that p_sci_ptr has proper its modifier by overlaying it
+  2    12*     with the structure in its.incl.pl1, rather than assuming knowledge of
+  2    13*     pointer format.
+  2    14*                                                   END HISTORY COMMENTS */
+  2    15 
+  2    16 
+  2    17 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+  2    18 
+  2    19 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    20 /*							       */
+  2    21 /* Validates that the caller's sci_ptr acutally references a valid	       */
+  2    22 /* subsystem control info structure.				       */
+  2    23 /*							       */
+  2    24 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    25 
+  2    26 ssu_check_sci:
+  2    27      procedure (p_sci_ptr);
+  2    28 
+  2    29 dcl  p_sci_ptr pointer parameter;
+  2    30 
+  2    31 dcl  SSU_ character (32) static options (constant) initial ("ssu_");
+  2    32 
+  2    33 dcl  error_table_$bad_ptr fixed binary (35) external;
+  2    34 dcl  error_table_$null_info_ptr fixed binary (35) external;
+  2    35 dcl  error_table_$unimplemented_version fixed binary (35) external;
+  2    36 
+  2    37 dcl  sub_err_ entry () options (variable);
+  2    38 
+  2    39 dcl  (null, substr, unspec) builtin;
+  2    40 
+  2    41           if addr(p_sci_ptr) -> its.its_mod ^= ITS_MODIFIER then do;
+  2    42 RESIGNAL_BAD_POINTER:
+  2    43 	     call sub_err_ (error_table_$bad_ptr, SSU_, ACTION_CANT_RESTART, null (), (0), "^24.3b", unspec (p_sci_ptr));
+  2    44 	     go to RESIGNAL_BAD_POINTER;
+  2    45 	end;
+  2    46 
+  2    47 	if p_sci_ptr = null () then do;
+  2    48 RESIGNAL_NULL_POINTER:
+  2    49 	     call sub_err_ (error_table_$null_info_ptr, SSU_, ACTION_CANT_RESTART, null (), (0), "sci_ptr");
+  2    50 	     go to RESIGNAL_NULL_POINTER;
+  2    51 	end;
+  2    52 
+  2    53 	if p_sci_ptr -> sci.version = SCI_VERSION_3 then	/* all is well */
+  2    54 	     return;
+  2    55 
+  2    56 RESIGNAL_BAD_VERSION:
+  2    57 	call sub_err_ (error_table_$unimplemented_version, SSU_, ACTION_CANT_RESTART, null (), (0), "^24.3b",
+  2    58 	     unspec (p_sci_ptr -> sci.version));
+  2    59 	go to RESIGNAL_BAD_VERSION;
+  2    60 
+  3     1 /* BEGIN INCLUDE FILE its.incl.pl1
+  3     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  3     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  3     4 
+  3     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  3     6     2 pad1 bit (3) unaligned,
+  3     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  3     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  3     9     2 pad2 bit (9) unaligned,
+  3    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  3    11 
+  3    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  3    13     2 pad3 bit (3) unaligned,
+  3    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  3    15     2 pad4 bit (3) unaligned,
+  3    16     2 mod bit (6) unaligned;				/* further modification */
+  3    17 
+  3    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  3    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  3    20     2 pad1 bit (27) unaligned,
+  3    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  3    22 
+  3    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  3    24     2 pad2 bit (3) unaligned,
+  3    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  3    26     2 pad3 bit (3) unaligned,
+  3    27     2 mod bit (6) unaligned;				/* further modification */
+  3    28 
+  3    29 
+  3    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  3    31     2 pad1 bit (3) unaligned,
+  3    32     2 segno fixed bin (15) unsigned unaligned,
+  3    33     2 ringno fixed bin (3) unsigned unaligned,
+  3    34     2 pad2 bit (9) unaligned,
+  3    35     2 its_mod bit (6) unaligned,
+  3    36 
+  3    37     2 offset fixed bin (18) unsigned unaligned,
+  3    38     2 pad3 bit (3) unaligned,
+  3    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  3    40     2 pad4 bit (3) unaligned,
+  3    41     2 mod bit (6) unaligned;
+  3    42 
+  3    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  3    44     2 pr_no fixed bin (3) unsigned unaligned,
+  3    45     2 pad1 bit (27) unaligned,
+  3    46     2 itp_mod bit (6) unaligned,
+  3    47 
+  3    48     2 offset fixed bin (18) unsigned unaligned,
+  3    49     2 pad2 bit (3) unaligned,
+  3    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  3    51     2 pad3 bit (3) unaligned,
+  3    52     2 mod bit (6) unaligned;
+  3    53 
+  3    54 
+  3    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  3    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  3    57 
+  3    58 /* END INCLUDE FILE   its.incl.pl1 */
+  2    61 
+  2    62 
+  4     1 /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  4     2 /* format: style3 */
+  4     3 
+  4     4 /* These constants are to be used for the flags argument of sub_err_ */
+  4     5 /* They are just "string (condition_info_header.action_flags)" */
+  4     6 
+  4     7 declare	(
+  4     8 	ACTION_CAN_RESTART	init (""b),
+  4     9 	ACTION_CANT_RESTART init ("1"b),
+  4    10 	ACTION_DEFAULT_RESTART
+  4    11 			init ("01"b),
+  4    12 	ACTION_QUIET_RESTART
+  4    13 			init ("001"b),
+  4    14 	ACTION_SUPPORT_SIGNAL
+  4    15 			init ("0001"b)
+  4    16 	)		bit (36) aligned internal static options (constant);
+  4    17 
+  4    18 /* End include file */
+  2    63 
+  2    64 
+  2    65      end ssu_check_sci;
+  2    66 
+  2    67 
+  2    68 /*  END OF:  _ssu_check_sci.incl.pl1			  *  *  *  *  *  */
+       37 
+       38 
+  5     1 /* BEGIN INCLUDE FILE ... _ssu_request_data.incl.pl1 */
+  5     2 /* Created:  13 May 1980 by W. Olin Sibert */
+  5     3 /* Modified: 28 February 1982 by G. Palter to add dont_summarize and dont_list */
+  5     4 /* Modified: 2 August 1982 by Jay Pattin to add unknown flag */
+  5     5 
+  5     6 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+  5     7 
+  5     8 
+  5     9 /* Description of a subsystem request returned by ssu_$locate_request */
+  5    10 
+  5    11 dcl  1 request_data aligned based (request_data_ptr),
+  5    12        2 full_name character (32) unaligned,		/* its primary name */
+  5    13        2 entry entry (pointer, pointer) variable,		/* entry to call to implement the request */
+  5    14        2 call_info,					/* describes current invocation of the request ... */
+  5    15          3 arg_list_ptr pointer,			/* ... -> argument list */
+  5    16          3 arg_count fixed binary,
+  5    17          3 af_sw bit (1) aligned,			/* ... ON => invoked as an active request */
+  5    18          3 rv_ptr pointer,				/* ... -> active request's return string */
+  5    19          3 rv_lth fixed binary (21),			/* ... maxlength of the return string */
+  5    20        2 flags aligned like request_flags,		/* attributes of the request (from the request table) */
+  5    21        2 name_list_ptr pointer unaligned,		/* -> list of all valid names for the request */
+  5    22        2 info_string,				/* brief description of the request (if any) */
+  5    23          3 ptr pointer unaligned,
+  5    24          3 lth fixed binary (18),
+  5    25        2 pad (4) bit (36);
+  5    26 
+  5    27 dcl  request_data_ptr pointer;
+  5    28 
+  5    29 
+  5    30 /* Request attributes from the request table */
+  5    31 
+  5    32 dcl  1 request_flags aligned based,
+  5    33        2 system_flags unaligned,
+  5    34          3 allow_command bit (1) unaligned,		/* ON => request may be called as a command */
+  5    35          3 allow_af bit (1) unaligned,			/* ON => request may be called as an active function */
+  5    36          3 unimplemented bit (1) unaligned,		/* ON => request is not yet implemented */
+  5    37          3 multics_request bit (1) unaligned,		/* ON => this request is really just a Multics command */
+  5    38          3 dont_summarize bit (1) unaligned,		/* ON => summarize_requests doesn't list this request */
+  5    39          3 dont_list bit (1) unaligned,			/* ON => list_requests doesn't match this one without -all */
+  5    40          3 unknown bit (1) unaligned,			/* ON => return unknown_request, don't list or summarize ever */
+  5    41          3 pad bit (11) unaligned,
+  5    42        2 user_flags bit (18) unaligned;			/* no longer used */
+  5    43 
+  5    44 
+  5    45 /* List of all names for a given request */
+  5    46 
+  5    47 dcl  1 request_name_list aligned based (request_name_list_ptr),
+  5    48        2 n_names fixed binary,			/* structure describing name list */
+  5    49        2 name (request_name_list_n_names refer (request_name_list.n_names)) character (32) unaligned;
+  5    50 
+  5    51 dcl  request_name_list_ptr pointer;
+  5    52 dcl  request_name_list_n_names fixed binary;
+  5    53 
+  5    54 
+  5    55 /* Brief description of a request */
+  5    56 
+  5    57 dcl  request_info_string character (request_info_string_lth) based (request_info_string_ptr);
+  5    58 dcl  request_info_string_lth fixed binary (21);
+  5    59 dcl  request_info_string_ptr pointer;
+  5    60 
+  5    61 /* END INCLUDE FILE ... _ssu_request_data.incl.pl1 */
+       39 
+       40 
+       41      end sc_get_error_name_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.8  sc_get_error_name_.pl1            >spec>install>1112>sc_get_error_name_.pl1
+35           1    01/21/85  0912.2  _ssu_sci.incl.pl1                 >ldd>include>_ssu_sci.incl.pl1
+37           2    08/06/87  0913.4  _ssu_check_sci.incl.pl1           >ldd>include>_ssu_check_sci.incl.pl1
+2-61         3    11/26/79  1320.6  its.incl.pl1                      >ldd>include>its.incl.pl1
+2-63         4    04/16/82  0958.1  sub_err_flags.incl.pl1            >ldd>include>sub_err_flags.incl.pl1
+39           5    09/28/82  1437.6  _ssu_request_data.incl.pl1        >ldd>include>_ssu_request_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_CANT_RESTART             000000 constant        bit(36)                  initial dcl 4-7 set ref 2-42* 2-48* 2-56*
+ITS_MODIFIER                           constant        bit(6)                   initial packed unaligned dcl 3-55 ref 2-41
+SCI_VERSION_3                   000012 constant        char(8)                  initial packed unaligned dcl 1-98 ref 2-53
+SCI_ptr                                parameter       pointer                  dcl 25 set ref 22 29* 30
+SSU_                            000001 constant        char(32)                 initial packed unaligned dcl 2-31 set ref 2-42*
+                                                                                  2-48* 2-56*
+addr                                                   builtin function         dcl 27 ref 2-41
+error_table_$bad_ptr            000010 external static fixed bin(35,0)          dcl 2-33 set ref 2-42*
+error_table_$null_info_ptr      000012 external static fixed bin(35,0)          dcl 2-34 set ref 2-48*
+error_table_$unimplemented_version
+                                000014 external static fixed bin(35,0)          dcl 2-35 set ref 2-56*
+executing_request        32(02)        based           bit(1)                   level 4 packed packed unaligned dcl 1-14 ref 31
+flags                    32            based           structure                level 3 dcl 1-14
+full_name                              based           char(32)                 level 2 packed packed unaligned dcl 5-11 ref 33
+global_info               4            based           structure                level 2 dcl 1-14
+its                                    based           structure                level 1 dcl 3-5
+its_mod                   0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 3-5 ref 2-41
+null                                                   builtin function         dcl 2-39 ref 2-42 2-42 2-47 2-48 2-48 2-56 2-56
+p_sci_ptr                              parameter       pointer                  dcl 2-29 set ref 2-26 2-41 2-42 2-42 2-47 2-53 2-56
+                                                                                  2-56
+request_data                           based           structure                level 1 dcl 5-11
+request_data_ptr         52            based           pointer                  level 3 dcl 1-14 ref 33
+request_flags                          based           structure                level 1 dcl 5-32
+request_processor_info
+                         42            based           structure                level 2 dcl 1-14
+rtrim                                                  builtin function         dcl 27 ref 33
+sci                                    based           structure                level 1 dcl 1-14
+sci_ptr                         000100 automatic       pointer                  dcl 1-94 set ref 30* 31 33
+sub_err_                        000016 constant        entry                    external dcl 2-37 ref 2-42 2-48 2-56
+unspec                                                 builtin function         dcl 2-39 ref 2-42 2-42 2-56 2-56
+version                                based           char(8)                  level 2 dcl 1-14 ref 2-53 2-56 2-56
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CAN_RESTART                     internal static bit(36)                  initial dcl 4-7
+ACTION_DEFAULT_RESTART                 internal static bit(36)                  initial dcl 4-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 4-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 4-7
+ITP_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 3-56
+itp                                    based           structure                level 1 dcl 3-18
+itp_unsigned                           based           structure                level 1 dcl 3-43
+its_unsigned                           based           structure                level 1 dcl 3-30
+request_data_ptr                       automatic       pointer                  dcl 5-27
+request_info_string                    based           char                     packed unaligned dcl 5-57
+request_info_string_lth                automatic       fixed bin(21,0)          dcl 5-58
+request_info_string_ptr                automatic       pointer                  dcl 5-59
+request_name_list                      based           structure                level 1 dcl 5-47
+request_name_list_n_names              automatic       fixed bin(17,0)          dcl 5-52
+request_name_list_ptr                  automatic       pointer                  dcl 5-51
+sci_parent_area                        based           area(1024)               dcl 1-96
+substr                                                 builtin function         dcl 2-39
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RESIGNAL_BAD_POINTER            000127 constant        label                    dcl 2-42 ref 2-44
+RESIGNAL_BAD_VERSION            000261 constant        label                    dcl 2-56 set ref 2-59
+RESIGNAL_NULL_POINTER           000207 constant        label                    dcl 2-48 ref 2-50
+sc_get_error_name_              000044 constant        entry                    external dcl 22
+ssu_check_sci                   000121 constant        entry                    internal dcl 2-26 ref 29
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       424         444     336         434
+Length       716     336        20         236      65           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_get_error_name_                  116 external procedure  is an external procedure.  
+ssu_check_sci                           internal procedure  shares stack frame of external procedure sc_get_error_name_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sc_get_error_name_       000100 sci_ptr                     sc_get_error_name_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+sub_err_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_ptr          error_table_$null_info_ptr    error_table_$unimplemented_version
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     22 000040        29 000051        30 000060        31 000064        33 000076    2   26 000121    2   41 000123
+ 2   42 000127    2   44 000202    2   47 000203    2   48 000207    2   50 000251    2   53 000252    2   56 000261
+ 2   59 000335
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

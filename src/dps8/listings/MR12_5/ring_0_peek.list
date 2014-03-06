@@ -1,0 +1,714 @@
+	COMPILATION LISTING OF SEGMENT ring_0_peek
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1043.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       13 
+       14 /* RING-0-PEEK --- Procedure to return to a user in arbitrary ring
+       15*   the contents of arbitrary supervisor segments.
+       16*
+       17*   Converted from EPL to PL/I by C Garman, December 1970
+       18*   VTOCE dumping by BSG 4/20/76
+       19*   New PVTE include file by J. Bongiovanni, March 1982
+       20*   Support 256K segments, E. N. Kittlitz, March 1983
+       21*   Removed access check (let hardware do it), Keith Loepere, October 1984.
+       22*
+       23*   */
+       24 
+       25 ring_0_peek: proc (a_from_ptr, a_to_ptr, a_num_words);
+       26 
+       27 /* Parameters */
+       28 
+       29 dcl  a_code			fixed bin (35) parameter;
+       30 dcl  a_from_ptr			ptr parameter;
+       31 dcl  a_message			char (*) parameter;
+       32 dcl  a_num_words			fixed bin (19) parameter;
+       33 dcl  a_pvtx			fixed bin parameter;
+       34 dcl  a_to_ptr			ptr parameter;
+       35 dcl  a_vtocx			fixed bin parameter;
+       36 dcl  a_vtocep			ptr parameter;
+       37 
+       38 /* Variables */
+       39 
+       40 dcl  code				fixed bin (35);
+       41 dcl  from_ptr			ptr;
+       42 dcl  i				fixed bin (18);
+       43 dcl  1 local_vtoce			like vtoce aligned;
+       44 dcl  num_words			fixed bin (19);
+       45 dcl  patch_mem			bit (1) aligned;
+       46 dcl  pvid				bit (36) aligned;
+       47 dcl  pvtx				fixed bin;
+       48 dcl  rel_from_ptr			fixed bin (18);
+       49 dcl  rel_to_ptr			fixed bin (18);
+       50 dcl  vtocx			fixed bin;
+       51 dcl  to_ptr			ptr;
+       52 
+       53 /* Entries */
+       54 
+       55 dcl  pmut$cam			entry;
+       56 dcl  syserr			entry options (variable);
+       57 dcl  vtoc_man$get_vtoce		entry (bit (36) aligned, fixed bin, fixed bin, bit (3) aligned, ptr, fixed bin (35));
+       58 
+       59 /* External */
+       60 
+       61 dcl  error_table_$invalid_pvtx	fixed bin (35) ext;
+       62 dcl  pds$process_group_id		char (32) aligned ext;
+       63 dcl  pvt$n_entries			fixed bin ext;
+       64 dcl  sys_info$seg_size_256K		fixed bin (19) ext static;
+       65 
+       66 /* Based */
+       67 
+       68 dcl  move_array			(num_words) fixed bin (35) based;
+       69 
+       70 /* Misc */
+       71 
+       72 dcl  (addr, fixed, max, rel, size)	builtin;
+       73 
+       74 	patch_mem = "0"b;
+       75 	go to common;
+       76 
+       77 patch: entry (a_from_ptr, a_to_ptr, a_num_words);		/* Explicit patch, inhibit mode checking */
+       78 
+       79 	patch_mem = "1"b;
+       80 
+       81 common:	from_ptr = a_from_ptr;			/* Copy arguments */
+       82 	to_ptr = a_to_ptr;
+       83 	if patch_mem then addr (to_ptr) -> its.ringno = ""b;
+       84 	else addr (from_ptr) -> its.ringno = ""b;	/* force ringno of from ptr to 0 */
+       85 	num_words = a_num_words;
+       86 
+       87 	if num_words <= 0 then return;		/* A few gullibility tests */
+       88 
+       89 	rel_from_ptr = fixed (rel (from_ptr), 18);
+       90 	rel_to_ptr = fixed (rel (to_ptr), 18);
+       91 
+       92 	if (max (rel_to_ptr, rel_from_ptr) + num_words) > sys_info$seg_size_256K then return; /* Protect the guy from himself */
+       93 
+       94 	if patch_mem then do;
+       95 
+       96 	     call syserr (0, "^a:  ^d words @ ^p", pds$process_group_id, num_words, to_ptr);
+       97 						/* Print header on console */
+       98 
+       99 	     do i = 1 to num_words;
+      100 
+      101 		call syserr (0, "^6o^14w to ^w", i - 1, (to_ptr -> move_array (i)), (from_ptr -> move_array (i)));
+      102 						/* Print before & after, take fault here if no access */
+      103 
+      104 	     end;
+      105 	     call pmut$cam;				/* clear caches */
+      106 	end;
+      107 
+      108 	to_ptr -> move_array (*) = from_ptr -> move_array (*); /* Use PL/I array copy */
+      109 
+      110 	return;					/* All paths use this return */
+      111 
+      112 message: entry (a_message);				/* Print message from user */
+      113 
+      114 	call syserr (3, "^a:  ^a", pds$process_group_id, (a_message)); /* Print message, turning on bleeper */
+      115 
+      116 	return;					/* Return to caller */
+      117 
+      118 vtoce_peek: entry (a_pvtx, a_vtocx, a_vtocep, a_code);
+      119 
+      120 	num_words = size (vtoce);
+      121 	vtocep = a_vtocep;				/* Set up for copy */
+      122 
+      123 	pvtx = a_pvtx;
+      124 	vtocx = a_vtocx;
+      125 
+      126 	if pvtx <= 0 | pvtx > pvt$n_entries then go to bad_pvtx;
+      127 
+      128 	pvt_arrayp = addr (pvt$array);
+      129 	pvtep = addr (pvt_array (pvtx));
+      130 
+      131 	if ^pvte.storage_system | ^pvte.used then do;
+      132 bad_pvtx:	     a_code = error_table_$invalid_pvtx;
+      133 	     return;
+      134 	end;
+      135 
+      136 	pvid = pvte.pvid;
+      137 	call vtoc_man$get_vtoce (pvid, pvtx, vtocx, "111"b, addr (local_vtoce), code); /* vtoc_man will validate vtocx */
+      138 	if code = 0 then
+      139 	     vtocep -> move_array = addr (local_vtoce) -> move_array;
+      140 	a_code = code;
+      141 	return;
+      142  /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  1     2 
+  1     3 
+  1     4 
+  1     5 
+  1     6 /****^  HISTORY COMMENTS:
+  1     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  1     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  1     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  1    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  1    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  1    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  1    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  1    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  1    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  1    16*                                                   END HISTORY COMMENTS */
+  1    17 
+  1    18 
+  1    19 /*
+  1    20*   All disk packs have the standard layout described below:
+  1    21*
+  1    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  1    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  1    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  1    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  1    26*   Record  7		: formerly contained bad track list; no longer used.
+  1    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  1    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  1    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  1    30*
+  1    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  1    32*   of the particular partition.
+  1    33*
+  1    34*
+  1    35*
+  1    36*   A conceptual declaration for a disk pack could be:
+  1    37*
+  1    38*   dcl 1 disk_pack,
+  1    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  1    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  1    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  1    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  1    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  1    44*   2 vtoc_array_records	(8 : n-1),
+  1    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  1    46*   3 unused				bit(36 * 64),
+  1    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  1    48*
+  1    49*
+  1    50*
+  1    51*
+  1    52**/
+  1    53 
+  1    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  1    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  1    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  1    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  1    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  1    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  1    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  1    61 		         fixed bin (17) int static options (constant);
+  1    62 
+  1    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  1    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  1    65 /* or the physical volume table entry (pvte) device type.		      */
+  1    66 
+  1    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  1    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  1    69 
+  1    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  1    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  1    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  1    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  1    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  1    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  1    76 
+  1    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+      142 
+      143  /* BEGIN INCLUDE FILE its.incl.pl1
+  2     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  2     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  2     4 
+  2     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  2     6     2 pad1 bit (3) unaligned,
+  2     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  2     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  2     9     2 pad2 bit (9) unaligned,
+  2    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  2    11 
+  2    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  2    13     2 pad3 bit (3) unaligned,
+  2    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  2    15     2 pad4 bit (3) unaligned,
+  2    16     2 mod bit (6) unaligned;				/* further modification */
+  2    17 
+  2    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  2    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  2    20     2 pad1 bit (27) unaligned,
+  2    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  2    22 
+  2    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  2    24     2 pad2 bit (3) unaligned,
+  2    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  2    26     2 pad3 bit (3) unaligned,
+  2    27     2 mod bit (6) unaligned;				/* further modification */
+  2    28 
+  2    29 
+  2    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  2    31     2 pad1 bit (3) unaligned,
+  2    32     2 segno fixed bin (15) unsigned unaligned,
+  2    33     2 ringno fixed bin (3) unsigned unaligned,
+  2    34     2 pad2 bit (9) unaligned,
+  2    35     2 its_mod bit (6) unaligned,
+  2    36 
+  2    37     2 offset fixed bin (18) unsigned unaligned,
+  2    38     2 pad3 bit (3) unaligned,
+  2    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    40     2 pad4 bit (3) unaligned,
+  2    41     2 mod bit (6) unaligned;
+  2    42 
+  2    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  2    44     2 pr_no fixed bin (3) unsigned unaligned,
+  2    45     2 pad1 bit (27) unaligned,
+  2    46     2 itp_mod bit (6) unaligned,
+  2    47 
+  2    48     2 offset fixed bin (18) unsigned unaligned,
+  2    49     2 pad2 bit (3) unaligned,
+  2    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    51     2 pad3 bit (3) unaligned,
+  2    52     2 mod bit (6) unaligned;
+  2    53 
+  2    54 
+  2    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  2    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  2    57 
+  2    58 /* END INCLUDE FILE   its.incl.pl1 */
+      143 
+      144  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  3     4 
+  3     5 /****^  HISTORY COMMENTS:
+  3     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  3     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  3     8*     Add the support for subvolumes
+  3     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  3    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  3    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  3    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  3    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  3    14*     Added inconsistent_dbm bit for determining the status of volume
+  3    15*     dumper bit maps.
+  3    16*                                                   END HISTORY COMMENTS */
+  3    17 
+  3    18      dcl	   pvt$array	      aligned external;
+  3    19      dcl	   pvt$max_n_entries      fixed bin external;
+  3    20 
+  3    21      dcl	   pvt_arrayp	      ptr;
+  3    22      dcl	   pvtep		      ptr;
+  3    23 
+  3    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  3    25 
+  3    26      dcl	   1 pvte		      based (pvtep) aligned,
+  3    27 
+  3    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  3    29 
+  3    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  3    31 
+  3    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  3    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  3    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  3    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  3    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  3    37 	     2 pad3	      bit (2) unaligned,
+  3    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  3    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  3    40 
+  3    41 
+  3    42 
+  3    43 	     2 devname	      char (4),		/* device name */
+  3    44 
+  3    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  3    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  3    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  3    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  3    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  3    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  3    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  3    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  3    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  3    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  3    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  3    56 	     2 scav_check_address
+  3    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  3    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  3    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  3    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  3    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  3    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  3    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  3    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  3    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  3    66 
+  3    67 
+  3    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  3    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  3    70 
+  3    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  3    72 
+  3    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  3    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  3    75 
+  3    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  3    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  3    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  3    79 	     2 records_per_cyl    fixed bin,
+  3    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  3    81 	     2 sv_name            char (2) aligned,
+  3    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  3    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  3    84 
+  3    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  3    86 	     2 pad2	      bit (18) unaligned,
+  3    87 
+  3    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  3    89 
+  3    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  3    91 
+  3    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  3    93 
+  3    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  3    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  3    96 
+  3    97 
+  3    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  3    99 
+  3   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  3   101 
+  3   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  3   103 
+  3   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  3   105 
+  3   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  3   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  3   108 
+  3   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  3   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  3   111 
+  3   112 
+  3   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  3   114 	   VOLMAP_ASYNC_READ      init (1),
+  3   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  3   116 
+  3   117 
+  3   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      144 
+      145  /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  4     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  4     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  4     4 
+  4     5 dcl  vtocep ptr;
+  4     6 
+  4     7 dcl 1 vtoce based (vtocep) aligned,
+  4     8 
+  4     9 
+  4    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  4    11 
+  4    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  4    13 
+  4    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  4    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  4    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  4    17     2 pad2 bit (9),
+  4    18 
+  4    19     2 dtu bit (36),					/* date and time segment was last used */
+  4    20 
+  4    21     2 dtm bit (36),					/* date and time segment was last modified */
+  4    22 
+  4    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  4    24     2 deciduous bit (1),				/* true if hc_sdw */
+  4    25     2 nid bit (1),					/* no incremental dump switch */
+  4    26     2 dnzp bit (1),					/* Dont null zero pages */
+  4    27     2 gtpd bit (1),					/* Global transparent paging device */
+  4    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  4    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  4    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  4    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  4    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  4    33     2 pad3 bit (8),
+  4    34     2 dirsw bit (1),				/* directory switch */
+  4    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  4    36     2 pad4 bit (16)) unaligned,			/* not used */
+  4    37 
+  4    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  4    39 
+  4    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  4    41 
+  4    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  4    43 
+  4    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  4    45 
+  4    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  4    47 
+  4    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  4    49 
+  4    50 
+  4    51 
+  4    52 
+  4    53 
+  4    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  4    55 
+  4    56     2 pad6 (10) bit (36),				/* not used */
+  4    57 
+  4    58     2 ncd bit (1),					/* no complete dump switch */
+  4    59     2 pad7 bit (17),
+  4    60     2 pad8 bit (18),
+  4    61 
+  4    62     2 dtd bit (36),					/* date-time-dumped */
+  4    63 
+  4    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  4    65 
+  4    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  4    67 
+  4    68 
+  4    69 
+  4    70 
+  4    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  4    72 
+  4    73     2 primary_name char (32),				/* primary name of the segment */
+  4    74 
+  4    75     2 time_created bit (36),				/* time the segment was created */
+  4    76 
+  4    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  4    78 
+  4    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  4    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  4    81 
+  4    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  4    83 
+  4    84     2 access_class bit (72),				/* access class in branch */
+  4    85     2 perm_flags aligned,
+  4    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  4    87       3 pad9 bit (35) unal,
+  4    88     2 owner bit (36);				/* pvid of this volume */
+  4    89 
+  4    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  4    91 
+  4    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  4    93     2 pad1 bit (7*36),
+  4    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  4    95     2 pad2 bit (184*36);
+  4    96 
+  4    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      145 
+      146 
+      147 
+      148 /* BEGIN MESSAGE DOCUMENTATION
+      149*
+      150*Message:
+      151*PERSON.PROJ.T:  NN words @ SSS|XXX
+      152*.br
+      153*  XXX  WWWWWWWWWWWW to YYYYYYYYYYYY
+      154*.br
+      155*  XXX  WWWWWWWWWWWW to YYYYYYYYYYYY
+      156*
+      157*S:	$beep
+      158*
+      159*T:	$run
+      160*
+      161*M:	A privileged user has patched the hardcore supervisor.
+      162*
+      163*A:	$ignore
+      164*
+      165*
+      166*Message:
+      167*PERSON.PROJ.T:  MESSAGE
+      168*
+      169*S:	$beep
+      170*
+      171*T:	$run
+      172*
+      173*M:	A privileged user has sent a message to be printed on the SYSERR console.
+      174*
+      175*A:	Read the message and take appropriate action.
+      176*
+      177*
+      178*END MESSAGE DOCUMENTATION */
+      179 
+      180      end ring_0_peek;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.6  ring_0_peek.pl1                   >spec>install>1110>ring_0_peek.pl1
+142          1    10/22/86  1450.1  disk_pack.incl.pl1                >ldd>include>disk_pack.incl.pl1
+143          2    11/26/79  1320.6  its.incl.pl1                      >ldd>include>its.incl.pl1
+144          3    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+145          4    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_code                                 parameter       fixed bin(35,0)          dcl 29 set ref 118 132* 140*
+a_from_ptr                             parameter       pointer                  dcl 30 ref 25 77 81
+a_message                              parameter       char                     packed unaligned dcl 31 ref 112 114
+a_num_words                            parameter       fixed bin(19,0)          dcl 32 ref 25 77 85
+a_pvtx                                 parameter       fixed bin(17,0)          dcl 33 ref 118 123
+a_to_ptr                               parameter       pointer                  dcl 34 ref 25 77 82
+a_vtocep                               parameter       pointer                  dcl 36 ref 118 121
+a_vtocx                                parameter       fixed bin(17,0)          dcl 35 ref 118 124
+addr                                                   builtin function         dcl 72 ref 83 84 128 129 137 137 138
+code                            000100 automatic       fixed bin(35,0)          dcl 40 set ref 137* 138 140
+error_table_$invalid_pvtx       000016 external static fixed bin(35,0)          dcl 61 ref 132
+fixed                                                  builtin function         dcl 72 ref 89 90
+from_ptr                        000102 automatic       pointer                  dcl 41 set ref 81* 84 89 101 108
+i                               000104 automatic       fixed bin(18,0)          dcl 42 set ref 99* 101 101 101*
+its                                    based           structure                level 1 dcl 2-5
+local_vtoce                     000105 automatic       structure                level 1 dcl 43 set ref 137 137 138
+max                                                    builtin function         dcl 72 ref 92
+move_array                             based           fixed bin(35,0)          array dcl 68 set ref 101 101 108* 108 138* 138
+num_words                       000405 automatic       fixed bin(19,0)          dcl 44 set ref 85* 87 92 96* 99 108 120* 138
+patch_mem                       000406 automatic       bit(1)                   dcl 45 set ref 74* 79* 83 94
+pds$process_group_id            000020 external static char(32)                 dcl 62 set ref 96* 114*
+pmut$cam                        000010 constant        entry                    external dcl 55 ref 105
+pvid                                   based           bit(36)                  level 2 in structure "pvte" dcl 3-26 in procedure
+                                                                                  "ring_0_peek" ref 136
+pvid                            000407 automatic       bit(36)                  dcl 46 in procedure "ring_0_peek" set ref 136* 137*
+pvt$array                       000026 external static fixed bin(17,0)          dcl 3-18 set ref 128
+pvt$n_entries                   000022 external static fixed bin(17,0)          dcl 63 ref 126
+pvt_array                              based           structure                array level 1 dcl 3-24 set ref 129
+pvt_arrayp                      000416 automatic       pointer                  dcl 3-21 set ref 128* 129
+pvte                                   based           structure                level 1 dcl 3-26
+pvtep                           000420 automatic       pointer                  dcl 3-22 set ref 129* 131 131 136
+pvtx                            000410 automatic       fixed bin(17,0)          dcl 47 set ref 123* 126 126 129 137*
+rel                                                    builtin function         dcl 72 ref 89 90
+rel_from_ptr                    000411 automatic       fixed bin(18,0)          dcl 48 set ref 89* 92
+rel_to_ptr                      000412 automatic       fixed bin(18,0)          dcl 49 set ref 90* 92
+ringno                    0(18)        based           bit(3)                   level 2 packed packed unaligned dcl 2-5 set ref 83*
+                                                                                  84*
+size                                                   builtin function         dcl 72 ref 120
+storage_system            4(19)        based           bit(1)                   level 2 packed packed unaligned dcl 3-26 ref 131
+sys_info$seg_size_256K          000024 external static fixed bin(19,0)          dcl 64 ref 92
+syserr                          000012 constant        entry                    external dcl 56 ref 96 101 114
+to_ptr                          000414 automatic       pointer                  dcl 51 set ref 82* 83 90 96* 101 108
+used                      4(18)        based           bit(1)                   level 2 packed packed unaligned dcl 3-26 ref 131
+vtoc_man$get_vtoce              000014 constant        entry                    external dcl 57 ref 137
+vtoce                                  based           structure                level 1 dcl 4-7 ref 120
+vtocep                          000422 automatic       pointer                  dcl 4-5 set ref 120 121* 138
+vtocx                           000413 automatic       fixed bin(17,0)          dcl 50 set ref 124* 137*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 1-54
+DUMPER_BIT_MAP_ADDR                    internal static fixed bin(17,0)          initial dcl 1-54
+ITP_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-56
+ITS_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-55
+LABEL_ADDR                             internal static fixed bin(17,0)          initial dcl 1-54
+MAX_VTOCE_PER_PACK                     internal static fixed bin(17,0)          initial dcl 1-54
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 1-67
+SECTORS_PER_RECORD                     internal static fixed bin(17,0)          initial array dcl 1-74
+SECTORS_PER_VTOCE                      internal static fixed bin(17,0)          initial array dcl 1-70
+VOLMAP_ADDR                            internal static fixed bin(17,0)          initial dcl 1-54
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 3-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 3-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 3-113
+VTOCES_PER_RECORD                      internal static fixed bin(17,0)          initial array dcl 1-72
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 1-68
+VTOC_MAP_ADDR                          internal static fixed bin(17,0)          initial dcl 1-54
+VTOC_ORIGIN                            internal static fixed bin(17,0)          initial dcl 1-54
+itp                                    based           structure                level 1 dcl 2-18
+itp_unsigned                           based           structure                level 1 dcl 2-43
+its_unsigned                           based           structure                level 1 dcl 2-30
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 3-19
+seg_vtoce                              based           structure                level 1 dcl 4-92
+vtoce_parts                            based           bit(2304)                array dcl 4-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_pvtx                        000373 constant        label                    dcl 132 ref 126
+common                          000053 constant        label                    dcl 81 ref 75
+message                         000252 constant        entry                    external dcl 112
+patch                           000044 constant        entry                    external dcl 77
+ring_0_peek                     000033 constant        entry                    external dcl 25
+vtoce_peek                      000336 constant        entry                    external dcl 118
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       604         634     442         614
+Length      1074     442        30         224     142           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ring_0_peek                         314 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ring_0_peek              000100 code                        ring_0_peek
+                         000102 from_ptr                    ring_0_peek
+                         000104 i                           ring_0_peek
+                         000105 local_vtoce                 ring_0_peek
+                         000405 num_words                   ring_0_peek
+                         000406 patch_mem                   ring_0_peek
+                         000407 pvid                        ring_0_peek
+                         000410 pvtx                        ring_0_peek
+                         000411 rel_from_ptr                ring_0_peek
+                         000412 rel_to_ptr                  ring_0_peek
+                         000413 vtocx                       ring_0_peek
+                         000414 to_ptr                      ring_0_peek
+                         000416 pvt_arrayp                  ring_0_peek
+                         000420 pvtep                       ring_0_peek
+                         000422 vtocep                      ring_0_peek
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack       ext_entry
+ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+pmut$cam                      syserr                        vtoc_man$get_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$invalid_pvtx     pds$process_group_id          pvt$array                     pvt$n_entries
+sys_info$seg_size_256K
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000027        74 000040        75 000041        77 000042        79 000051        81 000053        82 000057
+     83 000062        84 000067        85 000071        87 000073        89 000074        90 000077        92 000102
+     94 000111        96 000113        99 000152       101 000161       104 000230       105 000232       108 000237
+    110 000246       112 000247       114 000265       116 000327       118 000331       120 000343       121 000345
+    123 000351       124 000353       126 000355       128 000362       129 000364       131 000367       132 000373
+    133 000376       136 000377       137 000401       138 000425       140 000435       141 000440
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

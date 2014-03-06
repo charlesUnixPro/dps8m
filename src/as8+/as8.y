@@ -57,7 +57,7 @@
 %start input
 %token LABEL SYMBOL PSEUDOOP OCT SEGDEF SEGREF VFD STROP PSEUDOOP2 DEC DESC DESC2 PSEUDOOPD2 BOOL EQU BSS
 %token DECIMAL OCTAL HEX STRING AH REG NAME CALL SAVE RETURN TALLY ARG ZERO ORG ITS ITP OCTLIT DECLIT DECLIT2 NULLOP MOD
-%token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
+%token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC OPCODEX OPCODER
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
 %token SHORT_CALL SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER LINK INHIBIT ENTRYPOINT
@@ -68,7 +68,7 @@
 %type <i72> DOUBLEINT DECLIT2
 %type <c> AH Ta Th To
 %type <r> SINGLE DOUBLE SGLLIT DBLLIT
-%type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC
+%type <o> OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC OPCODEX OPCODER
 %type <lst> symlist exprlist lexprlist optarglist optintlist opterrlist decs declist
 %type <lit> literal
 %type <t> vfdArg vfdArgs mfk mfks eismf eismfs eisopt rptlst tempelement templist options option external external0
@@ -81,9 +81,9 @@
  %left AND
  %left EQ NE
  %left LT LE GT GE*/
-%left '+' '-'		/* plus and minus have the least priority	*/
-%left '*' '/' '%' 	/* multiply, divide and modulus are next	*/
-%left NEG NOT		/* negate/complement is next				*/
+%left '+' '-'           /* plus and minus have the least priority	*/
+%left '*' '/' '%'       /* multiply, divide and modulus are next	*/
+%left PLUS NEG NOT		/* positive/negate/complement is next		*/
 
 %%
 input: /* empty  */
@@ -97,8 +97,9 @@ expr: expr '+' expr         { $$ = add($1, $3);      }
     | expr '%' expr         { $$ = modulus($1, $3);  }
     | '(' expr ')'          { $$ = $2;               }
     | '-' expr %prec NEG 	{ $$ = neg($2);          }
-    | SYMBOL                { $$ = exprSymbolValue($1);    }
-    | integer               { $$ = exprWord36Value($1);    }
+    | '+' expr %prec PLUS 	{ $$ = $2;               }
+    | SYMBOL                { $$ = exprSymbolValue($1);         }
+    | integer               { $$ = exprWord36Value($1);         }
     | '*'                   { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
     ;
 
@@ -110,8 +111,9 @@ lexpr
     | '(' lexpr ')'           { $$ = $2;            }
     | '^' lexpr %prec NOT 	  { $$ = not($2);       }
     | '-' expr %prec NEG 	  { $$ = neg8($2);      }
-    | SYMBOL                  { $$ = exprSymbolValue($1); }
-    | OCTAL                   { $$ = exprWord36Value($1); }
+    | '+' expr %prec PLUS     { $$ = $2;            }
+    | SYMBOL                  { $$ = exprSymbolValue($1);       }
+    | OCTAL                   { $$ = exprWord36Value($1);       }
     | '*'                     { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
     ;
 
@@ -135,7 +137,8 @@ labels : /* empty */
     | labels label
     ;
 
-label: LABEL /*if (add_label($1) != 0) { YYERROR; } */
+label
+    : LABEL /*if (add_label($1) != 0) { YYERROR; } */
     ;
 
 stmt: /* empty */
@@ -157,6 +160,8 @@ instr
 
     | OPCODESTC                 operand ',' {setOmode();} lexpr     { doSTC($1, $2->value, $5->value, -1);        }
     | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2);   }
+    | OPCODEX       expr ',' operands                               { opnd.o = $1; doOpcodeX(&opnd, $2);  }
+    | OPCODER       expr ',' operands                               { opnd.o = $1; doOpcodeR(&opnd, $2);  }
     ;
 
 rptlst: /* empty */                       { $$ = NULL;    }
@@ -168,9 +173,11 @@ operand
     : expr 
     ;
 
-operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
+operands: /* empty */       { opnd.hi = 0; opnd.lo = 0; opnd.bit29 = false;             }
     | operand               {
                                 opnd.lo = 0;
+                                opnd.bit29 = false;
+                                
                                 if ($1->type == eExprTemporary)
                                 {
                                     opnd.hi = (6 << 15) | ($1->value & 077777);
@@ -187,6 +194,7 @@ operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
                             }
     | operand ',' modifier  {
                                 opnd.lo = $3 & 077;
+                                opnd.bit29 = false;
                                 if ($1->type == eExprTemporary)
                                 {
                                     opnd.hi = (6 << 15) | ($1->value & 077777);
@@ -201,18 +209,19 @@ operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
                                     opnd.hi = $1->value & AMASK;
 
                             }
-    | literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0;         }
+    | literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0; opnd.bit29 = false;        }
     | literal ',' modifier  {
                                if ($3 == 3 || $3 == 7)
                                   opnd.hi = get18($1, (int)$3); // process literal w/ du/dl modifier
                                else
                                   opnd.hi = $1->addr & AMASK;
                                opnd.lo = $3 & 077;
+                               opnd.bit29 = false;
                             }
     | ptr_reg '|' operand               { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = 0;        }
     | ptr_reg '|' operand ',' modifier  { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = $5 & 077; }
 
-    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
+    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0; opnd.bit29 = false;   }
 
     | external                          { expr *e = getExtRef($1); opnd.bit29 = true; opnd.hi = (word18)(4 << 15) | (word18)e->value; opnd.lo = 020;      }
     | external ',' modifier             { expr *e = getExtRef($1); opnd.bit29 = true; opnd.hi = (word18)(4 << 15) | (word18)e->value; opnd.lo = $3 & 077; }
@@ -388,6 +397,7 @@ pop
     | PSEUDOOP                                   { doPop0($1);      }
     | PSEUDOOP2      operands
 
+    | ZERO                                       { doZero(0, 0);                   }
     | ZERO                   ',' expr            { doZero(0, $3->value);           }
     | ZERO                   ',' literal         { doZero(0, $3->addr);            }
     | ZERO           literal ',' expr            { doZero($2->addr, $4->value);    }

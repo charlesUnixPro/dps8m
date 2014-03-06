@@ -1,0 +1,841 @@
+	COMPILATION LISTING OF SEGMENT read_disk
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1003.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 read_disk$init: proc;
+       11 
+       12 /* This procedure performs I/O from/to a given disk address. In the current
+       13*   implementation, this will always be a one-page record. The initializer
+       14*   process uses the ASTE created by initialization to avoid calling AST
+       15*   management during collection 1, and to speed up disk initializations via
+       16*   initializer_gate. Shutdown uses this ASTE as well to avoid getting involved
+       17*   with AST management. */
+       18 
+       19 /* coded	03/07/75 by Bernard S. Greenberg. */
+       20 /* Modified by BSG 04/09/76 for disk_control$test_drive */
+       21 /* Modified by BSG 08/31/76 for dynamic ASTE getting, for volume dumper */
+       22 /* Modified by J. A. Bush 2/22/80 to fix an infinite loop bug in ESD */
+       23 /* Modified 04/16/81, W. Olin Sibert, for ADP PTWs and SDWs, and to use sst external static */
+       24 /* Modified 03/01/82 by J. Bongiovanni for new PVTE include file */
+       25 /* Modified '82 for english disk error codes */
+       26 /* Modified 11/01/83 by Keith Loepere for swapping rdisk sdw at init */
+       27 /* Modified 1/13/84 by Keith Loepere for $no_test */
+       28 /* Modified 84-01-16 BIM for records = 0 */
+       29 /* Modified 84-05-04 for bce_abs_seg$add, Keith Loepere */
+       30 /* Modified 84-10-23 by Keith Loepere to null ptw when done. */
+       31 
+       32 dcl  a_dataptr ptr parameter;
+       33 dcl  a_pvtx fixed bin parameter;			/* params */
+       34 dcl  a_recno fixed bin (18) parameter;
+       35 
+       36 dcl  code fixed bin;				/* error code */
+       37 dcl  dataptr ptr;					/* pointer to transferable data */
+       38 dcl  ptp pointer;					/* pointer to its ASTE */
+       39 dcl  pvtx fixed bin (17);				/* phys vol table index */
+       40 dcl  rdskp ptr;					/* pointer to rdisk_seg */
+       41 dcl  record_no fixed bin (18);			/* record number on disk */
+       42 dcl  static_rdisks_astep ptr internal static init (null ()); /* Ditto astep */
+       43 dcl  static_rdisks_sdw fixed bin (71) aligned internal static init (0); /* SDW form initialization forever */
+       44 dcl  testsw bit (1);				/* "1"b => test */
+       45 dcl  tsdw fixed bin (71) aligned;			/* sdw temp */
+       46 dcl  use_init bit (1) aligned;			/* 1 = use init SDW, astep */
+       47 dcl  writesw bit (1);				/* "1"b => write */
+       48 
+       49 dcl  bdata (1024) fixed bin (35) based; 		/* block of data */
+       50 
+       51 dcl  pds$processid bit (36) aligned external static;	/* equal to tc_data$initializer_id during init. */
+       52 dcl  rdisk_seg$ ext fixed bin;			/* segment for I/O */
+       53 dcl  sst$astsize fixed bin external static;
+       54 dcl 1 sst$level (0 : 3) aligned external static,
+       55     2 ausedp bit (18) unaligned,
+       56     2 no_aste bit (18) unaligned;
+       57 dcl  sys_info$page_size fixed bin external static;
+       58 dcl  tc_data$initializer_id bit (36) aligned external static;
+       59 dcl  tc_data$system_shutdown bit (1) aligned external;
+       60 
+       61 dcl  bce_abs_seg$add entry (fixed bin (15));
+       62 dcl  disk_control$test_drive entry (fixed bin);
+       63 dcl  disk_run entry;
+       64 dcl  get_aste entry (fixed bin) returns (ptr);
+       65 dcl  get_ptrs_$ptw_to_cmep entry (pointer, pointer);
+       66 dcl  get_ptrs_$given_astep entry (ptr, fixed bin (71) aligned);
+       67 dcl  lock$lock_ast entry ();
+       68 dcl  lock$unlock_ast entry ();
+       69 dcl  make_sdw$unthreaded entry (fixed bin (18), fixed bin (71) aligned, ptr, ptr);
+       70 dcl  pc$cleanup entry (ptr);
+       71 dcl  pmut$swap_sdw entry (ptr, ptr);
+       72 dcl  ptw_util_$make_disk entry (pointer, fixed bin (20));
+       73 dcl  ptw_util_$make_null entry (ptr, bit (22) aligned);
+       74 dcl  ptw_util_$make_null_disk entry (pointer, fixed bin (20));
+       75 dcl  ptw_util_$set_unwired entry (pointer);
+       76 dcl  ptw_util_$set_wired entry (pointer);
+       77 dcl  put_aste entry (ptr);
+       78 dcl  sdw_util_$set_size entry (pointer, fixed bin (19));
+       79 dcl  thread$cin entry (ptr, bit (18));
+       80 dcl  thread$out entry (ptr, bit (18));
+       81 
+       82 dcl  page_fault_error condition;
+       83 
+       84 dcl  (error_table_$fsdisk_phydev_err, error_table_$fsdisk_not_ready)
+       85      ext static fixed bin (35);
+       86 
+       87 dcl (addr, addrel, baseno, bit, fixed, segno) builtin;
+       88 
+       89 	rdskp = addr (rdisk_seg$);			/* similarly, rdisk_seg */
+       90 	call make_sdw$unthreaded (fixed (baseno (rdskp), 18), tsdw, astep, ptp);
+       91 						/* force seg to become paged */
+       92 	call sdw_util_$set_size (addr (tsdw), (sys_info$page_size)); /* A single page */
+       93 						/* do not allow any access xcept page 0 */
+       94 
+       95 	astep -> aste. dnzp,			/* pages may never be nulled/deposited */
+       96 	     astep -> aste.nqsw = "1"b;		/* or complained about. */
+       97 	static_rdisks_sdw = tsdw;
+       98 	static_rdisks_astep = astep;			/* Save for posterity */
+       99 	call pmut$swap_sdw (rdskp, addr (tsdw));	/* Install SDW */
+      100 	call bce_abs_seg$add (segno (rdskp));		/* free at shut */
+      101 	return;
+      102 
+      103 read_disk_no_test: entry (a_pvtx, a_recno, a_dataptr, code);	/* entry to read data */
+      104 
+      105 	writesw = "0"b;
+      106 	go to no_test;
+      107 
+      108 write_disk_no_test: entry (a_pvtx, a_recno, a_dataptr, code);
+      109 
+      110 	writesw = "1"b;
+      111 
+      112 no_test:
+      113 	record_no = a_recno;
+      114 	dataptr = a_dataptr;
+      115 	pvtx = a_pvtx;				/* copy parms */
+      116 
+      117 	rdskp = addr (rdisk_seg$);			/* set up special seg ptr */
+      118 	pvt_arrayp = addr (pvt$array);		/* Get pointer to PVTE array */
+      119 	pvtep = addr (pvt_array (pvtx));		/* Get pvte pointer. */
+      120 	go to operate;
+      121 
+      122 read_disk: entry (a_pvtx, a_recno, a_dataptr, code);	/* entry to read data */
+      123 
+      124 	writesw = "0"b;
+      125 	testsw = "0"b;				/* Not a test */
+      126 	record_no = a_recno;
+      127 	dataptr = a_dataptr;
+      128 	go to merge;
+      129 
+      130 write_disk: entry (a_pvtx, a_recno, a_dataptr, code);
+      131 
+      132 	writesw = "1"b;
+      133 	testsw = "0"b;
+      134 	record_no = a_recno;
+      135 	dataptr = a_dataptr;
+      136 	go to merge;
+      137 
+      138 test_disk: entry (a_pvtx, code);
+      139 
+      140 	testsw = "1"b;
+      141 
+      142 merge:
+      143 	pvtx = a_pvtx;				/* copy parms */
+      144 
+      145 	rdskp = addr (rdisk_seg$);			/* set up special seg ptr */
+      146 	pvt_arrayp = addr (pvt$array);		/* Get pointer to PVTE array */
+      147 	pvtep = addr (pvt_array (pvtx));		/* Get pvte pointer. */
+      148 
+      149 	pvte.testing = "1"b;			/* Turn on disk dim protocol bit. */
+      150 	call disk_control$test_drive (pvtx);		/* Start a RQS op up */
+      151 	do while (pvte.testing);			/* Noel has sworn that SOMETHING will come back. */
+      152 	     call disk_run;				/* in case something doesn't come back, force looking at status */
+      153 	end;
+      154 	if pvte.device_inoperative then do;		/* If we found disk not operaable, */
+      155 	     pvte.device_inoperative = "0"b;		/* Clear silly flag, and */
+      156 	     code = error_table_$fsdisk_not_ready;		/* return a usable diagnostic. */
+      157 	     return;
+      158 	end;
+      159 
+      160 	if testsw then do;				/* Successful test. */
+      161 	     code = 0;
+      162 	     return;
+      163 	end;
+      164 
+      165 
+      166 /* If this is not the initializer or shutdown, an ASTE must be gotten and inserted.
+      167*   Otherwise, use the ASTE created by initialization. */
+      168 
+      169 operate:
+      170 	use_init = (tc_data$initializer_id = pds$processid) | tc_data$system_shutdown;
+      171 
+      172 
+      173 	if use_init then do;
+      174 	     tsdw = static_rdisks_sdw;
+      175 	     astep = static_rdisks_astep;
+      176 	end;
+      177 	else do;					/* Must get_aste */
+      178 	     call lock$lock_ast;
+      179 	     astep = get_aste (1);			/* Need 1 page ASTE */
+      180 	     call thread$out (astep, sst$level.ausedp (0)); /* thread aste out of used list */
+      181 	     call lock$unlock_ast;			/* and unlock ast */
+      182 	     call get_ptrs_$given_astep (astep, tsdw);	/* Generate SDW */
+      183 	     astep -> aste.nqsw, astep -> aste.dnzp = "1"b;
+      184 	end;
+      185 
+      186 	astep -> aste.records, astep -> aste.csl, astep -> aste.np = ""b;
+      187 	ptp = addrel (astep, sst$astsize);
+      188 	call pmut$swap_sdw (rdskp, addr (tsdw));	/* Install SDW */
+      189 
+      190 /* Now make this seg reflect the given pvtx, with the first and only page being
+      191*   the given record. */
+      192 
+      193 	astep -> aste.pvtx = pvtx;			/* copy supplied pvtx */
+      194 
+      195 	if writesw then				/* If writing, then pages contents aren't there yet */
+      196 	     call ptw_util_$make_null_disk (ptp, (record_no));
+      197 	else call ptw_util_$make_disk (ptp, (record_no));	/* Otherwise, they are, and we want them */
+      198 	call ptw_util_$set_wired (ptp);		/* Page is "wired" */
+      199 
+      200 	astep -> aste.npfs = "0"b;			/* Previous cleanup turned on npfs- it was good to leave
+      201*						   it on until now. */
+      202 
+      203 /* Now copy the data to/from this abs-seg. Notice that even in the write case, we
+      204*   fault in the page. */
+      205 
+      206 	on page_fault_error begin;
+      207 	     code = error_table_$fsdisk_phydev_err;
+      208 	     go to fini;
+      209 	end;
+      210 
+      211 	if writesw then rdskp -> bdata = dataptr -> bdata;
+      212 	else dataptr -> bdata = rdskp -> bdata;
+      213 
+      214 /* Now comes the peculiar part. If this is a write_disk, we magically migrate the page to disk. */
+      215 
+      216 	if writesw then do;
+      217 	     call get_ptrs_$ptw_to_cmep (ptp, cmep);	/* Find its CME, and do magic with it */
+      218 	     cmep -> mcme.record_no = bit (fixed (record_no, 18), 18);
+      219 	     cmep -> mcme.add_type = add_type.disk;	/* Note that record # is changed first */
+      220 	     call ptw_util_$set_unwired (ptp);		/* rdisk_seg is now at the mercy of page_fault */
+      221 	end;
+      222 
+      223 	code = 0;
+      224 
+      225 fini:
+      226 	call pc$cleanup (astep);
+      227 
+      228 /* This gets all the pages out of core. In the write case,
+      229*   It is guaranteed to actually write (phm will be on)
+      230*   and wait for done. */
+      231 
+      232 	if ^use_init then do;
+      233 	     tsdw = 0;				/* Leave around in shutdown for debugging */
+      234 	     call pmut$swap_sdw (rdskp, addr (tsdw));
+      235 	     call lock$lock_ast;			/* lock ast */
+      236 	     call thread$cin (astep, sst$level.ausedp (0)); /* thread aste back in */
+      237 	     call put_aste (astep);			/* Return the ASTE */
+      238 	     call lock$unlock_ast;
+      239 	end;
+      240 	else call ptw_util_$make_null (ptp, make_sdw_null_addr); /* null ptw so dumpers won't be confused */
+      241 
+      242 	return;
+      243 
+      244  
+  1     2 	/* BEGIN INCLUDE FILE add_type.incl.pl1 */
+  1     3 	/* 02/26/75 by Bernard S. Greenberg */
+  1     4 
+  1     5 	/* This file provides a structure for checking
+  1     6*		PTW/CME address type fields in PL/I */
+  1     7 
+  1     8 dcl 1 add_type unaligned static internal,
+  1     9 	2 core bit (4) init ("1000"b),		/* in core- S/B only in PTW */
+  1    10 	2 disk bit (4) init ("0100"b),		/* Disk address */
+  1    11 	2 pd   bit (4) init ("0010"b),		/* Paging Device */
+  1    12 	2 reserved bit (4) init ("0001"b),		/* Reserved */
+  1    13 	2 non_null bit (4) init ("1111"b);		/* Not null address */
+  1    14 
+  1    15 dcl 1 badd_type unaligned based,
+  1    16     2 (core, disk, pd, reserved) bit (1) unaligned;
+  1    17 
+  1    18 	/* END INCLUDE FILE add_type.incl.pl1 */
+      244 
+      245  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  2     2 
+  2     3 /* Template for an AST entry. Length = 12 words. */
+  2     4 
+  2     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  2     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  2     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  2     8 
+  2     9 dcl  astep ptr;
+  2    10 
+  2    11 dcl 1 aste based (astep) aligned,
+  2    12 
+  2    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  2    14     2 bp bit (18),					/* backward used list rel pointer */
+  2    15 
+  2    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  2    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  2    18 
+  2    19     2 strp bit (18),				/* rel pointer to process trailer */
+  2    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  2    21 
+  2    22     2 uid bit (36),					/* segment unique id */
+  2    23 
+  2    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  2    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  2    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    27 
+  2    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  2    29     2 init bit (1),					/* used bit - insure 1 lap */
+  2    30     2 gtus bit (1),					/* global transparent usage switch */
+  2    31     2 gtms bit (1),					/* global transparent modified switch */
+  2    32     2 hc bit (1),					/* hard core segment */
+  2    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  2    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  2    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  2    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  2    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  2    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  2    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  2    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  2    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  2    42     2 pad1 bit (2),					/* OO */
+  2    43     2 dius bit (1),					/* dumper in use switch */
+  2    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  2    45     2 dmpr_pad bit (1),
+  2    46     2 ehs bit (1),					/* entry hold switch */
+  2    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  2    48     2 dirsw bit (1),				/* directory switch */
+  2    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  2    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  2    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  2    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  2    53 
+  2    54     2 dtu bit (36),					/* date and time segment last used */
+  2    55 
+  2    56     2 dtm bit (36),					/* date and time segment last modified */
+  2    57 
+  2    58 
+  2    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  2    60 
+  2    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  2    62 
+  2    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  2    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  2    65     2 fms bit (1),					/* file modified switch */
+  2    66     2 npfs bit (1),					/* no page fault switch */
+  2    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  2    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  2    69     2 per_process bit (1),				/* use master quota for this entry */
+  2    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  2    71     2 pad2 bit (2),
+  2    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  2    73     2 np bit (9),					/* number of pages in core */
+  2    74 
+  2    75 
+  2    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  2    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  2    78     2 damaged bit (1),				/* PC declared segment unusable */
+  2    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  2    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  2    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  2    82     2 ptsi bit (2),					/* page table size index */
+  2    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  2    84 
+  2    85 
+  2    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  2    87 
+  2    88 
+  2    89 dcl 1 aste_part aligned based (astep),
+  2    90 
+  2    91     2 one bit (36) unaligned,				/* fp and bp */
+  2    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  2    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  2    94 
+  2    95 
+  2    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  2    97     2 pad1 bit (8*36),
+  2    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  2    99     2 pad2 bit (3*36);
+  2   100 
+  2   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      245 
+      246  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  3     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  3     3 
+  3     4 dcl  cmep ptr;					/* pointer to core map entry */
+  3     5 
+  3     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  3     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  3     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  3     9 
+  3    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  3    11     2 pad5 bit (1) unaligned,
+  3    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  3    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  3    14     2 pad2 bit (1) unaligned,
+  3    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  3    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  3    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  3    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  3    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  3    20     2 pad3 bit (1) unaligned,
+  3    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  3    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  3    23 
+  3    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  3    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  3    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  3    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  3    28 
+  3    29 
+  3    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  3    31 
+  3    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  3    33     2 pad bit (36) unaligned,
+  3    34     2 record_no bit (18) unaligned,			/* record number of device */
+  3    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  3    36     2 flags bit (14) unal,
+  3    37     2 pad1 bit (18) unal;
+  3    38 
+  3    39 
+  3    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      246 
+      247  /* BEGIN INCLUDE FILE  null_addresses.incl.pl1 */
+  4     2 /* Added segmove values, Benson Margulies, 84-01 */
+  4     3 
+  4     4 dcl (pc_move_page_table_1_null_addr init	("3770070"b3),
+  4     5      pc_move_page_table_2_null_addr init	("3770100"b3),
+  4     6      get_aste_null_addr init			("3770110"b3),
+  4     7      make_sdw_null_addr init			("3770120"b3),
+  4     8      put_aste_null_addr init			("3770130"b3),
+  4     9      page_bad_pd_null_addr init		("3770150"b3),
+  4    10      list_deposit_null_addr init		("3770160"b3),
+  4    11      get_file_map_null_addr init		("3770170"b3),
+  4    12      fill_page_table_null_addr init		("3770200"b3),
+  4    13      init_sst_null_addr init			("3770210"b3),
+  4    14      get_file_map_vt_null_addr init		("3770220"b3),
+  4    15      unprotected_null_addr init		("3770230"b3),
+  4    16      page_bad_null_addr init			("3770240"b3),
+  4    17      page_problem_null_addr init		("3770250"b3),
+  4    18      page_parity_null_addr init		("3770260"b3),
+  4    19      page_devparity_null_addr init		("3770270"b3),
+  4    20      segmove_old_addr_null_addr init              ("3770300"b3),
+  4    21      segmove_new_addr_null_addr init		("3770310"b3),
+  4    22      get_file_map_dumper_non_null_addr init	("3777720"b3),
+  4    23      append_null_addr	         init       ("3777770"b3)) bit (22) aligned static options (constant);
+  4    24 dcl create_vtoce_four_null_addrs fixed bin (71) int static init (-1);/* 777777 777777 777777 777777 */
+  4    25 
+  4    26 dcl (create_vtoce_null_addr init		("777777"b3),
+  4    27      update_vtoce_null_addr init		("777776"b3),
+  4    28      truncate_vtoce_fill_null_addr init		("777775"b3),
+  4    29      truncate_vtoce_null_addr init		("777002"b3),
+  4    30      pv_salv_null_addr init			("777004"b3),
+  4    31      pv_scav_null_addr init			("777006"b3),
+  4    32      volume_reloader_null_addr init		("777774"b3),
+  4    33      volume_retriever_null_addr init		("777773"b3),
+  4    34      salv_truncate_null_addr init		("777005"b3)) bit (18) aligned static options (constant);
+  4    35 
+  4    36 /* END INCLUDE FILE null_addresses.incl.pl1 */
+      247 
+      248  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  5     2 
+  5     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  5     4 
+  5     5 /****^  HISTORY COMMENTS:
+  5     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  5     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  5     8*     Add the support for subvolumes
+  5     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  5    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  5    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  5    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  5    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  5    14*     Added inconsistent_dbm bit for determining the status of volume
+  5    15*     dumper bit maps.
+  5    16*                                                   END HISTORY COMMENTS */
+  5    17 
+  5    18      dcl	   pvt$array	      aligned external;
+  5    19      dcl	   pvt$max_n_entries      fixed bin external;
+  5    20 
+  5    21      dcl	   pvt_arrayp	      ptr;
+  5    22      dcl	   pvtep		      ptr;
+  5    23 
+  5    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  5    25 
+  5    26      dcl	   1 pvte		      based (pvtep) aligned,
+  5    27 
+  5    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  5    29 
+  5    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  5    31 
+  5    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  5    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  5    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  5    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  5    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  5    37 	     2 pad3	      bit (2) unaligned,
+  5    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  5    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  5    40 
+  5    41 
+  5    42 
+  5    43 	     2 devname	      char (4),		/* device name */
+  5    44 
+  5    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  5    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  5    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  5    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  5    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  5    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  5    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  5    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  5    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  5    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  5    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  5    56 	     2 scav_check_address
+  5    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  5    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  5    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  5    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  5    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  5    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  5    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  5    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  5    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  5    66 
+  5    67 
+  5    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  5    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  5    70 
+  5    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  5    72 
+  5    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  5    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  5    75 
+  5    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  5    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  5    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  5    79 	     2 records_per_cyl    fixed bin,
+  5    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  5    81 	     2 sv_name            char (2) aligned,
+  5    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  5    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  5    84 
+  5    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  5    86 	     2 pad2	      bit (18) unaligned,
+  5    87 
+  5    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  5    89 
+  5    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  5    91 
+  5    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  5    93 
+  5    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  5    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  5    96 
+  5    97 
+  5    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  5    99 
+  5   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  5   101 
+  5   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  5   103 
+  5   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  5   105 
+  5   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  5   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  5   108 
+  5   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  5   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  5   111 
+  5   112 
+  5   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  5   114 	   VOLMAP_ASYNC_READ      init (1),
+  5   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  5   116 
+  5   117 
+  5   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      248 
+      249 
+      250 	end read_disk$init;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.5  read_disk.pl1                     >special_ldd>install>MR12.3-1114>read_disk.pl1
+244          1    09/29/77  1502.7  add_type.incl.pl1                 >ldd>include>add_type.incl.pl1
+245          2    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+246          3    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+247          4    07/11/84  0937.3  null_addresses.incl.pl1           >ldd>include>null_addresses.incl.pl1
+248          5    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_dataptr                              parameter       pointer                  dcl 32 ref 103 108 114 122 127 130 135
+a_pvtx                                 parameter       fixed bin(17,0)          dcl 33 ref 103 108 115 122 130 138 142
+a_recno                                parameter       fixed bin(18,0)          dcl 34 ref 103 108 112 122 126 130 134
+add_type                        000000 constant        structure                level 1 packed packed unaligned dcl 1-8 in procedure
+                                                                                  "read_disk$init"
+add_type                  1(18)        based           bit(4)                   level 2 in structure "mcme" packed packed unaligned
+                                                                                  dcl 3-32 in procedure "read_disk$init" set ref
+                                                                                  219*
+addr                                                   builtin function         dcl 87 ref 89 92 92 99 99 117 118 119 145 146 147
+                                                                                  188 188 234 234
+addrel                                                 builtin function         dcl 87 ref 187
+aste                                   based           structure                level 1 dcl 2-11
+astep                           000124 automatic       pointer                  dcl 2-9 set ref 90* 95 95 98 175* 179* 180* 182* 183
+                                                                                  183 186 186 186 187 193 200 225* 236* 237*
+ausedp                          000022 external static bit(18)                  array level 2 packed packed unaligned dcl 54 set ref
+                                                                                  180* 236*
+baseno                                                 builtin function         dcl 87 ref 90 90
+bce_abs_seg$add                 000032 constant        entry                    external dcl 61 ref 100
+bdata                                  based           fixed bin(35,0)          array dcl 49 set ref 211* 211 212* 212
+bit                                                    builtin function         dcl 87 ref 218
+cme                                    based           structure                level 1 dcl 3-6
+cmep                            000126 automatic       pointer                  dcl 3-4 set ref 217* 218 219
+code                                   parameter       fixed bin(17,0)          dcl 36 set ref 103 108 122 130 138 156* 161* 207*
+                                                                                  223*
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  186*
+dataptr                         000100 automatic       pointer                  dcl 37 set ref 114* 127* 135* 211 212
+device_inoperative        4(25)        based           bit(1)                   level 2 packed packed unaligned dcl 5-26 set ref 154
+                                                                                  155*
+disk                      0(04) 000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 1-8 ref
+                                                                                  219
+disk_control$test_drive         000034 constant        entry                    external dcl 62 ref 150
+disk_run                        000036 constant        entry                    external dcl 63 ref 152
+dnzp                     12(13)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref 95*
+                                                                                  183*
+error_table_$fsdisk_not_ready   000104 external static fixed bin(35,0)          dcl 84 ref 156
+error_table_$fsdisk_phydev_err  000102 external static fixed bin(35,0)          dcl 84 ref 207
+fixed                                                  builtin function         dcl 87 ref 90 90 218
+get_aste                        000040 constant        entry                    external dcl 64 ref 179
+get_ptrs_$given_astep           000044 constant        entry                    external dcl 66 ref 182
+get_ptrs_$ptw_to_cmep           000042 constant        entry                    external dcl 65 ref 217
+lock$lock_ast                   000046 constant        entry                    external dcl 67 ref 178 235
+lock$unlock_ast                 000050 constant        entry                    external dcl 68 ref 181 238
+make_sdw$unthreaded             000052 constant        entry                    external dcl 69 ref 90
+make_sdw_null_addr              000001 constant        bit(22)                  initial dcl 4-4 set ref 240*
+mcme                                   based           structure                level 1 dcl 3-32
+np                       12(27)        based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  186*
+npfs                     12(11)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  200*
+nqsw                      5(20)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref 95*
+                                                                                  183*
+page_fault_error                000116 stack reference condition                dcl 82 ref 206
+pc$cleanup                      000054 constant        entry                    external dcl 70 ref 225
+pds$processid                   000014 external static bit(36)                  dcl 51 ref 169
+pmut$swap_sdw                   000056 constant        entry                    external dcl 71 ref 99 188 234
+ptp                             000102 automatic       pointer                  dcl 38 set ref 90* 187* 195* 197* 198* 217* 220*
+                                                                                  240*
+ptw_util_$make_disk             000060 constant        entry                    external dcl 72 ref 197
+ptw_util_$make_null             000062 constant        entry                    external dcl 73 ref 240
+ptw_util_$make_null_disk        000064 constant        entry                    external dcl 74 ref 195
+ptw_util_$set_unwired           000066 constant        entry                    external dcl 75 ref 220
+ptw_util_$set_wired             000070 constant        entry                    external dcl 76 ref 198
+put_aste                        000072 constant        entry                    external dcl 77 ref 237
+pvt$array                       000106 external static fixed bin(17,0)          dcl 5-18 set ref 118 146
+pvt_array                              based           structure                array level 1 dcl 5-24 set ref 119 147
+pvt_arrayp                      000130 automatic       pointer                  dcl 5-21 set ref 118* 119 146* 147
+pvte                                   based           structure                level 1 dcl 5-26
+pvtep                           000132 automatic       pointer                  dcl 5-22 set ref 119* 147* 149 151 154 155
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 2-11 in procedure "read_disk$init" set ref
+                                                                                  193*
+pvtx                            000104 automatic       fixed bin(17,0)          dcl 39 in procedure "read_disk$init" set ref 115*
+                                                                                  119 142* 147 150* 193
+rdisk_seg$                      000016 external static fixed bin(17,0)          dcl 52 set ref 89 117 145
+rdskp                           000106 automatic       pointer                  dcl 40 set ref 89* 90 90 99* 100 100 117* 145* 188*
+                                                                                  211 212 234*
+record_no                 1            based           bit(18)                  level 2 in structure "mcme" packed packed unaligned
+                                                                                  dcl 3-32 in procedure "read_disk$init" set ref
+                                                                                  218*
+record_no                       000110 automatic       fixed bin(18,0)          dcl 41 in procedure "read_disk$init" set ref 112*
+                                                                                  126* 134* 195 197 218
+records                  12(18)        based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  186*
+sdw_util_$set_size              000074 constant        entry                    external dcl 78 ref 92
+segno                                                  builtin function         dcl 87 ref 100 100
+sst$astsize                     000020 external static fixed bin(17,0)          dcl 53 ref 187
+sst$level                       000022 external static structure                array level 1 dcl 54
+static_rdisks_astep             000010 internal static pointer                  initial dcl 42 set ref 98* 175
+static_rdisks_sdw               000012 internal static fixed bin(71,0)          initial dcl 43 set ref 97* 174
+sys_info$page_size              000024 external static fixed bin(17,0)          dcl 57 ref 92
+tc_data$initializer_id          000026 external static bit(36)                  dcl 58 ref 169
+tc_data$system_shutdown         000030 external static bit(1)                   dcl 59 ref 169
+testing                   4(21)        based           bit(1)                   level 2 packed packed unaligned dcl 5-26 set ref
+                                                                                  149* 151
+testsw                          000111 automatic       bit(1)                   packed unaligned dcl 44 set ref 125* 133* 140* 160
+thread$cin                      000076 constant        entry                    external dcl 79 ref 236
+thread$out                      000100 constant        entry                    external dcl 80 ref 180
+tsdw                            000112 automatic       fixed bin(71,0)          dcl 45 set ref 90* 92 92 97 99 99 174* 182* 188 188
+                                                                                  233* 234 234
+use_init                        000114 automatic       bit(1)                   dcl 46 set ref 169* 173 232
+writesw                         000115 automatic       bit(1)                   packed unaligned dcl 47 set ref 105* 110* 124* 132*
+                                                                                  195 211 216
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 5-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 5-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 5-113
+append_null_addr                       internal static bit(22)                  initial dcl 4-4
+asta                                   based           bit(432)                 array dcl 2-86
+aste_part                              based           structure                level 1 dcl 2-89
+badd_type                              based           structure                level 1 packed packed unaligned dcl 1-15
+cma                                    based           structure                array level 1 dcl 3-30
+create_vtoce_four_null_addrs           internal static fixed bin(71,0)          initial dcl 4-24
+create_vtoce_null_addr                 internal static bit(18)                  initial dcl 4-26
+fill_page_table_null_addr              internal static bit(22)                  initial dcl 4-4
+get_aste_null_addr                     internal static bit(22)                  initial dcl 4-4
+get_file_map_dumper_non_null_addr      internal static bit(22)                  initial dcl 4-4
+get_file_map_null_addr                 internal static bit(22)                  initial dcl 4-4
+get_file_map_vt_null_addr              internal static bit(22)                  initial dcl 4-4
+init_sst_null_addr                     internal static bit(22)                  initial dcl 4-4
+list_deposit_null_addr                 internal static bit(22)                  initial dcl 4-4
+page_bad_null_addr                     internal static bit(22)                  initial dcl 4-4
+page_bad_pd_null_addr                  internal static bit(22)                  initial dcl 4-4
+page_devparity_null_addr               internal static bit(22)                  initial dcl 4-4
+page_parity_null_addr                  internal static bit(22)                  initial dcl 4-4
+page_problem_null_addr                 internal static bit(22)                  initial dcl 4-4
+pc_move_page_table_1_null_addr         internal static bit(22)                  initial dcl 4-4
+pc_move_page_table_2_null_addr         internal static bit(22)                  initial dcl 4-4
+put_aste_null_addr                     internal static bit(22)                  initial dcl 4-4
+pv_salv_null_addr                      internal static bit(18)                  initial dcl 4-26
+pv_scav_null_addr                      internal static bit(18)                  initial dcl 4-26
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 5-19
+salv_truncate_null_addr                internal static bit(18)                  initial dcl 4-26
+seg_aste                               based           structure                level 1 dcl 2-96
+segmove_new_addr_null_addr             internal static bit(22)                  initial dcl 4-4
+segmove_old_addr_null_addr             internal static bit(22)                  initial dcl 4-4
+truncate_vtoce_fill_null_addr          internal static bit(18)                  initial dcl 4-26
+truncate_vtoce_null_addr               internal static bit(18)                  initial dcl 4-26
+unprotected_null_addr                  internal static bit(22)                  initial dcl 4-4
+update_vtoce_null_addr                 internal static bit(18)                  initial dcl 4-26
+volume_reloader_null_addr              internal static bit(18)                  initial dcl 4-26
+volume_retriever_null_addr             internal static bit(18)                  initial dcl 4-26
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+fini                            000616 constant        label                    dcl 225 ref 208
+merge                           000261 constant        label                    dcl 142 ref 128 136
+no_test                         000153 constant        label                    dcl 112 ref 106
+operate                         000333 constant        label                    dcl 169 ref 120
+read_disk                       000176 constant        entry                    external dcl 122
+read_disk$init                  000015 constant        entry                    external dcl 10
+read_disk_no_test               000125 constant        entry                    external dcl 103
+test_disk                       000247 constant        entry                    external dcl 138
+write_disk                      000221 constant        entry                    external dcl 130
+write_disk_no_test              000141 constant        entry                    external dcl 108
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1352        1462     716        1362
+Length      2014     716       110         316     433           4
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+read_disk$init                      108 external procedure  is an external procedure.  
+on unit on line 206                  64 on unit               
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 static_rdisks_astep         read_disk$init
+000012 static_rdisks_sdw           read_disk$init
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+read_disk$init           000100 dataptr                     read_disk$init
+                         000102 ptp                         read_disk$init
+                         000104 pvtx                        read_disk$init
+                         000106 rdskp                       read_disk$init
+                         000110 record_no                   read_disk$init
+                         000111 testsw                      read_disk$init
+                         000112 tsdw                        read_disk$init
+                         000114 use_init                    read_disk$init
+                         000115 writesw                     read_disk$init
+                         000124 astep                       read_disk$init
+                         000126 cmep                        read_disk$init
+                         000130 pvt_arrayp                  read_disk$init
+                         000132 pvtep                       read_disk$init
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out        return_mac          tra_ext_1           enable_op           ext_entry
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_abs_seg$add               disk_control$test_drive       disk_run                      get_aste
+get_ptrs_$given_astep         get_ptrs_$ptw_to_cmep         lock$lock_ast                 lock$unlock_ast
+make_sdw$unthreaded           pc$cleanup                    pmut$swap_sdw                 ptw_util_$make_disk
+ptw_util_$make_null           ptw_util_$make_null_disk      ptw_util_$set_unwired         ptw_util_$set_wired
+put_aste                      sdw_util_$set_size            thread$cin                    thread$out
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$fsdisk_not_ready error_table_$fsdisk_phydev_err                              pds$processid
+pvt$array                     rdisk_seg$                    sst$astsize                   sst$level
+sys_info$page_size            tc_data$initializer_id        tc_data$system_shutdown
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     10 000014        89 000022        90 000024        92 000044        95 000061        97 000066        98 000071
+     99 000072       100 000104       101 000117       103 000120       105 000135       106 000136       108 000137
+    110 000151       112 000153       114 000156       115 000161       117 000163       118 000166       119 000170
+    120 000173       122 000174       124 000206       125 000207       126 000210       127 000213       128 000216
+    130 000217       132 000231       133 000233       134 000234       135 000237       136 000242       138 000243
+    140 000257       142 000261       145 000264       146 000267       147 000271       149 000274       150 000276
+    151 000304       152 000310       153 000315       154 000316       155 000321       156 000323       157 000326
+    160 000327       161 000331       162 000332       169 000333       173 000341       174 000342       175 000344
+    176 000346       178 000347       179 000353       180 000366       181 000377       182 000404       183 000415
+    186 000422       187 000431       188 000436       193 000450       195 000454       197 000472       198 000505
+    200 000514       206 000517       207 000533       208 000536       211 000541       212 000552       216 000560
+    217 000562       218 000573       219 000601       220 000606       223 000615       225 000616       232 000625
+    233 000627       234 000631       235 000644       236 000651       237 000662       238 000671       239 000676
+    240 000677       242 000710
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

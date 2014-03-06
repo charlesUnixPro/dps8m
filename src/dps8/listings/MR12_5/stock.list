@@ -1,0 +1,2133 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>stock.alm                                                                                                                                            
+ASSEMBLED ON:	11/11/89  0924.0 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    10  "
+                                    11  "	stock
+                                    12  "
+                                    13  "	Record Stock Management Routines
+                                    14  "
+                                    15  "	Entries:
+                                    16  "	
+                                    17  "	  withdraw - withdraws a single record address from a stock
+                                    18  "
+                                    19  "	  withdraw_range - withdraws a single record address from
+                                    20  "	            a stock within a range of addresses
+                                    21  "
+                                    22  "	  withdraw_range_ext - same as withdraw_range, available
+                                    23  "	  	  outside ALM Page Control
+                                    24  "
+                                    25  "	  deposit - deposits a single record address into a stock
+                                    26  "
+                                    27  "	  reset_os - resets all out-of-service bits in a stock
+                                    28  "
+                                    29  "	  flush_os - removes all out-of-service entries from a stock.
+                                    30  "		  Called when there is an unrecoverable I/O error
+                                    31  "		  on a Volume Map page.
+                                    32  "
+                                    33  "	  check_low_threshold - checks for stock below threshold and 
+                                    34  "		  selects a volume map page to replenish it
+                                    35  "
+                                    36  "	  recover - adjust stock counts (called during ESD)
+                                    37  "
+                                    38  "	Written January 1982 by J. Bongiovanni
+                                    39  "	Modified July 1982, J. Bongiovanni, for withdraw_range_ext
+                                    40  "
+                                    41  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    42  
+    000000                          43  	name	stock
+                        000127      44  	segdef	deposit
+                        000026      45  	segdef	withdraw
+                        000034      46  	segdef	withdraw_range
+                        000005      47  	segdef	withdraw_range_ext
+                        000205      48  	segdef	reset_os
+                        000207      49  	segdef	flush_os
+                        000254      50  	segdef	check_low_threshold
+                        000332      51  	segdef	recover
+                                    52  
+                        377777      53  	bool	live_address,377777
+                        400000      54  	bool	os_address,400000
+                                    55  
+    000000                          56  reset_os_upper_bits:
+    000000  aa   377777 777777      57  	oct	377777777777		" reset_os
+    000001  aa   000000 777777      58  	oct	000000777777		" flush_os
+    000002                          59  reset_os_lower_bits:
+    000002  aa   777777 377777      60  	oct	777777377777		" reset_os
+    000003  aa   777777 000000      61  	oct	777777000000		" flush_os
+                                    62  
+    000004                          63  high_record_address:
+    000004  aa   377777 000000      64  	oct	377777000000
+                                    65  
+                                    66  "
+                                    67  	include	aste
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE aste.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 01/14/85  1523.3 est Mon by convert_include_file,
+                                   1-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   1-8  
+                                   1-9  	"Made from >Pool>m>loe>incl>aste.incl.pl1,
+                                  1-10  	"   modified 01/08/85  1115.0 est Tue
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure aste
+                                  1-14  "
+                        000014    1-15  	equ	aste_size,12
+                                  1-16  
+                        000000    1-17  	equ	aste.fp,0			" UPPER
+                        000000    1-18  	equ	aste.bp,0			" LOWER
+                                  1-19  
+                        000001    1-20  	equ	aste.infl,1		" UPPER
+                        000001    1-21  	equ	aste.infp,1		" LOWER
+                                  1-22  
+                        000002    1-23  	equ	aste.strp,2		" UPPER
+                        000002    1-24  	equ	aste.par_astep,2		" LOWER
+                                  1-25  
+                        000003    1-26  	equ	aste.uid,3
+                                  1-27  
+                        000004    1-28  	equ	aste.msl_word,4
+                        000033    1-29  	equ	aste.msl_shift,27
+                        000777    1-30  	bool	aste.msl_mask,000777
+                        000004    1-31  	equ	aste.pvtx_word,4
+                        000022    1-32  	equ	aste.pvtx_shift,18
+                        000777    1-33  	bool	aste.pvtx_mask,000777
+                        000004    1-34  	equ	aste.vtocx,4		" LOWER
+                                  1-35  
+                        000005    1-36  	equ	aste.usedf_word,5
+                        400000    1-37  	bool	aste.usedf,400000		" DU
+                        000005    1-38  	equ	aste.init_word,5
+                        200000    1-39  	bool	aste.init,200000		" DU
+                        000005    1-40  	equ	aste.gtus_word,5
+                        100000    1-41  	bool	aste.gtus,100000		" DU
+                        000005    1-42  	equ	aste.gtms_word,5
+                        040000    1-43  	bool	aste.gtms,040000		" DU
+                        000005    1-44  	equ	aste.hc_word,5
+                        020000    1-45  	bool	aste.hc,020000		" DU
+                        000005    1-46  	equ	aste.hc_sdw_word,5
+                        010000    1-47  	bool	aste.hc_sdw,010000		" DU
+                        000005    1-48  	equ	aste.any_access_on_word,5
+                        004000    1-49  	bool	aste.any_access_on,004000	" DU
+                        000005    1-50  	equ	aste.write_access_on_word,5
+                        002000    1-51  	bool	aste.write_access_on,002000	" DU
+                        000005    1-52  	equ	aste.inhibit_cache_word,5
+                        001000    1-53  	bool	aste.inhibit_cache,001000	" DU
+                        000005    1-54  	equ	aste.explicit_deact_ok_word,5
+                        000400    1-55  	bool	aste.explicit_deact_ok,000400	" DU
+                        000005    1-56  	equ	aste.deact_error_word,5
+                        000200    1-57  	bool	aste.deact_error,000200	" DU
+                        000005    1-58  	equ	aste.hc_part_word,5
+                        000100    1-59  	bool	aste.hc_part,000100		" DU
+                        000005    1-60  	equ	aste.fm_damaged_word,5
+                        000040    1-61  	bool	aste.fm_damaged,000040	" DU
+                        000005    1-62  	equ	aste.multi_class_word,5
+                        000020    1-63  	bool	aste.multi_class,000020	" DU
+                        000005    1-64  	equ	aste.dius_word,5
+                        000002    1-65  	bool	aste.dius,000002		" DU
+                        000005    1-66  	equ	aste.nid_word,5
+                        000001    1-67  	bool	aste.nid,000001		" DU
+                        000005    1-68  	equ	aste.dmpr_pad_word,5
+                        400000    1-69  	bool	aste.dmpr_pad,400000	" DL
+                        000005    1-70  	equ	aste.ehs_word,5
+                        200000    1-71  	bool	aste.ehs,200000		" DL
+                        000005    1-72  	equ	aste.nqsw_word,5
+                        100000    1-73  	bool	aste.nqsw,100000		" DL
+                        000005    1-74  	equ	aste.dirsw_word,5
+                        040000    1-75  	bool	aste.dirsw,040000		" DL
+                        000005    1-76  	equ	aste.master_dir_word,5
+                        020000    1-77  	bool	aste.master_dir,020000	" DL
+                        000005    1-78  	equ	aste.volmap_seg_word,5
+                        010000    1-79  	bool	aste.volmap_seg,010000	" DL
+                        000005    1-80  	equ	aste.tqsw_word,5
+                        004000    1-81  	bool	aste.tqsw,004000		" DL
+                                  1-82  
+                        000006    1-83  	equ	aste.dtu,6
+                        000007    1-84  	equ	aste.dtm,7
+                                  1-85  
+                        000010    1-86  	equ	aste.quota,8		" UPPER
+                                  1-87  
+                        000011    1-88  	equ	aste.used,9		" UPPER
+                                  1-89  
+                        000012    1-90  	equ	aste.csl_word,10
+                        000033    1-91  	equ	aste.csl_shift,27
+                        000777    1-92  	bool	aste.csl_mask,000777
+                        000012    1-93  	equ	aste.fmchanged_word,10
+                        000400    1-94  	bool	aste.fmchanged,000400	" DU
+                        000012    1-95  	equ	aste.fms_word,10
+                        000200    1-96  	bool	aste.fms,000200		" DU
+                        000012    1-97  	equ	aste.npfs_word,10
+                        000100    1-98  	bool	aste.npfs,000100		" DU
+                        000012    1-99  	equ	aste.gtpd_word,10
+                        000040   1-100  	bool	aste.gtpd,000040		" DU
+                        000012   1-101  	equ	aste.dnzp_word,10
+                        000020   1-102  	bool	aste.dnzp,000020		" DU
+                        000012   1-103  	equ	aste.per_process_word,10
+                        000010   1-104  	bool	aste.per_process,000010	" DU
+                        000012   1-105  	equ	aste.ddnp_word,10
+                        000004   1-106  	bool	aste.ddnp,000004		" DU
+                        000012   1-107  	equ	aste.records_word,10
+                        000011   1-108  	equ	aste.records_shift,9
+                        000777   1-109  	bool	aste.records_mask,000777
+                        000012   1-110  	equ	aste.np_word,10
+                        000000   1-111  	equ	aste.np_shift,0
+                        000777   1-112  	bool	aste.np_mask,000777
+                                 1-113  
+                        000013   1-114  	equ	aste.ht_fp,11		" UPPER
+                        000013   1-115  	equ	aste.fmchanged1_word,11
+                        400000   1-116  	bool	aste.fmchanged1,400000	" DL
+                        000013   1-117  	equ	aste.damaged_word,11
+                        200000   1-118  	bool	aste.damaged,200000		" DL
+                        000013   1-119  	equ	aste.pack_ovfl_word,11
+                        100000   1-120  	bool	aste.pack_ovfl,100000	" DL
+                        000013   1-121  	equ	aste.synchronized_word,11
+                        040000   1-122  	bool	aste.synchronized,040000	" DL
+                        000013   1-123  	equ	aste.ptsi_word,11
+                        000006   1-124  	equ	aste.ptsi_shift,6
+                        000003   1-125  	bool	aste.ptsi_mask,000003
+                        000013   1-126  	equ	aste.marker_word,11
+                        000000   1-127  	equ	aste.marker_shift,0
+                        000077   1-128  	bool	aste.marker_mask,000077
+                                 1-129  
+                                 1-130  "
+                                 1-131  "	Structure aste_part
+                                 1-132  "
+                        000014   1-133  	equ	aste_part_size,12
+                                 1-134  
+                                 1-135  
+                        000000   1-136  	equ	aste_part.one,0
+                        000001   1-137  	equ	aste_part.two,1		" DOUBLE
+                                 1-138  
+                        000013   1-139  	equ	aste_part.three_word,11
+                        000000   1-140  	equ	aste_part.three_shift,0
+                        000377   1-141  	bool	aste_part.three_mask,000377
+                                 1-142  
+                                 1-143  "
+                                 1-144  "	Structure seg_aste
+                                 1-145  "
+                        000014   1-146  	equ	seg_aste_size,12
+                                 1-147  
+                                 1-148  
+                        000010   1-149  	equ	seg_aste.usage,8
+                                 1-150  
+                                 1-151       "END INCLUDE FILE aste.incl.alm
+                                    68  "
+                                    69  	include	page_info
+                                   2-1  "	BEGIN INCLUDE FILE page_info.incl.alm  --  6/72
+                                   2-2  "
+                                   2-3  " Modified 02/22/81, W. Olin Sibert, for ADP conversion
+                                   2-4  " Modified 06/23/82, E. N. Kittlitz, to move core map.
+                                   2-5  "
+                        000012     2-6  	equ	page_power,10		" 2**10 = size of page
+                        000001     2-7  	bool	df1,000001		" directed fault 1 on page fault
+                                   2-8  
+                 777777 740000     2-9  	bool	address_mask,777777740000	" Mask for PTW add, add_type compares
+                                  2-10  					" Use as =v36/address_mask
+                                  2-11  
+                        400000    2-12  	bool	ptw.nulled,400000		" flag for testing addresses
+                                  2-13  
+                        100000    2-14  	bool	int,100000		" Disk dim flags
+                        000020    2-15  	bool	pri,000020
+                        000004    2-16  	bool	no_post,000004
+                                  2-17  
+                        000003    2-18  	equ	sst,3			" Standard pointer and index
+                        000003    2-19  	equ	pdm,sst			" register usage
+                        000003    2-20  	equ	ast,sst
+                        000002    2-21  	equ	ptw,2
+                                  2-22  
+                                  2-23  "	Various AST masks which are not
+                                  2-24  "	expressible in standard notation
+                                  2-25  "
+                        777000    2-26  	bool	aste.csl_mask_inner,777000
+                        777000    2-27  	bool	aste.records_mask_inner,777000
+                                  2-28  
+                        000000    2-29  	equ	fault_entry,0		" Flags indicating how we
+                        000001    2-30  	equ	read_entry,1		" were entered
+                        000002    2-31  	equ	write_entry,2
+                        000003    2-32  	equ	pre_page_entry,3
+                        000004    2-33  	equ	post_purge_entry,4
+                        000005    2-34  	equ	pd_flush_entry,5
+                        000006    2-35  	equ	evict_entry,6
+                        000007    2-36  	equ	abs_wire_entry,7
+                        000010    2-37  	equ	cleanup_entry,8
+                                  2-38  
+                                  2-39  " Constants for manipulating core addresses and PTWs. The core address
+                                  2-40  " is a fixed bin (35) aligned, and must be moved to/from the appropriate
+                                  2-41  " field in the SDW or PTW.
+                                  2-42  "
+                                  2-43  	iftarget	l68
+                        777760          	   bool	ptw_add_mask,777760 " Page number
+                        777760          	   bool	sdw_add_mask,777760 " Page number
+                 000077 777777          	   bool	coreadd_mask,000077777777 " Mask for coreadd in AL
+                                        
+                        000014          	   equ	coreadd_to_ptw.ls,12
+                        000014          	   equ	coreadd_to_sdw.ls,12
+                        000014          	   equ	ptw_to_coreadd.rl,12
+                        000014          	   equ	sdw_to_coreadd.rl,12
+                        000002          	   equ	cmep_to_ptw.ls,2
+                        000002          	   equ	cmep_to_sdw.ls,2
+                        000002          	   equ	ptw_to_cmep.rl,2
+                        000024          	   equ	ptw_to_cmep_lower.rl,20
+                        000002          	   equ	sdw_to_cmep.rl,2
+                                        "	ifend
+                                  2-58  
+                                  2-59  	iftarget	adp
+                                        "	   bool	ptw_add_mask,177777 " Page number
+                                        "	   bool	sdw_add_mask,777774 " Page number
+                                        "	   bool	coreadd_mask,000377777777 " Mask for coreadd in AL
+                                        "
+                                        "	   equ	coreadd_to_ptw.ls,8
+                                        "	   equ	coreadd_to_sdw.ls,10
+                                        "	   equ	ptw_to_coreadd.rl,8
+                                        "	   equ	sdw_to_coreadd.rl,10
+                                        "	   equ	cmep_to_ptw.rl,2	" Must shift backwards
+                                        "	   equ	cmep_to_sdw.ls,0
+                                        "	   equ	ptw_to_cmep.ls,2	" Must shift backwards
+                                        "	   equ	ptw_to_cmep_lower.rl,16
+                                        "	   equ	sdw_to_cmep.rl,0
+                                        "	ifend
+                                  2-74  
+                        000012    2-75  	equ	cmep_to_coreadd.rl,10	.cmep to coreadd
+                        000012    2-76  	equ	coreadd_to_cmep.ls,10	coreadd to .cmep
+                                  2-77  
+                                  2-78  " 
+                                  2-79  "
+                                  2-80  " Assorted general purpose macros used in PC. These will be changed
+                                  2-81  " when address types are changed for 20 bit addresses. Additionally,
+                                  2-82  " for more accurate metering on the ADP, the metering macros should
+                                  2-83  " modified to update the metering cells uninterruptably.
+                                  2-84  "
+                                  2-85  
+                                  2-86  	macro	missing
+                              1   2-87  	ife	&2,()
+                              2   2-88  	  warn	(&1: Argument missing.)
+                              3   2-89  	ifend
+                              4   2-90  	&end
+                                  2-91  "
+                                  2-92  " staddra and staddrq store the address portion (upper 22 bits) of the A or Q
+                                  2-93  " into the specified location.
+                                  2-94  "
+                                  2-95  	macro	staddra
+                              1   2-96  	missing	staddra,&1
+                              2   2-97  	era	&F1
+                              3   2-98  	ana	=v36/address_mask
+                              4   2-99  	ersa	&F1
+                              5  2-100  	&end
+                                 2-101  
+                                 2-102  	macro	staddrq
+                              1  2-103  	missing	staddrq,&1
+                              2  2-104  	erq	&F1
+                              3  2-105  	anq	=v36/address_mask
+                              4  2-106  	ersq	&F1
+                              5  2-107  	&end
+                                 2-108  
+                                 2-109  "	Macros for metering 6/23/80
+                                 2-110  
+                                 2-111  	macro	read_clock
+                              1  2-112  	iftarget	l68
+                              2  2-113  	  rccl	sys_info$clock_,*
+                              3  2-114  	ifend
+                              4  2-115  	iftarget adp
+                              5  2-116  	  rccl	0
+                              6  2-117  	ifend
+                              7  2-118  	&end
+                                 2-119  
+                                 2-120  	macro	increment
+                              1  2-121  	missing	increment,&1
+                              2  2-122  	aos	&1
+                              3  2-123  	&end
+                                 2-124  
+                                 2-125  	macro	store_clock
+                              1  2-126  	missing	store_clock,&1
+                              2  2-127  	read_clock
+                              3  2-128  	staq	&1
+                              4  2-129  	&end
+                                 2-130  
+                                 2-131  	macro	meter_time
+                              1  2-132  	missing	meter_time,&3
+                              2  2-133  	increment &3
+                              3  2-134  	read_clock
+                              4  2-135  	sbaq	&1
+                              5  2-136  	adaq	&2
+                              6  2-137  	staq	&2
+                              7  2-138  	&end
+                                 2-139  
+                                 2-140  "	END INCLUDE FILE  page_info.incl.alm
+                                    70  "
+                                    71  	include	ptw
+                                   3-1  " BEGIN INCLUDE FILE ... ptw.incl.alm ... 03/01/81, for ADP conversion
+                                   3-2  
+                                   3-3  	iftarget	l68	" Include whichever seems appropriate
+                                        	 include	ptw.l68
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE ptw.l68.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 04/05/81  1616.0 est Sun by convert_include_file,
+                                   4-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   4-8  
+                                   4-9  	"Made from >udd>Multics>hardcore_pool>new_pc>include>ptw.l68.incl.pl1,
+                                  4-10  	"   modified 03/20/81  1815.9 est Fri
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure core_ptw
+                                  4-14  "
+                        000026    4-15  	equ	core_ptw.frame_shift,22
+                        037777    4-16  	bool	core_ptw.frame_mask,037777
+                        000000    4-17  	equ	core_ptw.flags,0	" LOWER
+                        000016    4-18  	equ	core_ptw.add_type_shift,14
+                        000017    4-19  	bool	core_ptw.add_type_mask,000017
+                        020000    4-20  	bool	core_ptw.first,020000	" DL
+                        010000    4-21  	bool	core_ptw.er,010000	" DL
+                        002000    4-22  	bool	core_ptw.unusable1,002000	" DL
+                        001000    4-23  	bool	core_ptw.phu,001000	" DL
+                        000400    4-24  	bool	core_ptw.phm1,000400	" DL
+                        000200    4-25  	bool	core_ptw.nypd,000200	" DL
+                        000100    4-26  	bool	core_ptw.phm,000100	" DL
+                        000040    4-27  	bool	core_ptw.phu1,000040	" DL
+                        000020    4-28  	bool	core_ptw.wired,000020	" DL
+                        000010    4-29  	bool	core_ptw.os,000010	" DL
+                        000004    4-30  	bool	core_ptw.valid,000004	" DL
+                        000000    4-31  	equ	core_ptw.df_no_shift,0
+                        000003    4-32  	bool	core_ptw.df_no_mask,000003
+                                  4-33  
+                                  4-34  "
+                                  4-35  "	Structure ptw
+                                  4-36  "
+                        000000    4-37  	equ	ptw.add,0		" UPPER
+                        000000    4-38  	equ	ptw.flags,0		" LOWER
+                        000016    4-39  	equ	ptw.add_type_shift,14
+                        000017    4-40  	bool	ptw.add_type_mask,000017
+                        020000    4-41  	bool	ptw.first,020000	" DL
+                        010000    4-42  	bool	ptw.er,010000		" DL
+                        002000    4-43  	bool	ptw.unusable1,002000	" DL
+                        001000    4-44  	bool	ptw.phu,001000		" DL
+                        000400    4-45  	bool	ptw.phm1,000400		" DL
+                        000200    4-46  	bool	ptw.nypd,000200		" DL
+                        000100    4-47  	bool	ptw.phm,000100		" DL
+                        000040    4-48  	bool	ptw.phu1,000040		" DL
+                        000020    4-49  	bool	ptw.wired,000020	" DL
+                        000010    4-50  	bool	ptw.os,000010		" DL
+                        000004    4-51  	bool	ptw.valid,000004	" DL
+                        000000    4-52  	equ	ptw.df_no_shift,0
+                        000003    4-53  	bool	ptw.df_no_mask,000003
+                                  4-54  
+                                  4-55       "END INCLUDE FILE ptw.l68.incl.alm
+                                        "	ifend
+                                   3-6  
+                                   3-7  	iftarget	adp
+                                        "	 include	ptw.adp
+                                        "	ifend
+                                  3-10  
+                                  3-11  " END INCLUDE FILE ... ptw.incl.alm
+                                    72  "
+                                    73  	include	pvte
+                                   5-1  
+                                   5-2  
+                                   5-3       "BEGIN INCLUDE FILE pvte.incl.alm
+                                   5-4  
+                                   5-5  
+                                   5-6  	"Created 05/29/86  1617.9 mst Thu by convert_include_file,
+                                   5-7  	"   Version of 04/10/86  1622.3 mst Thu.
+                                   5-8  
+                                   5-9  	"Made from >dumps>old>dipper>svs5>incl>pvte.incl.pl1,
+                                  5-10  	"   modified 05/29/86  1617.8 mst Thu
+                                  5-11  
+                                  5-12  
+                                  5-13  " HISTORY COMMENTS:
+                                  5-14  "  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+                                  5-15  "     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+                                  5-16  "        Add the support for subvolumes
+                                  5-17  "  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+                                  5-18  "     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+                                  5-19  "        Add root_lv flag to mount RLVs that do not have hardcore partitions.
+                                  5-20  "  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+                                  5-21  "     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+                                  5-22  "        Added inconsistent_dbm bit for determining the status of volume
+                                  5-23  "        dumper bit maps.
+                                  5-24  "                                                      END HISTORY COMMENTS
+                                  5-25  
+                                  5-26  
+                                  5-27  "
+                                  5-28  "	Structure pvt_array
+                                  5-29  "
+                                  5-30  
+                                  5-31  "
+                                  5-32  "	Structure pvte
+                                  5-33  "
+                        000034    5-34  	equ	pvte_size,28
+                                  5-35  
+                                  5-36  
+                        000000    5-37  	equ	pvte.pvid,0
+                        000001    5-38  	equ	pvte.lvid,1
+                                  5-39  
+                        000002    5-40  	equ	pvte.dmpr_in_use_word,2
+                        400000    5-41  	bool	pvte.dmpr_in_use,400000	" DU
+                        000002    5-42  	equ	pvte.is_sv_word,2
+                        040000    5-43  	bool	pvte.is_sv,040000		" DU
+                        000002    5-44  	equ	pvte.root_lv_word,2
+                        020000    5-45  	bool	pvte.root_lv,020000		" DU
+                        000002    5-46  	equ	pvte.removable_pack_word,2
+                        010000    5-47  	bool	pvte.removable_pack,010000	" DU
+                        000002    5-48  	equ	pvte.inconsistent_dbm_word,2
+                        004000    5-49  	bool	pvte.inconsistent_dbm,004000	" DU
+                        000002    5-50  	equ	pvte.brother_pvtx_word,2
+                        000022    5-51  	equ	pvte.brother_pvtx_shift,18
+                        000777    5-52  	bool	pvte.brother_pvtx_mask,000777
+                        000002    5-53  	equ	pvte.skip_queue_count,2	" LOWER
+                                  5-54  
+                        000003    5-55  	equ	pvte.devname,3
+                                  5-56  
+                        000004    5-57  	equ	pvte.device_type_word,4
+                        000033    5-58  	equ	pvte.device_type_shift,27
+                        000777    5-59  	bool	pvte.device_type_mask,000777
+                        000004    5-60  	equ	pvte.logical_area_number_word,4
+                        000022    5-61  	equ	pvte.logical_area_number_shift,18
+                        000777    5-62  	bool	pvte.logical_area_number_mask,000777
+                        000004    5-63  	equ	pvte.used_word,4
+                        400000    5-64  	bool	pvte.used,400000		" DL
+                        000004    5-65  	equ	pvte.storage_system_word,4
+                        200000    5-66  	bool	pvte.storage_system,200000	" DL
+                        000004    5-67  	equ	pvte.permanent_word,4
+                        100000    5-68  	bool	pvte.permanent,100000	" DL
+                        000004    5-69  	equ	pvte.testing_word,4
+                        040000    5-70  	bool	pvte.testing,040000		" DL
+                        000004    5-71  	equ	pvte.being_mounted_word,4
+                        020000    5-72  	bool	pvte.being_mounted,020000	" DL
+                        000004    5-73  	equ	pvte.being_demounted_word,4
+                        010000    5-74  	bool	pvte.being_demounted,010000	" DL
+                        000004    5-75  	equ	pvte.check_read_incomplete_word,4
+                        004000    5-76  	bool	pvte.check_read_incomplete,004000 " DL
+                        000004    5-77  	equ	pvte.device_inoperative_word,4
+                        002000    5-78  	bool	pvte.device_inoperative,002000 " DL
+                        000004    5-79  	equ	pvte.rpv_word,4
+                        001000    5-80  	bool	pvte.rpv,001000		" DL
+                        000004    5-81  	equ	pvte.scav_check_address_word,4
+                        000400    5-82  	bool	pvte.scav_check_address,000400 " DL
+                        000004    5-83  	equ	pvte.deposit_to_volmap_word,4
+                        000200    5-84  	bool	pvte.deposit_to_volmap,000200	" DL
+                        000004    5-85  	equ	pvte.being_demounted2_word,4
+                        000100    5-86  	bool	pvte.being_demounted2,000100	" DL
+                        000004    5-87  	equ	pvte.pc_vacating_word,4
+                        000040    5-88  	bool	pvte.pc_vacating,000040	" DL
+                        000004    5-89  	equ	pvte.vacating_word,4
+                        000020    5-90  	bool	pvte.vacating,000020	" DL
+                        000004    5-91  	equ	pvte.hc_part_used_word,4
+                        000010    5-92  	bool	pvte.hc_part_used,000010	" DL
+                        000004    5-93  	equ	pvte.volmap_lock_notify_word,4
+                        000004    5-94  	bool	pvte.volmap_lock_notify,000004 " DL
+                        000004    5-95  	equ	pvte.volmap_idle_notify_word,4
+                        000002    5-96  	bool	pvte.volmap_idle_notify,000002 " DL
+                        000004    5-97  	equ	pvte.vtoc_map_lock_notify_word,4
+                        000001    5-98  	bool	pvte.vtoc_map_lock_notify,000001 " DL
+                                  5-99  
+                        000005   5-100  	equ	pvte.n_free_vtoce,5		" UPPER
+                        000005   5-101  	equ	pvte.vtoc_size,5		" LOWER
+                                 5-102  
+                        000006   5-103  	equ	pvte.dbmrp,6		" UPPER
+                                 5-104  
+                        000007   5-105  	equ	pvte.nleft,7		" UPPER
+                        000007   5-106  	equ	pvte.totrec,7		" LOWER
+                                 5-107  
+                        000010   5-108  	equ	pvte.dim_info,8
+                        000011   5-109  	equ	pvte.sv_num,9
+                        000012   5-110  	equ	pvte.num_of_svs,10
+                        000013   5-111  	equ	pvte.records_per_cyl,11
+                        000014   5-112  	equ	pvte.record_factor,12
+                        000015   5-113  	equ	pvte.sv_name,13
+                                 5-114  
+                        000016   5-115  	equ	pvte.curn_dmpr_vtocx,14	" UPPER
+                                 5-116  
+                        000017   5-117  	equ	pvte.n_vtoce,15		" LOWER
+                                 5-118  
+                        000020   5-119  	equ	pvte.baseadd,16		" UPPER
+                                 5-120  
+                        000022   5-121  	equ	pvte.volmap_seg_sdw,18	" DOUBLE
+                        000024   5-122  	equ	pvte.volmap_astep,20
+                                 5-123  
+                        000025   5-124  	equ	pvte.volmap_offset,21	" UPPER
+                        000025   5-125  	equ	pvte.vtoc_map_offset,21	" LOWER
+                                 5-126  
+                        000026   5-127  	equ	pvte.volmap_lock,22
+                        000027   5-128  	equ	pvte.vtoc_map_lock,23
+                        000030   5-129  	equ	pvte.volmap_stock_ptr,24
+                        000031   5-130  	equ	pvte.vtoc_map_stock_ptr,25
+                                 5-131  
+                        000032   5-132  	equ	pvte.volmap_async_state,26	" UPPER
+                        000032   5-133  	equ	pvte.volmap_async_page,26	" LOWER
+                                 5-134  
+                        000033   5-135  	equ	pvte.vol_trouble_count,27	" UPPER
+                        000033   5-136  	equ	pvte.scavenger_block_rel,27	" LOWER
+                                 5-137  
+                        000000   5-138  	equ	VOLMAP_ASYNC_IDLE,0		" MANIFEST
+                        000001   5-139  	equ	VOLMAP_ASYNC_READ,1		" MANIFEST
+                        000002   5-140  	equ	VOLMAP_ASYNC_WRITE,2	" MANIFEST
+                                 5-141  
+                                 5-142       "END INCLUDE FILE pvte.incl.alm
+                                    74  "
+                                    75  	include	pxss_page_stack
+                                   6-1  "
+                                   6-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   6-3  "
+                                   6-4  
+                        000006     6-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     6-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   6-7  
+                                   6-8  	temp8	notify_regs
+                                   6-9  	temp	save_stack(stack_size),stackp
+                                  6-10  	tempd	pre_time,pre_temp(3)
+                                  6-11  	tempd	arg(11),temp
+                                  6-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  6-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  6-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  6-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  6-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  6-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  6-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  6-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  6-20  	temp	lock_volmap_temp
+                                  6-21  	temp	volmap_page_temp
+                                  6-22  	tempd	free_store_start_time,post_io_start_time
+                                  6-23  
+                                  6-24  	temp	done_astep,volmap_page_temp_1
+                                  6-25  	temp	vtocx,pageno
+                                  6-26  
+                                  6-27  	tempd	page_synch_temp,page_synch_time
+                                  6-28  	temp	page_synch_index
+                                  6-29  
+                                  6-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  6-31  	tempd	pf_sdw
+                                  6-32  
+                                  6-33  	temp	pad(22)		" to grow compatibly
+                                  6-34  "
+                                  6-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  6-36  "
+                                    76  "
+                                    77  
+                                    78  	include	stack_frame
+                                   7-1  "
+                                   7-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   7-3  "
+                                   7-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   7-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   7-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   7-7  "
+                        000020     7-8  	equ	stack_frame.prev_sp,16
+                        000020     7-9  	equ	stack_frame.condition_word,16
+                        000022    7-10  	equ	stack_frame.next_sp,18
+                        000022    7-11  	equ	stack_frame.signaller_word,18
+                        000024    7-12  	equ	stack_frame.return_ptr,20
+                        000026    7-13  	equ	stack_frame.entry_ptr,22
+                        000030    7-14  	equ	stack_frame.operator_ptr,24
+                        000030    7-15  	equ	stack_frame.lp_ptr,24
+                        000032    7-16  	equ	stack_frame.arg_ptr,26
+                        000034    7-17  	equ	stack_frame.static_ptr,28
+                        000035    7-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    7-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    7-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    7-21  	equ	stack_frame.translator_id,31
+                        000040    7-22  	equ	stack_frame.regs,32
+                        000060    7-23  	equ	stack_frame.min_length,48
+                        000020    7-24  	equ	stack_frame.flag_word,16
+                        020000    7-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    7-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    7-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    7-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    7-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    7-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    7-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    7-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  7-33  
+                                  7-34  "
+                                  7-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  7-36  "
+                                    79  
+                                    80  	include	stock_seg
+                                   8-1  
+                                   8-2  
+                                   8-3       "BEGIN INCLUDE FILE stock_seg.incl.alm
+                                   8-4  
+                                   8-5  
+                                   8-6  	"Created 08/09/82  2006.2 edt Mon by convert_include_file,
+                                   8-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   8-8  
+                                   8-9  	"Made from >udd>Multics>Bongiovanni>hardcore_test_dir>scavenger_dir>stock_seg.incl.pl1,
+                                  8-10  	"   modified 08/09/82  2006.2 edt Mon
+                                  8-11  
+                                  8-12  "
+                                  8-13  "	Structure stock_seg
+                                  8-14  "
+                        000100    8-15  	equ	stock_seg_size,64
+                                  8-16  
+                                  8-17  
+                        000000    8-18  	equ	stock_seg.meters,0		" LEVEL 2
+                                  8-19  
+                        000066    8-20  	equ	stock_seg.record_stock_entries,54
+                        000067    8-21  	equ	stock_seg.vtoce_stock_entries,55
+                        000070    8-22  	equ	stock_seg.record_stock_size,56
+                        000071    8-23  	equ	stock_seg.vtoce_stock_size,57
+                        000072    8-24  	equ	stock_seg.n_stock_entries,58
+                        000074    8-25  	equ	stock_seg.record_stock_arrayp,60
+                        000076    8-26  	equ	stock_seg.vtoce_stock_arrayp,62
+                                  8-27  
+                                  8-28  "
+                                  8-29  "	Structure record_stock
+                                  8-30  "
+                        000000    8-31  	equ	record_stock.pvtep,0
+                                  8-32  
+                        000001    8-33  	equ	record_stock.n_in_stock,1	" UPPER
+                        000001    8-34  	equ	record_stock.n_volmap_pages,1	" LOWER
+                                  8-35  
+                        000002    8-36  	equ	record_stock.n_free_in_stock,2 " UPPER
+                        000002    8-37  	equ	record_stock.n_os_in_stock,2	" LOWER
+                                  8-38  
+                        000003    8-39  	equ	record_stock.low_threshold,3	" UPPER
+                        000003    8-40  	equ	record_stock.high_threshold,3	" LOWER
+                                  8-41  
+                        000004    8-42  	equ	record_stock.target,4	" UPPER
+                        000004    8-43  	equ	record_stock.stock_offset,4	" LOWER
+                                  8-44  
+                        000005    8-45  	equ	record_stock.n_words_in_stock,5 " UPPER
+                        000005    8-46  	equ	record_stock.search_index,5	" LOWER
+                                  8-47  
+                        000006    8-48  	equ	record_stock.old_volmap_page,6 " LEVEL 2
+                                  8-49  
+                        000006    8-50  	equ	record_stock.last,6		" UPPER
+                                  8-51  
+                        000011    8-52  	equ	record_stock.volmap_page,9	" LEVEL 2
+                                  8-53  
+                        000011    8-54  	equ	record_stock.n_free,9	" UPPER
+                        000011    8-55  	equ	record_stock.baseadd,9	" LOWER
+                                  8-56  
+                        000000    8-57  	equ	record_stock.stock,0	" UPPER
+                                  8-58  
+                                  8-59  "
+                                  8-60  "	Structure vtoce_stock
+                                  8-61  "
+                                  8-62  
+                        000000    8-63  	equ	vtoce_stock.pvtep,0
+                                  8-64  
+                        000001    8-65  	equ	vtoce_stock.n_in_stock,1	" UPPER
+                        000001    8-66  	equ	vtoce_stock.n_free_in_stock,1	" LOWER
+                                  8-67  
+                        000002    8-68  	equ	vtoce_stock.target,2	" UPPER
+                        000002    8-69  	equ	vtoce_stock.search_index,2	" LOWER
+                                  8-70  
+                        000003    8-71  	equ	vtoce_stock.stock,3		" UPPER
+                                  8-72  
+                                  8-73  "
+                                  8-74  "	Structure rsmeters
+                                  8-75  "
+                        000066    8-76  	equ	rsmeters_size,54
+                                  8-77  
+                                  8-78  
+                        000000    8-79  	equ	rsmeters.async_read_calls,0
+                        000001    8-80  	equ	rsmeters.async_page_reads,1
+                        000002    8-81  	equ	rsmeters.async_post_io_calls,2
+                        000003    8-82  	equ	rsmeters.deposit_calls,3
+                        000004    8-83  	equ	rsmeters.async_post_io_time,4	" DOUBLE
+                        000006    8-84  	equ	rsmeters.deposit_time,6	" DOUBLE
+                        000010    8-85  	equ	rsmeters.low_thresh_detected,8
+                        000011    8-86  	equ	rsmeters.high_thresh_detected,9
+                        000012    8-87  	equ	rsmeters.low_thresh_fails,10
+                        000013    8-88  	equ	rsmeters.withdraw_stock_steps,11
+                        000014    8-89  	equ	rsmeters.withdraw_stock_losses,12
+                        000015    8-90  	equ	rsmeters.n_withdraw_attempt,13
+                        000016    8-91  	equ	rsmeters.n_withdraw_range,14
+                        000017    8-92  	equ	rsmeters.n_pages_withdraw_stock,15
+                        000020    8-93  	equ	rsmeters.n_pages_withdraw_async,16
+                        000021    8-94  	equ	rsmeters.n_v_withdraw_attempts,17
+                        000022    8-95  	equ	rsmeters.withdraw_volmap_steps,18
+                        000023    8-96  	equ	rsmeters.deposit_stock_steps,19
+                        000024    8-97  	equ	rsmeters.deposit_stock_losses,20
+                        000025    8-98  	equ	rsmeters.n_deposit_attempt,21
+                        000026    8-99  	equ	rsmeters.n_pages_deposit_stock,22
+                        000027   8-100  	equ	rsmeters.n_pages_deposit_volmap,23
+                        000030   8-101  	equ	rsmeters.n_v_deposit_attempts,24
+                        000031   8-102  	equ	rsmeters.reset_os_calls,25
+                        000032   8-103  	equ	rsmeters.reset_os_losses,26
+                        000033   8-104  	equ	rsmeters.withdraw_calls,27
+                        000034   8-105  	equ	rsmeters.withdraw_time,28	" DOUBLE
+                        000036   8-106  	equ	rsmeters.pc_deposit_time,30	" DOUBLE
+                        000040   8-107  	equ	rsmeters.pc_deposit_calls,32
+                        000041   8-108  	equ	rsmeters.pc_deposit_pages,33
+                        000042   8-109  	equ	rsmeters.get_free_vtoce_calls,34
+                        000043   8-110  	equ	rsmeters.return_free_vtoce_call,35
+                        000044   8-111  	equ	rsmeters.deposit_vstock_calls,36
+                        000045   8-112  	equ	rsmeters.deposit_vstock_fails,37
+                        000046   8-113  	equ	rsmeters.withdraw_vstock_calls,38
+                        000047   8-114  	equ	rsmeters.withdraw_vstock_fails,39
+                        000050   8-115  	equ	rsmeters.deposit_vtoc_map,40
+                        000051   8-116  	equ	rsmeters.withdraw_check_scav,41
+                        000052   8-117  	equ	rsmeters.withdraw_conflict,42
+                                 8-118  
+                        000003   8-119  	equ	N_OLD_VOLMAP_PAGES,3	" MANIFEST
+                        000150   8-120  	equ	DEFAULT_N_IN_RECORD_STOCK,104	" MANIFEST
+                        000012   8-121  	equ	DEFAULT_N_IN_VTOCE_STOCK,10	" MANIFEST
+                                 8-122  
+                                 8-123       "END INCLUDE FILE stock_seg.incl.alm
+                                    81  "
+                                    82  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    83  "
+                                    84  "	withdraw - routine to withdraw a single record address
+                                    85  "
+                                    86  "	tsx7	stock$withdraw
+                                    87  "	<return if no addresses in stock>
+                                    88  "	<return if succeed with withdrawal>
+                                    89  "
+                                    90  "	On entry
+                                    91  "	    ab -> stock_seg$meters
+                                    92  "	    bb -> stock of interest
+                                    93  "
+                                    94  "	On exit
+                                    95  "	    Areg contains address
+                                    96  "
+                                    97  "
+                                    98  "	withdraw_range - routine to withdraw a single record address
+                                    99  "	     within a range specified
+                                   100  "
+                                   101  "	Same as above, except on entry
+                                   102  "	    AU = high address (rec < high address)
+                                   103  "	    AL = low address  (rec >= low address)
+                                   104  "
+                                   105  "	withdraw_range_ext - withdraw range accessible outside
+                                   106  "	    ALM Page control
+                                   107  "
+                                   108  "	    call page$withdraw_range (pvtep, low_address, high_address, record_address)
+                                   109  "
+                                   110  "	No locks are required by this routine.
+                                   111  "
+                                   112  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   113  
+    000005                         114  withdraw_range_ext:
+    000005  aa   000300 6270 00    115  	push
+    000006  aa  7 00040 2721 20
+                                   116  	
+    000007  aa  0 00010 4501 20    117  	stz	ap|8,*			" Clear returned address
+    000010  4a  4 00010 7061 20    118  	tsx6	page_fault$init_savex
+                                   119  
+    000011  aa  0 00002 3521 20    120  	eppbp	ap|2,*			" bp -> ptr -> PVTE
+    000012  aa  2 00000 3521 20    121  	eppbp	bp|0,*			" bp -> PVTE
+    000013  aa  2 00030 7631 00    122  	lprpbb	bp|pvte.volmap_stock_ptr	" bb -> stock
+    000014  aa  3 00000 3511 00    123  	epbpab	bb|0			" ab -> base of stock_seg
+    000015  aa  1 00000 3515 00    124  	eppab	ab|stock_seg.meters		" ab -> meters
+                                   125  
+    000016  aa  0 00006 2351 20    126  	lda	ap|6,*			" AL = high address
+    000017  aa   000022 7350 00    127  	als	18			" AU = high address
+    000020  aa  0 00004 2751 20    128  	ora	ap|4,*			" AU = high address, AL = low address
+    000021  0a   000034 7070 00    129  	tsx7	withdraw_range		" Try for an address
+    000022  0a   000025 7100 00    130  	tra	withdraw_range_ext_ret	" None
+                                   131  
+    000023  aa  6 00032 3501 20    132  	eppap	sp|stack_frame.arg_ptr,*	" Restore argument list ptr
+    000024  aa  0 00010 7551 20    133  	sta	ap|8,*			" Record address
+                                   134  
+    000025                         135  withdraw_range_ext_ret:
+    000025  aa  7 00042 7101 20    136  	return
+                                   137  
+                                   138  
+                                   139  
+    000026                         140  withdraw:
+    000026  aa   000000 6260 00    141  	eax6	0			" withdraw
+    000027  aa  6 00217 4501 00    142  	stz	stock_temp_1		" low address
+    000030  0a   000004 2350 00    143  	lda	high_record_address
+    000031  aa  6 00220 7551 00    144  	sta	stock_temp_2		" high address
+                                   145  	increment	ab|rsmeters.n_withdraw_attempt
+                                        	missing	increment,ab|rsmeters.n_withdraw_attempt
+    000032  aa  1 00015 0541 00         	aos	ab|rsmeters.n_withdraw_attempt
+    000033  0a   000042 7100 00    146  	tra	withdraw_join
+                                   147  
+    000034                         148  withdraw_range:
+    000034  aa   000001 6260 00    149  	eax6	1			" withdraw_range
+                                   150  	increment	ab|rsmeters.n_withdraw_range
+                                        	missing	increment,ab|rsmeters.n_withdraw_range
+    000035  aa  1 00016 0541 00         	aos	ab|rsmeters.n_withdraw_range
+    000036  aa  6 00220 7551 00    151  	sta	stock_temp_2		" high address
+    000037  aa   777777 3750 07    152  	ana	-1,dl
+    000040  aa   000022 7350 00    153  	als	18			" low address
+    000041  aa  6 00217 7551 00    154  	sta	stock_temp_1
+                                   155  
+    000042                         156  withdraw_join:
+    000042  aa  3 00004 7201 00    157  	lxl0	bb|record_stock.stock_offset
+    000043  aa  3 00000 3501 10    158  	eppap	bb|0,x0			" ap -> stock
+                                   159  
+    000044  aa   000000 6260 16    160  	eax6	0,x6			" withdraw_range?
+    000045  0a   000056 6010 00    161  	tnz	withdraw_set_begin		" Yes
+                                   162  
+    000046  aa  3 00005 7201 00    163  	lxl0	bb|record_stock.search_index	" Roving pointer
+    000047  aa   777777 6200 10    164  	eax0	-1,x0
+    000050  0a   000057 7100 00    165  	tra	withdraw_common
+                                   166  
+    000051                         167  withdraw_retry:
+    000051  aa   000000 6260 16    168  	eax6	0,x6			" withdraw_range?
+    000052  0a   000056 6000 00    169  	tze	withdraw_set_begin		" No
+    000053  aa   000001 6260 16    170  	eax6	1,x6			" Bump bail-out counter
+    000054  aa   000002 1060 03    171  	cmpx6	2,du			" Gone through once
+    000055  aa   000000 6050 17    172  	tpl	0,x7			" Yes -- once is enough
+                                   173  
+    000056                         174  withdraw_set_begin:
+    000056  aa   777777 2200 03    175  	ldx0	-1,du			" Start at the beginning
+                                   176  
+    000057                         177  withdraw_common:
+    000057  aa  3 00002 2211 00    178  	ldx1	bb|record_stock.n_free_in_stock " Any free?
+    000060  aa   000000 6000 17    179  	tze	0,x7			" No -- give up
+                                   180  
+    000061                         181  withdraw_loop:
+                                   182  	increment	ab|rsmeters.withdraw_stock_steps " Meter
+                                        	missing	increment,ab|rsmeters.withdraw_stock_steps
+    000061  aa  1 00013 0541 00         	aos	ab|rsmeters.withdraw_stock_steps
+    000062  aa   000001 6200 10    183  	eax0	1,x0			" Next 2 entires
+    000063  aa  3 00005 1001 00    184  	cmpx0	bb|record_stock.n_words_in_stock " Any left
+    000064  0a   000051 6050 00    185  	tpl	withdraw_retry		" No - retry from the top
+                                   186  
+    000065                         187  withdraw_loop_retry:
+    000065  aa  0 00000 2361 10    188  	ldq	ap|0,x0			" Next 2 entries
+    000066  0a   000061 6000 00    189  	tze	withdraw_loop		" Both empty
+    000067  aa  0 00000 2351 10    190  	lda	ap|0,x0			" Protected by Q, stacq
+    000070  aa   000000 6210 01    191  	eax1	0,au			" Check upper address
+    000071  0a   000100 6044 00    192  	tmoz	withdraw_check_lower	" Empty or out-of-service
+    000072  aa  6 00217 1011 00    193  	cmpx1	stock_temp_1		" >= low address
+    000073  0a   000100 6040 00    194  	tmi	withdraw_check_lower	" No
+    000074  aa  6 00220 1011 00    195  	cmpx1	stock_temp_2		" < high address
+    000075  0a   000100 6050 00    196  	tpl	withdraw_check_lower	" No
+    000076  aa   777777 3750 07    197  	ana	-1,dl			" Mark upper as empty
+    000077  0a   000107 7100 00    198  	tra	withdraw_try		" And attempt lockless withdraw
+    000100                         199  withdraw_check_lower:
+    000100  aa   000000 6210 06    200  	eax1	0,ql			" Look at lower entry
+    000101  0a   000061 6044 00    201  	tmoz	withdraw_loop		" Empty or out-of-service
+    000102  aa  6 00217 1011 00    202  	cmpx1	stock_temp_1		" >= low address
+    000103  0a   000061 6040 00    203  	tmi	withdraw_loop		" No
+    000104  aa  6 00220 1011 00    204  	cmpx1	stock_temp_2		" < high address
+    000105  0a   000061 6050 00    205  	tpl	withdraw_loop		" No
+    000106  aa   777777 3750 03    206  	ana	-1,du			" Mark lower as empty
+                                   207  
+    000107                         208  withdraw_try:				
+    000107  aa  0 00000 6541 10    209  	stacq	ap|0,x0			" Attempt lockless withdraw
+    000110  0a   000113 6000 00    210  	tze	withdraw_succeed		" Made it
+                                   211  	increment	ab|rsmeters.withdraw_stock_losses
+                                        	missing	increment,ab|rsmeters.withdraw_stock_losses
+    000111  aa  1 00014 0541 00         	aos	ab|rsmeters.withdraw_stock_losses
+    000112  0a   000065 7100 00    212  	tra	withdraw_loop_retry		" Meter and retry
+                                   213  
+    000113                         214  withdraw_succeed:
+    000113  aa   000000 6260 16    215  	eax6	0,x6			" withdraw_range ?
+    000114  0a   000116 6010 00    216  	tnz	withdraw_leave_pointer	" Yes -- don't adjust pointer
+    000115  aa  3 00005 4401 00    217  	sxl0	bb|record_stock.search_index	" Roving pointer
+    000116                         218  withdraw_leave_pointer:
+    000116  aa  3 00002 2361 00    219  	ldq	bb|record_stock.n_free_in_stock " Adjust count lockless
+    000117  aa  3 00002 2351 00    220  	lda	bb|record_stock.n_free_in_stock
+    000120  aa   000001 1750 03    221  	sba	1,du			" One fewer free record
+    000121  aa  3 00002 6541 00    222  	stacq	bb|record_stock.n_free_in_stock
+    000122  0a   000116 6010 00    223  	tnz	withdraw_leave_pointer	" Lost race, retry
+                                   224  
+    000123  aa   000000 6350 11    225  	eaa	0,x1			" Record address
+    000124  aa   000022 7710 00    226  	arl	18			" Areg = record address
+                                   227  	increment	ab|rsmeters.n_pages_withdraw_stock
+                                        	missing	increment,ab|rsmeters.n_pages_withdraw_stock
+    000125  aa  1 00017 0541 00         	aos	ab|rsmeters.n_pages_withdraw_stock
+    000126  aa   000001 7100 17    228  	tra	1,x7
+                                   229  
+                                   230  "
+                                   231  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   232  "
+                                   233  "	deposit - routine to deposit a single address
+                                   234  "
+                                   235  "	tsx7	stock$deposit
+                                   236  "	<return if fail>
+                                   237  "	<return if succeed>
+                                   238  "
+                                   239  "	On entry,
+                                   240  "	    Areg = address to deposit
+                                   241  "	    ab -> stock_seg$meters
+                                   242  "	    bb -> stock of interest
+                                   243  "
+                                   244  "	No locks are required by this routine.
+                                   245  "
+                                   246  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   247  
+    000127                         248  deposit:
+    000127  aa   377777 3150 07    249  	cana	live_address,dl		" Valid record address
+    000130  4a  4 00012 6001 20    250  	tze	page_error$deposit_zero_address " No - bad lossage
+                                   251  
+    000131  aa  6 00217 7551 00    252  	sta	stock_temp_1		" Record address
+    000132  aa   000022 7350 00    253  	als	18			" Into upper
+    000133  aa  6 00220 7551 00    254  	sta	stock_temp_2
+                                   255  
+                                   256  	increment	ab|rsmeters.n_deposit_attempt
+                                        	missing	increment,ab|rsmeters.n_deposit_attempt
+    000134  aa  1 00025 0541 00         	aos	ab|rsmeters.n_deposit_attempt
+                                   257  
+    000135  aa  3 00004 7201 00    258  	lxl0	bb|record_stock.stock_offset
+    000136  aa  3 00000 3501 10    259  	eppap	bb|0,x0			  " ap -> stock
+    000137  aa  3 00005 7201 00    260  	lxl0	bb|record_stock.search_index	" Roving pointer
+    000140  aa   000001 6200 10    261  	eax0	1,x0			" Adjust for initial decrement
+    000141  0a   000143 7100 00    262  	tra	deposit_common
+                                   263  
+    000142                         264  deposit_retry:
+    000142  aa  3 00005 2201 00    265  	ldx0	bb|record_stock.n_words_in_stock " Start at the top
+                                   266  
+    000143                         267  deposit_common:
+    000143  aa  3 00002 7211 00    268  	lxl1	bb|record_stock.n_os_in_stock	" Check whether any free slots
+    000144  aa  3 00002 0211 00    269  	adlx1	bb|record_stock.n_free_in_stock "   exist
+    000145  aa  3 00001 1011 00    270  	cmpx1	bb|record_stock.n_in_stock	
+    000146  aa   000000 6050 17    271  	tpl	0,x7			" None free
+                                   272  
+    000147                         273  deposit_loop:
+                                   274  	increment	ab|rsmeters.deposit_stock_steps
+                                        	missing	increment,ab|rsmeters.deposit_stock_steps
+    000147  aa  1 00023 0541 00         	aos	ab|rsmeters.deposit_stock_steps
+    000150  aa   777777 6200 10    275  	eax0	-1,x0			" 2 entries/word
+    000151  0a   000142 6040 00    276  	tmi	deposit_retry		" None left
+                                   277  
+    000152                         278  deposit_loop_retry:
+    000152  aa  0 00000 2361 10    279  	ldq	ap|0,x0			" Next 2 entries
+    000153  aa  0 00000 2351 10    280  	lda	ap|0,x0			" Protected by Qreg, stacq
+    000154  0a   000157 6000 00    281  	tze	deposit_try_upper		" Both entries free
+                                   282  
+    000155  aa   000000 6210 01    283  	eax1	0,au			" Check upper entry
+    000156  0a   000161 6010 00    284  	tnz	deposit_check_lower		" Not free
+    000157                         285  deposit_try_upper:
+    000157  aa  6 00220 2751 00    286  	ora	stock_temp_2		" Dep address into upper
+    000160  0a   000164 7100 00    287  	tra	deposit_try
+                                   288  
+    000161                         289  deposit_check_lower:
+    000161  aa   000000 6210 05    290  	eax1	0,al			" Check lower entry
+    000162  0a   000147 6010 00    291  	tnz	deposit_loop		" Not empty
+    000163  aa  6 00217 2751 00    292  	ora	stock_temp_1		" Dep address into lower
+                                   293  
+    000164                         294  deposit_try:
+    000164  aa  0 00000 6541 10    295  	stacq	ap|0,x0			" Lockless deposit
+    000165  0a   000170 6000 00    296  	tze	deposit_succeed		" We win
+                                   297  	increment ab|rsmeters.deposit_stock_losses
+                                        	missing	increment,ab|rsmeters.deposit_stock_losses
+    000166  aa  1 00024 0541 00         	aos	ab|rsmeters.deposit_stock_losses
+    000167  0a   000152 7100 00    298  	tra	deposit_loop_retry		" Lose - meter and retry
+                                   299  
+    000170                         300  deposit_succeed:
+    000170  aa   000001 2350 07    301  	lda	1,dl			" Set up to increment number OS
+    000171  aa  6 00220 2211 00    302  	ldx1	stock_temp_2		" Address just deposited
+    000172  0a   000175 6040 00    303  	tmi	deposit_os		" An out-of-service address
+    000173  aa   000001 2350 03    304  	lda	1,du			" Set up to increment number free
+    000174  aa  3 00005 4401 00    305  	sxl0	bb|record_stock.search_index	" Roving pointer
+                                   306  
+    000175                         307  deposit_os:
+    000175  aa  6 00220 7551 00    308  	sta	stock_temp_2		" Save for lost race
+    000176                         309  deposit_os_retry:
+    000176  aa  3 00002 2361 00    310  	ldq	bb|record_stock.n_free_in_stock
+    000177  aa  6 00220 2351 00    311  	lda	stock_temp_2		" Restore
+    000200  aa  3 00002 0351 00    312  	adla	bb|record_stock.n_free_in_stock
+    000201  aa  3 00002 6541 00    313  	stacq	bb|record_stock.n_free_in_stock  " Lockless update
+    000202  0a   000176 6010 00    314  	tnz	deposit_os_retry		" Lost - retry
+                                   315  
+                                   316  	increment	ab|rsmeters.n_pages_deposit_stock
+                                        	missing	increment,ab|rsmeters.n_pages_deposit_stock
+    000203  aa  1 00026 0541 00         	aos	ab|rsmeters.n_pages_deposit_stock
+    000204  aa   000001 7100 17    317  	tra	1,x7
+                                   318  
+                                   319  "
+                                   320  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   321  "
+                                   322  "	reset_os - routine to reset all out-of-service bits
+                                   323  "
+                                   324  "	tsx7	stock$reset_os
+                                   325  "
+                                   326  "	On entry,
+                                   327  "	    ab -> stock_seg$meters
+                                   328  "	    bb -> stock of interest
+                                   329  "
+                                   330  "	No locks are required by this routine
+                                   331  "
+                                   332  "	flush_os - routine to remove all out-of-service entries
+                                   333  "	   from a stock.
+                                   334  "
+                                   335  "	On entry, same as above
+                                   336  "
+                                   337  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   338  
+    000205                         339  reset_os:
+    000205  aa   000000 6260 00    340  	eax6	0			" reset_os
+    000206  0a   000210 7100 00    341  	tra	reset_os_common
+                                   342  
+    000207                         343  flush_os:
+    000207  aa   000001 6260 00    344  	eax6	1			" flush_os
+                                   345  
+    000210                         346  reset_os_common:
+                                   347  	increment	ab|rsmeters.reset_os_calls
+                                        	missing	increment,ab|rsmeters.reset_os_calls
+    000210  aa  1 00031 0541 00         	aos	ab|rsmeters.reset_os_calls
+                                   348  
+    000211  aa  3 00004 7201 00    349  	lxl0	bb|record_stock.stock_offset
+    000212  aa  3 00000 3501 10    350  	eppap	bb|0,x0			 " ap -> stock
+    000213  aa  3 00005 2201 00    351  	ldx0	bb|record_stock.n_words_in_stock
+                                   352  
+    000214                         353  reset_os_loop:
+    000214  aa   777777 6200 10    354  	eax0	-1,x0			" One less
+    000215  aa   000000 6040 17    355  	tmi	0,x7			" Done - exit
+                                   356  
+    000216                         357  reset_os_loop_retry:
+    000216  aa  0 00000 2361 10    358  	ldq	ap|0,x0			" Next 2 addresses
+    000217  aa   000000 2210 03    359  	ldx1	0,du			" Count of OS reset
+    000220  aa  0 00000 2351 10    360  	lda	ap|0,x0			" Protected by Qreg, stacq
+    000221  0a   000214 6000 00    361  	tze	reset_os_loop		" None in use
+    000222  0a   000225 6050 00    362  	tpl	reset_os_check_lower	" High address not OS
+    000223  aa   000001 2210 03    363  	ldx1	1,du			" Count of OS reset
+    000224  0a   000000 3750 16    364  	ana	reset_os_upper_bits,x6	" Reset/Flush
+    000225                         365  reset_os_check_lower:
+    000225  aa   400000 3150 07    366  	cana	=o400000,dl		" Low address OS
+    000226  0a   000231 6000 00    367  	tze	reset_os_try		" No
+    000227  aa   000001 0210 03    368  	adlx1	1,du			" Bump counter
+    000230  0a   000002 3750 16    369  	ana	reset_os_lower_bits,x6	" Reset/Flush
+                                   370  
+    000231                         371  reset_os_try:
+    000231  aa   000000 6210 11    372  	eax1	0,x1			" Any to reset
+    000232  0a   000214 6000 00    373  	tze	reset_os_loop		" No
+    000233  aa  0 00000 6541 10    374  	stacq	ap|0,x0			" Lockless
+    000234  0a   000237 6000 00    375  	tze	reset_os_update_count	" Won
+                                   376  	increment	ab|rsmeters.reset_os_losses	" Lost - meter and retry
+                                        	missing	increment,ab|rsmeters.reset_os_losses
+    000235  aa  1 00032 0541 00         	aos	ab|rsmeters.reset_os_losses
+    000236  0a   000216 7100 00    377  	tra	reset_os_loop_retry
+                                   378  
+    000237                         379  reset_os_update_count:
+    000237  aa  6 00217 4501 00    380  	stz	stock_temp_1
+    000240  aa  6 00220 4501 00    381  	stz	stock_temp_2
+    000241  aa  6 00220 4411 00    382  	sxl1	stock_temp_2		" To decrement count of OS
+    000242  aa   000000 6260 16    383  	eax6	0,x6			" Flush call
+    000243  0a   000245 6010 00    384  	tnz	reset_os_update_retry	" Yes - don't increment free count
+    000244  aa  6 00217 7411 00    385  	stx1	stock_temp_1		" To increment count of free
+    000245                         386  reset_os_update_retry:
+    000245  aa  3 00002 2361 00    387  	ldq	bb|record_stock.n_free_in_stock " Change count of OS, free
+    000246  aa  3 00002 2351 00    388  	lda	bb|record_stock.n_free_in_stock " Lockless
+    000247  aa  6 00217 0351 00    389  	adla	stock_temp_1
+    000250  aa  6 00220 1351 00    390  	sbla	stock_temp_2
+    000251  aa  3 00002 6541 00    391  	stacq	bb|record_stock.n_free_in_stock
+    000252  0a   000245 6010 00    392  	tnz	reset_os_update_retry	" lost race
+    000253  0a   000214 7100 00    393  	tra	reset_os_loop
+                                   394  
+                                   395  
+                                   396  "
+                                   397  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   398  "
+                                   399  "	check_low_threshold - routine to check whether a stock is below
+                                   400  "		threshold, and (if so) to select a volmap page to
+                                   401  "		replenish it
+                                   402  "
+                                   403  "	tsx7	stock$check_low_threshold
+                                   404  "	<return if within threshold or no page selected>
+                                   405  "	<return if below threshold and page selected>
+                                   406  "
+                                   407  "	On entry,
+                                   408  "	    ab -> stock_seg$meters
+                                   409  "	    bb -> stock of interest
+                                   410  "	    bp -> pvte
+                                   411  "
+                                   412  "	On exit,
+                                   413  "	    if page selected, page number is in Areg
+                                   414  "
+                                   415  "	This routine requires the Global Page Table Lock, the per-volume
+                                   416  "	volume map lock (with async state idle)
+                                   417  "
+                                   418  "	A volmap page is selected as follows:
+                                   419  "
+                                   420  "	1. If a page is in memory, it is selected
+                                   421  "	2. If no page is in memory, the lowest page which can replenish
+                                   422  "	   the stock to target is selected
+                                   423  "	3. Otherwise, the page with the largest number of free records
+                                   424  "	   is selected
+                                   425  "	
+                                   426  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   427  
+    000254                         428  check_low_threshold:
+    000254  aa  3 00002 7201 00    429  	lxl0	bb|record_stock.n_os_in_stock
+    000255  aa  3 00002 0201 00    430  	adlx0	bb|record_stock.n_free_in_stock
+    000256  aa  3 00003 1001 00    431  	cmpx0	bb|record_stock.low_threshold	" Below threshold
+    000257  aa   000000 6050 17    432  	tpl	0,x7			" No
+                                   433  
+    000260  aa  1 00010 0541 00    434  	aos	ab|rsmeters.low_thresh_detected " Meter
+    000261  aa  6 00217 7401 00    435  	stx0	stock_temp_1		" Free + OS
+    000262  aa  3 00004 2201 00    436  	ldx0	bb|record_stock.target	" Target for Free + OS
+    000263  aa  6 00217 1601 00    437  	sbx0	stock_temp_1		" Shortfall
+    000264  aa  6 00217 7401 00    438  	stx0	stock_temp_1
+                                   439  
+    000265  aa  2 00024 7601 00    440  	lprpap	bp|pvte.volmap_astep	" ap -> ASTE for volmap_seg
+    000266  aa  0 00014 3501 00    441  	eppap	ap|aste_size		" ap -> Page Table for volmap_seg
+    000267  aa  3 00001 7201 00    442  	lxl0	bb|record_stock.n_volmap_pages
+    000270  aa  6 00220 4501 00    443  	stz	stock_temp_2
+    000271  aa  6 00220 4401 00    444  	sxl0	stock_temp_2
+    000272  aa   000000 2350 07    445  	lda	0,dl			" Page number
+    000273  aa   777777 2210 03    446  	ldx1	-1,du			" First page which can replenish
+    000274  aa   777777 2220 03    447  	ldx2	-1,du			" Page with largest number free
+                                   448  
+    000275                         449  check_low_mem:
+    000275  aa  3 00011 2201 05    450  	ldx0	bb|record_stock.n_free,al	" Number free records this page
+    000276  0a   000317 6000 00    451  	tze	check_low_next		" None - skip
+    000277  aa  0 00000 2361 05    452  	ldq	ap|0,al			" Qreg = PTW
+    000300  aa   000004 3160 07    453  	canq	ptw.valid,dl		" In memory
+    000301  aa   000001 6010 17    454  	tnz	1,x7			" Yes - exit with page number in Areg
+    000302  aa  6 00217 1001 00    455  	cmpx0	stock_temp_1		" Enough to replenish to target
+    000303  0a   000310 6040 00    456  	tmi	check_low_not_enough	" No
+    000304  aa   000000 6210 11    457  	eax1	0,x1			" Found such yet
+    000305  0a   000317 6050 00    458  	tpl	check_low_next		" Yes - use first such
+    000306  aa   000000 6210 05    459  	eax1	0,al			" No - this is such
+    000307  0a   000317 7100 00    460  	tra	check_low_next
+                                   461  
+    000310                         462  check_low_not_enough:
+    000310  aa   000000 6220 12    463  	eax2	0,x2			" Largest number records so far
+    000311  0a   000314 6050 00    464  	tpl	check_low_highest		" One such found
+    000312  aa   000000 6220 05    465  	eax2	0,al			" This is it
+    000313  0a   000317 7100 00    466  	tra	check_low_next
+    000314                         467  check_low_highest:
+    000314  aa  3 00011 1001 12    468  	cmpx0	bb|record_stock.n_free,x2	" Is this one higher
+    000315  0a   000317 6044 00    469  	tmoz	check_low_next		" No
+    000316  aa   000000 6220 05    470  	eax2	0,al			" Yes
+                                   471  
+    000317                         472  check_low_next:
+    000317  aa   000001 0750 07    473  	ada	1,dl			" Bump page number
+    000320  aa  6 00220 1151 00    474  	cmpa	stock_temp_2		" Done all pages
+    000321  0a   000275 6040 00    475  	tmi	check_low_mem		" No
+    000322  aa   000000 6350 11    476  	eaa	0,x1			" First which can replenish
+    000323  0a   000330 6050 00    477  	tpl	check_low_got		" One was found
+    000324  aa   000000 6350 12    478  	eaa	0,x2			" Largest number records
+    000325  0a   000330 6050 00    479  	tpl	check_low_got		" Somebody found
+    000326  aa  1 00012 0541 00    480  	aos	ab|rsmeters.low_thresh_fails	" Nobody found - meter
+    000327  aa   000000 7100 17    481  	tra	0,x7			" And exit
+                                   482  
+    000330                         483  check_low_got:
+    000330  aa   000022 7710 00    484  	arl	18			" Page number in AL
+    000331  aa   000001 7100 17    485  	tra	1,x7
+                                   486  "
+                                   487  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   488  "
+                                   489  "	recover - routine to recompute counts in the record stock for ESD.
+                                   490  "		The system may have crashed due to a stock inconsistency,
+                                   491  "		and this may allow ESD to succeed. Of course, major
+                                   492  "		trashage to the stock cannot be bypassed.
+                                   493  "
+                                   494  "	On entry,
+                                   495  "	    ab -> stock_seg$meters
+                                   496  "	    bb -> stock of interest
+                                   497  "	    bp -> pvte
+                                   498  "
+                                   499  "	This routine should be called only during ESD
+                                   500  "
+                                   501  "	
+                                   502  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   503  
+    000332                         504  recover:
+    000332  aa  6 00217 4501 00    505  	stz	stock_temp_1		" Number free
+    000333  aa  6 00220 4501 00    506  	stz	stock_temp_2		" Number out-of-service
+                                   507  
+    000334  aa  3 00000 5421 00    508  	sprpbp	bb|record_stock.pvtep	" Restore pointer to PVTE
+    000335  aa  3 00004 7201 00    509  	lxl0	bb|record_stock.stock_offset
+    000336  aa  3 00000 3501 10    510  	eppap	bb|0,x0			" ap -> stock array
+                                   511  
+    000337  aa  3 00005 2201 00    512  	ldx0	bb|record_stock.n_words_in_stock
+                                   513  
+    000340                         514  recover_loop:
+    000340  aa   777777 6200 10    515  	eax0	-1,x0			" Index into stock array
+    000341  0a   000362 6040 00    516  	tmi	recover_done		" None left
+    000342  aa  0 00000 2351 10    517  	lda	ap|0,x0			" Next 2 entries
+    000343  0a   000340 6000 00    518  	tze	recover_loop		" Both empty
+    000344  0a   000347 6050 00    519  	tpl	recover_check_upper		" Upper not out-of-service
+    000345  aa  6 00220 0541 00    520  	aos	stock_temp_2		" Upper out-of-service
+    000346  0a   000352 7100 00    521  	tra	recover_check_lower
+    000347                         522  recover_check_upper:
+    000347  aa   377777 3150 03    523  	cana	live_address,du		" Upper empty
+    000350  0a   000352 6000 00    524  	tze	recover_check_lower		" Yes
+    000351  aa  6 00217 0541 00    525  	aos	stock_temp_1		" No
+    000352                         526  recover_check_lower:
+    000352  aa   400000 3150 07    527  	cana	os_address,dl		" Lower out-of-service
+    000353  0a   000356 6000 00    528  	tze	recover_check_lower_inuse	" No
+    000354  aa  6 00220 0541 00    529  	aos	stock_temp_2		" Yes
+    000355  0a   000340 7100 00    530  	tra	recover_loop
+                                   531  
+    000356                         532  recover_check_lower_inuse:
+    000356  aa   377777 3150 07    533  	cana	live_address,dl		" Lower empty
+    000357  0a   000340 6000 00    534  	tze	recover_loop		" Yes
+    000360  aa  6 00217 0541 00    535  	aos	stock_temp_1		" No
+    000361  0a   000340 7100 00    536  	tra	recover_loop
+                                   537  
+    000362                         538  recover_done:
+    000362  aa  6 00217 2351 00    539  	lda	stock_temp_1		" Number free
+    000363  aa   000022 7350 00    540  	als	18			" Align
+    000364  aa  6 00220 2751 00    541  	ora	stock_temp_2		" Merge in number out-of-service
+    000365  aa  3 00002 7551 00    542  	sta	bb|record_stock.n_free_in_stock " And set count into stock
+                                   543  
+    000366  aa   000000 7100 17    544  	tra	0,x7
+                                   545  
+                                   546  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000370  5a   000003 000000 
+    000371  5a   000102 600000 
+    000372  aa   000000 000000 
+    000373  55   000010 000002 
+    000374  5a   000002 400003 
+    000375  55   000006 000010 
+    000376  aa  005 163 164 157
+    000377  aa  143 153 000 000
+    000400  55   000015 000003 
+    000401  0a   000332 400000 
+    000402  55   000013 000003 
+    000403  aa  007 162 145 143         recover
+    000404  aa  157 166 145 162
+    000405  55   000025 000010 
+    000406  0a   000254 400000 
+    000407  55   000020 000003 
+    000410  aa  023 143 150 145         check_low_threshold
+    000411  aa  143 153 137 154
+    000412  aa  157 167 137 164
+    000413  aa  150 162 145 163
+    000414  aa  150 157 154 144
+    000415  55   000033 000015 
+    000416  0a   000207 400000 
+    000417  55   000030 000003 
+    000420  aa  010 146 154 165         flush_os
+    000421  aa  163 150 137 157
+    000422  aa  163 000 000 000
+    000423  55   000041 000025 
+    000424  0a   000205 400000 
+    000425  55   000036 000003 
+    000426  aa  010 162 145 163         reset_os
+    000427  aa  145 164 137 157
+    000430  aa  163 000 000 000
+    000431  55   000051 000033 
+    000432  0a   000005 400000 
+    000433  55   000044 000003 
+    000434  aa  022 167 151 164         withdraw_range_ext
+    000435  aa  150 144 162 141
+    000436  aa  167 137 162 141
+    000437  aa  156 147 145 137
+    000440  aa  145 170 164 000
+    000441  55   000060 000041 
+    000442  0a   000034 400000 
+    000443  55   000054 000003 
+    000444  aa  016 167 151 164         withdraw_range
+    000445  aa  150 144 162 141
+    000446  aa  167 137 162 141
+    000447  aa  156 147 145 000
+    000450  55   000066 000051 
+    000451  0a   000026 400000 
+    000452  55   000063 000003 
+    000453  aa  010 167 151 164         withdraw
+    000454  aa  150 144 162 141
+    000455  aa  167 000 000 000
+    000456  55   000073 000060 
+    000457  0a   000127 400000 
+    000460  55   000071 000003 
+    000461  aa  007 144 145 160         deposit
+    000462  aa  157 163 151 164
+    000463  55   000002 000066 
+    000464  6a   000000 400002 
+    000465  55   000076 000003 
+    000466  aa  014 163 171 155         symbol_table
+    000467  aa  142 157 154 137
+    000470  aa  164 141 142 154
+    000471  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000472  aa   000000 000015 
+    000473  5a   000010 000000 
+    000474  5a   000060 000000 
+    000475  5a   000066 000000 
+    000476  5a   000041 000000 
+    000477  aa   000000 000000 
+    000500  aa   000000 000000 
+    000501  5a   000073 000000 
+    000502  aa   000000 000000 
+    000503  5a   000025 000000 
+    000504  aa   000000 000000 
+    000505  5a   000051 000000 
+    000506  5a   000015 000000 
+    000507  5a   000033 000000 
+
+EXTERNAL NAMES
+
+    000510  aa  024 144 145 160         deposit_zero_address
+    000511  aa  157 163 151 164
+    000512  aa  137 172 145 162
+    000513  aa  157 137 141 144
+    000514  aa  144 162 145 163
+    000515  aa  163 000 000 000
+    000516  aa  012 160 141 147         page_error
+    000517  aa  145 137 145 162
+    000520  aa  162 157 162 000
+    000521  aa  012 151 156 151         init_savex
+    000522  aa  164 137 163 141
+    000523  aa  166 145 170 000
+    000524  aa  012 160 141 147         page_fault
+    000525  aa  145 137 146 141
+    000526  aa  165 154 164 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000527  aa   000004 000000 
+    000530  55   000126 000120 
+    000531  aa   000004 000000 
+    000532  55   000134 000131 
+    000533  aa   000001 000000 
+    000534  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000535  5a   000137 000000 
+    000536  5a   000141 000000 
+    000537  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000370 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000014 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         page_fault|init_savex
+    000011  5a   000146 0000 00
+    000012  9a   777766 0000 46         page_error|deposit_zero_address
+    000013  5a   000145 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   242044 720030 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000327 
+    000020  aa   000000 000241 
+    000021  aa   000274 000270 
+    000022  aa   000314 000241 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000011 
+    000066  aa   000132 000034 
+    000067  aa   175453 017703 
+    000070  aa   000000 117547 
+    000071  aa   176512 600000 
+    000072  aa   000141 000032 
+    000073  aa   133234 136212 
+    000074  aa   000000 113324 
+    000075  aa   322064 200000 
+    000076  aa   000150 000037 
+    000077  aa   112456 132235 
+    000100  aa   000000 111250 
+    000101  aa   530556 400000 
+    000102  aa   000160 000031 
+    000103  aa   102456 350276 
+    000104  aa   000000 110246 
+    000105  aa   520730 400000 
+    000106  aa   000167 000035 
+    000107  aa   106701 740574 
+    000110  aa   000000 110670 
+    000111  aa   206425 200000 
+    000112  aa   000177 000032 
+    000113  aa   164131 272662 
+    000114  aa   000000 116416 
+    000115  aa   727372 600000 
+    000116  aa   000206 000045 
+    000117  aa   133234 136230 
+    000120  aa   000000 113324 
+    000121  aa   322064 400000 
+    000122  aa   000220 000041 
+    000123  aa   052721 247134 
+    000124  aa   000000 105272 
+    000125  aa   317215 400000 
+    000126  aa   000231 000037 
+    000127  aa   113021 605126 
+    000130  aa   000000 111303 
+    000131  aa   067554 000000 
+    000132  aa   076163 160145          >spec>install>1111>stock.alm
+    000133  aa   143076 151156 
+    000134  aa   163164 141154 
+    000135  aa   154076 061061 
+    000136  aa   061061 076163 
+    000137  aa   164157 143153 
+    000140  aa   056141 154155 
+    000141  aa   076154 144144          >ldd>include>aste.incl.alm
+    000142  aa   076151 156143 
+    000143  aa   154165 144145 
+    000144  aa   076141 163164 
+    000145  aa   145056 151156 
+    000146  aa   143154 056141 
+    000147  aa   154155 040040 
+    000150  aa   076154 144144          >ldd>include>page_info.incl.alm
+    000151  aa   076151 156143 
+    000152  aa   154165 144145 
+    000153  aa   076160 141147 
+    000154  aa   145137 151156 
+    000155  aa   146157 056151 
+    000156  aa   156143 154056 
+    000157  aa   141154 155040 
+    000160  aa   076154 144144          >ldd>include>ptw.incl.alm
+    000161  aa   076151 156143 
+    000162  aa   154165 144145 
+    000163  aa   076160 164167 
+    000164  aa   056151 156143 
+    000165  aa   154056 141154 
+    000166  aa   155040 040040 
+    000167  aa   076154 144144          >ldd>include>ptw.l68.incl.alm
+    000170  aa   076151 156143 
+    000171  aa   154165 144145 
+    000172  aa   076160 164167 
+    000173  aa   056154 066070 
+    000174  aa   056151 156143 
+    000175  aa   154056 141154 
+    000176  aa   155040 040040 
+    000177  aa   076154 144144          >ldd>include>pvte.incl.alm
+    000200  aa   076151 156143 
+    000201  aa   154165 144145 
+    000202  aa   076160 166164 
+    000203  aa   145056 151156 
+    000204  aa   143154 056141 
+    000205  aa   154155 040040 
+    000206  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000207  aa   076151 156143 
+    000210  aa   154165 144145 
+    000211  aa   076160 170163 
+    000212  aa   163137 160141 
+    000213  aa   147145 137163 
+    000214  aa   164141 143153 
+    000215  aa   056151 156143 
+    000216  aa   154056 141154 
+    000217  aa   155040 040040 
+    000220  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000221  aa   076151 156143 
+    000222  aa   154165 144145 
+    000223  aa   076163 164141 
+    000224  aa   143153 137146 
+    000225  aa   162141 155145 
+    000226  aa   056151 156143 
+    000227  aa   154056 141154 
+    000230  aa   155040 040040 
+    000231  aa   076154 144144          >ldd>include>stock_seg.incl.alm
+    000232  aa   076151 156143 
+    000233  aa   154165 144145 
+    000234  aa   076163 164157 
+    000235  aa   143153 137163 
+    000236  aa   145147 056151 
+    000237  aa   156143 154056 
+    000240  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           7    abs_wire_entry           page_info:     36.
+      740000    address_mask             page_info:      9.
+         150    apt_ptr                  pxss_page_stack:     13.
+         106    arg                      pxss_page_stack:     11.
+           3    ast                      page_info:     20.
+        4000    aste.any_access_on       aste:          49.
+           5    aste.any_access_on_word  aste:          48.
+           0    aste.bp                  aste:          18.
+         777    aste.csl_mask            aste:          92.
+      777000    aste.csl_mask_inner      page_info:     26.
+          33    aste.csl_shift           aste:          91.
+          12    aste.csl_word            aste:          90.
+      200000    aste.damaged             aste:         118.
+          13    aste.damaged_word        aste:         117.
+           4    aste.ddnp                aste:         106.
+          12    aste.ddnp_word           aste:         105.
+         200    aste.deact_error         aste:          57.
+           5    aste.deact_error_word    aste:          56.
+       40000    aste.dirsw               aste:          75.
+           5    aste.dirsw_word          aste:          74.
+           2    aste.dius                aste:          65.
+           5    aste.dius_word           aste:          64.
+      400000    aste.dmpr_pad            aste:          69.
+           5    aste.dmpr_pad_word       aste:          68.
+          20    aste.dnzp                aste:         102.
+          12    aste.dnzp_word           aste:         101.
+           7    aste.dtm                 aste:          84.
+           6    aste.dtu                 aste:          83.
+      200000    aste.ehs                 aste:          71.
+           5    aste.ehs_word            aste:          70.
+         400    aste.explicit_deact_ok   aste:          55.
+           5    aste.explicit_deact_ok_word    aste:          54.
+         400    aste.fmchanged           aste:          94.
+      400000    aste.fmchanged1          aste:         116.
+          13    aste.fmchanged1_word     aste:         115.
+          12    aste.fmchanged_word      aste:          93.
+         200    aste.fms                 aste:          96.
+          12    aste.fms_word            aste:          95.
+          40    aste.fm_damaged          aste:          61.
+           5    aste.fm_damaged_word     aste:          60.
+           0    aste.fp                  aste:          17.
+       40000    aste.gtms                aste:          43.
+           5    aste.gtms_word           aste:          42.
+          40    aste.gtpd                aste:         100.
+          12    aste.gtpd_word           aste:          99.
+      100000    aste.gtus                aste:          41.
+           5    aste.gtus_word           aste:          40.
+       20000    aste.hc                  aste:          45.
+         100    aste.hc_part             aste:          59.
+           5    aste.hc_part_word        aste:          58.
+       10000    aste.hc_sdw              aste:          47.
+           5    aste.hc_sdw_word         aste:          46.
+           5    aste.hc_word             aste:          44.
+          13    aste.ht_fp               aste:         114.
+           1    aste.infl                aste:          20.
+           1    aste.infp                aste:          21.
+        1000    aste.inhibit_cache       aste:          53.
+           5    aste.inhibit_cache_word  aste:          52.
+      200000    aste.init                aste:          39.
+           5    aste.init_word           aste:          38.
+          77    aste.marker_mask         aste:         128.
+           0    aste.marker_shift        aste:         127.
+          13    aste.marker_word         aste:         126.
+       20000    aste.master_dir          aste:          77.
+           5    aste.master_dir_word     aste:          76.
+         777    aste.msl_mask            aste:          30.
+          33    aste.msl_shift           aste:          29.
+           4    aste.msl_word            aste:          28.
+          20    aste.multi_class         aste:          63.
+           5    aste.multi_class_word    aste:          62.
+           1    aste.nid                 aste:          67.
+           5    aste.nid_word            aste:          66.
+         100    aste.npfs                aste:          98.
+          12    aste.npfs_word           aste:          97.
+         777    aste.np_mask             aste:         112.
+           0    aste.np_shift            aste:         111.
+          12    aste.np_word             aste:         110.
+      100000    aste.nqsw                aste:          73.
+           5    aste.nqsw_word           aste:          72.
+      100000    aste.pack_ovfl           aste:         120.
+          13    aste.pack_ovfl_word      aste:         119.
+           2    aste.par_astep           aste:          24.
+          10    aste.per_process         aste:         104.
+          12    aste.per_process_word    aste:         103.
+           3    aste.ptsi_mask           aste:         125.
+           6    aste.ptsi_shift          aste:         124.
+          13    aste.ptsi_word           aste:         123.
+         777    aste.pvtx_mask           aste:          33.
+          22    aste.pvtx_shift          aste:          32.
+           4    aste.pvtx_word           aste:          31.
+          10    aste.quota               aste:          86.
+         777    aste.records_mask        aste:         109.
+      777000    aste.records_mask_inner  page_info:     27.
+          11    aste.records_shift       aste:         108.
+          12    aste.records_word        aste:         107.
+           2    aste.strp                aste:          23.
+       40000    aste.synchronized        aste:         122.
+          13    aste.synchronized_word   aste:         121.
+        4000    aste.tqsw                aste:          81.
+           5    aste.tqsw_word           aste:          80.
+           3    aste.uid                 aste:          26.
+          11    aste.used                aste:          88.
+      400000    aste.usedf               aste:          37.
+           5    aste.usedf_word          aste:          36.
+       10000    aste.volmap_seg          aste:          79.
+           5    aste.volmap_seg_word     aste:          78.
+           4    aste.vtocx               aste:          34.
+        2000    aste.write_access_on     aste:          51.
+           5    aste.write_access_on_word      aste:          50.
+           0    aste_part.one            aste:         136.
+         377    aste_part.three_mask     aste:         141.
+           0    aste_part.three_shift    aste:         140.
+          13    aste_part.three_word     aste:         139.
+           1    aste_part.two            aste:         137.
+          14    aste_part_size           aste:         133.
+          14    aste_size                stock:        441,
+                                         aste:          15.
+         204    before                   pxss_page_stack:     17.
+         330    check_low_got            stock:        477,  479,  483.
+         314    check_low_highest        stock:        464,  467.
+         275    check_low_mem            stock:        449,  475.
+         317    check_low_next           stock:        451,  458,  460,  466,  469,  472.
+         310    check_low_not_enough     stock:        456,  462.
+         254    check_low_threshold      stock:         50,  428.
+          10    cleanup_entry            page_info:     37.
+         164    cmep                     pxss_page_stack:     15.
+          12    cmep_to_coreadd.rl       page_info:     75.
+           2    cmep_to_ptw.ls           page_info:     57.
+           2    cmep_to_sdw.ls           page_info:     57.
+      777777    coreadd_mask             page_info:     57.
+          12    coreadd_to_cmep.ls       page_info:     76.
+          14    coreadd_to_ptw.ls        page_info:     57.
+          14    coreadd_to_sdw.ls        page_info:     57.
+         173    core_add                 pxss_page_stack:     16.
+          17    core_ptw.add_type_mask   ptw.l68:       19.
+          16    core_ptw.add_type_shift  ptw.l68:       18.
+           3    core_ptw.df_no_mask      ptw.l68:       32.
+           0    core_ptw.df_no_shift     ptw.l68:       31.
+       10000    core_ptw.er              ptw.l68:       21.
+       20000    core_ptw.first           ptw.l68:       20.
+           0    core_ptw.flags           ptw.l68:       17.
+       37777    core_ptw.frame_mask      ptw.l68:       16.
+          26    core_ptw.frame_shift     ptw.l68:       15.
+         200    core_ptw.nypd            ptw.l68:       25.
+          10    core_ptw.os              ptw.l68:       29.
+         100    core_ptw.phm             ptw.l68:       26.
+         400    core_ptw.phm1            ptw.l68:       24.
+        1000    core_ptw.phu             ptw.l68:       23.
+          40    core_ptw.phu1            ptw.l68:       27.
+        2000    core_ptw.unusable1       ptw.l68:       22.
+           4    core_ptw.valid           ptw.l68:       30.
+          20    core_ptw.wired           ptw.l68:       28.
+         174    count                    pxss_page_stack:     16.
+         150    DEFAULT_N_IN_RECORD_STOCK      stock_seg:    120.
+          12    DEFAULT_N_IN_VTOCE_STOCK       stock_seg:    121.
+         154    delta_t                  pxss_page_stack:     13.
+         127    deposit                  stock:         44,  248.
+         161    deposit_check_lower      stock:        284,  289.
+         143    deposit_common           stock:        262,  267.
+         147    deposit_loop             stock:        273,  291.
+         152    deposit_loop_retry       stock:        278,  298.
+         175    deposit_os               stock:        303,  307.
+         176    deposit_os_retry         stock:        309,  314.
+         142    deposit_retry            stock:        264,  276.
+         170    deposit_succeed          stock:        296,  300.
+         164    deposit_try              stock:        287,  294.
+         157    deposit_try_upper        stock:        281,  285.
+                deposit_zero_address     stock:        250.
+         205    depth                    pxss_page_stack:     17.
+         200    devadd                   pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+           1    df1                      page_info:      7.
+         232    done_astep               pxss_page_stack:     24.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+           6    evict_entry              page_info:     35.
+           0    fault_entry              page_info:     29.
+         207    flush_os                 stock:         49,  343.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         152    getwork_temp             pxss_page_stack:     13.
+           4    high_record_address      stock:         63,  143.
+                init_savex               stock:        118.
+      100000    int                      page_info:     14.
+         177    inter                    pxss_page_stack:     16.
+      377777    live_address             stock:         53,  249,  523,  533.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+          50    notify_regs              pxss_page_stack:      8.
+           4    no_post                  page_info:     16.
+           3    N_OLD_VOLMAP_PAGES       stock_seg:    119.
+      400000    os_address               stock:         54,  527.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+                page_error               stock:        250.
+                page_fault               stock:        118.
+          12    page_power               page_info:      6.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+           3    pdm                      page_info:     19.
+           5    pd_flush_entry           page_info:     34.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+           4    post_purge_entry         page_info:     33.
+           3    pre_page_entry           page_info:     32.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+          20    pri                      page_info:     15.
+         176    ptp_astep                pxss_page_stack:     16.
+           2    ptw                      page_info:     21.
+           0    ptw.add                  ptw.l68:       37.
+          17    ptw.add_type_mask        ptw.l68:       40.
+          16    ptw.add_type_shift       ptw.l68:       39.
+           3    ptw.df_no_mask           ptw.l68:       53.
+           0    ptw.df_no_shift          ptw.l68:       52.
+       10000    ptw.er                   ptw.l68:       42.
+       20000    ptw.first                ptw.l68:       41.
+           0    ptw.flags                ptw.l68:       38.
+      400000    ptw.nulled               page_info:     12.
+         200    ptw.nypd                 ptw.l68:       46.
+          10    ptw.os                   ptw.l68:       50.
+         100    ptw.phm                  ptw.l68:       47.
+         400    ptw.phm1                 ptw.l68:       45.
+        1000    ptw.phu                  ptw.l68:       44.
+          40    ptw.phu1                 ptw.l68:       48.
+        2000    ptw.unusable1            ptw.l68:       43.
+           4    ptw.valid                stock:        453,
+                                         ptw.l68:       51.
+          20    ptw.wired                ptw.l68:       49.
+      777760    ptw_add_mask             page_info:     57.
+           2    ptw_to_cmep.rl           page_info:     57.
+          24    ptw_to_cmep_lower.rl     page_info:     57.
+          14    ptw_to_coreadd.rl        page_info:     57.
+          20    pvte.baseadd             pvte:         119.
+       10000    pvte.being_demounted     pvte:          74.
+         100    pvte.being_demounted2    pvte:          86.
+           4    pvte.being_demounted2_word     pvte:          85.
+           4    pvte.being_demounted_word      pvte:          73.
+       20000    pvte.being_mounted       pvte:          72.
+           4    pvte.being_mounted_word  pvte:          71.
+         777    pvte.brother_pvtx_mask   pvte:          52.
+          22    pvte.brother_pvtx_shift  pvte:          51.
+           2    pvte.brother_pvtx_word   pvte:          50.
+        4000    pvte.check_read_incomplete     pvte:          76.
+           4    pvte.check_read_incomplete_word      pvte:          75.
+          16    pvte.curn_dmpr_vtocx     pvte:         115.
+           6    pvte.dbmrp               pvte:         103.
+         200    pvte.deposit_to_volmap   pvte:          84.
+           4    pvte.deposit_to_volmap_word    pvte:          83.
+        2000    pvte.device_inoperative  pvte:          78.
+           4    pvte.device_inoperative_word   pvte:          77.
+         777    pvte.device_type_mask    pvte:          59.
+          33    pvte.device_type_shift   pvte:          58.
+           4    pvte.device_type_word    pvte:          57.
+           3    pvte.devname             pvte:          55.
+          10    pvte.dim_info            pvte:         108.
+      400000    pvte.dmpr_in_use         pvte:          41.
+           2    pvte.dmpr_in_use_word    pvte:          40.
+          10    pvte.hc_part_used        pvte:          92.
+           4    pvte.hc_part_used_word   pvte:          91.
+        4000    pvte.inconsistent_dbm    pvte:          49.
+           2    pvte.inconsistent_dbm_word     pvte:          48.
+       40000    pvte.is_sv               pvte:          43.
+           2    pvte.is_sv_word          pvte:          42.
+         777    pvte.logical_area_number_mask  pvte:          62.
+          22    pvte.logical_area_number_shift       pvte:          61.
+           4    pvte.logical_area_number_word  pvte:          60.
+           1    pvte.lvid                pvte:          38.
+           7    pvte.nleft               pvte:         105.
+          12    pvte.num_of_svs          pvte:         110.
+           5    pvte.n_free_vtoce        pvte:         100.
+          17    pvte.n_vtoce             pvte:         117.
+          40    pvte.pc_vacating         pvte:          88.
+           4    pvte.pc_vacating_word    pvte:          87.
+      100000    pvte.permanent           pvte:          68.
+           4    pvte.permanent_word      pvte:          67.
+           0    pvte.pvid                pvte:          37.
+          13    pvte.records_per_cyl     pvte:         111.
+          14    pvte.record_factor       pvte:         112.
+       10000    pvte.removable_pack      pvte:          47.
+           2    pvte.removable_pack_word       pvte:          46.
+       20000    pvte.root_lv             pvte:          45.
+           2    pvte.root_lv_word        pvte:          44.
+        1000    pvte.rpv                 pvte:          80.
+           4    pvte.rpv_word            pvte:          79.
+          33    pvte.scavenger_block_rel       pvte:         136.
+         400    pvte.scav_check_address  pvte:          82.
+           4    pvte.scav_check_address_word   pvte:          81.
+           2    pvte.skip_queue_count    pvte:          53.
+      200000    pvte.storage_system      pvte:          66.
+           4    pvte.storage_system_word       pvte:          65.
+          15    pvte.sv_name             pvte:         113.
+          11    pvte.sv_num              pvte:         109.
+       40000    pvte.testing             pvte:          70.
+           4    pvte.testing_word        pvte:          69.
+           7    pvte.totrec              pvte:         106.
+      400000    pvte.used                pvte:          64.
+           4    pvte.used_word           pvte:          63.
+          20    pvte.vacating            pvte:          90.
+           4    pvte.vacating_word       pvte:          89.
+          24    pvte.volmap_astep        stock:        440,
+                                         pvte:         122.
+          32    pvte.volmap_async_page   pvte:         133.
+          32    pvte.volmap_async_state  pvte:         132.
+           2    pvte.volmap_idle_notify  pvte:          96.
+           4    pvte.volmap_idle_notify_word   pvte:          95.
+          26    pvte.volmap_lock         pvte:         127.
+           4    pvte.volmap_lock_notify  pvte:          94.
+           4    pvte.volmap_lock_notify_word   pvte:          93.
+          25    pvte.volmap_offset       pvte:         124.
+          22    pvte.volmap_seg_sdw      pvte:         121.
+          30    pvte.volmap_stock_ptr    stock:        122,
+                                         pvte:         129.
+          33    pvte.vol_trouble_count   pvte:         135.
+          27    pvte.vtoc_map_lock       pvte:         128.
+           1    pvte.vtoc_map_lock_notify      pvte:          98.
+           4    pvte.vtoc_map_lock_notify_word       pvte:          97.
+          25    pvte.vtoc_map_offset     pvte:         125.
+          31    pvte.vtoc_map_stock_ptr  pvte:         130.
+           5    pvte.vtoc_size           pvte:         101.
+          34    pvte_size                pvte:          34.
+         172    pvtx                     pxss_page_stack:     16.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+           1    read_entry               page_info:     30.
+          11    record_stock.baseadd     stock_seg:     55.
+           3    record_stock.high_threshold    stock_seg:     40.
+           6    record_stock.last        stock_seg:     50.
+           3    record_stock.low_threshold     stock:        431,
+                                               stock_seg:     39.
+          11    record_stock.n_free      stock:        450,  468,
+                                         stock_seg:     54.
+           2    record_stock.n_free_in_stock   stock:        178,  219,  220,  222,  269,  310,  312,  313,  387,  388,  391,
+                                                             430,  542,
+                                               stock_seg:     36.
+           1    record_stock.n_in_stock  stock:        270,
+                                         stock_seg:     33.
+           2    record_stock.n_os_in_stock     stock:        268,  429,
+                                               stock_seg:     37.
+           1    record_stock.n_volmap_pages    stock:        442,
+                                               stock_seg:     34.
+           5    record_stock.n_words_in_stock  stock:        184,  265,  351,  512,
+                                               stock_seg:     45.
+           6    record_stock.old_volmap_page   stock_seg:     48.
+           0    record_stock.pvtep       stock:        508,
+                                         stock_seg:     31.
+           5    record_stock.search_index      stock:        163,  217,  260,  305,
+                                               stock_seg:     46.
+           0    record_stock.stock       stock_seg:     57.
+           4    record_stock.stock_offset      stock:        157,  258,  349,  509,
+                                               stock_seg:     43.
+           4    record_stock.target      stock:        436,
+                                         stock_seg:     42.
+          11    record_stock.volmap_page       stock_seg:     52.
+         332    recover                  stock:         51,  504.
+         352    recover_check_lower      stock:        521,  524,  526.
+         356    recover_check_lower_inuse      stock:        528,  532.
+         347    recover_check_upper      stock:        519,  522.
+         362    recover_done             stock:        516,  538.
+         340    recover_loop             stock:        514,  518,  530,  534,  536.
+         205    reset_os                 stock:         48,  339.
+         225    reset_os_check_lower     stock:        362,  365.
+         210    reset_os_common          stock:        341,  346.
+         214    reset_os_loop            stock:        353,  361,  373,  393.
+         216    reset_os_loop_retry      stock:        357,  377.
+           2    reset_os_lower_bits      stock:         59,  369.
+         231    reset_os_try             stock:        367,  371.
+         237    reset_os_update_count    stock:        375,  379.
+         245    reset_os_update_retry    stock:        384,  386,  392.
+           0    reset_os_upper_bits      stock:         56,  364.
+           1    rsmeters.async_page_reads      stock_seg:     80.
+           2    rsmeters.async_post_io_calls   stock_seg:     81.
+           4    rsmeters.async_post_io_time    stock_seg:     83.
+           0    rsmeters.async_read_calls      stock_seg:     79.
+           3    rsmeters.deposit_calls   stock_seg:     82.
+          24    rsmeters.deposit_stock_losses  stock:        297,
+                                               stock_seg:     97.
+          23    rsmeters.deposit_stock_steps   stock:        274,
+                                               stock_seg:     96.
+           6    rsmeters.deposit_time    stock_seg:     84.
+          44    rsmeters.deposit_vstock_calls  stock_seg:    111.
+          45    rsmeters.deposit_vstock_fails  stock_seg:    112.
+          50    rsmeters.deposit_vtoc_map      stock_seg:    115.
+          42    rsmeters.get_free_vtoce_calls  stock_seg:    109.
+          11    rsmeters.high_thresh_detected  stock_seg:     86.
+          10    rsmeters.low_thresh_detected   stock:        434,
+                                               stock_seg:     85.
+          12    rsmeters.low_thresh_fails      stock:        480,
+                                               stock_seg:     87.
+          25    rsmeters.n_deposit_attempt     stock:        256,
+                                               stock_seg:     98.
+          26    rsmeters.n_pages_deposit_stock       stock:        316,
+                                                     stock_seg:     99.
+          27    rsmeters.n_pages_deposit_volmap      stock_seg:    100.
+          20    rsmeters.n_pages_withdraw_async      stock_seg:     93.
+          17    rsmeters.n_pages_withdraw_stock      stock:        227,
+                                                     stock_seg:     92.
+          30    rsmeters.n_v_deposit_attempts  stock_seg:    101.
+          21    rsmeters.n_v_withdraw_attempts       stock_seg:     94.
+          15    rsmeters.n_withdraw_attempt    stock:        145,
+                                               stock_seg:     90.
+          16    rsmeters.n_withdraw_range      stock:        150,
+                                               stock_seg:     91.
+          40    rsmeters.pc_deposit_calls      stock_seg:    107.
+          41    rsmeters.pc_deposit_pages      stock_seg:    108.
+          36    rsmeters.pc_deposit_time       stock_seg:    106.
+          31    rsmeters.reset_os_calls  stock:        347,
+                                         stock_seg:    102.
+          32    rsmeters.reset_os_losses       stock:        376,
+                                               stock_seg:    103.
+          43    rsmeters.return_free_vtoce_call      stock_seg:    110.
+          33    rsmeters.withdraw_calls  stock_seg:    104.
+          51    rsmeters.withdraw_check_scav   stock_seg:    116.
+          52    rsmeters.withdraw_conflict     stock_seg:    117.
+          14    rsmeters.withdraw_stock_losses       stock:        211,
+                                                     stock_seg:     89.
+          13    rsmeters.withdraw_stock_steps  stock:        182,
+                                               stock_seg:     88.
+          34    rsmeters.withdraw_time   stock_seg:    105.
+          22    rsmeters.withdraw_volmap_steps       stock_seg:     95.
+          46    rsmeters.withdraw_vstock_calls       stock_seg:    113.
+          47    rsmeters.withdraw_vstock_fails       stock_seg:    114.
+          66    rsmeters_size            stock_seg:     76.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+      777760    sdw_add_mask             page_info:     57.
+           2    sdw_to_cmep.rl           page_info:     57.
+          14    sdw_to_coreadd.rl        page_info:     57.
+          10    seg_aste.usage           aste:         149.
+          14    seg_aste_size            aste:         146.
+           3    sst                      page_info:     18,   19,   20.
+          75    stackp                   pxss_page_stack:      9.
+          32    stack_frame.arg_ptr      stock:        132,
+                                         stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          15    stack_size               pxss_page_stack:      6,    9.
+           0    stock_seg.meters         stock:        124,
+                                         stock_seg:     18.
+          72    stock_seg.n_stock_entries      stock_seg:     24.
+          74    stock_seg.record_stock_arrayp  stock_seg:     25.
+          66    stock_seg.record_stock_entries       stock_seg:     20.
+          70    stock_seg.record_stock_size    stock_seg:     22.
+          76    stock_seg.vtoce_stock_arrayp   stock_seg:     26.
+          67    stock_seg.vtoce_stock_entries  stock_seg:     21.
+          71    stock_seg.vtoce_stock_size     stock_seg:     23.
+         100    stock_seg_size           stock_seg:     15.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             stock:        142,  154,  193,  202,  252,  292,  380,  385,  389,  435,  437,  438,
+                                                       455,  505,  525,  535,  539,
+                                         pxss_page_stack:     19.
+         220    stock_temp_2             stock:        144,  151,  195,  204,  254,  286,  302,  308,  311,  381,  382,  390,
+                                                       443,  444,  474,  506,  520,  529,  541,
+                                         pxss_page_stack:     19.
+         134    temp                     pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+           0    VOLMAP_ASYNC_IDLE        pvte:         138.
+           1    VOLMAP_ASYNC_READ        pvte:         139.
+           2    VOLMAP_ASYNC_WRITE       pvte:         140.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+           1    vtoce_stock.n_free_in_stock    stock_seg:     66.
+           1    vtoce_stock.n_in_stock   stock_seg:     65.
+           0    vtoce_stock.pvtep        stock_seg:     63.
+           2    vtoce_stock.search_index       stock_seg:     69.
+           3    vtoce_stock.stock        stock_seg:     71.
+           2    vtoce_stock.target       stock_seg:     68.
+         234    vtocx                    pxss_page_stack:     25.
+          26    withdraw                 stock:         45,  140.
+         100    withdraw_check_lower     stock:        192,  194,  196,  199.
+          57    withdraw_common          stock:        165,  177.
+          42    withdraw_join            stock:        146,  156.
+         116    withdraw_leave_pointer   stock:        216,  218,  223.
+          61    withdraw_loop            stock:        181,  189,  201,  203,  205.
+          65    withdraw_loop_retry      stock:        187,  212.
+          34    withdraw_range           stock:         46,  129,  148.
+           5    withdraw_range_ext       stock:         47,  114.
+          25    withdraw_range_ext_ret   stock:        130,  135.
+          51    withdraw_retry           stock:        167,  185.
+          56    withdraw_set_begin       stock:        161,  169,  174.
+         113    withdraw_succeed         stock:        210,  214.
+         107    withdraw_try             stock:        198,  208.
+           2    write_entry              page_info:     31.
+         206    x5                       pxss_page_stack:     17.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,975 @@
+	COMPILATION LISTING OF SEGMENT rcp_check_attach_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0951.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       13 
+       14 rcp_check_attach_:
+       15      procedure (arg_rcp_id, arg_device_info_ptr, arg_comment, arg_ioi_index, arg_workspace_max, arg_timeout_max,
+       16 	arg_statex, arg_ecode);
+       17 
+       18 /*	This program implements the rcp_$check_attach entry point.
+       19*   *	Created on 12/04/74 by Bill Silver.
+       20*   *	Accounting by B. Greenberg, 8/2/77.
+       21*   *	Modified on 09/19/77 by R.J.C. Kissel to check workspace.acs for big workspace access.
+       22*   *	Modified on 04/28/78 by Michael R. Jordan to allow preloaded volumes.
+       23*   *	Modified on 02/08/79 by Michael R. Jordan for MSS0500 support.
+       24*   *	Modified on 05/03/82 by E. N. Kittlitz to set ioi_timeout if UR device.
+       25*   *	Modified on 01/24/83 by J. A. Bush to copy the label type and density into the asignment rcse
+       26*   *	Modified 830818 to replace take_console call with console_free call... -E. A. Ranzenbach
+       27*   *      Modified 841009 to interface with rcp_control_ instead of rcp_initializer_... - M. M. Pozzo
+       28*   *      Modified 850131 general cleanup...M. M. Pozzo
+       29**/
+       30 
+       31 /****^  HISTORY COMMENTS:
+       32*  1) change(85-07-21,ABall), approve(86-02-21,MCR7346),
+       33*     audit(86-07-29,Farley), install(86-08-01,MR12.0-1108):
+       34*     Modified to check for null rcse_ptr before referencing through during
+       35*     error handling.
+       36*  2) change(85-09-11,Fawcett), approve(85-09-11,MCR6979),
+       37*     audit(85-12-02,CLJones), install(86-03-21,MR12.0-1033):
+       38*     Add MCA and FIPS support
+       39*                                                   END HISTORY COMMENTS */
+       40 
+       41 /****^ The rcp_id is used to generate a pointer to the RCS entry that is
+       42*       associated with this attachment request.  We will look in this RCS
+       43*       entry to obtain the information that describes the results of the
+       44*       attachment operation.  In the current implementation any assignment
+       45*       needed is performed by the attach call.  The attachment itself involves
+       46*       setting up communication with IOI.  For some devices there is the
+       47*       additional problem of mounting volumes.  The caller may be told to go
+       48*       blocked and call us back when he wakes up.  When the attachment is
+       49*       finally completed we will call IOI to set the limits for this device
+       50*       and to promote the device to the caller's validation level.  Then we
+       51*       will return the information that he needs in order to perform I/O on
+       52*       this device.  */
+       53 
+       54 /*		ARGUMENT  DATA		*/
+       55 
+       56 dcl	arg_comment	   char (*);		/* (O) RCP comment. */
+       57 dcl	arg_device_info_ptr	   ptr;			/* (I) Pointer to device info structure. */
+       58 dcl	arg_ecode		   fixed bin (35);		/* (O) Return error_table_ code. */
+       59 dcl	arg_ioi_index	   fixed bin;		/* (O) Index used to communicate with IOI. */
+       60 dcl	arg_rcp_id	   bit (36) aligned;	/* (I) RCP ID. */
+       61 dcl	arg_statex	   fixed bin;		/* (O) Caller's attachment state index. */
+       62 dcl	arg_timeout_max	   fixed bin (71);		/* (O) Max time-out value in microseconds. */
+       63 dcl	arg_workspace_max	   fixed bin (19);		/* (O) max size of IOI workspace in words. */
+       64 
+       65 
+       66 /*		AUTOMATIC  DATA		*/
+       67 
+       68 dcl	console_is_free	   bit (1);		/* ON => OK to attach console... */
+       69 dcl	volume_offset	   bit (18) aligned;	/* Offset to volume entry for rcp_control_ */
+       70 dcl	device_offset	   bit (18) aligned;	/* Offset to device entry for rcp_control_ . */
+       71 dcl	process_id	   bit (36) aligned;	/* Process id makin the request to RCP. */
+       72 dcl	rcp_id		   bit (36) aligned;	/* Used to copy rcp_id argument. */
+       73 
+       74 dcl	device_name	   char (32);		/* Device name for rcp_control_ */
+       75 dcl	operation		   bit (36) aligned;	/* Type of operation being requested of rcp_control_ */
+       76 
+       77 dcl	caller_level	   fixed bin;		/* Caller's validation level. */
+       78 dcl	dcode		   fixed bin (35);		/* Dummy error code. */
+       79 dcl	dtypex		   fixed bin;		/* Device type index. */
+       80 dcl	ecode		   fixed bin (35);		/* error_table_ code. */
+       81 dcl	error_count	   fixed bin (17);		/* Error count for attachments needed by rcp_control_. */
+       82 dcl	ioi_index		   fixed bin;		/* IOI internal device index. */
+       83 dcl	statex		   fixed bin;		/* Caller's attachment state index. */
+       84 dcl	timeout_max	   fixed bin (71);		/* Max time-out interval in microseconds. */
+       85 dcl	workspace_max	   fixed bin (19);		/* Max IOI workspace size in words. */
+       86 
+       87 dcl	arcse_ptr		   ptr;			/* Pointer to assignment RCS entry. */
+       88 dcl	device_info_ptr	   ptr;			/* Pointer to device info */
+       89 dcl	device_pointer	   ptr;
+       90 dcl	device_vol_ptr	   ptr;
+       91 dcl	rcp_data_pointer	   ptr;
+       92 
+       93 /*		BASED  DATA		*/
+       94 
+       95 dcl	1 arcse		   based (arcse_ptr) like rcse aligned;
+       96 						/* Used to reference assignment RCS entry. */
+       97 
+       98 
+       99 
+      100 /*		INTERNAL STATIC DATA	*/
+      101 
+      102 
+      103 
+      104 /*		EXTERNAL ENTRIES CALLED	*/
+      105 
+      106 dcl	cleanup		   condition;		/* Used to set up a cleanup handler. */
+      107 
+      108 dcl	(null, ptr, substr)	   builtin;
+      109 
+      110 dcl	(
+      111 	error_table_$bad_arg,
+      112 	error_table_$invalid_state
+      113 	)		   fixed bin (35) external;
+      114 
+      115 dcl	access_operations_$rcp_account
+      116 			   bit (36) aligned ext static;
+      117 
+      118 dcl	rcp_pointers_$data	   entry () returns (ptr);
+      119 dcl	admin_gate_$console_free
+      120 			   entry (char (4), bit (1));
+      121 dcl	admin_gate_$ioi_promote
+      122 			   entry (fixed bin, fixed bin, fixed bin (35));
+      123 dcl	admin_gate_$ioi_set_to_max
+      124 			   entry (fixed bin, fixed bin (71), fixed bin (35));
+      125 dcl	admin_gate_$ioi_set_ws_max
+      126 			   entry (fixed bin, fixed bin (19), fixed bin (35));
+      127 dcl	clock_		   entry returns (fixed bin (71));
+      128 dcl	cu_$level_get	   entry (fixed bin);
+      129 dcl	cu_$level_set	   entry (fixed bin);
+      130 dcl	get_ring_		   entry returns (fixed bin);
+      131 dcl	ioi_$timeout	   entry (fixed bin, fixed bin (71), fixed bin (35));
+      132 dcl	rcp_detach_$detach	   entry (bit (36) aligned, bit (*), fixed bin, char (*), fixed bin (35));
+      133 dcl	rcp_device_info_$set   entry (ptr, ptr, fixed bin (35));
+      134 dcl	rcp_disk_		   entry (ptr, fixed bin (35));
+      135 dcl	rcp_control_	   entry (bit (36) aligned, bit (18) aligned, bit (18) aligned, char (*), fixed bin (17),
+      136 			   bit (36) aligned, fixed bin (35));
+      137 dcl	rcp_ioi_attach_	   entry (ptr, fixed bin (35));
+      138 dcl	rcp_tape_		   entry (ptr, fixed bin (35));
+      139 dcl	rcp_validate_	   entry (bit (36) aligned, fixed bin, ptr, fixed bin (35));
+      140 						/*						*/
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      141 
+  2     1 /*	Begin  include file ... rcp_data.incl.pl1
+  2     2*   *
+  2     3*   *	Created on 09/06/74 by Bill Silver.
+  2     4*   *	This include file defines the Resource Control Package data base, rcp_data.
+  2     5*   *	It is initialized in ring 0 by rcp_init.  It is maintained in ring 1 by RCP.
+  2     6*   *	It contains information about all of the devices and volumes managed by RCP.
+  2     7*   *	This include file references rcp_com_seg.incl.pl1.
+  2     8*
+  2     9*   *	Modified by R.J.C. Kissel on 10/5/77 to add the check_label bit.
+  2    10*   *	Modified by Michael R. Jordan on 04/24/78 to add modes and attached flag.
+  2    11*   *	Modified on 12/09/78 to add removable media bit.
+  2    12*   *	Modified 3/79 by Michael R. Jordan for MR7.0R.
+  2    13*   *	Modified 3/79 by C. D. Tavares for expandable RCP modes.
+  2    14*   *	Modified 11/84 by Paul Farley to add fips flag.
+  2    15*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  2    16**/
+  2    17 
+  2    18 /****^  HISTORY COMMENTS:
+  2    19*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  2    20*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  2    21*     Support FIPS and IMU.
+  2    22*                                                   END HISTORY COMMENTS */
+  2    23 
+  2    24 dcl  rcpd_ptr ptr;					/* Points to base of RCPD. */
+  2    25 dcl  dtype_ptr ptr;					/* Points to a device type entry. */
+  2    26 dcl  device_ptr ptr;				/* Points to a device entry. */
+  2    27 dcl  volume_ptr ptr;				/* Points to a volume entry. */
+  2    28 
+  2    29 dcl 1 rcpd based (rcpd_ptr) aligned,			/* Begin at word 0 of RCPD. */
+  2    30     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  2    31     2 init bit (1) unal,				/* ON => rcp_ring1_init_ has executed */
+  2    32     2 modes like rcp_init_flags unaligned,
+  2    33     2 tot_dtypes fixed bin,				/* Number of known device types. */
+  2    34     2 tot_devices fixed bin,				/* Total number of devices configured. */
+  2    35     2 tot_volumes fixed bin,				/* Number of possible attached volumes. */
+  2    36     2 last_volume fixed bin,				/* The last volume entry currently in use. */
+  2    37     2 mtimer_chan fixed bin (71),			/* Event channel for mount timer. */
+  2    38     2 mtimer_pid bit (36),				/* ID of mount timer process. */
+  2    39     2 accounting_chan fixed bin (71),			/* Event channel for device accounting */
+  2    40     2 accounting_pid bit (36),			/* ID of accounting process */
+  2    41     2 unload_sleep_time fixed bin (71),			/* Number of microseconds to wait for unload completion. */
+  2    42     2 pad (7) fixed bin,
+  2    43     2 dtype (0 refer (rcpd.tot_dtypes))			/* One entry per device type. */
+  2    44      like dtype,					/* See structure below. */
+  2    45     2 device (0 refer (rcpd.tot_devices))		/* One entry per configured device. */
+  2    46      like device,					/* See structure below. */
+  2    47     2 volume (0 refer (rcpd.tot_volumes))		/* One entry per possible attached volume. */
+  2    48      like volume,					/* See structure below. */
+  2    49     2 end bit (36) aligned;				/* End of rcp_data. */
+  2    50 
+  2    51 dcl 1 dtype based (dtype_ptr) aligned,			/* Entry for one device type. */
+  2    52     2 device_type char (32),				/* Name of this device type. */
+  2    53     2 max_concurrent fixed bin,			/* Max number of concurrently assigned devices. */
+  2    54     2 num_reserved fixed bin,				/* Num of devices reserved for system processes. */
+  2    55     2 num_devices fixed bin,				/* Num of devices of this type that are configured. */
+  2    56     2 first_off bit (18),				/* Offset of first device entry. */
+  2    57     2 histo_times (3) fixed bin;			/* Used to compute histograms for this device type. */
+  2    58 
+  2    59 dcl 1 device based (device_ptr) aligned,		/* Up to state must = rcs.rcse. */
+  2    60     2 device_name char (8),				/* Name of device associated with this entry. */
+  2    61     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  2    62     2 dtypex fixed bin,				/* Device type index. */
+  2    63     2 model fixed bin,				/* Device model number. */
+  2    64     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  2    65     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  2    66     2 state_time fixed bin (71),			/* Time device put into current state. */
+  2    67     2 state fixed bin,				/* 0 => free,  1 => assigned,  2 => deleted,
+  2    68*						   3 => storage system, 4 => reserved */
+  2    69 
+  2    70 /*	*	*	*	*	** Following fields are unique to device entry. */
+  2    71 
+  2    72     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  2    73     2 acs_name char (12),				/* Entry name of ACS for this device. */
+  2    74     2 next_off bit (18),				/* Offset of next entry for this device type. */
+  2    75     2 iom_num fixed bin,				/* IOM number for this device. */
+  2    76     2 chan_num fixed bin,				/* Channel number for this device. */
+  2    77     2 num_channels fixed bin,				/* Num channels that may address device. */
+  2    78     2 flags,					/* Special info flags. */
+  2    79      (3 delete bit (1),				/* ON => Delete device when it is unassigned. */
+  2    80       3 priv bit (1),				/* ON => Deleted device assigned for priv attach. */
+  2    81       3 reservable bit (1),				/* ON => may be reserved for system process. */
+  2    82       3 reserved bit (1),				/* ON => reserved to a reserved process. */
+  2    83       3 mounting bit (1),				/* ON => mount pending. */
+  2    84       3 writing bit (1),				/* ON => mounting for writing. */
+  2    85       3 attached bit (1) unal,			/* ON => device is attached. */
+  2    86       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  2    87       3 fips bit (1),				/* ON => FIPS device. */
+  2    88       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  2    89       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  2    90       3 unused bit (25)) unal,
+  2    91     2 process_id bit (36),				/* ID of assigned process. */
+  2    92     2 group_id char (32),				/* Process group ID. */
+  2    93     2 error_count fixed bin (35),			/* Total error count.  Defined by user ring. */
+  2    94     2 num_assigns fixed bin (35),			/* Total # of times device assigned & unassigned. */
+  2    95     2 tot_assign_time fixed bin (71),			/* Total time that device was assigned. */
+  2    96     2 histogram (4) fixed bin,			/* Assignment time histogram. */
+  2    97     2 reservation_id fixed bin (71),
+  2    98     2 reserved_by char (32),				/* Who made this reservation. */
+  2    99     2 current_authorization bit (72) aligned;		/* Authoization of process using this device. */
+  2   100 
+  2   101 dcl 1 volume based (volume_ptr) aligned,		/* Entry for one volume. */
+  2   102     2 process_id bit (36),				/* "0"b => unassigned. */
+  2   103     2 volume_name char (32),				/* Volume name. */
+  2   104     2 vtypex fixed bin,				/* Volume type index. */
+  2   105     2 group_id char (32),				/* This is used for the reserved_for field. */
+  2   106     2 reserved_by char (32),
+  2   107     2 reservation_id fixed bin (71),
+  2   108     2 state_time fixed bin (71),			/* Same as for a device. */
+  2   109     2 state fixed bin,				/* Same as for a device. */
+  2   110     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  2   111     2 current_authorization bit (72) aligned;		/* Authorization of process using this volume. */
+  2   112 
+  3     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  3     2 
+  3     3 /* Created on 04/24/78 by Michael R. Jordan */
+  3     4 /* Modified 04/10/79 by C. D. Tavares */
+  3     5 
+  3     6 dcl  rifp ptr;
+  3     7 
+  3     8 dcl 1 rcp_init_flags based (rifp),
+  3     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  3    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  3    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  3    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  3    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  3    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  3    15 
+  3    16 dcl (No_authentication initial (0),
+  3    17      Nominal_authentication initial (1),
+  3    18      Automatic_authentication initial (2),
+  3    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  3    20 
+  3    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  3    22     ("none", "nominal", "automatic", "manual");
+  3    23 
+  3    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  2   113 
+  2   114 
+  2   115 /*	End of include file ... rcp_data.incl.pl1	*/
+      142 
+      143 
+      144 	volume_offset = ""b;
+      145 	device_offset = ""b;
+      146 	process_id = ""b;
+      147 	device_name = "";
+      148 	error_count = 0;
+      149 	ecode = 0;
+      150 
+      151 	call cu_$level_get (caller_level);		/* Save caller's validation level. */
+      152 	on cleanup
+      153 	     begin;				/* If trouble cleanup. */
+      154 	     call cu_$level_set (caller_level);		/* Reset validation level. */
+      155 	end;
+      156 	call cu_$level_set (get_ring_ ());		/* Set validation level to RCP level. */
+      157 
+      158 	rcp_id = arg_rcp_id;			/* Copy arguments. */
+      159 	device_info_ptr = arg_device_info_ptr;
+      160 
+      161 	call rcp_validate_ (rcp_id, caller_level, rcse_ptr, ecode);
+      162 	if ecode ^= 0				/* Is RCP ID OK? */
+      163 	     then
+      164 	     goto ERROR;				/* No. */
+      165 
+      166 	if rcse.kind ^= 1				/* Is this a device attachment RCS entry? */
+      167 	then do;					/* No, can't go on. */
+      168 	     ecode = error_table_$bad_arg;
+      169 	     goto ERROR;
+      170 	end;
+      171 
+      172 	ecode = rcse.ecode;				/* Get code generated by rcp_control_. */
+      173 	if ecode ^= 0				/* Was there any error. */
+      174 	     then
+      175 	     goto ERROR;
+      176 
+      177 	arcse_ptr = ptr (rcse_ptr, rcse.rcse_off);	/* Get pointer to assignment RCSE. */
+      178 
+      179 	goto ATTACHMENT_STATE (rcse.state);		/* Check current state of attachment. */
+      180 
+      181 ATTACHMENT_STATE (0):				/* FREE */
+      182 ATTACHMENT_STATE (1):				/* ASSIGNING */
+      183 ATTACHMENT_STATE (4):				/* ATTACHED */
+      184 ATTACHMENT_STATE (5):				/* COMPLETED */
+      185 	ecode = error_table_$invalid_state;
+      186 	goto ERROR;
+      187 
+      188 ATTACHMENT_STATE (2):				/* ASSIGNED */
+      189 	if arcse.state ^= 5				/* Has assignment been completed? */
+      190 	then do;					/* No. */
+      191 	     ecode = arcse.ecode;			/* Get assignment error code. */
+      192 	     if ecode ^= 0				/* Any error in assignment? */
+      193 		then
+      194 		goto ERROR;			/* Yes, abort attachment. */
+      195 	     arcse.state = 5;			/* Indicate that assignment has been checked. */
+      196 	     arcse.state_time = clock_ ();
+      197 	end;
+      198 	rcse.state = 3;				/* Now attaching. */
+      199 	rcse.device_name = arcse.device_name;		/* Get name of assigned device. */
+      200 	rcse.device_off = arcse.device_off;		/* Copy rcp_data offset of assigned device. */
+      201 	rcse.flags.fips = arcse.flags.fips;		/* Copy fips flag */
+      202 	rcse.flags.no_protect = arcse.flags.no_protect;	/* Copy no_protect flag */
+      203 	rcse.flags.opr_int_available = arcse.flags.opr_int_available;
+      204 						/* Copy opr_int_available flag */
+      205 
+      206 ATTACHMENT_STATE (3):				/* ATTACHING */
+      207 	dtypex = rcse.dtypex;			/* Get device type. */
+      208 	call ATTACH;				/* Perform the actual attachment. */
+      209 	if ecode ^= 0 then
+      210 	     goto ERROR;
+      211 	if rcse.state = 3				/* Are we still attaching? */
+      212 	then do;					/* Yes. */
+      213 	     statex = 1;				/* Caller should block and then call back. */
+      214 	     goto RETURN;
+      215 	end;
+      216 
+      217 	ioi_index = rcse.ioi_index;			/* No, we can now complete the attachment. *. */
+      218 	rcs_ptr = ptr (rcse_ptr, "0"b);
+      219 
+      220 	if (rcse.flags.volume) &			/* Did we assign a volume? */
+      221 	     (rcse.volume_name ^= "scratch")		/* That was not a scratch volume? */
+      222 	then do;					/* Yes, remember volume in assignment RCS entry. */
+      223 	     arcse.flags.volume = "1"b;
+      224 	     arcse.volume_name = rcse.volume_name;
+      225 	     arcse.label_type = rcse.label_type;
+      226 	     arcse.volume_density_index = rcse.volume_density_index;
+      227 	     arcse.need_auth = rcse.need_auth;
+      228 	end;
+      229 
+      230 /*	Now complete the attachment by calling IOI to set the workspace and
+      231*   *	time-out limits and to promote the device.
+      232**/
+      233 	if rcse.flags.priv				/* If  privileged attachment,      */
+      234 	     | rcse.flags.system			/* Or  system user.      */
+      235 	     then
+      236 	     workspace_max = rcs.ws_pmaxs (dtypex);	/* Then  give user large IOI workspace max. */
+      237 
+      238 	else do;					/* A normal user. */
+      239 	     if USER_ON_WS_ACS ("01010"b) then
+      240 		workspace_max = rcs.ws_pmaxs (dtypex);	/* Then  give user large IOI workspace max. */
+      241 	     else workspace_max = rcs.ws_maxs (dtypex);	/* Else  give user normal IOI workspace max. */
+      242 	end;
+      243 
+      244 	rcse.workspace_max = workspace_max;
+      245 	call admin_gate_$ioi_set_ws_max (ioi_index, workspace_max, ecode);
+      246 	if ecode ^= 0 then
+      247 	     goto ERROR;
+      248 
+      249 	rcse.timeout_max,				/* Get and set max IOI time-out interval. */
+      250 	     timeout_max = rcs.to_maxs (dtypex);
+      251 	call admin_gate_$ioi_set_to_max (ioi_index, timeout_max, ecode);
+      252 	if ecode ^= 0 then
+      253 	     goto ERROR;
+      254 	if dtypex = 4 |				/* PRINTER */
+      255 	     dtypex = 5 |				/* PUNCH */
+      256 	     dtypex = 6				/* READER */
+      257 	then do;
+      258 	     call ioi_$timeout (ioi_index, timeout_max, ecode);
+      259 	     if ecode ^= 0 then
+      260 		go to ERROR;
+      261 	end;
+      262 
+      263 	call admin_gate_$ioi_promote (ioi_index, rcse.caller_level, ecode);
+      264 	if ecode ^= 0 then
+      265 	     goto ERROR;
+      266 
+      267 /* Return info about assigned device.  Passing a copy of arg_device_info_ptr is
+      268*   OK since rcp_device_info_ uses it to base a write-only structure. */
+      269 
+      270 	call rcp_device_info_$set (device_info_ptr, ptr (rcse_ptr, rcse.rcse_off), ecode);
+      271 	if ecode ^= 0 then
+      272 	     goto ERROR;
+      273 
+      274 	rcse.state = 5;				/* Attachment is now completed. */
+      275 	statex = 0;				/* Tell caller that it is complete. */
+      276 	arg_ioi_index = ioi_index;			/* Now we can return all the other info. */
+      277 	arg_workspace_max = workspace_max;
+      278 	arg_timeout_max = timeout_max;
+      279 
+      280 /* Prepare for calling rcp_control_ */
+      281 	operation = access_operations_$rcp_account;
+      282 	volume_offset = rcse.volume_off;
+      283 	device_offset = rcse.device_off;
+      284 	call rcp_control_ (operation, volume_offset, device_offset, device_name, error_count, process_id, ecode);
+      285 
+      286 	goto RETURN;
+      287 
+      288 ERROR:						/* Abort this attachment. */
+      289 	if rcse_ptr ^= null () then
+      290 	     call rcp_detach_$detach (rcse.rcp_id, "0"b, 0, "", dcode);
+      291 	statex = 3;				/* Return error state. */
+      292 
+      293 RETURN:						/* Return command args, reset validation level. */
+      294 	arg_comment = " ";
+      295 	arg_statex = statex;
+      296 	arg_ecode = ecode;
+      297 	call cu_$level_set (caller_level);
+      298 	return;					/*						*/
+      299 ATTACH:
+      300      procedure;
+      301 
+      302 /*	This procedure is called to perform the actual attachment via IOI.
+      303*   *	The processing to be done depends upon the device type.
+      304**/
+      305 
+      306 	goto DEVICE_TYPE (dtypex);			/* Process depending upon device type. */
+      307 
+      308 DEVICE_TYPE (1):					/* TAPE */
+      309 	rcse.model = arcse.model;			/* Need model for tape attachment/mounting. */
+      310 
+      311 	if rcse.flags.volume			/* Determine if preloading is allowed for this attachement. */
+      312 	     & arcse.flags.volume & rcse.volume_name = arcse.volume_name then
+      313 	     rcse.flags.preloaded = arcse.preload_allowed;
+      314 
+      315 	call rcp_tape_ (rcse_ptr, ecode);		/* Perform tape attachment and mounting. */
+      316 	rcp_data_pointer = rcp_pointers_$data ();
+      317 	device_pointer = ptr (rcp_data_pointer, rcse.device_off);
+      318 	device_pointer -> device.flags.attached = "1"b;
+      319 	if rcse.flags.volume then
+      320 	     device_vol_ptr = ptr (rcp_data_pointer, rcse.volume_off);
+      321 	return;
+      322 
+      323 DEVICE_TYPE (2):					/* DISK */
+      324 	rcse.model = arcse.model;			/* Need model for tape attachment/mounting. */
+      325 
+      326 	if rcse.flags.volume			/* Determine if preloading is allowed for this attachement. */
+      327 	     & arcse.flags.volume & rcse.volume_name = arcse.volume_name then
+      328 	     rcse.flags.preloaded = arcse.preload_allowed;
+      329 
+      330 	rcse.flags.not_removable_media = arcse.flags.not_removable_media;
+      331 	call rcp_disk_ (rcse_ptr, ecode);		/* Perform disk attachment and mounting. */
+      332 	rcp_data_pointer = rcp_pointers_$data ();
+      333 	device_pointer = ptr (rcp_data_pointer, rcse.device_off);
+      334 	device_pointer -> device.flags.attached = "1"b;
+      335 	if rcse.flags.volume then
+      336 	     device_vol_ptr = ptr (rcp_data_pointer, rcse.volume_off);
+      337 	return;
+      338 
+      339 DEVICE_TYPE (3):					/* CONSOLE */
+      340 	call admin_gate_$console_free (substr (rcse.device_name, 1, 4), console_is_free);
+      341 	if ^console_is_free then do;
+      342 	     ecode = error_table_$invalid_state;
+      343 	     return;
+      344 	end;
+      345 DEVICE_TYPE (4):					/* PRINTER */
+      346 DEVICE_TYPE (5):					/* PUNCH */
+      347 DEVICE_TYPE (6):					/* READER */
+      348 DEVICE_TYPE (7):					/* SPECIAL */
+      349 DEVICE_TYPE (8):					/* MCA */
+      350 	call rcp_ioi_attach_ (rcse_ptr, ecode);		/* Attach the device in ring 0 via IOI. */
+      351 	rcse.state = 4;				/* Actual attachment has been performed. */
+      352 
+      353      end ATTACH;
+      354 
+      355 /**/
+      356 
+      357 USER_ON_WS_ACS:
+      358      proc (test_access) returns (bit (1));
+      359 
+      360 dcl	test_access	   bit (5);		/* access we are testing for, normally "rw" */
+      361 dcl	actual_access	   fixed bin (5);		/* access returned by hcs_$get_user_effmode. */
+      362 
+      363 dcl	hcs_$get_user_effmode  entry (char (*) aligned, char (*) aligned, char (*) aligned, fixed bin, fixed bin (5),
+      364 			   fixed bin (35));
+      365 
+      366 /* Note above that the "aligned" attributes are there only to get around the fact */
+      367 /* that the acs_directory and group_id are declared aligned in an include file.   */
+      368 
+      369 
+      370 dcl	bit		   builtin;
+      371 
+      372 	call hcs_$get_user_effmode (rcs.acs_directory, "workspace.acs", rcse.group_id, rcse.caller_level, actual_access,
+      373 	     ecode);
+      374 
+      375 	if ecode ^= 0 then do;
+      376 	     ecode = 0;				/* This isn't really an error */
+      377 	     return ("0"b);				/* Report failure */
+      378 	end;
+      379 
+      380 	if (bit (actual_access, 5) & test_access) = test_access then
+      381 	     return ("1"b);				/* This process has at least "rw" access */
+      382 	else return ("0"b);				/* This process does not have "rw" access */
+      383 
+      384      end USER_ON_WS_ACS;
+      385 
+      386      end rcp_check_attach_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  rcp_check_attach_.pl1             >spec>install>1111>rcp_check_attach_.pl1
+141          1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+142          2    03/27/86  1120.0  rcp_data.incl.pl1                 >ldd>include>rcp_data.incl.pl1
+2-113        3    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+access_operations_$rcp_account  000014 external static bit(36)                  dcl 115 ref 281
+acs_directory            74            based           char(32)                 level 2 dcl 1-30 set ref 372*
+actual_access                   000172 automatic       fixed bin(5,0)           dcl 361 set ref 372* 380
+admin_gate_$console_free        000020 constant        entry                    external dcl 119 ref 339
+admin_gate_$ioi_promote         000022 constant        entry                    external dcl 121 ref 263
+admin_gate_$ioi_set_to_max      000024 constant        entry                    external dcl 123 ref 251
+admin_gate_$ioi_set_ws_max      000026 constant        entry                    external dcl 125 ref 245
+arcse                                  based           structure                level 1 dcl 95
+arcse_ptr                       000132 automatic       pointer                  dcl 87 set ref 177* 188 191 195 196 199 200 201 202
+                                                                                  203 223 224 225 226 227 308 311 311 311 323 326
+                                                                                  326 326 330
+arg_comment                            parameter       char                     packed unaligned dcl 56 set ref 14 293*
+arg_device_info_ptr                    parameter       pointer                  dcl 57 ref 14 159
+arg_ecode                              parameter       fixed bin(35,0)          dcl 58 set ref 14 296*
+arg_ioi_index                          parameter       fixed bin(17,0)          dcl 59 set ref 14 276*
+arg_rcp_id                             parameter       bit(36)                  dcl 60 ref 14 158
+arg_statex                             parameter       fixed bin(17,0)          dcl 61 set ref 14 295*
+arg_timeout_max                        parameter       fixed bin(71,0)          dcl 62 set ref 14 278*
+arg_workspace_max                      parameter       fixed bin(19,0)          dcl 63 set ref 14 277*
+attached                 35(06)        based           bit(1)                   level 3 packed packed unaligned dcl 2-59 set ref
+                                                                                  318* 334*
+bit                                                    builtin function         dcl 370 ref 380
+caller_level             33            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 263* 372*
+caller_level                    000116 automatic       fixed bin(17,0)          dcl 77 in procedure "rcp_check_attach_" set ref 151*
+                                                                                  154* 161* 297*
+cleanup                         000144 stack reference condition                dcl 106 ref 152
+clock_                          000030 constant        entry                    external dcl 127 ref 196
+console_is_free                 000100 automatic       bit(1)                   packed unaligned dcl 68 set ref 339* 341
+cu_$level_get                   000032 constant        entry                    external dcl 128 ref 151
+cu_$level_set                   000034 constant        entry                    external dcl 129 ref 154 156 297
+dcode                           000117 automatic       fixed bin(35,0)          dcl 78 set ref 288*
+device                                 based           structure                level 1 dcl 2-59
+device_info_ptr                 000134 automatic       pointer                  dcl 88 set ref 159* 270*
+device_name                     000105 automatic       char(32)                 packed unaligned dcl 74 in procedure
+                                                                                  "rcp_check_attach_" set ref 147* 284*
+device_name                            based           char(8)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 199* 339 339
+device_name                            based           char(8)                  level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_" ref 199
+device_off               30            based           bit(18)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 200* 283 317 333
+device_off               30            based           bit(18)                  level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_" ref 200
+device_offset                   000102 automatic       bit(18)                  dcl 70 set ref 145* 283* 284*
+device_pointer                  000136 automatic       pointer                  dcl 89 set ref 317* 318 333* 334
+device_vol_ptr                  000140 automatic       pointer                  dcl 90 set ref 319* 335*
+dtype                                  based           structure                level 1 dcl 2-51
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" ref 206
+dtypex                          000120 automatic       fixed bin(17,0)          dcl 79 in procedure "rcp_check_attach_" set ref 206*
+                                                                                  233 239 241 249 254 254 254 306
+ecode                    53            based           fixed bin(35,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" ref 172
+ecode                    53            based           fixed bin(35,0)          level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_" ref 191
+ecode                           000121 automatic       fixed bin(35,0)          dcl 80 in procedure "rcp_check_attach_" set ref 149*
+                                                                                  161* 162 168* 172* 173 181* 191* 192 209 245* 246
+                                                                                  251* 252 258* 259 263* 264 270* 271 284* 296 315*
+                                                                                  331* 342* 345* 372* 375 376*
+error_count                     000122 automatic       fixed bin(17,0)          dcl 81 set ref 148* 284*
+error_table_$bad_arg            000010 external static fixed bin(35,0)          dcl 110 ref 168
+error_table_$invalid_state      000012 external static fixed bin(35,0)          dcl 110 ref 181 342
+fips                     35(18)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 1-55 in procedure "rcp_check_attach_" set ref
+                                                                                  201*
+fips                     35(18)        based           bit(1)                   level 3 in structure "arcse" packed packed unaligned
+                                                                                  dcl 95 in procedure "rcp_check_attach_" ref 201
+flags                    35            based           structure                level 2 in structure "device" dcl 2-59 in procedure
+                                                                                  "rcp_check_attach_"
+flags                    35            based           structure                level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_"
+flags                    35            based           structure                level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_"
+get_ring_                       000036 constant        entry                    external dcl 130 ref 156 156
+group_id                 43            based           char(32)                 level 2 dcl 1-55 set ref 372*
+hcs_$get_user_effmode           000060 constant        entry                    external dcl 363 ref 372
+ioi_$timeout                    000040 constant        entry                    external dcl 131 ref 258
+ioi_index                60            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" ref 217
+ioi_index                       000123 automatic       fixed bin(17,0)          dcl 82 in procedure "rcp_check_attach_" set ref 217*
+                                                                                  245* 251* 258* 263* 276
+kind                     25            based           fixed bin(17,0)          level 2 dcl 1-55 ref 166
+label_type               35(30)        based           fixed bin(6,0)           level 3 in structure "rcse" packed packed unsigned
+                                                                                  unaligned dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" ref 225
+label_type               35(30)        based           fixed bin(6,0)           level 3 in structure "arcse" packed packed unsigned
+                                                                                  unaligned dcl 95 in procedure "rcp_check_attach_"
+                                                                                  set ref 225*
+lock_info                              based           structure                level 1 dcl 1-46
+model                    13            based           fixed bin(17,0)          level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_" ref 308 323
+model                    13            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 308* 323*
+need_auth                35(07)        based           bit(1)                   level 3 in structure "arcse" packed packed unaligned
+                                                                                  dcl 95 in procedure "rcp_check_attach_" set ref
+                                                                                  227*
+need_auth                35(07)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 1-55 in procedure "rcp_check_attach_" ref 227
+no_protect               35(19)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 1-55 in procedure "rcp_check_attach_" set ref
+                                                                                  202*
+no_protect               35(19)        based           bit(1)                   level 3 in structure "arcse" packed packed unaligned
+                                                                                  dcl 95 in procedure "rcp_check_attach_" ref 202
+not_removable_media      35(11)        based           bit(1)                   level 3 in structure "arcse" packed packed unaligned
+                                                                                  dcl 95 in procedure "rcp_check_attach_" ref 330
+not_removable_media      35(11)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 1-55 in procedure "rcp_check_attach_" set ref
+                                                                                  330*
+null                                                   builtin function         dcl 108 ref 288
+operation                       000115 automatic       bit(36)                  dcl 75 set ref 281* 284*
+opr_int_available        35(20)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 1-55 in procedure "rcp_check_attach_" set ref
+                                                                                  203*
+opr_int_available        35(20)        based           bit(1)                   level 3 in structure "arcse" packed packed unaligned
+                                                                                  dcl 95 in procedure "rcp_check_attach_" ref 203
+preload_allowed          35(09)        based           bit(1)                   level 3 packed packed unaligned dcl 95 ref 311 326
+preloaded                35(10)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  311* 326*
+priv                     35(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 233
+process_id                      000103 automatic       bit(36)                  dcl 71 set ref 146* 284*
+ptr                                                    builtin function         dcl 108 ref 177 218 270 270 317 319 333 335
+rcp_control_                    000050 constant        entry                    external dcl 135 ref 284
+rcp_data_pointer                000142 automatic       pointer                  dcl 91 set ref 316* 317 319 332* 333 335
+rcp_detach_$detach              000042 constant        entry                    external dcl 132 ref 288
+rcp_device_info_$set            000044 constant        entry                    external dcl 133 ref 270
+rcp_disk_                       000046 constant        entry                    external dcl 134 ref 331
+rcp_id                          000104 automatic       bit(36)                  dcl 72 in procedure "rcp_check_attach_" set ref 158*
+                                                                                  161*
+rcp_id                   36            based           bit(36)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 288*
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 3-8
+rcp_ioi_attach_                 000052 constant        entry                    external dcl 137 ref 345
+rcp_pointers_$data              000016 constant        entry                    external dcl 118 ref 316 332
+rcp_tape_                       000054 constant        entry                    external dcl 138 ref 315
+rcp_validate_                   000056 constant        entry                    external dcl 139 ref 161
+rcs                                    based           structure                level 1 dcl 1-30
+rcs_ptr                         000152 automatic       pointer                  dcl 1-23 set ref 218* 233 239 241 249 372
+rcse                                   based           structure                level 1 dcl 1-55
+rcse_off                 32            based           bit(18)                  level 2 dcl 1-55 ref 177 270 270
+rcse_ptr                        000154 automatic       pointer                  dcl 1-24 set ref 161* 166 172 177 177 179 198 199
+                                                                                  200 201 202 203 206 211 217 218 220 220 224 225
+                                                                                  226 227 233 233 244 249 263 270 270 270 270 274
+                                                                                  282 283 288 288 308 311 311 311 315* 317 319 319
+                                                                                  323 326 326 326 330 331* 333 335 335 339 339 345*
+                                                                                  351 372 372
+state                    24            based           fixed bin(17,0)          level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_" set ref 188 195*
+state                    24            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 179 198* 211 274* 351*
+state_time               22            based           fixed bin(71,0)          level 2 dcl 95 set ref 196*
+statex                          000124 automatic       fixed bin(17,0)          dcl 83 set ref 213* 275* 291* 295
+substr                                                 builtin function         dcl 108 ref 339 339
+system                   35(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 233
+test_access                            parameter       bit(5)                   packed unaligned dcl 360 ref 357 380 380
+timeout_max              56            based           fixed bin(71,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 249*
+timeout_max                     000126 automatic       fixed bin(71,0)          dcl 84 in procedure "rcp_check_attach_" set ref 249*
+                                                                                  251* 258* 278
+to_maxs                  34            based           fixed bin(71,0)          array level 2 dcl 1-30 ref 249
+volume                                 based           structure                level 1 dcl 2-101 in procedure "rcp_check_attach_"
+volume                   35(04)        based           bit(1)                   level 3 in structure "arcse" packed packed unaligned
+                                                                                  dcl 95 in procedure "rcp_check_attach_" set ref
+                                                                                  223* 311 326
+volume                   35(04)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 1-55 in procedure "rcp_check_attach_" ref 220
+                                                                                  311 319 326 335
+volume_density_index     35(27)        based           fixed bin(3,0)           level 3 in structure "rcse" packed packed unsigned
+                                                                                  unaligned dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" ref 226
+volume_density_index     35(27)        based           fixed bin(3,0)           level 3 in structure "arcse" packed packed unsigned
+                                                                                  unaligned dcl 95 in procedure "rcp_check_attach_"
+                                                                                  set ref 226*
+volume_name               2            based           char(32)                 level 2 in structure "arcse" dcl 95 in procedure
+                                                                                  "rcp_check_attach_" set ref 224* 311 326
+volume_name               2            based           char(32)                 level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" ref 220 224 311 326
+volume_off               31            based           bit(18)                  level 2 dcl 1-55 ref 282 319 335
+volume_offset                   000101 automatic       bit(18)                  dcl 69 set ref 144* 282* 284*
+workspace_max                   000130 automatic       fixed bin(19,0)          dcl 85 in procedure "rcp_check_attach_" set ref 233*
+                                                                                  239* 241* 244 245* 277
+workspace_max            55            based           fixed bin(19,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_check_attach_" set ref 244*
+ws_maxs                  14            based           fixed bin(19,0)          array level 2 dcl 1-30 ref 241
+ws_pmaxs                 24            based           fixed bin(19,0)          array level 2 dcl 1-30 ref 233 239
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Automatic_authentication               internal static fixed bin(17,0)          initial dcl 3-16
+Manual_authentication                  internal static fixed bin(17,0)          initial dcl 3-16
+No_authentication                      internal static fixed bin(17,0)          initial dcl 3-16
+Nominal_authentication                 internal static fixed bin(17,0)          initial dcl 3-16
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 3-21
+based_rcp_id                           based           structure                level 1 dcl 1-26
+device_ptr                             automatic       pointer                  dcl 2-26
+dtype_ptr                              automatic       pointer                  dcl 2-25
+lock_info_ptr                          automatic       pointer                  dcl 1-22
+rcpd                                   based           structure                level 1 dcl 2-29
+rcpd_ptr                               automatic       pointer                  dcl 2-24
+rifp                                   automatic       pointer                  dcl 3-6
+volume_ptr                             automatic       pointer                  dcl 2-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ATTACH                          000664 constant        entry                    internal dcl 299 ref 208
+ATTACHMENT_STATE                000000 constant        label                    array(0:5) dcl 181 ref 179
+DEVICE_TYPE                     000006 constant        label                    array(8) dcl 308 ref 306
+ERROR                           000577 constant        label                    dcl 288 ref 162 169 173 186 192 209 246 252 259 264
+                                                                                  271
+RETURN                          000642 constant        label                    dcl 293 ref 214 286
+USER_ON_WS_ACS                  001076 constant        entry                    internal dcl 357 ref 239
+rcp_check_attach_               000057 constant        entry                    external dcl 14
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1502        1564    1210        1512
+Length      2044    1210        62         244     271           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_check_attach_                   211 external procedure  is an external procedure.  
+on unit on line 152                  68 on unit               
+ATTACH                                  internal procedure  shares stack frame of external procedure rcp_check_attach_.  
+USER_ON_WS_ACS                          internal procedure  shares stack frame of external procedure rcp_check_attach_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_check_attach_        000100 console_is_free             rcp_check_attach_
+                         000101 volume_offset               rcp_check_attach_
+                         000102 device_offset               rcp_check_attach_
+                         000103 process_id                  rcp_check_attach_
+                         000104 rcp_id                      rcp_check_attach_
+                         000105 device_name                 rcp_check_attach_
+                         000115 operation                   rcp_check_attach_
+                         000116 caller_level                rcp_check_attach_
+                         000117 dcode                       rcp_check_attach_
+                         000120 dtypex                      rcp_check_attach_
+                         000121 ecode                       rcp_check_attach_
+                         000122 error_count                 rcp_check_attach_
+                         000123 ioi_index                   rcp_check_attach_
+                         000124 statex                      rcp_check_attach_
+                         000126 timeout_max                 rcp_check_attach_
+                         000130 workspace_max               rcp_check_attach_
+                         000132 arcse_ptr                   rcp_check_attach_
+                         000134 device_info_ptr             rcp_check_attach_
+                         000136 device_pointer              rcp_check_attach_
+                         000140 device_vol_ptr              rcp_check_attach_
+                         000142 rcp_data_pointer            rcp_check_attach_
+                         000152 rcs_ptr                     rcp_check_attach_
+                         000154 rcse_ptr                    rcp_check_attach_
+                         000172 actual_access               USER_ON_WS_ACS
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          enable_op           ext_entry_desc      int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$console_free      admin_gate_$ioi_promote       admin_gate_$ioi_set_to_max    admin_gate_$ioi_set_ws_max
+clock_                        cu_$level_get                 cu_$level_set                 get_ring_
+hcs_$get_user_effmode         ioi_$timeout                  rcp_control_                  rcp_detach_$detach
+rcp_device_info_$set          rcp_disk_                     rcp_ioi_attach_               rcp_pointers_$data
+rcp_tape_                     rcp_validate_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$rcp_account                              error_table_$bad_arg          error_table_$invalid_state
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000050       144 000072       145 000073       146 000074       147 000075       148 000100       149 000101
+    151 000102       152 000110       154 000124       155 000133       156 000134       158 000152       159 000155
+    161 000160       162 000175       166 000177       168 000203       169 000206       172 000207       173 000211
+    177 000212       179 000216       181 000220       186 000223       188 000224       191 000227       192 000231
+    195 000232       196 000234       198 000243       199 000246       200 000253       201 000255       202 000261
+    203 000265       206 000271       208 000273       209 000274       211 000276       213 000302       214 000304
+    217 000305       218 000307       220 000311       223 000320       224 000323       225 000326       226 000330
+    227 000334       233 000340       239 000347       241 000363       244 000367       245 000371       246 000404
+    249 000406       251 000415       252 000430       254 000432       258 000441       259 000454       263 000456
+    264 000472       270 000474       271 000514       274 000516       275 000521       276 000522       277 000525
+    278 000527       281 000531       282 000534       283 000536       284 000540       286 000576       288 000577
+    291 000640       293 000642       295 000650       296 000652       297 000654       298 000663       299 000664
+    306 000665       308 000667       311 000673       315 000712       316 000723       317 000732       318 000737
+    319 000741       321 000750       323 000751       326 000755       330 000774       331 001000       332 001011
+    333 001020       334 001025       335 001027       337 001036       339 001037       341 001052       342 001055
+    343 001060       345 001061       351 001072       353 001075       357 001076       372 001100       375 001142
+    376 001144       377 001145       380 001153       382 001174
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

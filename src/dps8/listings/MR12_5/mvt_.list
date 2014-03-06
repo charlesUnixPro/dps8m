@@ -1,0 +1,458 @@
+ASSEMBLY LISTING OF SEGMENT >udd>sm>ds>w>ml>mvt_.alm                                                                                                                                                
+ASSEMBLED ON:	04/18/00  1111.1 mdt Tue
+OPTIONS USED:	list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1102.3 mdt Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " Utility to perform extremely fast character string translations
+                                    10  
+                                    11  " Created:  October 1982 by G. Palter
+                                    12  " Modified: 3 December 1982 by G. Palter to fix fencepost error in make_translation_table
+                                    13  " Modified: 15 December 1983 by G. Palter to fix make_translation_table's handling of a
+                                    14  "    zero-length second argument (untranslated_list)
+                                    15  
+                                    16  
+    000000                          17  	name	mvt_
+                                    18  
+                                    19  
+                                    20  
+                                    21  " mvt_: Translates a character string
+                                    22  
+                                    23  "	dcl  mvt_ entry (ptr, ptr, fixed bin(21), char(512) aligned);
+                                    24  "	dcl  mvt_ (input_string_ptr, output_string_ptr, string_lth,
+                                    25  "		 translate_table);
+                                    26  
+                        000000      27  	entry	mvt_
+                                    28  
+    000000  aa  0 00002 3515 20     29  mvt_:	epp1	ap|2,*			" get input_string_ptr
+    000001  aa  1 00000 3515 20     30  	epp1	pr1|0,*
+                                    31  
+    000002  aa  0 00004 3521 20     32  	epp2	ap|4,*			" get output_string_ptr
+    000003  aa  2 00000 3521 20     33  	epp2	pr2|0,*
+                                    34  
+    000004  aa  0 00006 2361 20     35  	ldq	ap|6,*			" get string_lth
+    000005  aa  0 00010 3535 20     36  	epp3	ap|8,*			" get addr(transate_table)
+                                    37  
+    000006  aa  0 00140 1605 40     38  	mvt	(pr,rl),(pr,rl)		" translate me
+    000007  aa   100000 000006      39  	desc9a	pr1|0,ql
+    000010  aa   200000 000006      40  	desc9a	pr2|0,ql
+    000011  aa  3 00000 0001 00     41  	arg	pr3|0
+                                    42  
+    000012  aa  7 00044 7101 20     43  	short_return			" simple isn't it
+                                    44  
+                                    45  "
+                                    46  
+                                    47  " make_translation_table: Constructs the translate table used in calls to mvt_
+                                    48  
+                                    49  "	dcl  mvt_$make_translation_table entry (char(*), char(*),
+                                    50  "		char(512) aligned);
+                                    51  "	call mvt_$make_translation_table (translated_list, untranslated_list,
+                                    52  "		translate_table);
+                                    53  
+                        000013      54  	entry	make_translation_table
+                                    55  
+                                    56  	temp	translated_lth
+                                    57  	temp	untranslated_lth
+                                    58  	temp	untranslated_char
+                                    59  
+                                    60  
+    000013                          61  make_translation_table:
+    000013  aa   000060 6270 00     62  	push				" need a stack frame for this one
+    000014  aa  7 00040 2721 20
+    000015  aa  0 00000 2351 00     63  	lda	ap|0			" get 2*nargs into AU, code into AL
+    000016  aa   000010 3150 07     64  	cana	8,dl			" is there an evironmentptr?
+    000017  aa   000002 6000 04     65  	tze	2,ic			" ... no
+    000020  aa   000002 0750 03     66  	ada	2,du			" ... yes
+    000021  aa  0 00000 3701 01     67  	epp4	ap|0,au			" get addr(descriptors)
+                                    68  
+    000022  aa  0 00002 3515 20     69  	epp1	ap|2,*			" get addr(translated_list)
+    000023  aa  4 00002 2351 20     70  	lda	pr4|2,*			" get length(translated_list)
+    000024  aa   000002 6040 04     71  	tmi	2,ic
+    000025  aa   777777 3750 07     72  	ana	=o777777,dl
+    000026  0a   000065 3750 00     73  	ana	descriptor_mask
+    000027  aa  6 00050 7551 00     74  	sta	sp|translated_lth
+                                    75  
+    000030  aa  0 00004 3521 20     76  	epp2	ap|4,*			" get addr(untranslated_list)
+    000031  aa  4 00004 2351 20     77  	lda	pr4|4,*			" get length(untranslated_list)
+    000032  aa   000002 6040 04     78  	tmi	2,ic
+    000033  aa   777777 3750 07     79  	ana	=o777777,dl
+    000034  0a   000065 3750 00     80  	ana	descriptor_mask
+    000035  aa  6 00051 7551 00     81  	sta	sp|untranslated_lth
+                                    82  
+    000036  aa  0 00006 3535 20     83  	epp3	ap|6,*			" get addr(translation_table)
+    000037  aa   000100 1004 00     84  	mlr	(),(pr)			" initialize translation table to ...
+    000040  0a   000066 001000      85  	desc9a	collate9,512		" ... collate9() (no translation)
+    000041  aa   300000 001000      86  	desc9a	pr3|0,512
+                                    87  
+    000042  aa  6 00051 2351 00     88  	lda	sp|untranslated_lth		" loop backwards
+    000043  0a   000045 6054 00     89  	tpnz	build_table
+                                    90  	
+    000044  aa  7 00042 7101 20     91  	return				" zero-length untranslated_list
+                                    92  
+    000045                          93  build_table:
+    000045  aa  0 00100 1015 05     94  	mrl	(pr,al),(pr),fill(000)	" get rank(untranslated_char)
+    000046  aa   277777 600001      95  	desc9a	pr2|-1(3),1
+    000047  aa   600052 000004      96  	desc9a	sp|untranslated_char,4
+    000050  aa  6 00052 2361 00     97  	ldq	sp|untranslated_char	" ... into the Q
+                                    98  
+    000051  aa  6 00050 1151 00     99  	cmpa	sp|translated_lth		" see if there's a translation given
+    000052  0a   000057 6054 00    100  	tpnz	use_blank_for_translation	" ... no
+                                   101  
+    000053  aa  0 00106 1005 05    102  	mlr	(pr,al),(pr,ql)		" ... yes: put into the table
+    000054  aa   177777 600001     103  	desc9a	pr1|-1(3),1
+    000055  aa   300000 000001     104  	desc9a	pr3|0,1
+    000056  0a   000062 7100 00    105  	tra	continue
+                                   106  
+    000057                         107  use_blank_for_translation:			" put blank in for translation
+    000057  aa   040106 1004 00    108  	mlr	(),(pr,ql),fill(040)
+    000060  aa   000000 000000     109  	desc9a	0,0
+    000061  aa   300000 000001     110  	desc9a	pr3|0,1
+                                   111  
+    000062  aa   000001 1750 07    112  continue: sba	1,dl			" done?
+    000063  0a   000045 6054 00    113  	tpnz	build_table		" ... no
+                                   114  
+    000064  aa  7 00042 7101 20    115  	return				" ... yes
+                                   116  
+                                   117  
+                                   118  " Constants
+                                   119  
+    000065                         120  descriptor_mask:
+    000065  aa   000777 777777     121  	oct	000777777777		" gets length from a descriptor
+                                   122  
+    000066  aa   000001 002003     123  collate9:	vfd	o9/000,o9/001,o9/002,o9/003,o9/004,o9/005,o9/006,o9/007
+    000067  aa   004005 006007 
+    000070  aa   010011 012013     124  	vfd	o9/010,o9/011,o9/012,o9/013,o9/014,o9/015,o9/016,o9/017
+    000071  aa   014015 016017 
+    000072  aa   020021 022023     125  	vfd	o9/020,o9/021,o9/022,o9/023,o9/024,o9/025,o9/026,o9/027
+    000073  aa   024025 026027 
+    000074  aa   030031 032033     126  	vfd	o9/030,o9/031,o9/032,o9/033,o9/034,o9/035,o9/036,o9/037
+    000075  aa   034035 036037 
+    000076  aa   040041 042043     127  	vfd	o9/040,o9/041,o9/042,o9/043,o9/044,o9/045,o9/046,o9/047
+    000077  aa   044045 046047 
+    000100  aa   050051 052053     128  	vfd	o9/050,o9/051,o9/052,o9/053,o9/054,o9/055,o9/056,o9/057
+    000101  aa   054055 056057 
+    000102  aa   060061 062063     129  	vfd	o9/060,o9/061,o9/062,o9/063,o9/064,o9/065,o9/066,o9/067
+    000103  aa   064065 066067 
+    000104  aa   070071 072073     130  	vfd	o9/070,o9/071,o9/072,o9/073,o9/074,o9/075,o9/076,o9/077
+    000105  aa   074075 076077 
+    000106  aa   100101 102103     131  	vfd	o9/100,o9/101,o9/102,o9/103,o9/104,o9/105,o9/106,o9/107
+    000107  aa   104105 106107 
+    000110  aa   110111 112113     132  	vfd	o9/110,o9/111,o9/112,o9/113,o9/114,o9/115,o9/116,o9/117
+    000111  aa   114115 116117 
+    000112  aa   120121 122123     133  	vfd	o9/120,o9/121,o9/122,o9/123,o9/124,o9/125,o9/126,o9/127
+    000113  aa   124125 126127 
+    000114  aa   130131 132133     134  	vfd	o9/130,o9/131,o9/132,o9/133,o9/134,o9/135,o9/136,o9/137
+    000115  aa   134135 136137 
+    000116  aa   140141 142143     135  	vfd	o9/140,o9/141,o9/142,o9/143,o9/144,o9/145,o9/146,o9/147
+    000117  aa   144145 146147 
+    000120  aa   150151 152153     136  	vfd	o9/150,o9/151,o9/152,o9/153,o9/154,o9/155,o9/156,o9/157
+    000121  aa   154155 156157 
+    000122  aa   160161 162163     137  	vfd	o9/160,o9/161,o9/162,o9/163,o9/164,o9/165,o9/166,o9/167
+    000123  aa   164165 166167 
+    000124  aa   170171 172173     138  	vfd	o9/170,o9/171,o9/172,o9/173,o9/174,o9/175,o9/176,o9/177
+    000125  aa   174175 176177 
+    000126  aa   200201 202203     139  	vfd	o9/200,o9/201,o9/202,o9/203,o9/204,o9/205,o9/206,o9/207
+    000127  aa   204205 206207 
+    000130  aa   210211 212213     140  	vfd	o9/210,o9/211,o9/212,o9/213,o9/214,o9/215,o9/216,o9/217
+    000131  aa   214215 216217 
+    000132  aa   220221 222223     141  	vfd	o9/220,o9/221,o9/222,o9/223,o9/224,o9/225,o9/226,o9/227
+    000133  aa   224225 226227 
+    000134  aa   230231 232233     142  	vfd	o9/230,o9/231,o9/232,o9/233,o9/234,o9/235,o9/236,o9/237
+    000135  aa   234235 236237 
+    000136  aa   240241 242243     143  	vfd	o9/240,o9/241,o9/242,o9/243,o9/244,o9/245,o9/246,o9/247
+    000137  aa   244245 246247 
+    000140  aa   250251 252253     144  	vfd	o9/250,o9/251,o9/252,o9/253,o9/254,o9/255,o9/256,o9/257
+    000141  aa   254255 256257 
+    000142  aa   260261 262263     145  	vfd	o9/260,o9/261,o9/262,o9/263,o9/264,o9/265,o9/266,o9/267
+    000143  aa   264265 266267 
+    000144  aa   270271 272273     146  	vfd	o9/270,o9/271,o9/272,o9/273,o9/274,o9/275,o9/276,o9/277
+    000145  aa   274275 276277 
+    000146  aa   300301 302303     147  	vfd	o9/300,o9/301,o9/302,o9/303,o9/304,o9/305,o9/306,o9/307
+    000147  aa   304305 306307 
+    000150  aa   310311 312313     148  	vfd	o9/310,o9/311,o9/312,o9/313,o9/314,o9/315,o9/316,o9/317
+    000151  aa   314315 316317 
+    000152  aa   320321 322323     149  	vfd	o9/320,o9/321,o9/322,o9/323,o9/324,o9/325,o9/326,o9/327
+    000153  aa   324325 326327 
+    000154  aa   330331 332333     150  	vfd	o9/330,o9/331,o9/332,o9/333,o9/334,o9/335,o9/336,o9/337
+    000155  aa   334335 336337 
+    000156  aa   340341 342343     151  	vfd	o9/340,o9/341,o9/342,o9/343,o9/344,o9/345,o9/346,o9/347
+    000157  aa   344345 346347 
+    000160  aa   350351 352353     152  	vfd	o9/350,o9/351,o9/352,o9/353,o9/354,o9/355,o9/356,o9/357
+    000161  aa   354355 356357 
+    000162  aa   360361 362363     153  	vfd	o9/360,o9/361,o9/362,o9/363,o9/364,o9/365,o9/366,o9/367
+    000163  aa   364365 366367 
+    000164  aa   370371 372373     154  	vfd	o9/370,o9/371,o9/372,o9/373,o9/374,o9/375,o9/376,o9/377
+    000165  aa   374375 376377 
+    000166  aa   400401 402403     155  	vfd	o9/400,o9/401,o9/402,o9/403,o9/404,o9/405,o9/406,o9/407
+    000167  aa   404405 406407 
+    000170  aa   410411 412413     156  	vfd	o9/410,o9/411,o9/412,o9/413,o9/414,o9/415,o9/416,o9/417
+    000171  aa   414415 416417 
+    000172  aa   420421 422423     157  	vfd	o9/420,o9/421,o9/422,o9/423,o9/424,o9/425,o9/426,o9/427
+    000173  aa   424425 426427 
+    000174  aa   430431 432433     158  	vfd	o9/430,o9/431,o9/432,o9/433,o9/434,o9/435,o9/436,o9/437
+    000175  aa   434435 436437 
+    000176  aa   440441 442443     159  	vfd	o9/440,o9/441,o9/442,o9/443,o9/444,o9/445,o9/446,o9/447
+    000177  aa   444445 446447 
+    000200  aa   450451 452453     160  	vfd	o9/450,o9/451,o9/452,o9/453,o9/454,o9/455,o9/456,o9/457
+    000201  aa   454455 456457 
+    000202  aa   460461 462463     161  	vfd	o9/460,o9/461,o9/462,o9/463,o9/464,o9/465,o9/466,o9/467
+    000203  aa   464465 466467 
+    000204  aa   470471 472473     162  	vfd	o9/470,o9/471,o9/472,o9/473,o9/474,o9/475,o9/476,o9/477
+    000205  aa   474475 476477 
+    000206  aa   500501 502503     163  	vfd	o9/500,o9/501,o9/502,o9/503,o9/504,o9/505,o9/506,o9/507
+    000207  aa   504505 506507 
+    000210  aa   510511 512513     164  	vfd	o9/510,o9/511,o9/512,o9/513,o9/514,o9/515,o9/516,o9/517
+    000211  aa   514515 516517 
+    000212  aa   520521 522523     165  	vfd	o9/520,o9/521,o9/522,o9/523,o9/524,o9/525,o9/526,o9/527
+    000213  aa   524525 526527 
+    000214  aa   530531 532533     166  	vfd	o9/530,o9/531,o9/532,o9/533,o9/534,o9/535,o9/536,o9/537
+    000215  aa   534535 536537 
+    000216  aa   540541 542543     167  	vfd	o9/540,o9/541,o9/542,o9/543,o9/544,o9/545,o9/546,o9/547
+    000217  aa   544545 546547 
+    000220  aa   550551 552553     168  	vfd	o9/550,o9/551,o9/552,o9/553,o9/554,o9/555,o9/556,o9/557
+    000221  aa   554555 556557 
+    000222  aa   560561 562563     169  	vfd	o9/560,o9/561,o9/562,o9/563,o9/564,o9/565,o9/566,o9/567
+    000223  aa   564565 566567 
+    000224  aa   570571 572573     170  	vfd	o9/570,o9/571,o9/572,o9/573,o9/574,o9/575,o9/576,o9/577
+    000225  aa   574575 576577 
+    000226  aa   600601 602603     171  	vfd	o9/600,o9/601,o9/602,o9/603,o9/604,o9/605,o9/606,o9/607
+    000227  aa   604605 606607 
+    000230  aa   610611 612613     172  	vfd	o9/610,o9/611,o9/612,o9/613,o9/614,o9/615,o9/616,o9/617
+    000231  aa   614615 616617 
+    000232  aa   620621 622623     173  	vfd	o9/620,o9/621,o9/622,o9/623,o9/624,o9/625,o9/626,o9/627
+    000233  aa   624625 626627 
+    000234  aa   630631 632633     174  	vfd	o9/630,o9/631,o9/632,o9/633,o9/634,o9/635,o9/636,o9/637
+    000235  aa   634635 636637 
+    000236  aa   640641 642643     175  	vfd	o9/640,o9/641,o9/642,o9/643,o9/644,o9/645,o9/646,o9/647
+    000237  aa   644645 646647 
+    000240  aa   650651 652653     176  	vfd	o9/650,o9/651,o9/652,o9/653,o9/654,o9/655,o9/656,o9/657
+    000241  aa   654655 656657 
+    000242  aa   660661 662663     177  	vfd	o9/660,o9/661,o9/662,o9/663,o9/664,o9/665,o9/666,o9/667
+    000243  aa   664665 666667 
+    000244  aa   670671 672673     178  	vfd	o9/670,o9/671,o9/672,o9/673,o9/674,o9/675,o9/676,o9/677
+    000245  aa   674675 676677 
+    000246  aa   700701 702703     179  	vfd	o9/700,o9/701,o9/702,o9/703,o9/704,o9/705,o9/706,o9/707
+    000247  aa   704705 706707 
+    000250  aa   710711 712713     180  	vfd	o9/710,o9/711,o9/712,o9/713,o9/714,o9/715,o9/716,o9/717
+    000251  aa   714715 716717 
+    000252  aa   720721 722723     181  	vfd	o9/720,o9/721,o9/722,o9/723,o9/724,o9/725,o9/726,o9/727
+    000253  aa   724725 726727 
+    000254  aa   730731 732733     182  	vfd	o9/730,o9/731,o9/732,o9/733,o9/734,o9/735,o9/736,o9/737
+    000255  aa   734735 736737 
+    000256  aa   740741 742743     183  	vfd	o9/740,o9/741,o9/742,o9/743,o9/744,o9/745,o9/746,o9/747
+    000257  aa   744745 746747 
+    000260  aa   750751 752753     184  	vfd	o9/750,o9/751,o9/752,o9/753,o9/754,o9/755,o9/756,o9/757
+    000261  aa   754755 756757 
+    000262  aa   760761 762763     185  	vfd	o9/760,o9/761,o9/762,o9/763,o9/764,o9/765,o9/766,o9/767
+    000263  aa   764765 766767 
+    000264  aa   770771 772773     186  	vfd	o9/770,o9/771,o9/772,o9/773,o9/774,o9/775,o9/776,o9/777
+    000265  aa   774775 776777 
+                                   187  
+                                   188  	end
+ENTRY SEQUENCES
+     
+    000266  5a   000021 0000 00
+    000267  aa  7 00046 2721 20
+    000270  0a   000000 7100 00
+    000271  5a   000010 0000 00
+    000272  aa  7 00046 2721 20
+    000273  0a   000013 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000274  5a   000003 000000 
+    000275  5a   000035 600000 
+    000276  aa   000000 000000 
+    000277  55   000010 000002 
+    000300  5a   000002 400003 
+    000301  55   000006 000010 
+    000302  aa  004 155 166 164
+    000303  aa  137 000 000 000
+    000304  55   000021 000003 
+    000305  0a   000272 500000 
+    000306  55   000013 000003 
+    000307  aa  026 155 141 153         make_translation_table
+    000310  aa  145 137 164 162
+    000311  aa  141 156 163 154
+    000312  aa  141 164 151 157
+    000313  aa  156 137 164 141
+    000314  aa  142 154 145 000
+    000315  55   000026 000010 
+    000316  0a   000267 500000 
+    000317  55   000024 000003 
+    000320  aa  004 155 166 164         mvt_
+    000321  aa  137 000 000 000
+    000322  55   000002 000021 
+    000323  6a   000000 400002 
+    000324  55   000031 000003 
+    000325  aa  014 163 171 155         symbol_table
+    000326  aa  142 157 154 137
+    000327  aa  164 141 142 154
+    000330  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000331  aa   000000 000015 
+    000332  aa   000000 000000 
+    000333  aa   000000 000000 
+    000334  aa   000000 000000 
+    000335  aa   000000 000000 
+    000336  aa   000000 000000 
+    000337  5a   000021 000000 
+    000340  5a   000026 000000 
+    000341  aa   000000 000000 
+    000342  aa   000000 000000 
+    000343  5a   000010 000000 
+    000344  aa   000000 000000 
+    000345  aa   000000 000000 
+    000346  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000347  aa   000001 000000 
+    000350  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000351  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000274 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 131036 
+    000007  aa   676637 515625 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000137 
+    000020  aa   000000 000100 
+    000021  aa   000121 000116 
+    000022  aa   000131 000100 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   123143 150162 
+    000035  aa   157164 150056 
+    000036  aa   123171 163115 
+    000037  aa   141151 156164 
+    000040  aa   056155 040040 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040163 171155 
+    000046  aa   142157 154163 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000030 
+    000067  aa   310157 124776 
+    000070  aa   000000 131036 
+    000071  aa   676637 600000 
+    000072  aa   076165 144144          >udd>sm>ds>w>ml>mvt_.alm
+    000073  aa   076163 155076 
+    000074  aa   144163 076167 
+    000075  aa   076155 154076 
+    000076  aa   155166 164137 
+    000077  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          45    build_table              mvt_:          89,   93,  113.
+          66    collate9                 mvt_:          85,  123.
+          62    continue                 mvt_:         105,  112.
+          65    descriptor_mask          mvt_:          73,   80,  120.
+          13    make_translation_table   mvt_:          54,   61.
+           0    mvt_                     mvt_:          27,   29.
+          50    translated_lth           mvt_:          56,   74,   99.
+          52    untranslated_char        mvt_:          58,   96,   97.
+          51    untranslated_lth         mvt_:          57,   81,   88.
+          57    use_blank_for_translation      mvt_:         100,  107.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

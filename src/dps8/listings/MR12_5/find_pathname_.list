@@ -1,0 +1,357 @@
+	COMPILATION LISTING OF SEGMENT find_pathname_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0959.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 find_pathname_: proc (locp, strucp, code);
+       14 
+       15 /* This procedure returns pathname information about a given pointer. */
+       16 /* coded by M. Weaver  July 1973 */
+       17 /* last modified by M. Weaver 27 November 1973 */
+       18 /* Modified to use include file and clean up April 81 Benson i Margulies */
+       19 
+       20 	declare (locp, segp, strucp)	 ptr;
+       21 
+       22 	declare (code, ecode)	 fixed bin (35);
+       23 	declare error_table_$oldobj	 ext fixed bin (35);
+       24 	declare (lng, highct, hcsct, cur_lab) fixed bin;
+       25 
+       26 	declare map		 bit (1) aligned;
+       27 
+       28 	declare temp		 char (6) aligned;
+       29 	declare aligned_component_ename character (32) aligned;
+       30 
+       31 	declare (bin, baseno, byte, rel, null, ptr) builtin;
+       32 
+       33 	declare convert_binary_integer_$octal_string entry (fixed bin (35)) returns (char (13) var);
+       34 	declare ring0_get_$name	 entry (char (*), char (*), ptr, fixed bin (35));
+       35 	declare find_condition_info_	 entry (ptr, ptr, fixed bin (35));
+       36 	declare continue_to_signal_	 entry (fixed bin (35));
+       37 	declare hcs_$fs_get_path_name	 entry (ptr, char (*), fixed bin, char (*), fixed bin (35));
+       38 	declare hcs_$high_low_seg_count entry (fixed bin, fixed bin);
+       39 	declare interpret_bind_map_	 entry (ptr, char (32) aligned, fixed bin (18), fixed bin (35));
+       40 	declare get_pdir_		 entry () returns (char (168));
+       41 	declare any_other		 condition;
+       42 
+  1     1 /* BEGIN INCLUDE FILE find_pathname_info.incl.pl1 BIM April 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare find_pathname_info_ptr pointer;
+  1     5 
+  1     6      declare 1 find_pathname_info   aligned based (find_pathname_info_ptr),
+  1     7 	     2 strings	      unaligned,
+  1     8 	       3 component_ename  character (32),
+  1     9 	       3 adjusted_offset  character (7),
+  1    10 	       3 dirname	      character (168),
+  1    11 	       3 gt_char	      character (1),
+  1    12 	       3 real_ename	      character (32),
+  1    13 	       3 real_offset      character (7),
+  1    14 	       3 pdir_string      character (17),
+  1    15 	       3 offset_msg	      character (40),
+  1    16 	     2 bin_adjusted_off   fixed bin (18),
+  1    17 	     2 bin_real_off	      fixed bin (18);
+  1    18 
+  1    19 /* END INCLUDE FILE find_pathname_info */
+       43 
+       44 
+       45 /* initialize structure so it will always be printable */
+       46 
+       47 	find_pathname_info_ptr = strucp;
+       48 	component_ename = "";
+       49 	adjusted_offset = "";
+       50 	dirname = "";
+       51 	gt_char = "";
+       52 	real_ename = "";
+       53 	pdir_string = "";
+       54 	offset_msg = "";
+       55 	bin_adjusted_off = 0;
+       56 	bin_real_off = bin (rel (locp), 18);
+       57 	real_offset = "|" || convert_binary_integer_$octal_string (bin (bin_real_off, 35));
+       58 
+       59 /* see if segment is in ring 0; if so, we can't get name from KST */
+       60 
+       61 	segp = ptr (locp, 0);
+       62 	call hcs_$high_low_seg_count (highct, hcsct);	/* find out which segs are in r0 */
+       63 	if bin (baseno (segp), 18) <= hcsct then do;
+       64 		cur_lab = 1;			/* indicates return loc to handler */
+       65 		on any_other call catch;
+       66 		call ring0_get_$name (dirname, real_ename, segp, code);
+       67 		revert any_other;
+       68 		if code ^= 0 then go to ret_segno;	/* return something for name */
+       69 		if (dirname ^= "") & (dirname ^= ">") then gt_char = ">";
+       70 		return;
+       71 	     end;
+       72 
+       73 /* pick up pathname */
+       74 
+       75 	call hcs_$fs_get_path_name (segp, dirname, lng, real_ename, code);
+       76 	if code ^= 0 then do;			/* return something for name */
+       77 finish (1):
+       78 ret_segno:	real_ename = convert_binary_integer_$octal_string (bin (bin (baseno (segp), 18), 35));
+       79 		return;
+       80 	     end;
+       81 
+       82 /* get component name from bindmap it it exists; be prepared for access fault */
+       83 
+       84 	map = "0"b;				/* indicates have not looked at bind map */
+       85 	cur_lab = 2;				/* indicates return loc for handler */
+       86 	on any_other call catch;
+       87 	call interpret_bind_map_ (locp, aligned_component_ename, bin_adjusted_off, ecode);
+       88 	if ecode = 0
+       89 	then component_ename = aligned_component_ename;
+       90 	map = "1"b;				/* id not fault */
+       91 	revert any_other;
+       92 
+       93 /* fill in rest of items */
+       94 finish (2):
+       95 	if dirname = get_pdir_ () then do;		/* don't print messy string */
+       96 		pdir_string = " (in process dir)";
+       97 		dirname = "";
+       98 	     end;
+       99 
+      100 	if (dirname ^= "") & (dirname ^= ">") then gt_char = ">";
+      101 
+      102 	if (ecode = error_table_$oldobj) | ^map then
+      103 	     offset_msg = byte (10 /* NL */) || "(offset is relative to base of segment)";
+      104 
+      105 	if (ecode = 0) & map then do;			/* get compiler error when put all on 1 line */
+      106 		temp = convert_binary_integer_$octal_string (bin (bin_adjusted_off, 35));
+      107 		adjusted_offset = "|" || temp;
+      108 	     end;
+      109 
+      110 	return;
+      111 
+      112 catch: procedure;
+  2     1 /* BEGIN INCLUDE FILE ... condition_info.incl.pl1 */
+  2     2 
+  2     3 /* Structure for find_condition_info_.
+  2     4*
+  2     5*   Written 1-Mar-79 by M. N. Davidoff.
+  2     6**/
+  2     7 
+  2     8 /* automatic */
+  2     9 
+  2    10      declare condition_info_ptr     pointer;
+  2    11 
+  2    12 /* based */
+  2    13 
+  2    14      declare 1 condition_info	      aligned based (condition_info_ptr),
+  2    15 	     2 mc_ptr	      pointer,		/* pointer to machine conditions at fault time */
+  2    16 	     2 version	      fixed binary,		/* Must be 1 */
+  2    17 	     2 condition_name     char (32) varying,	/* name of condition */
+  2    18 	     2 info_ptr	      pointer,		/* pointer to the condition data structure */
+  2    19 	     2 wc_ptr	      pointer,		/* pointer to wall crossing machine conditions */
+  2    20 	     2 loc_ptr	      pointer,		/* pointer to location where condition occured */
+  2    21 	     2 flags	      unaligned,
+  2    22 	       3 crawlout	      bit (1),		/* on if condition occured in lower ring */
+  2    23 	       3 pad1	      bit (35),
+  2    24 	     2 pad2	      bit (36),
+  2    25 	     2 user_loc_ptr	      pointer,		/* ptr to most recent nonsupport loc before condition occurred */
+  2    26 	     2 pad3	      (4) bit (36);
+  2    27 
+  2    28 /* internal static */
+  2    29 
+  2    30      declare condition_info_version_1
+  2    31 			      fixed binary internal static options (constant) initial (1);
+  2    32 
+  2    33 /* END INCLUDE FILE ... condition_info.incl.pl1 */
+      113 
+      114 	declare 1 CI		 aligned like condition_info;
+      115 
+      116 	CI.version = condition_info_version_1;
+      117 	on any_other go to finish (cur_lab);
+      118 	call find_condition_info_ (null (), addr (CI), (0));
+      119 	revert any_other;
+      120 	if /* tree */ CI.condition_name ^= "quit"
+      121 	then if CI.condition_name ^= "alrm"
+      122 	     then if CI.condition_name ^= "cput"
+      123 		then if CI.condition_name ^= "storage"
+      124 		     then if CI.condition_name ^= "finish"
+      125 			then if CI.condition_name ^= "program_interrupt"
+      126 			     then go to finish (cur_lab); /* probably access fault */
+      127 
+      128 	call continue_to_signal_ (0);
+      129 	return;
+      130      end catch;
+      131 
+      132 
+      133 
+      134      end find_pathname_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.0  find_pathname_.pl1                >special_ldd>install>MR12.3-1114>find_pathname_.pl1
+43           1    07/18/81  1100.0  find_pathname_info.incl.pl1       >ldd>include>find_pathname_info.incl.pl1
+113          2    06/28/79  1204.8  condition_info.incl.pl1           >ldd>include>condition_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CI                              000100 automatic       structure                level 1 dcl 114 set ref 118 118
+adjusted_offset          10            based           char(7)                  level 3 packed packed unaligned dcl 1-6 set ref 49*
+                                                                                  107*
+aligned_component_ename         000112 automatic       char(32)                 dcl 29 set ref 87* 88
+any_other                       000122 stack reference condition                dcl 41 ref 65 67 86 91 117 119
+baseno                                                 builtin function         dcl 31 ref 63 77 77
+bin                                                    builtin function         dcl 31 ref 56 57 57 63 77 77 77 77 106 106
+bin_adjusted_off        114            based           fixed bin(18,0)          level 2 dcl 1-6 set ref 55* 87* 106 106
+bin_real_off            115            based           fixed bin(18,0)          level 2 dcl 1-6 set ref 56* 57 57
+byte                                                   builtin function         dcl 31 ref 102
+code                                   parameter       fixed bin(35,0)          dcl 22 set ref 13 66* 68 75* 76
+component_ename                        based           char(32)                 level 3 packed packed unaligned dcl 1-6 set ref 48*
+                                                                                  88*
+condition_info                         based           structure                level 1 dcl 2-14
+condition_info_version_1               constant        fixed bin(17,0)          initial dcl 2-30 ref 116
+condition_name            3     000100 automatic       varying char(32)         level 2 dcl 114 set ref 120 120 120 120 120 120
+continue_to_signal_             000020 constant        entry                    external dcl 36 ref 128
+convert_binary_integer_$octal_string
+                                000012 constant        entry                    external dcl 33 ref 57 77 106
+cur_lab                         000106 automatic       fixed bin(17,0)          dcl 24 set ref 64* 85* 117 120
+dirname                  11(27)        based           char(168)                level 3 packed packed unaligned dcl 1-6 set ref 50*
+                                                                                  66* 69 69 75* 94 97* 100 100
+ecode                           000102 automatic       fixed bin(35,0)          dcl 22 set ref 87* 88 102 105
+error_table_$oldobj             000010 external static fixed bin(35,0)          dcl 23 ref 102
+find_condition_info_            000016 constant        entry                    external dcl 35 ref 118
+find_pathname_info                     based           structure                level 1 dcl 1-6
+find_pathname_info_ptr          000130 automatic       pointer                  dcl 1-4 set ref 47* 48 49 50 51 52 53 54 55 56 57 57
+                                                                                  57 66 66 69 69 69 75 75 77 87 88 94 96 97 100 100
+                                                                                  100 102 106 106 107
+get_pdir_                       000030 constant        entry                    external dcl 40 ref 94
+gt_char                  63(27)        based           char(1)                  level 3 packed packed unaligned dcl 1-6 set ref 51*
+                                                                                  69* 100*
+hcs_$fs_get_path_name           000022 constant        entry                    external dcl 37 ref 75
+hcs_$high_low_seg_count         000024 constant        entry                    external dcl 38 ref 62
+hcsct                           000105 automatic       fixed bin(17,0)          dcl 24 set ref 62* 63
+highct                          000104 automatic       fixed bin(17,0)          dcl 24 set ref 62*
+interpret_bind_map_             000026 constant        entry                    external dcl 39 ref 87
+lng                             000103 automatic       fixed bin(17,0)          dcl 24 set ref 75*
+locp                                   parameter       pointer                  dcl 20 set ref 13 56 61 87*
+map                             000107 automatic       bit(1)                   dcl 26 set ref 84* 90* 102 105
+null                                                   builtin function         dcl 31 ref 118 118
+offset_msg              102            based           char(40)                 level 3 packed packed unaligned dcl 1-6 set ref 54*
+                                                                                  102*
+pdir_string              75(27)        based           char(17)                 level 3 packed packed unaligned dcl 1-6 set ref 53*
+                                                                                  96*
+ptr                                                    builtin function         dcl 31 ref 61
+real_ename               64            based           char(32)                 level 3 packed packed unaligned dcl 1-6 set ref 52*
+                                                                                  66* 75* 77*
+real_offset              74            based           char(7)                  level 3 packed packed unaligned dcl 1-6 set ref 57*
+rel                                                    builtin function         dcl 31 ref 56
+ring0_get_$name                 000014 constant        entry                    external dcl 34 ref 66
+segp                            000100 automatic       pointer                  dcl 20 set ref 61* 63 66* 75* 77 77
+strings                                based           structure                level 2 packed packed unaligned dcl 1-6
+strucp                                 parameter       pointer                  dcl 20 ref 13 47
+temp                            000110 automatic       char(6)                  dcl 28 set ref 106* 107
+version                   2     000100 automatic       fixed bin(17,0)          level 2 dcl 114 set ref 116*
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+condition_info_ptr                     automatic       pointer                  dcl 2-10
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+catch                           000537 constant        entry                    internal dcl 112 ref 65 86
+find_pathname_                  000057 constant        entry                    external dcl 13
+finish                          000000 constant        label                    array(2) dcl 77 ref 117 120
+ret_segno                       000331 constant        label                    dcl 77 ref 68
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 118 118
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1066        1120     672        1076
+Length      1346     672        32         212     173           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+find_pathname_                      186 external procedure  is an external procedure.  
+on unit on line 65                   64 on unit               
+on unit on line 86                   64 on unit               
+catch                               110 internal procedure  enables or reverts conditions.  
+on unit on line 117                  64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+catch                    000100 CI                          catch
+find_pathname_           000100 segp                        find_pathname_
+                         000102 ecode                       find_pathname_
+                         000103 lng                         find_pathname_
+                         000104 highct                      find_pathname_
+                         000105 hcsct                       find_pathname_
+                         000106 cur_lab                     find_pathname_
+                         000107 map                         find_pathname_
+                         000110 temp                        find_pathname_
+                         000112 aligned_component_ename     find_pathname_
+                         000130 find_pathname_info_ptr      find_pathname_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        call_int_other      return_mac          tra_ext_1
+enable_op           shorten_stack       ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+continue_to_signal_           convert_binary_integer_$octal_string                        find_condition_info_
+get_pdir_                     hcs_$fs_get_path_name         hcs_$high_low_seg_count       interpret_bind_map_
+ring0_get_$name
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$oldobj
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000053        47 000064        48 000070        49 000073        50 000076        51 000101        52 000103
+     53 000106        54 000111        55 000114        56 000115        57 000122        61 000151        62 000156
+     63 000167        64 000174        65 000176        66 000220        67 000251        68 000252        69 000255
+     70 000270        75 000271        76 000326        77 000331        79 000353        84 000354        85 000355
+     86 000357        87 000401        88 000420        90 000426        91 000430        94 000431        96 000445
+     97 000450       100 000453       102 000465       105 000504       106 000510       107 000527       110 000535
+    112 000536       116 000544       117 000546       118 000570       119 000610       120 000611       128 000654
+    129 000664
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

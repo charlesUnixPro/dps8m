@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_scu.h"
 #include "dps8_utils.h"
 
 // XXX Use this when we assume there is only a single unit
@@ -30,6 +31,8 @@ UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
+static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
+
 /*! CPU modifier list */
 MTAB cpu_mod[] = {
     /* { UNIT_V_UF, 0, "STD", "STD", NULL }, */
@@ -43,6 +46,9 @@ MTAB cpu_mod[] = {
       cpu_show_config, /* display routine */
       NULL          /* value descriptor */
     },
+    { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
+      0, "STACK", NULL,
+      NULL, cpu_show_stack, NULL },
     { 0 }
 };
 
@@ -63,14 +69,17 @@ static DEBTAB cpu_dt[] = {
     { "ADDRMOD",    DBG_ADDRMOD     },
     { "APPENDING",  DBG_APPENDING   },
 
+    { "NOTIFY",     DBG_NOTIFY      },
+    { "INFO",       DBG_INFO        },
+    { "ERR",        DBG_ERR         },
     { "WARN",       DBG_WARN        },
     { "DEBUG",      DBG_DEBUG       },
-    { "INFO",       DBG_INFO        },
-    { "NOTIFY",     DBG_NOTIFY      },
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
     { "FAULT",      DBG_FAULT       },
-    { "INTR",       DBG_INTR       },
+    { "INTR",       DBG_INTR        },
+
+    // { "CAC",       DBG_CAC          },
 
     { NULL,         0               }
 };
@@ -84,8 +93,9 @@ const char *sim_stop_messages[] = {
     "Invalid Opcode",          // STOP_INVOP
     "Stop code - 5",           // STOP_5
     "BUG",                     // STOP_BUG
-    "WARNING"                  // STOP_WARN
+    "WARNING",                  // STOP_WARN
     "Fault cascade",           // STOP_FLT_CASCADE
+    "Halt",                    // STOP_HALT
 };
 
 /* End of simh interface */
@@ -136,6 +146,7 @@ const char *sim_stop_messages[] = {
  */
 
 int is_eis[1024];    // hack
+int xec_side_effect; // hack
 
 void init_opcodes (void)
 {
@@ -206,6 +217,8 @@ t_stat dpsCmd_InitSDWAM ()
     if (!sim_quiet) sim_printf("zero-initialized SDWAM\n");
     return SCPE_OK;
 }
+
+// Assumes unpaged DSBR
 
 _sdw0 *fetchSDW(word15 segno)
 {
@@ -278,15 +291,95 @@ t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
-    sim_printf("*** Descriptor Segment Table ***\n");
-    for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
-    {
-        sim_printf("Seg %d - ", segno);
-        _sdw0 *s = fetchSDW(segno);
-        printSDW0(s);
-        
-        //free(s); no longer needed
+    if (DSBR.U) {
+        sim_printf("*** Descriptor Segment Table ***\n");
+        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
+        {
+            sim_printf("Seg %d - ", segno);
+            _sdw0 *s = fetchSDW(segno);
+            printSDW0(s);
+            
+            //free(s); no longer needed
+        }
+    } else {
+        sim_printf("*** Descriptor Segment Table (Paged) ***\n");
+        sim_printf("Descriptor segment pages\n");
+        for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 512)
+        {
+            word24 y1 = (2 * segno) % 1024;
+            word24 x1 = (2 * segno - y1) / 1024;
+            word36 PTWx1;
+            core_read ((DSBR . ADDR + x1) & PAMASK, & PTWx1);
+
+            struct _ptw0 PTW1;
+            PTW1.ADDR = GETHI(PTWx1);
+            PTW1.U = TSTBIT(PTWx1, 9);
+            PTW1.M = TSTBIT(PTWx1, 6);
+            PTW1.F = TSTBIT(PTWx1, 2);
+            PTW1.FC = PTWx1 & 3;
+           
+            if (PTW1.F == 0)
+                continue;
+            sim_printf ("%06o  Addr %06o U %o M %o F %o FC %o\n", 
+                        segno, PTW1.ADDR, PTW1.U, PTW1.M, PTW1.F, PTW1.FC);
+            sim_printf ("    Target segment page table\n");
+            for (word15 tspt = 0; tspt < 512; tspt ++)
+            {
+                word36 SDWeven, SDWodd;
+                core_read2(((PTW1 . ADDR << 6) + tspt * 2) & PAMASK, & SDWeven, & SDWodd);
+                struct _sdw0 SDW0;
+                // even word
+                SDW0.ADDR = (SDWeven >> 12) & PAMASK;
+                SDW0.R1 = (SDWeven >> 9) & 7;
+                SDW0.R2 = (SDWeven >> 6) & 7;
+                SDW0.R3 = (SDWeven >> 3) & 7;
+                SDW0.F = TSTBIT(SDWeven, 2);
+                SDW0.FC = SDWeven & 3;
+
+                // odd word
+                SDW0.BOUND = (SDWodd >> 21) & 037777;
+                SDW0.R = TSTBIT(SDWodd, 20);
+                SDW0.E = TSTBIT(SDWodd, 19);
+                SDW0.W = TSTBIT(SDWodd, 18);
+                SDW0.P = TSTBIT(SDWodd, 17);
+                SDW0.U = TSTBIT(SDWodd, 16);
+                SDW0.G = TSTBIT(SDWodd, 15);
+                SDW0.C = TSTBIT(SDWodd, 14);
+                SDW0.EB = SDWodd & 037777;
+
+                if (SDW0.F == 0)
+                    continue;
+                sim_printf ("    %06o Addr %06o %o,%o,%o F%o BOUND %06o %c%c%c%c%c\n",
+                          tspt, SDW0.ADDR, SDW0.R1, SDW0.R2, SDW0.R3, SDW0.F, SDW0.BOUND, SDW0.R ? 'R' : '.', SDW0.E ? 'E' : '.', SDW0.W ? 'W' : '.', SDW0.P ? 'P' : '.', SDW0.U ? 'U' : '.');
+                //for (word18 offset = 0; ((offset >> 4) & 037777) <= SDW0 . BOUND; offset += 1024)
+                if (SDW0.U == 0)
+                {
+                    for (word18 offset = 0; offset < 16 * (SDW0.BOUND + 1); offset += 1024)
+                    {
+                        word24 y2 = offset % 1024;
+                        word24 x2 = (offset - y2) / 1024;
+
+                        // 10. Fetch the target segment PTW(x2) from SDW(segno).ADDR + x2.
+
+                        word36 PTWx2;
+                        core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
+
+                        struct _ptw0 PTW2;
+                        PTW2.ADDR = GETHI(PTWx2);
+                        PTW2.U = TSTBIT(PTWx2, 9);
+                        PTW2.M = TSTBIT(PTWx2, 6);
+                        PTW2.F = TSTBIT(PTWx2, 2);
+                        PTW2.FC = PTWx2 & 3;
+
+                         sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 
+                                     offset, PTW2.ADDR, PTW2.U, PTW2.M, PTW2.F, PTW2.FC);
+
+                      }
+                  }
+            }
+        }
     }
+
     return SCPE_OK;
 }
 
@@ -486,7 +579,15 @@ t_stat cpu_reset (DEVICE *dptr)
     if (M == NULL)
         return SCPE_MEM;
     
-    rIC = 0;
+    //memset (M, -1, MEMSIZE * sizeof (word36));
+
+    // Fill DPS8 memory with zeros, plus a flag only visible to the emulator
+    // marking the memory as uninitialized.
+
+    for (int i = 0; i < MEMSIZE; i ++)
+      M [i] = MEM_UNINITIALIZED;
+
+    PPR.IC = 0;
     rA = 0;
     rQ = 0;
     XECD = 0;
@@ -566,15 +667,9 @@ word18 rX[8];   /*!< index */
 //word18 rBAR;  /*!< base address [map: BAR, 18 0's] */
 /* format: 9b base, 9b bound */
 
-int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o rIC fetch */
+int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o PPR.IC fetch */
 word36 XECD1; /*!< XEC instr / XED instr#1 */
 word36 XECD2; /*!< XED instr#2 */
-
-
-//word18 rIC; /*!< instruction counter */
-// same as PPR.IC
- //word18 rIR; /*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
-//IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
 
 
 word27 rTR; /*!< timer [map: TR, 9 0's] */
@@ -622,8 +717,6 @@ word8 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
 //word36 hAE[16];/*!< history: appending unit, even word */
 //word36 hAO[16];/*!< history: appending unit, odd word */
 //word36 rSW[5]; /*!< switches */
-
-//word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
 
 // end h6180 stuff
 
@@ -673,7 +766,7 @@ static BITFIELD dps8_IR_bits[] = {
 };
 
 static REG cpu_reg[] = {
-    { ORDATA (IC, rIC, VASIZE) },
+    { ORDATA (IC, PPR.IC, VASIZE) },
     //{ ORDATA (IR, rIR, 18) },
     { ORDATADF (IR, rIR, 18, "Indicator Register", dps8_IR_bits) },
     
@@ -721,15 +814,59 @@ static REG cpu_reg[] = {
     
     //{ ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
     
-    { ORDATA (PR0, PR[0], 18) },
-    { ORDATA (PR1, PR[1], 18) },
-    { ORDATA (PR2, PR[2], 18) },
-    { ORDATA (PR3, PR[3], 18) },
-    { ORDATA (PR4, PR[4], 18) },
-    { ORDATA (PR5, PR[5], 18) },
-    { ORDATA (PR6, PR[6], 18) },
-    { ORDATA (PR7, PR[7], 18) },
+    { ORDATA (PR0.SNR, PR[0].SNR, 18) },
+    { ORDATA (PR1.SNR, PR[1].SNR, 18) },
+    { ORDATA (PR2.SNR, PR[2].SNR, 18) },
+    { ORDATA (PR3.SNR, PR[3].SNR, 18) },
+    { ORDATA (PR4.SNR, PR[4].SNR, 18) },
+    { ORDATA (PR5.SNR, PR[5].SNR, 18) },
+    { ORDATA (PR6.SNR, PR[6].SNR, 18) },
+    { ORDATA (PR7.SNR, PR[7].SNR, 18) },
     
+    { ORDATA (PR0.RNR, PR[0].RNR, 18) },
+    { ORDATA (PR1.RNR, PR[1].RNR, 18) },
+    { ORDATA (PR2.RNR, PR[2].RNR, 18) },
+    { ORDATA (PR3.RNR, PR[3].RNR, 18) },
+    { ORDATA (PR4.RNR, PR[4].RNR, 18) },
+    { ORDATA (PR5.RNR, PR[5].RNR, 18) },
+    { ORDATA (PR6.RNR, PR[6].RNR, 18) },
+    { ORDATA (PR7.RNR, PR[7].RNR, 18) },
+    
+    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18) },
+    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18) },
+    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18) },
+    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18) },
+    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18) },
+    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18) },
+    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18) },
+    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18) },
+    
+    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18) },
+    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18) },
+    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18) },
+    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18) },
+    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18) },
+    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18) },
+    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18) },
+    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18) },
+    
+    { ORDATA (PR0.WORDNO, PR[0].WORDNO, 18) },
+    { ORDATA (PR1.WORDNO, PR[1].WORDNO, 18) },
+    { ORDATA (PR2.WORDNO, PR[2].WORDNO, 18) },
+    { ORDATA (PR3.WORDNO, PR[3].WORDNO, 18) },
+    { ORDATA (PR4.WORDNO, PR[4].WORDNO, 18) },
+    { ORDATA (PR5.WORDNO, PR[5].WORDNO, 18) },
+    { ORDATA (PR6.WORDNO, PR[6].WORDNO, 18) },
+    { ORDATA (PR7.WORDNO, PR[7].WORDNO, 18) },
+    
+    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18) },
+    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18) },
+    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18) },
+    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18) },
+    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18) },
+    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18) },
+    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18) },
+    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18) },
     
     /*
      { ORDATA (EBR, ebr, EBR_N_EBR) },
@@ -838,7 +975,7 @@ ctl_unit_data_t cu;
 // display or modify memory can invoke much the APU. Howeveer, we don't
 // want interactive attempts to access non-existant memory locations
 // to register a fault.
-flag_t fault_gen_no_fault;
+bool fault_gen_no_fault;
 
 int stop_reason; // sim_instr return value for JMP_STOP
 
@@ -907,9 +1044,10 @@ static int simh_hooks (void)
     // breakpoint? 
     if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E')))
         return STOP_BKPT; /* stop simulation */
-
     return reason;
   }       
+
+t_stat doIEFPLoop();
 
 //
 // Okay, lets treat this as a state machine
@@ -971,6 +1109,7 @@ static int simh_hooks (void)
 static word36 instr_buf [2];
 static enum { IB_EMPTY, IB_SINGLE, IB_PAIR } instr_buf_state;
 
+// This is part of the simh interface
 t_stat sim_instr (void)
   {
 #ifdef USE_IDLE
@@ -1007,6 +1146,7 @@ t_stat sim_instr (void)
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
+<<<<<<< HEAD
         case JMP_INTR:
             goto jmpIntr;
 #endif
@@ -1054,7 +1194,7 @@ t_stat sim_instr (void)
                 cu_safe_store ();
 
                 // Temporary absolute mode
-                set_addr_mode (TEMPORARY_ABSOLUTE_mode);
+                set_TEMPORARY_ABSOLUTE_mode ();
 
                 // Set to ring 0
                 PPR . PRR = 0;
@@ -1141,7 +1281,7 @@ t_stat sim_instr (void)
 
                 if (! cu . rpt)
                   {
-                    processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
+                    processorCycle = INSTRUCTION_FETCH;
 
                     // fetch next instruction into current instruction struct
                     ci = fetchInstruction(rIC, currentInstruction);
@@ -1192,7 +1332,7 @@ t_stat sim_instr (void)
                           doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
                       }
                     // repeat allowed for this instruction?
-                    if (ci->iwb->flags & NO_RPT)
+                    if (ci->info->flags & NO_RPT)
                       doFault(ci, FAULT_IPR, 0, "no rpt allowed for instruction");
                     // For the first execution of the repeated instruction: 
                     // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
@@ -1311,8 +1451,8 @@ t_stat sim_instr (void)
                 else // !rpt
                   {
                     rIC ++;
-                    if (ci->iwb->ndes > 0)
-                      rIC += ci->iwb->ndes;
+                    if (ci->info->ndes > 0)
+                      rIC += ci->info->ndes;
                   }
                 cpu . cycle = FETCH_cycle;
               }
@@ -1351,12 +1491,12 @@ t_stat sim_instr (void)
 #endif
 
                 // Temporary absolute mode
-                set_addr_mode (TEMPORARY_ABSOLUTE_mode);
+                set_TEMPORARY_ABSOLUTE_mode ();
 
                 // Set to ring 0
                 PPR . PRR = 0;
 
-                int fltAddress = (rFAULTBASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
+                int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
                 word24 addr = fltAddress + _faults [cpu . faultNumber] . fault_address;    // absolute address of fault YPair
   
                 // XXX using core_read2 means decode instruction isn't used
@@ -1688,269 +1828,28 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 //    return ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)));
 //}
 
-PRIVATE
-t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
-{
-    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
-    
-    rY = addr;
-    TPR.CA = addr;  //XXX for APU
-    
-    switch (accessType)
-    {
-        case InstructionFetch:
-            core_read(addr, dat);
-            break;
-        default:
-            //if (i->a)
-                doAppendCycle(i, accessType, Tag, -1, dat);
-            //else
-            //    core_read(addr, dat);
-            break;
-    }
-    return SCPE_OK;
-}
-
-
-/*!
- * the Read, Write functions access main memory, but optionally calls the appending unit to
- * determine the actual memory address
- */
-t_stat Read(DCDstruct *i, word24 addr, word36 *dat, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-         {
-        rY = addr;
-        TPR.CA = addr;  //XXX for APU
-
-
-        //switch (processorAddressingMode)
-        switch (get_addr_mode())
-        {
-            case APPEND_MODE:
-APPEND_MODE:;
-                doAppendCycle(i, acctyp, Tag, -1, dat);
-                break;
-            case ABSOLUTE_MODE:
-                
-#if 0
-                if (switches . degenerate_mode)
-                  {
-                    setDegenerate ();
-                    doAppendCycle(i, acctyp, Tag, -1, dat);
-                    if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                        goto APPEND_MODE;
-                    break;
-                  }
-#endif
-//#if OLDWAY
-                // HWR 17 Dec 13. EXPERIMENTAL. an APU read from ABSOLUTE mode?
-                // what about MW EIS that use PR addressing, Hm...? Ok, still needs some work
-                
-                if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
-                    doAppendCycle(i, acctyp, Tag, -1, dat);
-                else
-                    core_read(addr, dat);
-                if (acctyp == IndirectRead && DOITSITP(*dat, Tag))
-                    goto APPEND_MODE;
-                
-//#endif
-                //doAppendCycle(i, acctyp, Tag, -1, dat);
-
-                break;
-            case BAR_MODE:
-                // XXX probably not right.
-                rY = getBARaddress(addr);
-                finalAddress = rY;
-                
-                core_read(rY, dat);
-                return SCPE_OK;
-            default:
-                sim_printf("Read(): acctyp\n");
-                break;
-        }
-        
-    }
-    cpu.read_addr = addr;
-    
-    return SCPE_OK;
-}
-
-PRIVATE
-t_stat doAbsoluteWrite(DCDstruct *i, word24 addr, word36 dat, MemoryAccessType accessType, int32 Tag)
-{
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "doAbsoluteWrite (Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
-    
-    switch (accessType)
-    {
-        case DataWrite:
-        case OperandWrite:
-            //if (i->a)
-                doAppendCycle(i, accessType, Tag, -1, NULL);
-            //else
-            //    core_write(addr, dat);
-            //break;
-            
-        case APUDataWrite:      // append operations from absolute mode
-        case APUOperandWrite:
-            doAppendCycle(i, accessType, Tag, -1, NULL);
-            break;
-            
-        default:
-            sim_printf("doAbsoluteWrite(Entry): unsupported accessType=%d\n", accessType);
-            break;
-    }
-    doAppendCycle(i, accessType, Tag, -1, NULL);
-
-    return SCPE_OK;
-}
-
-
-t_stat Write (DCDstruct *i, word24 addr, word36 dat, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {
-        rY = addr;
-        TPR.CA = addr;  //XXX for APU
-        
-       
-        //switch (processorAddressingMode)
-        switch (get_addr_mode())
-        {
-            case APPEND_MODE:
-#ifndef QUIET_UNUSED
-APPEND_MODE:;
-#endif
-                doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
-                break;
-            case ABSOLUTE_MODE:
-
-#if 0
-                if (switches . degenerate_mode)
-                  {
-                    setDegenerate ();
-                    doAppendCycle(i, acctyp, Tag, dat, NULL);    // SXXX should we have a tag value here for RI, IR ITS, ITP, etc or is 0 OK
-                    // XXX what kind of dataop can put a write operation into appending mode?
-                    //if (DOITSITP(dat, Tag))
-                    //    goto APPEND_MODE;
-                    break;
-                  }
-#endif
-//#if OLD_WAY
-                // HWR 17 Dec 13. EXPERIMENTAL. an APU write from ABSOLUTE mode?
-                if (i->a && !(i->iwb->flags & IGN_B29) && i->iwb->ndes == 0)
-                    doAppendCycle(i, acctyp, Tag, dat, NULL);
-                else
-                    core_write(addr, dat);
-                //if (doITSITP(dat, GET_TD(Tag)))
-                // XXX what kind of dataop can put a write operation into appending mode?
-                //if (DOITSITP(dat, Tag))
-                //{
-                //   processorAddressingMode = APPEND_MODE;
-                //    goto APPEND_MODE;   // ???
-                //}
-//#endif
-                // doAppendCycle(i, acctyp, Tag, dat, NULL);
-                break;
-            case BAR_MODE:
-                // XXX probably not right.
-                rY = getBARaddress(addr);
-                core_write(rY, dat);
-                return SCPE_OK;
-            default:
-                sim_printf("Write(): acctyp\n");
-                break;
-        }
-        
-        
-    }
-    return SCPE_OK;
-}
-
-t_stat Read2 (DCDstruct *i, word24 addr, word36 *datEven, word36 *datOdd, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {        
-        // need to check for even/odd?
-        if (addr & 1)
-        {
-            addr &= ~1; /* make it an even address */
-            addr &= DMASK;
-        }
-        Read(i, addr + 0, datEven, acctyp, Tag);
-        Read(i, addr + 1, datOdd, acctyp, Tag);
-        
-        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
-        //printf("read2: addr=%06o\n", addr);
-    }
-    return SCPE_OK;
-}
-t_stat Write2 (DCDstruct *i, word24 addr, word36 datEven, word36 datOdd, enum eMemoryAccessType acctyp, int32 Tag)
-{
-    //return SCPE_OK;
-    
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {
-        // need to check for even/odd?
-        if (addr & 1)
-        {
-            addr &= ~1; /* make it an even address */
-            addr &= DMASK;
-        }
-        Write(i, addr + 0, datEven, acctyp, Tag);
-        Write(i, addr + 1, datOdd,  acctyp, Tag);
-        
-        TPR.CA = addr;  // restore address back to initial addr HWR 1/3/2014
-
-        //printf("write2: addr=%06o\n", addr);
-
-    }
-    return SCPE_OK;
-}
-
-t_stat Read72(DCDstruct *i, word24 addr, word72 *dst, enum eMemoryAccessType acctyp, int32 Tag) // needs testing
-{
-    word36 even, odd;
-    t_stat res = Read2(i, addr, &even, &odd, acctyp, Tag);
-    if (res != SCPE_OK)
-        return res;
-    
-    *dst = ((word72)even << 36) | (word72)odd;
-    return SCPE_OK;
-}
-t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    {
-        // need to check for even/odd?
-        if (addr & 1)
-            addr &= ~1; /* make it an even address */
-        Read(i, addr + 0, Ypair+0, acctyp, Tag);
-        Read(i, addr + 1, Ypair+1, acctyp, Tag);
-        
-    }
-    return SCPE_OK;
-}
+//PRIVATE
+//t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
+//{
+//    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
+//    
+//    rY = addr;
+//    TPR.CA = addr;  //XXX for APU
+//    
+//    switch (accessType)
+//    {
+//        case InstructionFetch:
+//            core_read(addr, dat);
+//            break;
+//        default:
+//            //if (i->a)
+//                doAppendCycle(i, accessType, Tag, -1, dat);
+//            //else
+//            //    core_read(addr, dat);
+//            break;
+//    }
+//    return SCPE_OK;
+//}
 
 /*!
  cd@libertyhaven.com - sez ....
@@ -1962,30 +1861,6 @@ t_stat ReadYPair (DCDstruct *i, word24 addr, word36 *Ypair, enum eMemoryAccessTy
  -- Olin
 
  */
-#if NO_LONGER_NEEDED
-t_stat ReadN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-//    int slop = addr % n;
-//    if (slop)
-//    {
-//        addr -= slop;       // back to last n byte boundary;
-//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
-//            addr = 0;
-//    }
-    
-    for (int j = 0 ; j < n ; j ++)
-        Read(i, addr + j, Yblock + j, acctyp, Tag);
-    
-    TPR.CA = addr;  // restore address
-    
-    return SCPE_OK;
-}
-#endif
 
 //
 // read N words in a non-aligned fashion for EIS
@@ -1999,49 +1874,26 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     else
 #endif
         for (int j = 0 ; j < n ; j ++)
-            Read(i, addr + j, Yblock + j, acctyp, Tag);
+            Read(i, addr + j, Yblock + j, OPERAND_READ, Tag);
     
     return SCPE_OK;
 }
-
-#ifdef NO_LONGER_NEEDED
-t_stat WriteN (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
-{
-#if 0
-    if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
-        return STOP_BKPT;
-    else
-#endif
-    
-//    int slop = addr % n;  
-//    if (slop)
-//    {
-//        addr -= slop;       // back to last n byte boundary;
-//        if ((int)addr < 0)  // XXX this is probably not right, but let's see what happens
-//            addr = 0;
-//    }
-//
-    for (int j = 0 ; j < n ; j ++)
-        Write(i, addr + j, Yblock[j], acctyp, Tag);
-    
-    return SCPE_OK;
-}
-#endif
 
 int OPSIZE(DCDstruct *i)
 {
-    if (i->iwb->flags & (READ_OPERAND | STORE_OPERAND))
+    if (i->info->flags & (READ_OPERAND | STORE_OPERAND))
         return 1;
-    else if (i->iwb->flags & (READ_YPAIR | STORE_YPAIR))
+    else if (i->info->flags & (READ_YPAIR | STORE_YPAIR))
         return 2;
-    else if (i->iwb->flags & (READ_YBLOCK8 | STORE_YBLOCK8))
+    else if (i->info->flags & (READ_YBLOCK8 | STORE_YBLOCK8))
         return 8;
-    else if (i->iwb->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
+    else if (i->info->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
         return 16;
     return 0;
 }
 
-t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+// read instruction operands
+t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
 #if 0
         if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -2049,35 +1901,48 @@ t_stat ReadOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
         else
 #endif
         
+    // rtcd is an annoying edge case; ReadOP is called before the instruction
+    // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
+    // too late. Special case it here my noticing that this is an RTCD
+    // instruction
+    if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
+    {
+        addr &= 0777776;   // make even
+        Read(i, addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
+        Read(i, addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        return SCPE_OK;
+    }
+
     switch (OPSIZE(i))
     {
         case 1:
-            Read(i, addr, &CY, acctyp, Tag);
+            Read(i, addr, &CY, cyctyp, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Read(i, addr + 0, Ypair + 0, acctyp, Tag);
-            Read(i, addr + 1, Ypair + 1, acctyp, Tag);
+            Read(i, addr + 0, Ypair + 0, cyctyp, b29);
+            Read(i, addr + 1, Ypair + 1, cyctyp, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Read(i, addr + j, Yblock8 + j, acctyp, Tag);
+                Read(i, addr + j, Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Read(i, addr + j, Yblock16 + j, acctyp, Tag);
+                Read(i, addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
     }
-    TPR.CA = addr;  // restore address
+    //TPR.CA = addr;  // restore address
     
     return SCPE_OK;
 
 }
 
-t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
+// write instruction operands
+t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -2088,25 +1953,25 @@ t_stat WriteOP(DCDstruct *i, word18 addr, MemoryAccessType acctyp, int32 Tag)
     switch (OPSIZE(i))
     {
         case 1:
-            Write(i, addr, CY, acctyp, Tag);
+            Write(i, addr, CY, OPERAND_STORE, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Write(i, addr + 0, Ypair[0], acctyp, Tag);
-            Write(i, addr + 1, Ypair[1], acctyp, Tag);
+            Write(i, addr + 0, Ypair[0], OPERAND_STORE, b29);
+            Write(i, addr + 1, Ypair[1], OPERAND_STORE, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Write(i, addr + j, Yblock8[j], acctyp, Tag);
+                Write(i, addr + j, Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Write(i, addr + j, Yblock16[j], acctyp, Tag);
+                Write(i, addr + j, Yblock16[j], OPERAND_STORE, b29);
             break;
     }
-    TPR.CA = addr;  // restore address
+    //TPR.CA = addr;  // restore address
     
     return SCPE_OK;
     
@@ -2121,6 +1986,10 @@ int32 core_read(word24 addr, word36 *data)
         *data = 0;
         return -1;
     } else {
+        if (M[addr] & MEM_UNINITIALIZED)
+        {
+            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        }
         *data = M[addr] & DMASK;
     }
     return 0;
@@ -2145,22 +2014,30 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
             sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
             addr &= ~1; /* make it an even address */
         }
+        if (M[addr] & MEM_UNINITIALIZED)
+        {
+            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        }
         *even = M[addr++] & DMASK;
+        if (M[addr] & MEM_UNINITIALIZED)
+        {
+            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+        }
         *odd = M[addr] & DMASK;
         return 0;
     }
 }
-
-//! for working with CY-pairs
-int core_read72(word24 addr, word72 *dst) // needs testing
-{
-    word36 even, odd;
-    if (core_read2(addr, &even, &odd) == -1)
-        return -1;
-    *dst = ((word72)even << 36) | (word72)odd;
-    return 0;
-}
-
+//
+////! for working with CY-pairs
+//int core_read72(word24 addr, word72 *dst) // needs testing
+//{
+//    word36 even, odd;
+//    if (core_read2(addr, &even, &odd) == -1)
+//        return -1;
+//    *dst = ((word72)even << 36) | (word72)odd;
+//    return 0;
+//}
+//
 int core_write2(word24 addr, word36 even, word36 odd) {
     if(addr >= MEMSIZE) {
         return -1;
@@ -2174,39 +2051,39 @@ int core_write2(word24 addr, word36 even, word36 odd) {
     }
     return 0;
 }
-//! for working with CY-pairs
-int core_write72(word24 addr, word72 src) // needs testing
-{
-    word36 even = (word36)(src >> 36) & DMASK;
-    word36 odd = ((word36)src) & DMASK;
-    
-    return core_write2(addr, even, odd);
-}
-
-int core_readN(word24 addr, word36 *data, int n)
-{
-    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
-    for(int i = 0 ; i < n ; i++)
-        if(addr >= MEMSIZE) {
-            *data = 0;
-            return -1;
-        } else {
-            *data++ = M[addr++];
-        }
-    return 0;
-}
-
-int core_writeN(a8 addr, d8 *data, int n)
-{
-    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
-    for(int i = 0 ; i < n ; i++)
-        if(addr >= MEMSIZE) {
-            return -1;
-        } else {
-            M[addr++] = *data++;
-        }
-    return 0;
-}
+////! for working with CY-pairs
+//int core_write72(word24 addr, word72 src) // needs testing
+//{
+//    word36 even = (word36)(src >> 36) & DMASK;
+//    word36 odd = ((word36)src) & DMASK;
+//    
+//    return core_write2(addr, even, odd);
+//}
+//
+//int core_readN(word24 addr, word36 *data, int n)
+//{
+//    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
+//    for(int i = 0 ; i < n ; i++)
+//        if(addr >= MEMSIZE) {
+//            *data = 0;
+//            return -1;
+//        } else {
+//            *data++ = M[addr++];
+//        }
+//    return 0;
+//}
+//
+//int core_writeN(a8 addr, d8 *data, int n)
+//{
+//    addr %= n;  // better be an even power of 2, 4, 8, 16, 32, 64, ....
+//    for(int i = 0 ; i < n ; i++)
+//        if(addr >= MEMSIZE) {
+//            return -1;
+//        } else {
+//            M[addr++] = *data++;
+//        }
+//    return 0;
+//}
 
 //#define MM
 #if 1   //def MM
@@ -2221,7 +2098,7 @@ int core_writeN(a8 addr, d8 *data, int n)
  *
  */
 
-void encode_instr(const instr_t *ip, t_uint64 *wordp)
+void encode_instr(const instr_t *ip, word36 *wordp)
 {
     *wordp = setbits36(0, 0, 18, ip->addr);
 #if 1
@@ -2268,7 +2145,8 @@ void freeDCDstruct(DCDstruct *p)
  * instruction fetcher ...
  * fetch + decode instruction at 18-bit address 'addr'
  */
-DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at address
+#ifdef OLD_WAY
+DCDstruct *fetchInstructionOLD(word18 addr, DCDstruct *i)  // fetch instrcution at address
 {
     DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
 
@@ -2295,6 +2173,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *i)  // fetch instrcution at 
     
     return decodeInstruction(p->IWB, p);
 }
+#endif
 
 /*
  * instruction decoder .....
@@ -2312,27 +2191,24 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     p->i       = GET_I(inst);   // "I" - inhibit interrupt flag
     p->tag     = GET_TAG(inst); // instruction tag
     
-    p->iwb = getIWBInfo(p);     // get info for IWB instruction
+    p->info = getIWBInfo(p);     // get info for IWB instruction
     
     // HWR 18 June 2013 
-    p->iwb->opcode = p->opcode;
+    p->info->opcode = p->opcode;
     p->IWB = inst;
     
     // HWR 21 Dec 2013
-    if (p->iwb->flags & IGN_B29)
+    if (p->info->flags & IGN_B29)
         p->a = 0;   // make certain 'a' bit is valid always
 
-    if (p->iwb->ndes > 0)
+    if (p->info->ndes > 0)
     {
         p->a = 0;
         p->tag = 0;
-        if (p->iwb->ndes > 1)
+        if (p->info->ndes > 1)
         {
             memset(p->e, 0, sizeof(EISstruct)); // clear out e
             p->e->op0 = p->IWB;
-            // XXX: for XEC/XED/faults, this should trap?? I think -MCW
-            for(int n = 0 ; n < p->iwb->ndes; n += 1)
-                Read(p, rIC + 1 + n, &p->e->op[n], OperandRead, 0); // I think.
         }
     }
     return p;
@@ -2374,11 +2250,15 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
                 if (switches . super_user)
                     return 1;
 
-                if (SDW0.P && PPR.PRR == 0)
+                if (SDW->P && PPR.PRR == 0)
                 {
                     PPR.P = 1;
                     return 1;
                 }
+                // [CAC] This generates a lot of traffic because is_priv_mode
+                // is frequntly called to get the state, and not just to trap
+                // priviledge violations.
+                //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
                 break;
             default:
                 break;
@@ -2410,6 +2290,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 
 static bool secret_addressing_mode;
+static bool went_appending; // we will go....
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -2420,9 +2301,16 @@ static bool secret_addressing_mode;
  *
  */
 
-void clear_TEMPORARY_ABSOLUTE_mode (void)
+void set_TEMPORARY_ABSOLUTE_mode (void)
+{
+    secret_addressing_mode = true;
+    went_appending = false;
+}
+
+bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = false;
+    return went_appending;
 }
 
 addr_modes_t get_addr_mode(void)
@@ -2452,6 +2340,13 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+// Temporary hack to fix fault/intr pair address mode state tracking
+//   1. secret_addressing_mode is only set in fault/intr pair processing.
+//   2. Assume that the only set_addr_mode that will occur is the b29 special
+//   case, and ITx if added.
+    if (secret_addressing_mode && mode == APPEND_mode)
+      went_appending = true;
+
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
         SETF(rIR, I_ABS);
@@ -2459,10 +2354,6 @@ void set_addr_mode(addr_modes_t mode)
         
         PPR.P = 1;
         
-#if 0
-        if (switches . degenerate_mode)
-          setDegenerate();
-#endif 
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
         if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
@@ -2472,28 +2363,15 @@ void set_addr_mode(addr_modes_t mode)
         CLRF(rIR, I_ABS);
         
         SETF(rIR, I_NBAR);
-        
     } else if (mode == BAR_mode) {
         CLRF(rIR, I_ABS);
         CLRF(rIR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
-    } else if (mode == TEMPORARY_ABSOLUTE_mode) {
-        PPR.P = 1;
-        secret_addressing_mode = true;
-        
-#if 0
-        if (switches . degenerate_mode)
-          setDegenerate();
-#endif
-        
-        sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting temporary absolute mode.\n");
-
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         cancel_run(STOP_BUG);
     }
-    //processorAddressingMode = mode;
 }
 
 
@@ -2548,10 +2426,9 @@ static struct
   {
     struct
       {
-        flag_t inuse;
+        bool inuse;
         int scu_unit_num; // 
         DEVICE * devp;
-        UNIT * unitp;
       } ports [N_CPU_PORTS];
 
   } cpu_array [N_CPU_UNITS_MAX];
@@ -2579,14 +2456,12 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
   {
     if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
       {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         return SCPE_ARG;
       }
 
     if (cpu_port_num < 0 || cpu_port_num >= N_CPU_PORTS)
       {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
         sim_printf ("cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
         return SCPE_ARG;
       }
@@ -2599,17 +2474,10 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
       }
 
     DEVICE * devp = & scu_dev;
-    UNIT * unitp = & scu_unit [scu_unit_num];
      
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse = true;
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
-
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . unitp  = unitp;
-
-    unitp -> u3 = cpu_port_num;
-    unitp -> u4 = 0;
-    unitp -> u5 = cpu_unit_num;
 
     setup_scpage_map ();
 
@@ -2651,6 +2519,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Append after:             %01o(8)\n", switches . append_after);
     sim_printf("Super user:               %01o(8)\n", switches . super_user);
     sim_printf("EPP hack:                 %01o(8)\n", switches . epp_hack);
+    sim_printf("Halt on unimplemented:    %01o(8)\n", switches . halt_on_unimp);
+    sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", switches . disable_wam);
+    sim_printf("Bullet time:              %01o(8)\n", switches . bullet_time);
+    sim_printf("Disable kbd bkpt:         %01o(8)\n", switches . disable_kbd_bkpt);
 
     return SCPE_OK;
 }
@@ -2678,6 +2550,10 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           append_after = n
 //           super_user = n
 //           epp_hack = n
+//           halt_on_unimplmented = n
+//           disable_wam = n
+//           bullet_time = n
+//           disable_kbd_bkpt = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2768,6 +2644,10 @@ static config_list_t cpu_config_list [] =
     /* 18 */ { "append_after", 0, 1, cfg_on_off },
     /* 19 */ { "super_user", 0, 1, cfg_on_off },
     /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
+    /* 21 */ { "halt_on_unimplemented", 0, 1, cfg_on_off },
+    /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
+    /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
+    /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2884,6 +2764,22 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
               switches . epp_hack = v;
               break;
 
+            case 21: // HALT_ON_UNIMPLEMENTED
+              switches . halt_on_unimp = v;
+              break;
+
+            case 22: // DISABLE_WAM
+              switches . disable_wam = v;
+              break;
+
+            case 23: // BULLET_TIME
+              switches . bullet_time = v;
+              break;
+
+            case 24: // DISABLE_KBD_BKPT
+              switches . disable_kbd_bkpt = v;
+              break;
+
             default:
               sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid cfgparse rc <%d>\n", rc);
               sim_printf ("error: cpu_set_config: invalid cfgparse rc <%d>\n", rc);
@@ -2895,6 +2791,299 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
       } // process statements
     cfgparse_done (& cfg_state);
     return SCPE_OK;
+  }
+
+int words2its (word36 word1, word36 word2, struct _par * prp)
+  {
+    if ((word1 & MASKBITS(6)) != 043)
+      {
+        return 1;
+      }
+    prp->SNR = getbits36(word1, 3, 15);
+    prp->WORDNO = getbits36(word2, 0, 18);
+    prp->RNR = getbits36(word2, 18, 3);  // not strictly correct; normally merged with other ring regs
+    prp->BITNO = getbits36(word2, 57 - 36, 6);
+    return 0;
+  }   
+
+static int stack_to_entry (unsigned abs_addr, struct _par * prp)
+  {
+    // Looks into the stack frame maintained by Multics and
+    // returns the "current" entry point address that's
+    // recorded in the stack frame.  Abs_addr should be a 24-bit
+    // absolute memory location.
+    return words2its (M [abs_addr + 026], M [abs_addr + 027], prp);
+  }
+
+
+static void print_frame (
+    int seg,        // Segment portion of frame pointer address.
+    int offset,     // Offset portion of frame pointer address.
+    int addr)       // 24-bit address corresponding to above seg|offset
+  {
+    // Print a single stack frame for walk_stack()
+    // Frame pointers can be found in PR[6] or by walking a process's stack segment
+
+    struct _par  entry_pr;
+    sim_printf ("stack trace: ");
+    if (stack_to_entry (addr, & entry_pr) == 0)
+      {
+         sim_printf ("\t<TODO> entry %o|%o  ", entry_pr.SNR, entry_pr.WORDNO);
+
+//---        const seginfo& seg = segments(entry_pr.PR.snr);
+//---        map<int,linkage_info>::const_iterator li_it = seg.find_entry(entry_pr.wordno);
+//---        if (li_it != seg.linkage.end()) {
+//---            const linkage_info& li = (*li_it).second;
+//---            sim_printf ("\t%s  ", li.name.c_str());
+//---        } else
+//---            sim_printf ("\tUnknown entry %o|%o  ", entry_pr.PR.snr, entry_pr.wordno);
+      }
+    else
+      sim_printf ("\tUnknowable entry {%llo,%llo}  ", M [addr + 026], M [addr + 027]);
+    sim_printf ("(stack frame at %03o|%06o)\n", seg, offset);
+
+#if 0
+    char buf[80];
+    out_msg("prev_sp: %s; ",    its2text(buf, addr+020));
+    out_msg("next_sp: %s; ",    its2text(buf, addr+022));
+    out_msg("return_ptr: %s; ", its2text(buf, addr+024));
+    out_msg("entry_ptr: %s\n",  its2text(buf, addr+026));
+#endif
+}
+
+static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame_listp */)
+    // Trace through the Multics stack frames
+    // See stack_header.incl.pl1 and http://www.multicians.org/exec-env.html
+{
+
+    if (PAR [6].SNR == 077777 || (PAR [6].SNR == 0 && PAR [6].WORDNO == 0)) {
+        sim_printf ("%s: Null PR[6]\n", __func__);
+        return 1;
+    }
+
+    // PR6 should point to the current stack frame.  That stack frame
+    // should be within the stack segment.
+    int seg = PAR [6].SNR;
+
+    uint curr_frame;
+    t_stat rc = computeAbsAddrN (& curr_frame, seg, PAR [6].WORDNO);
+    if (rc)
+      {
+        sim_printf ("%s: Cannot convert PR[6] == %#o|%#o to absolute memory address.\n",
+            __func__, PAR [6].SNR, PAR [6].WORDNO);
+        return 1;
+      }
+
+    // The stack header will be at offset 0 within the stack segment.
+    int offset = 0;
+    word24 hdr_addr;  // 24bit main memory address
+    if (computeAbsAddrN (& hdr_addr, seg, offset))
+      {
+        sim_printf ("%s: Cannot convert %03o|0 to absolute memory address.\n", __func__, seg);
+        return 1;
+      }
+
+    struct _par stack_begin_pr;
+    if (words2its (M [hdr_addr + 022], M [hdr_addr + 023], & stack_begin_pr))
+      {
+        sim_printf ("%s: Stack header seems invalid; no stack_begin_ptr at %03o|22\n", __func__, seg);
+        if (output)
+            sim_printf ("%s: Stack Trace: Stack header seems invalid; no stack_begin_ptr at %03o|22\n", __func__, seg);
+        return 1;
+      }
+
+    struct _par stack_end_pr;
+    if (words2its (M [hdr_addr + 024], M [hdr_addr + 025], & stack_end_pr))
+      {
+        //if (output)
+          sim_printf ("%s: Stack Trace: Stack header seems invalid; no stack_end_ptr at %03o|24\n", __func__, seg);
+        return 1;
+      }
+
+    if (stack_begin_pr . SNR != seg || stack_end_pr . SNR != seg)
+      {
+        //if (output)
+            sim_printf ("%s Stack Trace: Stack header seems invalid; stack frames are in another segment.\n", __func__);
+        return 1;
+      }
+
+    struct _par lot_pr;
+    if (words2its (M [hdr_addr + 026], M [hdr_addr + 027], & lot_pr))
+      {
+        //if (output)
+          sim_printf ("%s: Stack Trace: Stack header seems invalid; no LOT ptr at %03o|26\n", __func__, seg);
+        return 1;
+      }
+    // TODO: sanity check LOT ptr
+
+    if (output)
+      sim_printf ("%s: Stack Trace via back-links in current stack frame:\n", __func__);
+    int framep = stack_begin_pr.WORDNO;
+    int prev = 0;
+    int finished = 0;
+#if 0
+    int need_hist_msg = 0;
+#endif
+    // while(framep <= stack_end_pr.WORDNO)
+    for (;;)
+      {
+        // Might find ourselves in a different page while moving from frame to frame...
+        // BUG: We assume a stack frame doesn't cross page boundries
+        uint addr;
+        if (computeAbsAddrN (& addr, seg, framep))
+          {
+            if (finished)
+              break;
+            //if (output)
+              sim_printf ("%s: STACK Trace: Cannot convert address of frame %03o|%06o to absolute memory address.\n", __func__, seg, framep);
+            return 1;
+          }
+
+        // Sanity check
+        if (prev != 0)
+          {
+            struct _par prev_pr;
+            if (words2its (M [addr + 020], M [addr + 021], & prev_pr) == 0)
+              {
+                if (prev_pr . WORDNO != prev)
+                  {
+                    if (output)
+                      sim_printf ("%s: STACK Trace: Stack frame's prior ptr, %03o|%o is bad.\n", __func__, seg, prev_pr . WORDNO);
+                  }
+              }
+          }
+        prev = framep;
+        // Print the current frame
+        if (finished && M [addr + 022] == 0 && M [addr + 024] == 0 && M [addr + 026] == 0)
+          break;
+#if 0
+        if (need_hist_msg) {
+            need_hist_msg = 0;
+            out_msg("stack trace: ");
+            out_msg("Recently popped frames (aka where we recently returned from):\n");
+        }
+#endif
+        if (output)
+          print_frame (seg, framep, addr);
+//---        if (frame_listp)
+//---            (*frame_listp).push_back(seg_addr_t(seg, framep));
+
+        // Get the next one
+        struct _par next;
+        if (words2its (M [addr + 022], M [addr + 023], & next))
+          {
+            if (! finished)
+              if (output)
+                sim_printf ("STACK Trace: no next frame.\n");
+            break;
+          }
+        if (next . SNR != seg)
+          {
+            if (output)
+              sim_printf ("STACK Trace: next frame is in a different segment (next is in %03o not %03o.\n", next.SNR, seg);
+            break;
+          }
+        if (next . WORDNO == stack_end_pr . WORDNO)
+          {
+            finished = 1;
+            break;
+#if 0
+            need_hist_msg = 1;
+            if (framep != PAR [6].WORDNO)
+                out_msg("Stack Trace: Stack may be garbled...\n");
+            // BUG: Infinite loop if enabled and garbled stack with "Unknowable entry {0,0}", "Unknown entry 15|0  (stack frame at 062|000000)", etc
+#endif
+          }
+        if (next . WORDNO < stack_begin_pr . WORDNO || next . WORDNO > stack_end_pr . WORDNO)
+          {
+            if (! finished)
+              //if (output)
+                sim_printf ("STACK Trace: DEBUG: next frame at %#o is outside the expected range of %#o .. %#o for stack frames.\n", next.WORDNO, stack_begin_pr.WORDNO, stack_end_pr.WORDNO);
+            if (! output)
+              return 1;
+          }
+
+        // Use the return ptr in the current frame to print the source line.
+        if (! finished && output)
+          {
+            struct _par return_pr;
+            if (words2its (M [addr + 024], M [addr + 025], & return_pr) == 0)
+              {
+//---                 where_t where;
+                int offset = return_pr . WORDNO;
+                if (offset > 0)
+                    -- offset;      // call was from an instr prior to the return point
+                char * compname;
+                word18 compoffset;
+                char * where = lookupAddress (return_pr . SNR, offset, & compname, & compoffset);
+                if (where)
+                  {
+                    sim_printf ("%s\n", where);
+                    listSource (compname, compoffset);
+                  }
+
+//---                 if (seginfo_find_all(return_pr.SNR, offset, &where) == 0) {
+//---                     out_msg("stack trace: ");
+//---                     if (where.line_no >= 0) {
+//---                         // Note that if we have a source line, we also expect to have a "proc" entry and file name
+//---                         out_msg("\t\tNear %03o|%06o in %s\n",
+//---                             return_pr.SNR, return_pr.WORDNO, where.entry);
+//---                         // out_msg("\t\tSource:  %s, line %5d:\n", where.file_name, where.line_no);
+//---                         out_msg("stack trace: ");
+//---                         out_msg("\t\tLine %d of %s:\n", where.line_no, where.file_name);
+//---                         out_msg("stack trace: ");
+//---                         out_msg("\t\tSource:  %s\n", where.line);
+//---                     } else
+//---                         if (where.entry_offset < 0)
+//---                             out_msg("\t\tNear %03o|%06o", return_pr.SNR, return_pr.WORDNO);
+//---                         else {
+//---                             int off = return_pr.WORDNO - where.entry_offset;
+//---                             char sign = (off < 0) ? '-' : '+';
+//---                             if (sign == '-')
+//---                                 off = - off;
+//---                             out_msg("\t\tNear %03o|%06o %s %c%#o\n", return_pr.SNR, return_pr.WORDNO, where.entry, sign, off);
+//---                         }
+//---                 }
+              }
+          }
+        // Advance
+        framep = next . WORDNO;
+    }
+
+//---    if (output)
+//---      {
+//---        out_msg("stack trace: ");
+//---        out_msg("Current Location:\n");
+//---        out_msg("stack trace: ");
+//---        print_src_loc("\t", get_addr_mode(), PPR.PSR, PPR.IC, &cu.IR);
+//---
+//---        log_any_io(0);      // Output of source/location info doesn't count towards requiring re-display of source
+//---    }
+
+    return 0;
+}
+
+static int cmd_stack_trace (int32 arg, char * buf)
+  {
+    walk_stack (1, NULL);
+    sim_printf ("\n");
+//---     trace_all_stack_hist ();
+//---     sim_printf ("\n");
+//---     dump_autos ();
+//---     sim_printf ("\n");
+
+    //float secs = (float) sys_stats.total_msec / 1000;
+    //out_msg("Stats: %.1f seconds: %lld cycles at %.0f cycles/sec, %lld instructions at %.0f instr/sec\n",
+        //secs, sys_stats.total_cycles, sys_stats.total_cycles/secs, sys_stats.total_instr, sys_stats.total_instr/secs);
+
+    return 0;
+  }
+
+
+static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc)
+  {
+    // FIXME: use FILE *st
+    return cmd_stack_trace(0, NULL);
   }
 
 

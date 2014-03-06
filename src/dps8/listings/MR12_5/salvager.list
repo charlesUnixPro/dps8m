@@ -1,0 +1,491 @@
+	COMPILATION LISTING OF SEGMENT salvager
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1027.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* Main Program for the Multics Salvager.
+       14*   5/23/69 - Noel I. Morris		 */
+       15 /* last modified by Kobziar on 5/1/74 to set cur_length in dummy root branch */
+       16 /* Extensively modified by Andrew M. Kobziar for NSS, with minor changes by Greenberg */
+       17 /* Set sons lvid in dummy root branch, 07/26/76 BSG */
+       18 /* Modified 9/76 by S. Barr for variable size hash tables. */
+       19 /* Modified 3/77 by S.E. Barr to add information to the dummy branch for the root. */
+       20 /* Rewritten 8/77 by S.E. Barr for invoking salvaging from ring 4. */
+       21 /* Rewritten February 1982 by C. Hornig for new salvaging strategy. */
+       22 /* Modified March 1982 by J. Bongiovanni to add convert_vtoc entry */
+       23 /* Modified July 1982 by J. Bongiovanni to eliminate salv_data$console */
+       24 
+       25 salvager:
+       26      procedure;
+       27 
+       28 dcl  arg_salv_opt_bits bit (36) aligned parameter;
+       29 dcl  arg_code fixed bin (35) parameter;
+       30 dcl  a_info_p ptr parameter;				/* online:  ptr to salv_args structure to fill. */
+       31 dcl  a_pvtx fixed bin parameter;
+       32 dcl  a_path char (*) parameter;
+       33 
+       34 dcl  ec fixed bin (35);
+       35 dcl  start_time fixed bin (71);
+       36 dcl  i fixed bin;
+       37 dcl  update_vtoce bit (1) aligned;			/* ON, Update perm. info. in VTOC entry during dir salv. */
+       38 dcl  delete_connection_failure_flag bit (1) aligned;	/* ON, Delete Branches with no VTOCEs */
+       39 dcl  rebuild bit (1) aligned;				/* ON, to force rebuild. */
+       40 dcl  salv_info_p ptr;				/* ptr to salv argument structure. */
+       41 
+       42 dcl  1 salv_info aligned like salv_args;
+       43 dcl  (addr, fixed, ptr, bit, hbound, rel, null, divide, unspec, rtrim) builtin;
+       44 
+       45 /* EXTERNAL */
+       46 
+       47 dcl  salv_temp_dir$ ext;
+       48 dcl  salv_dir_space$ ext;
+       49 
+       50 dcl  find entry (char (4) aligned, ptr);
+       51 dcl  salvage_pv entry (fixed bin, fixed bin (35));
+       52 dcl  salvage_pv$convert_vtoc entry (fixed bin, fixed bin (35));
+       53 dcl  salv_directory$ring0_salvage entry (ptr, fixed bin (35));
+       54 dcl  syserr entry options (variable);
+       55 dcl  syserr$error_code entry options (variable);
+       56 
+       57 volume_salvage:
+       58      entry (a_pvtx, arg_salv_opt_bits, arg_code);		/* Salvage another volume */
+       59 
+       60 	salv_opt_bits = arg_salv_opt_bits;
+       61 	call set_salv_data (salv_opt_bits);
+       62 	call salvage_pv (a_pvtx, arg_code);
+       63 	return;
+       64 
+       65 
+       66 convert_vtoc:
+       67      entry (a_pvtx, arg_salv_opt_bits, arg_code);		/* Convert the VTOC for a volume */
+       68 
+       69           salv_opt_bits = arg_salv_opt_bits;
+       70 	call set_salv_data (salv_opt_bits);
+       71 	call salvage_pv$convert_vtoc (a_pvtx, arg_code);
+       72 
+       73 
+       74 set_options:
+       75      entry (arg_salv_opt_bits);
+       76 
+       77 	salv_opt_bits = arg_salv_opt_bits;
+       78 	call set_salv_data (salv_opt_bits);
+       79 	return;
+       80 
+       81 
+       82 online:
+       83      entry (a_info_p);
+       84 
+       85 	call set_salv_data ("0"b);
+       86 	call setup_args (a_info_p);
+       87 
+       88 	salv_data$on_line = "1"b;
+       89 	return;
+       90 
+       91 
+       92 dir_salv_boot:
+       93      entry (a_path);
+       94 
+       95 	call set_salv_data ("0"b);
+       96 	salv_data$rpv = "1"b;
+       97 	call setup_args (addr (salv_info));
+       98 	salv_info.pathname = a_path;
+       99 	salv_info.options.check_vtoce = "1"b;
+      100 	salv_info.options.delete_connection_failure = "1"b;
+      101 	call salv_directory$ring0_salvage (addr (salv_info), ec);
+      102 	if ec ^= 0 then call syserr$error_code (3, ec, "salvager: Error salvaging ^a.", salv_info.pathname);
+      103 	salv_data$rpv = "0"b;
+      104 	return;
+      105 
+      106 set_salv_data:
+      107      procedure (options_bit);
+      108 
+      109 dcl  options_bit bit (36) aligned;
+      110 dcl  1 options aligned like salv_opts based (addr (options_bit));
+      111 
+      112 dcl  dump_bad_dir bit (1) aligned;			/* ON, Print dump of bad directories. */
+      113 dcl  print_pathnames bit (1) aligned;			/* ON, Print pathname of each directory that is salvaged. */
+      114 dcl  debug bit (1) aligned;
+      115 
+      116 /* Set system default values. */
+      117 
+      118 	debug, dump_bad_dir, print_pathnames, rebuild, update_vtoce, delete_connection_failure_flag = "0"b;
+      119 
+      120 /* Override standard defaults with salv config card. */
+      121 
+      122 	salv_cardp = null ();
+      123 	call find ("salv", salv_cardp);
+      124 	if salv_cardp ^= null () then do;
+      125 	     do i = 1 to salv_card.n_fields;
+      126 		if /* case */ salv_card.options (i) = "debg" then debug = "1"b;
+      127 		else if salv_card.options (i) = "dump" then dump_bad_dir = "1"b;
+      128 		else if salv_card.options (i) = "rbld" then rebuild = "1"b;
+      129 		else if salv_card.options (i) = "dcf" then delete_connection_failure_flag = "1"b;
+      130 		else if salv_card.options (i) = "path" then print_pathnames = "1"b;
+      131 	     end;
+      132 	     end;
+      133 
+      134 /* Override salv card with options specified with call. */
+      135 
+      136 	if options_bit ^= "0"b then do;
+      137 	     if options.debug then debug = "1"b;
+      138 	     if options.ndebug then debug = "0"b;
+      139 	     if options.dump then dump_bad_dir = "1"b;
+      140 	     if options.ndump then dump_bad_dir = "0"b;
+      141 	     if options.pnames then print_pathnames = "1"b;
+      142 	     if options.npnames then print_pathnames = "0"b;
+      143 	     if options.rbld then rebuild = "1"b;
+      144 	     if options.nrbld then rebuild = "0"b;
+      145 	     if options.dcf then delete_connection_failure_flag = "1"b;
+      146 	     if options.ndcf then delete_connection_failure_flag = "0"b;
+      147 	     update_vtoce = options.check | options.dcf;
+      148 	     end;
+      149 
+      150 /* Set salv_data. */
+      151 
+      152 	salv_data$on_line = "0"b;
+      153 	salv_data$dump = dump_bad_dir;
+      154 	salv_data$debug = debug;
+      155 	salv_data$print_path = print_pathnames;
+      156 
+      157 	return;
+      158 
+      159      end set_salv_data;
+      160 
+      161 setup_args:
+      162      procedure (salv_p);
+      163 
+      164 dcl  salv_p ptr;					/* ptr to args structure. */
+      165 dcl  1 args aligned like salv_args based (salv_p);
+      166 
+      167 	args.salv_time = bit (binary (clock (), 52));
+      168 	args.force_rebuild = rebuild;
+      169 	args.check_vtoce = update_vtoce;
+      170 	args.delete_connection_failure = delete_connection_failure_flag;
+      171 	args.print_trace = salv_data$debug;
+      172 	args.dump = salv_data$dump;
+      173 	args.correct_oosw = "1"b;
+      174 	args.temp1_ptr = addr (salv_temp_dir$);
+      175 	args.temp2_ptr = addr (salv_dir_space$);
+      176 	return;
+      177      end setup_args;
+      178 
+  1     1 /* BEGIN INCLUDE FILE ... config_salv_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  1     2 
+  1     3 dcl salv_cardp pointer;				/* pointer to SALV card */
+  1     4 
+  1     5 dcl 1 salv_card aligned based (salv_cardp),		/* SALV card declaration */
+  1     6     2 word char (4),				/* "salv" */
+  1     7     2 options (14) char (4),				/* Options for salvaging with */
+  1     8 
+  1     9     2 type_word aligned,
+  1    10       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  1    11       3 pad1 bit (4) unaligned,
+  1    12       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  1    13 
+  1    14 dcl 1 salv_card_array based (salv_cardp),		/* Overlay for counting options */
+  1    15     2 pad bit (36) aligned,
+  1    16     2 options (salv_card.n_fields) bit (36) aligned;
+  1    17 
+  1    18 dcl  SALV_CARD_WORD char (4) aligned internal static options (constant) init ("salv");
+  1    19 
+  1    20 /* END INCLUDE FILE ... config_salv_card.incl.pl1 */
+      179 
+  2     1 /* BEGIN INCLUDE FILE . . . salv_args */
+  2     2 /* Keith Loepere made pathname unal November 1984. */
+  2     3 
+  2     4 dcl 1 salv_args aligned based,
+  2     5     2 temp1_ptr ptr,				/* ptr to temp segment */
+  2     6     2 temp2_ptr ptr,				/* ptr to temp segment */
+  2     7     2 salv_time bit (36) aligned,			/* Highest valid date/time  */
+  2     8     2 options aligned,
+  2     9       3 force_rebuild bit (1) unal,			/* ON, if should rebuild directory */
+  2    10       3 print_trace bit (1) unal,			/* ON, if debugging trace information should be printed. */
+  2    11       3 correct_oosw bit (1) unal,			/* ON, if directory's out-of-service switch should be reset */
+  2    12       3 check_vtoce bit (1) unal,			/* ON, if VTOC entries of all branches should be checked. */
+  2    13       3 dump bit (1) unal,				/* ON, if should dump directory on error condition */
+  2    14       3 compact bit (1) unal,				/* ON, to force rebuild if one pages can be recovered. */
+  2    15       3 delete_connection_failure bit (1) unal,		/* ON, to delete branches that have no VTOC entries */
+  2    16       3 pad bit (29),
+  2    17     2 branch_ptr ptr,				/* ptr to branch for directory */
+  2    18     2 current_length fixed bin,			/* number of pages in directory */
+  2    19     2 pathname char (168) unal,			/* pathname of directory being salvaged */
+  2    20     2 master_dir_uid bit (36) aligned,			/* master UID for this directory */
+  2    21     2 tree_depth fixed bin;				/* number of levels from root for this directory */
+  2    22 
+  2    23 /* END INCLUDE FILE . . . salv_args */
+      180 
+  3     1 /*     BEGIN INCLUDE FILE ... salv_data.incl.pl1 ... last modified July 1982 */
+  3     2 
+  3     3 dcl  salv_data$debug bit (1) aligned external;		/* ON, For additional debugging messages. */
+  3     4 dcl  salv_data$dump bit (1) aligned external;		/* ON, to dump bad directories and VTOC entries. */
+  3     5 dcl  salv_data$lock bit (36) external aligned;		/* lock to prevent more than one process from using salv_data. */
+  3     6 dcl  salv_data$on_line bit (1) aligned external;		/* ON, for online salvage. */
+  3     7 dcl  salv_data$print_path bit (1) aligned external;	/* ON, if pathname of each directory should be printed. */
+  3     8 dcl  salv_data$printer_delay fixed bin aligned external;	/* Number of minutes to wait for a not ready printer. */
+  3     9 dcl  salv_data$rpv bit (1) aligned external;		/* ON, for root physical volume salvage. */
+  3    10 dcl  salv_data$vol_read_ahead fixed bin external;
+  3    11 
+  3    12 
+  3    13 /*     END INCLUDE FILE ... salv_data.incl.pl1 ... */
+      181 
+  4     1 /* BEGIN INCLUDE FILE salv_options.incl.pl1 --- 04/06/76 A. Kobziar */
+  4     2 
+  4     3 dcl 1 salv_opts unaligned based (addr (salv_opt_bits)),	/* layout of salv_data$options array */
+  4     4     2 (console bit (1),
+  4     5      debug bit (1),
+  4     6      dump bit (1),
+  4     7      check bit (1),
+  4     8      rbld bit (1),
+  4     9      pnames bit (1),
+  4    10      dcf bit (1),
+  4    11      pad1 bit (11),					/* rest are neg options */
+  4    12      nconsole bit (1),				/* negates setting on salv config card */
+  4    13      ndebug bit (1),
+  4    14      ndump bit (1),
+  4    15      ncheck bit (1),
+  4    16      nrbld bit (1),
+  4    17      npnames bit (1),
+  4    18      ndcf bit (1),
+  4    19      pad2 bit (11)) unaligned;
+  4    20 
+  4    21 dcl  salv_opt_bits bit (36) aligned;
+  4    22 
+  4    23 /* END INCLUDE FILE ... salv_options.incl.pl1 */
+      182 
+      183 
+      184 /* BEGIN MESSAGE DOCUMENTATION
+      185*
+      186*   END MESSAGE DOCUMENTATION */
+      187 
+      188      end salvager;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.0  salvager.pl1                      >spec>install>1112>salvager.pl1
+179          1    05/08/81  1853.7  config_salv_card.incl.pl1         >ldd>include>config_salv_card.incl.pl1
+180          2    01/30/85  1523.9  salv_args.incl.pl1                >ldd>include>salv_args.incl.pl1
+181          3    10/25/82  1015.6  salv_data.incl.pl1                >ldd>include>salv_data.incl.pl1
+182          4    10/07/77  1700.0  salv_options.incl.pl1             >ldd>include>salv_options.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_info_p                               parameter       pointer                  dcl 30 set ref 82 86*
+a_path                                 parameter       char                     packed unaligned dcl 32 ref 92 98
+a_pvtx                                 parameter       fixed bin(17,0)          dcl 31 set ref 57 62* 66 71*
+addr                                                   builtin function         dcl 43 ref 97 97 101 101 137 138 139 140 141 142 143
+                                                                                  144 145 146 147 147 174 175
+arg_code                               parameter       fixed bin(35,0)          dcl 29 set ref 57 62* 66 71*
+arg_salv_opt_bits                      parameter       bit(36)                  dcl 28 ref 57 60 66 69 74 77
+args                                   based           structure                level 1 dcl 165
+bit                                                    builtin function         dcl 43 ref 167
+check                     0(03)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 147
+check_vtoce               5(03)        based           bit(1)                   level 3 in structure "args" packed packed unaligned
+                                                                                  dcl 165 in procedure "setup_args" set ref 169*
+check_vtoce               5(03) 000106 automatic       bit(1)                   level 3 in structure "salv_info" packed packed
+                                                                                  unaligned dcl 42 in procedure "salvager" set ref
+                                                                                  99*
+correct_oosw              5(02)        based           bit(1)                   level 3 packed packed unaligned dcl 165 set ref 173*
+dcf                       0(06)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 145 147
+debug                     0(01)        based           bit(1)                   level 2 in structure "options" packed packed
+                                                                                  unaligned dcl 110 in procedure "set_salv_data" ref
+                                                                                  137
+debug                           000214 automatic       bit(1)                   dcl 114 in procedure "set_salv_data" set ref 118*
+                                                                                  126* 137* 138* 154
+delete_connection_failure
+                          5(06)        based           bit(1)                   level 3 in structure "args" packed packed unaligned
+                                                                                  dcl 165 in procedure "setup_args" set ref 170*
+delete_connection_failure
+                          5(06) 000106 automatic       bit(1)                   level 3 in structure "salv_info" packed packed
+                                                                                  unaligned dcl 42 in procedure "salvager" set ref
+                                                                                  100*
+delete_connection_failure_flag  000103 automatic       bit(1)                   dcl 38 set ref 118* 129* 145* 146* 170
+dump                      5(04)        based           bit(1)                   level 3 in structure "args" packed packed unaligned
+                                                                                  dcl 165 in procedure "setup_args" set ref 172*
+dump                      0(02)        based           bit(1)                   level 2 in structure "options" packed packed
+                                                                                  unaligned dcl 110 in procedure "set_salv_data" ref
+                                                                                  139
+dump_bad_dir                    000212 automatic       bit(1)                   dcl 112 set ref 118* 127* 139* 140* 153
+ec                              000100 automatic       fixed bin(35,0)          dcl 34 set ref 101* 102 102*
+find                            000014 constant        entry                    external dcl 50 ref 123
+force_rebuild             5            based           bit(1)                   level 3 packed packed unaligned dcl 165 set ref 168*
+i                               000101 automatic       fixed bin(17,0)          dcl 36 set ref 125* 126 127 128 129 130*
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 packed packed unsigned unaligned dcl 1-5 ref
+                                                                                  125
+ndcf                      0(24)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 146
+ndebug                    0(19)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 138
+ndump                     0(20)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 140
+npnames                   0(23)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 142
+nrbld                     0(22)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 144
+null                                                   builtin function         dcl 43 ref 122 124
+options                                based           structure                level 1 dcl 110 in procedure "set_salv_data"
+options                   1            based           char(4)                  array level 2 in structure "salv_card" dcl 1-5
+                                                                                  in procedure "salvager" ref 126 127 128 129 130
+options                   5     000106 automatic       structure                level 2 in structure "salv_info" dcl 42 in procedure
+                                                                                  "salvager"
+options                   5            based           structure                level 2 in structure "args" dcl 165 in procedure
+                                                                                  "setup_args"
+options_bit                            parameter       bit(36)                  dcl 109 set ref 106 136 137 138 139 140 141 142 143
+                                                                                  144 145 146 147 147
+pathname                 13     000106 automatic       char(168)                level 2 packed packed unaligned dcl 42 set ref 98*
+                                                                                  102*
+pnames                    0(05)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 141
+print_pathnames                 000213 automatic       bit(1)                   dcl 113 set ref 118* 130* 141* 142* 155
+print_trace               5(01)        based           bit(1)                   level 3 packed packed unaligned dcl 165 set ref 171*
+rbld                      0(04)        based           bit(1)                   level 2 packed packed unaligned dcl 110 ref 143
+rebuild                         000104 automatic       bit(1)                   dcl 39 set ref 118* 128* 143* 144* 168
+salv_args                              based           structure                level 1 dcl 2-4
+salv_card                              based           structure                level 1 dcl 1-5
+salv_cardp                      000176 automatic       pointer                  dcl 1-3 set ref 122* 123* 124 125 126 127 128 129
+                                                                                  130
+salv_data$debug                 000026 external static bit(1)                   dcl 3-3 set ref 154* 171
+salv_data$dump                  000030 external static bit(1)                   dcl 3-4 set ref 153* 172
+salv_data$on_line               000032 external static bit(1)                   dcl 3-6 set ref 88* 152*
+salv_data$print_path            000034 external static bit(1)                   dcl 3-7 set ref 155*
+salv_data$rpv                   000036 external static bit(1)                   dcl 3-9 set ref 96* 103*
+salv_dir_space$                 000012 external static fixed bin(17,0)          dcl 48 set ref 175
+salv_directory$ring0_salvage    000022 constant        entry                    external dcl 53 ref 101
+salv_info                       000106 automatic       structure                level 1 dcl 42 set ref 97 97 101 101
+salv_opt_bits                   000200 automatic       bit(36)                  dcl 4-21 set ref 60* 61* 69* 70* 77* 78*
+salv_opts                              based           structure                level 1 packed packed unaligned dcl 4-3
+salv_p                                 parameter       pointer                  dcl 164 ref 161 167 168 169 170 171 172 173 174 175
+salv_temp_dir$                  000010 external static fixed bin(17,0)          dcl 47 set ref 174
+salv_time                 4            based           bit(36)                  level 2 dcl 165 set ref 167*
+salvage_pv                      000016 constant        entry                    external dcl 51 ref 62
+salvage_pv$convert_vtoc         000020 constant        entry                    external dcl 52 ref 71
+syserr$error_code               000024 constant        entry                    external dcl 55 ref 102
+temp1_ptr                              based           pointer                  level 2 dcl 165 set ref 174*
+temp2_ptr                 2            based           pointer                  level 2 dcl 165 set ref 175*
+type_word                17            based           structure                level 2 dcl 1-5
+update_vtoce                    000102 automatic       bit(1)                   dcl 37 set ref 118* 147* 169
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+SALV_CARD_WORD                         internal static char(4)                  initial dcl 1-18
+divide                                                 builtin function         dcl 43
+fixed                                                  builtin function         dcl 43
+hbound                                                 builtin function         dcl 43
+ptr                                                    builtin function         dcl 43
+rel                                                    builtin function         dcl 43
+rtrim                                                  builtin function         dcl 43
+salv_card_array                        based           structure                level 1 unaligned dcl 1-14
+salv_data$lock                         external static bit(36)                  dcl 3-5
+salv_data$printer_delay                external static fixed bin(17,0)          dcl 3-8
+salv_data$vol_read_ahead               external static fixed bin(17,0)          dcl 3-10
+salv_info_p                            automatic       pointer                  dcl 40
+start_time                             automatic       fixed bin(71,0)          dcl 35
+syserr                          000000 constant        entry                    external dcl 54
+unspec                                                 builtin function         dcl 43
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+convert_vtoc                    000074 constant        entry                    external dcl 66
+dir_salv_boot                   000175 constant        entry                    external dcl 92
+online                          000146 constant        entry                    external dcl 82
+salvager                        000031 constant        entry                    external dcl 25
+set_options                     000126 constant        entry                    external dcl 74
+set_salv_data                   000307 constant        entry                    internal dcl 106 ref 61 70 78 85 95
+setup_args                      000513 constant        entry                    internal dcl 161 ref 86 97
+volume_salvage                  000043 constant        entry                    external dcl 57
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+binary                                                 builtin function         ref 167
+clock                                                  builtin function         ref 167
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1000        1040     600        1010
+Length      1314     600        40         237     177           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+salvager                            198 external procedure  is an external procedure.  
+set_salv_data                           internal procedure  shares stack frame of external procedure salvager.  
+setup_args                              internal procedure  shares stack frame of external procedure salvager.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+salvager                 000100 ec                          salvager
+                         000101 i                           salvager
+                         000102 update_vtoce                salvager
+                         000103 delete_connection_failure_flag
+                                                            salvager
+                         000104 rebuild                     salvager
+                         000106 salv_info                   salvager
+                         000176 salv_cardp                  salvager
+                         000200 salv_opt_bits               salvager
+                         000212 dump_bad_dir                set_salv_data
+                         000213 print_pathnames             set_salv_data
+                         000214 debug                       set_salv_data
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           ext_entry_desc      clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+find                          salv_directory$ring0_salvage  salvage_pv                    salvage_pv$convert_vtoc
+syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+salv_data$debug               salv_data$dump                salv_data$on_line             salv_data$print_path
+salv_data$rpv                 salv_dir_space$               salv_temp_dir$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000030        57 000036        60 000053        61 000055        62 000057        63 000071        66 000072
+     69 000104        70 000106        71 000110        74 000122        77 000136        78 000140        79 000142
+     82 000143        85 000153        86 000157        88 000166        89 000171        92 000172        95 000210
+     96 000214        97 000217        98 000223        99 000231       100 000233       101 000235       102 000250
+    103 000304       104 000306       106 000307       118 000311       122 000317       123 000321       124 000334
+    125 000340       126 000351       127 000357       128 000364       129 000371       130 000402       131 000407
+    136 000411       137 000414       138 000423       139 000427       140 000434       141 000440       142 000445
+    143 000451       144 000456       145 000462       146 000471       147 000475       152 000502       153 000504
+    154 000506       155 000510       157 000512       161 000513       167 000515       168 000524       169 000530
+    170 000535       171 000540       172 000546       173 000553       174 000555       175 000557       176 000563
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

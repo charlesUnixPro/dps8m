@@ -1,0 +1,480 @@
+	COMPILATION LISTING OF SEGMENT sc_create_sci_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1018.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* sc_create_sci_ -- create an invocation of the system control 
+       10*	        ssu invocation. */
+       11 /* format: style2,idind30 */
+       12 
+       13 /**** Written 1984-11-01 BIM */
+       14 /**** Modified 1985-01-07, BIM: for access_control_name in sc_subsystem_info */
+       15 /**** Modified 1985-02-01, BIM: invoke_request to intercept abort_line */
+       16 /**** Modified 1985-02-18, E. Swenson: to save real abort_line routine */
+       17 
+       18 
+       19 /****^  HISTORY COMMENTS:
+       20*  1) change(87-02-22,GDixon), approve(87-05-25,MCR7680),
+       21*     audit(87-05-06,Parisek), install(87-08-04,MR12.1-1055):
+       22*     Modified to correct coding standard violations.
+       23*                                                   END HISTORY COMMENTS */
+       24 
+       25 
+       26 sc_create_sci_:
+       27      procedure (Sci_ptr, Code);
+       28 
+       29 	declare Sci_ptr		        pointer;
+       30 	declare Code		        fixed bin (35);
+       31 
+       32 	dcl     (addr, null)	        builtin;
+       33 
+       34 	declare sc_get_error_name_	        entry;
+       35 	declare sc_execute_command_line_      entry;
+       36 	declare sc_execute_command_line_$locate_request
+       37 				        entry;
+       38 	declare sc_abort_line_util_$invoke_request
+       39 				        entry;
+       40 	declare sc_abort_line_util_$abort_line
+       41 				        entry;
+       42 	declare ssu_$create_invocation        entry (char (*), char (*), ptr, ptr, char (*), ptr, fixed bin (35));
+       43 	declare ssu_$destroy_invocation       entry (ptr);
+       44 	declare ssu_$cpescape_disabled        entry;
+       45 	declare ssu_$get_area	        entry (ptr, ptr, char (*), ptr);
+       46 	declare ssu_$set_info_ptr	        entry (ptr, ptr);
+       47 	declare ssu_$set_procedure	        entry (ptr, char (*), entry, fixed bin (35));
+       48 	declare ssu_$set_prompt_mode	        entry (ptr, bit (*));
+       49 	declare ssu_$get_procedure	        entry (ptr, char (*), entry, fixed bin (35));
+       50 	declare ssu_$add_request_table        entry (ptr, ptr, fixed bin, fixed bin (35));
+       51 	declare ssu_$add_info_dir	        entry (ptr, char (*), fixed bin, fixed bin (35));
+       52 	declare ssu_$null_label	        label ext static;
+       53 
+       54 	declare sc_request_table_$system_control_requests
+       55 				        ext bit (36) aligned;
+       56 
+       57 	declare ssu_request_tables_$standard_requests
+       58 				        bit (36) aligned ext static;
+       59 	declare sci_ptr		        pointer;
+       60 
+       61 
+       62 	call ssu_$create_invocation ("system_control", "", null (), null (), "", sci_ptr, Code);
+       63 	if Code ^= 0
+       64 	then return;
+       65 
+       66 	call ssu_$add_request_table (sci_ptr, addr (sc_request_table_$system_control_requests), 1, Code);
+       67 	if Code ^= 0
+       68 	then return;
+       69 	call ssu_$add_request_table (sci_ptr, addr (ssu_request_tables_$standard_requests), 10000, Code);
+       70 	if Code ^= 0
+       71 	then return;
+       72 	call ssu_$add_info_dir (sci_ptr, sc_stat_$info_dir, 0, (0));
+       73 	call ssu_$add_info_dir (sci_ptr, ">documentation>ss>ssu_info_dirs>standard_requests", 10000, (0));
+       74 
+       75 	call ssu_$set_procedure (sci_ptr, "cpescape", ssu_$cpescape_disabled, (0));
+       76 	call ssu_$set_procedure (sci_ptr, "get_subsystem_and_request_name", sc_get_error_name_, (0));
+       77 	begin;
+       78 	     declare temp_area_ptr		   pointer;
+       79 	     call ssu_$get_area (sci_ptr, null (), "", temp_area_ptr);
+       80 	     allocate sc_subsystem_info in (temp_area_ptr -> sc_ss_area);
+       81 	     sc_subsystem_info.area_ptr = temp_area_ptr;
+       82 	end;
+       83 	sc_subsystem_info.mc_atep = null ();
+       84 	sc_subsystem_info.real_iocb = null ();
+       85 	sc_subsystem_info.restriction_flags = (36)"1"b;
+       86 	sc_subsystem_info.flags = "0"b;
+       87 	sc_subsystem_info.source_name = "system_control";
+       88 	sc_subsystem_info.access_control_name = sc_stat_$unidentified_access_name;
+       89 
+       90 	call ssu_$get_procedure (sci_ptr, "execute_line", sc_subsystem_info.real_execute_line, (0));
+       91 	call ssu_$set_procedure (sci_ptr, "execute_line", sc_execute_command_line_, (0));
+       92 	call ssu_$get_procedure (sci_ptr, "locate_request", sc_subsystem_info.real_locate_request, (0));
+       93 	call ssu_$set_procedure (sci_ptr, "locate_request", sc_execute_command_line_$locate_request, (0));
+       94 	call ssu_$get_procedure (sci_ptr, "invoke_request", sc_subsystem_info.real_invoke_request, (0));
+       95 	call ssu_$set_procedure (sci_ptr, "invoke_request", sc_abort_line_util_$invoke_request, (0));
+       96 	call ssu_$get_procedure (sci_ptr, "abort_line", sc_subsystem_info.real_abort_line, (0));
+       97 	call ssu_$set_procedure (sci_ptr, "abort_line", sc_abort_line_util_$abort_line, (0));
+       98 
+       99 	sc_subsystem_info.hangup_entry = HANGUP_NOOP;
+      100 	sc_subsystem_info.abort_request_label = ssu_$null_label;
+      101 	call ssu_$set_info_ptr (sci_ptr, addr (sc_subsystem_info));
+      102 	call ssu_$set_prompt_mode (sci_ptr, DONT_PROMPT); /* in case someone gets the idea ... */
+      103 	Sci_ptr = sci_ptr;
+      104 	return;
+      105 
+      106 destroy:
+      107      entry (Sci_ptr);
+      108 	call ssu_$destroy_invocation (Sci_ptr);
+      109 	return;
+      110 
+      111 HANGUP_NOOP:					/* in case noone sets anything better */
+      112      entry;
+      113 	return;
+      114 
+  1     1 /*  BEGIN:   sc_stat_.incl.pl1			  *  *  *  *  *  */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  1     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  1     7*     Add sc_stat_$vchn_requires_accept in support of DSA virtual channels.
+  1     8*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7680),
+  1     9*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  1    10*     Reorganized by type of data to improve readability.
+  1    11*                                                   END HISTORY COMMENTS */
+  1    12 
+  1    13 
+  1    14 			      /* ACCESS NAMES		       */
+  1    15 dcl (
+  1    16  sc_stat_$exec_access_name,	      /* check MC access in an exec request    */
+  1    17  sc_stat_$unidentified_access_name  /* check access if no one is logged in.  */
+  1    18     ) char(32) ext static;
+  1    19 
+  1    20 		        /* PATHNAMES			       */
+  1    21 dcl (
+  1    22  sc_stat_$info_dir,	        /* admin info segs directory		       */
+  1    23  sc_stat_$log_dir,	        /* as log segs directory		       */
+  1    24  sc_stat_$mc_acs_dir,       /* message coordinator ACS segments (.mcacs) dir */
+  1    25  sc_stat_$sysdir	        /* system control directory		       */
+  1    26     ) char(168) ext static;
+  1    27 
+  1    28 		        /* OTHER CHAR STRINGS			       */
+  1    29 dcl (
+  1    30  sc_stat_$master_channel    /* Master TTY channel.		       */
+  1    31     )  char(6) aligned ext static;
+  1    32 
+  1    33 			       /* LABELS			       */
+  1    34 dcl (
+  1    35  sc_stat_$admin_listener_exit_label, /* GO here to exit admin mode.  Set to  */
+  1    36 			       /*    ssu_$null_label unless 	       */
+  1    37 			       /*	   admin_listener is active.	       */
+  1    38  sc_stat_$master_abort_label,	       /* GO here after fault that is not      */
+  1    39 			       /*    attributable to a particular      */
+  1    40 			       /*	   command.		       */
+  1    41  sc_stat_$system_shutdown_label      /* GO here to shut down system	       */
+  1    42     ) label variable ext static;
+  1    43 
+  1    44 			 /* POINTERS TO			       */
+  1    45 dcl (
+  1    46  sc_stat_$admin_log_iocb,	 /* IOCB for admin log		       */
+  1    47  sc_stat_$admin_log_write_ptr, /* DATA for log_write_ calls on the admin log */
+  1    48  sc_stat_$admin_sci_ptr,	 /* DATA ssu_ for terminal currently executing */
+  1    49  sc_stat_$as_log_write_ptr,	 /* DATA for log_write_ calls on as log, used  */
+  1    50 			 /*      by sys_log_.		       */
+  1    51  sc_stat_$initzer_ttyp,	 /* ENT  mc_ate for initializer terminal       */
+  1    52  sc_stat_$master_iocb,	 /* IOCB for "master_i/o"		       */
+  1    53  sc_stat_$master_sci_ptr,	 /* DATA ssu_ (permanent) for system control   */
+  1    54  sc_stat_$mc_ansp,		 /* HEAD of mc_anstbl		       */
+  1    55  sc_stat_$mc_iocb,		 /* IOCB ptr for "mc_i/o"		       */
+  1    56  sc_stat_$sv1_iocb,		 /* IOCB ptr for "severity1"		       */
+  1    57  sc_stat_$sv2_iocb,		 /* IOCB ptr for "severity2"		       */
+  1    58  sc_stat_$sv3_iocb		 /* IOCB ptr for "severity3"		       */
+  1    59     ) ptr ext static;
+  1    60 
+  1    61 			   /* SWITCHES			       */
+  1    62 dcl (
+  1    63  sc_stat_$Go,		   /* TRUE after answering service is listening*/
+  1    64  sc_stat_$Go_typed,		   /* TRUE immediately after 'go' is typed     */
+  1    65  sc_stat_$Multics,		   /* TRUE after answering service started     */
+  1    66  sc_stat_$Multics_typed,	   /* TRUE immediately after 'mult' is typed   */
+  1    67  sc_stat_$Star_typed,	   /* TRUE if 'mult' and 'go' came from 'star' */
+  1    68  sc_stat_$admin_listener_switch, /* TRUE if in the admin listener	       */
+  1    69  sc_stat_$did_part1,	   /* TRUE if part 1 of system startup ec done */
+  1    70  sc_stat_$did_part2,	   /* TRUE if part 2 of system startup ec done */
+  1    71  sc_stat_$did_part3,	   /* TRUE if part 3 of system startup ec done */
+  1    72  sc_stat_$mc_is_on,		   /* TRUE if message coordinator running      */
+  1    73  sc_stat_$no_operator_login,	   /* TRUE if operator login not required, or  */
+  1    74 			   /*	 if PNT not yet available.	       */
+  1    75  sc_stat_$shutdown_typed,	   /* TRUE if 'shutdown' command in progress.  */
+  1    76  sc_stat_$test_mode,	   /* TRUE if in test environment	       */
+  1    77  sc_stat_$vchn_requires_accept   /* TRUE if vchn may only be used if accepted*/
+  1    78 			   /*      by operator signed on system console*/
+  1    79     ) bit(1) aligned ext static;
+  1    80 
+  1    81 
+  1    82 /*  END OF:  sc_stat_.incl.pl1			  *  *  *  *  *  */
+      115 
+  2     1 /*  BEGIN:   sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+  2     2 
+  2     3 /* format:style3,idind30 */
+  2     4 
+  2     5 /* Created  1984-10-24  BIM */
+  2     6 /* Modified 1985-01-07, BIM: access control flags that track admin and X */
+  2     7 /* Modified 1985-02-18, E. Swenson to save away abort_line procedure. */
+  2     8 
+  2     9 
+  2    10 /****^  HISTORY COMMENTS:
+  2    11*  1) change(87-02-17,GDixon), approve(87-07-03,MCR7680),
+  2    12*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  2    13*     Correct formatting problems.  Add sc_subsystem_info.flags.dont_mask_calls
+  2    14*     switch.
+  2    15*  2) change(87-07-03,GDixon), approve(87-07-03,MCR7680),
+  2    16*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  2    17*     Removed dont_mask_calls flag.  It is no longer needed to correctly perform
+  2    18*     masking on a per-request basis.
+  2    19*                                                   END HISTORY COMMENTS */
+  2    20 
+  2    21 
+  2    22 declare	sc_subsystem_info_ptr	pointer;
+  2    23 declare	1 sc_subsystem_info		aligned based (sc_subsystem_info_ptr),
+  2    24 	  2 restriction_flags	bit (36) aligned,	/* copied from mc atep or fabricated */
+  2    25 	  2 flags			aligned,
+  2    26 	    3 no_real_tty		bit (1) unaligned,	/* for sc_admin_command_ */
+  2    27 	    3 print_ready		bit (1) unal,	/* on for all except the system console,	*/
+  2    28 						/*  instructs sc_process_command_line_ to deal	*/
+  2    29 						/*  with the prompt				*/
+  2    30 	    3 the_system_console	bit (1) unal,	/* syserr messages are printed here (but console	*/
+  2    31 						/*  recover doesn't try to fix this) copied here	*/
+  2    32 						/*  from the mc_ate to save other looking in there*/
+  2    33 	    3 printer_offed		bit (1) unal,	/* suppress logging */
+  2    34 	    3 pad			bit (32) unaligned,
+  2    35 	  2 source_name		char (32) unaligned,
+  2    36 	  2 area_ptr		pointer,
+  2    37 	  2 mc_atep		pointer,		/* needed to play with attachments */
+  2    38 	  2 real_iocb		pointer,		/* for sc_signal_io_handler_ */
+  2    39 	  2 hangup_entry		entry (pointer) variable,
+  2    40 						/* called on io_no_permission. */
+  2    41 	  2 real_execute_line	entry (ptr, ptr, fixed bin (21), fixed bin (35)),
+  2    42 	  2 real_locate_request	entry (ptr, char (*), ptr, fixed bin (35)),
+  2    43 	  2 access_control_name	char (32) unaligned,
+  2    44 	  2 real_invoke_request	entry,		/* since MR11 ssu_ lacks the ability to	abort a	*/
+  2    45 						/*  single request, we have an invoke_request that*/
+  2    46 						/*  handles a condition to unwind the request	*/
+  2    47 	  2 abort_request_label	label,		/* go here (nonlocally) to unwind a single request */
+  2    48 	  2 real_abort_line		entry options (variable);
+  2    49 
+  2    50 declare	sc_ss_area		area based (sc_subsystem_info.area_ptr);
+  2    51 
+  2    52 /* The following defines the user flags for the request table. */
+  2    53 
+  2    54 declare	sc_rf_ptr			pointer;
+  2    55 declare	1 sc_request_flags		unaligned based (sc_rf_ptr),
+  2    56 	  2 dont_parse_arguments	bit,		/* reply, intercom */
+  2    57 	  2 obsolete		bit,		/* warn opr to not use it */
+  2    58 	  2 dont_mask_calls		bit,		/* this runs without masking ev calls */
+  2    59 	  2 requires_as		bit,		/* not before AS */
+  2    60 	  2 requires_no_as		bit,		/* only before AS */
+  2    61 	  2 complete_disks_first	bit,		/* try to mount disks */
+  2    62 	  2 no_login_needed		bit,		/* sign_on */
+  2    63 	  2 pad			bit (5),
+  2    64 	  2 restriction_type	fixed bin (6) unsigned;
+  2    65 						/* index into restriction flag string */
+  2    66 
+  2    67 
+  2    68 /*  END OF:  sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+      116 
+  3     1 /* BEGIN INCLUDE FILE ... ssu_prompt_modes.incl.pl1 */
+  3     2 /* Created:  15 February 1982 by G. Palter */
+  3     3 
+  3     4 /* Values for use in calls to ssu_$set_prompt_mode to control prompting by the subsystem listener */
+  3     5 
+  3     6 dcl  PROMPT bit (1) static options (constant) initial ("0"b);
+  3     7 dcl  DONT_PROMPT bit (1) static options (constant) initial ("1"b);
+  3     8 
+  3     9 dcl  PROMPT_AFTER_NULL_LINES bit (2) static options (constant) initial ("01"b);
+  3    10 dcl  DONT_PROMPT_AFTER_NULL_LINES bit (2) static options (constant) initial ("00"b);
+  3    11 
+  3    12 dcl  PROMPT_IF_TYPEAHEAD bit (3) static options (constant) initial ("000"b);
+  3    13 dcl  DONT_PROMPT_IF_TYPEAHEAD bit (3) static options (constant) initial ("001"b);
+  3    14 
+  3    15 /* For example:
+  3    16*      call ssu_$set_prompt_mode (sci_ptr, PROMPT | DONT_PROMPT_AFTER_NULL_LINES | DONT_PROMPT_IF_TYPEAHEAD); */
+  3    17 
+  3    18 /* END INCLUDE FILE ... ssu_prompt_modes.incl.pl1 */
+      117 
+      118      end sc_create_sci_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.1  sc_create_sci_.pl1                >spec>install>1112>sc_create_sci_.pl1
+115          1    08/06/87  0913.5  sc_stat_.incl.pl1                 >ldd>include>sc_stat_.incl.pl1
+116          2    08/06/87  0913.5  sc_subsystem_info_.incl.pl1       >ldd>include>sc_subsystem_info_.incl.pl1
+117          3    04/13/82  1620.2  ssu_prompt_modes.incl.pl1         >ldd>include>ssu_prompt_modes.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 30 set ref 26 62* 63 66* 67 69* 70
+DONT_PROMPT                     000000 constant        bit(1)                   initial packed unaligned dcl 3-7 set ref 102*
+Sci_ptr                                parameter       pointer                  dcl 29 set ref 26 103* 106 108*
+abort_request_label      50            based           label variable           level 2 dcl 2-23 set ref 100*
+access_control_name      34            based           char(32)                 level 2 packed packed unaligned dcl 2-23 set ref 88*
+addr                                                   builtin function         dcl 32 ref 66 66 69 69 101 101
+area_ptr                 12            based           pointer                  level 2 dcl 2-23 set ref 81*
+flags                     1            based           structure                level 2 dcl 2-23 set ref 86*
+hangup_entry             20            based           entry variable           level 2 dcl 2-23 set ref 99*
+mc_atep                  14            based           pointer                  level 2 dcl 2-23 set ref 83*
+null                                                   builtin function         dcl 32 ref 62 62 62 62 79 79 83 84
+real_abort_line          54            based           entry variable           level 2 dcl 2-23 set ref 96*
+real_execute_line        24            based           entry variable           level 2 dcl 2-23 set ref 90*
+real_invoke_request      44            based           entry variable           level 2 dcl 2-23 set ref 94*
+real_iocb                16            based           pointer                  level 2 dcl 2-23 set ref 84*
+real_locate_request      30            based           entry variable           level 2 dcl 2-23 set ref 92*
+restriction_flags                      based           bit(36)                  level 2 dcl 2-23 set ref 85*
+sc_abort_line_util_$abort_line  000020 constant        entry                    external dcl 40 ref 97 97
+sc_abort_line_util_$invoke_request
+                                000016 constant        entry                    external dcl 38 ref 95 95
+sc_execute_command_line_        000012 constant        entry                    external dcl 35 ref 91 91
+sc_execute_command_line_$locate_request
+                                000014 constant        entry                    external dcl 36 ref 93 93
+sc_get_error_name_              000010 constant        entry                    external dcl 34 ref 76 76
+sc_request_table_$system_control_requests
+                                000050 external static bit(36)                  dcl 54 set ref 66 66
+sc_ss_area                             based           area(1024)               dcl 2-50 ref 80
+sc_stat_$info_dir               000056 external static char(168)                packed unaligned dcl 1-21 set ref 72*
+sc_stat_$unidentified_access_name
+                                000054 external static char(32)                 packed unaligned dcl 1-15 ref 88
+sc_subsystem_info                      based           structure                level 1 dcl 2-23 set ref 80 101 101
+sc_subsystem_info_ptr           000102 automatic       pointer                  dcl 2-22 set ref 80* 81 83 84 85 86 87 88 90 92 94
+                                                                                  96 99 100 101 101
+sci_ptr                         000100 automatic       pointer                  dcl 59 set ref 62* 66* 69* 72* 73* 75* 76* 79* 90*
+                                                                                  91* 92* 93* 94* 95* 96* 97* 101* 102* 103
+source_name               2            based           char(32)                 level 2 packed packed unaligned dcl 2-23 set ref 87*
+ssu_$add_info_dir               000044 constant        entry                    external dcl 51 ref 72 73
+ssu_$add_request_table          000042 constant        entry                    external dcl 50 ref 66 69
+ssu_$cpescape_disabled          000026 constant        entry                    external dcl 44 ref 75 75
+ssu_$create_invocation          000022 constant        entry                    external dcl 42 ref 62
+ssu_$destroy_invocation         000024 constant        entry                    external dcl 43 ref 108
+ssu_$get_area                   000030 constant        entry                    external dcl 45 ref 79
+ssu_$get_procedure              000040 constant        entry                    external dcl 49 ref 90 92 94 96
+ssu_$null_label                 000046 external static label variable           dcl 52 ref 100
+ssu_$set_info_ptr               000032 constant        entry                    external dcl 46 ref 101
+ssu_$set_procedure              000034 constant        entry                    external dcl 47 ref 75 76 91 93 95 97
+ssu_$set_prompt_mode            000036 constant        entry                    external dcl 48 ref 102
+ssu_request_tables_$standard_requests
+                                000052 external static bit(36)                  dcl 57 set ref 69 69
+temp_area_ptr                   000104 automatic       pointer                  dcl 78 set ref 79* 80 81
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DONT_PROMPT_AFTER_NULL_LINES           internal static bit(2)                   initial packed unaligned dcl 3-10
+DONT_PROMPT_IF_TYPEAHEAD               internal static bit(3)                   initial packed unaligned dcl 3-13
+PROMPT                                 internal static bit(1)                   initial packed unaligned dcl 3-6
+PROMPT_AFTER_NULL_LINES                internal static bit(2)                   initial packed unaligned dcl 3-9
+PROMPT_IF_TYPEAHEAD                    internal static bit(3)                   initial packed unaligned dcl 3-12
+sc_request_flags                       based           structure                level 1 packed packed unaligned dcl 2-55
+sc_rf_ptr                              automatic       pointer                  dcl 2-54
+sc_stat_$Go                            external static bit(1)                   dcl 1-62
+sc_stat_$Go_typed                      external static bit(1)                   dcl 1-62
+sc_stat_$Multics                       external static bit(1)                   dcl 1-62
+sc_stat_$Multics_typed                 external static bit(1)                   dcl 1-62
+sc_stat_$Star_typed                    external static bit(1)                   dcl 1-62
+sc_stat_$admin_listener_exit_label     external static label variable           dcl 1-34
+sc_stat_$admin_listener_switch         external static bit(1)                   dcl 1-62
+sc_stat_$admin_log_iocb                external static pointer                  dcl 1-45
+sc_stat_$admin_log_write_ptr           external static pointer                  dcl 1-45
+sc_stat_$admin_sci_ptr                 external static pointer                  dcl 1-45
+sc_stat_$as_log_write_ptr              external static pointer                  dcl 1-45
+sc_stat_$did_part1                     external static bit(1)                   dcl 1-62
+sc_stat_$did_part2                     external static bit(1)                   dcl 1-62
+sc_stat_$did_part3                     external static bit(1)                   dcl 1-62
+sc_stat_$exec_access_name              external static char(32)                 packed unaligned dcl 1-15
+sc_stat_$initzer_ttyp                  external static pointer                  dcl 1-45
+sc_stat_$log_dir                       external static char(168)                packed unaligned dcl 1-21
+sc_stat_$master_abort_label            external static label variable           dcl 1-34
+sc_stat_$master_channel                external static char(6)                  dcl 1-29
+sc_stat_$master_iocb                   external static pointer                  dcl 1-45
+sc_stat_$master_sci_ptr                external static pointer                  dcl 1-45
+sc_stat_$mc_acs_dir                    external static char(168)                packed unaligned dcl 1-21
+sc_stat_$mc_ansp                       external static pointer                  dcl 1-45
+sc_stat_$mc_iocb                       external static pointer                  dcl 1-45
+sc_stat_$mc_is_on                      external static bit(1)                   dcl 1-62
+sc_stat_$no_operator_login             external static bit(1)                   dcl 1-62
+sc_stat_$shutdown_typed                external static bit(1)                   dcl 1-62
+sc_stat_$sv1_iocb                      external static pointer                  dcl 1-45
+sc_stat_$sv2_iocb                      external static pointer                  dcl 1-45
+sc_stat_$sv3_iocb                      external static pointer                  dcl 1-45
+sc_stat_$sysdir                        external static char(168)                packed unaligned dcl 1-21
+sc_stat_$system_shutdown_label         external static label variable           dcl 1-34
+sc_stat_$test_mode                     external static bit(1)                   dcl 1-62
+sc_stat_$vchn_requires_accept          external static bit(1)                   dcl 1-62
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+HANGUP_NOOP                     001115 constant        entry                    external dcl 111 ref 99
+destroy                         001076 constant        entry                    external dcl 106
+sc_create_sci_                  000075 constant        entry                    external dcl 26
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1446        1526    1133        1456
+Length      2010    1133        60         246     312           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_create_sci_                      150 external procedure  is an external procedure.  
+begin block on line 77                  begin block         shares stack frame of external procedure sc_create_sci_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sc_create_sci_           000100 sci_ptr                     sc_create_sci_
+                         000102 sc_subsystem_info_ptr       sc_create_sci_
+                         000104 temp_area_ptr               begin block on line 77
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           op_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+sc_abort_line_util_$abort_line                              sc_abort_line_util_$invoke_request
+sc_execute_command_line_      sc_execute_command_line_$locate_request                     sc_get_error_name_
+ssu_$add_info_dir             ssu_$add_request_table        ssu_$cpescape_disabled        ssu_$create_invocation
+ssu_$destroy_invocation       ssu_$get_area                 ssu_$get_procedure            ssu_$set_info_ptr
+ssu_$set_procedure            ssu_$set_prompt_mode
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sc_request_table_$system_control_requests                   sc_stat_$info_dir
+sc_stat_$unidentified_access_name                           ssu_$null_label
+ssu_request_tables_$standard_requests
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000071        62 000102        63 000147        66 000152        67 000173        69 000176        70 000217
+     72 000222        73 000251        75 000304        76 000340        79 000375        80 000422        81 000427
+     83 000431        84 000433        85 000434        86 000436        87 000450        88 000453        90 000460
+     91 000513        92 000552        93 000605        94 000643        95 000676        96 000734        97 000767
+     99 001025       100 001032       101 001040       102 001052       103 001067       104 001072       106 001073
+    108 001103       109 001113       111 001114       113 001122
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

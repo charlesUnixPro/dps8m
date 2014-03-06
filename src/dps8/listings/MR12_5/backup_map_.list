@@ -1,0 +1,1505 @@
+	COMPILATION LISTING OF SEGMENT backup_map_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0934.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 
+       16 /****^  HISTORY COMMENTS:
+       17*  1) change(87-03-03,GWMay), approve(87-03-03,MCR7627), audit(87-03-13,Farley),
+       18*     install(87-03-30,MR12.1-1018):
+       19*     removed on any_other condition. added a switch for handling dumper
+       20*     invokations vs reloader.
+       21*                                                   END HISTORY COMMENTS */
+       22 
+       23 
+       24 /* Routines to format and write hierarchy backup/reload map lines */
+       25 
+       26 /* Modified: 4 April 1970 by R. H. Campbell */
+       27 /* Modified: June 1971 by R. A. Tilden to add line counter */
+       28 /* Modified: 28 February 1980 by S. Herbst to write errors on error_output */
+       29 /* Modified: November 1980 by A. R. Downing to provide entry points to be used by the copy_dump_tape command to produce
+       30*   backup-like maps */
+       31 /* Modified: 19 October 1980 by G. Palter to create error file for subroutine entries if desired */
+       32 /* Modified: 21 January 1982 by S. Herbst to fix call to convert_status_code_ */
+       33 /* Modified: 7 May 1982 by G. Palter to make all entries respect the map flag */
+       34 /* Modified: July 1982 by G. Palter to add error_line entry */
+       35 /* Modified: 1985-03-19, BIM; any_other handler that gets out to level 2,
+       36*   detect error_table_$no_move */
+       37 
+       38 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+       39 
+       40 
+       41 backup_map_:
+       42      procedure (pointer, count);
+       43 
+       44 	return;					/* not a real entry */
+       45 
+       46 
+       47 dcl  pointer pointer,
+       48      count fixed binary,
+       49      string character (count) based (pointer);
+       50 
+       51 dcl  (addr, index, length, max, min, null, rtrim, substr, unspec) builtin;
+       52 
+       53 dcl  i,
+       54      n,
+       55      nt,
+       56      (ap, sp) pointer;
+       57 
+       58 dcl  long_info character (100) aligned;
+       59 
+       60 dcl  ignore character (8);
+       61 
+       62 dcl  dir char (168) aligned internal static,		/* settable by copy_dump_tape */
+       63      map_name character (32) internal static initial (""),
+       64      dirname char (12),
+       65      ent char (32),
+       66      rings (3) fixed binary (3),
+       67      code fixed binary (35);
+       68 
+       69 dcl  (
+       70      error_table_$namedup,
+       71      error_table_$ioname_not_found
+       72      ) fixed binary (35) external;
+       73 
+       74 dcl  backup_map character (32) init ("");		/* Entry name of map segment. */
+       75 
+       76 dcl  unique_chars_ entry (bit (*) aligned) returns (character (15) aligned);
+       77 						/* Get unique name. */
+       78 
+       79 dcl  backup_map_$error_line entry () options (variable),
+       80      backup_map_$heading_line entry,
+       81      com_err_ entry options (variable),
+       82      convert_status_code_ entry (fixed bin (35), char (8) aligned, char (100) aligned),
+       83      cu_$arg_count entry (fixed binary),
+       84      cu_$arg_list_ptr entry (pointer),
+       85      cv_bin_$dec entry (fixed binary, character (*) aligned),
+       86      date_time_ entry (fixed binary (52), character (*) aligned),
+       87      (
+       88      ioa_,
+       89      ioa_$rs
+       90      ) entry options (variable),			/* Various arguments. */
+       91      ioa_$general_rs
+       92 	entry (pointer, fixed binary, fixed binary, character (*), fixed binary (21), bit (1) aligned, bit (1) aligned),
+       93      ios_$attach entry (character (*), character (*), character (*), character (*), bit (72) aligned),
+       94      ios_$detach entry (character (*), character (*), character (*), bit (72) aligned),
+       95      ios_$write entry (character (*), pointer, fixed binary, fixed binary, fixed binary, bit (72) aligned),
+       96      ios_$write_ptr entry (pointer, fixed binary, fixed binary),
+       97      pathname_ entry (character (*), character (*)) returns (character (168));
+       98 
+       99 dcl  iox_$error_output ptr ext;
+      100 dcl  iox_$put_chars entry (ptr, ptr, fixed bin, fixed bin (35));
+      101 
+      102 /* For making a map or error file */
+      103 dcl  hcs_$append_branchx
+      104 	entry (char (*), char (*), fixed bin (5), (3) fixed bin (3), char (*) aligned, fixed bin (1), fixed bin (1),
+      105 	fixed bin (24), fixed bin (35)),
+      106      hcs_$acl_add1
+      107 	entry (char (*) aligned, char (*), char (*) aligned, fixed bin (5), (3) fixed binary (3), fixed bin (35)),
+      108      get_group_id_$tag_star returns (char (32) aligned),
+      109      hcs_$fs_search_get_wdir entry (ptr, fixed bin),
+      110      expand_pathname_ entry (char (*), char (*) aligned, char (*), fixed bin (35)),
+      111      cu_$level_get returns (fixed bin);
+      112 
+      113 dcl  not_initialized bit (1) static initial ("1"b),	/* Initialization switch. */
+      114      page_size fixed bin static initial (55);		/* Number of lines on a page */
+      115 
+      116 dcl  (
+      117      old_blocks fixed binary,				/* Last values on detail line. */
+      118      (old_dtp, old_dtd, old_dtu, old_dtem, old_dtsm) fixed binary (52)
+      119      ) static initial (-1);
+      120 
+      121 dcl  line character (200) static,			/* Output buffer. */
+      122      linep pointer static,				/* Pointer to it. */
+      123      lines fixed bin static;				/* How many have been written on current page */
+      124 
+      125 dcl  1 p based (ap) aligned,				/* Overlay for faster processing. */
+      126        2 c (0:1) character (1) unaligned;		/* Packed synchronous character array. */
+      127 
+      128 dcl  ascii character (12) aligned;			/* Return string for call to cv_bin_$dec. */
+      129 
+      130 dcl  calendar_line character (24) aligned;		/* Return string for call to date_time_. */
+      131 
+      132 dcl  (nl, eject, ht) static character (1);
+      133 
+      134 dcl  1 header1 static,				/* First header line contains tape id */
+      135        2 top character (1),				/* New page character, usually */
+      136        2 eol character (1),				/* Skip a line */
+      137        2 tapenames character (100) init (""),		/* Text given to tapes entry */
+      138      length_hdr1 static fixed bin init (2);
+      139 
+      140 dcl  1 header2 static,				/* Column headings. */
+      141        2 name character (30) initial (" ENTRY NAME"),
+      142        2 blocks character (7) initial ("BLOCKS"),
+      143        2 type character (11) initial ("REC_TYPE"),
+      144        2 dtp character (7) initial ("TIME"),
+      145        2 dtem character (17) initial ("ENTRY_MODIFIED"),
+      146        2 dtd character (16) initial ("LAST_DUMPED"),
+      147        2 dtu character (17) initial ("LAST_USED"),
+      148        2 dtsm character (13) initial ("SEG._MODIFIED"),
+      149        2 eol character (1),				/* End of line */
+      150      detail_ptr pointer static,			/* Pointer to detail line. */
+      151      1 detail static,				/* Format for map detail lines. */
+      152        2 sp character (1) init (""),			/* Blank, col 0. */
+      153        2 (
+      154        name character (32),				/* Entry(name, col. 1 - 32. */
+      155        blocks character (3),				/* Number of 1024-word blocks, col. 33 - 35. */
+      156        sp1 character (1),				/* Blank, col. 36. */
+      157        record_type character (10)
+      158        ) initial (""),				/* Logical record type, col. 37 - 46. */
+      159        2 dtp,					/* Time entry processed. */
+      160          3 (
+      161          sp1 character (1),				/* Blank, col. 47. */
+      162          time character (6)
+      163          ) initial (""),				/* Time, col. 48 - 53. */
+      164        2 dtem,					/* Date and time entry modified. */
+      165          3 (
+      166          sp character (1),				/* Blank, col. 54. */
+      167          date character (8),				/* Date, col. 55 - 62. */
+      168          sp1 character (1),				/* Blank, col. 63. */
+      169          time character (6)
+      170          ) initial (""),				/* Time, col. 64 - 69. */
+      171        2 dtd,					/* Date and time last dumped. */
+      172          3 (
+      173          sp2 character (2),				/* Blanks, col. 70 - 71. */
+      174          date character (8),				/* Date, col. 72 - 79. */
+      175          sp1 character (1),				/* Blank, col. 80. */
+      176          time character (6)
+      177          ) initial (""),				/* Time, col. 81 - 86. */
+      178        2 dtu,					/* Date and time entry used. */
+      179          3 (
+      180          sp character (1),				/* Blank, col. 87. */
+      181          date character (8),				/* Date, col. 88 - 95. */
+      182          sp1 character (1),				/* Blank, col. 96. */
+      183          time character (6)
+      184          ) initial (""),				/* Time, col. 97 - 102. */
+      185        2 dtsm,					/* Date and time segment modified. */
+      186          3 (
+      187          sp2 character (2),				/* Blanks, col. 103 - 104. */
+      188          date character (8),				/* Date, col. 105 - 112. */
+      189          sp1 character (1),				/* Blank, col. 113. */
+      190          time character (6)
+      191          ) initial ("");				/* Time, col. 114 - 119. */
+      192 
+      193 /**/
+      194 
+  1     1 /* include io_status */
+  1     2 dcl 1 status, 					/* I/O system status string. */
+  1     3     2 code fixed binary,				/* Overall error code. */
+  1     4     2 bits, 					/* Fine structure. */
+  1     5       3 successful bit (4), 				/* Logical/physical initiation/termination. */
+  1     6       3 transaction_terminated bit (1), 		/* No further status change. */
+  1     7       3 unassigned bit (4),
+  1     8       3 end_of_data bit (1), 				/* Obvious. */
+  1     9       3 pad bit (5),
+  1    10       3 ioname_detached bit (1), 			/* .. */
+  1    11       3 pad2 bit (20),
+  1    12      status_bits based (sp) bit (72) aligned; 		/* Overlay for IO calls. */
+  1    13 						/* end io_status */
+      195 
+      196 
+  2     1 /* BEGIN INCLUDE FILE ... backup_control.incl.pl1 */
+  2     2 /* Modified: July 1982 by G. Palter to add features for proper support of AIM in IMFT (version 4) */
+  2     3 /* Modified: August 1983 by Robert Coren to add minimum access class enforcement */
+  2     4 /* Modified: November 1983 by Robert Coren to add "upgrade_to_user_auth" flag */
+  2     5 
+  2     6 /* Hierarchy dumper/reloader subroutine control structure */
+  2     7 
+  2     8 dcl 1 backup_control aligned based (backup_control_ptr),
+  2     9     2 header,					/* allows people to use like (!) */
+  2    10       3 version character (8) unaligned,
+  2    11       3 tape_entry entry (character (*)) variable,	/* returns next tape label */
+  2    12       3 data_iocb pointer,				/* -> I/O switch to use for dumping/loading if preattached */
+  2    13       3 maximum_access_class bit (72) aligned,		/* maximum access class for anything to be dumped */
+  2    14       3 minimum_access_class bit (72) aligned,		/* minimum access class for anything to be dumped */
+  2    15       3 maximum_dir_access_class bit (72) aligned,	/* no directory above this access class is dumped */
+  2    16       3 user_for_access_check,			/* data required to validate user's access */
+  2    17         4 id character (32) unaligned,			/* Person.Project.tag */
+  2    18         4 authorization bit (72),			/* the user's process authorization */
+  2    19         4 ring fixed binary,				/* the user's ring o execution */
+  2    20       3 minimum_ring fixed binary,			/* no ring bracket is set below this value */
+  2    21       3 aim_translations,				/* data required to translate AIM attributes on the tape */
+  2    22         4 source_attributes_ptr pointer,
+  2    23         4 target_attributes_ptr pointer,
+  2    24       3 options aligned,
+  2    25         4 map_sw  bit(1) unaligned,			/* ON to write map segment */
+  2    26         4 debug_sw bit (1) unaligned,			/* ON to check quotas and not trim subtrees */
+  2    27         4 no_reload_sw bit (1) unaligned,		/* ON to not load for backup_load_ */
+  2    28         4 hold_sw bit (1) unaligned,			/* ON to not demount tape afterwards */
+  2    29         4 preattached bit (1) unaligned,		/* ON => perform loading/dumping to supplied I/O switch */
+  2    30         4 error_file bit (1) unaligned,			/* ON => generate an error file anyway */
+  2    31         4 first bit (1) unaligned,			/* ON => for reload, stop after all requests satisfied */
+  2    32         4 caller_handles_conditions bit (1) unaligned,	/* ON => caller of backup_dump_ handles faults */
+  2    33         4 allow_dir_overwrite bit (1) unaligned,		/* ON => allow reloaded seg to overwrite a dir */
+  2    34         4 enforce_max_access_class bit (1) unaligned,	/* ON => do not dump anything above given access class */
+  2    35         4 dont_dump_upgraded_dirs bit (1) unaligned,	/* ON => do not dump directories above given access class */
+  2    36         4 check_effective_access bit (1) unaligned,	/* ON => do not dump branches specified user can't touch */
+  2    37         4 restore_access_class bit (1) unaligned,		/* ON => restore AIM attributes even in debug mode */
+  2    38         4 enforce_minimum_ring bit (1) unaligned,		/* ON => do not give anything ring bracket below minimum */
+  2    39         4 translate_access_class bit (1) unaligned,	/* ON => translate access classes read from tape */
+  2    40         4 enforce_min_access_class bit (1) unaligned,	/* ON => do not dump anything below given access class */
+  2    41         4 upgrade_to_user_auth bit (1) unaligned,		/* ON => set access class of branch being dumped to user's authorization */
+  2    42         4 pad bit (19) unaligned,
+  2    43       3 request_count fixed binary,			/* # of entries to load or dump */
+  2    44     2 requests (backup_control_request_count refer (backup_control.request_count)),
+  2    45       3 path character (168) unaligned,			/* pathname of object to be dumped/loaded */
+  2    46       3 new_path character (168) unaligned,		/* pathname for object when reloading if not same as above */
+  2    47       3 switches aligned,
+  2    48         4 no_primary_sw bit (1) unaligned,		/* do not use primary pathname */
+  2    49         4 trim_sw bit (1) unaligned,			/* trim target directories */
+  2    50         4 pad bit (34) unaligned,
+  2    51       3 found bit(1) aligned,				/* ON => found on tape by backup_load_ (output) */
+  2    52       3 loaded bit (1) aligned,			/* ON => loaded by backup_load_ (output) */
+  2    53       3 status_code fixed binary (35),			/* ON => per-entry status code (output) */
+  2    54       3 error_name character (65) unaligned;		/* ON => some information about what happened (output) */
+  2    55 
+  2    56 dcl  backup_control_ptr pointer;
+  2    57 
+  2    58 dcl backup_control_request_count fixed binary;		/* for allocations */
+  2    59 
+  2    60 dcl BACKUP_CONTROL_VERSION_5 character (8) static options (constant) initial ("hbc_0005");
+  2    61 
+  2    62 /* END INCLUDE FILE ... backup_control.incl.pl1 */
+      197 
+      198 
+  3     1 /* BEGIN INCLUDE FILE ... bk_ss_.incl.pl1 */
+  3     2 
+  3     3 
+  3     4 /****^  HISTORY COMMENTS:
+  3     5*  1) change(87-03-03,GWMay), approve(87-03-03,MCR7627), audit(87-03-13,Farley),
+  3     6*     install(87-03-30,MR12.1-1018):
+  3     7*     added a writing_map switch to indicate when the dump map is being written.
+  3     8*                                                   END HISTORY COMMENTS */
+  3     9 
+  3    10 
+  3    11 /* Modified: July 1982 by G. Palter to add data for true AIM support in IMFT */
+  3    12 /* Modified: August 1983 by Robert Coren to add minimum access class */
+  3    13 /* Modified: November 1983 by Robert Coren to add "upgrade_to_user_auth" flag */
+  3    14 
+  3    15 /* Hierarchy dumper/reloader static data */
+  3    16 
+  3    17 dcl (bk_ss_$allow_dir_overwrite bit (1) aligned,		/* ON => allow reloaded seg to overwrite dir */
+  3    18      bk_ss_$areap pointer,				/* pointer to list dir area */
+  3    19      bk_ss_$brief_mapsw bit (1) aligned,		/* no form-feed for each control file entry */
+  3    20      bk_ss_$caller_handles_conditions bit (1) aligned,	/* ON => caller has an any_other handler (for IMFT Daemon) */
+  3    21      bk_ss_$control_name char(168),			/* control file path for dumping */
+  3    22      bk_ss_$control_ptr pointer,			/* Ptr to control structure for sub entries */
+  3    23      bk_ss_$cross_retrievesw bit (1) aligned,		/* ON => cross-retrieving this entry */
+  3    24      bk_ss_$data_iocb pointer,			/* IOCB for dumping/reloading if bk_ss_$preattached */
+  3    25      bk_ss_$date fixed binary (52),			/* dump all modified since this date */
+  3    26      bk_ss_$datesw bit (1) aligned,			/* Flags presence of a date input */
+  3    27      bk_ss_$debugsw bit (1) aligned,			/* Flag to prevent calls to hphcs_ */
+  3    28      bk_ss_$dir_trim bit (1) aligned,			/* Flag to allow deletion of directories */
+  3    29      bk_ss_$dprint_destination char (24),		/* for start_dump and reload, -ds for dprinting maps */
+  3    30      bk_ss_$dprint_destination_setsw bit (1) aligned,
+  3    31      bk_ss_$dprint_heading char (64),			/* for start_dump and reload, -he for dprinting maps */
+  3    32      bk_ss_$dprint_heading_setsw bit (1) aligned,
+  3    33      bk_ss_$dprint_queue fixed bin,			/* Queue number for dprinting maps and error files */
+  3    34      bk_ss_$dprint_request_type char (24),		/* for start_dump and reload, -rqt for dprinting maps */
+  3    35      bk_ss_$dprint_request_type_setsw bit (1) aligned,
+  3    36      bk_ss_$dprintsw bit (1) aligned,			/* Whether to dprint maps for start_dump and reload */
+  3    37      bk_ss_$dtdsw bit (1) aligned,			/* Flag to check if modified since last dumped */
+  3    38      bk_ss_$ename char(32) aligned,			/* Branch entry to dump */
+  3    39      bk_ss_$err_label label,				/* Place to go to attempt error recovery */
+  3    40      bk_ss_$err_onlinesw bit(1) aligned,		/* Flag error output to be online, default to a file */
+  3    41      bk_ss_$error fixed binary,			/* Code for location from which signal expected */
+  3    42      bk_ss_$holdsw bit(1) aligned,			/* controls dismounting of tape for dumper */
+  3    43      bk_ss_$hp pointer,				/* Pointer to preamble header */
+  3    44      bk_ss_$ignore_dates bit (1) aligned,		/* Flag to skip check if have older info on tape */
+  3    45      bk_ss_$mapsw bit (1) aligned,			/* Flag map output */
+  3    46      bk_ss_$myname char(16),				/* Name by which backup was called */
+  3    47      bk_ss_$namesw bit (1) aligned,			/* Flag to dump named branch only */
+  3    48      bk_ss_$no_contin bit (1) aligned,			/* Flag to end dump after catchup dump. */
+  3    49      bk_ss_$no_output bit (1) aligned,			/* Flag test run or dbugging dumper.  No tape output.*/
+  3    50      bk_ss_$no_primary bit (1) aligned,			/* Flag saying do not use primary pathnames */
+  3    51      bk_ss_$no_reload bit (1) aligned,			/* Flag debuging reloader.  Do not write in hierarchy. */
+  3    52      bk_ss_$no_setlvid bit (1) aligned,			/* Flag to surpress setting of sons lvid on reload */
+  3    53      bk_ss_$ntapes fixed bin,				/* number of tape copies for dumper */
+  3    54      bk_ss_$onlysw bit (1) aligned,			/* ON => disable hiearchy sweep (dumping) or stop when all
+  3    55*						   requests satisfied (loading) */
+  3    56      bk_ss_$operator char(32),			/* operator name */
+  3    57      bk_ss_$path_index fixed bin,			/* index of entry in backup_control structure */
+  3    58      bk_ss_$pathsw bit(1) aligned,			/* starting directory path given to dumper */
+  3    59      bk_ss_$preattached bit(1) aligned,			/* ON => caller has setup I/O switch for dumping/reloading */
+  3    60      bk_ss_$pvsw  bit(1) aligned,			/* Flag to enable physical volume recovery */
+  3    61      bk_ss_$pvname char(32) aligned,			/* Physical volume name */
+  3    62      bk_ss_$qchecksw bit(1) aligned,			/* Flag to prevent suspension of quota checking */
+  3    63      bk_ss_$quotasw bit(1) aligned,			/* Flag to allow quota setting */
+  3    64      bk_ss_$restart_dumpsw bit(1) aligned,		/* restarting complete or catchup from given point */
+  3    65      bk_ss_$restart_path char(168) aligned,		/* where to restart complete or catchup dump */
+  3    66      bk_ss_$restart_plen fixed bin,			/* length of restart pathname */
+  3    67      bk_ss_$retrieval_index fixed bin,			/* Index of entry in bk_retrieve's structure */
+  3    68      bk_ss_$retrievesw bit (1) aligned,			/* Flags retrieval */
+  3    69      bk_ss_$rlen fixed bin,				/* Length if current restart dir for recursion */
+  3    70      bk_ss_$rname char(168),				/* retrieval file name */
+  3    71      bk_ss_$rsize fixed bin,				/* length of retrieval file name */
+  3    72      bk_ss_$save_path char(168),			/* starting directory for dump */
+  3    73      bk_ss_$save_plen fixed bin,			/* length of starting directory name */
+  3    74      bk_ss_$save_time fixed bin(52),			/* date, time of start of dump */
+  3    75      bk_ss_$segptr pointer,
+  3    76      bk_ss_$set_dtd bit (1) aligned,			/* ON to always set dtd when dumping, OFF never */
+  3    77      bk_ss_$set_dtd_explicit bit (1) aligned,		/* ON to follow bk_ss_$set_dtd, OFF usual algorithm */
+  3    78      bk_ss_$sp pointer,
+  3    79      bk_ss_$sub_entry bit(1) aligned,			/* ON for backup_dump_ and backup_load_ */
+  3    80      bk_ss_$sub_entry_errfile bit(1) aligned,		/* ON => backup_dump_ and backup_load_ should create error files */
+  3    81      bk_ss_$tapesw bit(1) aligned,			/* Flag to indicate tape output */
+  3    82      bk_ss_$trimsw bit(1) aligned,			/* Flag to trim directories on reload */
+  3    83      bk_ss_$volume_set_name char (32),			/* For future arg -volume_set_name */
+  3    84      bk_ss_$wakeup_interval fixed bin(52),		/* interval between wakeups of dumper in micro secs. */
+  3    85      bk_ss_$wasnt_known bit(1) aligned,			/* Flag for segment termination */
+  3    86      bk_ss_$enforce_max_access_class bit (1) aligned,	/* ON => don't dump anything above give access class */
+  3    87      bk_ss_$maximum_access_class bit (72) aligned,	/* the access class to enforce on all branches */
+  3    88      bk_ss_$enforce_min_access_class bit (1) aligned,	/* ON => don't dump anything below give access class */
+  3    89      bk_ss_$minimum_access_class bit (72) aligned,	/* the minimum access class to enforce on all branches */
+  3    90      bk_ss_$dont_dump_upgraded_dirs bit (1) aligned,	/* ON => don't dump any directory above given access class */
+  3    91      bk_ss_$maximum_dir_access_class bit (72) aligned,	/* the access class to enforce on directories */
+  3    92      bk_ss_$check_effective_access bit (1) aligned,	/* ON => don't dump branches given user can't access */
+  3    93      bk_ss_$upgrade_to_user_auth bit (1) aligned,		/* ON => set access class of branch being dumped to user's authorization */
+  3    94      bk_ss_$user_id character (32) unaligned,		/* the user's Person.Project.tag */
+  3    95      bk_ss_$user_authorization bit (72) aligned,		/* the user's process authorization */
+  3    96      bk_ss_$user_ring fixed binary,			/* the user's ring of execution */
+  3    97      bk_ss_$restore_access_class bit (1) aligned,		/* ON => restore access class even when debugging */
+  3    98      bk_ss_$enforce_minimum_ring bit (1) aligned,		/* ON => don't give anything lower ring bracket */
+  3    99      bk_ss_$minimum_ring fixed binary,			/* the minimum ring bracket to be used */
+  3   100      bk_ss_$translate_access_class bit (1) aligned,	/* ON => translate access classes read from tape */
+  3   101      bk_ss_$source_attributes_ptr pointer,		/* -> source system's AIM attributes */
+  3   102      bk_ss_$target_attributes_ptr pointer,		/* -> target system's AIM attributes */
+  3   103      bk_ss_$writing_map bit (1) aligned)                    /* ON => in backup_map$try_write */
+  3   104 	external static;
+  3   105 
+  3   106 /* END INCLUDE FILE ... bk_ss_.incl.pl1 */
+      199 
+      200 
+      201 /**/
+      202 
+      203 initializer:					/* Initialize static storage. */
+      204      procedure;
+      205 	unspec (ht) = "000001001"b;			/* Initialize character constants. */
+      206 	unspec (nl) = "000001010"b;			/* .. */
+      207 	header1.eol, header2.eol = nl;		/* .. */
+      208 	unspec (eject) = "000001100"b;		/* .. */
+      209 	linep = addr (line);			/* Set addresses compiler refuses to */
+      210 	detail_ptr = addr (detail);			/* .. */
+      211 	not_initialized = ""b;			/* Indicate our work is done. */
+      212      end initializer;
+      213 
+      214 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      215 
+      216 update:
+      217      procedure (old, new, date, time);			/* Update stored times and place in detail line. */
+      218 
+      219 dcl  (old, new) fixed binary (52),			/* The times. */
+      220      date character (8),
+      221      time character (6);				/* Date and time structure elements. */
+      222 	old = new;				/* Save for next time. */
+      223 	date, time = "";				/* Blank the fields */
+      224 	if old > 0 then do;				/* Is it a "real" time? */
+      225 	     call date_time_ (old, calendar_line);	/* Convert the value. */
+      226 	     date = substr (calendar_line, 1, 8);	/* Rearrange the date and time. */
+      227 	     time = substr (calendar_line, 11, 6);
+      228 	end;
+      229 	else if old = 0 then time = "ZERO";		/* Has it ever been set? */
+      230      end update;
+      231 
+      232 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      233 
+      234 trim:
+      235      procedure (inp1, in_length);			/* Procedure to replace blank strings with HT's. */
+      236 
+      237 dcl  (inp1, inp, outp) pointer;			/* Pointers to aligned strings, may be same. */
+      238 
+      239 dcl  (
+      240      in_length,					/* Number of characters in input string. */
+      241      nl_count,					/* Number of NL's found at end of line. */
+      242      line_length,					/* Temporary storage. */
+      243      field_begin,					/* Beginning of 10-col. field. */
+      244      field_end,					/* End of 10-col. field. */
+      245      last_non_blank,				/* Last non-blank character in field. */
+      246      char_count
+      247      ) fixed binary;				/* Accumulating character count. */
+      248 
+      249 dcl  sample character (1);				/* Sample character for comparisons. */
+      250 	inp = inp1;				/* Copy pointers to buffers. */
+      251 	outp = linep;				/* .. */
+      252 	char_count = 0;				/* Output string empty now. */
+      253 	line_length = in_length;			/* Get supplied line length. */
+      254 	line_length = min (length (line), line_length) - 1;
+      255 						/* Convert to synchronous subscript. */
+      256 	nl_count = 0;				/* Clear count of NL characters. */
+      257 	do line_length = line_length by -1 to 0;	/* Trim off trailing blanks. */
+      258 	     sample = inp -> p.c (line_length);		/* Get current character. */
+      259 	     if sample = nl then			/* Is it a new-line? */
+      260 		nl_count = nl_count + 1;		/* Yes, count it. */
+      261 	     else if sample ^= ht then		/* No, is it a tabulate? */
+      262 		if sample ^= " " then		/* No, is it a space? */
+      263 		     go to end_of_line;		/* No, it is the last graphic. */
+      264 	end;
+      265 end_of_line:
+      266 	field_begin = 0;				/* Set pointer to beginning of first field. */
+      267 	do field_end = 9 by 10 to line_length;		/* Consider each 10-col. field in turn. */
+      268 						/* Search back for non-blank character. */
+      269 	     do last_non_blank = field_end by -1 to field_begin while (inp -> p.c (last_non_blank) = " ");
+      270 	     end;
+      271 	     do field_begin = field_begin to last_non_blank;
+      272 						/* Copy initial string. */
+      273 		outp -> p.c (char_count) = inp -> p.c (field_begin);
+      274 		char_count = char_count + 1;		/* Count this character. */
+      275 	     end;
+      276 	     if field_end - last_non_blank > 1 then do;	/* More than one blank? */
+      277 		outp -> p.c (char_count) = ht;	/* Insert a tabulate character. */
+      278 		char_count = char_count + 1;		/* Bump for one character. */
+      279 	     end;
+      280 	     else if field_end - last_non_blank = 1 then do;
+      281 						/* Only one character blank? */
+      282 		outp -> p.c (char_count) = " ";	/* Insert a blank. */
+      283 		char_count = char_count + 1;		/* Count it. */
+      284 	     end;
+      285 	     field_begin = field_end + 1;		/* Set pointer to beginning of next field. */
+      286 	end;
+      287 	do field_begin = field_begin to line_length;	/* Copy remaining partial field. */
+      288 	     outp -> p.c (char_count) = inp -> p.c (field_begin);
+      289 						/* Move it. */
+      290 	     char_count = char_count + 1;		/* Count this character. */
+      291 	end;
+      292 append_nl:
+      293 	outp -> p.c (char_count) = nl;		/* Append NL character. */
+      294 	char_count = char_count + 1;			/* Bump character count. */
+      295 	if nl_count > 1 then do;			/* More to do? */
+      296 	     nl_count = nl_count - 1;			/* Count this one. */
+      297 	     go to append_nl;			/* Put on another one. */
+      298 	end;
+      299 	n = char_count;				/* Return output string length to caller. */
+      300      end trim;
+      301 
+      302 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      303 
+      304 try_write:
+      305      procedure (linep, n);				/* Procedure to write a line */
+      306 
+      307 dcl  linep pointer,
+      308      n fixed bin;					/* its location and length */
+      309 
+      310 dcl  sub_err_ entry () options (variable);
+      311 dcl  error_table_$no_move fixed bin (35) ext static;
+      312 
+      313 	bk_ss_$writing_map = "1"b;			/* make map faults go to level 2, not silently get caught by backup_dump's wierd handler */
+      314 
+      315 	sp = addr (status);				/* Set up pointer to status string. */
+      316 try_write:
+      317 	if lines > page_size then			/* check if new page needed */
+      318 	     call backup_map_$heading_line;
+      319 	call ios_$write ("map", linep, 0, n, nt, sp -> status_bits);
+      320 						/* Try to write the line. */
+      321 	if status.code = error_table_$no_move then do;
+      322 	     call sub_err_ (status.code, "backup_map_", ACTION_CAN_RESTART, null (), (0),
+      323 		"Possible record quota overflow converting the map from an SSF or an MSF. Type ""start"" to retry.");
+      324 	     go to try_write;
+      325 	end;
+      326 	if status.code = error_table_$ioname_not_found then do;
+      327 						/* Was map attached? */
+      328 try_attach:
+      329 	     backup_map = unique_chars_ (""b) || ".backup.map";
+      330 						/* Make up new map name. */
+      331 	     map_name = backup_map;			/* static copy */
+      332 	     rings (1), rings (2), rings (3) = max ((cu_$level_get ()), 4);
+      333 	     call hcs_$fs_search_get_wdir (addr (dir), length (dir));
+      334 	     call hcs_$append_branchx ((dir), (backup_map), 01011b, rings, (get_group_id_$tag_star ()), 0b, 0b, 0b, (0))
+      335 		;
+      336 	     call hcs_$acl_add1 (dir, backup_map, "*.SysDaemon.*", 01011b, rings, (0));
+      337 	     call ios_$attach ("map", "file", backup_map, "w", sp -> status_bits);
+      338 	     if status.code = 0 then do;		/* Was attach successful? */
+      339 		call ioa_ ("Map attached to file ""^a"".", backup_map);
+      340 		go to try_write;			/* Now write the line. */
+      341 	     end;
+      342 	end;
+      343 	if status.code ^= 0 then do;			/* Was write successful? */
+      344 discontinue_map:
+      345 	     call com_err_ (status.code, "backup_map_", "^[^a^[>^]^a^]^/Map discontinued.", backup_map ^= "", dir,
+      346 		dir ^= ">", backup_map);
+      347 	     bk_ss_$mapsw = ""b;
+      348 	     go to exit;
+      349 	end;
+      350 	else if nt ^= n then do;			/* Were all characters "transmitted"? */
+      351 	     call ioa_ ("backup_map_: Partial transmission; map will be detached.");
+      352 	     call ios_$detach ("map", "", "", sp -> status_bits);
+      353 						/* Detach the map. */
+      354 	     if status.code = 0 then			/* Detached OK? */
+      355 		go to try_attach;			/* Yes, get new segment and reattach. */
+      356 	     go to discontinue_map;			/* No, gripe and clear switch. */
+      357 	end;
+      358 	lines = lines + 1;				/* Count this line */
+      359 	bk_ss_$writing_map = "0"b;
+      360 	return;					/* Return to caller. */
+  4     1 /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  4     2 /* format: style3 */
+  4     3 
+  4     4 /* These constants are to be used for the flags argument of sub_err_ */
+  4     5 /* They are just "string (condition_info_header.action_flags)" */
+  4     6 
+  4     7 declare	(
+  4     8 	ACTION_CAN_RESTART	init (""b),
+  4     9 	ACTION_CANT_RESTART init ("1"b),
+  4    10 	ACTION_DEFAULT_RESTART
+  4    11 			init ("01"b),
+  4    12 	ACTION_QUIET_RESTART
+  4    13 			init ("001"b),
+  4    14 	ACTION_SUPPORT_SIGNAL
+  4    15 			init ("0001"b)
+  4    16 	)		bit (36) aligned internal static options (constant);
+  4    17 
+  4    18 /* End include file */
+      361 
+      362      end try_write;
+      363 
+      364 /**/
+      365 
+      366 directory_line:
+      367      entry (pointer, count);				/* Entry to write map line. */
+      368 	if bk_ss_$mapsw then do;
+      369 	     call trim (pointer, count);		/* Move line to buffer, trim it, append NL. */
+      370 	     call try_write (linep, n);		/* Write the line */
+      371 	end;
+      372 	go to exit;
+      373 
+      374 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      375 
+      376 on_line:
+      377      entry (pointer, count);				/* Entry to write on and off line. */
+      378 	if not_initialized then call initializer;	/* Set us up if necessary. */
+      379 	call trim (pointer, count);			/* Move, trim, and format line. */
+      380 write_on_line:
+      381 	if ^bk_ss_$sub_entry then call ios_$write_ptr (linep, 0, n);
+      382 	if ^bk_ss_$mapsw then go to exit;		/* Finished if no map */
+      383 	call try_write (addr (nl), 1);		/* Skip a line */
+      384 	call try_write (linep, n);			/* Write the message */
+      385 	go to exit;				/* Finished */
+      386 
+      387 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      388 
+      389 beginning_line:
+      390      entry (time, pointer, count);			/* Entry to write and type beginning comment. */
+      391 
+      392 dcl  time fixed binary (52);				/* Time processing began. */
+      393 	if not_initialized then call initializer;	/* Set us up if necessary. */
+      394 	call date_time_ (time, calendar_line);		/* Convert the time. */
+      395 	if ^bk_ss_$sub_entry then call ioa_ ("Begin at ^a", calendar_line);
+      396 	lines = 1;				/* We are starting new page */
+      397 	if ^bk_ss_$mapsw then go to exit;		/* finished if no map */
+      398 	call ioa_$rs ("^a^[. ^]Begin at ^a", line, n, pointer -> string, count ^= 0, calendar_line);
+      399 	if bk_ss_$brief_mapsw then do;		/* skip two lines if -brief_map */
+      400 	     call try_write (addr (nl), 1);
+      401 	     lines = lines + 1;			/* extra nl */
+      402 	end;
+      403 	else do;
+      404 	     call try_write (addr (eject), 1);		/* Else skip to new page. */
+      405 	     lines = 1;
+      406 	end;
+      407 	call try_write (linep, n);			/* Write the line */
+      408 	header1.top = nl;				/* Disable eject in header */
+      409 	go to try_head;				/* Go emit page headings */
+      410 
+      411 /* * * * ** * * * * * * * * * * * * * * * * * * * * * * * * */
+      412 
+      413 terminal_line:
+      414      entry (time, flag);				/* Entry to write and type termination comment. */
+      415 
+      416 dcl  flag fixed binary;				/* Error code. */
+      417 	if not_initialized then call initializer;	/* Rare, but possible */
+      418 	call date_time_ (time, calendar_line);		/* Convert the time. */
+      419 	if flag = 0 then				/* Make up appropriate comment. */
+      420 	     call ioa_$rs ("Normal termination ^a.", line, n, calendar_line);
+      421 	else call ioa_$rs ("Error ^d; Abnormal termination ^a.", line, n, flag, calendar_line);
+      422 	if ^bk_ss_$sub_entry then call ios_$write_ptr (linep, 0, n);
+      423 	if ^bk_ss_$mapsw then go to exit;		/* Write map if specified */
+      424 	call try_write (addr (nl), 1);		/* Blank line */
+      425 	call try_write (linep, n);			/* Terminate line */
+      426 	lines = page_size + 1;			/* If they add to map, they'll start new page */
+      427 	go to exit;
+      428 
+      429 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      430 
+      431 heading_line:
+      432      entry;					/* Entry to write heading line. */
+      433 	if ^bk_ss_$mapsw then go to exit;
+      434 	lines = 0;				/* Reset line count */
+      435 	header1.top = eject;			/* Ensure new page */
+      436 try_head:
+      437 	lines = lines + 1;				/* Number of <NL> chars in header */
+      438 	call try_write (addr (header1), length_hdr1);	/* First header line */
+      439 	call try_write (addr (header2), 119);		/* Second one */
+      440 	go to exit;				/* All done */
+      441 
+      442 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      443 
+      444 detail_line2:
+      445      entry					/* Entry to write detail line. */
+      446 	(name, blocks, type, dtp, dtem, dtd, dtu, dtsm);
+      447 
+      448 dcl  name character (32) aligned,			/* Entry name. */
+      449      blocks fixed binary (9),				/* Number of blocks if segment. */
+      450      type character (10) aligned,			/* Record type. */
+      451      (dtp, dtd, dtu, dtem, dtsm) fixed binary (52);	/* Date/times. */
+      452 	if ^bk_ss_$mapsw then go to exit;
+      453 	if dtd ^= old_dtd then			/* Is previous dump time the same? */
+      454 	     call update (old_dtd, dtd, detail.dtd.date, detail.dtd.time);
+      455 						/* No, update printed version. */
+      456 	detail.name = name;				/* Copy the entry name. */
+      457 	if blocks ^= old_blocks then do;		/* Same blocks entry as before? */
+      458 	     old_blocks = blocks;			/* Remember for next time. */
+      459 	     if old_blocks >= 0 then do;		/* Real number of blocks? */
+      460 		call cv_bin_$dec (old_blocks, ascii);	/* Convert the value. */
+      461 		detail.blocks = substr (ascii, 10, 3);	/* Insert in detail line. */
+      462 	     end;
+      463 	     else detail.blocks = "";			/* No, blank out field. */
+      464 	end;
+      465 	detail.record_type = type;			/* Copy logical record type. */
+      466 	if dtp ^= old_dtp then			/* Is the time processed the same? */
+      467 	     call update (old_dtp, dtp, ignore, detail.dtp.time);
+      468 						/* No, update printed version. */
+      469 	if dtu ^= old_dtu then			/* Is time used different? */
+      470 	     call update (old_dtu, dtu, detail.dtu.date, detail.dtu.time);
+      471 						/* Yes, update it. */
+      472 	if dtem ^= old_dtem then			/* Update time entry modified if different. */
+      473 	     call update (old_dtem, dtem, detail.dtem.date, detail.dtem.time);
+      474 	if dtsm ^= old_dtsm then			/* Update time segment modified if different. */
+      475 	     call update (old_dtsm, dtsm, detail.dtsm.date, detail.dtsm.time);
+      476 	call trim (detail_ptr, 120);			/* Move to line buffer and trim blanks. */
+      477 	call try_write (linep, n);			/* Go write the line. */
+      478 	go to exit;				/* Finished */
+      479 
+      480 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      481 
+      482 name_line:
+      483      entry (pointer, count);				/* Entry to write additional names indented. */
+      484 	if ^bk_ss_$mapsw then go to exit;
+      485 	ap = pointer;				/* Copy input pointer. */
+      486 	linep -> p.c (0) = ht;			/* Prefix line with HT. */
+      487 	do i = 0 to min (length (line) - 1, count) - 1;	/* Scan the characters. */
+      488 	     linep -> p.c (i + 1) = ap -> p.c (i);	/* Move this character. */
+      489 	end;
+      490 	call trim (linep, i + 1);			/* Compute total character count. */
+      491 	call try_write (linep, n);			/* Go write the line. */
+      492 	go to exit;				/* Finished */
+      493 
+      494 /**/
+      495 
+      496 /* Write an error message to the error file, the map, and online: calling sequence identical to com_err_ */
+      497 
+      498 error_line:
+      499      entry (P_code, P_module_name);
+      500 
+      501 dcl  P_code fixed binary (35) parameter;
+      502 dcl  P_module_name character (*) parameter;
+      503 
+      504 dcl  message_buffer character (1024);
+      505 dcl  user_message_lth fixed binary (21);
+      506 dcl  message_lth fixed binary;
+      507 
+      508 dcl  arg_list_ptr pointer;
+      509 dcl  n_arguments fixed binary;
+      510 dcl  sname character (16);
+      511 dcl  efile_name character (64) static;			/* name of the error file */
+      512 
+      513 dcl  date_name_ entry (character (*), character (*), character (*), character (*), fixed binary (35));
+      514 
+      515 
+      516 	if bk_ss_$mapsw | ^bk_ss_$sub_entry | bk_ss_$sub_entry_errfile then do;
+      517 	     if not_initialized then call initializer ();
+      518 
+      519 	     message_lth = 0;
+      520 
+      521 	     call cu_$arg_count (n_arguments);
+      522 
+      523 	     if P_module_name ^= "" then do;
+      524 		call add_text (rtrim (P_module_name));
+      525 		if (P_code ^= 0) | (n_arguments > 2) then call add_text (": ");
+      526 	     end;
+      527 
+      528 	     if P_code ^= 0 then do;
+      529 		call convert_status_code_ (P_code, ((8)" "), long_info);
+      530 		call add_text (rtrim (long_info));
+      531 		if n_arguments > 2 then call add_text (" ");
+      532 	     end;
+      533 
+      534 	     if n_arguments > 2 then do;
+      535 		call cu_$arg_list_ptr (arg_list_ptr);
+      536 		begin;
+      537 dcl  rest_of_message_buffer character (length (message_buffer) - message_lth) unaligned defined (message_buffer)
+      538 	position (message_lth + 1);
+      539 		     call ioa_$general_rs (arg_list_ptr, 3, 4, rest_of_message_buffer, user_message_lth, "0"b, "1"b);
+      540 		end;
+      541 		message_lth = message_lth + user_message_lth;
+      542 	     end;
+      543 	     else call add_text (nl);			/* make sure it ends with a newline */
+      544 
+      545 	     if bk_ss_$sub_entry then do;		/* record lossage in data structure */
+      546 		bk_ss_$control_ptr -> backup_control.status_code (bk_ss_$path_index) = P_code;
+      547 		bk_ss_$control_ptr -> backup_control.error_name (bk_ss_$path_index) = P_module_name;
+      548 		if bk_ss_$sub_entry_errfile then go to WRITE_ERROR_FILE;
+      549 		else if bk_ss_$mapsw then go to WRITE_MAP_LINE;
+      550 		else go to RETURN_FROM_ERROR_LINE;	/* skip writing online */
+      551 	     end;
+      552 
+      553 	     if bk_ss_$err_onlinesw then do;		/* write the message online */
+      554 WRITE_ONLINE:
+      555 		call iox_$put_chars (iox_$error_output, addr (message_buffer), message_lth, code);
+      556 		if ^bk_ss_$mapsw then
+      557 		     go to RETURN_FROM_ERROR_LINE;
+      558 		else go to WRITE_MAP_LINE;
+      559 	     end;
+      560 
+      561 	     else do;				/* write the message into the error file */
+      562 WRITE_ERROR_FILE:
+      563 		sp = addr (status);
+      564 		call ios_$write ("err_file", addr (message_buffer), 0, message_lth, nt, sp -> status_bits);
+      565 
+      566 		if status.code = error_table_$ioname_not_found then do;
+      567 		     dirname = "";			/* no error file: try to create one */
+      568 		     efile_name = "";
+      569 		     sname = bk_ss_$myname;
+      570 		     if ^bk_ss_$debugsw then
+      571 			if (bk_ss_$myname = "reload") | (bk_ss_$myname = "iload") then dirname = ">reload_dir";
+      572 ATTACH_ERROR_FILE:
+      573 		     call date_name_ (dirname, sname, "ef", efile_name, code);
+      574 		     if code ^= 0 then go to STOP_ERROR_FILE;
+      575 		     if dirname = ">reload_dir" then
+      576 			efile_name =
+      577 			     ">reload_dir>"
+      578 			     || substr (efile_name, 1, length (efile_name) - length (">reload_dir>"));
+      579 		     i = index (efile_name, " ") - 1;
+      580 		     rings (1), rings (2), rings (3) = max ((cu_$level_get ()), 4);
+      581 		     call expand_pathname_ (substr (efile_name, 1, i), dir, ent, code);
+      582 		     call hcs_$append_branchx ((dir), (ent), 01011b, rings, (get_group_id_$tag_star ()), 0b, 0b, 0b,
+      583 			code);
+      584 		     if (code = 0) | (code = error_table_$namedup) then
+      585 			call hcs_$acl_add1 (dir, ent, "*.SysDaemon.*", 01011b, rings, code);
+      586 		     call ios_$attach ("err_file", "file", efile_name, "w", sp -> status_bits);
+      587 		     if status.code = 0 then do;	/* inform user that there's an error file */
+      588 			call ioa_ ("Error file attached to file ""^a"".", efile_name);
+      589 			go to WRITE_ERROR_FILE;	/* and try again */
+      590 		     end;
+      591 		end;
+      592 		if status.code ^= 0 then do;		/* couldn't write to the file: switch to online */
+      593 STOP_ERROR_FILE:
+      594 		     call com_err_ (status.code, "backup_map_", "Error file discontinued.");
+      595 		     bk_ss_$err_onlinesw = "1"b;
+      596 		     go to WRITE_ONLINE;
+      597 		end;
+      598 		else if nt ^= message_lth then do;	/* didn't put everyhting into the file */
+      599 		     call ioa_ ("backup_map_: Partial transmission; error file ^a will be detached.", efile_name);
+      600 		     call ios_$detach ("err_file", "", "", sp -> status_bits);
+      601 		     if status.code = 0 then go to ATTACH_ERROR_FILE;
+      602 						/* try again if we detached it */
+      603 		     go to STOP_ERROR_FILE;		/* otherwise, go online */
+      604 		end;
+      605 	     end;
+      606 
+      607 WRITE_MAP_LINE:
+      608 	     if bk_ss_$mapsw then do;			/* put it into the map */
+      609 		call try_write (addr (nl), 1);
+      610 		call try_write (addr (message_buffer), message_lth);
+      611 	     end;
+      612 	end;
+      613 
+      614 RETURN_FROM_ERROR_LINE:
+      615 	return;
+      616 
+      617 
+      618 
+      619 /* Older entry to print error messages */
+      620 
+      621 fs_error_line:
+      622      entry (fs_code, fs_comment, fs_dir, fs_entry);
+      623 
+      624 dcl  fs_code fixed binary (35) parameter;
+      625 dcl  fs_comment character (*) aligned parameter;		/* offending procedure */
+      626 dcl  fs_dir character (*) aligned parameter;		/* offending directory path name */
+      627 dcl  fs_entry character (*) aligned parameter;		/* offending entry */
+      628 
+      629 	if substr (fs_entry, 1, 1) = ">" then		/* some routines call us incorrectly */
+      630 	     call backup_map_$error_line (fs_code, (fs_comment), fs_entry);
+      631 
+      632 	else if fs_entry = "" then			/* not really a pathname */
+      633 	     call backup_map_$error_line (fs_code, (fs_comment), fs_dir);
+      634 
+      635 	else call backup_map_$error_line (fs_code, (fs_comment), pathname_ ((fs_dir), (fs_entry)));
+      636 
+      637 	return;
+      638 
+      639 
+      640 
+      641 
+      642 /* Adds a piece of text to the message buffer */
+      643 
+      644 add_text:
+      645      procedure (p_text);
+      646 
+      647 dcl  p_text character (*) parameter;
+      648 
+      649 dcl  rest_of_message_buffer character (length (message_buffer) - message_lth) unaligned defined (message_buffer)
+      650 	position (message_lth + 1);
+      651 
+      652 	if length (p_text) <= length (rest_of_message_buffer) then do;
+      653 	     substr (rest_of_message_buffer, 1, length (p_text)) = p_text;
+      654 	     message_lth = message_lth + length (p_text);
+      655 	end;
+      656 
+      657 	else do;
+      658 	     rest_of_message_buffer = substr (p_text, 1, length (rest_of_message_buffer));
+      659 	     message_lth = message_lth + length (rest_of_message_buffer);
+      660 	end;
+      661 
+      662 	return;
+      663 
+      664      end add_text;
+      665 
+      666 /**/
+      667 
+      668 tapes:
+      669      entry (pointer, count);				/* Entry to specify first (tape info) header */
+      670 	if not_initialized then call initializer;	/* Set us up if necessary */
+      671 	call ioa_$rs ("^a", header1.tapenames, n, pointer -> string);
+      672 						/* Insert info */
+      673 	if substr (header1.tapenames, 1, 4) = " " then
+      674 	     length_hdr1 = 2;
+      675 	else length_hdr1 = n + 2;			/* Set size */
+      676 	lines = page_size + 1;			/* Cause new page */
+      677 exit:
+      678 	bk_ss_$writing_map = "0"b;
+      679 	return;
+      680 
+      681 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      682 
+      683 get_map_name:					/* for copy_dump_tape */
+      684      entry () returns (character (32));
+      685 	return (map_name);
+      686 
+      687 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      688 
+      689 init_for_cdt:					/* for copy_dump_tape */
+      690      entry (tape_list);
+      691 
+      692 dcl  (save_debug_sw, save_mapsw, save_sub_entry, save_tape_sw, save_bf_mapsw) bit (1) internal static;
+      693 dcl  tape_list character (128) varying;
+      694 dcl  get_wdir_ entry () returns (character (168));
+      695 
+      696 	lines = 0;
+      697 
+      698 	if tape_list ^= "" then			/* set of tapes used by copy_dump_tape for output map */
+      699 	     header1.tapenames = tape_list;
+      700 
+      701 	save_debug_sw = bk_ss_$debugsw;		/* will be changing these while copy_dump_tape running */
+      702 	save_mapsw = bk_ss_$mapsw;
+      703 	save_sub_entry = bk_ss_$sub_entry;
+      704 	save_tape_sw = bk_ss_$tapesw;
+      705 	save_bf_mapsw = bk_ss_$brief_mapsw;
+      706 
+      707 	bk_ss_$sub_entry, bk_ss_$debugsw, bk_ss_$mapsw = "1"b;
+      708 	bk_ss_$brief_mapsw, bk_ss_$tapesw = "0"b;
+      709 
+      710 	not_initialized = "1"b;			/* force backup_map_ to reinitialize itself */
+      711 
+      712 	dir = get_wdir_ ();				/* use working directory for the map */
+      713 
+      714 	header1.top = "";
+      715 
+      716 	return;
+      717 
+      718 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      719 
+      720 detach_for_cdt:					/* for copy_dump_tape */
+      721      entry (a_code);
+      722 
+      723 dcl  a_code fixed binary (35) parameter;
+      724 
+      725 	sp = addr (status);				/* establish where the bits go */
+      726 	call ios_$detach ("map", "", "", sp -> status_bits);
+      727 						/* detach the map */
+      728 	a_code = status.code;
+      729 
+      730 	bk_ss_$debugsw = save_debug_sw;		/* restore items saved during copy_dump_tape */
+      731 	bk_ss_$mapsw = save_mapsw;
+      732 	bk_ss_$sub_entry = save_sub_entry;
+      733 	bk_ss_$tapesw = save_tape_sw;
+      734 	bk_ss_$brief_mapsw = save_bf_mapsw;
+      735 
+      736 	return;
+      737 
+      738      end backup_map_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.5  backup_map_.pl1                   >spec>install>1111>backup_map_.pl1
+195          1    05/06/74  1742.1  io_status.incl.pl1                >ldd>include>io_status.incl.pl1
+197          2    11/21/83  1219.2  backup_control.incl.pl1           >ldd>include>backup_control.incl.pl1
+199          3    04/02/87  2006.7  bk_ss_.incl.pl1                   >ldd>include>bk_ss_.incl.pl1
+361          4    04/16/82  0958.1  sub_err_flags.incl.pl1            >ldd>include>sub_err_flags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_CAN_RESTART              000047 constant        bit(36)                  initial dcl 4-7 set ref 322*
+P_code                                 parameter       fixed bin(35,0)          dcl 501 set ref 498 525 528 529* 546
+P_module_name                          parameter       char                     packed unaligned dcl 502 ref 498 523 524 524 547
+a_code                                 parameter       fixed bin(35,0)          dcl 723 set ref 720 728*
+addr                                                   builtin function         dcl 51 ref 209 210 315 333 333 383 383 400 400 404
+                                                                                  404 424 424 438 438 439 439 554 554 562 564 564
+                                                                                  609 609 610 610 725
+ap                              000104 automatic       pointer                  dcl 53 set ref 485* 488
+arg_list_ptr                    000610 automatic       pointer                  dcl 508 set ref 535* 539*
+ascii                           000173 automatic       char(12)                 dcl 128 set ref 460* 461
+backup_control                         based           structure                level 1 dcl 2-8
+backup_map                      000163 automatic       char(32)                 initial packed unaligned dcl 74 set ref 74* 328* 331
+                                                                                  334 336* 337* 339* 344 344*
+backup_map_$error_line          000364 constant        entry                    external dcl 79 ref 629 632 635
+backup_map_$heading_line        000366 constant        entry                    external dcl 79 ref 316
+bk_ss_$brief_mapsw              000444 external static bit(1)                   dcl 3-17 set ref 399 705 708* 734*
+bk_ss_$control_ptr              000446 external static pointer                  dcl 3-17 ref 546 547
+bk_ss_$debugsw                  000450 external static bit(1)                   dcl 3-17 set ref 570 701 707* 730*
+bk_ss_$err_onlinesw             000452 external static bit(1)                   dcl 3-17 set ref 553 595*
+bk_ss_$mapsw                    000454 external static bit(1)                   dcl 3-17 set ref 347* 368 382 397 423 433 452 484
+                                                                                  516 549 556 607 702 707* 731*
+bk_ss_$myname                   000456 external static char(16)                 packed unaligned dcl 3-17 ref 569 570 570
+bk_ss_$path_index               000460 external static fixed bin(17,0)          dcl 3-17 ref 546 547
+bk_ss_$sub_entry                000462 external static bit(1)                   dcl 3-17 set ref 380 395 422 516 545 703 707* 732*
+bk_ss_$sub_entry_errfile        000464 external static bit(1)                   dcl 3-17 ref 516 548
+bk_ss_$tapesw                   000466 external static bit(1)                   dcl 3-17 set ref 704 708* 733*
+bk_ss_$writing_map              000470 external static bit(1)                   dcl 3-17 set ref 313* 359* 677*
+blocks                   10(09) 000272 internal static char(3)                  initial level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 461* 463*
+blocks                                 parameter       fixed bin(9,0)           dcl 448 in procedure "backup_map_" ref 444 457 458
+c                                      based           char(1)                  array level 2 packed packed unaligned dcl 125 set
+                                                                                  ref 258 269 273* 273 277* 282* 288* 288 292* 486*
+                                                                                  488* 488
+calendar_line                   000176 automatic       char(24)                 dcl 130 set ref 225* 226 227 394* 395* 398* 418*
+                                                                                  419* 421*
+char_count                      000661 automatic       fixed bin(17,0)          dcl 239 set ref 252* 273 274* 274 277 278* 278 282
+                                                                                  283* 283 288 290* 290 292 294* 294 299
+code                            000162 automatic       fixed bin(35,0)          dcl 62 in procedure "backup_map_" set ref 554* 572*
+                                                                                  574 581* 582* 584 584 584*
+code                            000204 automatic       fixed bin(17,0)          level 2 in structure "status" dcl 1-2 in procedure
+                                                                                  "backup_map_" set ref 321 322* 326 338 343 344*
+                                                                                  354 566 587 592 593* 601 728
+com_err_                        000370 constant        entry                    external dcl 79 ref 344 593
+convert_status_code_            000372 constant        entry                    external dcl 79 ref 529
+count                                  parameter       fixed bin(17,0)          dcl 47 set ref 41 366 369* 376 379* 389 398 398 398
+                                                                                  482 487 668 671 671
+cu_$arg_count                   000374 constant        entry                    external dcl 79 ref 521
+cu_$arg_list_ptr                000376 constant        entry                    external dcl 79 ref 535
+cu_$level_get                   000442 constant        entry                    external dcl 103 ref 332 580
+cv_bin_$dec                     000400 constant        entry                    external dcl 79 ref 460
+date                     32(09) 000272 internal static char(8)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 474*
+date                     26     000272 internal static char(8)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 469*
+date                     22     000272 internal static char(8)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 453*
+date                     15(27) 000272 internal static char(8)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 472*
+date                                   parameter       char(8)                  packed unaligned dcl 219 in procedure "update" set
+                                                                                  ref 216 223* 226*
+date_name_                      000472 constant        entry                    external dcl 513 ref 572
+date_time_                      000402 constant        entry                    external dcl 79 ref 225 394 418
+detail                          000272 internal static structure                level 1 packed packed unaligned dcl 140 set ref 210
+detail_ptr                      000270 internal static pointer                  dcl 140 set ref 210* 476*
+dir                             000010 internal static char(168)                dcl 62 set ref 333 333 333 333 334 336* 344* 344
+                                                                                  581* 582 584* 712*
+dirname                         000144 automatic       char(12)                 packed unaligned dcl 62 set ref 567* 570* 572* 575
+dtd                                    parameter       fixed bin(52,0)          dcl 448 in procedure "backup_map_" set ref 444 453
+                                                                                  453*
+dtd                      21(18) 000272 internal static structure                level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_"
+dtem                                   parameter       fixed bin(52,0)          dcl 448 in procedure "backup_map_" set ref 444 472
+                                                                                  472*
+dtem                     15(18) 000272 internal static structure                level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_"
+dtp                                    parameter       fixed bin(52,0)          dcl 448 in procedure "backup_map_" set ref 444 466
+                                                                                  466*
+dtp                      13(27) 000272 internal static structure                level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_"
+dtsm                     31(27) 000272 internal static structure                level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_"
+dtsm                                   parameter       fixed bin(52,0)          dcl 448 in procedure "backup_map_" set ref 444 474
+                                                                                  474*
+dtu                                    parameter       fixed bin(52,0)          dcl 448 in procedure "backup_map_" set ref 444 469
+                                                                                  469*
+dtu                      25(27) 000272 internal static structure                level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_"
+efile_name                      000330 internal static char(64)                 packed unaligned dcl 511 set ref 568* 572* 575* 575
+                                                                                  575 579 581 581 586* 588* 599*
+eject                           000174 internal static char(1)                  packed unaligned dcl 132 set ref 208* 404 404 435
+ent                             000147 automatic       char(32)                 packed unaligned dcl 62 set ref 581* 582 584*
+eol                       0(09) 000176 internal static char(1)                  level 2 in structure "header1" packed packed
+                                                                                  unaligned dcl 134 in procedure "backup_map_" set
+                                                                                  ref 207*
+eol                      35(18) 000231 internal static char(1)                  level 2 in structure "header2" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 207*
+error_name              170            based           char(65)                 array level 3 packed packed unaligned dcl 2-8 set
+                                                                                  ref 547*
+error_table_$ioname_not_found   000360 external static fixed bin(35,0)          dcl 69 ref 326 566
+error_table_$namedup            000356 external static fixed bin(35,0)          dcl 69 ref 584
+error_table_$no_move            000500 external static fixed bin(35,0)          dcl 311 ref 321
+expand_pathname_                000440 constant        entry                    external dcl 103 ref 581
+field_begin                     000656 automatic       fixed bin(17,0)          dcl 239 set ref 265* 269 271* 271* 273* 285* 287*
+                                                                                  287* 288*
+field_end                       000657 automatic       fixed bin(17,0)          dcl 239 set ref 267* 269 276 280 285*
+flag                                   parameter       fixed bin(17,0)          dcl 416 set ref 413 419 421*
+fs_code                                parameter       fixed bin(35,0)          dcl 624 set ref 621 629* 632* 635*
+fs_comment                             parameter       char                     dcl 625 ref 621 629 632 635
+fs_dir                                 parameter       char                     dcl 626 set ref 621 632* 635 635
+fs_entry                               parameter       char                     dcl 627 set ref 621 629 629* 632 635 635
+get_group_id_$tag_star          000434 constant        entry                    external dcl 103 ref 334 582
+get_wdir_                       000474 constant        entry                    external dcl 694 ref 712
+hcs_$acl_add1                   000432 constant        entry                    external dcl 103 ref 336 584
+hcs_$append_branchx             000430 constant        entry                    external dcl 103 ref 334 582
+hcs_$fs_search_get_wdir         000436 constant        entry                    external dcl 103 ref 333
+header1                         000176 internal static structure                level 1 packed packed unaligned dcl 134 set ref 438
+                                                                                  438
+header2                         000231 internal static structure                level 1 packed packed unaligned dcl 140 set ref 439
+                                                                                  439
+ht                              000175 internal static char(1)                  packed unaligned dcl 132 set ref 205* 261 277 486
+i                               000100 automatic       fixed bin(17,0)          dcl 53 set ref 487* 488 488* 490 579* 581 581
+ignore                          000142 automatic       char(8)                  packed unaligned dcl 60 set ref 466*
+in_length                              parameter       fixed bin(17,0)          dcl 239 ref 234 253
+index                                                  builtin function         dcl 51 ref 579
+inp                             000650 automatic       pointer                  dcl 237 set ref 250* 258 269 273 288
+inp1                                   parameter       pointer                  dcl 237 ref 234 250
+ioa_                            000404 constant        entry                    external dcl 79 ref 339 351 395 588 599
+ioa_$general_rs                 000410 constant        entry                    external dcl 79 ref 539
+ioa_$rs                         000406 constant        entry                    external dcl 79 ref 398 419 421 671
+ios_$attach                     000412 constant        entry                    external dcl 79 ref 337 586
+ios_$detach                     000414 constant        entry                    external dcl 79 ref 352 600 726
+ios_$write                      000416 constant        entry                    external dcl 79 ref 319 564
+ios_$write_ptr                  000420 constant        entry                    external dcl 79 ref 380 422
+iox_$error_output               000424 external static pointer                  dcl 99 set ref 554*
+iox_$put_chars                  000426 constant        entry                    external dcl 100 ref 554
+last_non_blank                  000660 automatic       fixed bin(17,0)          dcl 239 set ref 269* 269* 271 276 280
+length                                                 builtin function         dcl 51 ref 254 333 333 487 537 575 575 649 652 652
+                                                                                  653 654 658 659
+length_hdr1                     000230 internal static fixed bin(17,0)          initial dcl 134 set ref 438* 673* 675*
+line                            000106 internal static char(200)                packed unaligned dcl 121 set ref 209 254 398* 419*
+                                                                                  421* 487
+line_length                     000655 automatic       fixed bin(17,0)          dcl 239 set ref 253* 254* 254 257* 257* 258* 267 287
+linep                           000170 internal static pointer                  dcl 121 in procedure "backup_map_" set ref 209* 251
+                                                                                  370* 380* 384* 407* 422* 425* 477* 486 488 490*
+                                                                                  491*
+linep                                  parameter       pointer                  dcl 307 in procedure "try_write" set ref 304 319*
+lines                           000172 internal static fixed bin(17,0)          dcl 121 set ref 316 358* 358 396* 401* 401 405* 426*
+                                                                                  434* 436* 436 676* 696*
+long_info                       000110 automatic       char(100)                dcl 58 set ref 529* 530 530
+map_name                        000062 internal static char(32)                 initial packed unaligned dcl 62 set ref 331* 685
+max                                                    builtin function         dcl 51 ref 332 580
+message_buffer                  000206 automatic       char(1024)               packed unaligned dcl 504 set ref 537 539 539 554 554
+                                                                                  564 564 610 610 649 652 652 653 653 658* 658 658
+                                                                                  658 659 659
+message_lth                     000607 automatic       fixed bin(17,0)          dcl 506 set ref 519* 537 539 541* 541 554* 564* 598
+                                                                                  610* 649 652 653 654* 654 658 658 659* 659 659
+min                                                    builtin function         dcl 51 ref 254 487
+n                               000101 automatic       fixed bin(17,0)          dcl 53 in procedure "backup_map_" set ref 299* 370*
+                                                                                  380* 384* 398* 407* 419* 421* 422* 425* 477* 491*
+                                                                                  671* 675
+n                                      parameter       fixed bin(17,0)          dcl 307 in procedure "try_write" set ref 304 319*
+                                                                                  350
+n_arguments                     000612 automatic       fixed bin(17,0)          dcl 509 set ref 521* 525 531 534
+name                      0(09) 000272 internal static char(32)                 initial level 2 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 456*
+name                                   parameter       char(32)                 dcl 448 in procedure "backup_map_" ref 444 456
+new                                    parameter       fixed bin(52,0)          dcl 219 ref 216 222
+nl                              000173 internal static char(1)                  packed unaligned dcl 132 set ref 206* 207 259 292
+                                                                                  383 383 400 400 408 424 424 543* 609 609
+nl_count                        000654 automatic       fixed bin(17,0)          dcl 239 set ref 256* 259* 259 295 296* 296
+not_initialized                 000072 internal static bit(1)                   initial packed unaligned dcl 113 set ref 211* 378
+                                                                                  393 417 517 670 710*
+nt                              000102 automatic       fixed bin(17,0)          dcl 53 set ref 319* 350 564* 598
+null                                                   builtin function         dcl 51 ref 322 322
+old                                    parameter       fixed bin(52,0)          dcl 219 set ref 216 222* 224 225* 229
+old_blocks                      000073 internal static fixed bin(17,0)          initial dcl 116 set ref 457 458* 459 460*
+old_dtd                         000076 internal static fixed bin(52,0)          initial dcl 116 set ref 453 453*
+old_dtem                        000102 internal static fixed bin(52,0)          initial dcl 116 set ref 472 472*
+old_dtp                         000074 internal static fixed bin(52,0)          initial dcl 116 set ref 466 466*
+old_dtsm                        000104 internal static fixed bin(52,0)          initial dcl 116 set ref 474 474*
+old_dtu                         000100 internal static fixed bin(52,0)          initial dcl 116 set ref 469 469*
+outp                            000652 automatic       pointer                  dcl 237 set ref 251* 273 277 282 288 292
+p                                      based           structure                level 1 dcl 125
+p_text                                 parameter       char                     packed unaligned dcl 647 ref 644 652 653 653 654 658
+page_size                              constant        fixed bin(17,0)          initial dcl 113 ref 316 426 676
+pathname_                       000422 constant        entry                    external dcl 79 ref 635 635
+pointer                                parameter       pointer                  dcl 47 set ref 41 366 369* 376 379* 389 398 482 485
+                                                                                  668 671
+record_type              11(09) 000272 internal static char(10)                 initial level 2 packed packed unaligned dcl 140 set
+                                                                                  ref 465*
+requests                 40            based           structure                array level 2 dcl 2-8
+rest_of_message_buffer                 defined         char                     packed unaligned dcl 537 in begin block on line 536
+                                                                                  set ref 539*
+rest_of_message_buffer                 defined         char                     packed unaligned dcl 649 in procedure "add_text" set
+                                                                                  ref 652 653* 658* 658 659
+rings                           000157 automatic       fixed bin(3,0)           array dcl 62 set ref 332* 332* 332* 334* 336* 580*
+                                                                                  580* 580* 582* 584*
+rtrim                                                  builtin function         dcl 51 ref 524 524 530 530
+sample                          000662 automatic       char(1)                  packed unaligned dcl 249 set ref 258* 259 261 261
+save_bf_mapsw                   000354 internal static bit(1)                   packed unaligned dcl 692 set ref 705* 734
+save_debug_sw                   000350 internal static bit(1)                   packed unaligned dcl 692 set ref 701* 730
+save_mapsw                      000351 internal static bit(1)                   packed unaligned dcl 692 set ref 702* 731
+save_sub_entry                  000352 internal static bit(1)                   packed unaligned dcl 692 set ref 703* 732
+save_tape_sw                    000353 internal static bit(1)                   packed unaligned dcl 692 set ref 704* 733
+sname                           000613 automatic       char(16)                 packed unaligned dcl 510 set ref 569* 572*
+sp                              000106 automatic       pointer                  dcl 53 set ref 315* 319 337 352 562* 564 586 600
+                                                                                  725* 726
+status                          000204 automatic       structure                level 1 unaligned dcl 1-2 set ref 315 562 725
+status_bits                            based           bit(72)                  dcl 1-2 set ref 319* 337* 352* 564* 586* 600* 726*
+status_code             167            based           fixed bin(35,0)          array level 3 dcl 2-8 set ref 546*
+string                                 based           char                     packed unaligned dcl 47 set ref 398* 671*
+sub_err_                        000476 constant        entry                    external dcl 310 ref 322
+substr                                                 builtin function         dcl 51 set ref 226 227 461 575 581 581 629 653* 658
+                                                                                  673
+tape_list                              parameter       varying char(128)        dcl 693 ref 689 698 698
+tapenames                 0(18) 000176 internal static char(100)                initial level 2 packed packed unaligned dcl 134 set
+                                                                                  ref 671* 673 698*
+time                     14     000272 internal static char(6)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 466*
+time                     24(09) 000272 internal static char(6)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 453*
+time                     20     000272 internal static char(6)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 472*
+time                     30(09) 000272 internal static char(6)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 469*
+time                                   parameter       char(6)                  packed unaligned dcl 219 in procedure "update" set
+                                                                                  ref 216 223* 227* 229*
+time                                   parameter       fixed bin(52,0)          dcl 392 in procedure "backup_map_" set ref 389 394*
+                                                                                  413 418*
+time                     34(18) 000272 internal static char(6)                  initial level 3 in structure "detail" packed packed
+                                                                                  unaligned dcl 140 in procedure "backup_map_" set
+                                                                                  ref 474*
+top                             000176 internal static char(1)                  level 2 packed packed unaligned dcl 134 set ref 408*
+                                                                                  435* 714*
+type                                   parameter       char(10)                 dcl 448 ref 444 465
+unique_chars_                   000362 constant        entry                    external dcl 76 ref 328
+unspec                                                 builtin function         dcl 51 set ref 205* 206* 208*
+user_message_lth                000606 automatic       fixed bin(21,0)          dcl 505 set ref 539* 541
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CANT_RESTART                    internal static bit(36)                  initial dcl 4-7
+ACTION_DEFAULT_RESTART                 internal static bit(36)                  initial dcl 4-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 4-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 4-7
+BACKUP_CONTROL_VERSION_5               internal static char(8)                  initial packed unaligned dcl 2-60
+backup_control_ptr                     automatic       pointer                  dcl 2-56
+backup_control_request_count           automatic       fixed bin(17,0)          dcl 2-58
+bk_ss_$allow_dir_overwrite             external static bit(1)                   dcl 3-17
+bk_ss_$areap                           external static pointer                  dcl 3-17
+bk_ss_$caller_handles_conditions       external static bit(1)                   dcl 3-17
+bk_ss_$check_effective_access          external static bit(1)                   dcl 3-17
+bk_ss_$control_name                    external static char(168)                packed unaligned dcl 3-17
+bk_ss_$cross_retrievesw                external static bit(1)                   dcl 3-17
+bk_ss_$data_iocb                       external static pointer                  dcl 3-17
+bk_ss_$date                            external static fixed bin(52,0)          dcl 3-17
+bk_ss_$datesw                          external static bit(1)                   dcl 3-17
+bk_ss_$dir_trim                        external static bit(1)                   dcl 3-17
+bk_ss_$dont_dump_upgraded_dirs         external static bit(1)                   dcl 3-17
+bk_ss_$dprint_destination              external static char(24)                 packed unaligned dcl 3-17
+bk_ss_$dprint_destination_setsw        external static bit(1)                   dcl 3-17
+bk_ss_$dprint_heading                  external static char(64)                 packed unaligned dcl 3-17
+bk_ss_$dprint_heading_setsw            external static bit(1)                   dcl 3-17
+bk_ss_$dprint_queue                    external static fixed bin(17,0)          dcl 3-17
+bk_ss_$dprint_request_type             external static char(24)                 packed unaligned dcl 3-17
+bk_ss_$dprint_request_type_setsw       external static bit(1)                   dcl 3-17
+bk_ss_$dprintsw                        external static bit(1)                   dcl 3-17
+bk_ss_$dtdsw                           external static bit(1)                   dcl 3-17
+bk_ss_$ename                           external static char(32)                 dcl 3-17
+bk_ss_$enforce_max_access_class        external static bit(1)                   dcl 3-17
+bk_ss_$enforce_min_access_class        external static bit(1)                   dcl 3-17
+bk_ss_$enforce_minimum_ring            external static bit(1)                   dcl 3-17
+bk_ss_$err_label                       external static label variable           dcl 3-17
+bk_ss_$error                           external static fixed bin(17,0)          dcl 3-17
+bk_ss_$holdsw                          external static bit(1)                   dcl 3-17
+bk_ss_$hp                              external static pointer                  dcl 3-17
+bk_ss_$ignore_dates                    external static bit(1)                   dcl 3-17
+bk_ss_$maximum_access_class            external static bit(72)                  dcl 3-17
+bk_ss_$maximum_dir_access_class        external static bit(72)                  dcl 3-17
+bk_ss_$minimum_access_class            external static bit(72)                  dcl 3-17
+bk_ss_$minimum_ring                    external static fixed bin(17,0)          dcl 3-17
+bk_ss_$namesw                          external static bit(1)                   dcl 3-17
+bk_ss_$no_contin                       external static bit(1)                   dcl 3-17
+bk_ss_$no_output                       external static bit(1)                   dcl 3-17
+bk_ss_$no_primary                      external static bit(1)                   dcl 3-17
+bk_ss_$no_reload                       external static bit(1)                   dcl 3-17
+bk_ss_$no_setlvid                      external static bit(1)                   dcl 3-17
+bk_ss_$ntapes                          external static fixed bin(17,0)          dcl 3-17
+bk_ss_$onlysw                          external static bit(1)                   dcl 3-17
+bk_ss_$operator                        external static char(32)                 packed unaligned dcl 3-17
+bk_ss_$pathsw                          external static bit(1)                   dcl 3-17
+bk_ss_$preattached                     external static bit(1)                   dcl 3-17
+bk_ss_$pvname                          external static char(32)                 dcl 3-17
+bk_ss_$pvsw                            external static bit(1)                   dcl 3-17
+bk_ss_$qchecksw                        external static bit(1)                   dcl 3-17
+bk_ss_$quotasw                         external static bit(1)                   dcl 3-17
+bk_ss_$restart_dumpsw                  external static bit(1)                   dcl 3-17
+bk_ss_$restart_path                    external static char(168)                dcl 3-17
+bk_ss_$restart_plen                    external static fixed bin(17,0)          dcl 3-17
+bk_ss_$restore_access_class            external static bit(1)                   dcl 3-17
+bk_ss_$retrieval_index                 external static fixed bin(17,0)          dcl 3-17
+bk_ss_$retrievesw                      external static bit(1)                   dcl 3-17
+bk_ss_$rlen                            external static fixed bin(17,0)          dcl 3-17
+bk_ss_$rname                           external static char(168)                packed unaligned dcl 3-17
+bk_ss_$rsize                           external static fixed bin(17,0)          dcl 3-17
+bk_ss_$save_path                       external static char(168)                packed unaligned dcl 3-17
+bk_ss_$save_plen                       external static fixed bin(17,0)          dcl 3-17
+bk_ss_$save_time                       external static fixed bin(52,0)          dcl 3-17
+bk_ss_$segptr                          external static pointer                  dcl 3-17
+bk_ss_$set_dtd                         external static bit(1)                   dcl 3-17
+bk_ss_$set_dtd_explicit                external static bit(1)                   dcl 3-17
+bk_ss_$source_attributes_ptr           external static pointer                  dcl 3-17
+bk_ss_$sp                              external static pointer                  dcl 3-17
+bk_ss_$target_attributes_ptr           external static pointer                  dcl 3-17
+bk_ss_$translate_access_class          external static bit(1)                   dcl 3-17
+bk_ss_$trimsw                          external static bit(1)                   dcl 3-17
+bk_ss_$upgrade_to_user_auth            external static bit(1)                   dcl 3-17
+bk_ss_$user_authorization              external static bit(72)                  dcl 3-17
+bk_ss_$user_id                         external static char(32)                 packed unaligned dcl 3-17
+bk_ss_$user_ring                       external static fixed bin(17,0)          dcl 3-17
+bk_ss_$volume_set_name                 external static char(32)                 packed unaligned dcl 3-17
+bk_ss_$wakeup_interval                 external static fixed bin(52,0)          dcl 3-17
+bk_ss_$wasnt_known                     external static bit(1)                   dcl 3-17
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ATTACH_ERROR_FILE               002204 constant        label                    dcl 572 ref 601
+RETURN_FROM_ERROR_LINE          002727 constant        label                    dcl 614 ref 550 556
+STOP_ERROR_FILE                 002576 constant        label                    dcl 593 ref 574 603
+WRITE_ERROR_FILE                002107 constant        label                    dcl 562 ref 548 589
+WRITE_MAP_LINE                  002712 constant        label                    dcl 607 ref 549 558
+WRITE_ONLINE                    002064 constant        label                    dcl 554 ref 596
+add_text                        004652 constant        entry                    internal dcl 644 ref 524 525 530 531 543
+append_nl                       004020 constant        label                    dcl 292 ref 297
+backup_map_                     000324 constant        entry                    external dcl 41
+beginning_line                  000514 constant        entry                    external dcl 389
+detach_for_cdt                  003442 constant        entry                    external dcl 720
+detail_line2                    001157 constant        entry                    external dcl 444
+directory_line                  000352 constant        entry                    external dcl 366
+discontinue_map                 004507 constant        label                    dcl 344 ref 356
+end_of_line                     003676 constant        label                    dcl 265 set ref 261
+error_line                      001522 constant        entry                    external dcl 498
+exit                            003303 constant        label                    dcl 677 set ref 348 372 382 385 397 423 427 433 440
+                                                                                  452 478 484 492
+fs_error_line                   002743 constant        entry                    external dcl 621
+get_map_name                    003317 constant        entry                    external dcl 683
+heading_line                    001107 constant        entry                    external dcl 431
+init_for_cdt                    003346 constant        entry                    external dcl 689
+initializer                     003527 constant        entry                    internal dcl 203 ref 378 393 417 517 670
+name_line                       001420 constant        entry                    external dcl 482
+on_line                         000416 constant        entry                    external dcl 376
+tapes                           003204 constant        entry                    external dcl 668
+terminal_line                   000716 constant        entry                    external dcl 413
+trim                            003624 constant        entry                    internal dcl 234 ref 369 379 476 490
+try_attach                      004174 constant        label                    dcl 328 ref 354
+try_head                        001125 constant        label                    dcl 436 ref 409
+try_write                       004047 constant        label                    dcl 316 in procedure "try_write" ref 324 340
+try_write                       004040 constant        entry                    internal dcl 304 in procedure "backup_map_" ref 370
+                                                                                  383 384 400 404 407 424 425 438 439 477 491 609
+                                                                                  610
+update                          003553 constant        entry                    internal dcl 216 ref 453 466 469 472 474
+write_on_line                   000447 constant        label                    dcl 380
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5536        6240    4744        5546
+Length      6712    4744       502         436     572         346
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+backup_map_                         798 external procedure  is an external procedure.  
+initializer                             internal procedure  shares stack frame of external procedure backup_map_.  
+update                                  internal procedure  shares stack frame of external procedure backup_map_.  
+trim                                    internal procedure  shares stack frame of external procedure backup_map_.  
+try_write                               internal procedure  shares stack frame of external procedure backup_map_.  
+begin block on line 536                 begin block         shares stack frame of external procedure backup_map_.  
+add_text                             66 internal procedure  is called during a stack extension.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 dir                         backup_map_
+000062 map_name                    backup_map_
+000072 not_initialized             backup_map_
+000073 old_blocks                  backup_map_
+000074 old_dtp                     backup_map_
+000076 old_dtd                     backup_map_
+000100 old_dtu                     backup_map_
+000102 old_dtem                    backup_map_
+000104 old_dtsm                    backup_map_
+000106 line                        backup_map_
+000170 linep                       backup_map_
+000172 lines                       backup_map_
+000173 nl                          backup_map_
+000174 eject                       backup_map_
+000175 ht                          backup_map_
+000176 header1                     backup_map_
+000230 length_hdr1                 backup_map_
+000231 header2                     backup_map_
+000270 detail_ptr                  backup_map_
+000272 detail                      backup_map_
+000330 efile_name                  backup_map_
+000350 save_debug_sw               backup_map_
+000351 save_mapsw                  backup_map_
+000352 save_sub_entry              backup_map_
+000353 save_tape_sw                backup_map_
+000354 save_bf_mapsw               backup_map_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+backup_map_              000100 i                           backup_map_
+                         000101 n                           backup_map_
+                         000102 nt                          backup_map_
+                         000104 ap                          backup_map_
+                         000106 sp                          backup_map_
+                         000110 long_info                   backup_map_
+                         000142 ignore                      backup_map_
+                         000144 dirname                     backup_map_
+                         000147 ent                         backup_map_
+                         000157 rings                       backup_map_
+                         000162 code                        backup_map_
+                         000163 backup_map                  backup_map_
+                         000173 ascii                       backup_map_
+                         000176 calendar_line               backup_map_
+                         000204 status                      backup_map_
+                         000206 message_buffer              backup_map_
+                         000606 user_message_lth            backup_map_
+                         000607 message_lth                 backup_map_
+                         000610 arg_list_ptr                backup_map_
+                         000612 n_arguments                 backup_map_
+                         000613 sname                       backup_map_
+                         000650 inp                         trim
+                         000652 outp                        trim
+                         000654 nl_count                    trim
+                         000655 line_length                 trim
+                         000656 field_begin                 trim
+                         000657 field_end                   trim
+                         000660 last_non_blank              trim
+                         000661 char_count                  trim
+                         000662 sample                      trim
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             alloc_char_temp     call_ext_out_desc   call_ext_out        call_int_this_desc  return_mac
+signal_op           shorten_stack       ext_entry           ext_entry_desc      int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+backup_map_$error_line        backup_map_$heading_line      com_err_                      convert_status_code_
+cu_$arg_count                 cu_$arg_list_ptr              cu_$level_get                 cv_bin_$dec
+date_name_                    date_time_                    expand_pathname_              get_group_id_$tag_star
+get_wdir_                     hcs_$acl_add1                 hcs_$append_branchx           hcs_$fs_search_get_wdir
+ioa_                          ioa_$general_rs               ioa_$rs                       ios_$attach
+ios_$detach                   ios_$write                    ios_$write_ptr                iox_$put_chars
+pathname_                     sub_err_                      unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bk_ss_$brief_mapsw            bk_ss_$control_ptr            bk_ss_$debugsw                bk_ss_$err_onlinesw
+bk_ss_$mapsw                  bk_ss_$myname                 bk_ss_$path_index             bk_ss_$sub_entry
+bk_ss_$sub_entry_errfile      bk_ss_$tapesw                 bk_ss_$writing_map            error_table_$ioname_not_found
+error_table_$namedup          error_table_$no_move          iox_$error_output
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     74 000313        41 000320        44 000341       366 000350       368 000367       369 000372       370 000402
+    372 000413       376 000414       378 000433       379 000437       380 000447       382 000465       383 000470
+    384 000476       385 000507       389 000510       393 000531       394 000535       395 000553       396 000576
+    397 000601       398 000603       399 000651       400 000654       401 000662       402 000664       404 000665
+    405 000673       407 000676       408 000706       409 000711       413 000712       417 000726       418 000732
+    419 000750       421 001007       422 001042       423 001060       424 001063       425 001071       426 001102
+    427 001105       431 001106       433 001117       434 001122       435 001123       436 001125       438 001126
+    439 001140       440 001147       444 001150       452 001167       453 001172       456 001214       457 001222
+    458 001225       459 001226       460 001230       461 001244       462 001247       463 001250       465 001252
+    466 001257       469 001276       472 001321       474 001344       476 001371       477 001404       478 001415
+    482 001416       484 001435       485 001440       486 001443       487 001446       488 001461       489 001467
+    490 001471       491 001504       492 001515       498 001516       516 001540       517 001547       519 001552
+    521 001553       523 001562       524 001571       525 001621       528 001642       529 001645       530 001662
+    531 001712       534 001730       535 001733       537 001742       539 001745       541 002020       542 002022
+    543 002023       545 002034       546 002037       547 002047       548 002055       549 002057       550 002061
+    553 002062       554 002064       556 002103       558 002106       562 002107       564 002111       566 002151
+    567 002155       568 002160       569 002163       570 002167       572 002204       574 002237       575 002241
+    579 002263       580 002275       581 002312       582 002346       584 002440       586 002512       587 002551
+    588 002553       589 002573       592 002574       593 002576       595 002632       596 002635       598 002636
+    599 002641       600 002661       601 002707       603 002711       607 002712       609 002715       610 002723
+    614 002727       621 002736       629 002773       632 003033       635 003075       637 003172       668 003202
+    670 003221       671 003225       673 003262       675 003276       676 003301       677 003303       679 003305
+    683 003314       685 003326       689 003343       696 003356       698 003360       701 003373       702 003375
+    703 003377       704 003401       705 003403       707 003405       708 003411       710 003413       712 003414
+    714 003426       716 003430       720 003437       725 003452       726 003454       728 003502       730 003505
+    731 003510       732 003512       733 003514       734 003516       736 003520       203 003527       205 003530
+    206 003533       207 003535       208 003543       209 003545       210 003547       211 003551       212 003552
+    216 003553       222 003555       223 003557       224 003567       225 003570       226 003605       227 003612
+    228 003616       229 003617       230 003623       234 003624       250 003626       251 003631       252 003634
+    253 003635       254 003637       256 003644       257 003645       258 003650       259 003655       261 003664
+    264 003673       265 003676       267 003677       269 003707       270 003724       271 003727       273 003735
+    274 003743       275 003744       276 003746       277 003753       278 003761       279 003762       280 003763
+    282 003764       283 003771       285 003772       286 003775       287 004000       288 004007       290 004015
+    291 004016       292 004020       294 004026       295 004027       296 004032       297 004034       299 004035
+    300 004037       304 004040       313 004042       315 004045       316 004047       319 004057       321 004116
+    322 004122       324 004171       326 004172       328 004174       331 004224       332 004231       333 004246
+    334 004263       336 004355       337 004423       338 004462       339 004464       340 004504       343 004505
+    344 004507       347 004571       348 004573       350 004574       351 004600       352 004614       354 004642
+    356 004644       358 004645       359 004647       360 004650       644 004651       649 004665       652 004671
+    653 004673       654 004702       655 004704       658 004705       659 004713       662 004714
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

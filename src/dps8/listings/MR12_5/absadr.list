@@ -1,0 +1,619 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>absadr.alm                                                                                                                                           
+ASSEMBLED ON:	11/11/89  0923.1 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " ABSADR - Compute Absolute Address from ITS Pair.
+                                    13  "	Written 06/02/67 - Noel I. Morris
+                                    14  "	Other modifications made through the years by various Multicians who
+                                    15  "	   curiously prefer the cloak of anonymity.
+                                    16  "	Modified 03/21/81, W. Olin Sibert, for ADP conversion
+                                    17  
+                                    18  
+                                    19  
+                                    20  " Calling Sequence:
+                                    21  "	absolute_address = absadr (pointer, error)
+                                    22  "
+                                    23  " Where:
+                                    24  "	pointer - its pointer.
+                                    25  "	absolute_address - answer as fixed bin (24) integer.
+                                    26  "	error - error code.
+                                    27  "
+                                    28  " Errors:
+                                    29  "	1.	Bound fault.
+                                    30  "	2.	Directed Fault in SDW.
+                                    31  "	3.	Directed Fault in PTW.
+                                    32  "
+                                    33  
+                                    34  
+                                    35  
+    000000                          36  	name	absadr
+                        000000      37  	entry	absadr
+                                    38  
+                                    39  
+                                    40  	tempd	sdw_save,temp
+                                    41  	temp	word_offset,temp1
+                                    42  
+                                    43  
+                                    44  
+                                    45  	include	sdw
+                                   1-1  " BEGIN INCLUDE FILE ... sdw.incl.alm ... 03/01/81, for ADP conversion
+                                   1-2  
+                                   1-3  	iftarget	l68	" Include whichever seems appropriate
+                                        	 include	sdw.l68
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE sdw.l68.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 04/05/81  1616.1 est Sun by convert_include_file,
+                                   2-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   2-8  
+                                   2-9  	"Made from >udd>Multics>hardcore_pool>new_pc>include>sdw.l68.incl.pl1,
+                                  2-10  	"   modified 03/20/81  2215.5 est Fri
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure sdw
+                                  2-14  "
+                        000002    2-15  	equ	sdw_size,2
+                                  2-16  
+                        000000    2-17  	equ	sdw.add_word,0
+                        000014    2-18  	equ	sdw.add_shift,12
+                        000000    2-19  	equ	sdw.rings_word,0
+                        000003    2-20  	equ	sdw.rings_shift,3
+                        000777    2-21  	bool	sdw.rings_mask,000777
+                        000000    2-22  	equ	sdw.r1_word,0
+                        000011    2-23  	equ	sdw.r1_shift,9
+                        000007    2-24  	bool	sdw.r1_mask,000007
+                        000000    2-25  	equ	sdw.r2_word,0
+                        000006    2-26  	equ	sdw.r2_shift,6
+                        000007    2-27  	bool	sdw.r2_mask,000007
+                        000000    2-28  	equ	sdw.r3_word,0
+                        000003    2-29  	equ	sdw.r3_shift,3
+                        000007    2-30  	bool	sdw.r3_mask,000007
+                        000000    2-31  	equ	sdw.valid_word,0
+                        000004    2-32  	bool	sdw.valid,000004	" DL
+                        000000    2-33  	equ	sdw.df_no_word,0
+                        000000    2-34  	equ	sdw.df_no_shift,0
+                        000003    2-35  	bool	sdw.df_no_mask,000003
+                                  2-36  
+                        000001    2-37  	equ	sdw.bound_word,1
+                        000025    2-38  	equ	sdw.bound_shift,21
+                        037777    2-39  	bool	sdw.bound_mask,037777
+                        000001    2-40  	equ	sdw.access_word,1
+                        000021    2-41  	equ	sdw.access_shift,17
+                        000017    2-42  	bool	sdw.access_mask,000017
+                        000001    2-43  	equ	sdw.read_word,1
+                        000004    2-44  	bool	sdw.read,000004		" DU
+                        000001    2-45  	equ	sdw.execute_word,1
+                        000002    2-46  	bool	sdw.execute,000002	" DU
+                        000001    2-47  	equ	sdw.write_word,1
+                        000001    2-48  	bool	sdw.write,000001	" DU
+                        000001    2-49  	equ	sdw.privileged_word,1
+                        400000    2-50  	bool	sdw.privileged,400000	" DL
+                        000001    2-51  	equ	sdw.unpaged_word,1
+                        200000    2-52  	bool	sdw.unpaged,200000	" DL
+                        000001    2-53  	equ	sdw.not_a_gate_word,1
+                        100000    2-54  	bool	sdw.not_a_gate,100000	" DL
+                        000001    2-55  	equ	sdw.cache_word,1
+                        040000    2-56  	bool	sdw.cache,040000	" DL
+                        000001    2-57  	equ	sdw.entry_bound_word,1
+                        000000    2-58  	equ	sdw.entry_bound_shift,0
+                        037777    2-59  	bool	sdw.entry_bound_mask,037777
+                                  2-60  
+                                  2-61       "END INCLUDE FILE sdw.l68.incl.alm
+                                        "	ifend
+                                   1-6  
+                                   1-7  	iftarget	adp
+                                        "	 include	sdw.adp
+                                        "	ifend
+                                  1-10  
+                                  1-11  " END INCLUDE FILE ... sdw.incl.alm
+                                    46  	include	ptw
+                                   3-1  " BEGIN INCLUDE FILE ... ptw.incl.alm ... 03/01/81, for ADP conversion
+                                   3-2  
+                                   3-3  	iftarget	l68	" Include whichever seems appropriate
+                                        	 include	ptw.l68
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE ptw.l68.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 04/05/81  1616.0 est Sun by convert_include_file,
+                                   4-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   4-8  
+                                   4-9  	"Made from >udd>Multics>hardcore_pool>new_pc>include>ptw.l68.incl.pl1,
+                                  4-10  	"   modified 03/20/81  1815.9 est Fri
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure core_ptw
+                                  4-14  "
+                        000026    4-15  	equ	core_ptw.frame_shift,22
+                        037777    4-16  	bool	core_ptw.frame_mask,037777
+                        000000    4-17  	equ	core_ptw.flags,0	" LOWER
+                        000016    4-18  	equ	core_ptw.add_type_shift,14
+                        000017    4-19  	bool	core_ptw.add_type_mask,000017
+                        020000    4-20  	bool	core_ptw.first,020000	" DL
+                        010000    4-21  	bool	core_ptw.er,010000	" DL
+                        002000    4-22  	bool	core_ptw.unusable1,002000	" DL
+                        001000    4-23  	bool	core_ptw.phu,001000	" DL
+                        000400    4-24  	bool	core_ptw.phm1,000400	" DL
+                        000200    4-25  	bool	core_ptw.nypd,000200	" DL
+                        000100    4-26  	bool	core_ptw.phm,000100	" DL
+                        000040    4-27  	bool	core_ptw.phu1,000040	" DL
+                        000020    4-28  	bool	core_ptw.wired,000020	" DL
+                        000010    4-29  	bool	core_ptw.os,000010	" DL
+                        000004    4-30  	bool	core_ptw.valid,000004	" DL
+                        000000    4-31  	equ	core_ptw.df_no_shift,0
+                        000003    4-32  	bool	core_ptw.df_no_mask,000003
+                                  4-33  
+                                  4-34  "
+                                  4-35  "	Structure ptw
+                                  4-36  "
+                        000000    4-37  	equ	ptw.add,0		" UPPER
+                        000000    4-38  	equ	ptw.flags,0		" LOWER
+                        000016    4-39  	equ	ptw.add_type_shift,14
+                        000017    4-40  	bool	ptw.add_type_mask,000017
+                        020000    4-41  	bool	ptw.first,020000	" DL
+                        010000    4-42  	bool	ptw.er,010000		" DL
+                        002000    4-43  	bool	ptw.unusable1,002000	" DL
+                        001000    4-44  	bool	ptw.phu,001000		" DL
+                        000400    4-45  	bool	ptw.phm1,000400		" DL
+                        000200    4-46  	bool	ptw.nypd,000200		" DL
+                        000100    4-47  	bool	ptw.phm,000100		" DL
+                        000040    4-48  	bool	ptw.phu1,000040		" DL
+                        000020    4-49  	bool	ptw.wired,000020	" DL
+                        000010    4-50  	bool	ptw.os,000010		" DL
+                        000004    4-51  	bool	ptw.valid,000004	" DL
+                        000000    4-52  	equ	ptw.df_no_shift,0
+                        000003    4-53  	bool	ptw.df_no_mask,000003
+                                  4-54  
+                                  4-55       "END INCLUDE FILE ptw.l68.incl.alm
+                                        "	ifend
+                                   3-6  
+                                   3-7  	iftarget	adp
+                                        "	 include	ptw.adp
+                                        "	ifend
+                                  3-10  
+                                  3-11  " END INCLUDE FILE ... ptw.incl.alm
+                                    47  
+                                    48  
+                                    49  " 
+                                    50  
+                                    51  
+    000000  aa   000060 6270 00     52  absadr:	push
+    000001  aa  7 00040 2721 20
+    000002  aa  0 00002 3521 20     53  	eppbp	ap|2,*		pick up pointer to its pair
+    000003  aa  2 00000 2131 20     54  	epaq	bp|0,*		get info into aq-reg
+    000004  aa   777777 3760 03     55  	anq	-1,du
+    000005  aa  6 00054 7561 00     56  	stq	word_offset	save word offset of effective pointer
+    000006  aa   777777 3750 03     57  	ana	-1,du
+    000007  aa   000001 7350 00     58  	als	1		* 2
+    000010  aa   000000 6200 01     59  	eax0	0,au		seg no * 2 to X0
+                                    60  
+    000011  4a  4 00010 2131 20     61  	epaq	abs_seg$+0
+    000012  aa   000001 7350 00     62  	als	1
+    000013  aa   000000 6210 01     63  	eax1	0,au
+    000014  4a  4 00012 2371 20     64  	ldaq	dseg$+0,x1	pick up previous SDW for absolute segment
+    000015  aa  6 00050 7571 00     65  	staq	sdw_save		and stash it away
+                                    66  
+    000016  4a  4 00014 2371 20     67  	ldaq	dseg$+0,x0	pick up SDW for segment
+    000017  aa  6 00052 7571 00     68  	staq	temp		save it
+    000020  aa   000004 3150 07     69  	cana	sdw.valid,dl	test for directed fault
+    000021  0a   000066 6000 00     70  	tze	error_2		..
+                                    71  
+    000022  aa   000025 7720 00     72  	qrl	sdw.bound_shift	" Check against the SDW bound
+    000023  aa   037777 3760 07     73  	anq	sdw.bound_mask,dl
+    000024  aa   000026 7360 00     74  	qls	18+4		" Convert to word count in QU
+    000025  aa   000017 0360 03     75  	adlq	=o17,du		" And add 15 to get word count
+    000026  aa  6 00054 1161 00     76  	cmpq	word_offset	compare against word offset
+    000027  0a   000064 6020 00     77  	tnc	error_1		test for bound fault	
+                                    78  
+    000030  aa  6 00052 2371 00     79  	ldaq	temp		restore SDW to AQ
+    000031  aa   200000 3160 07     80  	canq	sdw.unpaged,dl	paged ?
+    000032  0a   000053 6010 00     81  	tnz	addr		no
+                                    82  
+    000033  aa  6 00054 2351 00     83  	lda	word_offset	get address
+    000034  aa   000012 7710 00     84  	arl	10		take address mod (page size - 1024)
+    000035  aa   000000 6260 01     85  	eax6	0,au		put page number in x6
+    000036  aa  6 00052 2351 00     86  	lda	temp		get page table addr from sdw
+    000037  aa   000006 7350 00     87  	als	18-sdw.add_shift	right justify it in au
+    000040  aa   000017 3750 03     88  	ana	=o17,du		find its offset from a 0 mod 16 word addr
+    000041  aa  6 00055 7551 00     89  	sta	temp1		save this number a bit
+    000042  aa  6 00055 0661 00     90  	adx6	temp1		x6 now has addr of desired page table word
+                                    91  "				as an offset from a 0 mod 16 boundary
+                                    92  
+    000043  aa  6 00052 2371 00     93  	ldaq	temp
+    000044  0a   000076 3750 00     94  	ana	=o777777607777	make address field 0 mod 16 for unpaged sdw
+    000045  aa   200000 2760 07     95  	orq	sdw.unpaged,dl	make it unpaged
+    000046  4a  4 00012 7571 20     96  	staq	dseg$+0,x1	store in SDW for absolute segment
+    000047  aa   000000 5320 00     97  	cams	0		clear assoc. memory
+    000050  4a  4 00016 2351 20     98  	lda	abs_seg$+0,x6	pick up PTW
+    000051  aa   000004 3150 07     99  	cana	ptw.valid,dl		test for directed fault
+    000052  0a   000070 6000 00    100  	tze	error_3		..
+                                   101  
+                                   102  
+    000053                         103  addr:
+    000053  aa  2 00000 2121 20    104  	absa	bp|0,*		generate absolute address
+    000054  aa   000014 7710 00    105  	arl	12
+    000055  aa  0 00006 7551 20    106  	sta	ap|6,*		return absolute address
+                                   107  
+    000056  aa   000000 2360 07    108  	ldq	0,dl		make error code zero
+    000057                         109  end:
+    000057  aa  0 00004 7561 20    110  	stq	ap|4,*		return error code
+    000060  aa  6 00050 2371 00    111  	ldaq	sdw_save		restore previous SDW
+    000061  4a  4 00012 7571 20    112  	staq	dseg$+0,x1	..
+    000062  aa   000000 5320 00    113  	cams	0		reset associative memory
+                                   114  
+    000063  aa  7 00042 7101 20    115  	return
+                                   116  
+                                   117  
+                                   118  
+    000064                         119  error_1:
+    000064  aa   000001 2360 07    120  	ldq	1,dl		bound fault
+    000065  0a   000057 7100 00    121  	tra	end		..
+                                   122  
+    000066                         123  error_2:
+    000066  aa   000002 2360 07    124  	ldq	2,dl		directed fault in SDW
+    000067  0a   000057 7100 00    125  	tra	end		..
+                                   126  
+    000070                         127  error_3:
+    000070  aa   000003 2360 07    128  	ldq	3,dl		directed fault in PTW
+    000071  0a   000057 7100 00    129  	tra	end		..
+                                   130  
+                                   131  
+                                   132  
+                                   133  
+                                   134  	end
+ENTRY SEQUENCES
+     
+    000072  5a   000010 0000 00
+    000073  aa  7 00046 2721 20
+    000074  0a   000000 7100 00
+LITERALS
+     
+    000076  aa   777777 607777 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000077  5a   000003 000000 
+    000100  5a   000024 600000 
+    000101  aa   000000 000000 
+    000102  55   000010 000002 
+    000103  5a   000002 400003 
+    000104  55   000006 000010 
+    000105  aa  006 141 142 163
+    000106  aa  141 144 162 000
+    000107  55   000015 000003 
+    000110  0a   000073 500000 
+    000111  55   000013 000003 
+    000112  aa  006 141 142 163         absadr
+    000113  aa  141 144 162 000
+    000114  55   000002 000010 
+    000115  6a   000000 400002 
+    000116  55   000020 000003 
+    000117  aa  014 163 171 155         symbol_table
+    000120  aa  142 157 154 137
+    000121  aa  164 141 142 154
+    000122  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000123  aa   000000 000015 
+    000124  aa   000000 000000 
+    000125  aa   000000 000000 
+    000126  aa   000000 000000 
+    000127  aa   000000 000000 
+    000130  aa   000000 000000 
+    000131  aa   000000 000000 
+    000132  5a   000015 000000 
+    000133  aa   000000 000000 
+    000134  aa   000000 000000 
+    000135  aa   000000 000000 
+    000136  5a   000010 000000 
+    000137  aa   000000 000000 
+    000140  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000141  aa  004 144 163 145         dseg
+    000142  aa  147 000 000 000
+    000143  aa  007 141 142 163         abs_seg
+    000144  aa  137 163 145 147
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000145  aa   000003 000000 
+    000146  5a   000042 000000 
+    000147  aa   000003 000000 
+    000150  5a   000044 000000 
+    000151  aa   000001 000000 
+    000152  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000153  5a   000046 000000 
+    000154  5a   000050 000000 
+    000155  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000077 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000020 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         abs_seg|       
+    000011  5a   000055 0000 00
+    000012  9a   777766 0000 46         dseg|       
+    000013  5a   000054 0000 11
+    000014  9a   777764 0000 46         dseg|       
+    000015  5a   000054 0000 10
+    000016  9a   777762 0000 46         abs_seg|       
+    000017  5a   000055 0000 16
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   241535 212135 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000216 
+    000020  aa   000000 000160 
+    000021  aa   000175 000170 
+    000022  aa   000205 000160 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000005 
+    000066  aa   000112 000035 
+    000067  aa   175453 017707 
+    000070  aa   000000 117547 
+    000071  aa   176205 000000 
+    000072  aa   000122 000031 
+    000073  aa   102456 350277 
+    000074  aa   000000 110246 
+    000075  aa   520732 400000 
+    000076  aa   000131 000035 
+    000077  aa   106701 740565 
+    000100  aa   000000 110670 
+    000101  aa   206245 200000 
+    000102  aa   000141 000031 
+    000103  aa   102456 350276 
+    000104  aa   000000 110246 
+    000105  aa   520730 400000 
+    000106  aa   000150 000035 
+    000107  aa   106701 740574 
+    000110  aa   000000 110670 
+    000111  aa   206425 200000 
+    000112  aa   076163 160145          >spec>install>1111>absadr.alm
+    000113  aa   143076 151156 
+    000114  aa   163164 141154 
+    000115  aa   154076 061061 
+    000116  aa   061061 076141 
+    000117  aa   142163 141144 
+    000120  aa   162056 141154 
+    000121  aa   155040 040040 
+    000122  aa   076154 144144          >ldd>include>sdw.incl.alm
+    000123  aa   076151 156143 
+    000124  aa   154165 144145 
+    000125  aa   076163 144167 
+    000126  aa   056151 156143 
+    000127  aa   154056 141154 
+    000130  aa   155040 040040 
+    000131  aa   076154 144144          >ldd>include>sdw.l68.incl.alm
+    000132  aa   076151 156143 
+    000133  aa   154165 144145 
+    000134  aa   076163 144167 
+    000135  aa   056154 066070 
+    000136  aa   056151 156143 
+    000137  aa   154056 141154 
+    000140  aa   155040 040040 
+    000141  aa   076154 144144          >ldd>include>ptw.incl.alm
+    000142  aa   076151 156143 
+    000143  aa   154165 144145 
+    000144  aa   076160 164167 
+    000145  aa   056151 156143 
+    000146  aa   154056 141154 
+    000147  aa   155040 040040 
+    000150  aa   076154 144144          >ldd>include>ptw.l68.incl.alm
+    000151  aa   076151 156143 
+    000152  aa   154165 144145 
+    000153  aa   076160 164167 
+    000154  aa   056154 066070 
+    000155  aa   056151 156143 
+    000156  aa   154056 141154 
+    000157  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    absadr                   absadr:        37,   52.
+                abs_seg                  absadr:        61,   98.
+          53    addr                     absadr:        81,  103.
+          17    core_ptw.add_type_mask   ptw.l68:       19.
+          16    core_ptw.add_type_shift  ptw.l68:       18.
+           3    core_ptw.df_no_mask      ptw.l68:       32.
+           0    core_ptw.df_no_shift     ptw.l68:       31.
+       10000    core_ptw.er              ptw.l68:       21.
+       20000    core_ptw.first           ptw.l68:       20.
+           0    core_ptw.flags           ptw.l68:       17.
+       37777    core_ptw.frame_mask      ptw.l68:       16.
+          26    core_ptw.frame_shift     ptw.l68:       15.
+         200    core_ptw.nypd            ptw.l68:       25.
+          10    core_ptw.os              ptw.l68:       29.
+         100    core_ptw.phm             ptw.l68:       26.
+         400    core_ptw.phm1            ptw.l68:       24.
+        1000    core_ptw.phu             ptw.l68:       23.
+          40    core_ptw.phu1            ptw.l68:       27.
+        2000    core_ptw.unusable1       ptw.l68:       22.
+           4    core_ptw.valid           ptw.l68:       30.
+          20    core_ptw.wired           ptw.l68:       28.
+                dseg                     absadr:        64,   67,   96,  112.
+          57    end                      absadr:       109,  121,  125,  129.
+          64    error_1                  absadr:        77,  119.
+          66    error_2                  absadr:        70,  123.
+          70    error_3                  absadr:       100,  127.
+           0    ptw.add                  ptw.l68:       37.
+          17    ptw.add_type_mask        ptw.l68:       40.
+          16    ptw.add_type_shift       ptw.l68:       39.
+           3    ptw.df_no_mask           ptw.l68:       53.
+           0    ptw.df_no_shift          ptw.l68:       52.
+       10000    ptw.er                   ptw.l68:       42.
+       20000    ptw.first                ptw.l68:       41.
+           0    ptw.flags                ptw.l68:       38.
+         200    ptw.nypd                 ptw.l68:       46.
+          10    ptw.os                   ptw.l68:       50.
+         100    ptw.phm                  ptw.l68:       47.
+         400    ptw.phm1                 ptw.l68:       45.
+        1000    ptw.phu                  ptw.l68:       44.
+          40    ptw.phu1                 ptw.l68:       48.
+        2000    ptw.unusable1            ptw.l68:       43.
+           4    ptw.valid                absadr:        99,
+                                         ptw.l68:       51.
+          20    ptw.wired                ptw.l68:       49.
+          17    sdw.access_mask          sdw.l68:       42.
+          21    sdw.access_shift         sdw.l68:       41.
+           1    sdw.access_word          sdw.l68:       40.
+          14    sdw.add_shift            absadr:        87,
+                                         sdw.l68:       18.
+           0    sdw.add_word             sdw.l68:       17.
+       37777    sdw.bound_mask           absadr:        73,
+                                         sdw.l68:       39.
+          25    sdw.bound_shift          absadr:        72,
+                                         sdw.l68:       38.
+           1    sdw.bound_word           sdw.l68:       37.
+       40000    sdw.cache                sdw.l68:       56.
+           1    sdw.cache_word           sdw.l68:       55.
+           3    sdw.df_no_mask           sdw.l68:       35.
+           0    sdw.df_no_shift          sdw.l68:       34.
+           0    sdw.df_no_word           sdw.l68:       33.
+       37777    sdw.entry_bound_mask     sdw.l68:       59.
+           0    sdw.entry_bound_shift    sdw.l68:       58.
+           1    sdw.entry_bound_word     sdw.l68:       57.
+           2    sdw.execute              sdw.l68:       46.
+           1    sdw.execute_word         sdw.l68:       45.
+      100000    sdw.not_a_gate           sdw.l68:       54.
+           1    sdw.not_a_gate_word      sdw.l68:       53.
+      400000    sdw.privileged           sdw.l68:       50.
+           1    sdw.privileged_word      sdw.l68:       49.
+           7    sdw.r1_mask              sdw.l68:       24.
+          11    sdw.r1_shift             sdw.l68:       23.
+           0    sdw.r1_word              sdw.l68:       22.
+           7    sdw.r2_mask              sdw.l68:       27.
+           6    sdw.r2_shift             sdw.l68:       26.
+           0    sdw.r2_word              sdw.l68:       25.
+           7    sdw.r3_mask              sdw.l68:       30.
+           3    sdw.r3_shift             sdw.l68:       29.
+           0    sdw.r3_word              sdw.l68:       28.
+           4    sdw.read                 sdw.l68:       44.
+           1    sdw.read_word            sdw.l68:       43.
+         777    sdw.rings_mask           sdw.l68:       21.
+           3    sdw.rings_shift          sdw.l68:       20.
+           0    sdw.rings_word           sdw.l68:       19.
+      200000    sdw.unpaged              absadr:        80,   95,
+                                         sdw.l68:       52.
+           1    sdw.unpaged_word         sdw.l68:       51.
+           4    sdw.valid                absadr:        69,
+                                         sdw.l68:       32.
+           0    sdw.valid_word           sdw.l68:       31.
+           1    sdw.write                sdw.l68:       48.
+           1    sdw.write_word           sdw.l68:       47.
+          50    sdw_save                 absadr:        40,   65,  111.
+           2    sdw_size                 sdw.l68:       15.
+          52    temp                     absadr:        40,   68,   79,   86,   93.
+          55    temp1                    absadr:        41,   89,   90.
+          54    word_offset              absadr:        41,   56,   76,   83.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

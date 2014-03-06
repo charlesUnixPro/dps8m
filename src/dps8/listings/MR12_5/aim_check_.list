@@ -1,0 +1,462 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>aim_check_.alm                                                                                                                                       
+ASSEMBLED ON:	11/11/89  0948.7 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " HISTORY COMMENTS:
+                                    13  "  1) change(85-06-03,Pandolf), approve(86-08-13,MCR7511),
+                                    14  "     audit(86-08-13,EJSharpe), install(86-08-19,MR12.0-1120):
+                                    15  "      Fix $greater operation.
+                                    16  "                                                      END HISTORY COMMENTS
+                                    17  
+                                    18  " This procedure is the centralized interpreter of the access isolation mechanism.
+                                    19  " Entries are segdef'ed since we don't make calls or need lp.
+                                    20  
+    000000                          21  	name	aim_check_
+                                    22  
+                                    23  "	7/74	A. Kobziar
+                                    24  "	Modified  84-03-26 BIM to add $in_range
+                                    25  "	Modified  85-01-16 Chris Jones to add $range_in_range
+                                    26  "
+                                    27  " ----------------------------------------------------------------
+                                    28  "
+                                    29  " Given the authorization of the subject and the access class of the object,
+                                    30  " return a bit(1) answer as to whether read, write, or read-write is permitted.
+                                    31  "
+                                    32  " dcl aim_check_$xxx entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned);
+                                    33  " 	if aim_check_$xxx (subject, object) then ...
+                                    34  "
+                        000000      35  	segdef	write_allowed_
+                        000011      36  	segdef	read_allowed_
+                        000022      37  	segdef	read_write_allowed_
+                        000022      38  	segdef	equal
+                        000032      39  	segdef	greater
+                        000011      40  	segdef	greater_or_equal
+                                    41  "
+                                    42  " dcl aim_check_$in_range entry (bit (72) aligned,(2) bit (72) aligned) returns bit (1) aligned;
+                                    43  "      if aim_check_$in_range (subject, object_range) then ...
+                                    44  "
+                        000046      45  	segdef	in_range
+                                    46  "
+                                    47  " dcl aim_check_$range_in_range entry ((2) bit (72) aligned, (2) bit (72) aligned) returns (bit (1) aligned);
+                                    48  "      if aim_check_$range_in_range (range1, range2) then ...
+                                    49  "
+                        000056      50  	segdef	range_in_range
+                                    51  "
+                                    52  	include	aim_template
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE aim_template.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 03/26/84  1515.2 est Mon by convert_include_file,
+                                   1-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   1-8  
+                                   1-9  	"Made from >ldd>include_1>aim_template.incl.pl1,
+                                  1-10  	"   modified 09/07/83  1810.6 est Wed
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure aim_template
+                                  1-14  "
+                        000002    1-15  	equ	aim_template_size,2
+                                  1-16  
+                                  1-17  
+                        000000    1-18  	equ	aim_template.categories,0
+                                  1-19  
+                        000001    1-20  	equ	aim_template.level,1	" UPPER
+                        000001    1-21  	equ	aim_template.privileges,1	" LOWER
+                        000001    1-22  	equ	aim_template.ipc_word,1
+                        400000    1-23  	bool	aim_template.ipc,400000	" DL
+                        000001    1-24  	equ	aim_template.dir_word,1
+                        200000    1-25  	bool	aim_template.dir,200000	" DL
+                        000001    1-26  	equ	aim_template.seg_word,1
+                        100000    1-27  	bool	aim_template.seg,100000	" DL
+                        000001    1-28  	equ	aim_template.soos_word,1
+                        040000    1-29  	bool	aim_template.soos,040000	" DL
+                        000001    1-30  	equ	aim_template.ring1_word,1
+                        020000    1-31  	bool	aim_template.ring1,020000	" DL
+                        000001    1-32  	equ	aim_template.rcp_word,1
+                        010000    1-33  	bool	aim_template.rcp,010000	" DL
+                        000001    1-34  	equ	aim_template.comm_word,1
+                        004000    1-35  	bool	aim_template.comm,004000	" DL
+                                  1-36  
+                                  1-37       "END INCLUDE FILE aim_template.incl.alm
+                                    53  
+                                    54  " This code depends on the fact that aim_template.categories = 0!
+                                    55  
+    000000                          56  write_allowed_:
+    000000  aa   000001 6210 00     57  	eax1	aim_template.level  "offset for IR mod
+    000001  aa  0 00004 2221 71     58  	ldx2	pr0|4,*x1		"pick up level of object
+    000002  aa  0 00002 1021 71     59  	cmpx2	pr0|2,*x1		"compare to subject
+    000003  0a   000101 6040 00     60  	tmi	no		"object must be >= subject
+    000004  aa  0 00002 2351 20     61  	lda	pr0|2,*		"pick up category (no IR, offset is 0)
+    000005  aa  0 00004 3751 20     62  	ana	pr0|4,*		"and with object category
+    000006  aa  0 00002 1151 20     63  	cmpa	pr0|2,*		"compare with subject category
+    000007  0a   000076 6000 00     64  	tze	yes		"subject is in subset of object category
+    000010  0a   000101 7100 00     65  	tra	no		"otherwize fail
+                                    66  
+    000011                          67  read_allowed_:
+    000011                          68  greater_or_equal:
+    000011  aa   000001 6210 00     69  	eax1	aim_template.level  
+    000012  aa  0 00002 2221 71     70  	ldx2	pr0|2,*x1		"pick up subject level
+    000013  aa  0 00004 1021 71     71  	cmpx2	pr0|4,*x1		"compare to object level
+    000014  0a   000101 6040 00     72  	tmi	no		"subject must be >= object
+    000015  aa  0 00002 2351 20     73  	lda	pr0|2,*		"get subject category
+    000016  aa  0 00004 3751 20     74  	ana	pr0|4,*		"and with object
+    000017  aa  0 00004 1151 20     75  	cmpa	pr0|4,*		"compare to object
+    000020  0a   000076 6000 00     76  	tze	yes		"object must be subset of subject
+    000021  0a   000101 7100 00     77  	tra	no		"else fail
+                                    78  
+    000022                          79  equal:
+    000022                          80  read_write_allowed_:
+    000022  aa   000001 6210 00     81  	eax1	aim_template.level
+    000023  aa  0 00002 2221 71     82  	ldx2	pr0|2,*1		"get subject level
+    000024  aa  0 00004 1021 71     83  	cmpx2	pr0|4,*1		"compare to object level
+    000025  0a   000101 6010 00     84  	tnz	no		"must be equal
+    000026  aa  0 00002 2351 20     85  	lda	pr0|2,*		"get subject category
+    000027  aa  0 00004 1151 20     86  	cmpa	pr0|4,*		"compare with object category
+    000030  0a   000076 6000 00     87  	tze	yes		"must match
+    000031  0a   000101 7100 00     88  	tra	no		"else fail
+                                    89  
+    000032                          90  greater:
+    000032  aa  0 00002 2351 20     91  	lda	pr0|2,*		"subject category
+    000033  aa  0 00004 3751 20     92  	ana	pr0|4,*		"object category
+    000034  aa  0 00004 1151 20     93  	cmpa	pr0|4,*		"is object in subject subset?
+    000035  0a   000101 6010 00     94  	tnz	no		"must be in subject subset
+    000036  aa   000001 6210 00     95  	eax1	aim_template.level
+    000037  aa  0 00002 2221 71     96  	ldx2	pr0|2,*1		"subject level
+    000040  aa  0 00004 1021 71     97  	cmpx2	pr0|4,*1		"compare to object's level
+    000041  0a   000101 6040 00     98  	tmi	no		"can't be less
+    000042  0a   000076 6054 00     99  	tpnz	yes		"subject level greater than object
+    000043  aa  0 00002 1151 20    100  	cmpa	pr0|2,*		"object still in a reg
+    000044  0a   000101 6000 00    101  	tze	no		"must be unequal for true subset
+    000045  0a   000076 7100 00    102  	tra	yes		"else pass
+                                   103  
+                                   104  " This entrypoint is equivalent to a pair of greater_or_equals.
+                                   105  
+    000046                         106  in_range:
+    000046  aa  0 00002 3515 20    107  	epp1	pr0|2,*		"point to subject
+    000047  aa  0 00004 3521 20    108  	epp2	pr0|4,*		"point to object (min)
+                                   109  				"pr1 -> subject, pr2 -> min
+    000050  0a   000066 7030 00    110  	tsx3      range_one_compare
+    000051  aa  1 00000 3535 00    111  	epp3	pr1|0		"save it.
+    000052  aa  2 00002 3515 00    112  	epp1	pr2|2		"pr1 -> object (max)
+    000053  aa  3 00000 3521 00    113  	epp2	pr3|0		"pr2 -> subject
+    000054  0a   000066 7030 00    114  	tsx3	range_one_compare
+    000055  0a   000076 7100 00    115  	tra	yes
+                                   116  
+                                   117  " This entrypoint ensures that its first arg's range is a subset of its second
+                                   118  
+    000056                         119  range_in_range:
+    000056  aa  0 00002 3515 20    120  	epp1	pr0|2,*		" point to first range
+    000057  aa  0 00004 3521 20    121  	epp2	pr0|4,*		" point to second range
+    000060  0a   000066 7030 00    122  	tsx3	range_one_compare	" doesn't return if answer is no
+    000061  aa  2 00002 3535 00    123  	epp3	pr2|2		" point to high end of second range
+    000062  aa  1 00002 3521 00    124  	epp2	pr1|2		" point to high end of first range
+    000063  aa  3 00000 3515 00    125  	epp1	pr3|0		" set up correct comparison
+    000064  0a   000066 7030 00    126  	tsx3	range_one_compare
+    000065  0a   000076 7100 00    127  	tra	yes		" passed both tests
+                                   128  
+                                   129  " pr1 -> ACC >=? pr2 -> ACC
+                                   130  
+    000066                         131  range_one_compare:
+    000066  aa  1 00001 2221 00    132  	ldx2	pr1|aim_template.level " first level (DU!)
+    000067  aa  2 00001 1021 00    133  	cmpx2	pr2|aim_template.level " bigger than second?
+    000070  0a   000101 6040 00    134  	tmi	no		   " fails (subject must be >= min)
+    000071  aa  1 00000 2351 00    135  	lda	pr1|aim_template.categories
+    000072  aa  2 00000 3751 00    136  	ana	pr2|aim_template.categories
+    000073  aa  2 00000 1151 00    137  	cmpa	pr2|aim_template.categories "second subset of first?
+    000074  0a   000101 6010 00    138  	tnz	no
+    000075  aa   000000 7100 13    139  	tra	0,x3	"return for another test (YES)
+                                   140  	
+    000076                         141  yes:
+    000076  aa   400000 2360 03    142  	ldq	=o400000,du
+    000077  aa  0 00006 7561 20    143  	stq	pr0|6,*
+    000100  aa  7 00044 7101 20    144  	short_return
+                                   145  
+    000101                         146  no:
+    000101  aa  0 00006 4501 20    147  	stz	pr0|6,*
+    000102  aa  7 00044 7101 20    148  	short_return
+                                   149  
+                                   150  
+                                   151  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000104  5a   000003 000000 
+    000105  5a   000105 600000 
+    000106  aa   000000 000000 
+    000107  55   000011 000002 
+    000110  5a   000002 400003 
+    000111  55   000006 000011 
+    000112  aa  012 141 151 155
+    000113  aa  137 143 150 145
+    000114  aa  143 153 137 000
+    000115  55   000020 000003 
+    000116  0a   000056 400000 
+    000117  55   000014 000003 
+    000120  aa  016 162 141 156         range_in_range
+    000121  aa  147 145 137 151
+    000122  aa  156 137 162 141
+    000123  aa  156 147 145 000
+    000124  55   000026 000011 
+    000125  0a   000046 400000 
+    000126  55   000023 000003 
+    000127  aa  010 151 156 137         in_range
+    000130  aa  162 141 156 147
+    000131  aa  145 000 000 000
+    000132  55   000036 000020 
+    000133  0a   000011 400000 
+    000134  55   000031 000003 
+    000135  aa  020 147 162 145         greater_or_equal
+    000136  aa  141 164 145 162
+    000137  aa  137 157 162 137
+    000140  aa  145 161 165 141
+    000141  aa  154 000 000 000
+    000142  55   000043 000026 
+    000143  0a   000032 400000 
+    000144  55   000041 000003 
+    000145  aa  007 147 162 145         greater
+    000146  aa  141 164 145 162
+    000147  55   000050 000036 
+    000150  0a   000022 400000 
+    000151  55   000046 000003 
+    000152  aa  005 145 161 165         equal
+    000153  aa  141 154 000 000
+    000154  55   000060 000043 
+    000155  0a   000022 400000 
+    000156  55   000053 000003 
+    000157  aa  023 162 145 141         read_write_allowed_
+    000160  aa  144 137 167 162
+    000161  aa  151 164 145 137
+    000162  aa  141 154 154 157
+    000163  aa  167 145 144 137
+    000164  55   000067 000050 
+    000165  0a   000011 400000 
+    000166  55   000063 000003 
+    000167  aa  015 162 145 141         read_allowed_
+    000170  aa  144 137 141 154
+    000171  aa  154 157 167 145
+    000172  aa  144 137 000 000
+    000173  55   000076 000060 
+    000174  0a   000000 400000 
+    000175  55   000072 000003 
+    000176  aa  016 167 162 151         write_allowed_
+    000177  aa  164 145 137 141
+    000200  aa  154 154 157 167
+    000201  aa  145 144 137 000
+    000202  55   000002 000067 
+    000203  6a   000000 400002 
+    000204  55   000101 000003 
+    000205  aa  014 163 171 155         symbol_table
+    000206  aa  142 157 154 137
+    000207  aa  164 141 142 154
+    000210  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000211  aa   000000 000015 
+    000212  5a   000036 000000 
+    000213  aa   000000 000000 
+    000214  aa   000000 000000 
+    000215  5a   000050 000000 
+    000216  aa   000000 000000 
+    000217  5a   000067 000000 
+    000220  5a   000020 000000 
+    000221  5a   000026 000000 
+    000222  5a   000011 000000 
+    000223  5a   000060 000000 
+    000224  5a   000043 000000 
+    000225  5a   000076 000000 
+    000226  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000227  aa   000001 000000 
+    000230  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000231  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000104 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   255116 403546 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000161 
+    000020  aa   000000 000120 
+    000021  aa   000134 000131 
+    000022  aa   000152 000120 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000041 
+    000067  aa   175453 017664 
+    000070  aa   000000 117547 
+    000071  aa   176204 000000 
+    000072  aa   000107 000042 
+    000073  aa   130037 657474 
+    000074  aa   000000 113006 
+    000075  aa   135163 000000 
+    000076  aa   076163 160145          >spec>install>1110>aim_check_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061060 076141 
+    000103  aa   151155 137143 
+    000104  aa   150145 143153 
+    000105  aa   137056 141154 
+    000106  aa   155040 040040 
+    000107  aa   076154 144144          >ldd>include>aim_template.incl.alm
+    000110  aa   076151 156143 
+    000111  aa   154165 144145 
+    000112  aa   076141 151155 
+    000113  aa   137164 145155 
+    000114  aa   160154 141164 
+    000115  aa   145056 151156 
+    000116  aa   143154 056141 
+    000117  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    aim_template.categories  aim_check_:   135,  136,  137,
+                                         aim_template:        18.
+        4000    aim_template.comm        aim_template:        35.
+           1    aim_template.comm_word   aim_template:        34.
+      200000    aim_template.dir         aim_template:        25.
+           1    aim_template.dir_word    aim_template:        24.
+      400000    aim_template.ipc         aim_template:        23.
+           1    aim_template.ipc_word    aim_template:        22.
+           1    aim_template.level       aim_check_:    57,   69,   81,   95,  132,  133,
+                                         aim_template:        20.
+           1    aim_template.privileges  aim_template:        21.
+       10000    aim_template.rcp         aim_template:        33.
+           1    aim_template.rcp_word    aim_template:        32.
+       20000    aim_template.ring1       aim_template:        31.
+           1    aim_template.ring1_word  aim_template:        30.
+      100000    aim_template.seg         aim_template:        27.
+           1    aim_template.seg_word    aim_template:        26.
+       40000    aim_template.soos        aim_template:        29.
+           1    aim_template.soos_word   aim_template:        28.
+           2    aim_template_size        aim_template:        15.
+          22    equal                    aim_check_:    38,   79.
+          32    greater                  aim_check_:    39,   90.
+          11    greater_or_equal         aim_check_:    40,   68.
+          46    in_range                 aim_check_:    45,  106.
+         101    no                       aim_check_:    60,   65,   72,   77,   84,   88,   94,   98,  101,  134,  138,  146.
+          56    range_in_range           aim_check_:    50,  119.
+          66    range_one_compare        aim_check_:   110,  114,  122,  126,  131.
+          11    read_allowed_            aim_check_:    36,   67.
+          22    read_write_allowed_      aim_check_:    37,   80.
+           0    write_allowed_           aim_check_:    35,   56.
+          76    yes                      aim_check_:    64,   76,   87,   99,  102,  115,  127,  141.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,717 @@
+	COMPILATION LISTING OF SEGMENT init_root_dir
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0940.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 init_root_dir:
+        9      procedure;
+       10 
+       11 /*
+       12*   USAGE: call init_root_dir;
+       13*
+       14*   NOTES: Called during system initialization "init_root_dir"  creates
+       15*   and initializes the root directory if the system is being cold booted.
+       16*   Various directory variables are set/preset such as the root id
+       17*   and all self referencing pointers. If the system is being
+       18*   warm booted these variables are not reset. In either case the root
+       19*   directory is made known to the initializer process.
+       20*
+       21*
+       22*   modified 4/75 for NSS by THVV
+       23*   modified 8/76 for variable size hash tables by S.E. Barr
+       24*   Modified by D. Vinograd 6/76 to set volume dumper bit map
+       25*   Modified 4/77 by M. Weaver to replace makeknown with makeknown_
+       26*   Modified 18 Feb 79 by D. Spector to extend root quota from 17 to 18 bits
+       27*   Modified February 1982 by C. Hornig to salvage root when necessary
+       28*   Modified March 1982 by J. Bongiovanni to eliminate use of FSDCT
+       29*   Modified October 1984 by K. Loepere for explicit activation of root.
+       30**/
+       31 
+       32 dcl  vtocx fixed bin;
+       33 dcl  pvtx fixed bin;
+       34 dcl  segno fixed bin;
+       35 dcl  code fixed bin (35);
+       36 dcl  cold bit (1) aligned;
+       37 
+       38 dcl  pvt$rlv_needs_salv bit (1) aligned external;
+       39 dcl  pvt$root_pvtx fixed bin external;
+       40 dcl  pvt$root_vtocx fixed bin external;
+       41 dcl  sst$root_astep ptr external;
+       42 
+       43 dcl  ROOT_UID bit (36) int static options (constant) init ((36)"1"b);
+       44 
+       45 dcl  (addr, baseptr, binary, null, unspec) builtin;
+       46 
+       47 dcl  create_root_dir entry (ptr);
+       48 dcl  create_root_vtoce entry;
+       49 dcl  find entry (char (*), ptr);
+       50 dcl  get_aste entry (fixed bin (9)) returns (ptr);
+       51 dcl  initialize_kst entry ();
+       52 dcl  makeknown_ entry (ptr, fixed bin, fixed bin, fixed bin (35));
+       53 dcl  pathname_am$initialize entry ();
+       54 dcl  pc$fill_page_table entry (ptr, ptr, fixed bin (9));
+       55 dcl  salvager$dir_salv_boot entry (char (*));
+       56 dcl  search_ast$hash_in entry (ptr);
+       57 dcl  syserr entry options (variable);
+       58 dcl  syserr$error_code entry options (variable);
+       59 dcl  vtoc_man$get_vtoce entry (bit (36) aligned, fixed bin, fixed bin, bit (3), ptr, fixed bin (35));
+       60 
+       61 dcl  1 mk_info aligned like makeknown_info;
+       62 
+       63 dcl  1 local_vtoce like vtoce aligned;
+       64 
+       65 	intk_cardp = null ();
+       66 	call find ("intk", intk_cardp);		/* see if hierarchy is intact */
+       67 	cold = (intk_card.warm_or_cold = "cold");
+       68 
+       69 	if cold then call create_root_vtoce;		/* Create the root */
+       70 
+       71 	pvtx = pvt$root_pvtx;			/* Find the pack where the root is */
+       72 	vtocx = pvt$root_vtocx;			/* CONVENTION: root vtocx always 0 */
+       73 	vtocep = addr (local_vtoce);
+       74 	call vtoc_man$get_vtoce ("0"b, pvtx, vtocx, "111"b, vtocep, code);
+       75 	if code ^= 0 then call syserr$error_code (1, code, "init_root_dir: Error on root vtoce");
+       76 
+       77 	sst$root_astep, astep = get_aste (64);		/* Obtain proper VTOC entry */
+       78 	aste.msl = vtoce.msl;			/* and activate the ROOT */
+       79 	aste.vtocx = vtocx;
+       80 	aste.pvtx = pvtx;
+       81 	aste.usedf, aste.gtus, aste.gtms, aste.nqsw, aste.dirsw, aste.master_dir, aste.ehs, aste.gtpd, aste.dnzp = "1"b;
+       82 	aste.dtu = vtoce.dtu;
+       83 	aste.dtm = vtoce.dtm;
+       84 	aste.csl = vtoce.csl;
+       85 	aste.records = vtoce.records;
+       86 	aste.quota (*) = vtoce.quota (*);
+       87 	aste.used (*) = vtoce.used (*);
+       88 	aste.tqsw (*) = "1"b;
+       89 	call pc$fill_page_table (astep, addr (vtoce.fm), binary (aste.csl, 9));
+       90 	aste.uid = ROOT_UID;
+       91 	call search_ast$hash_in (astep);
+       92 
+       93 /* Set up Initializer's KST. Must be done after sys_info is initialized & before call to makeknown. */
+       94 
+       95 	call initialize_kst;
+       96 	call pathname_am$initialize;
+       97 
+       98 	unspec (mk_info) = "0"b;
+       99 	mk_info.uid = ROOT_UID;
+      100 	mk_info.entryp = null ();
+      101 	mk_info.dirsw = "1"b;
+      102 	mk_info.allow_write = "1"b;
+      103 	mk_info.activate = "1"b;
+      104 	call makeknown_ (addr (mk_info), segno, (0), code);
+      105 	if code ^= 0 then call syserr$error_code (1, code, "init_root_dir: Error from makeknown on root.");
+      106 	dp = baseptr (segno);
+      107 
+      108 /* If this is a cold boot, set up the root directory. Code assumes new pages are zero. */
+      109 
+      110 	if cold then call create_root_dir (dp);
+      111 
+      112 	if dir.uid ^= ROOT_UID then call syserr (1, "init_root_dir: Root damaged.");
+      113 
+      114 	if pvt$rlv_needs_salv | (dir.uid ^= ROOT_UID) | (dir.modify ^= ""b) then call salvager$dir_salv_boot (">");
+      115 
+      116 	return;
+      117 
+  1     1 /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      118 
+  2     1 /* BEGIN INCLUDE FILE ... config_intk_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 
+  2     3 dcl  intk_cardp pointer;				/* pointer to INTK card */
+  2     4 
+  2     5 dcl 1 intk_card aligned based (intk_cardp),		/* INTK card declaration */
+  2     6     2 word char (4),				/* "intk" */
+  2     7     2 warm_or_cold char (4),				/* Type of bootload: "warm" or "cold" */
+  2     8     2 boot_drive fixed bin,				/* Tape drive on which MST is mounted */
+  2     9     2 parms (12) char (4),				/* up to 12 arbitrary bootload parameters */
+  2    10 
+  2    11     2 type_word aligned,
+  2    12       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    13       3 pad1 bit (4) unaligned,
+  2    14       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    15 
+  2    16 dcl 1 intk_card_array aligned based (intk_cardp),		/* Overlay for counting parameters */
+  2    17     2 pad (3) bit (36) aligned,
+  2    18     2 parms (max (0, intk_card.n_fields - 2)) bit (36) aligned;
+  2    19 
+  2    20 dcl  INTK_CARD_WORD char (4) aligned internal static options (constant) init ("intk");
+  2    21 
+  2    22 /* END INCLUDE FILE ... config_intk_card.incl.pl1 */
+      119 
+  3     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  3     2 /* Modified 8/74 for NSS */
+  3     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  3     4 /* Modified 3/82 BIM for change pclock */
+  3     5 /* format: style3 */
+  3     6 
+  3     7 /* Template for the directory header. Length = 64 words. */
+  3     8 
+  3     9 dcl  dp ptr;
+  3    10 
+  3    11 dcl 1 dir based (dp) aligned,
+  3    12 
+  3    13    2 modify bit (36),				/* Process ID of last modifier */
+  3    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  3    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  3    16     2 dtc (3),					/* date-time checked by salvager array */
+  3    17       3 date bit (36),				/* the date */
+  3    18       3 error bit (36),				/* what errors were discovered */
+  3    19 
+  3    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  3    21 
+  3    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  3    23 
+  3    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  3    25 
+  3    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  3    27 
+  3    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  3    29     2 version_number fixed bin (17),			/* version number of header */
+  3    30 
+  3    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  3    32     2 pad2 bit (18),
+  3    33 
+  3    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  3    35     2 pad3 bit (18),
+  3    36 
+  3    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  3    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  3    39 
+  3    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  3    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  3    42 
+  3    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  3    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  3    45 
+  3    46     2 lcount fixed bin (17),				/* number of links */
+  3    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  3    48 
+  3    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  3    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  3    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  3    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  3    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  3    54     2 pad4 bit (14),
+  3    55 
+  3    56     2 iacl_count (0:7),
+  3    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  3    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  3    59 
+  3    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  3    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  3    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  3    63 
+  3    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  3    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  3    66 
+  3    67     2 htsize fixed bin (17),				/* size of hash table */
+  3    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  3    69 
+  3    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  3    71     2 pad6 fixed bin (17),
+  3    72 
+  3    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  3    74     2 pad7 bit (18)) unaligned,
+  3    75 
+  3    76     2 dts bit (36),					/* date-time directory last salvaged */
+  3    77 
+  3    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  3    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  3    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  3    81     2 checksum bit (36),				/* checksummed from uid on */
+  3    82     2 owner bit (36);				/* uid of parent dir */
+  3    83 
+  3    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  3    85 
+  3    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      120 
+  4     1 /*  BEGIN INCLUDE FILE - - - makeknown_info.incl.pl1 - - - last modified March 1975 by R. Bratt - - - */
+  4     2 /* Modified October 1984 for explicit activate flag and to remove 
+  4     3*   detectable flag, Keith Loepere. */
+  4     4 
+  4     5 dcl  makeknown_infop ptr;
+  4     6 
+  4     7 dcl 1 makeknown_info aligned based (makeknown_infop),
+  4     8     2 uid bit (36) aligned,
+  4     9     2 entryp ptr unaligned,
+  4    10     2 flags unaligned,
+  4    11       3 dirsw bit (1),
+  4    12       3 rsw bit (1),
+  4    13       3 allow_write bit (1),
+  4    14       3 priv_init bit (1),
+  4    15       3 audit bit (1),
+  4    16       3 activate bit (1);			/* Use only for directory initiation within directory control */
+  4    17 
+  4    18 /*   END INCLUDE FILE makeknown_info.incl.pl1 - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+      121 
+  5     1 /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  5     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  5     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  5     4 
+  5     5 dcl  vtocep ptr;
+  5     6 
+  5     7 dcl 1 vtoce based (vtocep) aligned,
+  5     8 
+  5     9 
+  5    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  5    11 
+  5    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  5    13 
+  5    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  5    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  5    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  5    17     2 pad2 bit (9),
+  5    18 
+  5    19     2 dtu bit (36),					/* date and time segment was last used */
+  5    20 
+  5    21     2 dtm bit (36),					/* date and time segment was last modified */
+  5    22 
+  5    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  5    24     2 deciduous bit (1),				/* true if hc_sdw */
+  5    25     2 nid bit (1),					/* no incremental dump switch */
+  5    26     2 dnzp bit (1),					/* Dont null zero pages */
+  5    27     2 gtpd bit (1),					/* Global transparent paging device */
+  5    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  5    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  5    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  5    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  5    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  5    33     2 pad3 bit (8),
+  5    34     2 dirsw bit (1),				/* directory switch */
+  5    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  5    36     2 pad4 bit (16)) unaligned,			/* not used */
+  5    37 
+  5    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  5    39 
+  5    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  5    41 
+  5    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  5    43 
+  5    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  5    45 
+  5    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  5    47 
+  5    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  5    49 
+  5    50 
+  5    51 
+  5    52 
+  5    53 
+  5    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  5    55 
+  5    56     2 pad6 (10) bit (36),				/* not used */
+  5    57 
+  5    58     2 ncd bit (1),					/* no complete dump switch */
+  5    59     2 pad7 bit (17),
+  5    60     2 pad8 bit (18),
+  5    61 
+  5    62     2 dtd bit (36),					/* date-time-dumped */
+  5    63 
+  5    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  5    65 
+  5    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  5    67 
+  5    68 
+  5    69 
+  5    70 
+  5    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  5    72 
+  5    73     2 primary_name char (32),				/* primary name of the segment */
+  5    74 
+  5    75     2 time_created bit (36),				/* time the segment was created */
+  5    76 
+  5    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  5    78 
+  5    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  5    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  5    81 
+  5    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  5    83 
+  5    84     2 access_class bit (72),				/* access class in branch */
+  5    85     2 perm_flags aligned,
+  5    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  5    87       3 pad9 bit (35) unal,
+  5    88     2 owner bit (36);				/* pvid of this volume */
+  5    89 
+  5    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  5    91 
+  5    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  5    93     2 pad1 bit (7*36),
+  5    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  5    95     2 pad2 bit (184*36);
+  5    96 
+  5    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      122 
+      123 
+      124 /* BEGIN MESSAGE DOCUMENTATION
+      125*
+      126*   Message:
+      127*   init_root_dir: Error on root vtoce ERROR_MESSAGE
+      128*
+      129*   S:	$crash
+      130*
+      131*   T:	$init
+      132*
+      133*   M:	The supervisor cannot locate the VTOC entry for the root directory.
+      134*   The RPV may have been damaged.
+      135*
+      136*   A:	$recover
+      137*   A recovery of the RPV may be required.
+      138*
+      139*
+      140*   Message:
+      141*   init_root_dir: Error from makeknown on root ERROR_MESSAGE
+      142*
+      143*   S:	$crash
+      144*
+      145*   T:	$init
+      146*
+      147*   M:	$err
+      148*
+      149*   A:	Reboot with a different version of the system.
+      150*
+      151*
+      152*   Message:
+      153*   init_root_dir: Root damaged.
+      154*
+      155*   S:	$crash
+      156*
+      157*   T:	$init
+      158*
+      159*   M:	The unique ID of the root directory
+      160*   in the directory header is incorrect.
+      161*   The contents of the RPV may have been damaged.
+      162*
+      163*   A:	$recover
+      164*   A recovery of the RPV may be required.
+      165*
+      166*
+      167*   END MESSAGE DOCUMENTATION */
+      168 
+      169      end init_root_dir;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.9  init_root_dir.pl1                 >spec>install>1112>init_root_dir.pl1
+118          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+119          2    05/08/81  1853.6  config_intk_card.incl.pl1         >ldd>include>config_intk_card.incl.pl1
+120          3    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+121          4    01/30/85  1523.9  makeknown_info.incl.pl1           >ldd>include>makeknown_info.incl.pl1
+122          5    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ROOT_UID                        000517 constant        bit(36)                  initial packed unaligned dcl 43 ref 90 99 112 114
+activate                  2(05) 000105 automatic       bit(1)                   level 3 packed packed unaligned dcl 61 set ref 103*
+addr                                                   builtin function         dcl 45 ref 73 89 89 104 104
+allow_write               2(02) 000105 automatic       bit(1)                   level 3 packed packed unaligned dcl 61 set ref 102*
+aste                                   based           structure                level 1 dcl 1-11
+astep                           000410 automatic       pointer                  dcl 1-9 set ref 77* 78 79 80 81 81 81 81 81 81 81 81
+                                                                                  81 82 83 84 85 86 87 88 89* 89 89 90 91*
+baseptr                                                builtin function         dcl 45 ref 106
+binary                                                 builtin function         dcl 45 ref 89 89
+code                            000103 automatic       fixed bin(35,0)          dcl 35 set ref 74* 75 75* 104* 105 105*
+cold                            000104 automatic       bit(1)                   dcl 36 set ref 67* 69 110
+create_root_dir                 000020 constant        entry                    external dcl 47 ref 110
+create_root_vtoce               000022 constant        entry                    external dcl 48 ref 69
+csl                      12            based           bit(9)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 84*
+                                                                                  89 89
+csl                       2(09)        based           bit(9)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 5-7 in procedure "init_root_dir" ref 84
+dir                                    based           structure                level 1 dcl 3-11
+dirsw                     5(21)        based           bit(1)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 81*
+dirsw                     2     000105 automatic       bit(1)                   level 3 in structure "mk_info" packed packed
+                                                                                  unaligned dcl 61 in procedure "init_root_dir" set
+                                                                                  ref 101*
+dnzp                     12(13)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+dp                              000414 automatic       pointer                  dcl 3-9 set ref 106* 110* 112 114 114
+dtm                       7            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 83*
+dtm                       4            based           bit(36)                  level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 5-7 in procedure "init_root_dir" ref 83
+dtu                       3            based           bit(36)                  level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 5-7 in procedure "init_root_dir" ref 82
+dtu                       6            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 82*
+ehs                       5(19)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+entryp                    1     000105 automatic       pointer                  level 2 packed packed unaligned dcl 61 set ref 100*
+find                            000024 constant        entry                    external dcl 49 ref 66
+flags                     2     000105 automatic       structure                level 2 packed packed unaligned dcl 61
+fm                       20            based           bit(18)                  array level 2 packed packed unaligned dcl 5-7 set
+                                                                                  ref 89 89
+get_aste                        000026 constant        entry                    external dcl 50 ref 77
+gtms                      5(03)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+gtpd                     12(12)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+gtus                      5(02)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+initialize_kst                  000030 constant        entry                    external dcl 51 ref 95
+intk_card                              based           structure                level 1 dcl 2-5
+intk_cardp                      000412 automatic       pointer                  dcl 2-3 set ref 65* 66* 67
+local_vtoce                     000110 automatic       structure                level 1 dcl 63 set ref 73
+makeknown_                      000032 constant        entry                    external dcl 52 ref 104
+makeknown_info                         based           structure                level 1 dcl 4-7
+master_dir                5(22)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+mk_info                         000105 automatic       structure                level 1 dcl 61 set ref 98* 104 104
+modify                                 based           bit(36)                  level 2 dcl 3-11 ref 114
+msl                       4            based           bit(9)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 78*
+msl                       2            based           bit(9)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 5-7 in procedure "init_root_dir" ref 78
+nqsw                      5(20)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+null                                                   builtin function         dcl 45 ref 65 100
+pathname_am$initialize          000034 constant        entry                    external dcl 53 ref 96
+pc$fill_page_table              000036 constant        entry                    external dcl 54 ref 89
+pvt$rlv_needs_salv              000010 external static bit(1)                   dcl 38 ref 114
+pvt$root_pvtx                   000012 external static fixed bin(17,0)          dcl 39 ref 71
+pvt$root_vtocx                  000014 external static fixed bin(17,0)          dcl 40 ref 72
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 80*
+pvtx                            000101 automatic       fixed bin(17,0)          dcl 33 in procedure "init_root_dir" set ref 71* 74*
+                                                                                  80
+quota                    10            based           fixed bin(18,0)          array level 2 in structure "aste" packed packed
+                                                                                  unsigned unaligned dcl 1-11 in procedure
+                                                                                  "init_root_dir" set ref 86*
+quota                     7            based           fixed bin(18,0)          array level 2 in structure "vtoce" packed packed
+                                                                                  unsigned unaligned dcl 5-7 in procedure
+                                                                                  "init_root_dir" ref 86
+records                  12(18)        based           bit(9)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 85*
+records                   2(18)        based           bit(9)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 5-7 in procedure "init_root_dir" ref 85
+salvager$dir_salv_boot          000040 constant        entry                    external dcl 55 ref 114
+search_ast$hash_in              000042 constant        entry                    external dcl 56 ref 91
+segno                           000102 automatic       fixed bin(17,0)          dcl 34 set ref 104* 106
+sst$root_astep                  000016 external static pointer                  dcl 41 set ref 77*
+syserr                          000044 constant        entry                    external dcl 57 ref 112
+syserr$error_code               000046 constant        entry                    external dcl 58 ref 75 105
+tqsw                      5(24)        based           bit(1)                   array level 2 packed packed unaligned dcl 1-11 set
+                                                                                  ref 88*
+uid                             000105 automatic       bit(36)                  level 2 in structure "mk_info" dcl 61 in procedure
+                                                                                  "init_root_dir" set ref 99*
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 3-11 in procedure
+                                                                                  "init_root_dir" ref 112 114
+uid                       3            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 90*
+unspec                                                 builtin function         dcl 45 set ref 98*
+used                     10            based           fixed bin(18,0)          array level 2 in structure "vtoce" packed packed
+                                                                                  unsigned unaligned dcl 5-7 in procedure
+                                                                                  "init_root_dir" ref 87
+used                     11            based           fixed bin(18,0)          array level 2 in structure "aste" packed packed
+                                                                                  unsigned unaligned dcl 1-11 in procedure
+                                                                                  "init_root_dir" set ref 87*
+usedf                     5            based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 81*
+vtoc_man$get_vtoce              000050 constant        entry                    external dcl 59 ref 74
+vtoce                                  based           structure                level 1 dcl 5-7
+vtocep                          000416 automatic       pointer                  dcl 5-5 set ref 73* 74* 78 82 83 84 85 86 87 89 89
+vtocx                           000100 automatic       fixed bin(17,0)          dcl 32 in procedure "init_root_dir" set ref 72* 74*
+                                                                                  79
+vtocx                     4(18)        based           fixed bin(17,0)          level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_root_dir" set ref 79*
+warm_or_cold              1            based           char(4)                  level 2 dcl 2-5 ref 67
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+INTK_CARD_WORD                         internal static char(4)                  initial dcl 2-20
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+intk_card_array                        based           structure                level 1 dcl 2-16
+makeknown_infop                        automatic       pointer                  dcl 4-5
+seg_aste                               based           structure                level 1 dcl 1-96
+seg_vtoce                              based           structure                level 1 dcl 5-92
+version_number_2                       internal static fixed bin(17,0)          initial dcl 3-84
+vtoce_parts                            based           bit(2304)                array dcl 5-90
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+init_root_dir                   000050 constant        entry                    external dcl 8
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       736        1010     520         746
+Length      1300     520        52         254     216           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_root_dir                       318 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_root_dir            000100 vtocx                       init_root_dir
+                         000101 pvtx                        init_root_dir
+                         000102 segno                       init_root_dir
+                         000103 code                        init_root_dir
+                         000104 cold                        init_root_dir
+                         000105 mk_info                     init_root_dir
+                         000110 local_vtoce                 init_root_dir
+                         000410 astep                       init_root_dir
+                         000412 intk_cardp                  init_root_dir
+                         000414 dp                          init_root_dir
+                         000416 vtocep                      init_root_dir
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+create_root_dir               create_root_vtoce             find                          get_aste
+initialize_kst                makeknown_                    pathname_am$initialize        pc$fill_page_table
+salvager$dir_salv_boot        search_ast$hash_in            syserr                        syserr$error_code
+vtoc_man$get_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$rlv_needs_salv            pvt$root_pvtx                 pvt$root_vtocx                sst$root_astep
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000047        65 000055        66 000057        67 000075        69 000102        71 000110        72 000113
+     73 000115        74 000117        75 000143        77 000173        78 000212        79 000216        80 000220
+     81 000223        82 000245        83 000247        84 000251        85 000254        86 000256        87 000260
+     88 000262        89 000275        90 000316        91 000321        95 000330        96 000335        98 000342
+     99 000345       100 000347       101 000351       102 000353       103 000355       104 000357       105 000377
+    106 000427       110 000433       112 000444       114 000472       116 000515
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

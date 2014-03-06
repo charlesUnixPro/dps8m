@@ -1,0 +1,698 @@
+	COMPILATION LISTING OF SEGMENT set_system_time_zone_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1011.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1987 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(87-03-26,Lippard), approve(87-04-27,MCR7673),
+       12*     audit(87-05-15,Fawcett), install(87-05-26,MR12.1-1036):
+       13*     Written by Jim Lippard.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 /* This program sets the system time zone. */
+       17 set_system_time_zone_: proc (P_time_zone, P_code);
+       18 
+       19 	dcl     P_time_zone		 char (4) aligned parm;
+       20 	dcl     P_code		 fixed bin (35) parm;
+       21 
+       22 	dcl     code		 fixed bin (35);
+       23 
+       24 	dcl     (lang_index, zone_index) fixed bin;
+       25 
+       26 	dcl     found_zone		 bit (1) aligned;
+       27 
+       28 	dcl     1 local_clok_card	 aligned like clok_card;
+       29 
+       30 	dcl     time_correction	 fixed bin (71);
+       31 	dcl     time_zone		 char (4) aligned;
+       32 
+       33 	dcl     user_ring		 fixed bin;
+       34 
+       35 	dcl     zone_delta		 fixed bin;
+       36 
+       37 	dcl     config_$find	 entry (char (4) aligned, ptr);
+       38 	dcl     config_$replace	 entry (ptr, ptr);
+       39 
+       40 	dcl     error_table_$unknown_zone fixed bin (35) ext static;
+       41 
+       42 	dcl     level$get		 entry (fixed bin);
+       43 	dcl     level$set		 entry (fixed bin);
+       44 
+       45 	dcl     sys_info$time_correction_constant fixed bin (71) aligned ext static;
+       46 	dcl     sys_info$time_zone	 char (4) aligned ext static;
+       47 
+       48 	dcl     (addr, divide, null) builtin;
+       49 
+       50 	dcl     cleanup		 condition;
+       51 
+       52           dcl     MILSEC_IN_HR           fixed bin (71)  int static options (constant) init (3600000000);
+       53 
+       54 	dcl     RING_ZERO		 fixed bin int static options (constant) init (0);
+       55 
+       56 	dcl     TRUE		 bit (1) aligned int static options (constant) init ("1"b);
+       57 	dcl     FALSE		 bit (1) aligned int static options (constant) init ("0"b);
+       58 
+       59 /* Copy input arguments. */
+       60 	time_zone = P_time_zone;
+       61 	code = 0;
+       62 
+       63 /* Initialize clok config pointer. */
+       64 	clok_cardp = null ();
+       65 
+       66 /* Validate input zone, get delta. */
+       67 	found_zone = FALSE;
+       68 	do lang_index = 1 to ti_zone.number_lang while (^found_zone);
+       69 	     do zone_index = 1 to ti_zone.number_zone while (^found_zone);
+       70 		if ti_zone.short (lang_index, zone_index) = time_zone then do;
+       71 			found_zone = TRUE;
+       72 			time_correction = ti_zone.delta (lang_index, zone_index);
+       73 		     end;
+       74 	     end;					/* zones */
+       75 	end;					/* languages */
+       76 
+       77 	if ^found_zone then do;
+       78 		code = error_table_$unknown_zone;
+       79 		go to MAIN_RETURN;
+       80 	     end;
+       81 
+       82 /* Calculate zone delta for CLOK card. */
+       83 	zone_delta = divide (time_correction, MILSEC_IN_HR, 17, 0);
+       84 
+       85 /* Find the CLOK card in the config deck. */
+       86 	call config_$find (CLOK_CARD_WORD, clok_cardp);
+       87 
+       88 /* Make a copy. */
+       89 	local_clok_card = clok_card;
+       90 
+       91 /* Make changes. */
+       92 	local_clok_card.delta = zone_delta;
+       93 	local_clok_card.zone = time_zone;
+       94 
+       95 /* Set validation level. */
+       96 	user_ring = -1;
+       97 	on cleanup begin;
+       98 	     if user_ring ^= -1 then call level$set (user_ring);
+       99 	end;
+      100 	call level$get (user_ring);
+      101 	call level$set (RING_ZERO);
+      102 
+      103 /* Replace the CLOK card in the config deck. */
+      104 	call config_$replace (clok_cardp, addr (local_clok_card));
+      105 
+      106 /* Change the system time zone in sys_info. */
+      107 	sys_info$time_zone = time_zone;
+      108 	sys_info$time_correction_constant = time_correction;
+      109 
+      110 /* Reset validation level. */
+      111 	call level$set (user_ring);
+      112 
+      113 MAIN_RETURN:
+      114 	P_code = code;
+      115 	return;
+      116 
+  1     1 /* BEGIN INCLUDE FILE ... config_clok_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  1     2 
+  1     3 dcl  clok_cardp pointer;				/* pointer to CLOK card */
+  1     4 
+  1     5 dcl 1 clok_card aligned based (clok_cardp),		/* CLOK card declaration */
+  1     6     2 word char (4),				/* "clok" */
+  1     7     2 delta fixed bin,				/* Signed offset from GMT */
+  1     8     2 zone char (4),				/* Name of time zone, such as "hfe" */
+  1     9     2 boot_delta fixed bin,				/* Number of hours allowed between bootloads */
+  1    10 
+  1    11     2 pad (11) bit (36) aligned,			/* Pad to 15 fields */
+  1    12 
+  1    13     2 type_word aligned,
+  1    14       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  1    15       3 pad1 bit (4) unaligned,
+  1    16       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  1    17 
+  1    18 dcl  CLOK_CARD_WORD char (4) aligned internal static options (constant) init ("clok");
+  1    19 
+  1    20 /* END INCLUDE FILE ... config_clok_card.incl.pl1 */
+      117 
+      118 
+  2     1 /* BEGIN INCLUDE FILE sys_log_constants.incl.pl1 ... 82-09-24 E. N. Kittlitz */
+  2     2 
+  2     3 
+  2     4 /****^  HISTORY COMMENTS:
+  2     5*  1) change(87-04-22,GDixon), approve(87-06-10,MCR7708),
+  2     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  2     7*     Added sl_info structure and associated named constants for use in calling
+  2     8*     sys_log_$general.
+  2     9*                                                   END HISTORY COMMENTS */
+  2    10 
+  2    11 
+  2    12 /* format: style4 */
+  2    13 
+  2    14 dcl  (
+  2    15      SL_TYPE_CRASH init (-3),				/* type message with banner & kill system */
+  2    16      SL_TYPE_BEEP init (-2),				/* type message with banner */
+  2    17      SL_TYPE init (-1),				/* type message */
+  2    18      SL_LOG_SILENT init (0),				/* log message */
+  2    19      SL_LOG init (1),				/* log & type message */
+  2    20      SL_LOG_BEEP init (2),				/* log & type message with banner */
+  2    21      SL_LOG_CRASH init (3)				/* log & type message with banner & kill system */
+  2    22      ) fixed bin internal static options (constant);
+  2    23 
+  2    24 dcl  1 sl_info aligned automatic,
+  2    25        2 version char(8),			/* structure version       */
+  2    26        2 arg_list_ptr ptr,			/* arg_list with values    */
+  2    27        2 loc,
+  2    28          3 (mode, severity, code, caller, data, class, ioa_msg) fixed bin,
+  2    29            /* These flags control where the corresponding data item is found.*/
+  2    30 	 /*  -1: data appears in the corresponding structure element below */
+  2    31 	 /*   0: data is not present anywhere			       */
+  2    32 	 /*  +N: data is Nth item in argument list pointed to by 	       */
+  2    33 	 /*      sl_info.arg_list_ptr.  Upon return, data copied into      */
+  2    34 	 /*      corresponding structure element.		       */
+  2    35 	 /*  if data = +N:					       */
+  2    36 	 /*      argN is data_ptr, argN+1 is data_len		       */
+  2    37 	 /*  if ioa_msg = +N:				       */
+  2    38 	 /*      argN+1, ... argLAST are arguments substituted into the    */
+  2    39 	 /*      ioa_msg control string.  The formatted msg is returned.   */
+  2    40        2 flags,
+  2    41          3 ioa_msg_is_error_code bit(1) unal,	/* ioa_ctl is error code.  */
+  2    42          3 flags_pad bit(35) unal,
+  2    43        2 mode fixed bin,			/* as-mode, command-mode   */
+  2    44        2 severity fixed bin,			/* error severity	       */
+  2    45        2 code fixed bin(35),			/* error table code        */
+  2    46        2 caller char(65) varying,		/* caller refname$entryname*/
+  2    47        2 data,				/* binary data ptr/length  */
+  2    48          3 data_ptr ptr,
+  2    49          3 data_lth fixed bin(21),
+  2    50        2 class char(10) varying,		/* binary data class       */
+  2    51        2 ioa_msg char(500) varying;		/* formatted message text  */
+  2    52 
+  2    53 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    54 /*							       */
+  2    55 /* If data values (eg, sl_info.caller) are passed in the argument list,      */
+  2    56 /* their data types should be as shown in the structure above, except that   */
+  2    57 /* character strings should be char(*) nonvarying.		       */
+  2    58 /*							       */
+  2    59 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    60 
+  2    61 /* value for sl_info.version */
+  2    62 dcl  SL_INFO_version_1 char (8) int static options(constant) init("sl_info1");
+  2    63 
+  2    64 /* values for sl_info.mode */
+  2    65 dcl (SL_INFO_as_mode init(1),
+  2    66      SL_INFO_command_mode init(2)) fixed bin int static options(constant);
+  2    67 
+  2    68 /* values for sl_info.loc.(severity code caller data class ioa_ctl arg) */
+  2    69 dcl (SL_INFO_arg_given_in_structure init(-1),
+  2    70      SL_INFO_arg_not_given init(0)) fixed bin int static options(constant);
+  2    71 
+  2    72 
+  2    73 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    74 /*							       */
+  2    75 /* The following static structures are commonly used in the Login Server     */
+  2    76 /* user control software.					       */
+  2    77 /*							       */
+  2    78 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    79 
+  2    80 /* Syntax: call Abort (severity, code, ioa_ctl, args);		       */
+  2    81 
+  2    82 dcl  1 sl_info_sev_code_msg		aligned int static options(constant),
+  2    83        2 version char(8)		init ("sl_info1"),
+  2    84        2 arg_list_ptr ptr		init (null),
+  2    85        2 loc,
+  2    86          3 (mode			init (-1),
+  2    87 	  severity  		init ( 1),
+  2    88 	  code 			init ( 2),
+  2    89 	  caller 			init (-1),
+  2    90 	  data 			init ( 0),
+  2    91 	  class 			init ( 0),
+  2    92 	  ioa_msg			init ( 3)) fixed bin,
+  2    93        2 flags,
+  2    94          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  2    95          3 flags_pad bit(35) unal	init ("0"b),
+  2    96        2 mode fixed bin		init ( 1),
+  2    97        2 severity fixed bin		init ( 0),
+  2    98        2 code fixed bin(35)		init ( 0),
+  2    99        2 caller char(65) varying	init (""),
+  2   100        2 data,
+  2   101          3 data_ptr ptr		init (null),
+  2   102          3 data_lth fixed bin(21)	init ( 0),
+  2   103        2 class char(10) varying	init (""),
+  2   104        2 ioa_msg char(500) varying	init ("");
+  2   105 
+  2   106 /* Syntax: call Abort (severity, ioa_ctl, args);			       */
+  2   107 
+  2   108 dcl  1 sl_info_sev_msg		aligned int static options(constant),
+  2   109        2 version char(8)		init ("sl_info1"),
+  2   110        2 arg_list_ptr ptr		init (null),
+  2   111        2 loc,
+  2   112          3 (mode			init (-1),
+  2   113 	  severity  		init ( 1),
+  2   114 	  code 			init ( 0),
+  2   115 	  caller 			init (-1),
+  2   116 	  data 			init ( 0),
+  2   117 	  class 			init ( 0),
+  2   118 	  ioa_msg			init ( 2)) fixed bin,
+  2   119        2 flags,
+  2   120          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  2   121          3 flags_pad bit(35) unal	init ("0"b),
+  2   122        2 mode fixed bin		init ( 1),
+  2   123        2 severity fixed bin		init ( 0),
+  2   124        2 code fixed bin(35)		init ( 0),
+  2   125        2 caller char(65) varying	init (""),
+  2   126        2 data,
+  2   127          3 data_ptr ptr		init (null),
+  2   128          3 data_lth fixed bin(21)	init ( 0),
+  2   129        2 class char(10) varying	init (""),
+  2   130        2 ioa_msg char(500) varying	init ("");
+  2   131 
+  2   132 /* Syntax: call Abort (severity, ioa_ctl_as_error_code, args);	       */
+  2   133 
+  2   134 dcl  1 sl_info_sev_coded_msg		aligned int static options(constant),
+  2   135        2 version char(8)		init ("sl_info1"),
+  2   136        2 arg_list_ptr ptr		init (null),
+  2   137        2 loc,
+  2   138          3 (mode			init (-1),
+  2   139 	  severity  		init ( 1),
+  2   140 	  code 			init ( 0),
+  2   141 	  caller 			init (-1),
+  2   142 	  data 			init ( 0),
+  2   143 	  class 			init ( 0),
+  2   144 	  ioa_msg			init ( 2)) fixed bin,
+  2   145        2 flags,
+  2   146          3 ioa_msg_is_error_code bit(1) unal init ("1"b),
+  2   147          3 flags_pad bit(35) unal	init ("0"b),
+  2   148        2 mode fixed bin		init ( 1),
+  2   149        2 severity fixed bin		init ( 0),
+  2   150        2 code fixed bin(35)		init ( 0),
+  2   151        2 caller char(65) varying	init (""),
+  2   152        2 data,
+  2   153          3 data_ptr ptr		init (null),
+  2   154          3 data_lth fixed bin(21)	init ( 0),
+  2   155        2 class char(10) varying	init (""),
+  2   156        2 ioa_msg char(500) varying	init ("");
+  2   157 
+  2   158 
+  2   159 /* Syntax: call Abort (severity, code, error_return_label, ioa_ctl, args);   */
+  2   160 
+  2   161 dcl  1 sl_info_sev_code_label_msg	aligned int static options(constant),
+  2   162        2 version char(8)		init ("sl_info1"),
+  2   163        2 arg_list_ptr ptr		init (null),
+  2   164        2 loc,
+  2   165          3 (mode			init (-1),
+  2   166 	  severity  		init ( 1),
+  2   167 	  code 			init ( 2),
+  2   168 	  caller 			init (-1),
+  2   169 	  data 			init ( 0),
+  2   170 	  class 			init ( 0),
+  2   171 	  ioa_msg			init ( 4)) fixed bin,
+  2   172        2 flags,
+  2   173          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  2   174          3 flags_pad bit(35) unal	init ("0"b),
+  2   175        2 mode fixed bin		init ( 1),
+  2   176        2 severity fixed bin		init ( 0),
+  2   177        2 code fixed bin(35)		init ( 0),
+  2   178        2 caller char(65) varying	init (""),
+  2   179        2 data,
+  2   180          3 data_ptr ptr		init (null),
+  2   181          3 data_lth fixed bin(21)	init ( 0),
+  2   182        2 class char(10) varying	init (""),
+  2   183        2 ioa_msg char(500) varying	init ("");
+  2   184 
+  2   185 /* Syntax:  call Log_error (code, ioa_ctl, args);			       */
+  2   186 
+  2   187 dcl  1 sl_info_code_msg		aligned int static options(constant),
+  2   188        2 version char(8)		init ("sl_info1"),
+  2   189        2 arg_list_ptr ptr		init (null),
+  2   190        2 loc,
+  2   191          3 (mode			init (-1),
+  2   192 	  severity  		init (-1),
+  2   193 	  code 			init ( 1),
+  2   194 	  caller 			init (-1),
+  2   195 	  data 			init ( 0),
+  2   196 	  class 			init ( 0),
+  2   197 	  ioa_msg			init ( 2)) fixed bin,
+  2   198        2 flags,
+  2   199          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  2   200          3 flags_pad bit(35) unal	init ("0"b),
+  2   201        2 mode fixed bin		init ( 1),
+  2   202        2 severity fixed bin		init ( 0),
+  2   203        2 code fixed bin(35)		init ( 0),
+  2   204        2 caller char(65) varying	init (""),
+  2   205        2 data,
+  2   206          3 data_ptr ptr		init (null),
+  2   207          3 data_lth fixed bin(21)	init ( 0),
+  2   208        2 class char(10) varying	init (""),
+  2   209        2 ioa_msg char(500) varying	init ("");
+  2   210 
+  2   211 
+  2   212 /* Syntax:  call Trace (ioa_ctl, args);				       */
+  2   213 
+  2   214 dcl  1 sl_info_msg			aligned int static options(constant),
+  2   215        2 version char(8)		init ("sl_info1"),
+  2   216        2 arg_list_ptr ptr		init (null),
+  2   217        2 loc,
+  2   218          3 (mode			init (-1),
+  2   219 	  severity  		init (-1),
+  2   220 	  code 			init ( 0),
+  2   221 	  caller 			init (-1),
+  2   222 	  data 			init ( 0),
+  2   223 	  class 			init ( 0),
+  2   224 	  ioa_msg			init ( 1)) fixed bin,
+  2   225        2 flags,
+  2   226          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  2   227          3 flags_pad bit(35) unal	init ("0"b),
+  2   228        2 mode fixed bin		init ( 1),
+  2   229        2 severity fixed bin		init ( 0),
+  2   230        2 code fixed bin(35)		init ( 0),
+  2   231        2 caller char(65) varying	init (""),
+  2   232        2 data,
+  2   233          3 data_ptr ptr		init (null),
+  2   234          3 data_lth fixed bin(21)	init ( 0),
+  2   235        2 class char(10) varying	init (""),
+  2   236        2 ioa_msg char(500) varying	init ("");
+  2   237 
+  2   238 /* END INCLUDE FILE sys_log_constants.incl.pl1 */
+      119 
+      120 
+  3     1 	/* START OF:	time_names_.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  3     4 	/*									*/
+  3     5 	/* Name:  time_names_.incl.pl1						*/
+  3     6 	/*									*/
+  3     7 	/* This include file defines the structure of values in the time_table_.  The table	*/
+  3     8 	/* includes a list of time zones known to the system, as well as lists of month names	*/
+  3     9 	/* and names of days of the week.  All names are expressed in several different languages */
+  3    10 	/* to facilitate transliteration of dates into these languages.  The table includes	*/
+  3    11 	/* the list of languages in which dates may be expressed.				*/
+  3    12 	/*									*/
+  3    13 	/* Status									*/
+  3    14 	/*									*/
+  3    15 	/* 0) Created  06/07/78:  J. Falksen						*/
+  3    16 	/* 1) Modified 07/04/78:  G. Dixon						*/
+  3    17 	/*									*/
+  3    18 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  3    19 
+  3    20 
+  3    21 dcl time_info_$version	char (8) ext static;	/* Version number of all structures in the	*/
+  3    22 						/* time_info_.  Currently = 1.		*/
+  3    23 dcl Vtime_info_2		char (8) int static options(constant) init("tinfo002");
+
+
+
+
+  3    24 
+  3    25 dcl time_info_$gmt_zone_index fixed bin (17) ext static;
+  3    26 dcl time_info_$default_language_index fixed bin (17) ext static;
+  3    27 
+  3    28 dcl time_info_$date_time_keywords fixed bin ext static;	/* Table of named date/time format strings	*/
+  3    29 dcl 1 ti_keyword	based (addr (time_info_$date_time_keywords)),
+  3    30       2 number_kwd		fixed bin,		/* number of keywords present		*/
+  3    31       2 pad		fixed bin,
+  3    32       2 e (0 refer (ti_keyword.number_kwd)),
+  3    33         3 name		char (32),
+  3    34         3 str		char (128)var;
+  3    35 dcl (site_date	init (1),
+  3    36      site_date_time init (2),
+  3    37      site_time	init (3)
+  3    38     )		fixed bin int static options (constant);
+  3    39 
+  3    40 dcl time_info_$language_names fixed bin ext static;	/* Table of language names, in various languages	*/
+  3    41 
+  3    42 dcl 1 ti_language	based (addr (time_info_$language_names)),
+  3    43       2 number_lang		fixed bin,		/* number of language names present 		*/
+  3    44       2 pad		fixed bin,
+  3    45       2 name (0 refer (ti_language.number_lang), 0 refer (ti_language.number_lang))
+  3    46 			char(32) varying;		/* Name of the language.			*/
+  3    47 			/* All language names are expressed in all languages.  name(i,j) gives the	*/
+  3    48 			/*  jth language name in language i.  name(i,i) gives a language name in its	*/
+  3    49 			/*  own language.							*/
+
+
+
+
+  3    50 dcl time_info_$month_names   fixed bin ext static;	/* Table of month  names in various languages. 	*/
+  3    51 
+  3    52 dcl 1 ti_month based (addr (time_info_$month_names)),
+  3    53       2 number_lang		fixed bin,		/* number of languages in the table.		*/
+  3    54       2 pad		fixed bin,
+  3    55       2 e (0 refer (ti_month.number_lang), 12),
+  3    56         3 short       	char(8) var,		/* short form of a month name, i.e., Nov 	*/
+  3    57         3 long        	char(32) var;		/* long form of a month name, i.e. November 	*/
+
+
+
+
+  3    58 dcl time_info_$day_names     fixed bin ext static;	/* Table of day names in various languages.	*/
+  3    59 
+  3    60 dcl 1 ti_day based (addr (time_info_$day_names)),
+  3    61       2 number_lang		fixed bin,		/* number of languages in the table.		*/
+  3    62       2 pad		fixed bin,
+  3    63       2 e (0 refer (ti_day.number_lang), 7),
+  3    64         3 short       	char(8) var,		/* short for of a day name, i.e. Sat 		*/
+  3    65         3 long        	char(32) var;		/* long form of a day name, i.e. Saturday 	*/
+
+
+
+
+  3    66 dcl time_info_$offset_names  fixed bin ext static;	/* Table of offset names in various languages.	*/
+  3    67 
+  3    68 dcl 1 ti_offset based (addr (time_info_$offset_names)),
+  3    69       2 number_lang		fixed bin,		/* number of languages in the table.		*/
+  3    70       2 number_offset	fixed bin,
+  3    71       2 e (0 refer (ti_offset.number_lang), 0 refer (ti_offset.number_offset)),
+  3    72         3 short        	char(32) var,		/* short form of an offset name, i.e. min 	*/
+  3    73         3 plural        	char(32) var,		/* plural form of an offset name, i.e. minutes 	*/
+  3    74         3 singular       	char(32) var,		/* singular for of an offset name, i.e. minute	*/
+  3    75         3 this		char(32) var;		/* "this" which goes with singular		*/
+
+
+
+
+  3    76 dcl time_info_$word_names    fixed bin ext static;	/* Table of word names in various languages.	*/
+  3    77 
+  3    78 dcl 1 ti_word based (addr (time_info_$word_names)),
+  3    79       2 number_lang		fixed bin,		/* number of languages in the table.		*/
+  3    80       2 number_word		fixed bin,
+  3    81       2 short (0 refer (ti_word.number_lang), 0 refer (ti_word.number_word))
+  3    82 			char (8) var,
+  3    83       2 word (0 refer (ti_word.number_lang), 0 refer (ti_word.number_word))
+  3    84 			char(32) var;		/* a "word", i.e. Midnight			*/
+  3    85 
+  3    86 dcl time_info_$zone_names    fixed bin ext static;	/* Table of known time zones.			*/
+  3    87 
+  3    88 dcl 1 ti_zone based (addr (time_info_$zone_names)),
+  3    89       2 number_lang    	fixed bin,		/* number of languages in which zone names	*/
+  3    90 						/* are defined.				*/
+  3    91       2 number_zone       	fixed bin,		/* number of zone names in the table.		*/
+  3    92       2 e (0 refer (ti_zone.number_lang), 0 refer (ti_zone.number_zone)),
+  3    93         3 short		char(4) var,		/* short form of the zone name.		*/
+  3    94         3 long        	char(64) var,		/* long form of the zone name 		*/
+  3    95         3 pad		fixed bin,
+  3    96         3 delta		fixed bin(71);		/* offset, in microseconds, of this time zone	*/
+  3    97 						/* from GMT (Greenwich mean time).  This value	*/
+  3    98 						/* should be subtracted from a clock value	*/
+  3    99 						/* (which is expressed in GMT by definition).	*/
+  3   100 						/* to obtain a date/time expressed in the	*/
+  3   101 						/* named time zone.				*/
+  3   102 						/* NOTE:  zones are listed in order of descending */
+  3   103 						/* delta, from +11 to -12.  print_time_zones	*/
+  3   104 						/* requires this.				*/
+  3   105 
+  3   106 
+  3   107 dcl (tiw_FiscalIndicator init (11)
+  3   108     )		fixed bin int static options (constant);
+  3   109 
+  3   110 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+  3   111 /* NOTE TO MAINTAINER: Before changing this file, see the comments in	       */
+  3   112 /*		        time_info_cds.incl.pl1		       */
+  3   113 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+  3   114 
+  3   115 /* END OF:	time_names_.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      121 
+      122      end set_system_time_zone_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.4  set_system_time_zone_.pl1         >special_ldd>install>MR12.3-1114>set_system_time_zone_.pl1
+117          1    05/08/81  1853.6  config_clok_card.incl.pl1         >ldd>include>config_clok_card.incl.pl1
+119          2    08/06/87  0913.5  sys_log_constants.incl.pl1        >ldd>include>sys_log_constants.incl.pl1
+121          3    09/06/84  0850.2  time_names.incl.pl1               >ldd>include>time_names.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CLOK_CARD_WORD                  000000 constant        char(4)                  initial dcl 1-18 set ref 86*
+FALSE                                  constant        bit(1)                   initial dcl 57 ref 67
+MILSEC_IN_HR                    000002 constant        fixed bin(71,0)          initial dcl 52 ref 83
+P_code                                 parameter       fixed bin(35,0)          dcl 20 set ref 17 113*
+P_time_zone                            parameter       char(4)                  dcl 19 ref 17 60
+RING_ZERO                       000002 constant        fixed bin(17,0)          initial dcl 54 set ref 101*
+TRUE                                   constant        bit(1)                   initial dcl 56 ref 71
+addr                                                   builtin function         dcl 48 ref 68 69 70 72 104 104
+cleanup                         000132 stack reference condition                dcl 50 ref 97
+clok_card                              based           structure                level 1 dcl 1-5 ref 89
+clok_cardp                      000140 automatic       pointer                  dcl 1-3 set ref 64* 86* 89 104*
+code                            000100 automatic       fixed bin(35,0)          dcl 22 set ref 61* 78* 113
+config_$find                    000010 constant        entry                    external dcl 37 ref 86
+config_$replace                 000012 constant        entry                    external dcl 38 ref 104
+delta                    26            based           fixed bin(71,0)          array level 3 in structure "ti_zone" dcl 3-88
+                                                                                  in procedure "set_system_time_zone_" ref 72
+delta                     1     000104 automatic       fixed bin(17,0)          level 2 in structure "local_clok_card" dcl 28
+                                                                                  in procedure "set_system_time_zone_" set ref 92*
+divide                                                 builtin function         dcl 48 ref 83
+e                         2            based           structure                array level 2 unaligned dcl 3-88
+error_table_$unknown_zone       000014 external static fixed bin(35,0)          dcl 40 ref 78
+found_zone                      000103 automatic       bit(1)                   dcl 26 set ref 67* 68 69 71* 77
+lang_index                      000101 automatic       fixed bin(17,0)          dcl 24 set ref 68* 70 72*
+level$get                       000016 constant        entry                    external dcl 42 ref 100
+level$set                       000020 constant        entry                    external dcl 43 ref 98 101 111
+local_clok_card                 000104 automatic       structure                level 1 dcl 28 set ref 89* 104 104
+null                                                   builtin function         dcl 48 ref 64
+number_lang                            based           fixed bin(17,0)          level 2 dcl 3-88 ref 68
+number_zone               1            based           fixed bin(17,0)          level 2 dcl 3-88 ref 69 70 70 72 72
+short                     2            based           varying char(4)          array level 3 dcl 3-88 ref 70
+sys_info$time_correction_constant
+                                000022 external static fixed bin(71,0)          dcl 45 set ref 108*
+sys_info$time_zone              000024 external static char(4)                  dcl 46 set ref 107*
+ti_zone                                based           structure                level 1 unaligned dcl 3-88
+time_correction                 000124 automatic       fixed bin(71,0)          dcl 30 set ref 72* 83 108
+time_info_$zone_names           000026 external static fixed bin(17,0)          dcl 3-86 set ref 68 69 70 72
+time_zone                       000126 automatic       char(4)                  dcl 31 set ref 60* 70 93 107
+user_ring                       000127 automatic       fixed bin(17,0)          dcl 33 set ref 96* 98 98* 100* 111*
+zone                      2     000104 automatic       char(4)                  level 2 dcl 28 set ref 93*
+zone_delta                      000130 automatic       fixed bin(17,0)          dcl 35 set ref 83* 92
+zone_index                      000102 automatic       fixed bin(17,0)          dcl 24 set ref 69* 70 72*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+SL_INFO_arg_given_in_structure         internal static fixed bin(17,0)          initial dcl 2-69
+SL_INFO_arg_not_given                  internal static fixed bin(17,0)          initial dcl 2-69
+SL_INFO_as_mode                        internal static fixed bin(17,0)          initial dcl 2-65
+SL_INFO_command_mode                   internal static fixed bin(17,0)          initial dcl 2-65
+SL_INFO_version_1                      internal static char(8)                  initial packed unaligned dcl 2-62
+SL_LOG                                 internal static fixed bin(17,0)          initial dcl 2-14
+SL_LOG_BEEP                            internal static fixed bin(17,0)          initial dcl 2-14
+SL_LOG_CRASH                           internal static fixed bin(17,0)          initial dcl 2-14
+SL_LOG_SILENT                          internal static fixed bin(17,0)          initial dcl 2-14
+SL_TYPE                                internal static fixed bin(17,0)          initial dcl 2-14
+SL_TYPE_BEEP                           internal static fixed bin(17,0)          initial dcl 2-14
+SL_TYPE_CRASH                          internal static fixed bin(17,0)          initial dcl 2-14
+Vtime_info_2                           internal static char(8)                  initial packed unaligned dcl 3-23
+site_date                              internal static fixed bin(17,0)          initial dcl 3-35
+site_date_time                         internal static fixed bin(17,0)          initial dcl 3-35
+site_time                              internal static fixed bin(17,0)          initial dcl 3-35
+sl_info                                automatic       structure                level 1 dcl 2-24
+sl_info_code_msg                       internal static structure                level 1 dcl 2-187
+sl_info_msg                            internal static structure                level 1 dcl 2-214
+sl_info_sev_code_label_msg             internal static structure                level 1 dcl 2-161
+sl_info_sev_code_msg                   internal static structure                level 1 dcl 2-82
+sl_info_sev_coded_msg                  internal static structure                level 1 dcl 2-134
+sl_info_sev_msg                        internal static structure                level 1 dcl 2-108
+ti_day                                 based           structure                level 1 unaligned dcl 3-60
+ti_keyword                             based           structure                level 1 unaligned dcl 3-29
+ti_language                            based           structure                level 1 unaligned dcl 3-42
+ti_month                               based           structure                level 1 unaligned dcl 3-52
+ti_offset                              based           structure                level 1 unaligned dcl 3-68
+ti_word                                based           structure                level 1 unaligned dcl 3-78
+time_info_$date_time_keywords          external static fixed bin(17,0)          dcl 3-28
+time_info_$day_names                   external static fixed bin(17,0)          dcl 3-58
+time_info_$default_language_index      external static fixed bin(17,0)          dcl 3-26
+time_info_$gmt_zone_index              external static fixed bin(17,0)          dcl 3-25
+time_info_$language_names              external static fixed bin(17,0)          dcl 3-40
+time_info_$month_names                 external static fixed bin(17,0)          dcl 3-50
+time_info_$offset_names                external static fixed bin(17,0)          dcl 3-66
+time_info_$version                     external static char(8)                  packed unaligned dcl 3-21
+time_info_$word_names                  external static fixed bin(17,0)          dcl 3-76
+tiw_FiscalIndicator                    internal static fixed bin(17,0)          initial dcl 3-107
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MAIN_RETURN                     000243 constant        label                    dcl 113 set ref 79
+set_system_time_zone_           000016 constant        entry                    external dcl 17
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       402         432     250         412
+Length       672     250        30         224     132           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+set_system_time_zone_               110 external procedure  is an external procedure.  
+on unit on line 97                   68 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+set_system_time_zone_    000100 code                        set_system_time_zone_
+                         000101 lang_index                  set_system_time_zone_
+                         000102 zone_index                  set_system_time_zone_
+                         000103 found_zone                  set_system_time_zone_
+                         000104 local_clok_card             set_system_time_zone_
+                         000124 time_correction             set_system_time_zone_
+                         000126 time_zone                   set_system_time_zone_
+                         000127 user_ring                   set_system_time_zone_
+                         000130 zone_delta                  set_system_time_zone_
+                         000140 clok_cardp                  set_system_time_zone_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          enable_op           ext_entry           int_entry           divide_fx4
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+config_$find                  config_$replace               level$get                     level$set
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$unknown_zone     sys_info$time_correction_constant                           sys_info$time_zone
+time_info_$zone_names
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000012        60 000023        61 000026        64 000027        67 000031        68 000032        69 000043
+     70 000057        71 000102        72 000104        74 000106        75 000110        77 000112        78 000114
+     79 000117        83 000120        86 000125        89 000136        92 000142        93 000144        96 000146
+     97 000150        98 000164        99 000176       100 000177       101 000206       104 000215       107 000230
+    108 000233       111 000235       113 000243       115 000246
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

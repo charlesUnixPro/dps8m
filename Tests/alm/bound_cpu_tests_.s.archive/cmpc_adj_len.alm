@@ -1,0 +1,55 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	cmpc_adj_len
+	entry	cmpc_adj_len
+
+cmpc_adj_len:
+	push
+again:
+	eppbp	ap|2,* 		"get ptr to temp seg
+	eppbp	bp|0,*
+	eppbb	bp|0,*
+	adwpbp	1024-11,du	"start 11 wrds befor pg bnd
+	adwpbb	2048-11,du	"start 11 wrds befor pg bnd
+	lda	=128,dl
+	ldq	=120,dl
+
+	mlr	(rl),(pr,rl),fill(040)	"fill string 1 data for cmpc
+	desc9a	STRING1,al
+	desc9a	bp|0,al
+
+	mlr	(rl),(pr,rl),fill(177)	"fill str2 data for cmpc
+	desc9a	STRING1,al		"str2 sb 2 wrds less than str1
+	desc9a	bb|0,ql			"strings ^=
+
+	call	test_cpu$deactivate_tempseg  "force pgflt next access
+
+	cmpc	(pr,rl),(pr,rl),fill(040)
+	desc9a	bp|0,al
+	desc9a	bb|0,al
+	tnz	RET			"STRs ^match return
+crump:	oct	0			"test failed ZOP it
+RET:	return
+
+STRING1:
+	aci	"01234567890!$%&'()=~|-^\`{_@[_;:]+*},./<"
+	aci	">? qwertyuiopasdfghjkllzxcvbnmQWERTYUIOP"
+	aci	"ASDFGHJKLZXCVBNM0123456789.-+!$%&'()=~\|"
+	aci	"qwertyuiop@`[{_asdfghjkl;+:*]}zxcvbnm,./"
+	end

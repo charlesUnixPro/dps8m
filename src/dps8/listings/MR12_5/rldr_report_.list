@@ -1,0 +1,1144 @@
+	COMPILATION LISTING OF SEGMENT rldr_report_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0957.8 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+       13 
+       14 rldr_report_: proc;
+       15 
+       16 /* This routine is used by the volume reloader to report and log error and status
+       17*   messages. It is modled after the system routine com_err_. When called for the first time in a volume reloader
+       18*   invocation, it creates, in the working directory, an error file, in which it logs all error and status messages.
+       19*   If requested it also writes error messages on the stream error_output. */
+       20 /* Written in antiquity by Dave Vinograd.					 */
+       21 /* Modified: 03/83 by GA Texada to receive rldr_datap as an argument instead of using external static. */
+       22 
+       23 dcl (code, icode)	     fixed bin (35);
+       24 dcl tstring	     char (24);
+       25 dcl uname		     char (32);
+       26 dcl (caller, message)    char (*);
+       27 dcl argp		     ptr;
+       28 dcl ret_string	     char (168);
+       29 dcl control_string	     char (32) aligned;
+       30 dcl len		     fixed bin;
+       31 dcl error_output	     bit (1);
+       32 dcl short		     char (8) aligned;
+       33 dcl long		     char (100) aligned;
+       34 
+       35 dcl iox_$error_output    ptr ext;
+       36 
+       37 dcl error_file_attach_ok bit (1) int static init ("1"b);
+       38 dcl myname	     char (32) static init ("rldr_report_") options (constant);
+       39 
+       40 dcl hcs_$level_get	     entry returns (fixed bin);
+       41 dcl get_group_id_	     entry returns (char (32));
+       42 dcl date_time_	     entry (fixed bin (71), char (*));
+       43 dcl cu_$arg_list_ptr     entry (ptr);
+       44 dcl ioa_$general_rs	     entry (ptr, fixed bin, fixed bin, char (*), fixed bin, bit (1) aligned, bit (1) aligned);
+       45 dcl iox_$attach_ioname   entry (char (*), ptr, char (*), fixed bin (35));
+       46 dcl iox_$open	     entry (ptr, fixed bin, bit (36), fixed bin (35));
+       47 dcl convert_status_code_ entry (fixed bin (35), char (8) aligned, char (100) aligned);
+       48 dcl ioa_$ioa_switch	     entry options (variable);
+       49 dcl rldr_report_$online_output entry options (variable);
+       50 
+       51 dcl (null, clock, substr) builtin;
+       52 
+       53 error_output: entry (rldr_datap, icode, caller, message);
+       54 
+       55 /* If an error file is not attached then fabricate a name with a data/time stamp, attach and open it. If
+       56*   successsful then report via online mechanism. */
+       57 
+       58     if rldr_data_.disable_error_report then return;
+       59     error_output = "1"b;
+       60 
+       61     if error_file_attach_ok & hcs_$level_get () = 1 & get_group_id_ () = "Initializer.SysDaemon.z" then
+       62          error_file_attach_ok = "0"b;			/* don`t even try in ring 1 */
+       63     if rldr_data_.error_iocbp = null & error_file_attach_ok then do; /* error file not attached */
+       64 
+       65         call date_time_ (clock, tstring);
+       66         uname = "rldr_err." || substr (tstring, 1, 8) || "." || substr (tstring, 11, 4);
+       67         call iox_$attach_ioname ("error_file", rldr_data_.error_iocbp, "vfile_ " || uname, code);
+       68         if code ^= 0 then do;
+       69 	  call rldr_report_$online_output ((rldr_datap), code, myname, "Unable to attach error file");
+       70 	  error_file_attach_ok = "0"b;
+       71 	  goto common;
+       72 	end;
+       73         call iox_$open (rldr_data_.error_iocbp, Stream_output, ""b, code);
+       74         if code ^= 0 then do;
+       75 	  call rldr_report_$online_output ((rldr_datap), code, myname, "Error opening error file");
+       76 	  error_file_attach_ok = "0"b;
+       77 	  goto common;
+       78 	end;
+       79         call rldr_report_$online_output ((rldr_datap), 0, myname, "Error file ^a created", uname);
+       80       end;
+       81 
+       82 common:
+       83     if icode ^= 0 then do;
+       84         call convert_status_code_ (icode, short, long);
+       85         control_string = "^a:^x^a:^x^a";
+       86       end;
+       87     else do;
+       88         short, long = "";
+       89         control_string = "^a:^x^a";
+       90       end;
+       91     call cu_$arg_list_ptr (argp);
+       92     call ioa_$general_rs (argp, 4, 5, ret_string, len, "0"b, "0"b);
+       93     if error_output & error_file_attach_ok then
+       94          call ioa_$ioa_switch (rldr_data_.error_iocbp, control_string, caller, substr (ret_string, 1, len), long);
+       95 
+       96 /* Write online if requested, if args not initialized yet, or if online entry */
+       97 
+       98     if (error_output & rldr_data_.err_online) | ^error_output | ^rldr_data_.arg_init | ^error_file_attach_ok then
+       99          call ioa_$ioa_switch (iox_$error_output, control_string, caller, substr (ret_string, 1, len), long);
+      100 
+      101     return;
+      102 
+      103 online_output: entry (rldr_datap, icode, caller, message);
+      104 
+      105     error_output = "0"b;
+      106     goto common;
+      107 
+  1     1 /* BEGIN INCLUDE FILE ... rldr_data_.incl.pl1 ... March 1976 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  1     6*     audit(86-05-22,GWMay), install(86-07-18,MR12.0-1098):
+  1     7*     Add device_name to support the -pvname_device argument to reload.
+  1     8*  2) change(88-10-05,GWMay), approve(88-10-05,MCR8005), audit(88-10-12,Farley),
+  1     9*     install(88-10-17,MR12.2-1173):
+  1    10*     Added pointer and length values for use as an input_buffer for
+  1    11*     intermediate reads.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 
+  1    15 /* Severely modified 3/1/83 by GA Texada to support multiple physical */
+  1    16 /*          volume reloading.				          */
+  1    17 /*          Modified: 3/5/84 by GA Texada to make restart a per pv attribute */
+  1    18 /*		  and add stranger flag.			*/
+  1    19 
+  1    20 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+  1    21 
+  1    22 
+  1    23 dcl rldr_datap	     ptr,
+  1    24   rldr_data_max_pvs	     fixed bin,
+  1    25 
+  1    26   1 rldr_data_	     aligned based (rldr_datap),
+  1    27     2 common	     like rldr_data_common,		/* only one of each needed			*/
+  1    28     2 per_pv	     (rldr_data_max_pvs refer (rldr_data_.npvs)) like rldr_data_perpv,
+  1    29 
+  1    30   1 rldr_data_common     aligned,
+  1    31     2 bits,
+  1    32     ( 3 save	     bit (1),			/* if on can use disk pack restored by BOS */
+  1    33       3 first_volume     bit (1),			/* if on indicates we are on first volume */
+  1    34       3 rpv	     bit (1),			/* if on indicates we are reloading rpv */
+  1    35       3 data_init	     bit (1),			/* if on data structure initialized to null state */
+  1    36       3 arg_init	     bit (1),			/* on if arguments have been processed */
+  1    37       3 disable_error_report bit (1),			/* if on will disable error messages */
+  1    38       3 no_object	     bit (1),			/* if on only vtoces will be reloaded */
+  1    39       3 err_online	     bit (1),			/* if on error messages written to error output */
+  1    40       3 detach	     bit (1),			/* if on attached media will  be detached */
+  1    41       3 brief	     bit (1),			/* if on brief mode enabled */
+  1    42       3 manual	     bit (1),			/* if on operator will select input volumes */
+  1    43       3 restart	     bit (1),			/* -restart was supplied			*/
+  1    44       3 stranger	     bit (1),			/* ON if the pv's do not belong to the mounted RPV*/
+  1    45       3 pad0	     bit (23)) unal,
+  1    46       3 old_256K_switch  bit (2) aligned,		/* state of 256KW connection switch before we came along*/
+  1    47       (3 last_pvid,					/* pvid of last good object read		*/
+  1    48       3 rpv_pvid,					/* rpv pvid */
+  1    49       3 rpv_lvid)	     bit (36),			/* rpv lvid */
+  1    50       3 last_valid_puid  (0:15) bit (36),		/* last non-zero path uid read from input medium */
+  1    51     2 chars,
+  1    52     ( 3 sys_dir,					/* directory where vologs are */
+  1    53       3 default_sys_dir) char (168),			/* default directory where vologs are */
+  1    54       (3 last_valid_vtoce_ename,			/* last valid entry name from VTOCE */
+  1    55       3 operator,					/* operator's name or initials */
+  1    56       3 io_module)	     char (32),			/* name of io outer module used to read input */
+  1    57       (3 input_volume_desc,				/* optional input medium attach description */
+  1    58       3 output_volume_desc) char (256),			/* optional output medium attach description */
+  1    59     2 fixed,
+  1    60     ( 3 num_abandoned,				/* count these as we go along			*/
+  1    61       3 last_vtocx,					/* vtocx of last valid object read		*/
+  1    62       3 npvs,					/* the number of pv names given to the reload_volume command*/
+  1    63       3 rpv_disk_type)   fixed bin,			/* model index of rpv disk drive */
+  1    64       (3 start_time,				/* time reload started */
+  1    65       3 from_time)	     fixed bin (71),		/*  time from which dump tapes should be skipped */
+  1    66       3 input_buffer_len fixed bin (21),		/* length of the data in the read buffer */
+  1    67       3 input_buffer_start fixed bin (21),		/* position in read buffer where new data begins */
+  1    68     2 ptrs,
+  1    69     ( 3 inputvol_iocbp,				/* iocb ptr for input */
+  1    70       3 error_iocbp,				/* iocb ptr for error output */
+  1    71       3 skip,					/* ptr to skip list */
+  1    72       3 volume_record_bp,				/* ptr to temp seg containing most recent volume record */
+  1    73       3 infop,					/* ptr to temp seg containig tdump info */
+  1    74       3 data_object_bp,				/* ptr to temp seg containing most recent object from input medium */
+  1    75       3 input_vol_lstp  ptr,				/* ptr to temp seg containing list of input media */
+  1    76       3 input_buffer_ptr)  ptr,			/* ptr to read buffer */
+  1    77  
+  1    78 
+  1    79   1 rldr_data_perpv	     aligned,			/* one entry per physical volume to be reloaded	*/
+  1    80     2 flags,
+  1    81       3 abandoned	     bit (1) unal,			/* we quit due to some error			*/
+  1    82       3 restart	     bit (1),			/* if on unitialized volume ok and reload will restart */
+  1    83       3 mbz0	     bit (34) unal,			/* beware, RFU				*/
+  1    84     (2 pvname,					/* physical volume name */
+  1    85     2 lvname,					/* logical volume name of physical volume being reloaded */
+  1    86     2 disk_model)	     char (32),			/* model name of disk drive */
+  1    87     2 device_name	     char (8),
+  1    88     (2 lvid,					/* logical volume id of volume being reloaded */
+  1    89     2 pvid)	     bit (36),			/* physical volume id of volume being reloaded */
+  1    90     (2 prev_wordx,					/* index to fsmap */
+  1    91     2 prev_bitx,					/* index to fsmap */
+  1    92     2 disk_type,					/* model index of disk drive */
+  1    93     2 usable_sectors,				/* usable sectors per cylinder of disk pack */
+  1    94     2 unusable_sectors,				/* unusable sectors per cylinder of disk pack */
+  1    95     2 n_vtoce)	     fixed bin,			/* number of vtoce on disk pack */
+  1    96     (2 vtocbp,					/* ptr to vtoc buffer seg */
+  1    97     2 vtoc_headerp,					/* ptr to temp seg containing the vtoc header */
+  1    98     2 labelp,					/* ptr to temp seg containing pack label */
+  1    99     2 bvlp,					/* ptr to volume log */
+  1   100     2 outputvol_iocbp,				/* iocb ptr for output */
+  1   101     2 controlp,					/* ptr to seg containing reload control info about vtoc */
+  1   102     2 vol_mapp)	     ptr,				/* ptr to temp seg containing volume map */
+  1   103 
+  1   104   1 rldr_data_nulled_pv  aligned int static options (constant),
+  1   105     2 flags,
+  1   106       3 abandoned	     bit (1) init ("0"b) unal,
+  1   107       3 restart	     bit (1) init ("0"b) unal,
+  1   108       3 mbz0	     bit (34) init ((34)"0"b) unal,
+  1   109       (2 pvname,
+  1   110     2 lvname,
+  1   111     2 disk_model)	     char (32) init (""),
+  1   112     2 device_name	     char (8) init (""),
+  1   113     (2 lvid,
+  1   114     2 pvid)	     bit (36) init ("0"b),
+  1   115     (2 prev_wordx,
+  1   116     2 prev_bitx,
+  1   117     2 disk_type,
+  1   118     2 usable_sectors,
+  1   119     2 unusable_sectors,
+  1   120     2 n_vtoce)	     fixed bin init (0),
+  1   121     (2 vtocbp,
+  1   122     2 vtoc_headerp,
+  1   123     2 labelp,
+  1   124     2 bvlp,
+  1   125     2 outputvol_iocbp,
+  1   126     2 controlp,
+  1   127     2 vol_mapp)	     ptr init (null ());
+  1   128 
+  1   129 
+  1   130 /* END INCLUDE FILE rldr_data_.incl.pl1 */
+      108 
+      109 
+  2     1 /* Begin include file ..... iox_modes.incl.pl1 */
+  2     2 
+  2     3 /* Written by C. D. Tavares, 03/17/75 */
+  2     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+  2     5 
+  2     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+  2     7     ("stream_input", "stream_output", "stream_input_output",
+  2     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+  2     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+  2    10      "direct_input", "direct_output", "direct_update");
+  2    11 
+  2    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+  2    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+  2    14 
+  2    15 dcl (Stream_input initial (1),
+  2    16      Stream_output initial (2),
+  2    17      Stream_input_output initial (3),
+  2    18      Sequential_input initial (4),
+  2    19      Sequential_output initial (5),
+  2    20      Sequential_input_output initial (6),
+  2    21      Sequential_update initial (7),
+  2    22      Keyed_sequential_input initial (8),
+  2    23      Keyed_sequential_output initial (9),
+  2    24      Keyed_sequential_update initial (10),
+  2    25      Direct_input initial (11),
+  2    26      Direct_output initial (12),
+  2    27      Direct_update initial (13)) fixed bin int static options (constant);
+  2    28 
+  2    29 /* End include file ..... iox_modes.incl.pl1 */
+      110 
+      111 
+      112 /* BEGIN MESSAGE DOCUMENTATION
+      113*
+      114*   Message:
+      115*   rldr_report_: Unable to attach error file: ERROR_MESS
+      116*
+      117*   S:	$rld_on
+      118*
+      119*   T:	$reload
+      120*
+      121*   M:	The reloader attempted to create an error file.
+      122*
+      123*   A:	$ignore
+      124*
+      125*
+      126*   Message:
+      127*   rldr_report_: Error opening error file: ERROR_MESS
+      128*
+      129*   S:	$rld_on
+      130*
+      131*   T:	$reload
+      132*
+      133*   M:	The reloader attempted to create an error file.
+      134*
+      135*   A:	$ignore
+      136*
+      137*
+      138*   Message:
+      139*   rldr_report_: Error file NAME created
+      140*
+      141*   S:	$rld_on
+      142*
+      143*   T:	$reload
+      144*
+      145*   M:	The reloader attempted to create an error file.
+      146*
+      147*   A:	$ignore
+      148*
+      149*
+      150*   END MESSAGE DOCUMENTATION */
+      151 
+      152   end rldr_report_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.4  rldr_report_.pl1                  >spec>install>1115>rldr_report_.pl1
+108          1    10/18/88  1215.0  rldr_data_.incl.pl1               >ldd>include>rldr_data_.incl.pl1
+110          2    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Stream_output                   000031 constant        fixed bin(17,0)          initial dcl 2-15 set ref 73*
+arg_init                  0(04)        based           bit(1)                   level 4 packed packed unaligned dcl 1-23 ref 98
+argp                            000120 automatic       pointer                  dcl 27 set ref 91* 92*
+bits                                   based           structure                level 3 dcl 1-23
+caller                                 parameter       char                     packed unaligned dcl 26 set ref 53 93* 98* 103
+clock                                                  builtin function         dcl 51 ref 65 65
+code                            000100 automatic       fixed bin(35,0)          dcl 23 set ref 67* 68 69* 73* 74 75*
+common                                 based           structure                level 2 dcl 1-23
+control_string                  000174 automatic       char(32)                 dcl 29 set ref 85* 89* 93* 98*
+convert_status_code_            000032 constant        entry                    external dcl 47 ref 84
+cu_$arg_list_ptr                000022 constant        entry                    external dcl 43 ref 91
+date_time_                      000020 constant        entry                    external dcl 42 ref 65
+disable_error_report      0(05)        based           bit(1)                   level 4 packed packed unaligned dcl 1-23 ref 58
+err_online                0(07)        based           bit(1)                   level 4 packed packed unaligned dcl 1-23 ref 98
+error_file_attach_ok            000010 internal static bit(1)                   initial packed unaligned dcl 37 set ref 61 61* 63
+                                                                                  70* 76* 93 98
+error_iocbp             416            based           pointer                  level 4 dcl 1-23 set ref 63 67* 73* 93*
+error_output                    000205 automatic       bit(1)                   packed unaligned dcl 31 set ref 59* 93 98 98 105*
+get_group_id_                   000016 constant        entry                    external dcl 41 ref 61
+hcs_$level_get                  000014 constant        entry                    external dcl 40 ref 61
+icode                                  parameter       fixed bin(35,0)          dcl 23 set ref 53 82 84* 103
+ioa_$general_rs                 000024 constant        entry                    external dcl 44 ref 92
+ioa_$ioa_switch                 000034 constant        entry                    external dcl 48 ref 93 98
+iox_$attach_ioname              000026 constant        entry                    external dcl 45 ref 67
+iox_$error_output               000012 external static pointer                  dcl 35 set ref 98*
+iox_$open                       000030 constant        entry                    external dcl 46 ref 73
+len                             000204 automatic       fixed bin(17,0)          dcl 30 set ref 92* 93 93 98 98
+long                            000210 automatic       char(100)                dcl 33 set ref 84* 88* 93* 98*
+message                                parameter       char                     packed unaligned dcl 26 ref 53 103
+myname                          000000 constant        char(32)                 initial packed unaligned dcl 38 set ref 69* 75* 79*
+null                                                   builtin function         dcl 51 ref 63
+ptrs                    414            based           structure                level 3 dcl 1-23
+ret_string                      000122 automatic       char(168)                packed unaligned dcl 28 set ref 92* 93 93 98 98
+rldr_data_                             based           structure                level 1 dcl 1-23
+rldr_data_common                000242 automatic       structure                level 1 dcl 1-23
+rldr_data_perpv                 000676 automatic       structure                level 1 dcl 1-23
+rldr_datap                             parameter       pointer                  dcl 1-23 ref 53 58 63 67 69 73 75 79 93 98 98 103
+rldr_report_$online_output      000036 constant        entry                    external dcl 49 ref 69 75 79
+short                           000206 automatic       char(8)                  dcl 32 set ref 84* 88*
+substr                                                 builtin function         dcl 51 ref 66 66 93 93 98 98
+tstring                         000101 automatic       char(24)                 packed unaligned dcl 24 set ref 65* 66 66
+uname                           000107 automatic       char(32)                 packed unaligned dcl 25 set ref 66* 67 79*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Direct_input                           internal static fixed bin(17,0)          initial dcl 2-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 2-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 2-15
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 2-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 2-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 2-15
+Stream_input                           internal static fixed bin(17,0)          initial dcl 2-15
+Stream_input_output                    internal static fixed bin(17,0)          initial dcl 2-15
+iox_modes                              internal static char(24)                 initial array dcl 2-6
+rldr_data_max_pvs                      automatic       fixed bin(17,0)          dcl 1-23
+rldr_data_nulled_pv                    internal static structure                level 1 dcl 1-23
+short_iox_modes                        internal static char(4)                  initial array dcl 2-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+common                          000510 constant        label                    dcl 82 ref 71 77 106
+error_output                    000122 constant        entry                    external dcl 53
+online_output                   000756 constant        entry                    external dcl 103
+rldr_report_                    000107 constant        entry                    external dcl 14
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1154        1214    1001        1164
+Length      1440    1001        40         207     153           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rldr_report_                        598 external procedure  is an external procedure.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 error_file_attach_ok        rldr_report_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rldr_report_             000100 code                        rldr_report_
+                         000101 tstring                     rldr_report_
+                         000107 uname                       rldr_report_
+                         000120 argp                        rldr_report_
+                         000122 ret_string                  rldr_report_
+                         000174 control_string              rldr_report_
+                         000204 len                         rldr_report_
+                         000205 error_output                rldr_report_
+                         000206 short                       rldr_report_
+                         000210 long                        rldr_report_
+                         000242 rldr_data_common            rldr_report_
+                         000676 rldr_data_perpv             rldr_report_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac
+shorten_stack       ext_entry           ext_entry_desc      clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+convert_status_code_          cu_$arg_list_ptr              date_time_                    get_group_id_
+hcs_$level_get                ioa_$general_rs               ioa_$ioa_switch               iox_$attach_ioname
+iox_$open                     rldr_report_$online_output
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+iox_$error_output
+
+
+CONSTANTS
+000000  aa  162 154 144 162	rldr
+000001  aa  137 162 145 160	_rep
+000002  aa  157 162 164 137	ort_
+000003  aa  040 040 040 040	    
+000004  aa  040 040 040 040	    
+000005  aa  040 040 040 040	    
+000006  aa  040 040 040 040	    
+000007  aa  040 040 040 040	    
+
+000010  aa     524000000144
+
+000011  aa     524000000000
+
+000012  aa     524000000040
+
+000013  aa     514000000001
+
+000014  aa     526000000250
+
+000015  aa     524000000025
+
+000016  aa     404000000005
+
+000017  aa     524000000030
+
+000020  aa     524000000033
+
+000021  aa     524000000047
+
+000022  aa     524000000012
+
+001000  aa  056 000 000 000	.
+
+000023  aa     526000000030
+
+000024  aa     410000000107
+
+000025  aa     464000000000
+
+000026  aa     526000000040
+
+000027  aa     404000000021
+
+000030  aa     526077777777
+
+000031  aa     000000000002
+
+000032  aa     404000000043
+
+000034  aa  136 141 072 136	^a:^
+000035  aa  170 136 141 000	x^a
+
+000036  aa  040 040 040 040	    
+000037  aa  040 040 040 040	    
+
+000040  aa  166 146 151 154	vfil
+000041  aa  145 137 040 000	e_ 
+
+000042  aa     077777000043
+000043  aa     000001000000
+
+000044  aa  136 141 072 136	^a:^
+000045  aa  170 136 141 072	x^a:
+000046  aa  136 170 136 141	^x^a
+
+000047  aa  145 162 162 157	erro
+000050  aa  162 137 146 151	r_fi
+000051  aa  154 145 000 000	le
+
+000052  aa  162 154 144 162	rldr
+000053  aa  137 145 162 162	_err
+000054  aa  056 000 000 000	.
+
+000055  aa  105 162 162 157	Erro
+000056  aa  162 040 146 151	r fi
+000057  aa  154 145 040 136	le ^
+000060  aa  141 040 143 162	a cr
+000061  aa  145 141 164 145	eate
+000062  aa  144 000 000 000	d
+
+000063  aa  105 162 162 157	Erro
+000064  aa  162 040 157 160	r op
+000065  aa  145 156 151 156	enin
+000066  aa  147 040 145 162	g er
+000067  aa  162 157 162 040	ror 
+000070  aa  146 151 154 145	file
+
+000071  aa  111 156 151 164	Init
+000072  aa  151 141 154 151	iali
+000073  aa  172 145 162 056	zer.
+000074  aa  123 171 163 104	SysD
+000075  aa  141 145 155 157	aemo
+000076  aa  156 056 172 000	n.z
+
+000077  aa  125 156 141 142	Unab
+000100  aa  154 145 040 164	le t
+000101  aa  157 040 141 164	o at
+000102  aa  164 141 143 150	tach
+000103  aa  040 145 162 162	 err
+000104  aa  157 162 040 146	or f
+000105  aa  151 154 145 000	ile
+
+BEGIN PROCEDURE rldr_report_
+ENTRY TO rldr_report_                                       STATEMENT 1 ON LINE 14
+rldr_report_: proc;
+
+000106  da     000141200000
+000107  aa   001140 6270 00	eax7 	608
+000110  aa  7 00034 3521 20	epp2 	pr7|28,*
+000111  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000112  aa     000000000000
+000113  aa     000000000000
+						STATEMENT 1 ON LINE 53
+error_output: entry (rldr_datap, icode, caller, message);
+
+000114  aa   000026 7100 04	tra  	22,ic		000142
+ENTRY TO error_output                                       STATEMENT 1 ON LINE 53
+error_output: entry (rldr_datap, icode, caller, message);
+
+000115  at     000004000025
+000116  tt     000032000030
+000117  ta     000030000000
+000120  ta     000115000000
+000121  da     000144300000
+000122  aa   001140 6270 00	eax7 	608
+000123  aa  7 00034 3521 20	epp2 	pr7|28,*
+000124  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000125  aa     000010000000
+000126  aa     000000000000
+000127  aa  6 00042 3735 20	epp7 	pr6|34,*
+000130  aa  7 00004 2361 20	ldq  	pr7|4,*
+000131  aa   000002 6040 04	tmi  	2,ic		000133
+000132  aa   777777 3760 07	anq  	262143,dl
+000133  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000134  aa  6 00762 7561 00	stq  	pr6|498
+000135  aa  7 00006 2361 20	ldq  	pr7|6,*
+000136  aa   000002 6040 04	tmi  	2,ic		000140
+000137  aa   777777 3760 07	anq  	262143,dl
+000140  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000141  aa  6 00763 7561 00	stq  	pr6|499
+						STATEMENT 1 ON LINE 58
+    if rldr_data_.disable_error_report then return;
+
+000142  aa  6 00032 3735 20	epp7 	pr6|26,*
+000143  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000144  aa  5 00000 2351 20	lda  	pr5|0,*		rldr_data_.disable_error_report
+000145  aa   010000 3150 03	cana 	4096,du
+000146  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 59
+    error_output = "1"b;
+
+000147  aa   400000 2350 03	lda  	131072,du
+000150  aa  6 00205 7551 00	sta  	pr6|133		error_output
+						STATEMENT 1 ON LINE 61
+    if error_file_attach_ok & hcs_$level_get () = 1 & get_group_id_ () = "Initializer.SysDaemon.z" then
+         error_file_attach_ok = "0"b;
+
+000151  aa  6 00764 3521 00	epp2 	pr6|500
+000152  aa  6 00776 2521 00	spri2	pr6|510
+000153  aa  6 00774 6211 00	eax1 	pr6|508
+000154  aa   004000 4310 07	fld  	2048,dl
+000155  la  4 00016 3521 20	epp2 	pr4|14,*		get_group_id_
+000156  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000157  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000160  aa  6 00764 00 0040	desc9a	pr6|500,32
+000161  aa   777712 00 0027	desc9a	-54,23		000071 = 111156151164
+000162  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000163  aa  6 01000 7551 00	sta  	pr6|512
+000164  aa  6 01001 3521 00	epp2 	pr6|513
+000165  aa  6 00776 2521 00	spri2	pr6|510
+000166  aa  6 00774 6211 00	eax1 	pr6|508
+000167  aa   004000 4310 07	fld  	2048,dl
+000170  aa  6 00044 3701 20	epp4 	pr6|36,*
+000171  la  4 00014 3521 20	epp2 	pr4|12,*		hcs_$level_get
+000172  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000173  aa  6 01001 2361 00	ldq  	pr6|513
+000174  aa   000001 1160 07	cmpq 	1,dl
+000175  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000176  aa  6 00044 3701 20	epp4 	pr6|36,*
+000177  ia  4 00010 3751 00	ana  	pr4|8		error_file_attach_ok
+000200  aa  6 01000 3151 00	cana 	pr6|512
+000201  aa   000002 6000 04	tze  	2,ic		000203
+000202  ia  4 00010 4501 00	stz  	pr4|8		error_file_attach_ok
+						STATEMENT 1 ON LINE 63
+    if rldr_data_.error_iocbp = null & error_file_attach_ok then do;
+
+000203  aa  6 00032 3735 20	epp7 	pr6|26,*
+000204  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000205  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000206  aa  5 00416 2371 00	ldaq 	pr5|270		rldr_data_.error_iocbp
+000207  aa   777633 6770 04	eraq 	-101,ic		000042 = 077777000043 000001000000
+000210  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000211  aa   000277 6010 04	tnz  	191,ic		000510
+000212  ia  4 00010 2351 00	lda  	pr4|8		error_file_attach_ok
+000213  aa   000275 6000 04	tze  	189,ic		000510
+						STATEMENT 1 ON LINE 65
+        call date_time_ (clock, tstring);
+
+000214  aa  0 01435 7001 00	tsx0 	pr0|797		clock_mac
+000215  aa  6 01002 7571 00	staq 	pr6|514
+000216  aa  6 01002 3521 00	epp2 	pr6|514
+000217  aa  6 01006 2521 00	spri2	pr6|518
+000220  aa  6 00101 3521 00	epp2 	pr6|65		tstring
+000221  aa  6 01010 2521 00	spri2	pr6|520
+000222  aa   777602 3520 04	epp2 	-126,ic		000024 = 410000000107
+000223  aa  6 01012 2521 00	spri2	pr6|522
+000224  aa   777577 3520 04	epp2 	-129,ic		000023 = 526000000030
+000225  aa  6 01014 2521 00	spri2	pr6|524
+000226  aa  6 01004 6211 00	eax1 	pr6|516
+000227  aa   010000 4310 07	fld  	4096,dl
+000230  aa  6 00044 3701 20	epp4 	pr6|36,*
+000231  la  4 00020 3521 20	epp2 	pr4|16,*		date_time_
+000232  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 66
+        uname = "rldr_err." || substr (tstring, 1, 8) || "." || substr (tstring, 11, 4);
+
+000233  aa   000021 2360 07	ldq  	17,dl
+000234  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000235  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000236  aa   777615 00 0011	desc9a	-115,9		000052 = 162154144162
+000237  aa  2 00000 00 0011	desc9a	pr2|0,9
+000240  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+000241  aa  6 00101 00 0010	desc9a	pr6|65,8		tstring
+000242  aa  2 00002 20 0010	desc9a	pr2|2(1),8
+000243  aa   000022 2360 07	ldq  	18,dl
+000244  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+000245  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000246  aa   000533 00 0001	desc9a	347,1		001000 = 056000000000
+000247  aa  2 00004 20 0001	desc9a	pr2|4(1),1
+000250  aa   000026 2360 07	ldq  	22,dl
+000251  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+000252  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+000253  aa  6 00103 40 0004	desc9a	pr6|67(2),4	tstring
+000254  aa  2 00004 40 0004	desc9a	pr2|4(2),4
+000255  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+000256  aa  2 00000 00 0026	desc9a	pr2|0,22
+000257  aa  6 00107 00 0040	desc9a	pr6|71,32		uname
+						STATEMENT 1 ON LINE 67
+        call iox_$attach_ioname ("error_file", rldr_data_.error_iocbp, "vfile_ " || uname, code);
+
+000260  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000261  aa   777566 2350 04	lda  	-138,ic		000047 = 145162162157
+000262  aa   777566 2360 04	ldq  	-138,ic		000050 = 162137146151
+000263  aa  6 00774 7571 00	staq 	pr6|508
+000264  aa   154145 2350 03	lda  	55397,du
+000265  aa  6 00776 7551 00	sta  	pr6|510
+000266  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000267  aa   777552 00 0007	desc9a	-150,7		000040 = 166146151154
+000270  aa  6 01004 00 0007	desc9a	pr6|516,7
+000271  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+000272  aa  6 00107 00 0040	desc9a	pr6|71,32		uname
+000273  aa  6 01005 60 0040	desc9a	pr6|517(3),32
+000274  aa  6 00774 3521 00	epp2 	pr6|508
+000275  aa  6 01020 2521 00	spri2	pr6|528
+000276  aa  6 00032 3735 20	epp7 	pr6|26,*
+000277  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000300  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000301  aa  5 00416 3521 00	epp2 	pr5|270		rldr_data_.error_iocbp
+000302  aa  6 01022 2521 00	spri2	pr6|530
+000303  aa  6 01004 3521 00	epp2 	pr6|516
+000304  aa  6 01024 2521 00	spri2	pr6|532
+000305  aa  6 00100 3521 00	epp2 	pr6|64		code
+000306  aa  6 01026 2521 00	spri2	pr6|534
+000307  aa   777513 3520 04	epp2 	-181,ic		000022 = 524000000012
+000310  aa  6 01030 2521 00	spri2	pr6|536
+000311  aa   777514 3520 04	epp2 	-180,ic		000025 = 464000000000
+000312  aa  6 01032 2521 00	spri2	pr6|538
+000313  aa   777506 3520 04	epp2 	-186,ic		000021 = 524000000047
+000314  aa  6 01034 2521 00	spri2	pr6|540
+000315  aa   777515 3520 04	epp2 	-179,ic		000032 = 404000000043
+000316  aa  6 01036 2521 00	spri2	pr6|542
+000317  aa  6 01016 6211 00	eax1 	pr6|526
+000320  aa   020000 4310 07	fld  	8192,dl
+000321  aa  6 00044 3701 20	epp4 	pr6|36,*
+000322  la  4 00026 3521 20	epp2 	pr4|22,*		iox_$attach_ioname
+000323  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 68
+        if code ^= 0 then do;
+
+000324  aa  6 00100 2361 00	ldq  	pr6|64		code
+000325  aa   000040 6000 04	tze  	32,ic		000365
+						STATEMENT 1 ON LINE 69
+	  call rldr_report_$online_output ((rldr_datap), code, myname, "Unable to attach error file");
+
+000326  aa  6 00032 3735 20	epp7 	pr6|26,*
+000327  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000330  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000331  aa  6 01002 6515 00	spri5	pr6|514
+000332  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000333  aa   777545 00 0034	desc9a	-155,28		000077 = 125156141142
+000334  aa  6 00764 00 0034	desc9a	pr6|500,28
+000335  aa  6 01002 3521 00	epp2 	pr6|514
+000336  aa  6 01020 2521 00	spri2	pr6|528
+000337  aa  6 00100 3521 00	epp2 	pr6|64		code
+000340  aa  6 01022 2521 00	spri2	pr6|530
+000341  aa   777437 3520 04	epp2 	-225,ic		000000 = 162154144162
+000342  aa  6 01024 2521 00	spri2	pr6|532
+000343  aa  6 00764 3521 00	epp2 	pr6|500
+000344  aa  6 01026 2521 00	spri2	pr6|534
+000345  aa   777460 3520 04	epp2 	-208,ic		000025 = 464000000000
+000346  aa  6 01030 2521 00	spri2	pr6|536
+000347  aa   777463 3520 04	epp2 	-205,ic		000032 = 404000000043
+000350  aa  6 01032 2521 00	spri2	pr6|538
+000351  aa   777455 3520 04	epp2 	-211,ic		000026 = 526000000040
+000352  aa  6 01034 2521 00	spri2	pr6|540
+000353  aa   777445 3520 04	epp2 	-219,ic		000020 = 524000000033
+000354  aa  6 01036 2521 00	spri2	pr6|542
+000355  aa  6 01016 6211 00	eax1 	pr6|526
+000356  aa   020000 4310 07	fld  	8192,dl
+000357  aa  6 00044 3701 20	epp4 	pr6|36,*
+000360  la  4 00036 3521 20	epp2 	pr4|30,*		rldr_report_$online_output
+000361  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 70
+	  error_file_attach_ok = "0"b;
+
+000362  aa  6 00044 3701 20	epp4 	pr6|36,*
+000363  ia  4 00010 4501 00	stz  	pr4|8		error_file_attach_ok
+						STATEMENT 1 ON LINE 71
+	  goto common;
+
+000364  aa   000124 7100 04	tra  	84,ic		000510
+						STATEMENT 1 ON LINE 72
+	end;
+
+						STATEMENT 1 ON LINE 73
+        call iox_$open (rldr_data_.error_iocbp, Stream_output, ""b, code);
+
+000365  aa   000000 2350 07	lda  	0,dl
+000366  aa  6 01000 7551 00	sta  	pr6|512
+000367  aa  6 00032 3735 20	epp7 	pr6|26,*
+000370  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000371  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000372  aa  5 00416 3521 00	epp2 	pr5|270		rldr_data_.error_iocbp
+000373  aa  6 01006 2521 00	spri2	pr6|518
+000374  aa   777435 3520 04	epp2 	-227,ic		000031 = 000000000002
+000375  aa  6 01010 2521 00	spri2	pr6|520
+000376  aa  6 01000 3521 00	epp2 	pr6|512
+000377  aa  6 01012 2521 00	spri2	pr6|522
+000400  aa  6 00100 3521 00	epp2 	pr6|64		code
+000401  aa  6 01014 2521 00	spri2	pr6|524
+000402  aa  6 01004 6211 00	eax1 	pr6|516
+000403  aa   020000 4310 07	fld  	8192,dl
+000404  aa  6 00044 3701 20	epp4 	pr6|36,*
+000405  la  4 00030 3521 20	epp2 	pr4|24,*		iox_$open
+000406  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 74
+        if code ^= 0 then do;
+
+000407  aa  6 00100 2361 00	ldq  	pr6|64		code
+000410  aa   000040 6000 04	tze  	32,ic		000450
+						STATEMENT 1 ON LINE 75
+	  call rldr_report_$online_output ((rldr_datap), code, myname, "Error opening error file");
+
+000411  aa  6 00032 3735 20	epp7 	pr6|26,*
+000412  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000413  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000414  aa  6 01002 6515 00	spri5	pr6|514
+000415  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000416  aa   777446 00 0030	desc9a	-218,24		000063 = 105162162157
+000417  aa  6 00764 00 0030	desc9a	pr6|500,24
+000420  aa  6 01002 3521 00	epp2 	pr6|514
+000421  aa  6 01020 2521 00	spri2	pr6|528
+000422  aa  6 00100 3521 00	epp2 	pr6|64		code
+000423  aa  6 01022 2521 00	spri2	pr6|530
+000424  aa   777354 3520 04	epp2 	-276,ic		000000 = 162154144162
+000425  aa  6 01024 2521 00	spri2	pr6|532
+000426  aa  6 00764 3521 00	epp2 	pr6|500
+000427  aa  6 01026 2521 00	spri2	pr6|534
+000430  aa   777375 3520 04	epp2 	-259,ic		000025 = 464000000000
+000431  aa  6 01030 2521 00	spri2	pr6|536
+000432  aa   777400 3520 04	epp2 	-256,ic		000032 = 404000000043
+000433  aa  6 01032 2521 00	spri2	pr6|538
+000434  aa   777372 3520 04	epp2 	-262,ic		000026 = 526000000040
+000435  aa  6 01034 2521 00	spri2	pr6|540
+000436  aa   777361 3520 04	epp2 	-271,ic		000017 = 524000000030
+000437  aa  6 01036 2521 00	spri2	pr6|542
+000440  aa  6 01016 6211 00	eax1 	pr6|526
+000441  aa   020000 4310 07	fld  	8192,dl
+000442  aa  6 00044 3701 20	epp4 	pr6|36,*
+000443  la  4 00036 3521 20	epp2 	pr4|30,*		rldr_report_$online_output
+000444  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 76
+	  error_file_attach_ok = "0"b;
+
+000445  aa  6 00044 3701 20	epp4 	pr6|36,*
+000446  ia  4 00010 4501 00	stz  	pr4|8		error_file_attach_ok
+						STATEMENT 1 ON LINE 77
+	  goto common;
+
+000447  aa   000041 7100 04	tra  	33,ic		000510
+						STATEMENT 1 ON LINE 78
+	end;
+
+						STATEMENT 1 ON LINE 79
+        call rldr_report_$online_output ((rldr_datap), 0, myname, "Error file ^a created", uname);
+
+000450  aa  6 00032 3735 20	epp7 	pr6|26,*
+000451  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000452  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000453  aa  6 01002 6515 00	spri5	pr6|514
+000454  aa  6 01000 4501 00	stz  	pr6|512
+000455  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000456  aa   777400 00 0030	desc9a	-256,24		000055 = 105162162157
+000457  aa  6 00764 00 0030	desc9a	pr6|500,24
+000460  aa  6 01002 3521 00	epp2 	pr6|514
+000461  aa  6 01042 2521 00	spri2	pr6|546
+000462  aa  6 01000 3521 00	epp2 	pr6|512
+000463  aa  6 01044 2521 00	spri2	pr6|548
+000464  aa   777314 3520 04	epp2 	-308,ic		000000 = 162154144162
+000465  aa  6 01046 2521 00	spri2	pr6|550
+000466  aa  6 00764 3521 00	epp2 	pr6|500
+000467  aa  6 01050 2521 00	spri2	pr6|552
+000470  aa  6 00107 3521 00	epp2 	pr6|71		uname
+000471  aa  6 01052 2521 00	spri2	pr6|554
+000472  aa   777333 3520 04	epp2 	-293,ic		000025 = 464000000000
+000473  aa  6 01054 2521 00	spri2	pr6|556
+000474  aa   777322 3520 04	epp2 	-302,ic		000016 = 404000000005
+000475  aa  6 01056 2521 00	spri2	pr6|558
+000476  aa   777330 3520 04	epp2 	-296,ic		000026 = 526000000040
+000477  aa  6 01060 2521 00	spri2	pr6|560
+000500  aa  6 01064 2521 00	spri2	pr6|564
+000501  aa   777314 3520 04	epp2 	-308,ic		000015 = 524000000025
+000502  aa  6 01062 2521 00	spri2	pr6|562
+000503  aa  6 01040 6211 00	eax1 	pr6|544
+000504  aa   024000 4310 07	fld  	10240,dl
+000505  aa  6 00044 3701 20	epp4 	pr6|36,*
+000506  la  4 00036 3521 20	epp2 	pr4|30,*		rldr_report_$online_output
+000507  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 80
+      end;
+
+						STATEMENT 1 ON LINE 82
+common:
+    if icode ^= 0 then do;
+
+000510  aa  6 00032 3735 20	epp7 	pr6|26,*
+000511  aa  7 00004 2361 20	ldq  	pr7|4,*		icode
+000512  aa   000020 6000 04	tze  	16,ic		000532
+						STATEMENT 1 ON LINE 84
+        call convert_status_code_ (icode, short, long);
+
+000513  aa  7 00004 3521 20	epp2 	pr7|4,*		icode
+000514  aa  6 00766 2521 00	spri2	pr6|502
+000515  aa  6 00206 3521 00	epp2 	pr6|134		short
+000516  aa  6 00770 2521 00	spri2	pr6|504
+000517  aa  6 00210 3521 00	epp2 	pr6|136		long
+000520  aa  6 00772 2521 00	spri2	pr6|506
+000521  aa  6 00764 6211 00	eax1 	pr6|500
+000522  aa   014000 4310 07	fld  	6144,dl
+000523  aa  6 00044 3701 20	epp4 	pr6|36,*
+000524  la  4 00032 3521 20	epp2 	pr4|26,*		convert_status_code_
+000525  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 85
+        control_string = "^a:^x^a:^x^a";
+
+000526  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000527  aa   777316 00 0014	desc9a	-306,12		000044 = 136141072136
+000530  aa  6 00174 00 0040	desc9a	pr6|124,32	control_string
+						STATEMENT 1 ON LINE 86
+      end;
+
+000531  aa   000011 7100 04	tra  	9,ic		000542
+						STATEMENT 1 ON LINE 87
+    else do;
+
+						STATEMENT 1 ON LINE 88
+        short, long = "";
+
+000532  aa   777304 2370 04	ldaq 	-316,ic		000036 = 040040040040 040040040040
+000533  aa  6 00206 7571 00	staq 	pr6|134		short
+000534  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000535  aa   000000 00 0000	desc9a	0,0
+000536  aa  6 00210 00 0144	desc9a	pr6|136,100	long
+						STATEMENT 1 ON LINE 89
+        control_string = "^a:^x^a";
+
+000537  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000540  aa   777275 00 0007	desc9a	-323,7		000034 = 136141072136
+000541  aa  6 00174 00 0040	desc9a	pr6|124,32	control_string
+						STATEMENT 1 ON LINE 90
+      end;
+
+						STATEMENT 1 ON LINE 91
+    call cu_$arg_list_ptr (argp);
+
+000542  aa  6 00120 3521 00	epp2 	pr6|80		argp
+000543  aa  6 00776 2521 00	spri2	pr6|510
+000544  aa  6 00774 6211 00	eax1 	pr6|508
+000545  aa   004000 4310 07	fld  	2048,dl
+000546  aa  6 00044 3701 20	epp4 	pr6|36,*
+000547  la  4 00022 3521 20	epp2 	pr4|18,*		cu_$arg_list_ptr
+000550  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 92
+    call ioa_$general_rs (argp, 4, 5, ret_string, len, "0"b, "0"b);
+
+000551  aa   000004 2360 07	ldq  	4,dl
+000552  aa  6 01000 7561 00	stq  	pr6|512
+000553  aa   000005 2360 07	ldq  	5,dl
+000554  aa  6 01001 7561 00	stq  	pr6|513
+000555  aa   000000 2350 07	lda  	0,dl
+000556  aa  6 01066 7551 00	sta  	pr6|566
+000557  aa  6 01067 7551 00	sta  	pr6|567
+000560  aa  6 00120 3521 00	epp2 	pr6|80		argp
+000561  aa  6 01072 2521 00	spri2	pr6|570
+000562  aa  6 01000 3521 00	epp2 	pr6|512
+000563  aa  6 01074 2521 00	spri2	pr6|572
+000564  aa  6 01001 3521 00	epp2 	pr6|513
+000565  aa  6 01076 2521 00	spri2	pr6|574
+000566  aa  6 00122 3521 00	epp2 	pr6|82		ret_string
+000567  aa  6 01100 2521 00	spri2	pr6|576
+000570  aa  6 00204 3521 00	epp2 	pr6|132		len
+000571  aa  6 01102 2521 00	spri2	pr6|578
+000572  aa  6 01066 3521 00	epp2 	pr6|566
+000573  aa  6 01104 2521 00	spri2	pr6|580
+000574  aa  6 01067 3521 00	epp2 	pr6|567
+000575  aa  6 01106 2521 00	spri2	pr6|582
+000576  aa   777227 3520 04	epp2 	-361,ic		000025 = 464000000000
+000577  aa  6 01110 2521 00	spri2	pr6|584
+000600  aa   777227 3520 04	epp2 	-361,ic		000027 = 404000000021
+000601  aa  6 01112 2521 00	spri2	pr6|586
+000602  aa  6 01114 2521 00	spri2	pr6|588
+000603  aa  6 01120 2521 00	spri2	pr6|592
+000604  aa   777210 3520 04	epp2 	-376,ic		000014 = 526000000250
+000605  aa  6 01116 2521 00	spri2	pr6|590
+000606  aa   777205 3520 04	epp2 	-379,ic		000013 = 514000000001
+000607  aa  6 01122 2521 00	spri2	pr6|594
+000610  aa  6 01124 2521 00	spri2	pr6|596
+000611  aa  6 01070 6211 00	eax1 	pr6|568
+000612  aa   034000 4310 07	fld  	14336,dl
+000613  aa  6 00044 3701 20	epp4 	pr6|36,*
+000614  la  4 00024 3521 20	epp2 	pr4|20,*		ioa_$general_rs
+000615  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 93
+    if error_output & error_file_attach_ok then
+         call ioa_$ioa_switch (rldr_data_.error_iocbp, control_string, caller, substr (ret_string, 1, len), long);
+
+000616  aa  6 00205 2351 00	lda  	pr6|133		error_output
+000617  aa   000047 6000 04	tze  	39,ic		000666
+000620  aa  6 00044 3701 20	epp4 	pr6|36,*
+000621  ia  4 00010 2351 00	lda  	pr4|8		error_file_attach_ok
+000622  aa   000044 6000 04	tze  	36,ic		000666
+000623  aa  6 00204 2361 00	ldq  	pr6|132		len
+000624  aa   524000 2760 03	orq  	174080,du
+000625  aa  6 01067 7561 00	stq  	pr6|567
+000626  aa  6 00204 2361 00	ldq  	pr6|132		len
+000627  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000630  aa  6 01050 2521 00	spri2	pr6|552
+000631  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000632  aa  6 00122 00 0006	desc9a	pr6|82,ql		ret_string
+000633  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000634  aa  6 00032 3735 20	epp7 	pr6|26,*
+000635  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000636  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000637  aa  5 00416 3521 00	epp2 	pr5|270		rldr_data_.error_iocbp
+000640  aa  6 01042 2521 00	spri2	pr6|546
+000641  aa  6 00174 3521 00	epp2 	pr6|124		control_string
+000642  aa  6 01044 2521 00	spri2	pr6|548
+000643  aa  7 00006 3521 20	epp2 	pr7|6,*		caller
+000644  aa  6 01046 2521 00	spri2	pr6|550
+000645  aa  6 00210 3521 00	epp2 	pr6|136		long
+000646  aa  6 01052 2521 00	spri2	pr6|554
+000647  aa   777156 3520 04	epp2 	-402,ic		000025 = 464000000000
+000650  aa  6 01054 2521 00	spri2	pr6|556
+000651  aa   777141 3520 04	epp2 	-415,ic		000012 = 524000000040
+000652  aa  6 01056 2521 00	spri2	pr6|558
+000653  aa  6 00042 3535 20	epp3 	pr6|34,*
+000654  aa  3 00004 3521 20	epp2 	pr3|4,*
+000655  aa  6 01060 2521 00	spri2	pr6|560
+000656  aa  6 01067 3521 00	epp2 	pr6|567
+000657  aa  6 01062 2521 00	spri2	pr6|562
+000660  aa   777130 3520 04	epp2 	-424,ic		000010 = 524000000144
+000661  aa  6 01064 2521 00	spri2	pr6|564
+000662  aa  6 01040 6211 00	eax1 	pr6|544
+000663  aa   024000 4310 07	fld  	10240,dl
+000664  la  4 00034 3521 20	epp2 	pr4|28,*		ioa_$ioa_switch
+000665  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 98
+    if (error_output & rldr_data_.err_online) | ^error_output | ^rldr_data_.arg_init | ^error_file_attach_ok then
+         call ioa_$ioa_switch (iox_$error_output, control_string, caller, substr (ret_string, 1, len), long);
+
+000666  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000667  aa  6 00205 2351 00	lda  	pr6|133		error_output
+000670  aa   000006 6000 04	tze  	6,ic		000676
+000671  aa  6 00032 3735 20	epp7 	pr6|26,*
+000672  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000673  aa  5 00000 2351 20	lda  	pr5|0,*		rldr_data_.err_online
+000674  aa   002000 3150 03	cana 	1024,du
+000675  aa   000013 6010 04	tnz  	11,ic		000710
+000676  aa  6 00205 2351 00	lda  	pr6|133		error_output
+000677  aa   000011 6000 04	tze  	9,ic		000710
+000700  aa  6 00032 3735 20	epp7 	pr6|26,*
+000701  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000702  aa  5 00000 2351 20	lda  	pr5|0,*		rldr_data_.arg_init
+000703  aa   020000 3150 03	cana 	8192,du
+000704  aa   000004 6000 04	tze  	4,ic		000710
+000705  aa  6 00044 3701 20	epp4 	pr6|36,*
+000706  ia  4 00010 2351 00	lda  	pr4|8		error_file_attach_ok
+000707  aa   000043 6010 04	tnz  	35,ic		000752
+000710  aa  6 00204 2361 00	ldq  	pr6|132		len
+000711  aa   524000 2760 03	orq  	174080,du
+000712  aa  6 01067 7561 00	stq  	pr6|567
+000713  aa  6 00204 2361 00	ldq  	pr6|132		len
+000714  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000715  aa  6 01050 2521 00	spri2	pr6|552
+000716  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000717  aa  6 00122 00 0006	desc9a	pr6|82,ql		ret_string
+000720  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000721  aa  6 00044 3701 20	epp4 	pr6|36,*
+000722  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$error_output
+000723  aa  6 01042 2521 00	spri2	pr6|546
+000724  aa  6 00174 3521 00	epp2 	pr6|124		control_string
+000725  aa  6 01044 2521 00	spri2	pr6|548
+000726  aa  6 00032 3735 20	epp7 	pr6|26,*
+000727  aa  7 00006 3521 20	epp2 	pr7|6,*		caller
+000730  aa  6 01046 2521 00	spri2	pr6|550
+000731  aa  6 00210 3521 00	epp2 	pr6|136		long
+000732  aa  6 01052 2521 00	spri2	pr6|554
+000733  aa   777072 3520 04	epp2 	-454,ic		000025 = 464000000000
+000734  aa  6 01054 2521 00	spri2	pr6|556
+000735  aa   777055 3520 04	epp2 	-467,ic		000012 = 524000000040
+000736  aa  6 01056 2521 00	spri2	pr6|558
+000737  aa  6 00042 3715 20	epp5 	pr6|34,*
+000740  aa  5 00004 3521 20	epp2 	pr5|4,*
+000741  aa  6 01060 2521 00	spri2	pr6|560
+000742  aa  6 01067 3521 00	epp2 	pr6|567
+000743  aa  6 01062 2521 00	spri2	pr6|562
+000744  aa   777044 3520 04	epp2 	-476,ic		000010 = 524000000144
+000745  aa  6 01064 2521 00	spri2	pr6|564
+000746  aa  6 01040 6211 00	eax1 	pr6|544
+000747  aa   024000 4310 07	fld  	10240,dl
+000750  la  4 00034 3521 20	epp2 	pr4|28,*		ioa_$ioa_switch
+000751  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 101
+    return;
+
+000752  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000753  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO online_output                                      STATEMENT 1 ON LINE 103
+online_output: entry (rldr_datap, icode, caller, message);
+
+000754  ta     000115000000
+000755  da     000147300000
+000756  aa   001140 6270 00	eax7 	608
+000757  aa  7 00034 3521 20	epp2 	pr7|28,*
+000760  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000761  aa     000010000000
+000762  aa     000000000000
+000763  aa  6 00042 3735 20	epp7 	pr6|34,*
+000764  aa  7 00004 2361 20	ldq  	pr7|4,*
+000765  aa   000002 6040 04	tmi  	2,ic		000767
+000766  aa   777777 3760 07	anq  	262143,dl
+000767  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000770  aa  6 00762 7561 00	stq  	pr6|498
+000771  aa  7 00006 2361 20	ldq  	pr7|6,*
+000772  aa   000002 6040 04	tmi  	2,ic		000774
+000773  aa   777777 3760 07	anq  	262143,dl
+000774  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000775  aa  6 00763 7561 00	stq  	pr6|499
+						STATEMENT 1 ON LINE 105
+    error_output = "0"b;
+
+000776  aa  6 00205 4501 00	stz  	pr6|133		error_output
+						STATEMENT 1 ON LINE 106
+    goto common;
+
+000777  aa   777511 7100 04	tra  	-183,ic		000510
+						STATEMENT 1 ON LINE 152
+  end rldr_report_;
+
+  END PROCEDURE rldr_report_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

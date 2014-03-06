@@ -1,0 +1,1412 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1115>mdc_.alm                                                                                                                                             
+ASSEMBLED ON:	11/11/89  0922.7 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  "	Modified 1984-07-19 BIM to remove get_lv_pvinfo
+                                    13  "	Modified 84-09-04 by EJ Sharpe to rename module hdx references to volume_registration_mgr_
+                                    14  "	Modified 84-10-30 by EJ Sharpe to increase number of args for get_lv_access
+                                    15  "	Modified 84-11-01 by EJ Sharpe to add create_dirx_acct
+                                    16  
+                                    17  	include gate_macros
+                                   1-1  " BEGIN INCLUDE FILE ...... gate_macros.incl.alm
+                                   1-2  "   Last modified 6/77 by N. Morris, B. Greenberg, & T. VanVleck
+                                   1-3  "   Modified 741212 by PG to inhibit while computing virtual CPU time
+                                   1-4  "   Modified 83-03-14 by E. N. Kittlitz to clear IR
+                                   1-5  "   Modified 83-06-01 BIM for ring alarm polling
+                                   1-6  "   Modified 85-04-03 by Keith Loepere to make polling a little smarter.
+                                   1-7  
+                                   1-8  " This file contains several macros used when generating gate segments.
+                                   1-9  " The major macros that are defined are:
+                                  1-10  "
+                                  1-11  "	gate_info		general setup code for normal gates
+                                  1-12  "	hardcore_gate_info	general setup code for hardcore gates
+                                  1-13  "	bad_dir_handler	setup and handler for bad_dir_ condition (goes at bottom)
+                                  1-14  "	bad_dir_handler_entry	entrypoint for above (goes at top)
+                                  1-15  "	gate		to define a normal gate
+                                  1-16  "	hgate		to define a hardcore gate
+                                  1-17  "	fgate		to define a fast hardcore gate
+                                  1-18  "
+                                  1-19  
+                                  1-20  
+    000000                        1-21  	maclist	off
+                                  1-22  
+                                  1-23  
+                                  1-24  " HGATE - define a hardcore gate entry
+                                  1-25  "
+                                  1-26  "	hgate	gatename,procedure,entry,args{,bad_dir_trap}
+                                  1-27  "
+                                  1-28  " The entrypoint gatename is defined in the gate segment.  If args
+                                  1-29  " is nonzero, the number of arguments passed to gatename must be
+                                  1-30  " equal to args.  When gatename is called, it will in turn call
+                                  1-31  " procedure$entry.
+                                  1-32  "
+                                  1-33  
+                                  1-34  macro	hgate
+                              1   1-35  	gentry	&1,&4*2,&1.t
+                              2   1-36  	tsx2	.setup
+                              3   1-37  &=&5,bad_dir_trap&[	tsx0	.set_dir_trap
+                              4   1-38  &]	ldi	=0,dl
+                              5   1-39  	short_call &2$&3(ap|0)
+                              6   1-40  	eppbp	lp|&1.t
+                              7   1-41  	tra	.return_code
+                              8   1-42  	maclist	restore
+                              9   1-43  	use	linkage
+                             10   1-44  	even
+                             11   1-45  	maclist	on,save
+                             12   1-46  &1.t:
+                             13   1-47  	bss	,gate_entry_data_size
+                             14   1-48  
+                             15   1-49  	maclist	restore
+                             16   1-50  &end
+                                  1-51  
+                                  1-52  
+                                  1-53  " FGATE - define a fast hardcore gate
+                                  1-54  "
+                                  1-55  "	fgate	gatename,procedure,entry
+                                  1-56  "
+                                  1-57  
+                                  1-58  macro	fgate
+                              1   1-59  	gentry	&1,0,0
+                              2   1-60  	ldi	=0,dl
+                              3   1-61  	epplp	.my_lp,*
+                              4   1-62  	tra	&2$&3
+                              5   1-63  
+                              6   1-64  	maclist	off
+                              7   1-65  &end
+                                  1-66  
+                                  1-67  
+                                  1-68  " GATE - define a normal gate entry
+                                  1-69  "
+                                  1-70  "	gate	gatename,procedure,entry,args
+                                  1-71  "
+                                  1-72  
+                                  1-73  macro	gate
+                              1   1-74  	gentry	&1,&4*2,0
+                              2   1-75  	tsx2	.setup
+                              3   1-76  	ldi	=0,dl
+                              4   1-77  	short_call &2$&3(ap|0)
+                              5   1-78  	return
+                              6   1-79  
+                              7   1-80  	maclist	restore
+                              8   1-81  &end
+                                  1-82  
+                                  1-83  
+                                  1-84  
+                                  1-85  macro	gentry
+                              1   1-86  	maclist	on,save
+                              2   1-87  	segdef	&1
+                              3   1-88  	maclist	restore
+                              4   1-89  	use	transfer_vector
+                              5   1-90  	maclist	on,save
+                              6   1-91  &1:
+                              7   1-92  	tra	&1.e
+                              8   1-93  	maclist	restore
+                              9   1-94  	use	main
+                             10   1-95  	maclist	on,save
+                             11   1-96  	zero	&2,&3
+                             12   1-97  &1.e:
+                             13   1-98  &end
+                                  1-99  
+                                 1-100  
+                                 1-101  " HARDCORE_GATE_INFO - general info for hardcore gates
+                                 1-102  
+                                 1-103  macro	hardcore_gate_info
+                              1  1-104  	maclist	on,save
+                              2  1-105  	name	&1
+                              3  1-106  
+                              4  1-107  	include	stack_header
+                              5  1-108  
+                              6  1-109  	include	stack_frame
+                              7  1-110  	include	gate_data
+                              8  1-111  
+                              9  1-112  	maclist	restore
+                             10  1-113  	eject
+                             11  1-114  
+                             12  1-115  	tempd	.temp
+                             13  1-116  	tempd	.label_variable(0)
+                             14  1-117  	tempd	.time1,.time2
+                             15  1-118  	tempd	.unwinder_arglist(0)
+                             16  1-119  	tempd	.on_unit(5)
+                             17  1-120  	temp	.pf,.entryp
+                             18  1-121  	tempd	.vfl_arglist(2)
+                             19  1-122  	tempd	.mcptr
+                             20  1-123  
+                             21  1-124  	use	transfer_vector
+                             22  1-125  	equ	.tv_begin,*
+                             23  1-126  
+                             24  1-127  	tra	.actor
+                             25  1-128  
+                             26  1-129  	use	tv_end
+                             27  1-130  	entrybound
+                             28  1-131  
+                             29  1-132  	segdef	.tv_end
+                             30  1-133  .tv_end:	vfd	14/(*-.tv_begin)
+                             31  1-134  
+                             32  1-135  	use	main
+                             33  1-136  
+                             34  1-137  	segdef	.my_lp
+                             35  1-138  	even
+                             36  1-139  .my_lp:	bss	,2
+                             37  1-140  
+                             38  1-141  	join	/text/transfer_vector,tv_end,main
+                             39  1-142  
+                             40  1-143  	use	linkage
+                             41  1-144  	join	/link/linkage
+                             42  1-145  
+                             43  1-146  	use	main
+                             44  1-147  
+                             45  1-148  	maclist	restore
+                             46  1-149  	eject
+                             47  1-150  
+                             48  1-151  .actor:	epplp	.my_lp,*
+                             49  1-152  	maclist	restore
+                             50  1-153  	gate_actor
+                             51  1-154  
+                             52  1-155  
+                             53  1-156  
+                             54  1-157  .setup:	push
+                             55  1-158  	epplp	.my_lp,*
+                             56  1-159  	sprilp	sp|stack_frame.lp_ptr
+                             57  1-160  
+                             58  1-161  	maclist	restore
+                             59  1-162  	gcheck
+                             60  1-163  
+                             61  1-164  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                             62  1-165  	rccl	sys_info$clock_,*	calculate times
+                             63  1-166  	sbaq	pds$cpu_time
+                             64  1-167  	staq	.time1
+                             65  1-168  	sbaq	pds$virtual_delta
+                             66  1-169  	staq	.time2
+                             67  1-170  	lda	pds$page_waits
+                             68  1-171  	sta	.pf
+                             69  1-172  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                             70  1-173  	tra	0,2
+                             71  1-174  
+                             72  1-175  	maclist	restore
+                             73  1-176  	eject
+                             74  1-177  
+                             75  1-178  .return_code:
+                             76  1-179  
+                             77  1-180  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                             78  1-181  	rccl	sys_info$clock_,*	calculate times
+                             79  1-182  	sbaq	pds$cpu_time
+                             80  1-183  	staq	.temp
+                             81  1-184  	sbaq	.time1
+                             82  1-185  	adaq	bp|gate_entry_data.cpu_time
+                             83  1-186  	staq	bp|gate_entry_data.cpu_time
+                             84  1-187  	ldaq	.temp
+                             85  1-188  	sbaq	pds$virtual_delta
+                             86  1-189  	sbaq	.time2
+                             87  1-190  	adaq	bp|gate_entry_data.vcpu_time
+                             88  1-191  	staq	bp|gate_entry_data.vcpu_time
+                             89  1-192  	lda	pds$page_waits
+                             90  1-193  	sbla	.pf
+                             91  1-194  	asa	bp|gate_entry_data.page_waits
+                             92  1-195  	aos	bp|gate_entry_data.calls
+                             93  1-196  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                             94  1-197  
+                             95  1-198  			" Poll for ring alarms
+                             96  1-199  	sra	.temp	Borrow from time calc
+                             97  1-200  	szn	.temp	Zero?
+                             98  1-201  	tze	.return_code_return
+                             99  1-202  
+                            100  1-203  	epp1	sp|stack_frame.prev_sp,*	"possible ring alarm
+                            101  1-204  	epaq	pr1|stack_frame.return_ptr,*
+                            102  1-205  	ana	7,dl	" ring number to which we return
+                            103  1-206  	cmpa	.temp
+                            104  1-207  	tpl	.ring_alarm	" ring alarm will occur
+                            105  1-208  
+                            106  1-209  .return_code_return:
+                            107  1-210  	return
+                            108  1-211  
+                            109  1-212  .ring_alarm:		" perhaps we can handle without faults?
+                            110  1-213  
+                            111  1-214  	aos	bp|gate_entry_data.ring_alarms
+                            112  1-215  	stz	.temp	" return argument for ring_alarm$poll
+                            113  1-216  	ldaq	.one_arg_header
+                            114  1-217  	staq	.ring_alarm_arg_list
+                            115  1-218  	epp1	.temp
+                            116  1-219  	spri1	.ring_alarm_arg_list+2
+                            117  1-220  	eppap	.ring_alarm_arg_list
+                            118  1-221  	short_call ring_alarm$poll
+                            119  1-222  	szn	.temp
+                            120  1-223  	tze	.return_code_return
+                            121  1-224  	eppsp	sp|stack_frame.prev_sp,*
+                            122  1-225  	sprisp	pds$pre_empt_poll_return          " short-return from here
+                            123  1-226  	epp1	sb|stack_header.stack_begin_ptr,* " abandoning this stack frame.
+                            124  1-227  	spri1	sb|stack_header.stack_end_ptr
+                            125  1-228  " Leave SB as stack_0, so pxss can get to operators.
+                            126  1-229  	tra	pxss$pre_empt_poll
+                            127  1-230  
+                            128  1-231  	tempd	.ring_alarm_arg_list(2)
+                            129  1-232  	even
+                            130  1-233  .one_arg_header:
+                            131  1-234  	vfd	17/2,1/0,18/4
+                            132  1-235  	vfd	18/0,18/0
+                            133  1-236  
+                            134  1-237  
+                            135  1-238  	maclist	restore
+                            136  1-239  	eject
+                            137  1-240  	maclist	restore
+                            138  1-241  &end
+                                 1-242  
+                                 1-243  
+                                 1-244  " BAD_DIR_HANDLER - code to setup and handle bad_dir_ condition
+                                 1-245  "			put this after the last hgate macro
+                                 1-246  
+                                 1-247  macro	bad_dir_handler
+                              1  1-248  	maclist	on,save
+                              2  1-249  
+                              3  1-250  	include	on_unit
+                              4  1-251  
+                              5  1-252  	use	transfer_vector
+                              6  1-253  .handler_entry:
+                              7  1-254  	tra	.handler
+                              8  1-255  .handler_restart_entry:
+                              9  1-256  	tra	.handler_restart_point
+                             10  1-257  
+                             11  1-258  	use	main
+                             12  1-259  .set_dir_trap:
+                             13  1-260  	stx0	.entryp		save for restart
+                             14  1-261  
+                             15  1-262  	mlr	(),(pr),fill(000)
+                             16  1-263  	desc9a	0,0
+                             17  1-264  	desc9a	.on_unit,10*4
+                             18  1-265  	eppbp	.bad_dir_name
+                             19  1-266  	spribp	.on_unit+on_unit.name
+                             20  1-267  	eppbp	.handler_entry
+                             21  1-268  	spribp	.on_unit+on_unit.body
+                             22  1-269  	lxl1	.bad_dir_desc
+                             23  1-270  	sxl1	.on_unit+on_unit.size
+                             24  1-271  	eaa	.on_unit		set up on-unit for bad_dir_
+                             25  1-272  	sbla	sp|0,du		.. make rel to sp
+                             26  1-273  	sta	sp|stack_frame.on_unit_rel_ptrs
+                             27  1-274  	lda	stack_frame.condition_bit,dl
+                             28  1-275  	orsa	sp|stack_frame.flag_word
+                             29  1-276  	tra	0,0
+                             30  1-277  
+                             31  1-278  	string	bad_dir_
+                             32  1-279  
+                             33  1-280  
+                             34  1-281  
+                             35  1-282  .handler:	epaq	sp|0		verify that call came from ring 0
+                             36  1-283  	cana	-1,dl		check ring number in AL
+                             37  1-284  	tze	*+2
+                             38  1-285  	zero	0		go way kid you bother me
+                             39  1-286  
+                             40  1-287  	push			" ok, we like the call
+                             41  1-288  	epplp	.my_lp,*
+                             42  1-289  	ldx0	ap|0		get display
+                             43  1-290  	eppbp	ap|2,0*
+                             44  1-291  	lda	bp|stack_frame.prev_sp
+                             45  1-292  	cana	=o700000,dl	from another ring?
+                             46  1-293  	tze	.continue_signal	if not, back to signal_
+                             47  1-294  	eppap	ap|2,*		Get mcptr
+                             48  1-295  	eppap	ap|0,*		..
+                             49  1-296  	spriap	bp|.mcptr		.. save in gate frame
+                             50  1-297  	spribp	.label_variable+2
+                             51  1-298  	eppbp	.handler_restart_entry
+                             52  1-299  	spribp	.label_variable
+                             53  1-300  	eppbp	.label_variable
+                             54  1-301  	spribp	.unwinder_arglist+2
+                             55  1-302  	fld	=1b24,dl
+                             56  1-303  	staq	.unwinder_arglist
+                             57  1-304  	call	unwinder_$unwinder_(.unwinder_arglist)
+                             58  1-305  
+                             59  1-306  .continue_signal:
+                             60  1-307  	lda	=o400000,du	"1"b
+                             61  1-308  	sta	ap|10,*		set continue bit
+                             62  1-309  	return
+                             63  1-310  
+                             64  1-311  .handler_restart_point:
+                             65  1-312  	epaq	sp|0		check that call came from ring 0
+                             66  1-313  	cana	-1,dl
+                             67  1-314  	tze	*+2
+                             68  1-315  	zero	1
+                             69  1-316  	epplp	.my_lp,*
+                             70  1-317  	lca	stack_frame.condition_bit+1,dl  Vanish on-unit
+                             71  1-318  	ansa	sp|stack_frame.flag_word
+                             72  1-319  	eppbp	.mcptr
+                             73  1-320  	spribp	.vfl_arglist+2
+                             74  1-321  	fld	=1b24,dl
+                             75  1-322  	staq	.vfl_arglist
+                             76  1-323  	short_call  verify_lock$verify_lock_bad_dir(.vfl_arglist)
+                             77  1-324  	ldx0	.entryp
+                             78  1-325  	eppap	sp|stack_frame.arg_ptr,*
+                             79  1-326  	tra	0,0		retry the call
+                             80  1-327  
+                             81  1-328  	maclist	restore
+                             82  1-329  	eject
+                             83  1-330  	maclist	restore
+                             84  1-331  &end
+                                 1-332  
+                                 1-333  
+                                 1-334  " GATE_INFO - general info for non-hardcore gates
+                                 1-335  
+                                 1-336  macro	gate_info
+                              1  1-337  	maclist	on,save
+                              2  1-338  	use	transfer_vector
+                              3  1-339  	tra	.actor
+                              4  1-340  
+                              5  1-341  	use	tv_end
+                              6  1-342  	entrybound
+                              7  1-343  
+                              8  1-344  	use	main
+                              9  1-345  	join	/text/transfer_vector,tv_end,main
+                             10  1-346  
+                             11  1-347  	maclist	restore
+                             12  1-348  	eject
+                             13  1-349  
+                             14  1-350  .actor:	getlp
+                             15  1-351  	maclist	restore
+                             16  1-352  	gate_actor
+                             17  1-353  
+                             18  1-354  	maclist	restore
+                             19  1-355  	eject
+                             20  1-356  
+                             21  1-357  .setup:	push
+                             22  1-358  	getlp
+                             23  1-359  	maclist	restore
+                             24  1-360  	gcheck
+                             25  1-361  	tra	0,2
+                             26  1-362  
+                             27  1-363  	maclist	restore
+                             28  1-364  	eject
+                             29  1-365  
+                             30  1-366  	maclist	restore
+                             31  1-367  &end
+                                 1-368  
+                                 1-369  
+                                 1-370  " Macro to generate gate actor.
+                                 1-371  
+                                 1-372  macro	gate_actor
+                              1  1-373  	maclist	on,save
+                              2  1-374  	eppbp	ap|2,*
+                              3  1-375  	lda	bp|-1		get length of string
+                              4  1-376  	tze	.return_name	zero length => get name
+                              5  1-377  
+                              6  1-378  	adla	1,dl		include length of acc
+                              7  1-379  	stz	ap|4,*
+                              8  1-380  	tsx0	.search_defs
+                              9  1-381  
+                             10  1-382  	cmpc	(pr,rl),(pr,rl)	compare name
+                             11  1-383  	desc9a	bp|-1(3),al
+                             12  1-384  	desc9a	bb|0,al
+                             13  1-385  	tnz	.next_def
+                             14  1-386  
+                             15  1-387  	lda	ab|1,2		return location
+                             16  1-388  	arl	18
+                             17  1-389  	sta	ap|4,*
+                             18  1-390  
+                             19  1-391  	short_return
+                             20  1-392  
+                             21  1-393  .return_name:
+                             22  1-394  	lxl3	ap|4,*		get location
+                             23  1-395  	tsx0	.search_defs
+                             24  1-396  
+                             25  1-397  	cmpx3	ab|1,2		compare location
+                             26  1-398  	tnz	.next_def
+                             27  1-399  
+                             28  1-400  	lda	bb|0		get length of name
+                             29  1-401  	arl	27
+                             30  1-402  	sta	bp|-1		set length of varying string
+                             31  1-403  	mlr	(pr,rl),(pr,rl)	return string
+                             32  1-404  	desc9a	bb|0(1),al
+                             33  1-405  	desc9a	bp|0,al
+                             34  1-406  
+                             35  1-407  	short_return
+                             36  1-408  
+                             37  1-409  .search_defs:
+                             38  1-410  	eax2	0
+                             39  1-411  	eppab	lp|0,*		ab -> defs
+                             40  1-412  .defs_loop:
+                             41  1-413  	lxl1	ab|1,2		get class and flags
+                             42  1-414  	cmpx1	=o400000,du	must be class 0
+                             43  1-415  	tnz	.next_def
+                             44  1-416  
+                             45  1-417  	ldx7	ab|2,2
+                             46  1-418  	eppbb	ab|0,7		bb -> name
+                             47  1-419  	tra	0,0		test definition
+                             48  1-420  .next_def:
+                             49  1-421  	ldx2	ab|0,2		chain to next def
+                             50  1-422  	tnz	.defs_loop
+                             51  1-423  
+                             52  1-424  	short_return
+                             53  1-425  
+                             54  1-426  &end
+                                 1-427  
+                                 1-428  
+                                 1-429  " Miscellaneous macros.
+                                 1-430  
+                                 1-431  macro	gcheck
+                              1  1-432  	maclist	on,save
+                              2  1-433  	ldx1	-2,2		get number of args expected
+                              3  1-434  	tze	.no_gate_error	if zero, none or doesn't matter
+                              4  1-435  	cmpx1	ap|0		compare against number given
+                              5  1-436  	tze	.no_gate_error	args match, call procedure
+                              6  1-437  
+                              7  1-438  	call	signal_$signal_(signal_arglist)
+                              8  1-439  	oct	0
+                              9  1-440  
+                             10  1-441  	even
+                             11  1-442  signal_arglist:
+                             12  1-443  	zero	2,4
+                             13  1-444  	zero	2,0
+                             14  1-445  	arg	.gate_errorname
+                             15  1-446  	arg
+                             16  1-447  	arg	.gate_errordesc
+                             17  1-448  	arg
+                             18  1-449  
+                             19  1-450  	string	gate_error
+                             20  1-451  
+                             21  1-452  
+                             22  1-453  .no_gate_error:
+                             23  1-454  &end
+                                 1-455  
+                                 1-456  macro	string
+                              1  1-457  .&1name:
+                              2  1-458  	aci	"&1"
+                              3  1-459  .&1desc:
+                              4  1-460  	vfd	o9/525,o27/&l1
+                              5  1-461  
+                              6  1-462  &end
+                                 1-463  
+                                 1-464  macro	eject
+                              1  1-465  	maclist	on,save
+                              2  1-466  
+                              3  1-467  &end
+                                 1-468  
+                                 1-469  " END INCLUDE FILE ...... gate_macros.incl.alm
+                                 1-470  
+                                 1-471  "  To arrange the return it wants to return, it will have to reach back  2 frames.
+                                    18  
+                                    19  	gate_info	mdc_
+                                        	use	transfer_vector
+    000000  0a   000024 7100 00         	tra	.actor
+                                        
+                                        	use	tv_end
+                                        	entrybound
+                                        
+                                        	use	main
+                                        	join	/text/transfer_vector,tv_end,main
+                                        
+                                        
+                                        
+    000024  aa  7 00046 2721 20         .actor:	getlp
+    000025  aa  0 00002 3521 20         	eppbp	ap|2,*
+    000026  aa  2 77777 2351 00         	lda	bp|-1		get length of string
+    000027  0a   000043 6000 00         	tze	.return_name	zero length => get name
+                                        
+    000030  aa   000001 0350 07         	adla	1,dl		include length of acc
+    000031  aa  0 00004 4501 20         	stz	ap|4,*
+    000032  0a   000056 7000 00         	tsx0	.search_defs
+                                        
+    000033  aa  0 00140 1065 40         	cmpc	(pr,rl),(pr,rl)	compare name
+    000034  aa   277777 600005          	desc9a	bp|-1(3),al
+    000035  aa   300000 000005          	desc9a	bb|0,al
+    000036  0a   000066 6010 00         	tnz	.next_def
+                                        
+    000037  aa  1 00001 2351 12         	lda	ab|1,2		return location
+    000040  aa   000022 7710 00         	arl	18
+    000041  aa  0 00004 7551 20         	sta	ap|4,*
+                                        
+    000042  aa  7 00044 7101 20         	short_return
+                                        
+    000043                              .return_name:
+    000043  aa  0 00004 7231 20         	lxl3	ap|4,*		get location
+    000044  0a   000056 7000 00         	tsx0	.search_defs
+                                        
+    000045  aa  1 00001 1031 12         	cmpx3	ab|1,2		compare location
+    000046  0a   000066 6010 00         	tnz	.next_def
+                                        
+    000047  aa  3 00000 2351 00         	lda	bb|0		get length of name
+    000050  aa   000033 7710 00         	arl	27
+    000051  aa  2 77777 7551 00         	sta	bp|-1		set length of varying string
+    000052  aa  0 00140 1005 40         	mlr	(pr,rl),(pr,rl)	return string
+    000053  aa   300000 200005          	desc9a	bb|0(1),al
+    000054  aa   200000 000005          	desc9a	bp|0,al
+                                        
+    000055  aa  7 00044 7101 20         	short_return
+                                        
+    000056                              .search_defs:
+    000056  aa   000000 6220 00         	eax2	0
+    000057  aa  4 00000 3515 20         	eppab	lp|0,*		ab -> defs
+    000060                              .defs_loop:
+    000060  aa  1 00001 7211 12         	lxl1	ab|1,2		get class and flags
+    000061  aa   400000 1010 03         	cmpx1	=o400000,du	must be class 0
+    000062  0a   000066 6010 00         	tnz	.next_def
+                                        
+    000063  aa  1 00002 2271 12         	ldx7	ab|2,2
+    000064  aa  1 00000 3535 17         	eppbb	ab|0,7		bb -> name
+    000065  aa   000000 7100 10         	tra	0,0		test definition
+    000066                              .next_def:
+    000066  aa  1 00000 2221 12         	ldx2	ab|0,2		chain to next def
+    000067  0a   000060 6010 00         	tnz	.defs_loop
+                                        
+    000070  aa  7 00044 7101 20         	short_return
+                                        
+                                        
+                                        
+                                        
+    000071  aa   000060 6270 00         .setup:	push
+    000072  aa  7 00040 2721 20
+    000073  aa  7 00046 2721 20         	getlp
+    000074  aa   777776 2210 12         	ldx1	-2,2		get number of args expected
+    000075  0a   000122 6000 00         	tze	.no_gate_error	if zero, none or doesn't matter
+    000076  aa  0 00000 1011 00         	cmpx1	ap|0		compare against number given
+    000077  0a   000122 6000 00         	tze	.no_gate_error	args match, call procedure
+                                        
+    000100  aa  6 00000 2541 00         	call	signal_$signal_(signal_arglist)
+    000101  0a   000110 3500 00
+    000102  4a  4 00010 3521 20
+    000103  aa  6 00040 7531 00
+    000104  aa  7 00036 6701 20
+    000105  aa  6 00000 1731 00
+    000106  aa  6 00040 0731 00
+    000107  aa   000000 000000          	oct	0
+                                        
+                                        	even
+    000110                              signal_arglist:
+    000110  aa   000002 000004          	zero	2,4
+    000111  aa   000002 000000          	zero	2,0
+    000112  0a   000116 0000 00         	arg	.gate_errorname
+    000113  aa   000000 0000 00         	arg
+    000114  0a   000121 0000 00         	arg	.gate_errordesc
+    000115  aa   000000 0000 00         	arg
+                                        
+                                        	string	gate_error
+    000116                              .gate_errorname:
+    000116  aa  147 141 164 145         	aci	"gate_error"
+    000117  aa  137 145 162 162
+    000120  aa  157 162 000 000
+    000121                              .gate_errordesc:
+    000121  aa   525000 000010          	vfd	o9/525,o27/10
+                                        
+                                        
+                                        
+    000122                              .no_gate_error:
+    000122  aa   000000 7100 12         	tra	0,2
+                                        
+                                        
+                                        
+                                    20  
+                                    21  	gate	create_dir,mdc_create_,dir,8
+                        000001          	segdef	create_dir
+    000001                              create_dir:
+    000001  0a   000124 7100 00         	tra	create_dir.e
+    000123  aa   000020 000000          	zero	8*2,0
+    000124                              create_dir.e:
+    000124  0a   000071 7020 00         	tsx2	.setup
+    000125  aa   000000 6340 07         	ldi	=0,dl
+    000126  4a  4 00012 3521 20         	short_call mdc_create_$dir(ap|0)
+    000127  aa  7 00036 6701 20
+    000130  aa  6 00030 3701 20
+    000131  aa  7 00042 7101 20         	return
+                                        
+                                    22  	gate	create_dirx,mdc_create_,dirx,5
+                        000002          	segdef	create_dirx
+    000002                              create_dirx:
+    000002  0a   000133 7100 00         	tra	create_dirx.e
+    000132  aa   000012 000000          	zero	5*2,0
+    000133                              create_dirx.e:
+    000133  0a   000071 7020 00         	tsx2	.setup
+    000134  aa   000000 6340 07         	ldi	=0,dl
+    000135  4a  4 00014 3521 20         	short_call mdc_create_$dirx(ap|0)
+    000136  aa  7 00036 6701 20
+    000137  aa  6 00030 3701 20
+    000140  aa  7 00042 7101 20         	return
+                                        
+                                    23  	gate	create_dirx_acct,mdc_create_,dirx_acct,7
+                        000003          	segdef	create_dirx_acct
+    000003                              create_dirx_acct:
+    000003  0a   000142 7100 00         	tra	create_dirx_acct.e
+    000141  aa   000016 000000          	zero	7*2,0
+    000142                              create_dirx_acct.e:
+    000142  0a   000071 7020 00         	tsx2	.setup
+    000143  aa   000000 6340 07         	ldi	=0,dl
+    000144  4a  4 00016 3521 20         	short_call mdc_create_$dirx_acct(ap|0)
+    000145  aa  7 00036 6701 20
+    000146  aa  6 00030 3701 20
+    000147  aa  7 00042 7101 20         	return
+                                        
+                                    24  	gate	delete_dir,mdc_create_,delete,3
+                        000004          	segdef	delete_dir
+    000004                              delete_dir:
+    000004  0a   000151 7100 00         	tra	delete_dir.e
+    000150  aa   000006 000000          	zero	3*2,0
+    000151                              delete_dir.e:
+    000151  0a   000071 7020 00         	tsx2	.setup
+    000152  aa   000000 6340 07         	ldi	=0,dl
+    000153  4a  4 00020 3521 20         	short_call mdc_create_$delete(ap|0)
+    000154  aa  7 00036 6701 20
+    000155  aa  6 00030 3701 20
+    000156  aa  7 00042 7101 20         	return
+                                        
+                                    25  	gate	set_mdir_account,mdc_set_,mdir_account,4
+                        000005          	segdef	set_mdir_account
+    000005                              set_mdir_account:
+    000005  0a   000160 7100 00         	tra	set_mdir_account.e
+    000157  aa   000010 000000          	zero	4*2,0
+    000160                              set_mdir_account.e:
+    000160  0a   000071 7020 00         	tsx2	.setup
+    000161  aa   000000 6340 07         	ldi	=0,dl
+    000162  4a  4 00022 3521 20         	short_call mdc_set_$mdir_account(ap|0)
+    000163  aa  7 00036 6701 20
+    000164  aa  6 00030 3701 20
+    000165  aa  7 00042 7101 20         	return
+                                        
+                                    26  	gate	set_mdir_owner,mdc_set_,mdir_owner,4
+                        000006          	segdef	set_mdir_owner
+    000006                              set_mdir_owner:
+    000006  0a   000167 7100 00         	tra	set_mdir_owner.e
+    000166  aa   000010 000000          	zero	4*2,0
+    000167                              set_mdir_owner.e:
+    000167  0a   000071 7020 00         	tsx2	.setup
+    000170  aa   000000 6340 07         	ldi	=0,dl
+    000171  4a  4 00024 3521 20         	short_call mdc_set_$mdir_owner(ap|0)
+    000172  aa  7 00036 6701 20
+    000173  aa  6 00030 3701 20
+    000174  aa  7 00042 7101 20         	return
+                                        
+                                    27  	gate	set_mdir_quota,mdc_set_,mdir_quota,5
+                        000007          	segdef	set_mdir_quota
+    000007                              set_mdir_quota:
+    000007  0a   000176 7100 00         	tra	set_mdir_quota.e
+    000175  aa   000012 000000          	zero	5*2,0
+    000176                              set_mdir_quota.e:
+    000176  0a   000071 7020 00         	tsx2	.setup
+    000177  aa   000000 6340 07         	ldi	=0,dl
+    000200  4a  4 00026 3521 20         	short_call mdc_set_$mdir_quota(ap|0)
+    000201  aa  7 00036 6701 20
+    000202  aa  6 00030 3701 20
+    000203  aa  7 00042 7101 20         	return
+                                        
+                                    28  	gate	set_volume_quota,mdc_set_,volume_quota,5
+                        000010          	segdef	set_volume_quota
+    000010                              set_volume_quota:
+    000010  0a   000205 7100 00         	tra	set_volume_quota.e
+    000204  aa   000012 000000          	zero	5*2,0
+    000205                              set_volume_quota.e:
+    000205  0a   000071 7020 00         	tsx2	.setup
+    000206  aa   000000 6340 07         	ldi	=0,dl
+    000207  4a  4 00030 3521 20         	short_call mdc_set_$volume_quota(ap|0)
+    000210  aa  7 00036 6701 20
+    000211  aa  6 00030 3701 20
+    000212  aa  7 00042 7101 20         	return
+                                        
+                                    29  	gate	delete_volume_quota,mdc_set_,delete_volume_quota,3
+                        000011          	segdef	delete_volume_quota
+    000011                              delete_volume_quota:
+    000011  0a   000214 7100 00         	tra	delete_volume_quota.e
+    000213  aa   000006 000000          	zero	3*2,0
+    000214                              delete_volume_quota.e:
+    000214  0a   000071 7020 00         	tsx2	.setup
+    000215  aa   000000 6340 07         	ldi	=0,dl
+    000216  4a  4 00032 3521 20         	short_call mdc_set_$delete_volume_quota(ap|0)
+    000217  aa  7 00036 6701 20
+    000220  aa  6 00030 3701 20
+    000221  aa  7 00042 7101 20         	return
+                                        
+                                    30  	gate	read_disk_table,mdx,read_disk_table,2
+                        000012          	segdef	read_disk_table
+    000012                              read_disk_table:
+    000012  0a   000223 7100 00         	tra	read_disk_table.e
+    000222  aa   000004 000000          	zero	2*2,0
+    000223                              read_disk_table.e:
+    000223  0a   000071 7020 00         	tsx2	.setup
+    000224  aa   000000 6340 07         	ldi	=0,dl
+    000225  4a  4 00034 3521 20         	short_call mdx$read_disk_table(ap|0)
+    000226  aa  7 00036 6701 20
+    000227  aa  6 00030 3701 20
+    000230  aa  7 00042 7101 20         	return
+                                        
+                                    31  	gate	find_volname,volume_registration_mgr_,find_volname,4
+                        000013          	segdef	find_volname
+    000013                              find_volname:
+    000013  0a   000232 7100 00         	tra	find_volname.e
+    000231  aa   000010 000000          	zero	4*2,0
+    000232                              find_volname.e:
+    000232  0a   000071 7020 00         	tsx2	.setup
+    000233  aa   000000 6340 07         	ldi	=0,dl
+    000234  4a  4 00036 3521 20         	short_call volume_registration_mgr_$find_volname(ap|0)
+    000235  aa  7 00036 6701 20
+    000236  aa  6 00030 3701 20
+    000237  aa  7 00042 7101 20         	return
+                                        
+                                    32  	gate	find_lvname,volume_registration_mgr_,find_lvname,3
+                        000014          	segdef	find_lvname
+    000014                              find_lvname:
+    000014  0a   000241 7100 00         	tra	find_lvname.e
+    000240  aa   000006 000000          	zero	3*2,0
+    000241                              find_lvname.e:
+    000241  0a   000071 7020 00         	tsx2	.setup
+    000242  aa   000000 6340 07         	ldi	=0,dl
+    000243  4a  4 00040 3521 20         	short_call volume_registration_mgr_$find_lvname(ap|0)
+    000244  aa  7 00036 6701 20
+    000245  aa  6 00030 3701 20
+    000246  aa  7 00042 7101 20         	return
+                                        
+                                    33  	gate	find_lvid,volume_registration_mgr_,find_lvid,3
+                        000015          	segdef	find_lvid
+    000015                              find_lvid:
+    000015  0a   000250 7100 00         	tra	find_lvid.e
+    000247  aa   000006 000000          	zero	3*2,0
+    000250                              find_lvid.e:
+    000250  0a   000071 7020 00         	tsx2	.setup
+    000251  aa   000000 6340 07         	ldi	=0,dl
+    000252  4a  4 00042 3521 20         	short_call volume_registration_mgr_$find_lvid(ap|0)
+    000253  aa  7 00036 6701 20
+    000254  aa  6 00030 3701 20
+    000255  aa  7 00042 7101 20         	return
+                                        
+                                    34  	gate	check_mounted,mdx,check_lv,2
+                        000016          	segdef	check_mounted
+    000016                              check_mounted:
+    000016  0a   000257 7100 00         	tra	check_mounted.e
+    000256  aa   000004 000000          	zero	2*2,0
+    000257                              check_mounted.e:
+    000257  0a   000071 7020 00         	tsx2	.setup
+    000260  aa   000000 6340 07         	ldi	=0,dl
+    000261  4a  4 00044 3521 20         	short_call mdx$check_lv(ap|0)
+    000262  aa  7 00036 6701 20
+    000263  aa  6 00030 3701 20
+    000264  aa  7 00042 7101 20         	return
+                                        
+                                    35  	gate	get_lv_access,volume_registration_mgr_,get_access,5
+                        000017          	segdef	get_lv_access
+    000017                              get_lv_access:
+    000017  0a   000266 7100 00         	tra	get_lv_access.e
+    000265  aa   000012 000000          	zero	5*2,0
+    000266                              get_lv_access.e:
+    000266  0a   000071 7020 00         	tsx2	.setup
+    000267  aa   000000 6340 07         	ldi	=0,dl
+    000270  4a  4 00046 3521 20         	short_call volume_registration_mgr_$get_access(ap|0)
+    000271  aa  7 00036 6701 20
+    000272  aa  6 00030 3701 20
+    000273  aa  7 00042 7101 20         	return
+                                        
+                                    36  	gate	set_account_restrict_path,mdc_set_path_,account_restrict,6
+                        000020          	segdef	set_account_restrict_path
+    000020                              set_account_restrict_path:
+    000020  0a   000275 7100 00         	tra	set_account_restrict_path.e
+    000274  aa   000014 000000          	zero	6*2,0
+    000275                              set_account_restrict_path.e:
+    000275  0a   000071 7020 00         	tsx2	.setup
+    000276  aa   000000 6340 07         	ldi	=0,dl
+    000277  4a  4 00050 3521 20         	short_call mdc_set_path_$account_restrict(ap|0)
+    000300  aa  7 00036 6701 20
+    000301  aa  6 00030 3701 20
+    000302  aa  7 00042 7101 20         	return
+                                        
+                                    37  	gate	status,mdc_status_,list,4
+                        000021          	segdef	status
+    000021                              status:
+    000021  0a   000304 7100 00         	tra	status.e
+    000303  aa   000010 000000          	zero	4*2,0
+    000304                              status.e:
+    000304  0a   000071 7020 00         	tsx2	.setup
+    000305  aa   000000 6340 07         	ldi	=0,dl
+    000306  4a  4 00052 3521 20         	short_call mdc_status_$list(ap|0)
+    000307  aa  7 00036 6701 20
+    000310  aa  6 00030 3701 20
+    000311  aa  7 00042 7101 20         	return
+                                        
+                                    38  	gate	lvname_info,volume_registration_mgr_,lvname_info,4
+                        000022          	segdef	lvname_info
+    000022                              lvname_info:
+    000022  0a   000313 7100 00         	tra	lvname_info.e
+    000312  aa   000010 000000          	zero	4*2,0
+    000313                              lvname_info.e:
+    000313  0a   000071 7020 00         	tsx2	.setup
+    000314  aa   000000 6340 07         	ldi	=0,dl
+    000315  4a  4 00054 3521 20         	short_call volume_registration_mgr_$lvname_info(ap|0)
+    000316  aa  7 00036 6701 20
+    000317  aa  6 00030 3701 20
+    000320  aa  7 00042 7101 20         	return
+                                        
+                                    39  	gate	pvname_info,volume_registration_mgr_,pvname_info,6
+                        000023          	segdef	pvname_info
+    000023                              pvname_info:
+    000023  0a   000322 7100 00         	tra	pvname_info.e
+    000321  aa   000014 000000          	zero	6*2,0
+    000322                              pvname_info.e:
+    000322  0a   000071 7020 00         	tsx2	.setup
+    000323  aa   000000 6340 07         	ldi	=0,dl
+    000324  4a  4 00056 3521 20         	short_call volume_registration_mgr_$pvname_info(ap|0)
+    000325  aa  7 00036 6701 20
+    000326  aa  6 00030 3701 20
+    000327  aa  7 00042 7101 20         	return
+                                        
+                                    40  
+                                    41  
+                                    42  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000330  5a   000003 000000 
+    000331  5a   000222 600000 
+    000332  aa   000000 000000 
+    000333  55   000010 000002 
+    000334  5a   000002 400003 
+    000335  55   000006 000010 
+    000336  aa  004 155 144 143
+    000337  aa  137 000 000 000
+    000340  55   000016 000003 
+    000341  0a   000023 400000 
+    000342  55   000013 000003 
+    000343  aa  013 160 166 156         pvname_info
+    000344  aa  141 155 145 137
+    000345  aa  151 156 146 157
+    000346  55   000024 000010 
+    000347  0a   000022 400000 
+    000350  55   000021 000003 
+    000351  aa  013 154 166 156         lvname_info
+    000352  aa  141 155 145 137
+    000353  aa  151 156 146 157
+    000354  55   000031 000016 
+    000355  0a   000021 400000 
+    000356  55   000027 000003 
+    000357  aa  006 163 164 141         status
+    000360  aa  164 165 163 000
+    000361  55   000043 000024 
+    000362  0a   000020 400000 
+    000363  55   000034 000003 
+    000364  aa  031 163 145 164         set_account_restrict_path
+    000365  aa  137 141 143 143
+    000366  aa  157 165 156 164
+    000367  aa  137 162 145 163
+    000370  aa  164 162 151 143
+    000371  aa  164 137 160 141
+    000372  aa  164 150 000 000
+    000373  55   000052 000031 
+    000374  0a   000017 400000 
+    000375  55   000046 000003 
+    000376  aa  015 147 145 164         get_lv_access
+    000377  aa  137 154 166 137
+    000400  aa  141 143 143 145
+    000401  aa  163 163 000 000
+    000402  55   000061 000043 
+    000403  0a   000016 400000 
+    000404  55   000055 000003 
+    000405  aa  015 143 150 145         check_mounted
+    000406  aa  143 153 137 155
+    000407  aa  157 165 156 164
+    000410  aa  145 144 000 000
+    000411  55   000067 000052 
+    000412  0a   000015 400000 
+    000413  55   000064 000003 
+    000414  aa  011 146 151 156         find_lvid
+    000415  aa  144 137 154 166
+    000416  aa  151 144 000 000
+    000417  55   000075 000061 
+    000420  0a   000014 400000 
+    000421  55   000072 000003 
+    000422  aa  013 146 151 156         find_lvname
+    000423  aa  144 137 154 166
+    000424  aa  156 141 155 145
+    000425  55   000104 000067 
+    000426  0a   000013 400000 
+    000427  55   000100 000003 
+    000430  aa  014 146 151 156         find_volname
+    000431  aa  144 137 166 157
+    000432  aa  154 156 141 155
+    000433  aa  145 000 000 000
+    000434  55   000113 000075 
+    000435  0a   000012 400000 
+    000436  55   000107 000003 
+    000437  aa  017 162 145 141         read_disk_table
+    000440  aa  144 137 144 151
+    000441  aa  163 153 137 164
+    000442  aa  141 142 154 145
+    000443  55   000123 000104 
+    000444  0a   000011 400000 
+    000445  55   000116 000003 
+    000446  aa  023 144 145 154         delete_volume_quota
+    000447  aa  145 164 145 137
+    000450  aa  166 157 154 165
+    000451  aa  155 145 137 161
+    000452  aa  165 157 164 141
+    000453  55   000133 000113 
+    000454  0a   000010 400000 
+    000455  55   000126 000003 
+    000456  aa  020 163 145 164         set_volume_quota
+    000457  aa  137 166 157 154
+    000460  aa  165 155 145 137
+    000461  aa  161 165 157 164
+    000462  aa  141 000 000 000
+    000463  55   000142 000123 
+    000464  0a   000007 400000 
+    000465  55   000136 000003 
+    000466  aa  016 163 145 164         set_mdir_quota
+    000467  aa  137 155 144 151
+    000470  aa  162 137 161 165
+    000471  aa  157 164 141 000
+    000472  55   000151 000133 
+    000473  0a   000006 400000 
+    000474  55   000145 000003 
+    000475  aa  016 163 145 164         set_mdir_owner
+    000476  aa  137 155 144 151
+    000477  aa  162 137 157 167
+    000500  aa  156 145 162 000
+    000501  55   000161 000142 
+    000502  0a   000005 400000 
+    000503  55   000154 000003 
+    000504  aa  020 163 145 164         set_mdir_account
+    000505  aa  137 155 144 151
+    000506  aa  162 137 141 143
+    000507  aa  143 157 165 156
+    000510  aa  164 000 000 000
+    000511  55   000167 000151 
+    000512  0a   000004 400000 
+    000513  55   000164 000003 
+    000514  aa  012 144 145 154         delete_dir
+    000515  aa  145 164 145 137
+    000516  aa  144 151 162 000
+    000517  55   000177 000161 
+    000520  0a   000003 400000 
+    000521  55   000172 000003 
+    000522  aa  020 143 162 145         create_dirx_acct
+    000523  aa  141 164 145 137
+    000524  aa  144 151 162 170
+    000525  aa  137 141 143 143
+    000526  aa  164 000 000 000
+    000527  55   000205 000167 
+    000530  0a   000002 400000 
+    000531  55   000202 000003 
+    000532  aa  013 143 162 145         create_dirx
+    000533  aa  141 164 145 137
+    000534  aa  144 151 162 170
+    000535  55   000213 000177 
+    000536  0a   000001 400000 
+    000537  55   000210 000003 
+    000540  aa  012 143 162 145         create_dir
+    000541  aa  141 164 145 137
+    000542  aa  144 151 162 000
+    000543  55   000002 000205 
+    000544  6a   000000 400002 
+    000545  55   000216 000003 
+    000546  aa  014 163 171 155         symbol_table
+    000547  aa  142 157 154 137
+    000550  aa  164 141 142 154
+    000551  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000552  aa   000000 000033 
+    000553  aa   000000 000000 
+    000554  aa   000000 000000 
+    000555  5a   000052 000000 
+    000556  aa   000000 000000 
+    000557  aa   000000 000000 
+    000560  aa   000000 000000 
+    000561  5a   000123 000000 
+    000562  5a   000113 000000 
+    000563  5a   000016 000000 
+    000564  5a   000024 000000 
+    000565  5a   000133 000000 
+    000566  5a   000142 000000 
+    000567  5a   000010 000000 
+    000570  5a   000151 000000 
+    000571  5a   000075 000000 
+    000572  5a   000067 000000 
+    000573  5a   000104 000000 
+    000574  5a   000061 000000 
+    000575  5a   000161 000000 
+    000576  5a   000167 000000 
+    000577  5a   000213 000000 
+    000600  5a   000177 000000 
+    000601  5a   000205 000000 
+    000602  aa   000000 000000 
+    000603  5a   000031 000000 
+    000604  5a   000043 000000 
+    000605  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000606  aa  004 154 151 163         list
+    000607  aa  164 000 000 000
+    000610  aa  013 155 144 143         mdc_status_
+    000611  aa  137 163 164 141
+    000612  aa  164 165 163 137
+    000613  aa  020 141 143 143         account_restrict
+    000614  aa  157 165 156 164
+    000615  aa  137 162 145 163
+    000616  aa  164 162 151 143
+    000617  aa  164 000 000 000
+    000620  aa  015 155 144 143         mdc_set_path_
+    000621  aa  137 163 145 164
+    000622  aa  137 160 141 164
+    000623  aa  150 137 000 000
+    000624  aa  012 147 145 164         get_access
+    000625  aa  137 141 143 143
+    000626  aa  145 163 163 000
+    000627  aa  010 143 150 145         check_lv
+    000630  aa  143 153 137 154
+    000631  aa  166 000 000 000
+    000632  aa  030 166 157 154         volume_registration_mgr_
+    000633  aa  165 155 145 137
+    000634  aa  162 145 147 151
+    000635  aa  163 164 162 141
+    000636  aa  164 151 157 156
+    000637  aa  137 155 147 162
+    000640  aa  137 000 000 000
+    000641  aa  003 155 144 170         mdx
+    000642  aa  014 166 157 154         volume_quota
+    000643  aa  165 155 145 137
+    000644  aa  161 165 157 164
+    000645  aa  141 000 000 000
+    000646  aa  012 155 144 151         mdir_quota
+    000647  aa  162 137 161 165
+    000650  aa  157 164 141 000
+    000651  aa  012 155 144 151         mdir_owner
+    000652  aa  162 137 157 167
+    000653  aa  156 145 162 000
+    000654  aa  014 155 144 151         mdir_account
+    000655  aa  162 137 141 143
+    000656  aa  143 157 165 156
+    000657  aa  164 000 000 000
+    000660  aa  010 155 144 143         mdc_set_
+    000661  aa  137 163 145 164
+    000662  aa  137 000 000 000
+    000663  aa  006 144 145 154         delete
+    000664  aa  145 164 145 000
+    000665  aa  011 144 151 162         dirx_acct
+    000666  aa  170 137 141 143
+    000667  aa  143 164 000 000
+    000670  aa  004 144 151 162         dirx
+    000671  aa  170 000 000 000
+    000672  aa  003 144 151 162         dir
+    000673  aa  013 155 144 143         mdc_create_
+    000674  aa  137 143 162 145
+    000675  aa  141 164 145 137
+    000676  aa  007 163 151 147         signal_
+    000677  aa  156 141 154 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000700  aa   000004 000000 
+    000701  55   000302 000013 
+    000702  aa   000004 000000 
+    000703  55   000302 000021 
+    000704  aa   000004 000000 
+    000705  55   000260 000256 
+    000706  aa   000004 000000 
+    000707  55   000270 000263 
+    000710  aa   000004 000000 
+    000711  55   000302 000274 
+    000712  aa   000004 000000 
+    000713  55   000311 000277 
+    000714  aa   000004 000000 
+    000715  55   000302 000064 
+    000716  aa   000004 000000 
+    000717  55   000302 000072 
+    000720  aa   000004 000000 
+    000721  55   000302 000100 
+    000722  aa   000004 000000 
+    000723  55   000311 000107 
+    000724  aa   000004 000000 
+    000725  55   000330 000116 
+    000726  aa   000004 000000 
+    000727  55   000330 000312 
+    000730  aa   000004 000000 
+    000731  55   000330 000316 
+    000732  aa   000004 000000 
+    000733  55   000330 000321 
+    000734  aa   000004 000000 
+    000735  55   000330 000324 
+    000736  aa   000004 000000 
+    000737  55   000343 000333 
+    000740  aa   000004 000000 
+    000741  55   000343 000335 
+    000742  aa   000004 000000 
+    000743  55   000343 000340 
+    000744  aa   000004 000000 
+    000745  55   000343 000342 
+    000746  aa   000004 000000 
+    000747  55   000346 000346 
+    000750  aa   000001 000000 
+    000751  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000752  5a   000350 000000 
+    000753  5a   000352 000000 
+    000754  5a   000354 000000 
+    000755  5a   000356 000000 
+    000756  5a   000360 000000 
+    000757  5a   000362 000000 
+    000760  5a   000364 000000 
+    000761  5a   000366 000000 
+    000762  5a   000370 000000 
+    000763  5a   000372 000000 
+    000764  5a   000374 000000 
+    000765  5a   000376 000000 
+    000766  5a   000400 000000 
+    000767  5a   000402 000000 
+    000770  5a   000404 000000 
+    000771  5a   000406 000000 
+    000772  5a   000410 000000 
+    000773  5a   000412 000000 
+    000774  5a   000414 000000 
+    000775  5a   000416 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000330 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000060 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         signal_|signal_
+    000011  5a   000445 0000 00
+    000012  9a   777766 0000 46         mdc_create_|dir
+    000013  5a   000444 0000 00
+    000014  9a   777764 0000 46         mdc_create_|dirx
+    000015  5a   000443 0000 00
+    000016  9a   777762 0000 46         mdc_create_|dirx_acct
+    000017  5a   000442 0000 00
+    000020  9a   777760 0000 46         mdc_create_|delete
+    000021  5a   000441 0000 00
+    000022  9a   777756 0000 46         mdc_set_|mdir_account
+    000023  5a   000440 0000 00
+    000024  9a   777754 0000 46         mdc_set_|mdir_owner
+    000025  5a   000437 0000 00
+    000026  9a   777752 0000 46         mdc_set_|mdir_quota
+    000027  5a   000436 0000 00
+    000030  9a   777750 0000 46         mdc_set_|volume_quota
+    000031  5a   000435 0000 00
+    000032  9a   777746 0000 46         mdc_set_|delete_volume_quota
+    000033  5a   000434 0000 00
+    000034  9a   777744 0000 46         mdx|read_disk_table
+    000035  5a   000433 0000 00
+    000036  9a   777742 0000 46         volume_registration_mgr_|find_volname
+    000037  5a   000432 0000 00
+    000040  9a   777740 0000 46         volume_registration_mgr_|find_lvname
+    000041  5a   000431 0000 00
+    000042  9a   777736 0000 46         volume_registration_mgr_|find_lvid
+    000043  5a   000430 0000 00
+    000044  9a   777734 0000 46         mdx|check_lv
+    000045  5a   000427 0000 00
+    000046  9a   777732 0000 46         volume_registration_mgr_|get_access
+    000047  5a   000426 0000 00
+    000050  9a   777730 0000 46         mdc_set_path_|account_restrict
+    000051  5a   000425 0000 00
+    000052  9a   777726 0000 46         mdc_status_|list
+    000053  5a   000424 0000 00
+    000054  9a   777724 0000 46         volume_registration_mgr_|lvname_info
+    000055  5a   000423 0000 00
+    000056  9a   777722 0000 46         volume_registration_mgr_|pvname_info
+    000057  5a   000422 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   241402 040204 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000235 
+    000020  aa   000000 000116 
+    000021  aa   000156 000144 
+    000022  aa   000226 000116 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000033 
+    000067  aa   175453 030026 
+    000070  aa   000000 117547 
+    000071  aa   225731 400000 
+    000072  aa   000105 000041 
+    000073  aa   134571 651553 
+    000074  aa   000000 113462 
+    000075  aa   317506 600000 
+    000076  aa   076163 160145          >spec>install>1115>mdc_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061065 076155 
+    000103  aa   144143 137056 
+    000104  aa   141154 155040 
+    000105  aa   076154 144144          >ldd>include>gate_macros.incl.alm
+    000106  aa   076151 156143 
+    000107  aa   154165 144145 
+    000110  aa   076147 141164 
+    000111  aa   145137 155141 
+    000112  aa   143162 157163 
+    000113  aa   056151 156143 
+    000114  aa   154056 141154 
+    000115  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          24    .actor                   mdc_:          19.
+          60    .defs_loop               mdc_:          19.
+         121    .gate_errordesc          mdc_:          19.
+         116    .gate_errorname          mdc_:          19.
+          66    .next_def                mdc_:          19.
+         122    .no_gate_error           mdc_:          19.
+          43    .return_name             mdc_:          19.
+          56    .search_defs             mdc_:          19.
+          71    .setup                   mdc_:          19,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30,   31,
+                                                        32,   33,   34,   35,   36,   37,   38,   39.
+                account_restrict         mdc_:          36.
+                check_lv                 mdc_:          34.
+          16    check_mounted            mdc_:          34.
+         257    check_mounted.e          mdc_:          34.
+           1    create_dir               mdc_:          21.
+         124    create_dir.e             mdc_:          21.
+           2    create_dirx              mdc_:          22.
+         133    create_dirx.e            mdc_:          22.
+           3    create_dirx_acct         mdc_:          23.
+         142    create_dirx_acct.e       mdc_:          23.
+                delete                   mdc_:          24.
+           4    delete_dir               mdc_:          24.
+         151    delete_dir.e             mdc_:          24.
+          11    delete_volume_quota      mdc_:          29.
+         214    delete_volume_quota.e    mdc_:          29.
+                dir                      mdc_:          21.
+                dirx                     mdc_:          22.
+                dirx_acct                mdc_:          23.
+          15    find_lvid                mdc_:          33.
+         250    find_lvid.e              mdc_:          33.
+          14    find_lvname              mdc_:          32.
+         241    find_lvname.e            mdc_:          32.
+          13    find_volname             mdc_:          31.
+         232    find_volname.e           mdc_:          31.
+                get_access               mdc_:          35.
+          17    get_lv_access            mdc_:          35.
+         266    get_lv_access.e          mdc_:          35.
+                list                     mdc_:          37.
+          22    lvname_info              mdc_:          38.
+         313    lvname_info.e            mdc_:          38.
+          24    main                     mdc_:          19,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30,   31,
+                                                        32,   33,   34,   35,   36,   37,   38,   39.
+                mdc_create_              mdc_:          21,   22,   23,   24.
+                mdc_set_                 mdc_:          25,   26,   27,   28,   29.
+                mdc_set_path_            mdc_:          36.
+                mdc_status_              mdc_:          37.
+                mdir_account             mdc_:          25.
+                mdir_owner               mdc_:          26.
+                mdir_quota               mdc_:          27.
+                mdx                      mdc_:          30,   34.
+          23    pvname_info              mdc_:          39.
+         322    pvname_info.e            mdc_:          39.
+          12    read_disk_table          mdc_:          30.
+         223    read_disk_table.e        mdc_:          30.
+          20    set_account_restrict_path      mdc_:          36.
+         275    set_account_restrict_path.e    mdc_:          36.
+           5    set_mdir_account         mdc_:          25.
+         160    set_mdir_account.e       mdc_:          25.
+           6    set_mdir_owner           mdc_:          26.
+         167    set_mdir_owner.e         mdc_:          26.
+           7    set_mdir_quota           mdc_:          27.
+         176    set_mdir_quota.e         mdc_:          27.
+          10    set_volume_quota         mdc_:          28.
+         205    set_volume_quota.e       mdc_:          28.
+                signal_                  mdc_:          19.
+         110    signal_arglist           mdc_:          19.
+          21    status                   mdc_:          37.
+         304    status.e                 mdc_:          37.
+           0    transfer_vector          mdc_:          19,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30,   31,
+                                                        32,   33,   34,   35,   36,   37,   38,   39.
+          24    tv_end                   mdc_:          19.
+                volume_quota             mdc_:          28.
+                volume_registration_mgr_       mdc_:          31,   32,   33,   35,   38,   39.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

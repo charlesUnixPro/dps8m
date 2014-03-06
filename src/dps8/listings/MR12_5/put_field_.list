@@ -1,0 +1,1777 @@
+ASSEMBLY LISTING OF SEGMENT >udd>sm>ds>w>ml>put_field_.alm                                                                                                                                          
+ASSEMBLED ON:	04/18/00  1113.8 mdt Tue
+OPTIONS USED:	list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1102.3 mdt Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  
+                                    13  
+                                    14  " HISTORY COMMENTS:
+                                    15  "  1) change(88-04-06,Huen), approve(88-04-06,MCR7871),
+                                    16  "     audit(88-04-19,RWaters), install(88-04-26,MR12.2-1043):
+                                    17  "     Fix PL/1 bug  2140 and 2152.
+                                    18  "                                                      END HISTORY COMMENTS
+                                    19  
+                                    20  
+                                    21  "
+                                    22  "	Operators for QUICK STREAM I/O
+                                    23  "
+                                    24  "	Modified:	03/01/78 by RAB to fix 1712
+                                    25  "	Modified:	04/04/78 by RAB to fix 1721
+                                    26  "	Modified: 02/16/84 by MBW to fix probe 13 / TR14172 
+                                    27  "	Modified: 04/06/88 by SH to fix 2140 and 2152
+                                    28  "
+                                    29  "
+                                    30  " Written during 1975 by R.Schoeman to reimplement pl1 stream output in the
+                                    31  " operators to improve performance.
+                                    32  "
+    000000                          33  	name	put_field_
+                                    34  	include	stack_header
+                                   1-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   1-2  "
+                                   1-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   1-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   1-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   1-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   1-7  
+                                   1-8  " HISTORY COMMENTS:
+                                   1-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  1-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  1-11  "     added the heap_header_ptr definition
+                                  1-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  1-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  1-14  "     Modified to support control point management.  These changes were
+                                  1-15  "     actually made in February 1985 by G. Palter.
+                                  1-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  1-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  1-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  1-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  1-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  1-21  "     cpm_data_ptr (ITS pair).
+                                  1-22  "                                                      END HISTORY COMMENTS
+                                  1-23  
+                        000004    1-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    1-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  1-26  
+                        000010    1-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    1-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    1-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    1-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    1-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    1-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    1-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    1-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  1-35  
+                        000020    1-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    1-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    1-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    1-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  1-40  
+                        000030    1-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    1-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    1-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    1-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  1-45  
+                        000040    1-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    1-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    1-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    1-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  1-50  
+                        000050    1-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    1-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    1-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    1-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  1-55  
+                        000060    1-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    1-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    1-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    1-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    1-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    1-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    1-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    1-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    1-64  	equ	stack_header_end,64			length of stack header
+                                  1-65  
+                                  1-66  
+                                  1-67  
+                                  1-68  
+                        000000    1-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    1-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  1-71  
+                                  1-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  1-73  "	It  references a  transfer vector table.
+                                  1-74  
+                        000551    1-75  	bool	tv_offset,551
+                                  1-76  
+                                  1-77  
+                                  1-78  "	The  following constants are offsets within this transfer vector table.
+                                  1-79  
+                        001170    1-80  	equ	call_offset,tv_offset+271
+                        001171    1-81  	equ	push_offset,tv_offset+272
+                        001172    1-82  	equ	return_offset,tv_offset+273
+                        001173    1-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    1-84  	equ	entry_offset,tv_offset+275
+                                  1-85  
+                                  1-86  
+                                  1-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                    35  	include	plio2_fsb
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE plio2_fsb.incl.alm
+                                   2-4  
+                                   2-5  	"Created 06/27/77  1703.1 edt Mon by convert_include_file,
+                                   2-6  	"   Version of 03/21/77  1355.7 edt Mon.
+                                   2-7  
+                                   2-8  	"Made from >exl>include>plio2_fsb.incl.pl1,
+                                   2-9  	"   modified 05/19/77  1743.9 edt Thu
+                                  2-10  
+                                  2-11  "
+                                  2-12  "	Structure fsb
+                                  2-13  "
+                        000442    2-14  	equ	fsb_size,290
+                                  2-15  
+                                  2-16  
+                        000000    2-17  	equ	fsb.switch,0		"LEVEL 2
+                                  2-18  
+                        400000    2-19  	bool	fsb.zot,400000		"DU
+                        100000    2-20  	bool	fsb.version_2,100000	"DU
+                        040000    2-21  	bool	fsb.open,040000		"DU
+                        020000    2-22  	bool	fsb.print,020000		"DU
+                        010000    2-23  	bool	fsb.input,010000		"DU
+                        004000    2-24  	bool	fsb.output,004000		"DU
+                        002000    2-25  	bool	fsb.update,002000		"DU
+                        001000    2-26  	bool	fsb.stream,001000		"DU
+                        000400    2-27  	bool	fsb.notkeyed,000400		"DU
+                        000200    2-28  	bool	fsb.record,000200		"DU
+                        000100    2-29  	bool	fsb.sequential,000100	"DU
+                        000040    2-30  	bool	fsb.direct,000040		"DU
+                        000020    2-31  	bool	fsb.interactive,000020	"DU
+                        000010    2-32  	bool	fsb.not_used_1,000010	"DU
+                        000004    2-33  	bool	fsb.not_used_2,000004	"DU
+                        000002    2-34  	bool	fsb.stringvalue,000002	"DU
+                        000001    2-35  	bool	fsb.keyed,000001		"DU
+                        400000    2-36  	bool	fsb.namelist,400000		"DL
+                        200000    2-37  	bool	fsb.implementation,200000	"DL
+                        100000    2-38  	bool	fsb.not_used_4,100000	"DL
+                        040000    2-39  	bool	fsb.transmit_error,040000	"DL
+                        020000    2-40  	bool	fsb.buffer_in_use,020000	"DL
+                        010000    2-41  	bool	fsb.copy,010000		"DL
+                        004000    2-42  	bool	fsb.detach,004000		"DL
+                        002000    2-43  	bool	fsb.te_hold,002000		"DL
+                        001000    2-44  	bool	fsb.not_used_5,001000	"DL
+                        000400    2-45  	bool	fsb.internal,000400		"DL
+                        000200    2-46  	bool	fsb.threaded,000200		"DL
+                        000100    2-47  	bool	fsb.fsb_in_use,000100	"DL
+                        000040    2-48  	bool	fsb.console,000040		"DL
+                        000020    2-49  	bool	fsb.emptyline,000020	"DL
+                        000010    2-50  	bool	fsb.iox_close,000010	"DL
+                        000004    2-51  	bool	fsb.xxx4,000004		"DL
+                        000002    2-52  	bool	fsb.xxx5,000002		"DL
+                        000001    2-53  	bool	fsb.xxx6,000001		"DL
+                                  2-54  
+                        000001    2-55  	equ	fsb.nono,1		"LEVEL 2
+                                  2-56  
+                        400000    2-57  	bool	fsb.bit_string,400000	"DU
+                        200000    2-58  	bool	fsb.not_used_3,200000	"DU
+                        100000    2-59  	bool	fsb.read,100000		"DU
+                        040000    2-60  	bool	fsb.write,040000		"DU
+                        020000    2-61  	bool	fsb.rewrite,020000		"DU
+                        010000    2-62  	bool	fsb.delete,010000		"DU
+                        004000    2-63  	bool	fsb.locate,004000		"DU
+                        002000    2-64  	bool	fsb.key,002000		"DU
+                        001000    2-65  	bool	fsb.keyto,001000		"DU
+                        000400    2-66  	bool	fsb.keyfrom,000400		"DU
+                        000200    2-67  	bool	fsb.set,000200		"DU
+                        000100    2-68  	bool	fsb.into,000100		"DU
+                        000040    2-69  	bool	fsb.ignore,000040		"DU
+                        000020    2-70  	bool	fsb.from,000020		"DU
+                        000010    2-71  	bool	fsb.nofrom,000010		"DU
+                        000004    2-72  	bool	fsb.nokey,000004		"DU
+                        000002    2-73  	bool	fsb.nokeyfrom,000002	"DU
+                        000001    2-74  	bool	fsb.nolock,000001		"DU
+                                  2-75  
+                        000002    2-76  	equ	fsb.lsep,2
+                        000003    2-77  	equ	fsb.iocb_p,3
+                        000004    2-78  	equ	fsb.blc,4
+                        000005    2-79  	equ	fsb.bsize,5
+                        000006    2-80  	equ	fsb.bptr,6
+                        000010    2-81  	equ	fsb.bnc,8
+                        000011    2-82  	equ	fsb.kol,9
+                        000012    2-83  	equ	fsb.lsize,10
+                        000013    2-84  	equ	fsb.lineno,11
+                        000014    2-85  	equ	fsb.psize,12
+                        000015    2-86  	equ	fsb.pageno,13
+                        000016    2-87  	equ	fsb.limit,14
+                        000017    2-88  	equ	fsb.lnzc,15
+                        000020    2-89  	equ	fsb.filename,16		"DOUBLE
+                        000030    2-90  	equ	fsb.title,24		"DOUBLE
+                        000040    2-91  	equ	fsb.fsb_thread,32
+                        000042    2-92  	equ	fsb.buffer,34
+                        000366    2-93  	equ	fsb.path_name,246		"DOUBLE
+                        000440    2-94  	equ	fsb.declared_attributes,288
+                                  2-95  
+                                  2-96  "	The following declarations were not created by cif:
+                        400000    2-97  	bool	fsb.zot1,400000		"DU
+                        200000    2-98  	bool	fsb.zot2,200000		"DU
+                                  2-99  
+                                 2-100       "END INCLUDE FILE plio2_fsb.incl.alm
+                                    36  	include	plio2_ps
+                                   3-1  
+                                   3-2  
+                                   3-3       "BEGIN INCLUDE FILE plio2_ps.incl.alm
+                                   3-4  
+                                   3-5  	"Created 07/08/77  1352.7 edt Fri by convert_include_file,
+                                   3-6  	"   Version of 03/21/77  1355.7 edt Mon.
+                                   3-7  
+                                   3-8  	"Made from >exl>include>plio2_ps.incl.pl1,
+                                   3-9  	"   modified 07/08/77  1352.7 edt Fri
+                                  3-10  
+                                  3-11  "
+                                  3-12  "	Structure ps
+                                  3-13  "
+                        000060    3-14  	equ	ps_size,48
+                                  3-15  
+                                  3-16  
+                        000000    3-17  	equ	ps.stack_frame_p,0
+                        000002    3-18  	equ	ps.ST_top_p,2
+                        000004    3-19  	equ	ps.ST_block_p,4
+                        000006    3-20  	equ	ps.format_area_p,6
+                        000010    3-21  	equ	ps.ss_list_p,8
+                        000012    3-22  	equ	ps.ab_return,10		"LEVEL 2
+                                  3-23  
+                        000012    3-24  	equ	ps.abret,10
+                        000020    3-25  	equ	ps.source_p,16
+                        000022    3-26  	equ	ps.special_list_p,18
+                        000024    3-27  	equ	ps.copy_file_p,20
+                        000026    3-28  	equ	ps.job,22			"LEVEL 2
+                                  3-29  
+                        400000    3-30  	bool	ps.explicit_file,400000	"DU
+                        200000    3-31  	bool	ps.string,200000		"DU
+                        100000    3-32  	bool	ps.varying_string,100000	"DU
+                        040000    3-33  	bool	ps.data,040000		"DU
+                        020000    3-34  	bool	ps.edit,020000		"DU
+                        010000    3-35  	bool	ps.list,010000		"DU
+                        004000    3-36  	bool	ps.get,004000		"DU
+                        002000    3-37  	bool	ps.put,002000		"DU
+                        001000    3-38  	bool	ps.page,001000		"DU
+                        000400    3-39  	bool	ps.line,000400		"DU
+                        000200    3-40  	bool	ps.skip,000200		"DU
+                        000100    3-41  	bool	ps.copy,000100		"DU
+                        000040    3-42  	bool	ps.p1p2,000040		"DU
+                        000020    3-43  	bool	ps.bit_string,000020	"DU
+                        000010    3-44  	bool	ps.char_string,000010	"DU
+                        000004    3-45  	bool	ps.read,000004		"DU
+                        000002    3-46  	bool	ps.write,000002		"DU
+                        000001    3-47  	bool	ps.rewrite,000001		"DU
+                        400000    3-48  	bool	ps.delete,400000		"DL
+                        200000    3-49  	bool	ps.locate,200000		"DL
+                        100000    3-50  	bool	ps.key,100000		"DL
+                        040000    3-51  	bool	ps.keyto,040000		"DL
+                        020000    3-52  	bool	ps.keyfrom,020000		"DL
+                        010000    3-53  	bool	ps.set,010000		"DL
+                        004000    3-54  	bool	ps.into,004000		"DL
+                        002000    3-55  	bool	ps.ignore,002000		"DL
+                        001000    3-56  	bool	ps.from,001000		"DL
+                        000003    3-57  	equ	ps.version_shift,3
+                        000077    3-58  	bool	ps.version_mask,000077
+                        000004    3-59  	bool	ps.not_byte_buffer,000004	"DL
+                        000001    3-60  	bool	ps.packed_ptr,000001	"DL
+                                  3-61  
+                        000027    3-62  	equ	ps.number,23
+                        000030    3-63  	equ	ps.value_p,24
+                        000032    3-64  	equ	ps.descriptor,26
+                        000033    3-65  	equ	ps.length,27
+                                  3-66  
+                        000034    3-67  	equ	ps.top_half,28		"UPPER
+                        000034    3-68  	equ	ps.offset,28		"LOWER
+                                  3-69  
+                        000035    3-70  	equ	ps.prep,29
+                        000036    3-71  	equ	ps.new_format,30
+                        000037    3-72  	equ	ps.switch,31		"LEVEL 2
+                                  3-73  
+                        400000    3-74  	bool	ps.first_field,400000	"DU
+                        200000    3-75  	bool	ps.file,200000		"DU
+                        100000    3-76  	bool	ps.transmit_error,100000	"DU
+                        040000    3-77  	bool	ps.semi_sep,040000		"DU
+                                  3-78  
+                        000040    3-79  	equ	ps.file_p,32
+                        000042    3-80  	equ	ps.fsbp,34
+                        000044    3-81  	equ	ps.auxp,36
+                        000046    3-82  	equ	ps.fabp,38
+                        000050    3-83  	equ	ps.fab2p,40
+                        000052    3-84  	equ	ps.vp,42
+                        000054    3-85  	equ	ps.descr,44
+                        000055    3-86  	equ	ps.start_copy,45
+                        000056    3-87  	equ	ps.quick_stream_storage,46	"LEVEL 2
+                                  3-88  
+                        000056    3-89  	equ	ps.a_stored,46
+                        000057    3-90  	equ	ps.q_stored,47
+                                  3-91  "	The following declaration was not created by cif:
+                        007700    3-92  	bool	ps.version_mask_inplace,0007700	"don't shift with this mask
+                                  3-93  
+                                  3-94       "END INCLUDE FILE plio2_ps.incl.alm
+                                    37  	include	stack_frame
+                                   4-1  "
+                                   4-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   4-3  "
+                                   4-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   4-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   4-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   4-7  "
+                        000020     4-8  	equ	stack_frame.prev_sp,16
+                        000020     4-9  	equ	stack_frame.condition_word,16
+                        000022    4-10  	equ	stack_frame.next_sp,18
+                        000022    4-11  	equ	stack_frame.signaller_word,18
+                        000024    4-12  	equ	stack_frame.return_ptr,20
+                        000026    4-13  	equ	stack_frame.entry_ptr,22
+                        000030    4-14  	equ	stack_frame.operator_ptr,24
+                        000030    4-15  	equ	stack_frame.lp_ptr,24
+                        000032    4-16  	equ	stack_frame.arg_ptr,26
+                        000034    4-17  	equ	stack_frame.static_ptr,28
+                        000035    4-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    4-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    4-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    4-21  	equ	stack_frame.translator_id,31
+                        000040    4-22  	equ	stack_frame.regs,32
+                        000060    4-23  	equ	stack_frame.min_length,48
+                        000020    4-24  	equ	stack_frame.flag_word,16
+                        020000    4-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    4-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    4-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    4-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    4-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    4-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    4-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    4-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  4-33  
+                                  4-34  "
+                                  4-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  4-36  "
+                                    38  	include	iocbx
+                                   5-1  
+                                   5-2  
+                                   5-3       "BEGIN INCLUDE FILE iocbx.incl.alm
+                                   5-4  
+                                   5-5  
+                                   5-6  	"Created 01/28/83  1429.8 est Fri by convert_include_file,
+                                   5-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   5-8  
+                                   5-9  	"Made from >user_dir_dir>Multics>SKrupp>work>s>iocbx.incl.pl1,
+                                  5-10  	"   modified 01/28/83  1427.0 est Fri
+                                  5-11  
+                                  5-12  "
+                                  5-13  "	Structure iocb
+                                  5-14  "
+                        000156    5-15  	equ	iocb_size,110
+                                  5-16  
+                                  5-17  
+                        000000    5-18  	equ	iocb.version,0
+                        000001    5-19  	equ	iocb.name,1
+                        000012    5-20  	equ	iocb.actual_iocb_ptr,10
+                        000014    5-21  	equ	iocb.attach_descrip_ptr,12
+                        000016    5-22  	equ	iocb.attach_data_ptr,14
+                        000020    5-23  	equ	iocb.open_descrip_ptr,16
+                        000022    5-24  	equ	iocb.open_data_ptr,18
+                        000024    5-25  	equ	iocb.event_channel,20	" DOUBLE
+                        000026    5-26  	equ	iocb.detach_iocb,22
+                        000032    5-27  	equ	iocb.open,26
+                        000036    5-28  	equ	iocb.close,30
+                        000042    5-29  	equ	iocb.get_line,34
+                        000046    5-30  	equ	iocb.get_chars,38
+                        000052    5-31  	equ	iocb.put_chars,42
+                        000056    5-32  	equ	iocb.modes,46
+                        000062    5-33  	equ	iocb.position,50
+                        000066    5-34  	equ	iocb.control,54
+                        000072    5-35  	equ	iocb.read_record,58
+                        000076    5-36  	equ	iocb.write_record,62
+                        000102    5-37  	equ	iocb.rewrite_record,66
+                        000106    5-38  	equ	iocb.delete_record,70
+                        000112    5-39  	equ	iocb.seek_key,74
+                        000116    5-40  	equ	iocb.read_key,78
+                        000122    5-41  	equ	iocb.read_length,82
+                        000126    5-42  	equ	iocb.open_file,86
+                        000132    5-43  	equ	iocb.close_file,90
+                        000136    5-44  	equ	iocb.detach,94
+                        000142    5-45  	equ	iocb.ios_compatibility,98
+                        000144    5-46  	equ	iocb.syn_inhibits,100
+                        000146    5-47  	equ	iocb.syn_father,102
+                        000150    5-48  	equ	iocb.syn_brother,104
+                        000152    5-49  	equ	iocb.syn_son,106
+                        000154    5-50  	equ	iocb.hash_chain_ptr,108
+                                  5-51  
+                                  5-52       "END INCLUDE FILE iocbx.incl.alm
+                        000046      39  	equ	tbp,38
+                        000052      40  	equ	ps_ptr,42
+                        000054      41  	equ	total_len,44
+                        000055      42  	equ	t6,45
+                        000056      43  	equ	x7_stored,46	upper half of word in storage
+                        000056      44  	equ	source_str_offset,46	lower half of word
+                        000057      45  	equ	t2,47
+                        000057      46  	equ	ctrl_ret_loc,47
+                        000060      47  	equ	output_request_type,48	0 - edit, 1 - list, other - control requests
+                                    48  "					that abort on endpage
+                        000061      49  	equ	storage_taken,49		known and set as extend_size in alloc
+                        000064      50  	equ	double_temp,52
+                        000064      51  	equ	orig_len,52		yes this conflicts with double_temp, but I'm short of space
+                        000066      52  	equ	io_arg_list,54
+                        000076      53  	equ	temp,62
+                        000253      54  	segdef	restore_regs_and_frame_and_ret
+                        000472      55  	segdef	put_control_from_format
+                        000355      56  	segdef	any_qs_error_no_ret
+                        000354      57  	segdef	set_no_ret_error
+                        000154      58  	segdef	put_field
+                        000000      59  	segdef	put_field_str
+                        000132      60  	segdef	put_field_chk
+                        000161      61  	segdef	put_field_from_format
+                        000465      62  	segdef	put_control
+                                    63  "	operator to put out a string, entered via put_list_eis with the
+                                    64  "	descriptor of the output item in sp|temp as well  as in the q
+                                    65  "
+    000000                          66  put_field_str:
+    000000  aa  6 00052 3501 20     67  	eppap	sp|ps_ptr,*
+    000001  aa  0 00056 7551 00     68  	sta	ap|ps.a_stored	we can't clobber  most regs
+    000002  aa  6 00056 7471 00     69  	stx7	sp|x7_stored
+    000003  aa  6 00076 2351 00     70  	lda	sp|temp		temp has  the desc, put there by put_list_eis
+    000004  aa  0 00057 7551 00     71  	sta	ap|ps.q_stored	since the desc was in the q on entry to put_list_eis
+    000005  aa  0 00054 7551 00     72  	sta	ap|ps.descr
+    000006  aa   004000 3160 03     73  	canq	=o004000,du
+    000007  0a   000014 6000 00     74  	tze	var_str		var_str handles both char & bit varying strs
+    000010  0a   000716 3750 00     75  	ana	=o000077777777	change descr  into length, blocking out type
+    000011  aa   114000 1160 03     76  	cmpq	=o114000,du
+    000012  0a   000017 6000 00     77  	tze	bit_str
+    000013  0a   000055 7100 00     78  	tra	char_str
+    000014                          79  var_str:
+    000014  aa  2 77777 2351 00     80  	lda	bp|-1		length word is adr(str) -1
+    000015  aa   120000 1160 03     81  	cmpq	=o120000,du	bit str?
+    000016  0a   000055 6010 00     82  	tnz	char_str
+    000017                          83  bit_str:
+    000017  aa   000003 0750 07     84  	ada	3,dl		add three to length, for leading&trailing quotes & "b"
+    000020  aa  6 00054 7551 00     85  	sta	sp|total_len	this will be the final length output
+    000021  aa  6 00054 2361 00     86  	ldq	sp|total_len
+    000022  0a   000127 7060 00     87  	tsx6	get_newbuf	we  must get a buffer big  enough for len(bit_str)+3 chars
+    000023  aa   042100 1004 00     88  	mlr	(),(pr),fill(042)		042 is ascii quote
+    000024  aa   000000 000000      89  	zero	0		only interested in fill char
+    000025  aa   200000 000001      90  	desc9a	bp|0,1		pr2 is  where to shove it
+    000026  aa  6 00054 2351 00     91  	lda	sp|total_len	at this point bp->final char string and pr3->source bit str
+    000027  aa   000003 1750 07     92  	sba	3,dl		this is how  many bits need conversion to "1" or "0"
+    000030                          93  bit_loop:
+    000030  aa   000001 1750 07     94  	sba	1,dl		loop through all bits converting them to char "1" or "0"
+    000031  0a   000046 6040 00     95  	tmi	bit_loop_done
+    000032  aa  0 00000 0665 05     96  	cmpb	(pr,al),()
+    000033  aa   300000 000001      97  	descb	pr3|0,1
+    000034  aa   000000 000000      98  	zero	0		remember, pr3 is pointing to the original bit str
+    000035  0a   000042 6000 00     99  	tze	bit_is_zero
+    000036  aa   061105 1004 00    100  	mlr	(),(pr,al),fill(061)	move in a "1" (061), since the bit is "on"
+    000037  aa   000000 000000     101  	zero	0
+    000040  aa   200000 200001     102  	desc9a	pr2|0(1),1	target is pr2 up on char since there is a quote in position 1
+    000041  0a   000030 7100 00    103  	tra	bit_loop
+    000042                         104  bit_is_zero:
+    000042  aa   060105 1004 00    105  	mlr	(),(pr,al),fill(060)	(060) is an ascii "0"
+    000043  aa   000000 000000     106  	zero	0
+    000044  aa   200000 200001     107  	desc9a	pr2|0(1),1
+    000045  0a   000030 7100 00    108  	tra	bit_loop
+    000046                         109  bit_loop_done:
+    000046  aa  6 00054 2351 00    110  	lda	sp|total_len	now to insert trailing quote
+    000047  aa   000002 1750 07    111  	sba	2,dl		trailing quote will be the second to last char
+    000050  aa   142105 1004 00    112  	mlr	(0),(pr,al),fill(142)	142 is ascii "b"
+    000051  0a   000706 000001     113  	desc9a	quote_char,1
+    000052  aa   200000 000002     114  	desc9a	bp|0,2		pr2 is  where to shove it
+    000053  aa  6 00054 2361 00    115  	ldq	sp|total_len	conversion to final form is done, put len in q & off we go
+    000054  0a   000163 7100 00    116  	tra	put_field_from_str	pr2->char string to put out, q has len, we're set up for put_field
+                                   117  "
+                                   118  "
+    000055                         119  char_str:
+    000055  aa  0 00042 3701 20    120  	epp4	ap|ps.fsbp,*	we have to  ask the fsb if its a print file
+    000056  aa  4 00000 2361 00    121  	ldq	pr4|fsb.switch	cause if not, we must  double quotes and enclose
+    000057  aa   020000 3160 03    122  	canq	fsb.print,du	the string in quotes.  If it is a print file,
+    000060  0a   000064 6000 00    123  	tze	not_print		a vanilla put_field will do.
+    000061  aa   000044 7330 00    124  	lrs	36		length is in a, move it to  q for put_field
+    000062  aa  6 00061 4501 00    125  	stz	sp|storage_taken	set sortage_taken
+    000063  0a   000162 7100 00    126  	tra	put_field_from_print	and off we go
+    000064                         127  not_print:
+    000064  aa  6 00064 7551 00    128  	sta	sp|orig_len	we must know orig len  to know when we're finished
+    000065  aa  6 00054 7551 00    129  	sta	sp|total_len
+    000066  aa   000043 7330 00    130  	lrs	35		get 2*total_len in the q
+    000067  aa   000002 0760 07    131  	adq	2,dl		output string, which would be all quotes. Each quote would
+    000070  0a   000127 7060 00    132  	tsx6	get_newbuf	be doubled and a quote on each end: total_len=2*orig_len+2
+    000071  aa  2 00000 3735 00    133  	epp7	pr2|0		now pr2->new buffer and pr3->source string(a side effect of get_newbuf)
+    000072  aa   042100 1004 00    134  	mlr	(0),(pr),fill(042)	042 is ascii quote, put in the leading one
+    000073  aa   000000 000000     135  	zero	0		only interested in fill char
+    000074  aa   200000 000001     136  	desc9a	bp|0,1		pr2 is  where to shove it
+    000075  aa  6 00054 0541 00    137  	aos	sp|total_len	and update the true total len
+    000076  aa  6 00064 2361 00    138  	ldq	sp|orig_len
+                                   139  "
+    000077                         140  copy_more:
+    000077  aa  0 00000 1245 40    141  	scm	(pr,rl),()	scan to find the first quote  in  source str
+    000100  aa   300000 000006     142  	desc9a	pr3|0,ql		string to scan(source)
+    000101  0a   000706 000001     143  	desc9a	quote_char,1	what to scan for
+    000102  aa  6 00076 0001 00    144  	arg	sp|temp		place to put offset of  first quote
+    000103  aa   000002 6064 04    145  	ttn	2,ic		tally on  if string has no more quotes
+    000104  aa  6 00076 0541 00    146  	aos	sp|temp		add  one cause we want to move the original quote  also
+    000105  aa  6 00076 2351 00    147  	lda	sp|temp		now temp is up to and including any quote found
+    000106  aa  6 00054 0541 00    148  	aos	sp|total_len	this one will be for the new doubled quote or trailing quote if none foundd
+                                   149  "
+    000107  aa  0 00140 1005 40    150  	mlr	(pr,rl),(pr,rl)	move up to and  including quote
+    000110  aa   300000 000005     151  	desc9a	pr3|0,al		pr3->source string
+    000111  aa   200000 200005     152  	desc9a	bp|0(1),al	pr2->target string, up 1 char for leading quote
+    000112  aa  2 00000 5005 05    153  	a9bd	bp|0,al		update pr2 to reflect new contents
+    000113  aa  3 00000 5005 05    154  	a9bd	pr3|0,al		update pr3 to point to as-yet unmoved string
+    000114  aa   042100 1004 00    155  	mlr	(0),(pr),fill(042)	insert quote at pr2|(1) cause pr2's always a byte behind
+    000115  aa   000000 000000     156  	zero	0		only interested in fill char
+    000116  aa   200000 200001     157  	desc9a	bp|0(1),1		pr2 is  where to shove it
+    000117  0a   000124 6064 00    158  	ttn	move_is_over	tally still set on if no quote was found
+                                   159  "
+    000120  aa   000001 2350 07    160  	lda	1,dl
+    000121  aa  2 00000 5005 05    161  	a9bd	bp|0,al		update target  to reflect new quote just doubled
+    000122  aa  6 00076 1761 00    162  	sbq	sp|temp		length  of string left to scan is decreased
+    000123  0a   000077 7100 00    163  	tra	copy_more
+                                   164  "
+    000124                         165  move_is_over:
+    000124  aa  6 00054 2361 00    166  	ldq	sp|total_len	put_field expects length in q,  pr2 must be reset to start of string
+    000125  aa  7 00000 3521 00    167  	epp2	pr7|0		reset pr2 to start of string
+    000126  0a   000163 7100 00    168  	tra	put_field_from_str	and off
+                                   169  "
+                                   170  "
+    000127                         171  get_newbuf:
+    000127  aa  2 00000 3535 00    172  	epp3	bp|0		we set pr3 to where pr2 was, and set pr2 to the new buffer
+    000130  4a  4 00010 7011 20    173  	tsx1	<pl1_operators_>|[alloc]	length of new buffer in bytes is in the a
+    000131  aa   000000 7100 16    174  	tra	0,6		and return
+                                   175  "
+                                   176  "	operator for put_field_chk
+                                   177  "	entered with pointer to datum in bp,offset to check for minus sign
+                                   178  "	in x6, length in q
+                                   179  "
+    000132                         180  put_field_chk:
+    000132  aa   000116 1064 00    181  	cmpc	(),(pr,x6)	check that offset x6 is not "-"
+    000133  0a   000711 000001     182  	desc9a	minus_sign,1
+    000134  aa   200000 000001     183  	desc9a	bp|0,1
+    000135  0a   000152 6010 00    184  	tnz	check_okay		if its a "-",e_format too small for value
+    000136  aa  6 00052 3501 20    185  	eppap	sp|ps_ptr,*
+    000137  aa  0 00056 7551 00    186  	sta	ap|ps.a_stored
+    000140  aa  6 00056 7471 00    187  	stx7	sp|x7_stored
+    000141  aa  6 00052 3501 00    188  	eppap	sp|ps_ptr
+    000142  aa  6 00070 2501 00    189  	spriap	sp|io_arg_list+2
+    000143  aa   004000 4310 07    190  	fld	1*2048,dl
+    000144  aa  6 00066 7571 00    191  	staq	sp|io_arg_list
+    000145  aa  6 00046 3501 70    192  	eppap	sp|tbp,*0			get ptr to inst that invoked op
+    000146  aa  6 00024 2501 00    193  	spriap	sp|stack_frame.return_ptr	reset return ptr so stack_frame_exit_
+                                   194  "					will know where we came from
+    000147  aa  6 00066 3501 00    195  	eppap	sp|io_arg_list
+    000150  4a  4 00012 7011 20    196  	tsx1	<pl1_operators_>|[get_our_lp]
+    000151  4a  4 00014 7131 20    197  	callsp	<plio2_>|[pve_error]
+                                   198  
+    000152                         199  check_okay:
+    000152  aa   000001 6210 00    200  	eax1	1			this reg. needed for next instructtion
+    000153  aa  2 00000 5005 11    201  	a9bd	bp|0,1			get rid of extra "check" character
+                                   202  "
+                                   203  "	operator for put_field and continuation fo put_field_chk operator
+                                   204  "	entered withpointer to datum in bp,length of output string in q
+                                   205  "
+                                   206  "
+                                   207  "
+    000154                         208  put_field:
+    000154  aa  6 00052 3501 20    209  	eppap	sp|ps_ptr,*
+    000155  aa  0 00057 7561 00    210  	stq	ap|ps.q_stored	we can't clobber q,a,x7, which we use, so save for restoration
+    000156  aa  0 00056 7551 00    211  	sta	ap|ps.a_stored
+    000157  aa  6 00056 7471 00    212  	stx7	sp|x7_stored
+    000160  aa  6 00061 4501 00    213  	stz	sp|storage_taken	BUGFIX, format and print set it
+    000161                         214  put_field_from_format:
+    000161  aa  6 00052 3501 20    215  	eppap	sp|ps_ptr,*
+    000162                         216  put_field_from_print:
+    000162  aa  6 00054 7561 00    217  	stq	sp|total_len	total_len will be length of string to be put
+    000163                         218  put_field_from_str:
+    000163  aa  0 00030 2521 00    219  	spribp	ap|ps.value_p
+    000164  aa  0 00042 3701 20    220  	epp4	ap|ps.fsbp,*		pr4 will point to fsb
+    000165  aa  4 00006 3535 20    221  	epp3	pr4|fsb.bptr,*
+    000166  aa  6 00060 4501 00    222  	stz	sp|output_request_type	output_request_type =0 means edit_dir_out 
+    000167  aa   000000 6260 00    223  	eax6	0
+    000170  aa  6 00056 4461 00    224  	sxl6	sp|source_str_offset	source_str_offset is offset within string for putting to start
+    000171  aa   000404 1160 07    225  	cmpq	260,dl		we'll allow max string len of 260, cause bit strs add three to 256
+    000172  aa   000003 6044 04    226  	tmoz	3,ic		at this point q must have sp|total_len in it!!!
+    000173  aa   000010 2350 07    227  	lda	8,dl
+    000174  0a   000355 7100 00    228  	tra	any_qs_error_no_ret
+    000175  aa  0 00026 2351 00    229  	lda	ap|ps.job
+    000176  aa   010000 3150 03    230  	cana	ps.list,du
+    000177  0a   000231 6000 00    231  	tze	reput
+    000200  aa  6 00060 0541 00    232  	aos	sp|output_request_type	output_request_type =1 means list_dir_out 
+    000201  aa  4 00000 2351 00    233  	lda	pr4|fsb.switch		fsb_switch is at beginning of fsb
+    000202  aa   020000 3150 03    234  	cana	fsb.print,du		print_switch is bit five of fsb_switch
+    000203  0a   000222 6000 00    235  	tze	check_line	if not print, just check if there's space enough left  on the line
+    000204  aa  4 00011 2361 00    236  	ldq	pr4|fsb.kol	if it is print, might need leading tab
+    000205  aa   000012 5060 07    237  	div	10,dl		are we on a tab boundary?
+    000206  aa   000000 1150 07    238  	cmpa	0,dl
+    000207  0a   000222 6000 00    239  	tze	check_line	if so, no tab needed
+    000210  aa   000012 4020 07    240  	mpy	10,dl		is there room enough left on line?
+    000211  aa   000012 0760 07    241  	adq	10,dl		BUGFIX, next column position is 10 characters over
+    000212  aa  4 00012 1161 00    242  	cmpq	pr4|fsb.lsize
+    000213  0a   000230 6054 00    243  	tpnz	line_and_chk_print	if not, needs new_line
+    000214  aa  6 00057 7561 00    244  	stq	sp|t2		t2 is where the new column position will  be after tab
+    000215  0a   000713 2350 00    245  	lda	tab_char		a is what char should be inserted by insert_char sub-routine
+    000216  0a   000451 7060 00    246  	tsx6	insert_char	and insert the tab
+    000217  aa  6 00057 2351 00    247  	lda	sp|t2		set the column position
+    000220  aa  4 00011 7551 00    248  	sta	pr4|fsb.kol
+    000221  0a   000412 7070 00    249  	tsx7	set_fsb_limit	since the tab messes up the old  limit
+                                   250  "
+    000222                         251  check_line:
+    000222  aa  4 00012 2351 00    252  	lda	pr4|fsb.lsize	is there room enough on line for output item?
+    000223  aa  4 00011 1751 00    253  	sba	pr4|fsb.kol
+    000224  aa  6 00054 1151 00    254  	cmpa	sp|total_len
+    000225  0a   000231 6050 00    255  	tpl	reput		if there is, no more preliminaries neded, just put it out
+                                   256  "
+                                   257  "	now check for the unique case where although the line is not big enough, we do not
+                                   258  "	insert a newline because we are already at the 1st columnposition.
+                                   259  "
+    000226  aa  4 00011 2361 00    260  	ldq	pr4|fsb.kol
+    000227  0a   000231 6000 00    261  	tze	reput
+                                   262  "
+    000230                         263  line_and_chk_print:
+    000230  0a   000423 7060 00    264  	tsx6	insert_new_line	if not insert a new_line. This subroutine takes care of kol & pagesize,too
+    000231                         265  reput:
+    000231  aa  6 00054 2361 00    266  	ldq	sp|total_len
+    000232  aa  4 00010 0761 00    267  	adq	pr4|fsb.bnc	q+bnc is buffer_next_char after this io operation
+    000233  aa  6 00060 0761 00    268  	adq	sp|output_request_type	output_request_type is one iff ldo, this gives trailing blank
+    000234  aa   000001 1760 07    269  	sbq	1,dl		to get buf pos reached, not next free one
+    000235  aa  4 00016 1161 00    270  	cmpq	pr4|fsb.limit		future bnc>limit?
+    000236  0a   000265 6054 00    271  	tpnz	overlimit		if so, goto overlimit
+    000237  aa  4 00010 2351 00    272  	lda	pr4|fsb.bnc		get bnc for offset for mlr
+    000240  aa   000001 0760 07    273  	adq	1,dl
+    000241  aa  4 00010 7561 00    274  	stq	pr4|fsb.bnc		store future bnc into bnc
+    000242  aa   000001 1750 07    275  	sba	1,dl			offset is bnc minus 1
+    000243  aa  6 00054 2361 00    276  	ldq	sp|total_len
+    000244  aa  6 00060 0761 00    277  	adq	sp|output_request_type	this restores q to "length to be put"
+    000245  aa  6 00054 7271 00    278  	lxl7	sp|total_len	x7 will be length to be taken from source str
+    000246  aa  4 00011 0561 00    279  	asq	pr4|fsb.kol		set proper column
+    000247  aa  6 00056 7261 00    280  	lxl6	sp|source_str_offset	offset of source string
+    000250  aa  0 40145 1005 56    281  	mlr	(pr,rl,x6),(pr,rl,al),fill(040)	040=ascii blank,q might=x7+1,where we want trail blank
+    000251  aa   200000 000017     282  	desc9a	bp|0,x7		pr2 is source string to move
+    000252  aa   300000 000006     283  	desc9a	pr3|0,ql		pr3 is target string,i.e. fsb's buffer
+    000253                         284  restore_regs_and_frame_and_ret:
+    000253  aa  6 00061 3361 00    285  	lcq	sp|storage_taken	q is how much to collapse stack
+    000254  0a   000260 6000 00    286  	tze	reset_regs_and_return	if zero, we didn't extend  it and can  return
+    000255  aa  6 00000 3531 00    287  	epbp3	sp|0		else collapse it the amount we extended it
+    000256  aa  6 00023 0561 00    288  	asq	sp|stack_frame.next_sp+1
+    000257  aa  3 00025 0561 00    289  	asq	pr3|stack_header.stack_end_ptr+1
+    000260                         290  reset_regs_and_return:
+    000260  aa  6 00052 3501 20    291  	eppap	sp|ps_ptr,*
+    000261  aa  0 00057 2361 00    292  	ldq	ap|ps.q_stored	we changed the a,q, and x7 & were't allowed to clobber them,  so restore
+    000262  aa  0 00056 2351 00    293  	lda	ap|ps.a_stored
+    000263  aa  6 00056 2271 00    294  	ldx7	sp|x7_stored
+    000264  4a  4 00016 7101 20    295  	tra	<pl1_operators_>|[put_return]		and were finished
+                                   296  "				getting here means the requested job would violate the limit on
+    000265                         297  overlimit:
+    000265  aa  4 00010 2361 00    298  	ldq	pr4|fsb.bnc	the last permissable char position in the fsb.buffer, so
+    000266  aa   000001 1760 07    299  	sbq	1,dl		either bsize or lsize was exceeded. First task is to figure out how much
+    000267  aa  6 00057 7561 00    300  	stq	sp|t2		of the output request falls before the limit, and move those chars.
+    000270  aa  6 00056 7261 00    301  	lxl6	sp|source_str_offset	t2 now =bnc-1
+    000271  aa  4 00016 2351 00    302  	lda	pr4|fsb.limit	amount pre-limit will =limit-bnc-1, so subtract t2 from limit
+    000272  aa  6 00057 1551 00    303  	ssa	sp|t2
+    000273  aa  6 00057 2351 00    304  	lda	sp|t2		a is now number of chars before the limit
+    000274  aa  4 00011 0551 00    305  	asa	pr4|fsb.kol	update column index, bnc, and source offset
+    000275  aa  4 00010 0551 00    306  	asa	pr4|fsb.bnc
+    000276  aa  6 00056 0551 00    307  	asa	sp|source_str_offset
+    000277  aa  0 00146 1005 56    308  	mlr	(pr,rl,x6),(pr,rl,ql)	move from pr2 up source offset to fsb.buffer up bnc-1
+    000300  aa   200000 000005     309  	desc9a	bp|0,al		length to be moved is limit-bnc-1
+    000301  aa   300000 000005     310  	desc9a	pr3|0,al		which is in a
+                                   311  "
+    000302  aa  4 00016 2361 00    312  	ldq	pr4|fsb.limit	compare limit against bsize to see if bsize was violated
+    000303  aa  4 00005 1161 00    313  	cmpq	pr4|fsb.bsize	remember that limit represents a character position in the buffer
+    000304  0a   000312 6050 00    314  	tpl	overbuffer	go to overbuffer if buffer is full
+    000305  0a   000423 7060 00    315  	tsx6	insert_new_line	otherwise it must be linesize we exceeded
+    000306                         316  overmerge:
+    000306  aa  6 00054 2361 00    317  	ldq	sp|total_len	we get here after handling the limiting condition
+    000307  aa  6 00057 1761 00    318  	sbq	sp|t2		so figure out how much we must still put out
+    000310  aa  6 00054 7561 00    319  	stq	sp|total_len	t2 is the amount we put out, so total_len-t2 is the amount left to put
+    000311  0a   000231 7100 00    320  	tra 	reput		and put it out
+    000312                         321  overbuffer:
+    000312  0a   000314 7010 00    322  	tsx1	call_putchars	if buffer is full, we must put it out
+    000313  0a   000306 7100 00    323  	tra	overmerge		now the limiting condition is resolved, and we can continue
+                                   324  "
+                                   325  "				subroutine to empty the guarenteed-full fsb.buffer into the output stream
+    000314                         326  call_putchars:
+    000314  aa  0 00026 2351 00    327  	lda	ap|ps.job		check if its string-option
+    000315  aa   200000 3150 03    328  	cana	ps.string,du
+    000316  0a   000352 6010 00    329  	tnz	string_option_overflow	if it is, this is an error
+    000317  aa  4 00003 7651 00    330  	lprp5	pr4|fsb.iocb_p		now set up arg list for iox
+    000320  aa  6 00064 6515 00    331  	spri5	sp|double_temp
+    000321  aa  6 00064 3535 00    332  	epp3	sp|double_temp
+    000322  aa  6 00070 2535 00    333  	spri3	sp|io_arg_list+2
+    000323  aa  4 00006 3535 00    334  	epp3	pr4|fsb.bptr
+    000324  aa  6 00072 2535 00    335  	spri3	sp|io_arg_list+4
+    000325  aa  4 00005 3535 00    336  	epp3	pr4|fsb.bsize
+    000326  aa  6 00074 2535 00    337  	spri3	sp|io_arg_list+6
+    000327  aa  4 00017 3535 00    338  	epp3	pr4|fsb.lnzc	fsb.lnzc will be status code
+    000330  aa  6 00076 2535 00    339  	spri3	sp|io_arg_list+8
+    000331  aa  6 00010 7531 00    340  	sreg	sp|8
+    000332  aa   020000 4310 07    341  	fld	4*2048,dl
+    000333  aa  6 00066 7571 00    342  	staq	sp|io_arg_list
+    000334  aa  6 00066 3501 00    343  	eppap	sp|io_arg_list
+    000335  aa  6 00024 3571 00    344  	stcd	sp|stack_frame.return_ptr
+    000336  aa  5 00052 7131 20    345  	callsp	pr5|iocb.put_chars,*
+    000337  aa  6 00010 0731 00    346  	lreg	sp|8
+    000340  aa  6 00052 3501 20    347  	eppap	sp|ps_ptr,*		restore ptrs
+    000341  aa  0 00042 3701 20    348  	epp4	ap|ps.fsbp,*
+    000342  aa  4 00006 3535 20    349  	epp3	pr4|fsb.bptr,*
+    000343  aa  0 00030 3521 20    350  	eppbp	ap|ps.value_p,*
+    000344  aa  4 00010 4501 00    351  	stz	pr4|fsb.bnc	next_char must be 1, since we emptied buf
+    000345  aa  4 00010 0541 00    352  	aos	pr4|fsb.bnc
+    000346  aa  4 00017 2351 00    353  	lda	pr4|fsb.lnzc	status code
+    000347  0a   000360 6010 00    354  	tnz	put_char_error
+    000350  0a   000412 7070 00    355  	tsx7	set_fsb_limit
+    000351  aa   000000 7100 11    356  	tra	0,1
+                                   357  "
+    000352                         358  string_option_overflow:
+    000352  aa   000007 2350 07    359  	lda	7,dl			quick_condition_code
+    000353  0a   000355 7100 00    360  	tra	any_qs_error_no_ret
+                                   361  "
+    000354                         362  set_no_ret_error:
+    000354  aa   000015 2350 07    363  	lda	13,dl
+                                   364  "
+    000355                         365  any_qs_error_no_ret:
+    000355  0a   000354 6260 00    366  	eax6	set_no_ret_error
+    000356  aa  6 00060 4501 00    367  	stz	sp|output_request_type
+    000357  0a   000362 7100 00    368  	tra	any_qs_error
+                                   369  "
+    000360                         370  put_char_error:
+    000360  aa   000000 2350 07    371  	lda	0,dl
+    000361  0a   000260 6260 00    372  	eax6	reset_regs_and_return		x6 points to where to go on return from on-unit
+                                   373  "	label for raising a condition, reached with a code in reg a.
+                                   374  "	code = 0 :: error in xmitting
+                                   375  "	code = 1 :: endpage cond
+                                   376  "	code = 2 :: not a print file when must be
+                                   377  "	code = 3 :: line(n), n<= 0.
+                                   378  "	code = 4 :: control format with value <0, err437
+                                   379  "	code = 5 :: skip(0) requested on non-print file
+                                   380  "	code = 6 :: infinite num. of new-lines to fill page, err433
+                                   381  "	code = 7 :: "buffer" overflow on string-option put, err420
+                                   382  "	code = 8 :: string length over 260, err 242
+                                   383  "	code = 9 :: put_format_ (pfo) , line(0) requested, err 262
+                                   384  "	code = 10:: pfo, no param where needed, err 148
+                                   385  "	code = 11:: pfo, stu_ returned non-zero code, err 195
+                                   386  "	code = 12:: pfo, nesting depth for r_formats exceeded, = 10, err 197
+                                   387  "	code = 13:: attempt to restart after an ERROR or SIZE condition, err 266->OM 466
+    000362                         388  any_qs_error:
+    000362  aa  6 00055 7551 00    389  	sta	sp|t6
+    000363  aa  6 00074 2521 00    390  	spri2	sp|io_arg_list+6	not an argument but must be saved/restored
+    000364  aa  6 00052 3715 00    391  	epp5	sp|ps_ptr
+    000365  aa  6 00070 6515 00    392  	spri5	sp|io_arg_list+2
+    000366  aa  6 00055 3715 00    393  	epp5	sp|t6		t6 is condition code
+    000367  aa  6 00072 6515 00    394  	spri5	sp|io_arg_list+4
+    000370  aa  6 00010 7531 00    395  	sreg	sp|8
+    000371  4a  4 00012 7011 20    396  	tsx1	<pl1_operators_>|[get_our_lp]
+    000372  aa   010000 4310 07    397  	fld	2*2048,dl
+    000373  aa  6 00066 7571 00    398  	staq	sp|io_arg_list
+    000374  aa  6 00066 3501 00    399  	eppap	sp|io_arg_list
+    000375  aa  6 00024 3571 00    400  	stcd	sp|stack_frame.return_ptr
+    000376  4a  4 00020 7131 20    401  	callsp	<plio2_>|[quick_condition]
+    000377  aa  6 00010 0731 00    402  	lreg	sp|8
+    000400  aa  6 00046 3501 70    403  	eppap	sp|tbp,*0
+    000401  aa  6 00024 2501 00    404  	spriap	sp|stack_frame.return_ptr
+    000402  aa  6 00052 3501 20    405  	eppap	sp|ps_ptr,*
+    000403  aa  0 00042 3701 20    406  	epp4	ap|ps.fsbp,*
+    000404  aa  4 00006 3535 20    407  	epp3	pr4|fsb.bptr,*
+    000405  aa  6 00074 3521 20    408  	epp2	sp|io_arg_list+6,*
+    000406  aa  6 00060 2351 00    409  	lda	sp|output_request_type
+    000407  aa   000002 1150 07    410  	cmpa	2,dl
+    000410  aa   000000 6040 16    411  	tmi	0,6		if output_request_type<2, must be list/edit, not control
+    000411  0a   000522 7100 00    412  	tra	ret_from_control		if output_request_type=>2,must be a control so finish here
+                                   413  "
+                                   414  "		subroutine to set the fsb.limit=min(len_left_on_line,len_left_in_buffer)
+    000412                         415  set_fsb_limit:
+    000412  aa  4 00012 2351 00    416  	lda	pr4|fsb.lsize
+    000413  aa  4 00011 1751 00    417  	sba	pr4|fsb.kol
+    000414  aa  4 00010 0751 00    418  	ada	pr4|fsb.bnc
+    000415  aa   000001 1750 07    419  	sba	1,dl		a is now the pos in buffer of last char on present line
+    000416  aa  4 00005 1151 00    420  	cmpa	pr4|fsb.bsize	compare to pos in buffer of last char in buffer
+    000417  aa   000002 6020 04    421  	tnc	2,ic
+    000420  aa  4 00005 2351 00    422  	lda	pr4|fsb.bsize
+    000421  aa  4 00016 7551 00    423  	sta	pr4|fsb.limit	set limit to the greater of the two
+    000422  aa   000000 7100 17    424  	tra	0,7		and return
+                                   425  "
+    000423                         426  insert_new_line:
+    000423  aa  4 00010 2351 00    427  	lda	pr4|fsb.bnc
+    000424  aa   000001 1750 07    428  	sba	1,dl
+    000425  aa  4 00005 1151 00    429  	cmpa	pr4|fsb.bsize	check if there's room in the buffer for this char
+    000426  aa   000003 6040 04    430  	tmi	3,ic		if there is, no problem
+    000427  0a   000314 7010 00    431  	tsx1	call_putchars	if there isn't , put out the guaranteed-full buffer
+    000430  aa   000000 2350 07    432  	lda	0,dl		reset a to the buffer offset to put the char
+    000431  aa  0 12105 1005 00    433  	mlr	(pr),(pr,al),fill(012)	move the new_line
+    000432  aa   000000 000000     434  	zero	0
+    000433  aa   300000 000001     435  	desc9a	pr3|0,1
+    000434  aa  4 00010 0541 00    436  	aos	pr4|fsb.bnc	update the buffer index
+    000435  aa  4 00011 4501 00    437  	stz	pr4|fsb.kol	now set column to 0
+    000436  0a   000717 2350 00    438  	lda	=o777777777757	zero out bit32, "emptyline"
+    000437  aa  4 00000 3551 00    439  	ansa	pr4|fsb.switch	can't be emptyline any longer
+    000440  aa  4 00013 0541 00    440  	aos	pr4|fsb.lineno	increment lineno
+    000441  0a   000412 7070 00    441  	tsx7	set_fsb_limit	since we reset kol must recalculate the limit
+    000442  aa  4 00014 2351 00    442  	lda	pr4|fsb.psize	now we must check for possible pagesize violation
+    000443  aa   000000 6000 16    443  	tze	0,6		psize=0 means non-print file, so no ENDPAGE
+    000444  aa   000001 0750 07    444  	ada	1,dl
+    000445  aa  4 00013 1151 00    445  	cmpa	pr4|fsb.lineno	is lineno = pagesize + 1?
+    000446  aa   000000 6010 16    446  	tnz	0,6		if it is not, return
+    000447                         447  raise_endpage:
+    000447  aa   000001 2350 07    448  	lda	1,dl		this is the code fora pagesize error
+    000450  0a   000362 7100 00    449  	tra	any_qs_error	and raise the error
+                                   450  "
+                                   451  "	beginning of insert_char subroutine
+                                   452  "
+    000451                         453  insert_char:
+    000451  aa  6 00055 7551 00    454  	sta	sp|t6		a has the char to be inserted
+    000452  aa  4 00010 2351 00    455  	lda	pr4|fsb.bnc
+    000453  aa   000001 1750 07    456  	sba	1,dl
+    000454  aa  4 00005 1151 00    457  	cmpa	pr4|fsb.bsize	check if there's room in the buffer for this char
+    000455  aa   000003 6040 04    458  	tmi	3,ic		if there is, no problem
+    000456  0a   000314 7010 00    459  	tsx1	call_putchars	if there isn't , put out the guaranteed-full buffer
+    000457  aa   000000 2350 07    460  	lda	0,dl		reset a to the buffer offset to put the char
+    000460  aa  0 00105 1005 00    461  	mlr	(pr),(pr,al)	move the char
+    000461  aa   600055 000001     462  	desc9a	sp|t6,1		we squirreled it away in t6
+    000462  aa   300000 000001     463  	desc9a	pr3|0,1
+    000463  aa  4 00010 0541 00    464  	aos	pr4|fsb.bnc	update the buffer index
+    000464  aa   000000 7100 16    465  	tra	0,6
+                                   466  "
+                                   467  " end of insert_char subroutine
+                                   468  "
+                                   469  "	operator for put_control
+                                   470  "	entered with type of control index in x6,
+                                   471  "	number of times to do that control (or target for the control) in q
+                                   472  "
+    000465                         473  put_control:
+    000465  aa  6 00052 3501 20    474  	eppap	sp|ps_ptr,*
+    000466  0a   000260 3514 00    475  	epp1	reset_regs_and_return	pr1 will be where to go after we're done
+    000467  aa  0 00057 7561 00    476  	stq	ap|ps.q_stored	save the regs we can't clobber
+    000470  aa  0 00056 7551 00    477  	sta	ap|ps.a_stored
+    000471  aa  6 00056 7471 00    478  	stx7	sp|x7_stored
+    000472                         479  put_control_from_format:
+    000472  aa  6 00057 5411 00    480  	sprp1	sp|ctrl_ret_loc	call_putchars will clobber pr1, so save it here
+    000473  aa  6 00052 3501 20    481  	eppap	sp|ps_ptr,*	pr1 has been set by put_format
+    000474  aa  0 00042 3701 20    482  	epp4	ap|ps.fsbp,*
+    000475  aa  4 00006 3535 20    483  	epp3	pr4|fsb.bptr,*
+    000476  aa  6 00060 5541 00    484  	stc1	sp|output_request_type	this "I am a control" flag is for endpage
+                                   485  "					processing -- endpage aborts processing of
+                                   486  "					most controls
+    000477  aa   000003 1060 03    487  	cmpx6	3,du		3=page request, which has no value in q
+    000500  0a   000624 6000 00    488  	tze	check_print_file	so just check if its print file and go on from there
+    000501  aa   000000 1160 07    489  	cmpq	0,dl		otherwise see if count is >= 0
+    000502  aa   000003 6050 04    490  	tpl	3,ic		no control is allowed a negative count
+    000503  aa   000004 2350 07    491  	lda	4,dl		this is the error code for negative control count
+    000504  0a   000362 7100 00    492  	tra	any_qs_error	and raise the error
+                                   493  "
+    000505  aa   000001 1060 03    494  	cmpx6	1,du		1 is code for skip request
+    000506  0a   000530 6010 00    495  	tnz	check_x_format	if not, try next test
+                                   496  "
+    000507  aa   000000 1160 07    497  	cmpq	0,dl		skip is allowed a 0 count in the request
+    000510  0a   000524 6010 00    498  	tnz	skip_more		but only if it is a print file
+    000511  aa  4 00000 2351 00    499  	lda	pr4|fsb.switch	so test to see if print-file bit is on
+    000512  aa   020000 3150 03    500  	cana	fsb.print,du
+    000513  aa   000003 6010 04    501  	tnz	3,ic		if it is, were safe
+    000514  aa   000005 2350 07    502  	lda	5,dl		if not, set error code
+    000515  0a   000362 7100 00    503  	tra	any_qs_error	and raise the error
+    000516  0a   000714 2350 00    504  	lda	carr_rtn_char	skip(0) means give a carriage return but no line-feed
+    000517  0a   000451 7060 00    505  	tsx6	insert_char	so insert the carr-return
+    000520  aa  4 00011 4501 00    506  	stz	pr4|fsb.kol	kol is now 0
+    000521                         507  set_fsb_and_ret:
+    000521  0a   000412 7070 00    508  	tsx7	set_fsb_limit	we have to set the limit since control chars usually change it
+    000522                         509  ret_from_control:
+    000522  aa  6 00057 7611 00    510  	lprp1	sp|ctrl_ret_loc
+    000523  aa  1 00000 7101 00    511  	tra	pr1|0		and return,pr1 having been set on or prior to entry to put_control
+    000524                         512  skip_more:
+    000524  0a   000423 7060 00    513  	tsx6	insert_new_line	non-zero skip count, so insert a new_line
+    000525  aa   000001 1760 07    514  	sbq	1,dl		reset count, is it still > 0?
+    000526  0a   000522 6044 00    515  	tmoz	ret_from_control	if not, return, limit was set by insert_new_line
+    000527  0a   000524 7100 00    516  	tra	skip_more		count was not zero,so repeat
+                                   517  "
+    000530                         518  check_x_format:
+    000530  aa   000005 1060 03    519  	cmpx6	5,du		5 is request code for x_format,i.e. blank spaces
+    000531  0a   000576 6010 00    520  	tnz	check_q_gt_zero	x and skip formats are the only ones which allow a zero count
+                                   521  "
+    000532  aa  6 00060 4501 00    522  	stz	sp|output_request_type	endpage does not abort x format
+    000533                         523  put_q_blanks:
+    000533  aa  4 00010 0761 00    524  	adq	pr4|fsb.bnc	now put q blanks out
+    000534  aa   000001 1760 07    525  	sbq	1,dl		to get buffer position reached after operation, not next one
+    000535  aa  4 00016 1161 00    526  	cmpq	pr4|fsb.limit	see if we can move all the blanks in one move without violating the limit
+    000536  0a   000564 6044 00    527  	tmoz	easy_blanks	if we can, we save time & work
+    000537  aa  4 00010 1761 00    528  	sbq	pr4|fsb.bnc	restore q to original value with this subtraction
+    000540  aa   000001 0760 07    529  	adq	1,dl		compensate for earlier subtraction of 1 (fixes 1721)
+                                   530  "			now we put out the blanks one by one
+    000541                         531  repeat_blank:
+    000541  aa   000000 1160 07    532  	cmpq	0,dl		more to put out?
+    000542  0a   000522 6000 00    533  	tze	ret_from_control	if not, return. Blanks don't require resetting fsb.limit.
+    000543  aa  4 00011 2351 00    534  	lda	pr4|fsb.kol	first check if there's room for a char on this line
+    000544  aa  4 00012 1151 00    535  	cmpa	pr4|fsb.lsize
+    000545  aa   000002 6040 04    536  	tmi	2,ic		if kol<lsize, no problem
+    000546  0a   000423 7060 00    537  	tsx6	insert_new_line	if kol>=lsize, insert a new_line
+    000547  aa  4 00010 2351 00    538  	lda	pr4|fsb.bnc
+    000550  aa   000001 1750 07    539  	sba	1,dl
+    000551  aa  4 00005 1151 00    540  	cmpa	pr4|fsb.bsize
+    000552  aa   000003 6040 04    541  	tmi	3,ic
+    000553  0a   000314 7010 00    542  	tsx1	call_putchars
+    000554  aa   000000 2350 07    543  	lda	0,dl
+    000555  aa  0 40105 1005 00    544  	mlr	(pr),(pr,al),fill(040)
+    000556  aa   000000 000000     545  	zero	0
+    000557  aa   300000 000001     546  	desc9a	pr3|0,1
+    000560  aa  4 00010 0541 00    547  	aos	pr4|fsb.bnc
+    000561  aa  4 00011 0541 00    548  	aos	pr4|fsb.kol	we know we inserted a single char
+    000562  aa   000001 1760 07    549  	sbq	1,dl		decrement count by one
+    000563  0a   000541 7100 00    550  	tra	repeat_blank	and repeat
+                                   551  "
+                                   552  "			this means we dont have to watch out for the limit
+    000564                         553  easy_blanks:
+    000564  aa  4 00010 1761 00    554  	sbq	pr4|fsb.bnc	restore q to its original value,i.e. the number of blanks to be put
+    000565  aa   000001 0760 07    555  	adq	1,dl		we subtracted one before,so add 1 now
+    000566  aa  4 00010 7261 00    556  	lxl6	pr4|fsb.bnc	set up regs for the mlr
+    000567  aa   000001 1660 03    557  	sbx6	1,du
+    000570  aa   040156 1004 00    558  	mlr	(),(pr,rl,x6),fill(040)	040 is ascii blank
+    000571  aa   000000 000000     559  	zero	0
+    000572  aa   300000 000006     560  	desc9a	pr3|0,ql
+    000573  aa  4 00010 0561 00    561  	asq	pr4|fsb.bnc	correct indexes
+    000574  aa  4 00011 0561 00    562  	asq	pr4|fsb.kol
+    000575  0a   000522 7100 00    563  	tra	ret_from_control	and return
+                                   564  "
+    000576                         565  check_q_gt_zero:
+    000576  aa   000000 1160 07    566  	cmpq	0,dl		the rest of the controls forbid a zero count
+    000577  0a   000604 6010 00    567  	tnz	check_column	if q=0 error unless col  format
+    000600  aa   000002 1060 03    568  	cmpx6	2,du		is it col(0)?
+    000601  0a   000615 6000 00    569  	tze	column_zero	make it col(1),effectively
+    000602  aa   000011 2350 07    570  	lda	9,dl		the error code is 9
+    000603  0a   000362 7100 00    571  	tra	any_qs_error	and raise the error
+                                   572  "
+                                   573  "	now check for column, then page, format
+    000604                         574  check_column:
+    000604  aa   000002 1060 03    575  	cmpx6	2,du		request code=2 means column format
+    000605  0a   000624 6010 00    576  	tnz	check_print_file	page is only allowed for a print file
+                                   577  "
+    000606  aa  6 00060 4501 00    578  	stz	sp|output_request_type	endpage does not abort column format
+    000607  aa  4 00011 1161 00    579  	cmpq	pr4|fsb.kol	is the requested column less than the present one?
+    000610  0a   000621 6044 00    580  	tmoz	pre_column	if it is, we must produce a new-line first
+    000611  aa  4 00012 1161 00    581  	cmpq	pr4|fsb.lsize	is the column <= than the line size?
+    000612  0a   000617 6044 00    582  	tmoz	within_line	if so,we're ok
+    000613  0a   000423 7060 00    583  	tsx6	insert_new_line	else insert a new-line first
+    000614  0a   000522 7100 00    584  	tra	ret_from_control	we needn't set fsb.limit cause insert_new_line does
+                                   585  "
+    000615                         586  column_zero:
+    000615  0a   000423 7060 00    587  	tsx6	insert_new_line
+    000616  0a   000522 7100 00    588  	tra	ret_from_control	and were done
+                                   589  "			our task now is to put out enough blanks to reach the desired column
+    000617                         590  within_line:
+    000617  aa  4 00011 1761 00    591  	sbq	pr4|fsb.kol	how many more blanks needed?
+    000620  0a   000622 7100 00    592  	tra	pre_column+1	and put them out
+    000621                         593  pre_column:
+    000621  0a   000423 7060 00    594  	tsx6	insert_new_line	the rules say start with a new_line
+    000622  aa   000001 1760 07    595  	sbq	1,dl		since if we want kol 5 we need only 4 blanks to get there
+    000623  0a   000533 7100 00    596  	tra	put_q_blanks	and put out the blanks
+                                   597  "
+    000624                         598  check_print_file:
+    000624  aa  4 00000 2351 00    599  	lda	pr4|fsb.switch
+    000625  aa   020000 3150 03    600  	cana	fsb.print,du
+    000626  aa   000003 6010 04    601  	tnz	3,ic
+    000627  aa   000002 2350 07    602  	lda	2,dl		the page & line requests require a print file, if not, it is error code 2
+    000630  0a   000362 7100 00    603  	tra	any_qs_error	and raise the error
+    000631  aa   000003 1060 03    604  	cmpx6	3,du		page request?
+    000632  0a   000653 6010 00    605  	tnz	must_be_line	as the man says, if not it must be line
+                                   606  "
+    000633                         607  new_page:
+    000633  aa  4 00013 2351 00    608  	lda	pr4|fsb.lineno	in most cases pagemark must be preceeded by a newline
+    000634  aa  4 00014 1151 00    609  	cmpa	pr4|fsb.psize	unless lineno>psize & kol=0 & ^emptyline
+    000635  0a   000643 6044 00    610  	tmoz	new_page_and_line
+    000636  aa  4 00011 2351 00    611  	lda	pr4|fsb.kol
+    000637  0a   000643 6010 00    612  	tnz	new_page_and_line
+    000640  aa   000020 2350 07    613  	lda	fsb.emptyline,dl
+    000641  aa  4 00000 3151 00    614  	cana	pr4|fsb.switch
+    000642  0a   000644 6000 00    615  	tze	just_page
+                                   616  "
+    000643                         617  new_page_and_line:
+    000643  0a   000423 7060 00    618  	tsx6	insert_new_line
+    000644                         619  just_page:
+    000644  0a   000710 2350 00    620  	lda	pagemark_char
+    000645  0a   000451 7060 00    621  	tsx6	insert_char
+    000646  aa  4 00011 4501 00    622  	stz	pr4|fsb.kol	a pagemark resets the kol to 0
+    000647  aa   000001 2360 07    623  	ldq	1,dl		and sets lineno to one
+    000650  aa  4 00013 7561 00    624  	stq	pr4|fsb.lineno
+    000651  aa  4 00015 0541 00    625  	aos	pr4|fsb.pageno
+    000652  0a   000521 7100 00    626  	tra	set_fsb_and_ret	since kol was reset, fsb.limit must be
+                                   627  "
+    000653                         628  must_be_line:
+    000653  aa  4 00014 1161 00    629  	cmpq	pr4|fsb.psize	is the requested lineno>pagesize?
+    000654  0a   000675 6044 00    630  	tmoz	not_overp		iif not, go to not_overp
+                                   631  "
+    000655                         632  page_time:
+    000655  aa  4 00013 2351 00    633  	lda	pr4|fsb.lineno	if lineno is already>pagesize, just insert a new pagemark and return
+    000656  aa  4 00014 1151 00    634  	cmpa	pr4|fsb.psize
+    000657  0a   000633 6054 00    635  	tpnz	new_page
+    000660                         636  fill_pg_and_raise_ep:
+    000660  4a  4 00012 7011 20    637  	tsx1	<pl1_operators_>|[get_our_lp]	else we must fill the page with new_lines. which we don't
+    000661  4a  4 00022 2361 20    638  	ldq	<plio2_data_>|[max_page_size]	want to do if pagesize=max_page_size,i.e. is virtually infinite
+    000662  aa  0 00042 3701 20    639  	epp4	ap|ps.fsbp,*	but would rather print a message in that case
+    000663  aa  4 00014 1161 00    640  	cmpq	pr4|fsb.psize
+    000664  aa   000003 6010 04    641  	tnz	3,ic		is pagesize=max_page_size?
+    000665  aa   000006 2350 07    642  	lda	6,dl		if so, error code=6
+    000666  0a   000362 7100 00    643  	tra	any_qs_error	and raise the error
+    000667  aa  4 00013 2361 00    644  	ldq	pr4|fsb.lineno	otherwise, proceed to fill the page with new_lines
+    000670                         645  fill_more:
+    000670  0a   000423 7060 00    646  	tsx6	insert_new_line
+    000671  aa   000001 0760 07    647  	adq	1,dl
+    000672  aa  4 00014 1161 00    648  	cmpq	pr4|fsb.psize
+    000673  0a   000447 6054 00    649  	tpnz	raise_endpage
+    000674  0a   000670 7100 00    650  	tra	fill_more
+                                   651  "
+    000675                         652  not_overp:
+    000675  aa  4 00013 1161 00    653  	cmpq	pr4|fsb.lineno	if the requested lineno is <present lineno
+    000676  0a   000655 6040 00    654  	tmi	page_time		we must fill the page with new_lines and put out a new page
+    000677  0a   000702 6000 00    655  	tze	q_equ_lineno	if they are equal, we must check the column
+    000700  aa  4 00013 1761 00    656  	sbq	pr4|fsb.lineno	if requested lineno > present lineno, just skip the right number of lines
+    000701  0a   000524 7100 00    657  	tra	skip_more
+    000702                         658  q_equ_lineno:
+    000702  aa  4 00011 2351 00    659  	lda	pr4|fsb.kol	if kol is zero, we're where we want to be
+    000703  0a   000522 6000 00    660  	tze	ret_from_control
+    000704  0a   000655 7100 00    661  	tra	page_time		else we need to go to the next page
+    000705                         662  b_char:
+    000705  aa   142000 000000     663  	oct	142000000000
+    000706                         664  quote_char:
+    000706  aa   042000 000000     665  	oct	042000000000
+    000707                         666  blank_char:
+    000707  aa   040000 000000     667  	oct	040000000000
+    000710                         668  pagemark_char:
+    000710  aa   014000 000000     669  	oct	014000000000
+    000711                         670  minus_sign:
+    000711  aa   055000 000000     671  	oct	055000000000
+    000712                         672  new_line:
+    000712  aa   012000 000000     673  	oct	012000000000
+    000713                         674  tab_char:
+    000713  aa   011000 000000     675  	oct	011000000000
+    000714                         676  carr_rtn_char:
+    000714  aa   015000 000000     677  	oct	015000000000
+                                   678  	end
+LITERALS
+     
+    000716  aa   000077 777777 
+    000717  aa   777777 777757 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000720  5a   000003 000000 
+    000721  5a   000127 600000 
+    000722  aa   000000 000000 
+    000723  55   000011 000002 
+    000724  5a   000002 400003 
+    000725  55   000006 000011 
+    000726  aa  012 160 165 164
+    000727  aa  137 146 151 145
+    000730  aa  154 144 137 000
+    000731  55   000017 000003 
+    000732  0a   000465 400000 
+    000733  55   000014 000003 
+    000734  aa  013 160 165 164         put_control
+    000735  aa  137 143 157 156
+    000736  aa  164 162 157 154
+    000737  55   000030 000011 
+    000740  0a   000161 400000 
+    000741  55   000022 000003 
+    000742  aa  025 160 165 164         put_field_from_format
+    000743  aa  137 146 151 145
+    000744  aa  154 144 137 146
+    000745  aa  162 157 155 137
+    000746  aa  146 157 162 155
+    000747  aa  141 164 000 000
+    000750  55   000037 000017 
+    000751  0a   000132 400000 
+    000752  55   000033 000003 
+    000753  aa  015 160 165 164         put_field_chk
+    000754  aa  137 146 151 145
+    000755  aa  154 144 137 143
+    000756  aa  150 153 000 000
+    000757  55   000046 000030 
+    000760  0a   000000 400000 
+    000761  55   000042 000003 
+    000762  aa  015 160 165 164         put_field_str
+    000763  aa  137 146 151 145
+    000764  aa  154 144 137 163
+    000765  aa  164 162 000 000
+    000766  55   000054 000037 
+    000767  0a   000154 400000 
+    000770  55   000051 000003 
+    000771  aa  011 160 165 164         put_field
+    000772  aa  137 146 151 145
+    000773  aa  154 144 000 000
+    000774  55   000064 000046 
+    000775  0a   000354 400000 
+    000776  55   000057 000003 
+    000777  aa  020 163 145 164         set_no_ret_error
+    001000  aa  137 156 157 137
+    001001  aa  162 145 164 137
+    001002  aa  145 162 162 157
+    001003  aa  162 000 000 000
+    001004  55   000074 000054 
+    001005  0a   000355 400000 
+    001006  55   000067 000003 
+    001007  aa  023 141 156 171         any_qs_error_no_ret
+    001010  aa  137 161 163 137
+    001011  aa  145 162 162 157
+    001012  aa  162 137 156 157
+    001013  aa  137 162 145 164
+    001014  55   000105 000064 
+    001015  0a   000472 400000 
+    001016  55   000077 000003 
+    001017  aa  027 160 165 164         put_control_from_format
+    001020  aa  137 143 157 156
+    001021  aa  164 162 157 154
+    001022  aa  137 146 162 157
+    001023  aa  155 137 146 157
+    001024  aa  162 155 141 164
+    001025  55   000120 000074 
+    001026  0a   000253 400000 
+    001027  55   000110 000003 
+    001030  aa  036 162 145 163         restore_regs_and_frame_and_ret
+    001031  aa  164 157 162 145
+    001032  aa  137 162 145 147
+    001033  aa  163 137 141 156
+    001034  aa  144 137 146 162
+    001035  aa  141 155 145 137
+    001036  aa  141 156 144 137
+    001037  aa  162 145 164 000
+    001040  55   000002 000105 
+    001041  6a   000000 400002 
+    001042  55   000123 000003 
+    001043  aa  014 163 171 155         symbol_table
+    001044  aa  142 157 154 137
+    001045  aa  164 141 142 154
+    001046  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    001047  aa   000000 000015 
+    001050  aa   000000 000000 
+    001051  5a   000011 000000 
+    001052  aa   000000 000000 
+    001053  5a   000017 000000 
+    001054  5a   000030 000000 
+    001055  5a   000037 000000 
+    001056  5a   000074 000000 
+    001057  5a   000105 000000 
+    001060  5a   000120 000000 
+    001061  aa   000000 000000 
+    001062  5a   000054 000000 
+    001063  5a   000046 000000 
+    001064  5a   000064 000000 
+
+EXTERNAL NAMES
+
+    001065  aa  015 155 141 170         max_page_size
+    001066  aa  137 160 141 147
+    001067  aa  145 137 163 151
+    001070  aa  172 145 000 000
+    001071  aa  013 160 154 151         plio2_data_
+    001072  aa  157 062 137 144
+    001073  aa  141 164 141 137
+    001074  aa  017 161 165 151         quick_condition
+    001075  aa  143 153 137 143
+    001076  aa  157 156 144 151
+    001077  aa  164 151 157 156
+    001100  aa  012 160 165 164         put_return
+    001101  aa  137 162 145 164
+    001102  aa  165 162 156 000
+    001103  aa  011 160 166 145         pve_error
+    001104  aa  137 145 162 162
+    001105  aa  157 162 000 000
+    001106  aa  006 160 154 151         plio2_
+    001107  aa  157 062 137 000
+    001110  aa  012 147 145 164         get_our_lp
+    001111  aa  137 157 165 162
+    001112  aa  137 154 160 000
+    001113  aa  005 141 154 154         alloc
+    001114  aa  157 143 000 000
+    001115  aa  016 160 154 061         pl1_operators_
+    001116  aa  137 157 160 145
+    001117  aa  162 141 164 157
+    001120  aa  162 163 137 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001121  aa   000004 000000 
+    001122  55   000151 000145 
+    001123  aa   000004 000000 
+    001124  55   000166 000154 
+    001125  aa   000004 000000 
+    001126  55   000175 000160 
+    001127  aa   000004 000000 
+    001130  55   000166 000163 
+    001131  aa   000004 000000 
+    001132  55   000175 000170 
+    001133  aa   000004 000000 
+    001134  55   000175 000173 
+    001135  aa   000001 000000 
+    001136  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001137  5a   000201 000000 
+    001140  5a   000203 000000 
+    001141  5a   000205 000000 
+    001142  5a   000207 000000 
+    001143  5a   000211 000000 
+    001144  5a   000213 000000 
+    001145  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000720 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000024 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         pl1_operators_|alloc
+    000011  5a   000224 0000 00
+    000012  9a   777766 0000 46         pl1_operators_|get_our_lp
+    000013  5a   000223 0000 00
+    000014  9a   777764 0000 46         plio2_|pve_error
+    000015  5a   000222 0000 00
+    000016  9a   777762 0000 46         pl1_operators_|put_return
+    000017  5a   000221 0000 00
+    000020  9a   777760 0000 46         plio2_|quick_condition
+    000021  5a   000220 0000 00
+    000022  9a   777756 0000 46         plio2_data_|max_page_size
+    000023  5a   000217 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 131036 
+    000007  aa   700000 532037 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000305 
+    000020  aa   000000 000172 
+    000021  aa   000250 000243 
+    000022  aa   000274 000172 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   123143 150162 
+    000035  aa   157164 150056 
+    000036  aa   123171 163115 
+    000037  aa   141151 156164 
+    000040  aa   056155 040040 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040163 171155 
+    000046  aa   142157 154163 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000006 
+    000066  aa   000116 000036 
+    000067  aa   310157 125161 
+    000070  aa   000000 131036 
+    000071  aa   700000 600000 
+    000072  aa   000126 000037 
+    000073  aa   305736 051531 
+    000074  aa   000000 115000 
+    000075  aa   507463 000000 
+    000076  aa   000136 000034 
+    000077  aa   305736 051010 
+    000100  aa   000000 104574 
+    000101  aa   400471 200000 
+    000102  aa   000145 000033 
+    000103  aa   305736 050766 
+    000104  aa   000000 104574 
+    000105  aa   400471 200000 
+    000106  aa   000154 000036 
+    000107  aa   305736 051524 
+    000110  aa   000000 105272 
+    000111  aa   317215 400000 
+    000112  aa   000164 000030 
+    000113  aa   305736 047561 
+    000114  aa   000000 111707 
+    000115  aa   640170 400000 
+    000116  aa   076165 144144          >udd>sm>ds>w>ml>put_field_.alm
+    000117  aa   076163 155076 
+    000120  aa   144163 076167 
+    000121  aa   076155 154076 
+    000122  aa   160165 164137 
+    000123  aa   146151 145154 
+    000124  aa   144137 056141 
+    000125  aa   154155 040040 
+    000126  aa   076154 144144          >ldd>incl>stack_header.incl.alm
+    000127  aa   076151 156143 
+    000130  aa   154076 163164 
+    000131  aa   141143 153137 
+    000132  aa   150145 141144 
+    000133  aa   145162 056151 
+    000134  aa   156143 154056 
+    000135  aa   141154 155040 
+    000136  aa   076154 144144          >ldd>incl>plio2_fsb.incl.alm
+    000137  aa   076151 156143 
+    000140  aa   154076 160154 
+    000141  aa   151157 062137 
+    000142  aa   146163 142056 
+    000143  aa   151156 143154 
+    000144  aa   056141 154155 
+    000145  aa   076154 144144          >ldd>incl>plio2_ps.incl.alm
+    000146  aa   076151 156143 
+    000147  aa   154076 160154 
+    000150  aa   151157 062137 
+    000151  aa   160163 056151 
+    000152  aa   156143 154056 
+    000153  aa   141154 155040 
+    000154  aa   076154 144144          >ldd>incl>stack_frame.incl.alm
+    000155  aa   076151 156143 
+    000156  aa   154076 163164 
+    000157  aa   141143 153137 
+    000160  aa   146162 141155 
+    000161  aa   145056 151156 
+    000162  aa   143154 056141 
+    000163  aa   154155 040040 
+    000164  aa   076154 144144          >ldd>incl>iocbx.incl.alm
+    000165  aa   076151 156143 
+    000166  aa   154076 151157 
+    000167  aa   143142 170056 
+    000170  aa   151156 143154 
+    000171  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                alloc                    put_field_:   173.
+         362    any_qs_error             put_field_:   368,  388,  449,  492,  503,  571,  603,  643.
+         355    any_qs_error_no_ret      put_field_:    56,  228,  360,  365.
+          42    bit_is_zero              put_field_:    99,  104.
+          30    bit_loop                 put_field_:    93,  103,  108.
+          46    bit_loop_done            put_field_:    95,  109.
+          17    bit_str                  put_field_:    77,   83.
+         707    blank_char               put_field_:   666.
+         705    b_char                   put_field_:   662.
+        1170    call_offset              stack_header:        80.
+         314    call_putchars            put_field_:   322,  326,  431,  459,  542.
+         714    carr_rtn_char            put_field_:   504,  676.
+          55    char_str                 put_field_:    78,   82,  119.
+         604    check_column             put_field_:   567,  574.
+         222    check_line               put_field_:   235,  239,  251.
+         152    check_okay               put_field_:   184,  199.
+         624    check_print_file         put_field_:   488,  576,  598.
+         576    check_q_gt_zero          put_field_:   520,  565.
+         530    check_x_format           put_field_:   495,  518.
+         615    column_zero              put_field_:   569,  586.
+          77    copy_more                put_field_:   140,  163.
+          57    ctrl_ret_loc             put_field_:    46,  480,  510.
+          64    double_temp              put_field_:    50,  331,  332.
+         564    easy_blanks              put_field_:   527,  553.
+        1174    entry_offset             stack_header:        84.
+         670    fill_more                put_field_:   645,  650.
+         660    fill_pg_and_raise_ep     put_field_:   636.
+      400000    fsb.bit_string           plio2_fsb:     57.
+           4    fsb.blc                  plio2_fsb:     78.
+          10    fsb.bnc                  put_field_:   267,  272,  274,  298,  306,  351,  352,  418,  427,  436,  455,  464,
+                                                       524,  528,  538,  547,  554,  556,  561,
+                                         plio2_fsb:     81.
+           6    fsb.bptr                 put_field_:   221,  334,  349,  407,  483,
+                                         plio2_fsb:     80.
+           5    fsb.bsize                put_field_:   313,  336,  420,  422,  429,  457,  540,
+                                         plio2_fsb:     79.
+          42    fsb.buffer               plio2_fsb:     92.
+       20000    fsb.buffer_in_use        plio2_fsb:     40.
+          40    fsb.console              plio2_fsb:     48.
+       10000    fsb.copy                 plio2_fsb:     41.
+         440    fsb.declared_attributes  plio2_fsb:     94.
+       10000    fsb.delete               plio2_fsb:     62.
+        4000    fsb.detach               plio2_fsb:     42.
+          40    fsb.direct               plio2_fsb:     30.
+          20    fsb.emptyline            put_field_:   613,
+                                         plio2_fsb:     49.
+          20    fsb.filename             plio2_fsb:     89.
+          20    fsb.from                 plio2_fsb:     70.
+         100    fsb.fsb_in_use           plio2_fsb:     47.
+          40    fsb.fsb_thread           plio2_fsb:     91.
+          40    fsb.ignore               plio2_fsb:     69.
+      200000    fsb.implementation       plio2_fsb:     37.
+       10000    fsb.input                plio2_fsb:     23.
+          20    fsb.interactive          plio2_fsb:     31.
+         400    fsb.internal             plio2_fsb:     45.
+         100    fsb.into                 plio2_fsb:     68.
+           3    fsb.iocb_p               put_field_:   330,
+                                         plio2_fsb:     77.
+          10    fsb.iox_close            plio2_fsb:     50.
+        2000    fsb.key                  plio2_fsb:     64.
+           1    fsb.keyed                plio2_fsb:     35.
+         400    fsb.keyfrom              plio2_fsb:     66.
+        1000    fsb.keyto                plio2_fsb:     65.
+          11    fsb.kol                  put_field_:   236,  248,  253,  260,  279,  305,  417,  437,  506,  534,  548,  562,
+                                                       579,  591,  611,  622,  659,
+                                         plio2_fsb:     82.
+          16    fsb.limit                put_field_:   270,  302,  312,  423,  526,
+                                         plio2_fsb:     87.
+          13    fsb.lineno               put_field_:   440,  445,  608,  624,  633,  644,  653,  656,
+                                         plio2_fsb:     84.
+          17    fsb.lnzc                 put_field_:   338,  353,
+                                         plio2_fsb:     88.
+        4000    fsb.locate               plio2_fsb:     63.
+           2    fsb.lsep                 plio2_fsb:     76.
+          12    fsb.lsize                put_field_:   242,  252,  416,  535,  581,
+                                         plio2_fsb:     83.
+      400000    fsb.namelist             plio2_fsb:     36.
+          10    fsb.nofrom               plio2_fsb:     71.
+           4    fsb.nokey                plio2_fsb:     72.
+           2    fsb.nokeyfrom            plio2_fsb:     73.
+           1    fsb.nolock               plio2_fsb:     74.
+           1    fsb.nono                 plio2_fsb:     55.
+         400    fsb.notkeyed             plio2_fsb:     27.
+          10    fsb.not_used_1           plio2_fsb:     32.
+           4    fsb.not_used_2           plio2_fsb:     33.
+      200000    fsb.not_used_3           plio2_fsb:     58.
+      100000    fsb.not_used_4           plio2_fsb:     38.
+        1000    fsb.not_used_5           plio2_fsb:     44.
+       40000    fsb.open                 plio2_fsb:     21.
+        4000    fsb.output               plio2_fsb:     24.
+          15    fsb.pageno               put_field_:   625,
+                                         plio2_fsb:     86.
+         366    fsb.path_name            plio2_fsb:     93.
+       20000    fsb.print                put_field_:   122,  234,  500,  600,
+                                         plio2_fsb:     22.
+          14    fsb.psize                put_field_:   442,  609,  629,  634,  640,  648,
+                                         plio2_fsb:     85.
+      100000    fsb.read                 plio2_fsb:     59.
+         200    fsb.record               plio2_fsb:     28.
+       20000    fsb.rewrite              plio2_fsb:     61.
+         100    fsb.sequential           plio2_fsb:     29.
+         200    fsb.set                  plio2_fsb:     67.
+        1000    fsb.stream               plio2_fsb:     26.
+           2    fsb.stringvalue          plio2_fsb:     34.
+           0    fsb.switch               put_field_:   121,  233,  439,  499,  599,  614,
+                                         plio2_fsb:     17.
+        2000    fsb.te_hold              plio2_fsb:     43.
+         200    fsb.threaded             plio2_fsb:     46.
+          30    fsb.title                plio2_fsb:     90.
+       40000    fsb.transmit_error       plio2_fsb:     39.
+        2000    fsb.update               plio2_fsb:     25.
+      100000    fsb.version_2            plio2_fsb:     20.
+       40000    fsb.write                plio2_fsb:     60.
+           4    fsb.xxx4                 plio2_fsb:     51.
+           2    fsb.xxx5                 plio2_fsb:     52.
+           1    fsb.xxx6                 plio2_fsb:     53.
+      400000    fsb.zot                  plio2_fsb:     19.
+      400000    fsb.zot1                 plio2_fsb:     97.
+      200000    fsb.zot2                 plio2_fsb:     98.
+         442    fsb_size                 plio2_fsb:     14.
+         127    get_newbuf               put_field_:    87,  132,  171.
+                get_our_lp               put_field_:   196,  396,  637.
+         451    insert_char              put_field_:   246,  453,  505,  621.
+         423    insert_new_line          put_field_:   264,  315,  426,  513,  537,  583,  587,  594,  618,  646.
+          12    iocb.actual_iocb_ptr     iocbx:         20.
+          16    iocb.attach_data_ptr     iocbx:         22.
+          14    iocb.attach_descrip_ptr  iocbx:         21.
+          36    iocb.close               iocbx:         28.
+         132    iocb.close_file          iocbx:         43.
+          66    iocb.control             iocbx:         34.
+         106    iocb.delete_record       iocbx:         38.
+         136    iocb.detach              iocbx:         44.
+          26    iocb.detach_iocb         iocbx:         26.
+          24    iocb.event_channel       iocbx:         25.
+          46    iocb.get_chars           iocbx:         30.
+          42    iocb.get_line            iocbx:         29.
+         154    iocb.hash_chain_ptr      iocbx:         50.
+         142    iocb.ios_compatibility   iocbx:         45.
+          56    iocb.modes               iocbx:         32.
+           1    iocb.name                iocbx:         19.
+          32    iocb.open                iocbx:         27.
+          22    iocb.open_data_ptr       iocbx:         24.
+          20    iocb.open_descrip_ptr    iocbx:         23.
+         126    iocb.open_file           iocbx:         42.
+          62    iocb.position            iocbx:         33.
+          52    iocb.put_chars           put_field_:   345,
+                                         iocbx:         31.
+         116    iocb.read_key            iocbx:         40.
+         122    iocb.read_length         iocbx:         41.
+          72    iocb.read_record         iocbx:         35.
+         102    iocb.rewrite_record      iocbx:         37.
+         112    iocb.seek_key            iocbx:         39.
+         150    iocb.syn_brother         iocbx:         48.
+         146    iocb.syn_father          iocbx:         47.
+         144    iocb.syn_inhibits        iocbx:         46.
+         152    iocb.syn_son             iocbx:         49.
+           0    iocb.version             iocbx:         18.
+          76    iocb.write_record        iocbx:         36.
+         156    iocb_size                iocbx:         15.
+          66    io_arg_list              put_field_:    52,  189,  191,  195,  333,  335,  337,  339,  342,  343,  390,  392,
+                                                       394,  398,  399,  408.
+         644    just_page                put_field_:   615,  619.
+         230    line_and_chk_print       put_field_:   243,  263.
+                max_page_size            put_field_:   638.
+         711    minus_sign               put_field_:   182,  670.
+         124    move_is_over             put_field_:   158,  165.
+         653    must_be_line             put_field_:   605,  628.
+         712    new_line                 put_field_:   672.
+         633    new_page                 put_field_:   607,  635.
+         643    new_page_and_line        put_field_:   610,  612,  617.
+         675    not_overp                put_field_:   630,  652.
+          64    not_print                put_field_:   123,  127.
+          64    orig_len                 put_field_:    51,  128,  138.
+          60    output_request_type      put_field_:    47,  222,  232,  268,  277,  367,  409,  484,  522,  578.
+         312    overbuffer               put_field_:   314,  321.
+         265    overlimit                put_field_:   271,  297.
+         306    overmerge                put_field_:   316,  323.
+         710    pagemark_char            put_field_:   620,  668.
+         655    page_time                put_field_:   632,  654,  661.
+                pl1_operators_           put_field_:   173,  196,  295,  396,  637.
+                plio2_                   put_field_:   197,  401.
+                plio2_data_              put_field_:   638.
+         621    pre_column               put_field_:   580,  592,  593.
+          12    ps.abret                 plio2_ps:      24.
+          12    ps.ab_return             plio2_ps:      22.
+          44    ps.auxp                  plio2_ps:      81.
+          56    ps.a_stored              put_field_:    68,  186,  211,  293,  477,
+                                         plio2_ps:      89.
+          20    ps.bit_string            plio2_ps:      43.
+          10    ps.char_string           plio2_ps:      44.
+         100    ps.copy                  plio2_ps:      41.
+          24    ps.copy_file_p           plio2_ps:      27.
+       40000    ps.data                  plio2_ps:      33.
+      400000    ps.delete                plio2_ps:      48.
+          54    ps.descr                 put_field_:    72,
+                                         plio2_ps:      85.
+          32    ps.descriptor            plio2_ps:      64.
+       20000    ps.edit                  plio2_ps:      34.
+      400000    ps.explicit_file         plio2_ps:      30.
+          50    ps.fab2p                 plio2_ps:      83.
+          46    ps.fabp                  plio2_ps:      82.
+      200000    ps.file                  plio2_ps:      75.
+          40    ps.file_p                plio2_ps:      79.
+      400000    ps.first_field           plio2_ps:      74.
+           6    ps.format_area_p         plio2_ps:      20.
+        1000    ps.from                  plio2_ps:      56.
+          42    ps.fsbp                  put_field_:   120,  220,  348,  406,  482,  639,
+                                         plio2_ps:      80.
+        4000    ps.get                   plio2_ps:      36.
+        2000    ps.ignore                plio2_ps:      55.
+        4000    ps.into                  plio2_ps:      54.
+          26    ps.job                   put_field_:   229,  327,
+                                         plio2_ps:      28.
+      100000    ps.key                   plio2_ps:      50.
+       20000    ps.keyfrom               plio2_ps:      52.
+       40000    ps.keyto                 plio2_ps:      51.
+          33    ps.length                plio2_ps:      65.
+         400    ps.line                  plio2_ps:      39.
+       10000    ps.list                  put_field_:   230,
+                                         plio2_ps:      35.
+      200000    ps.locate                plio2_ps:      49.
+          36    ps.new_format            plio2_ps:      71.
+           4    ps.not_byte_buffer       plio2_ps:      59.
+          27    ps.number                plio2_ps:      62.
+          34    ps.offset                plio2_ps:      68.
+          40    ps.p1p2                  plio2_ps:      42.
+           1    ps.packed_ptr            plio2_ps:      60.
+        1000    ps.page                  plio2_ps:      38.
+          35    ps.prep                  plio2_ps:      70.
+        2000    ps.put                   plio2_ps:      37.
+          56    ps.quick_stream_storage  plio2_ps:      87.
+          57    ps.q_stored              put_field_:    71,  210,  292,  476,
+                                         plio2_ps:      90.
+           4    ps.read                  plio2_ps:      45.
+           1    ps.rewrite               plio2_ps:      47.
+       40000    ps.semi_sep              plio2_ps:      77.
+       10000    ps.set                   plio2_ps:      53.
+         200    ps.skip                  plio2_ps:      40.
+          20    ps.source_p              plio2_ps:      25.
+          22    ps.special_list_p        plio2_ps:      26.
+          10    ps.ss_list_p             plio2_ps:      21.
+           0    ps.stack_frame_p         plio2_ps:      17.
+          55    ps.start_copy            plio2_ps:      86.
+      200000    ps.string                put_field_:   328,
+                                         plio2_ps:      31.
+           4    ps.ST_block_p            plio2_ps:      19.
+           2    ps.ST_top_p              plio2_ps:      18.
+          37    ps.switch                plio2_ps:      72.
+          34    ps.top_half              plio2_ps:      67.
+      100000    ps.transmit_error        plio2_ps:      76.
+          30    ps.value_p               put_field_:   219,  350,
+                                         plio2_ps:      63.
+      100000    ps.varying_string        plio2_ps:      32.
+          77    ps.version_mask          plio2_ps:      58.
+        7700    ps.version_mask_inplace  plio2_ps:      92.
+           3    ps.version_shift         plio2_ps:      57.
+          52    ps.vp                    plio2_ps:      84.
+           2    ps.write                 plio2_ps:      46.
+          52    ps_ptr                   put_field_:    40,   67,  185,  188,  209,  215,  291,  347,  391,  405,  474,  481.
+          60    ps_size                  plio2_ps:      14.
+        1171    push_offset              stack_header:        81.
+         360    put_char_error           put_field_:   354,  370.
+         465    put_control              put_field_:    62,  473.
+         472    put_control_from_format  put_field_:    55,  479.
+         154    put_field                put_field_:    58,  208.
+         132    put_field_chk            put_field_:    60,  180.
+         161    put_field_from_format    put_field_:    61,  214.
+         162    put_field_from_print     put_field_:   126,  216.
+         163    put_field_from_str       put_field_:   116,  168,  218.
+           0    put_field_str            put_field_:    59,   66.
+         533    put_q_blanks             put_field_:   523,  596.
+                put_return               put_field_:   295.
+                pve_error                put_field_:   197.
+                quick_condition          put_field_:   401.
+         706    quote_char               put_field_:   113,  143,  664.
+         702    q_equ_lineno             put_field_:   655,  658.
+         447    raise_endpage            put_field_:   447,  649.
+         541    repeat_blank             put_field_:   531,  550.
+         231    reput                    put_field_:   231,  255,  261,  265,  320.
+         260    reset_regs_and_return    put_field_:   286,  290,  372,  475.
+         253    restore_regs_and_frame_and_ret       put_field_:    54,  284.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+         522    ret_from_control         put_field_:   412,  509,  515,  533,  563,  584,  588,  660.
+         521    set_fsb_and_ret          put_field_:   507,  626.
+         412    set_fsb_limit            put_field_:   249,  355,  415,  441,  508.
+         354    set_no_ret_error         put_field_:    57,  362,  366.
+         524    skip_more                put_field_:   498,  512,  516,  657.
+          56    source_str_offset        put_field_:    44,  224,  280,  301,  307.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      put_field_:   288,
+                                         stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   put_field_:   193,  344,  400,  404,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   stack_header:        37.
+          24    stack_header.stack_end_ptr     put_field_:   289,
+                                               stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+          61    storage_taken            put_field_:    49,  125,  213,  285.
+         352    string_option_overflow   put_field_:   329,  358.
+          57    t2                       put_field_:    45,  244,  247,  300,  303,  304,  318.
+          55    t6                       put_field_:    42,  389,  393,  454,  462.
+         713    tab_char                 put_field_:   245,  674.
+          46    tbp                      put_field_:    39,  192,  403.
+          76    temp                     put_field_:    53,   70,  144,  146,  147,  162.
+          54    total_len                put_field_:    41,   85,   86,   91,  110,  115,  129,  137,  148,  166,  217,  254,
+                                                       266,  276,  278,  317,  319.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+          14    var_str                  put_field_:    74,   79.
+         617    within_line              put_field_:   582,  590.
+          56    x7_stored                put_field_:    43,   69,  187,  212,  294,  478.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

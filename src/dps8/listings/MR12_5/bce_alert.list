@@ -1,0 +1,180 @@
+	COMPILATION LISTING OF SEGMENT bce_alert
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1024.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bce_alert: proc (p_ss_info_ptr);
+        9 
+       10 /* Write a message with alert on the operators console.
+       11*Keith Loepere, January 1984. */
+       12 
+       13 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       14 
+       15 dcl  addr			        builtin;
+       16 dcl  arg			        char (arg_len) based (arg_ptr);
+       17 dcl  arg_count		        fixed bin;
+       18 dcl  arg_len		        fixed bin (21);
+       19 dcl  arg_num		        fixed bin;
+       20 dcl  arg_ptr		        ptr;
+       21 dcl  bce_data$console_alert_put_chars entry (ptr, ptr, fixed bin, fixed bin (35)) ext variable;
+       22 dcl  code			        fixed bin (35);
+       23 dcl  cu_$arg_count_rel	        entry (fixed bin, ptr, fixed bin (35));
+       24 dcl  cu_$arg_ptr_rel	        entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       25 dcl  message		        char (256);
+       26 dcl  message_len		        fixed bin;
+       27 dcl  p_ss_info_ptr		        ptr parameter;
+       28 dcl  substr		        builtin;
+       29 
+       30 	ss_info_ptr = p_ss_info_ptr;
+       31 	message_len = 0;
+       32 	call cu_$arg_count_rel (arg_count, ss_info.arg_list_ptr, code);
+       33 	if code = 0 then do arg_num = 1 to arg_count;
+       34 	     call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+       35 	     substr (message, message_len + 1, arg_len) = arg;
+       36 	     substr (message, message_len + arg_len + 1, 1) = " ";
+       37 	     message_len = message_len + arg_len + 1;
+       38 	end;
+       39 	message_len = message_len + 1;
+       40 	substr (message, message_len, 1) = "
+       41 ";
+       42 	call bce_data$console_alert_put_chars (addr (bce_data$console_alert_put_chars), addr (message), message_len, code);
+       43 	return;
+       44  /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+       44 
+       45      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.1  bce_alert.pl1                     >special_ldd>install>MR12.3-1114>bce_alert.pl1
+44           1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 15 ref 42 42 42 42
+arg                                    based           char                     packed unaligned dcl 16 ref 35
+arg_count                       000100 automatic       fixed bin(17,0)          dcl 17 set ref 32* 33
+arg_len                         000101 automatic       fixed bin(21,0)          dcl 18 set ref 34* 35 35 36 37
+arg_list_ptr             16            based           pointer                  level 2 dcl 1-15 set ref 32* 34*
+arg_num                         000102 automatic       fixed bin(17,0)          dcl 19 set ref 33* 34*
+arg_ptr                         000104 automatic       pointer                  dcl 20 set ref 34* 35
+bce_data$console_alert_put_chars
+                                000010 external static entry variable           dcl 21 set ref 42 42 42
+code                            000106 automatic       fixed bin(35,0)          dcl 22 set ref 32* 33 34* 42*
+cu_$arg_count_rel               000012 constant        entry                    external dcl 23 ref 32
+cu_$arg_ptr_rel                 000014 constant        entry                    external dcl 24 ref 34
+message                         000107 automatic       char(256)                packed unaligned dcl 25 set ref 35* 36* 40* 42 42
+message_len                     000207 automatic       fixed bin(17,0)          dcl 26 set ref 31* 35 36 37* 37 39* 39 40 42*
+p_ss_info_ptr                          parameter       pointer                  dcl 27 ref 8 30
+ss_info                                based           structure                level 1 dcl 1-15
+ss_info_ptr                     000210 automatic       pointer                  dcl 1-14 set ref 30* 32 34
+substr                                                 builtin function         dcl 28 set ref 35* 36* 40*
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+bce_alert                       000004 constant        entry                    external dcl 8
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       210         226     131         220
+Length       414     131        16         152      56           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_alert                           164 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_alert                000100 arg_count                   bce_alert
+                         000101 arg_len                     bce_alert
+                         000102 arg_num                     bce_alert
+                         000104 arg_ptr                     bce_alert
+                         000106 code                        bce_alert
+                         000107 message                     bce_alert
+                         000207 message_len                 bce_alert
+                         000210 ss_info_ptr                 bce_alert
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var        call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cu_$arg_count_rel             cu_$arg_ptr_rel
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$console_alert_put_chars
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000001        30 000011        31 000015        32 000016        33 000030        34 000041        35 000061
+     36 000067        37 000074        38 000100        39 000102        40 000103        42 000107        43 000130
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

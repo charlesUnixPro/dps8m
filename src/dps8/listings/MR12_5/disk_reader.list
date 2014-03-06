@@ -1,0 +1,460 @@
+	COMPILATION LISTING OF SEGMENT disk_reader
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-06-05,GJohnson), approve(86-06-05,MCR7387),
+       12*     audit(86-06-10,Martinson), install(86-07-11,MR12.0-1091):
+       13*     Correct error message documentation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 disk_reader: proc (data_ptr, data_lth);
+       18 
+       19 /* Routine to read a specified number of words from the mst area on disk.
+       20*This routine replaces tape_reader as far as segment_loader and load_system
+       21*are concerned.
+       22*Initially coded October 1983 by Keith Loepere. */
+       23 
+       24 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       25 
+       26 dcl  Max_pages		        fixed bin init (256) static options (constant); /* max in a hardware segment */
+       27 dcl  addr			        builtin;
+       28 dcl  addrel		        builtin;
+       29 dcl  data_lth		        fixed bin (18) parameter;/* in words, desired */
+       30 dcl  data_ptr		        ptr parameter;	/* to user's area */
+       31 dcl  disk_mst_seg$		        external;		/* abs_seg mapped onto mst disk area */
+       32 dcl  disk_mst_seg_astep	        ptr static;
+       33 dcl  disk_mst_seg_sdw	        fixed bin (71);
+       34 dcl  divide		        builtin;
+       35 dcl  make_sdw$no_pages	        entry (fixed bin (15), fixed bin (71), ptr, ptr);
+       36 dcl  min			        builtin;
+       37 dcl  mst_area_left		        fixed bin (26) static;/* number of words left to read */
+       38 dcl  next_mst_word		        fixed bin (26) static;/* next word (within disk_mst_seg) to read */
+       39 dcl  page_table		        (0:255) bit (36) aligned based (ptp);
+       40 dcl  pc$cleanup		        entry (ptr);
+       41 dcl  pmut$camp		        entry;
+       42 dcl  pmut$swap_sdw		        entry (ptr, ptr);
+       43 dcl  ptp			        ptr static;		/* to page table for disk_mst_seg */
+       44 dcl  ptw_num		        fixed bin;		/* loop counter */
+       45 dcl  ptw_util_$make_disk	        entry (ptr, fixed bin (20));
+       46 dcl  pvt$root_pvtx		        fixed bin external;
+       47 dcl  segno		        builtin;
+       48 dcl  start_partition_record	        fixed bin (20) static;/* first record described by disk_mst_seg */
+       49 dcl  sys_boot_info$bce_part_frec      fixed bin (20) external;
+       50 dcl  sys_boot_info$bce_part_nrec      fixed bin (20) external;
+       51 dcl  sys_boot_info$mst_past_bce_frec  fixed bin (20) external;
+       52 dcl  syserr		        entry options (variable);
+       53 dcl  user_area		        (user_area_lth) bit (36) aligned based (user_area_ptr);
+       54 dcl  user_area_lth		        fixed bin (18);
+       55 dcl  user_area_ptr		        ptr;
+       56 dcl  user_data_lth		        fixed bin (18);	/* space needed yet */
+       57 
+       58 	if mst_area_left < data_lth then call syserr (CRASH, "disk_reader: Attempt to read past end of mst area.");
+       59 
+       60 	user_area_ptr = data_ptr;
+       61 	user_data_lth = data_lth;
+       62 	do while (user_data_lth > 0);
+       63 	     user_area_lth = min (user_data_lth, Max_pages * 1024 - next_mst_word);
+       64 	     user_area = addrel (addr (disk_mst_seg$), next_mst_word) -> user_area;
+       65 	     user_data_lth = user_data_lth - user_area_lth;
+       66 	     user_area_ptr = addrel (user_area_ptr, user_area_lth);
+       67 	     mst_area_left = mst_area_left - user_area_lth;
+       68 	     next_mst_word = next_mst_word + user_area_lth;
+       69 	     if next_mst_word = Max_pages * 1024 then do;
+       70 		call pc$cleanup (disk_mst_seg_astep);
+       71 		call advance_mst_seg;
+       72 	     end;
+       73 	end;
+       74 	return;
+       75 
+       76 init: entry;
+       77 
+       78 /* Initially set up disk_mst_seg onto the mst area of disk. */
+       79 
+       80 	call make_sdw$no_pages (segno (addr (disk_mst_seg$)), disk_mst_seg_sdw, disk_mst_seg_astep, ptp);
+       81 	disk_mst_seg_astep -> aste.pvtx = pvt$root_pvtx;
+       82 	call pmut$swap_sdw (addr (disk_mst_seg$), addr (disk_mst_seg_sdw));
+       83 	start_partition_record = sys_boot_info$mst_past_bce_frec - Max_pages;
+       84 	mst_area_left = (sys_boot_info$bce_part_frec + sys_boot_info$bce_part_nrec - sys_boot_info$mst_past_bce_frec) * 1024;
+       85 	next_mst_word = 0;
+       86 	call advance_mst_seg;
+       87 	return;
+       88 
+       89 final: entry;
+       90 
+       91 /* free disk_mst_seg */
+       92 
+       93 	call pc$cleanup (disk_mst_seg_astep);	/* free coremap entries */
+       94 	disk_mst_seg_sdw = 0;
+       95 	call pmut$swap_sdw (addr (disk_mst_seg$), addr (disk_mst_seg_sdw));
+       96 	return;
+       97 
+       98 advance_mst_seg: proc;
+       99 
+      100 /* Map the disk_mst_seg onto the next set of pages in the mst area. */
+      101 
+      102 	start_partition_record = start_partition_record + Max_pages;
+      103 	next_mst_word = 0;
+      104 	do ptw_num = 0 to min (Max_pages, divide (mst_area_left + 1023, 1024, 20)) - 1;
+      105 	     call ptw_util_$make_disk (addr (page_table (ptw_num)), start_partition_record + ptw_num);
+      106 	end;
+      107 	call pmut$camp;
+      108 	return;
+      109      end;
+      110  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      110 
+      111  /* BEGIN include file bce_partition_layout.incl.pl1
+  2     2*This is the layout of the bce partition for bootload Multics.
+  2     3*Written September 1983 by Keith Loepere. */
+  2     4 
+  2     5 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  2     6 
+  2     7 dcl  BCE_PART_LTH		        init (2200) fixed bin internal static options (constant);  /* This is the default value. */
+  2     8 dcl  SAVED_IMAGE_RECORDX	        init (0) fixed bin internal static options (constant);
+  2     9 dcl  CRASH_HANDLER_RECORDX	        init (512) fixed bin internal static options (constant);
+  2    10 dcl  BCE_PAGING_AREA_RECORDX	        init (1024) fixed bin internal static options (constant);
+  2    11 dcl  BCE_PAGING_AREA_LTH	        init (128) fixed bin internal static options (constant);
+  2    12 dcl  MST_AREA_RECORDX	        init (1152) fixed bin internal static options (constant);
+  2    13 
+  2    14 /* END include file bce_partition_layout.incl.pl1 */
+      111 
+      112  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      112 
+      113 
+      114 
+      115 /* BEGIN MESSAGE DOCUMENTATION
+      116*
+      117*   Message:
+      118*   disk_reader: Attempt to read past end of mst area.
+      119*
+      120*   S: $crash
+      121*
+      122*   T: $init
+      123*
+      124*   M: An attempt was made to read more data from the mst area of disk than was
+      125*   placed there from the MST.  This is most likely the result of an MST
+      126*   misformed originally.
+      127*
+      128*   A: $recover
+      129*   $boot_tape
+      130*
+      131*   END MESSAGE DOCUMENTATION */
+      132 
+      133      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.1  disk_reader.pl1                   >spec>install>1110>disk_reader.pl1
+110          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+111          2    07/11/84  0937.3  bce_partition_layout.incl.pl1     >ldd>include>bce_partition_layout.incl.pl1
+112          3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000002 constant        fixed bin(17,0)          initial dcl 3-7 set ref 58*
+Max_pages                              constant        fixed bin(17,0)          initial dcl 26 ref 63 69 83 102 104
+addr                                                   builtin function         dcl 27 ref 64 80 80 82 82 82 82 95 95 95 95 105 105
+addrel                                                 builtin function         dcl 28 ref 64 66
+aste                                   based           structure                level 1 dcl 1-11
+data_lth                               parameter       fixed bin(18,0)          dcl 29 ref 17 58 61
+data_ptr                               parameter       pointer                  dcl 30 ref 17 60
+disk_mst_seg$                   000020 external static fixed bin(17,0)          dcl 31 set ref 64 80 80 82 82 95 95
+disk_mst_seg_astep              000010 internal static pointer                  dcl 32 set ref 70* 80* 81 93*
+disk_mst_seg_sdw                000100 automatic       fixed bin(71,0)          dcl 33 set ref 80* 82 82 94* 95 95
+divide                                                 builtin function         dcl 34 ref 104
+make_sdw$no_pages               000022 constant        entry                    external dcl 35 ref 80
+min                                                    builtin function         dcl 36 ref 63 104
+mst_area_left                   000012 internal static fixed bin(26,0)          dcl 37 set ref 58 67* 67 84* 104
+next_mst_word                   000013 internal static fixed bin(26,0)          dcl 38 set ref 63 64 68* 68 69 85* 103*
+page_table                             based           bit(36)                  array dcl 39 set ref 105 105
+pc$cleanup                      000024 constant        entry                    external dcl 40 ref 70 93
+pmut$camp                       000026 constant        entry                    external dcl 41 ref 107
+pmut$swap_sdw                   000030 constant        entry                    external dcl 42 ref 82 95
+ptp                             000014 internal static pointer                  dcl 43 set ref 80* 105 105
+ptw_num                         000102 automatic       fixed bin(17,0)          dcl 44 set ref 104* 105 105 105*
+ptw_util_$make_disk             000032 constant        entry                    external dcl 45 ref 105
+pvt$root_pvtx                   000034 external static fixed bin(17,0)          dcl 46 ref 81
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-11 set ref 81*
+segno                                                  builtin function         dcl 47 ref 80 80
+start_partition_record          000016 internal static fixed bin(20,0)          dcl 48 set ref 83* 102* 102 105
+sys_boot_info$bce_part_frec     000036 external static fixed bin(20,0)          dcl 49 ref 84
+sys_boot_info$bce_part_nrec     000040 external static fixed bin(20,0)          dcl 50 ref 84
+sys_boot_info$mst_past_bce_frec 000042 external static fixed bin(20,0)          dcl 51 ref 83 84
+syserr                          000044 constant        entry                    external dcl 52 ref 58
+user_area                              based           bit(36)                  array dcl 53 set ref 64* 64
+user_area_lth                   000103 automatic       fixed bin(18,0)          dcl 54 set ref 63* 64 65 66 67 68
+user_area_ptr                   000104 automatic       pointer                  dcl 55 set ref 60* 64 66* 66
+user_data_lth                   000106 automatic       fixed bin(18,0)          dcl 56 set ref 61* 62 63 65* 65
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+BCE_PAGING_AREA_LTH                    internal static fixed bin(17,0)          initial dcl 2-11
+BCE_PAGING_AREA_RECORDX                internal static fixed bin(17,0)          initial dcl 2-10
+BCE_PART_LTH                           internal static fixed bin(17,0)          initial dcl 2-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+CRASH_HANDLER_RECORDX                  internal static fixed bin(17,0)          initial dcl 2-9
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+MST_AREA_RECORDX                       internal static fixed bin(17,0)          initial dcl 2-12
+SAVED_IMAGE_RECORDX                    internal static fixed bin(17,0)          initial dcl 2-8
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+astep                                  automatic       pointer                  dcl 1-9
+seg_aste                               based           structure                level 1 dcl 1-96
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+advance_mst_seg                 000266 constant        entry                    internal dcl 98 ref 71 86
+disk_reader                     000031 constant        entry                    external dcl 17
+final                           000232 constant        entry                    external dcl 89
+init                            000144 constant        entry                    external dcl 76
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       514         562     334         524
+Length      1024     334        46         226     160          10
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+disk_reader                         122 external procedure  is an external procedure.  
+advance_mst_seg                         internal procedure  shares stack frame of external procedure disk_reader.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 disk_mst_seg_astep          disk_reader
+000012 mst_area_left               disk_reader
+000013 next_mst_word               disk_reader
+000014 ptp                         disk_reader
+000016 start_partition_record      disk_reader
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+disk_reader              000100 disk_mst_seg_sdw            disk_reader
+                         000102 ptw_num                     disk_reader
+                         000103 user_area_lth               disk_reader
+                         000104 user_area_ptr               disk_reader
+                         000106 user_data_lth               disk_reader
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+make_sdw$no_pages             pc$cleanup                    pmut$camp                     pmut$swap_sdw
+ptw_util_$make_disk           syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+disk_mst_seg$                 pvt$root_pvtx                 sys_boot_info$bce_part_frec   sys_boot_info$bce_part_nrec
+sys_boot_info$mst_past_bce_frec
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000025        58 000036        60 000061        61 000065        62 000067        63 000072        64 000103
+     65 000115        66 000117        67 000122        68 000124        69 000126        70 000131        71 000140
+     73 000141        74 000142        76 000143        80 000151        81 000174        82 000201        83 000215
+     84 000221        85 000226        86 000227        87 000230        89 000231        93 000237        94 000246
+     95 000250        96 000265        98 000266       102 000267       103 000272       104 000273       105 000307
+    106 000324       107 000326       108 000333
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

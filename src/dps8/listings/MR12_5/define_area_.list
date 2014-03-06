@@ -1,0 +1,779 @@
+	COMPILATION LISTING OF SEGMENT define_area_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1006.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 define_area_: proc (a_area_infop, a_code);
+       14 
+       15 
+       16 /****^  HISTORY COMMENTS:
+       17*  1) change(75-01-01,Webber), approve(), audit(), install():
+       18*      Unknown date, coded by S. Webber.
+       19*  2) change(76-08-01,Weaver), approve(), audit(), install():
+       20*      Modified by M. Weaver to fix get_next_area_ptr_.
+       21*  3) change(76-08-01,RBarnes), approve(), audit(), install():
+       22*      Modified for extendable no_free areas.
+       23*  4) change(77-04-01,Weaver), approve(), audit(), install():
+       24*      Modified to make release_area_ safer and easier to use.
+       25*  5) change(77-08-01,RBarnes), approve(), audit(), install():
+       26*      Modified to implement zero_on_alloc for no_free areas.
+       27*  6) change(77-08-20,Green), approve(), audit(), install():
+       28*      Modified by PG to fix bug (must init zero_on_free areas to zero).
+       29*  7) change(78-09-01,Carlyle), approve(), audit(), install():
+       30*      Modified by K. Carlyle to fix bug (area size must be at least 32).
+       31*  8) change(80-01-01,Weaver), approve(), audit(), install():
+       32*      Modified to make release_area_ zero only to next_virgin.
+       33*  9) change(81-06-01,Donner), approve(), audit(), install():
+       34*      Modified by E. Donner to set ring brackets on extensible area segment.
+       35* 10) change(86-05-15,Lippard), approve(86-06-23,MCR7438),
+       36*     audit(86-08-04,Hartogs), install(86-08-19,MR12.0-1120):
+       37*      Modified by Jim Lippard to set ring brackets on additional segments in
+       38*      area to be the same as component 0 regardless of system bit; and to not
+       39*      allow an area to be defined starting at an odd address.
+       40* 11) change(86-09-18,Lippard), approve(86-06-23,PBF7438),
+       41*     audit(86-09-24,Farley), install(86-09-25,MR12.0-1164):
+       42*      Modified to not always zero out new components of extensible areas.
+       43*                                                   END HISTORY COMMENTS */
+       44 
+       45 
+       46 /* Automatic */
+       47 
+       48 	dcl     code		 fixed bin (35);
+       49 	dcl     next_areap		 ptr;
+       50 	dcl     new_extend_blockp	 ptr;
+       51 	dcl     defined		 bit (1) aligned;
+       52 	dcl     1 info		 aligned like area_info;
+       53 	dcl     area_size		 fixed bin (18);
+       54 	dcl     len		 fixed bin;
+       55 	dcl     dirname		 char (168);
+       56 	dcl     entname		 char (32);
+       57 	dcl     dlng		 fixed bin;
+       58 	dcl     rings		 (3) fixed bin (3);
+       59 	dcl     set_ring_brackets      bit (1) aligned;
+       60 
+       61 /* Parameters */
+       62 
+       63 	dcl     a_area_infop	 ptr;
+       64 	dcl     a_code		 fixed bin (35);
+       65 	dcl     1 a_control		 aligned like area_control;
+       66 	dcl     a_areap		 ptr;
+       67 	dcl     a_next_componentp	 ptr;
+       68 
+       69 /* Constants */
+       70 
+       71 	dcl     Max_Components	 fixed bin static init (1000) options (constant);
+       72 
+       73 /* Based */
+       74 
+       75 	dcl     based_area		 area (area_size) aligned based (areap);
+       76 
+       77 /* Entries */
+       78 
+       79 	dcl     unique_chars_	 entry (bit (*)) returns (char (15));
+       80 	dcl     get_temp_segment_      entry (char(*), ptr, fixed bin(35));
+       81 	dcl     hcs_$make_seg	 entry (char (*), char (*), char (*), fixed bin (5), ptr, fixed bin (35));
+       82 	dcl     hcs_$get_ring_brackets entry (char (*), char (*), (3) fixed bin (3), fixed bin (35));
+       83 	dcl     hcs_$set_ring_brackets entry (char (*), char (*), (3) fixed bin (3), fixed bin (35));
+       84 
+       85 
+       86 	dcl     release_temp_segment_ entry (char (*), ptr, fixed bin (35));
+       87 	dcl     get_ring_		 entry () returns (fixed bin);
+       88 	dcl     hcs_$fs_get_path_name	 entry (ptr, char (*), fixed bin, char (*), fixed bin (35));
+       89 	dcl     delete_$ptr		 entry (ptr, bit (6), char (*), fixed bin (35));
+       90 
+       91 /* Builtins */
+       92 
+       93 	dcl     (bit, empty, rel, null, bin, substr, addr, addrel, index, length, mod, unspec, wordno, size) builtin;
+       94 
+       95 /* External */
+       96 
+       97 	dcl     sys_info$max_seg_size	 fixed bin (18) ext;
+       98 	dcl     error_table_$unimplemented_version fixed bin (35) ext;
+       99 	dcl     error_table_$area_too_small fixed bin (35) ext;
+      100 	dcl     error_table_$boundviol fixed bin (35) ext;
+      101 	dcl     error_table_$noalloc	 fixed bin (35) ext;
+      102 	dcl     error_table_$no_odd_areas fixed bin (35) ext;
+      103 
+      104 /* Conditions */
+      105 
+      106 	dcl     area		 condition;
+      107 	dcl     bad_area_initialization condition;
+      108 	dcl     cleanup		 condition;
+      109 
+      110 /*  */
+      111 
+      112 /* This routine creates and initializes an area segment. It takes control information
+      113*   from its input structure and sets special bits in the area header to reflect
+      114*   the desired result. if the area is extensible, an extension blocks is allocated
+      115*   in the area and initialized appropriately.
+      116**/
+      117 
+      118 	area_infop = a_area_infop;
+      119 
+      120 	if area_info.version ^= area_info_version_1 then do;
+      121 		a_code = error_table_$unimplemented_version;
+      122 		return;
+      123 	     end;
+      124 	else a_code = 0;
+      125 
+      126 	if area_info.extend | (area_info.areap = null)
+      127 	then if area_info.size < size (area_header) + min_block_size + size (extend_block)
+      128 	     then go to MIN_SIZE_ERROR;
+      129 	     else ;
+      130 	else if area_info.size < size (area_header) + min_block_size then go to MIN_SIZE_ERROR;
+      131 	if area_info.size > sys_info$max_seg_size then go to MAX_SIZE_ERROR;
+      132 
+      133 /* First create the area segment if necessary. The nullness of the input area pointer
+      134*   indicates what we are to do. */
+      135 
+      136 	if area_info.areap = null then do;		/* null means we should get an area segment */
+      137 		len = index (area_info.owner, " ") - 1;
+      138 		if len < 0 then len = length (area_info.owner);
+      139 		if area_info.system | (get_ring_ () = 0)
+      140 		then call hcs_$make_seg ("", unique_chars_ (""b) || ".area." || substr (area_info.owner, 1, 10),
+      141 			"", 01110b, area_info.areap, code);
+      142 		else call get_temp_segment_ (substr (area_info.owner, 1, len) || ".area", area_info.areap, code);
+      143 		if code ^= 0 then goto ERROR;
+      144 		defined = "1"b;
+      145 	     end;
+      146 	else do;
+      147 	     if mod (wordno (area_info.areap), 2) ^= 0 then goto ODD_AREA_ERROR;
+      148 	     defined = "0"b;
+      149 	end;
+      150 
+      151 	areap = area_info.areap;			/* this is the pointer we will use */
+      152 
+      153 /* First we must empty the area */
+      154 
+      155 	area_size = area_info.size;			/* get requested size of area */
+      156 
+      157 /* implement zero_on_alloc for no_freeing areas */
+      158 /* (system areas are assumed to be zero to start with...) */
+      159 
+      160 	if ^defined
+      161 	then if ^area_info.system & ((area_info.no_freeing & area_info.zero_on_alloc) | area_info.zero_on_free)
+      162 	     then unspec (areap -> based_area) = "0"b;
+      163 
+      164 	on bad_area_initialization goto ERROR;
+      165 	areap -> based_area = empty;
+      166 
+      167 /* Now we must fill in the control bits in the area header before attempting to allocate
+      168*   any extend structure */
+      169 
+      170 	if area_info.no_freeing
+      171 	then do;
+      172 		area_header.allocation_method = NO_FREEING_ALLOCATION_METHOD;
+      173 		no_free_area_header.current_component = areap;
+      174 	     end;
+      175 	else area_header.allocation_method = STANDARD_ALLOCATION_METHOD;
+      176 	area_header.zero_on_free = area_info.zero_on_free;
+      177 	area_header.zero_on_alloc = area_info.zero_on_alloc;
+      178 	area_header.dont_free = area_info.dont_free;
+      179 	area_header.extend = area_info.extend;
+      180 	area_header.system = area_info.system;
+      181 	area_header.defined_by_call = defined;
+      182 
+      183 /* Now see if we must allocate an extend block */
+      184 
+      185 	if area_header.extend | area_header.defined_by_call then do; /* yes, do it */
+      186 		on condition (area) goto ERROR;
+      187 		allocate extend_block in (based_area) set (extend_blockp);
+      188 		extend_block.first_area = areap;
+      189 		extend_block.next_area = null;
+      190 		extend_block.sequence_no = 1;
+      191 		extend_block.name = area_info.owner;
+      192 		area_header.extend_info = bit (bin (bin (rel (extend_blockp), 18) - bin (rel (areap), 18), 18), 18);
+      193 	     end;
+      194 	return;
+      195 
+      196 ERROR:	a_code = error_table_$noalloc;
+      197 	return;
+      198 
+      199 ODD_AREA_ERROR: a_code = error_table_$no_odd_areas;
+      200 	return;
+      201 
+      202 MIN_SIZE_ERROR: a_code = error_table_$area_too_small;
+      203 	return;
+      204 
+      205 MAX_SIZE_ERROR: a_code = error_table_$boundviol;
+      206 	return;
+      207 
+      208 change_area_attributes_: entry (a_areap, a_control, a_code);
+      209 
+      210 	do areap = a_areap repeat next_areap while (areap ^= null);
+      211 	     area_header.extend = a_control.extend;
+      212 	     area_header.zero_on_alloc = a_control.zero_on_alloc;
+      213 	     area_header.zero_on_free = a_control.zero_on_free;
+      214 	     area_header.dont_free = a_control.dont_free;
+      215 	     area_header.system = a_control.system;
+      216 	     if a_control.no_freeing then area_header.allocation_method = NO_FREEING_ALLOCATION_METHOD;
+      217 	     if area_header.extend_info then next_areap = addrel (areap, area_header.extend_info) -> extend_block.next_area;
+      218 	     else next_areap = null;
+      219 	end;
+      220 	return;
+      221 
+      222 get_next_area_ptr_: entry (a_areap, a_next_componentp);
+      223 
+      224 /* This entry is called by alloc_ when it runs off the end
+      225*   of an extensible area segment */
+      226 
+      227 	areap = a_areap;
+      228 	extend_blockp = addrel (areap, area_header.extend_info);
+      229 	if extend_block.next_area = null then do;
+      230 		if extend_blockp -> extend_block.sequence_no >= Max_Components then do;
+      231 abort:			a_next_componentp = null;
+      232 			return;
+      233 		     end;
+      234 
+      235 		if area_header.system | (get_ring_ () = 0) then do;
+      236 		     call hcs_$fs_get_path_name (areap, dirname, dlng, entname, code);
+      237 						/* find out what directory area is in */
+      238 		     call hcs_$get_ring_brackets (dirname, entname, rings, code);
+      239 						/* save ring brackets of original area segment */
+      240 		     if code ^= 0 then go to abort;
+      241 		     entname =  (unique_chars_ (""b) || ".area." ||
+      242 			substr (extend_block.name, 1, 10));
+      243 		     call hcs_$make_seg (dirname, entname, "", 01110b, info.areap, code);
+      244 						/* create new component in same directory */
+      245 		     if code ^= 0 then goto abort;
+      246 		     call hcs_$set_ring_brackets (dirname, entname, rings, code);
+      247 		     if code ^= 0 then go to abort;
+      248 		     set_ring_brackets = "0"b;
+      249 		     end;
+      250 		else do;
+      251 		     info.areap = null ();
+      252 		     set_ring_brackets = "1"b;
+      253 		     end;
+      254 
+      255 		info.version = area_info_version_1;
+      256 		info.extend = area_header.extend;
+      257 		info.zero_on_alloc = area_header.zero_on_alloc;
+      258 		info.zero_on_free = area_header.zero_on_free;
+      259 		info.dont_free = area_header.dont_free;
+      260 		info.no_freeing = (area_header.allocation_method = NO_FREEING_ALLOCATION_METHOD);
+      261 		info.system = area_header.system;
+      262 		info.size = sys_info$max_seg_size;
+      263 		info.owner = extend_block.name;
+      264 		call define_area_ (addr (info), code);
+      265 		if code ^= 0 then go to abort;
+      266 
+      267 		info.areap -> area_header.flags.defined_by_call = "1"b; /* extended components are defined by call */
+      268 
+      269 		extend_block.next_area = info.areap;
+      270 		new_extend_blockp = addrel (info.areap, info.areap -> area_header.extend_info);
+      271 		new_extend_blockp -> extend_block.sequence_no = extend_block.sequence_no + 1;
+      272 		new_extend_blockp -> extend_block.first_area = extend_block.first_area;
+      273 
+      274 		if set_ring_brackets then do;
+      275 		     call hcs_$fs_get_path_name (areap, dirname, dlng, entname, code);
+      276 		     if code ^= 0 then go to abort;
+      277 		     call hcs_$get_ring_brackets (dirname, entname, rings, code);
+      278 		     if code ^= 0 then go to abort;
+      279 		     call hcs_$fs_get_path_name (info.areap, dirname, dlng, entname, code);
+      280 		     if code ^= 0 then go to abort;
+      281 		     call hcs_$set_ring_brackets (dirname, entname, rings, code);
+      282 		     if code ^= 0 then go to abort;
+      283 		end;
+      284 	     end;
+      285 
+      286 	a_next_componentp = extend_block.next_area;
+      287 	return;
+      288 
+      289 release_area_: entry (a_areap);
+      290 
+      291 /* This entry, given a pointer to the first component of a possible multi-component
+      292*   area, deletes all components created by the define_area_ interface. */
+      293 
+      294 /* THIS ENTRY MUST NOT BE CALLED IN RING ZERO! */
+      295 
+      296 	dcl     (mask, oldmask)	 bit (36) aligned;
+      297 	dcl     i			 fixed bin;
+      298 	dcl     ips_names		 char (32) aligned;
+      299 	dcl     create_ips_mask_	 entry (ptr, fixed bin, bit (36) aligned);
+      300 	dcl     (hcs_$set_ips_mask, hcs_$reset_ips_mask) entry (bit (36) aligned, bit (36) aligned);
+      301 
+      302 	ips_names = "-all";
+      303 	call create_ips_mask_ (addr (ips_names), 1, mask);
+      304 	oldmask = "0"b;
+      305 	on cleanup begin;
+      306 		if substr (oldmask, 36, 1) then do;
+      307 			mask = oldmask;
+      308 			call hcs_$reset_ips_mask (mask, oldmask);
+      309 		     end;
+      310 	     end;
+      311 	call hcs_$set_ips_mask (mask, oldmask);
+      312 
+      313 	areap = a_areap;
+      314 	a_areap = null;				/* indicate to caller that we were called */
+      315 	do i = 1 to Max_Components while (areap ^= null);
+      316 	     if area_header.extend | area_header.defined_by_call then do;
+      317 		     extend_blockp = addrel (areap, area_header.extend_info);
+      318 		     next_areap = extend_block.next_area;
+      319 		     extend_block.next_area = null;
+      320 		end;
+      321 	     else next_areap = null;
+      322 	     if area_header.defined_by_call then do;
+      323 		     if ^area_header.flags.system then do;
+      324 			     len = index (extend_block.name, " ") - 1;
+      325 			     if len < 0 then len = length (extend_block.name);
+      326 			     call release_temp_segment_ (substr (extend_block.name, 1, len) || ".area", areap, code);
+      327 			     if code ^= 0 then call delete_$ptr (areap, "000100"b, "release_area_", code);
+      328 						/* this is to delete segments created in ring 0 */
+      329 			end;
+      330 		     else call delete_$ptr (areap, "000100"b, "release_area_", code);
+      331 		end;
+      332 	     else do;
+      333 		     if area_header.flags.zero_on_free then do;
+      334 			     area_size = bin (area_header.next_virgin, 18);
+      335 			     unspec (areap -> based_area) = "0"b;
+      336 			end;
+      337 		     area_size = bin (area_header.last_usable, 18);
+      338 						/* be sure area size is correct for empty */
+      339 		     areap -> based_area = empty;
+      340 		end;
+      341 
+      342 	     areap = next_areap;
+      343 
+      344 	end;
+      345 
+      346 	mask = oldmask;
+      347 	call hcs_$reset_ips_mask (mask, oldmask);
+      348 	return;
+      349 						/*  */
+      350 
+  1     1 /* BEGIN INCLUDE FILE area_structures.incl.pl1  10/75 */
+  1     2 /* Modified September 1981 by J. Bongiovanni for allocation_p_clock */
+  1     3 
+  1     4 dcl  area_version_1 fixed bin static init (1);		/* version number for this area format */
+  1     5 
+  1     6 dcl  areap ptr;
+  1     7 
+  1     8 dcl 1 area_header aligned based (areap),
+  1     9     2 version fixed bin (35),				/* 0 for buddy system, 1 for current areas */
+  1    10     2 last_usable bit (18),				/* rel pointer to end of area */
+  1    11     2 next_virgin bit (18),				/* rel pointer to next slot in virgin territory */
+  1    12     2 flags,
+  1    13       3 extend bit (1) unal,				/* says area is extensible */
+  1    14       3 zero_on_alloc bit (1) unal,			/* says to zero after allocation */
+  1    15       3 zero_on_free bit (1) unal,			/* says to zero after freeing */
+  1    16       3 dont_free bit (1) unal,			/* dont honor free request -- debugging tool */
+  1    17       3 defined_by_call bit (1) unal,			/* says area seg got via define_area_ call */
+  1    18       3 system bit (1) unal,				/* ayss area is managed by the system */
+  1    19       3 mbz bit (30) unal,
+  1    20     2 allocation_method fixed bin,			/* 0 is standard, 1 is no_freeing method */
+  1    21     2 last_size bit (18),				/* size of last allocated block before virgin territory */
+  1    22     2 last_block bit (18),				/* rel pointer to last allocated block before virgin territory */
+  1    23     2 freep (3:16),					/* free list info */
+  1    24       3 relp bit (18) unal,				/* pointer to first block on list */
+  1    25       3 max_block_size bit (18) unal,			/* size of largest block on list, if known. else zero */
+  1    26     2 allocation_p_clock bit (36) aligned,		/* counter to prevent IPS race */
+  1    27     2 extend_info bit (18) unal,			/* offset to extend info block */
+  1    28     2 recovery_info bit (18) unal,			/* eventually will hold recovery info relp */
+  1    29     2 n_allocated fixed bin (17) unal,			/* number of allocated blocks */
+  1    30     2 n_free fixed bin (17) unal;			/* number of free blocks */
+  1    31 
+  1    32 dcl (STANDARD_ALLOCATION_METHOD init (0),
+  1    33      NO_FREEING_ALLOCATION_METHOD init (1)
+  1    34      ) fixed bin internal static;
+  1    35 
+  1    36 dcl  extend_blockp ptr;
+  1    37 
+  1    38 dcl 1 extend_block aligned based (extend_blockp),		/* contents of extend block for extensible areas */
+  1    39     2 first_area ptr unal,				/* pointer to first area */
+  1    40     2 next_area ptr unal,				/* pointer to next area in chain */
+  1    41     2 sequence_no fixed bin,				/* sequence number for this component */
+  1    42     2 name char (32),				/* owner of the area */
+  1    43     2 pad fixed;					/* brings it to an even, 12 word allocation */
+  1    44 
+  1    45 dcl alloc_blkhdrsz static internal init(2);
+  1    46 dcl 1 no_free_area_header aligned based(areap),		/* overlay for no_free areas */
+  1    47     2 pad(4) ptr,
+  1    48     2 current_component ptr;				/* points to component from which we are allocating */
+  1    49 
+  1    50 dcl  blockp ptr;
+  1    51 
+  1    52 dcl 1 block aligned based (blockp),			/* declaration for block header */
+  1    53     2 prev_size bit (18) unal,			/* size of preceding block */
+  1    54     2 cur_size bit (18) unal,				/* size of current block */
+  1    55     2 buddy_pad bit (8) unal,				/* non_zero for buddy system area */
+  1    56     2 prev_busy bit (1) unal,				/* previous-block-is-used flag */
+  1    57     2 marked bit (1) unal,
+  1    58     2 q_no bit (8) unal,				/* stratum number when in free list */
+  1    59     2 header bit (18) unal,				/* pointer to head of area */
+  1    60     2 fp bit (18) unal,				/* forward free list thread */
+  1    61     2 bp bit (18) unal;				/* backward free list thread */
+  1    62 
+  1    63 dcl  min_block_size fixed bin static init (8);		/* minimum allowed block size */
+  1    64 
+  1    65 /* END INCLUDE FILE area_structures.incl.pl1 */
+      351 
+  2     1 /* BEGIN INCLUDE FILE area_info.incl.pl1  12/75 */
+  2     2 
+  2     3 dcl  area_info_version_1 fixed bin static init (1) options (constant);
+  2     4 
+  2     5 dcl  area_infop ptr;
+  2     6 
+  2     7 dcl 1 area_info aligned based (area_infop),
+  2     8     2 version fixed bin,				/* version number for this structure is 1 */
+  2     9     2 control aligned like area_control,		/* control bits for the area */
+  2    10     2 owner char (32) unal,				/* creator of the area */
+  2    11     2 n_components fixed bin,				/* number of components in the area (returned only) */
+  2    12     2 size fixed bin (18),				/* size of the area in words */
+  2    13     2 version_of_area fixed bin,			/* version of area (returned only) */
+  2    14     2 areap ptr,					/* pointer to the area (first component on multisegment area) */
+  2    15     2 allocated_blocks fixed bin,			/* number of blocks allocated */
+  2    16     2 free_blocks fixed bin,				/* number of free blocks not in virgin */
+  2    17     2 allocated_words fixed bin (30),			/* number of words allocated in the area */
+  2    18     2 free_words fixed bin (30);			/* number of words free in area not in virgin */
+  2    19 
+  2    20 dcl 1 area_control aligned based,
+  2    21     2 extend bit (1) unal,				/* says area is extensible */
+  2    22     2 zero_on_alloc bit (1) unal,			/* says block gets zerod at allocation time */
+  2    23     2 zero_on_free bit (1) unal,			/* says block gets zerod at free time */
+  2    24     2 dont_free bit (1) unal,			/* debugging aid, turns off free requests */
+  2    25     2 no_freeing bit (1) unal,			/* for allocation method without freeing */
+  2    26     2 system bit (1) unal,				/* says area is managed by system */
+  2    27     2 pad bit (30) unal;
+  2    28 
+  2    29 /* END INCLUDE FILE area_info.incl.pl1 */
+      352 
+      353 
+      354      end define_area_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  define_area_.pl1                  >spec>install>1110>define_area_.pl1
+351          1    09/14/81  1347.6  area_structures.incl.pl1          >ldd>include>area_structures.incl.pl1
+352          2    06/11/76  1043.4  area_info.incl.pl1                >ldd>include>area_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Max_Components                         constant        fixed bin(17,0)          initial dcl 71 ref 230 315
+NO_FREEING_ALLOCATION_METHOD           constant        fixed bin(17,0)          initial dcl 1-32 ref 172 216 260
+STANDARD_ALLOCATION_METHOD             constant        fixed bin(17,0)          initial dcl 1-32 ref 175
+a_area_infop                           parameter       pointer                  dcl 63 ref 13 118
+a_areap                                parameter       pointer                  dcl 66 set ref 208 210 222 227 289 313 314*
+a_code                                 parameter       fixed bin(35,0)          dcl 64 set ref 13 121* 124* 196* 199* 202* 205* 208
+a_control                              parameter       structure                level 1 dcl 65 ref 208
+a_next_componentp                      parameter       pointer                  dcl 67 set ref 222 231* 286*
+addr                                                   builtin function         dcl 93 ref 264 264 303 303
+addrel                                                 builtin function         dcl 93 ref 217 228 270 317
+allocation_method         4            based           fixed bin(17,0)          level 2 dcl 1-8 set ref 172* 175* 216* 260
+area                            000226 stack reference condition                dcl 106 ref 186
+area_control                           based           structure                level 1 dcl 2-20
+area_header                            based           structure                level 1 dcl 1-8 set ref 126 130
+area_info                              based           structure                level 1 dcl 2-7
+area_info_version_1                    constant        fixed bin(17,0)          initial dcl 2-3 ref 120 255
+area_infop                      000270 automatic       pointer                  dcl 2-5 set ref 118* 120 126 126 126 130 131 136 137
+                                                                                  138 139 139 139 142 142 147 151 155 160 160 160
+                                                                                  160 170 176 177 178 179 180 191
+area_size                       000134 automatic       fixed bin(18,0)          dcl 53 set ref 155* 160 165 334* 335 337* 339
+areap                           000264 automatic       pointer                  dcl 1-6 in procedure "define_area_" set ref 126 130
+                                                                                  151* 160 165 172 173 173 175 176 177 178 179 180
+                                                                                  181 185 185 187 188 192 192 210* 210* 211 212 213
+                                                                                  214 215 216 217 217 217* 227* 228 228 235 236* 256
+                                                                                  257 258 259 260 261 275* 313* 315 316 316 317 317
+                                                                                  322 323 326* 327* 330* 333 334 335 337 339 342*
+areap                    16            based           pointer                  level 2 in structure "area_info" dcl 2-7
+                                                                                  in procedure "define_area_" set ref 126 136 139*
+                                                                                  142* 147 151
+areap                    16     000110 automatic       pointer                  level 2 in structure "info" dcl 52 in procedure
+                                                                                  "define_area_" set ref 243* 251* 267 269 270 270
+                                                                                  279*
+bad_area_initialization         000234 stack reference condition                dcl 107 ref 164
+based_area                             based           area                     dcl 75 set ref 160* 165* 187 335* 339*
+bin                                                    builtin function         dcl 93 ref 192 192 192 334 337
+bit                                                    builtin function         dcl 93 ref 192
+cleanup                         000242 stack reference condition                dcl 108 ref 305
+code                            000100 automatic       fixed bin(35,0)          dcl 48 set ref 139* 142* 143 236* 238* 240 243* 245
+                                                                                  246* 247 264* 265 275* 276 277* 278 279* 280 281*
+                                                                                  282 326* 327 327* 330*
+control                   1            based           structure                level 2 in structure "area_info" dcl 2-7
+                                                                                  in procedure "define_area_"
+control                   1     000110 automatic       structure                level 2 in structure "info" dcl 52 in procedure
+                                                                                  "define_area_"
+create_ips_mask_                000046 constant        entry                    external dcl 299 ref 303
+current_component        10            based           pointer                  level 2 dcl 1-46 set ref 173*
+defined                         000106 automatic       bit(1)                   dcl 51 set ref 144* 148* 160 181
+defined_by_call           3(04)        based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 181*
+                                                                                  185 267* 316 322
+delete_$ptr                     000030 constant        entry                    external dcl 89 ref 327 330
+dirname                         000136 automatic       char(168)                packed unaligned dcl 55 set ref 236* 238* 243* 246*
+                                                                                  275* 277* 279* 281*
+dlng                            000220 automatic       fixed bin(17,0)          dcl 57 set ref 236* 275* 279*
+dont_free                 0(03)        parameter       bit(1)                   level 2 in structure "a_control" packed packed
+                                                                                  unaligned dcl 65 in procedure "define_area_" ref
+                                                                                  214
+dont_free                 3(03)        based           bit(1)                   level 3 in structure "area_header" packed packed
+                                                                                  unaligned dcl 1-8 in procedure "define_area_" set
+                                                                                  ref 178* 214* 259
+dont_free                 1(03)        based           bit(1)                   level 3 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  178
+dont_free                 1(03) 000110 automatic       bit(1)                   level 3 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 259*
+empty                                                  builtin function         dcl 93 ref 165 339
+entname                         000210 automatic       char(32)                 packed unaligned dcl 56 set ref 236* 238* 241* 243*
+                                                                                  246* 275* 277* 279* 281*
+error_table_$area_too_small     000036 external static fixed bin(35,0)          dcl 99 ref 202
+error_table_$boundviol          000040 external static fixed bin(35,0)          dcl 100 ref 205
+error_table_$no_odd_areas       000044 external static fixed bin(35,0)          dcl 102 ref 199
+error_table_$noalloc            000042 external static fixed bin(35,0)          dcl 101 ref 196
+error_table_$unimplemented_version
+                                000034 external static fixed bin(35,0)          dcl 98 ref 121
+extend                    1     000110 automatic       bit(1)                   level 3 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 256*
+extend                    3            based           bit(1)                   level 3 in structure "area_header" packed packed
+                                                                                  unaligned dcl 1-8 in procedure "define_area_" set
+                                                                                  ref 179* 185 211* 256 316
+extend                                 parameter       bit(1)                   level 2 in structure "a_control" packed packed
+                                                                                  unaligned dcl 65 in procedure "define_area_" ref
+                                                                                  211
+extend                    1            based           bit(1)                   level 3 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  126 179
+extend_block                           based           structure                level 1 dcl 1-38 set ref 126 187
+extend_blockp                   000266 automatic       pointer                  dcl 1-36 set ref 126 187* 188 189 190 191 192 228*
+                                                                                  229 230 241 263 269 271 272 286 317* 318 319 324
+                                                                                  325 326
+extend_info              26            based           bit(18)                  level 2 packed packed unaligned dcl 1-8 set ref 192*
+                                                                                  217 217 228 270 317
+first_area                             based           pointer                  level 2 packed packed unaligned dcl 1-38 set ref
+                                                                                  188* 272* 272
+flags                     3            based           structure                level 2 dcl 1-8
+get_ring_                       000024 constant        entry                    external dcl 87 ref 139 235
+get_temp_segment_               000012 constant        entry                    external dcl 80 ref 142
+hcs_$fs_get_path_name           000026 constant        entry                    external dcl 88 ref 236 275 279
+hcs_$get_ring_brackets          000016 constant        entry                    external dcl 82 ref 238 277
+hcs_$make_seg                   000014 constant        entry                    external dcl 81 ref 139 243
+hcs_$reset_ips_mask             000052 constant        entry                    external dcl 300 ref 308 347
+hcs_$set_ips_mask               000050 constant        entry                    external dcl 300 ref 311
+hcs_$set_ring_brackets          000020 constant        entry                    external dcl 83 ref 246 281
+i                               000252 automatic       fixed bin(17,0)          dcl 297 set ref 315*
+index                                                  builtin function         dcl 93 ref 137 324
+info                            000110 automatic       structure                level 1 dcl 52 set ref 264 264
+ips_names                       000253 automatic       char(32)                 dcl 298 set ref 302* 303 303
+last_usable               1            based           bit(18)                  level 2 dcl 1-8 ref 337
+len                             000135 automatic       fixed bin(17,0)          dcl 54 set ref 137* 138 138* 142 324* 325 325* 326
+length                                                 builtin function         dcl 93 ref 138 325
+mask                            000250 automatic       bit(36)                  dcl 296 set ref 303* 307* 308* 311* 346* 347*
+min_block_size                         constant        fixed bin(17,0)          initial dcl 1-63 ref 126 130
+mod                                                    builtin function         dcl 93 ref 147
+name                      3            based           char(32)                 level 2 dcl 1-38 set ref 191* 241 263 324 325 326
+new_extend_blockp               000104 automatic       pointer                  dcl 50 set ref 270* 271 272
+next_area                 1            based           pointer                  level 2 packed packed unaligned dcl 1-38 set ref
+                                                                                  189* 217 229 269* 286 318 319*
+next_areap                      000102 automatic       pointer                  dcl 49 set ref 217* 218* 219 318* 321* 342
+next_virgin               2            based           bit(18)                  level 2 dcl 1-8 ref 334
+no_free_area_header                    based           structure                level 1 dcl 1-46
+no_freeing                0(04)        parameter       bit(1)                   level 2 in structure "a_control" packed packed
+                                                                                  unaligned dcl 65 in procedure "define_area_" ref
+                                                                                  216
+no_freeing                1(04) 000110 automatic       bit(1)                   level 3 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 260*
+no_freeing                1(04)        based           bit(1)                   level 3 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  160 170
+null                                                   builtin function         dcl 93 ref 126 136 189 210 218 229 231 251 314 315
+                                                                                  319 321
+oldmask                         000251 automatic       bit(36)                  dcl 296 set ref 304* 306 307 308* 311* 346 347*
+owner                     2     000110 automatic       char(32)                 level 2 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 263*
+owner                     2            based           char(32)                 level 2 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  137 138 139 142 191
+rel                                                    builtin function         dcl 93 ref 192 192
+release_temp_segment_           000022 constant        entry                    external dcl 86 ref 326
+rings                           000221 automatic       fixed bin(3,0)           array dcl 58 set ref 238* 246* 277* 281*
+sequence_no               2            based           fixed bin(17,0)          level 2 dcl 1-38 set ref 190* 230 271* 271
+set_ring_brackets               000224 automatic       bit(1)                   dcl 59 set ref 248* 252* 274
+size                     13            based           fixed bin(18,0)          level 2 in structure "area_info" dcl 2-7
+                                                                                  in procedure "define_area_" ref 126 130 131 155
+size                                                   builtin function         dcl 93 in procedure "define_area_" ref 126 126 130
+size                     13     000110 automatic       fixed bin(18,0)          level 2 in structure "info" dcl 52 in procedure
+                                                                                  "define_area_" set ref 262*
+substr                                                 builtin function         dcl 93 ref 139 142 241 306 326
+sys_info$max_seg_size           000032 external static fixed bin(18,0)          dcl 97 ref 131 262
+system                    0(05)        parameter       bit(1)                   level 2 in structure "a_control" packed packed
+                                                                                  unaligned dcl 65 in procedure "define_area_" ref
+                                                                                  215
+system                    1(05)        based           bit(1)                   level 3 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  139 160 180
+system                    3(05)        based           bit(1)                   level 3 in structure "area_header" packed packed
+                                                                                  unaligned dcl 1-8 in procedure "define_area_" set
+                                                                                  ref 180* 215* 235 261 323
+system                    1(05) 000110 automatic       bit(1)                   level 3 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 261*
+unique_chars_                   000010 constant        entry                    external dcl 79 ref 139 241
+unspec                                                 builtin function         dcl 93 set ref 160* 335*
+version                         000110 automatic       fixed bin(17,0)          level 2 in structure "info" dcl 52 in procedure
+                                                                                  "define_area_" set ref 255*
+version                                based           fixed bin(17,0)          level 2 in structure "area_info" dcl 2-7
+                                                                                  in procedure "define_area_" ref 120
+wordno                                                 builtin function         dcl 93 ref 147
+zero_on_alloc             0(01)        parameter       bit(1)                   level 2 in structure "a_control" packed packed
+                                                                                  unaligned dcl 65 in procedure "define_area_" ref
+                                                                                  212
+zero_on_alloc             3(01)        based           bit(1)                   level 3 in structure "area_header" packed packed
+                                                                                  unaligned dcl 1-8 in procedure "define_area_" set
+                                                                                  ref 177* 212* 257
+zero_on_alloc             1(01) 000110 automatic       bit(1)                   level 3 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 257*
+zero_on_alloc             1(01)        based           bit(1)                   level 3 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  160 177
+zero_on_free              1(02) 000110 automatic       bit(1)                   level 3 in structure "info" packed packed unaligned
+                                                                                  dcl 52 in procedure "define_area_" set ref 258*
+zero_on_free              0(02)        parameter       bit(1)                   level 2 in structure "a_control" packed packed
+                                                                                  unaligned dcl 65 in procedure "define_area_" ref
+                                                                                  213
+zero_on_free              3(02)        based           bit(1)                   level 3 in structure "area_header" packed packed
+                                                                                  unaligned dcl 1-8 in procedure "define_area_" set
+                                                                                  ref 176* 213* 258 333
+zero_on_free              1(02)        based           bit(1)                   level 3 in structure "area_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "define_area_" ref
+                                                                                  160 176
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+alloc_blkhdrsz                         internal static fixed bin(17,0)          initial dcl 1-45
+area_version_1                         internal static fixed bin(17,0)          initial dcl 1-4
+block                                  based           structure                level 1 dcl 1-52
+blockp                                 automatic       pointer                  dcl 1-50
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ERROR                           000523 constant        label                    dcl 196 ref 143 164 186
+MAX_SIZE_ERROR                  000535 constant        label                    dcl 205 ref 131
+MIN_SIZE_ERROR                  000532 constant        label                    dcl 202 set ref 126 130
+ODD_AREA_ERROR                  000527 constant        label                    dcl 199 ref 147
+abort                           000666 constant        label                    dcl 231 ref 240 245 247 265 276 278 280 282
+change_area_attributes_         000544 constant        entry                    external dcl 208
+define_area_                    000060 constant        entry                    external dcl 13 ref 264
+get_next_area_ptr_              000642 constant        entry                    external dcl 222
+release_area_                   001405 constant        entry                    external dcl 289
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2300        2354    1764        2310
+Length      2622    1764        54         232     314           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+define_area_                        234 external procedure  is an external procedure.  
+on unit on line 164                  64 on unit               
+on unit on line 186                  64 on unit               
+on unit on line 305                  70 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+define_area_             000100 code                        define_area_
+                         000102 next_areap                  define_area_
+                         000104 new_extend_blockp           define_area_
+                         000106 defined                     define_area_
+                         000110 info                        define_area_
+                         000134 area_size                   define_area_
+                         000135 len                         define_area_
+                         000136 dirname                     define_area_
+                         000210 entname                     define_area_
+                         000220 dlng                        define_area_
+                         000221 rings                       define_area_
+                         000224 set_ring_brackets           define_area_
+                         000250 mask                        define_area_
+                         000251 oldmask                     define_area_
+                         000252 i                           define_area_
+                         000253 ips_names                   define_area_
+                         000264 areap                       define_area_
+                         000266 extend_blockp               define_area_
+                         000270 area_infop                  define_area_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     cat_realloc_chars   call_ext_in         call_ext_out_desc   call_ext_out
+return_mac          tra_ext_1           mdfx1               enable_op           shorten_stack       ext_entry
+int_entry           op_alloc_           op_empty_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+create_ips_mask_              delete_$ptr                   get_ring_                     get_temp_segment_
+hcs_$fs_get_path_name         hcs_$get_ring_brackets        hcs_$make_seg                 hcs_$reset_ips_mask
+hcs_$set_ips_mask             hcs_$set_ring_brackets        release_temp_segment_         unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$area_too_small   error_table_$boundviol        error_table_$no_odd_areas     error_table_$noalloc
+error_table_$unimplemented_version                          sys_info$max_seg_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000054       118 000070       120 000073       121 000076       122 000100       124 000101       126 000102
+    129 000114       130 000115       131 000120       136 000123       137 000127       138 000137       139 000142
+    142 000254       143 000313       144 000316       145 000320       147 000321       148 000326       151 000327
+    155 000332       160 000335       164 000357       165 000376       170 000401       172 000405       173 000410
+    174 000411       175 000412       176 000415       177 000421       178 000425       179 000431       180 000435
+    181 000441       185 000446       186 000451       187 000470       188 000475       189 000477       190 000501
+    191 000503       192 000507       194 000522       196 000523       197 000526       199 000527       200 000531
+    202 000532       203 000534       205 000535       206 000537       208 000540       210 000554       211 000564
+    212 000572       213 000576       214 000602       215 000606       216 000612       217 000617       218 000630
+    219 000632       220 000635       222 000636       227 000647       228 000653       229 000660       230 000663
+    231 000666       232 000671       235 000672       236 000712       238 000743       240 000770       241 000772
+    243 001030       245 001070       246 001072       247 001117       248 001121       249 001122       251 001123
+    252 001125       255 001127       256 001131       257 001136       258 001142       259 001146       260 001152
+    261 001161       262 001165       263 001170       264 001174       265 001206       267 001210       269 001213
+    270 001215       271 001222       272 001225       274 001227       275 001231       276 001262       277 001264
+    278 001311       279 001313       280 001344       281 001346       282 001373       286 001375       287 001401
+    289 001402       302 001412       303 001415       304 001434       305 001435       306 001451       307 001455
+    308 001457       310 001467       311 001470       313 001501       314 001505       315 001507       316 001523
+    317 001534       318 001541       319 001543       320 001545       321 001546       322 001550       323 001552
+    324 001555       325 001566       326 001571       327 001626       329 001664       330 001665       331 001720
+    333 001721       334 001724       335 001727       337 001735       339 001740       342 001742       344 001744
+    346 001746       347 001750       348 001761
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

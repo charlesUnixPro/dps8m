@@ -1,0 +1,298 @@
+	COMPILATION LISTING OF SEGMENT level_error
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1011.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* level_error.pl1 produces syserr/condition signals for invalid calls */
+        9 /* to level$set. */
+       10 /* BIM 830518 */
+       11 /* format: style2 */
+       12 
+       13 level_error:
+       14      procedure;
+       15 
+       16 	declare signal_		 entry (char (*), pointer, pointer);
+       17 	declare syserr		 entry options (variable);
+       18 	declare ioa_$rsnnl		 entry options (variable);
+       19 	declare caller		 entry returns (pointer);
+       20 	declare error_table_$badringno fixed bin (35) ext static;
+       21 	declare currentsize		 builtin;
+       22 
+  1     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare condition_info_header_ptr
+  1     5 			      pointer;
+  1     6      declare 1 condition_info_header
+  1     7 			      aligned based (condition_info_header_ptr),
+  1     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  1     9 	     2 version	      fixed bin,		/* version number of this structure */
+  1    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  1    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  1    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  1    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  1    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  1    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  1    16 	       3 pad	      bit (32) unaligned,
+  1    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  1    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  1    19 
+  1    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+       23 
+  2     1 /* Begin include file val_level_error.incl.pl1 BIM 830518 */
+  2     2 /* format: style3 */
+  2     3 
+  2     4 /* Info for the validation_level_error condition */
+  2     5 /* This depends on condition_info_header. */
+  2     6 
+  2     7 declare	val_level_error_info_ptr
+  2     8 			pointer;
+  2     9 declare	1 val_level_error_info
+  2    10 			aligned based (val_level_error_info_ptr),
+  2    11 	  2 header	aligned like condition_info_header,
+  2    12 	  2 invalid_ring	fixed bin (3) aligned;
+  2    13 
+  2    14 /* End include file val_level_error */
+       24 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       25 
+       26 
+       27 	declare 1 VLE		 aligned like val_level_error_info;
+       28 
+       29 	declare A_ring		 fixed bin (3) aligned parameter;
+       30 	declare ERROR_NAME		 char (32) init ("validation_level_error") int static options (constant);
+       31 
+       32 
+       33 /* This is called from the gate. Just crawlout. */
+       34 
+       35 ring_bigger_than_7:
+       36      entry (A_ring);
+       37 
+       38 	call SETUP_HEADER;
+       39 
+       40 	call ioa_$rsnnl ("Validation level of ^d is bigger than 7.", VLE.header.info_string, (0), A_ring);
+       41 	VLE.header.status_code = error_table_$badringno;
+       42 	do while ("1"b);
+       43 	     call signal_ (ERROR_NAME, null (), addr (VLE));
+       44 	end;
+       45 
+       46 ring_too_small:
+       47      entry (A_ring);
+       48 
+       49 
+       50 	call SETUP_HEADER;
+       51 
+       52 	call ioa_$rsnnl ("Validation level of ^d is less than the ring of execution.", VLE.header.info_string, (0),
+       53 	     A_ring);
+       54 	VLE.header.status_code = error_table_$badringno;
+       55 	do while ("1"b);
+       56 	     call signal_ (ERROR_NAME, null (), addr (VLE));
+       57 	end;
+       58 
+       59 r0_invalid_ring:
+       60      entry (A_ring);
+       61 
+       62 	call syserr (BEEP, "level: call to level$set with arg (^d) > 7; caller  ^p.", A_ring, caller ());
+       63 
+       64 	call SETUP_HEADER;
+       65 
+       66 	call ioa_$rsnnl ("Validation level of ^d is bigger than 7.", VLE.header.info_string, (0), A_ring);
+       67 	VLE.header.status_code = error_table_$badringno;
+       68 	do while ("1"b);
+       69 	     call signal_ (ERROR_NAME, null (), addr (VLE));
+       70 	end;
+       71 
+       72 
+       73 SETUP_HEADER:
+       74      procedure;
+       75 
+       76 	VLE.header.length = currentsize (VLE);
+       77 	VLE.header.version = 0;
+       78 	VLE.header.action_flags = "0"b;
+       79 	VLE.header.action_flags.cant_restart = "1"b;
+       80 	VLE.header.info_string = "";
+       81 	VLE.header.status_code = 0;
+       82 	VLE.invalid_ring = A_ring;
+       83 
+       84 	return;
+       85      end SETUP_HEADER;
+       86 
+       87      end level_error;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.9  level_error.pl1                   >spec>install>1112>level_error.pl1
+23           1    03/24/82  1347.2  condition_info_header.incl.pl1    >ldd>include>condition_info_header.incl.pl1
+24           2    09/16/83  1115.1  val_level_error.incl.pl1          >ldd>include>val_level_error.incl.pl1
+25           3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+A_ring                                 parameter       fixed bin(3,0)           dcl 29 set ref 35 40* 46 52* 59 62* 66* 82
+BEEP                            000010 constant        fixed bin(17,0)          initial dcl 3-7 set ref 62*
+ERROR_NAME                      000000 constant        char(32)                 initial packed unaligned dcl 30 set ref 43* 56* 69*
+VLE                             000100 automatic       structure                level 1 dcl 27 set ref 43 43 56 56 69 69 76
+action_flags              2     000100 automatic       structure                level 3 dcl 27 set ref 78*
+caller                          000016 constant        entry                    external dcl 19 ref 62 62
+cant_restart              2     000100 automatic       bit(1)                   level 4 packed packed unaligned dcl 27 set ref 79*
+condition_info_header                  based           structure                level 1 dcl 1-6
+currentsize                                            builtin function         dcl 21 ref 76
+error_table_$badringno          000020 external static fixed bin(35,0)          dcl 20 ref 41 54 67
+header                          000100 automatic       structure                level 2 dcl 27
+info_string               3     000100 automatic       varying char(256)        level 3 dcl 27 set ref 40* 52* 66* 80*
+invalid_ring            105     000100 automatic       fixed bin(3,0)           level 2 dcl 27 set ref 82*
+ioa_$rsnnl                      000014 constant        entry                    external dcl 18 ref 40 52 66
+length                          000100 automatic       fixed bin(17,0)          level 3 dcl 27 set ref 76*
+signal_                         000010 constant        entry                    external dcl 16 ref 43 56 69
+status_code             104     000100 automatic       fixed bin(35,0)          level 3 dcl 27 set ref 41* 54* 67* 81*
+syserr                          000012 constant        entry                    external dcl 17 ref 62
+val_level_error_info                   based           structure                level 1 dcl 2-9
+version                   1     000100 automatic       fixed bin(17,0)          level 3 dcl 27 set ref 77*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 3-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+condition_info_header_ptr              automatic       pointer                  dcl 1-4
+val_level_error_info_ptr               automatic       pointer                  dcl 2-7
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+SETUP_HEADER                    000426 constant        entry                    internal dcl 73 ref 38 50 64
+level_error                     000074 constant        entry                    external dcl 13
+r0_invalid_ring                 000274 constant        entry                    external dcl 59
+ring_bigger_than_7              000105 constant        entry                    external dcl 35
+ring_too_small                  000200 constant        entry                    external dcl 46
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 43 43 56 56 69 69
+null                                                   builtin function         ref 43 43 56 56 69 69
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       572         614     460         602
+Length      1046     460        22         216     112           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+level_error                         192 external procedure  is an external procedure.  
+SETUP_HEADER                            internal procedure  shares stack frame of external procedure level_error.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+level_error              000100 VLE                         level_error
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+caller                        ioa_$rsnnl                    signal_                       syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$badringno
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000073        35 000101        38 000112        40 000113        41 000145        43 000150        44 000174
+     46 000175        50 000205        52 000206        54 000240        55 000243        56 000244        57 000270
+     59 000271        62 000301        64 000341        66 000342        67 000374        68 000377        69 000400
+     70 000424        87 000425        73 000426        76 000427        77 000431        78 000432        79 000444
+     80 000446        81 000447        82 000450        84 000453
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

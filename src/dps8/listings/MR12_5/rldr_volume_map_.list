@@ -1,0 +1,2206 @@
+	COMPILATION LISTING OF SEGMENT rldr_volume_map_
+	Compiled by: Multics PL/I Compiler, Release 33d, of April 24, 1992
+	Compiled at: ACTC Technologies Inc.          
+	Compiled on: 92-04-27_1329.67_Mon_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1991   *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*        *                                                         *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        8*        *                                                         *
+        9*        * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*        * Technology and Honeywell Information Systems, Inc.      *
+       11*        *                                                         *
+       12*        *********************************************************** */
+       13 
+       14 
+       15 
+       16 /****^  HISTORY COMMENTS:
+       17*  1) change(86-01-15,Fawcett), approve(86-04-11,MCR7383),
+       18*     audit(86-06-03,GWMay), install(86-07-17,MR12.0-1097):
+       19*     Add support for 512_WORD_IO devices.
+       20*  2) change(91-11-12,Schroth), approve(91-12-02,MCR8253),
+       21*     audit(92-04-27,WAAnderson), install(92-04-27,MR12.5-1015):
+       22*     Corrected call to rldr_report_$error_output that failed to pass rldr_datap
+       23*     as first argument.  Change rldr_volume_map_$deposit entrypoint to check
+       24*     for nulled file map entries in all cases.
+       25*                                                   END HISTORY COMMENTS */
+       26 
+       27 
+       28 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+       29 
+       30 rldr_volume_map_: proc;
+       31 
+       32 /* This routine manages the volume map data base for the  volume  reloader. It provides a deposit and withdraw
+       33*   function and tries to follow the same withdrawal rules as does the system. */
+       34 /* Written in antiquity by Dave Vinograd.
+       35*   Modified: 03/83 by GA Texada to support multiple physical volume reloading.
+       36**/
+       37 
+       38 dcl code		     fixed bin (35);
+       39 dcl (wordx, bitx, ctl, n_read, i, pvindex) fixed bin;
+       40 
+       41 dcl myname	     char (32) static init ("rldr_volume_map_") options (constant);
+       42 
+       43 dcl error_table_$end_of_info ext fixed bin (35);
+       44 
+       45 dcl iox_$position	     entry (ptr, fixed bin, fixed bin, fixed bin (35));
+       46 dcl iox_$get_chars	     entry (ptr, ptr, fixed bin, fixed bin, fixed bin (35));
+       47 dcl iox_$put_chars	     entry (ptr, ptr, fixed bin, fixed bin (35));
+       48 dcl rldr_report_$error_output entry options (variable);
+       49 
+       50 dcl (size, bit, fixed, addr, divide, mod, substr) builtin;
+       51 
+       52 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       53 
+       54 
+       55 open: entry (rldr_datap, pvindex, code);
+       56 
+       57 /* This entry initializes the volume map data base from the volume map on the physical volume. */
+       58 
+       59     code = 0;
+       60 						/* position to sector */
+       61     call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (VOLMAP_ADDR), code);
+       62     if code ^= 0 then do;
+       63         call rldr_report_$error_output (rldr_datap, code, myname, "Map position failed on pv ^a",
+       64 	   rldr_data_.pvname (pvindex));
+       65         return;
+       66       end;
+       67 						/* read volume map */
+       68     call iox_$get_chars (rldr_data_.outputvol_iocbp (pvindex), rldr_data_.vol_mapp (pvindex), size (vol_map) * 4,
+       69          n_read, code);
+       70     if code ^= 0 then
+       71       call rldr_report_$error_output (rldr_datap, code, myname, "Error reading volume map on pv ^a",
+       72 	 rldr_data_.pvname (pvindex));
+       73 						/* set static position indicators */
+       74     return;
+       75 
+       76 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       77 
+       78 
+       79 update: entry (rldr_datap, pvindex, code);
+       80 close: entry (rldr_datap, pvindex, code);
+       81 
+       82 /* This entry updates the volume map data base onto the physical volume */
+       83 
+       84     code = 0;
+       85 						/* position to sector */
+       86     call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (VOLMAP_ADDR), code);
+       87     if code ^= 0 then do;
+       88         call rldr_report_$error_output (rldr_datap, code, myname, "Map position failed on pv ^a",
+       89 	   rldr_data_.pvname (pvindex));
+       90         return;
+       91       end;
+       92 						/* write volume map */
+       93     call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), rldr_data_.vol_mapp (pvindex),
+       94          size (vol_map) * 4, code);
+       95     if code ^= 0 then
+       96       call rldr_report_$error_output (rldr_datap, code, myname, "Error writing volume map on pv ^a",
+       97 	 rldr_data_.pvname (pvindex));
+       98     return;
+       99 
+      100 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      101 
+      102 
+      103 withdraw: entry (rldr_datap, pvindex, vtocep, ctl, code);
+      104 
+      105 /* This entry withdraws pages from the volume map. If ctl is not -1 then only the ctl page is withdrawn. Otherwise
+      106*   sufficient pages to contain the entire object are withdrawn. */
+      107 
+      108     code = 0;
+      109 						/* get ptr to volume map */
+      110     vol_mapp = rldr_data_.vol_mapp (pvindex);
+      111     mapp = addr (vol_map.bit_map);
+      112 						/* if single page withdraw */
+      113     if ctl ^= -1 then do;
+      114         vtoce.fm (ctl) = mark_used_ ();
+      115         return;
+      116       end;
+      117 						/* else withdraw for non-null pages */
+      118     do i = 0 to 255;
+      119       if ^substr (vtoce.fm (i), 1, 1) then
+      120         vtoce.fm (i) = mark_used_ ();
+      121       else vtoce.fm (i) = volume_reloader_null_addr;
+      122       if code ^= 0 then return;
+      123     end;
+      124     return;
+      125 
+      126 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      127 
+      128 
+      129 deposit: entry (rldr_datap, pvindex, vtocep, ctl, code);
+      130 
+      131 /* This entry deposits pages into the volume map data base */
+      132 
+      133     code = 0;
+      134 						/* get ptr to volume map */
+      135     vol_mapp = rldr_data_.vol_mapp (pvindex);
+      136     mapp = addr (vol_map.bit_map);
+      137 						/* if single page deposit */
+      138     if ctl ^= -1 then do;
+      139         if ^substr (vtoce.fm (ctl), 1, 1) then
+      140 	vtoce.fm (ctl) = mark_unused_ (vtoce.fm (ctl));
+      141         return;
+      142       end;
+      143 						/* else deposit all non-null pages */
+      144     do i = 0 to 255;
+      145       if ^substr (vtoce.fm (i), 1, 1) then
+      146         vtoce.fm (i) = mark_unused_ (vtoce.fm (i));
+      147     end;
+      148     return;
+      149 
+      150 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      151 
+      152 
+      153 mark_used_: proc returns (bit (18));
+      154 
+      155 /* This proc scans the volume map from the last withdrawn address for the next withdrawn address. If there
+      156*   are nomore addresses to be found we return an error. If we get to the end of the volume map we start
+      157*   from the beginning. */
+      158 
+      159 dcl add		     bit (18);
+      160 dcl rescan	     bit (1);
+      161 						/* set flag */
+      162     rescan = "0"b;
+      163 						/* decrement number of records left and check if all gone */
+      164     vol_map.n_free_rec = vol_map.n_free_rec - 1;
+      165     if vol_map.n_free_rec < 0 then do;
+      166         vol_map.n_free_rec = 0;
+      167         code = error_table_$end_of_info;
+      168         return ("0"b);
+      169       end;
+      170 
+      171 /* Scan the map from previous withdrawn record. Map words are 32 bits wide starting from bit 2. Take care
+      172*   not to run over the absolute record bound. */
+      173 
+      174 scan: do wordx = rldr_data_.prev_wordx (pvindex) to vol_map.bit_map_n_words;
+      175       do bitx = rldr_data_.prev_bitx (pvindex) to 33;
+      176         if substr (fsmap.table (wordx), bitx, 1) then do;	/* an unused page */
+      177 	  add = bit (fixed ((wordx - 1) * 32 + (bitx - 2) + vol_map.base_add, 18), 18);
+      178 	  substr (fsmap.table (wordx), bitx, 1) = "0"b;
+      179 	  if fixed (add, 18) > vol_map.n_rec + vol_map.base_add then goto again;
+      180 	  rldr_data_.prev_wordx (pvindex) = wordx;
+      181 	  rldr_data_.prev_bitx (pvindex) = bitx;
+      182 	  return (add);
+      183 again:	end;
+      184       end;
+      185       rldr_data_.prev_bitx (pvindex) = 2;		/* reset since no pages in this word free */
+      186     end;
+      187 						/* Try rescan only once */
+      188     if ^rescan then do;
+      189         rescan = "1"b;
+      190         rldr_data_.prev_wordx (pvindex) = 1;
+      191         goto scan;
+      192       end;
+      193     code = error_table_$end_of_info;
+      194     return (volume_reloader_null_addr);
+      195 
+      196   end mark_used_;
+      197 
+      198 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      199 
+      200 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      201 
+      202 
+      203 mark_unused_: proc (add) returns (bit (18));
+      204 
+      205 /* This proc marks a record as unused in the volume map. Care is taken not to over deposit the volume map,
+      206*   or to deposit a record in the vtoc area, or to deposit a free record. */
+      207 
+      208 dcl add		     bit (18);
+      209 dcl fadd		     fixed bin (18);
+      210 dcl adj_add	     fixed bin;
+      211 						/* convert bit to fixed */
+      212     fadd = fixed (add, 18);
+      213 						/* check if address within records availaible for deposit */
+      214     if fadd > vol_map.base_add + vol_map.n_rec
+      215          | fadd < vol_map.base_add then do;
+      216         if rldr_data_.per_pv (pvindex).restart & fadd = 0 then ;
+      217         else call rldr_report_$error_output (rldr_datap, 0, myname,
+      218 	        "Attempt to deposit out of range address ^o on pv ^a", fadd, rldr_data_.pvname (pvindex));
+      219         return ("0"b);
+      220       end;
+      221 						/* if volume map all free */
+      222     if vol_map.n_free_rec = vol_map.n_rec then return ("0"b);
+      223 						/* increment free record count */
+      224     vol_map.n_free_rec = vol_map.n_free_rec + 1;
+      225 						/* adjust address by base address of volume map */
+      226     adj_add = fadd - vol_map.base_add;
+      227 						/* convert address to word and bit index */
+      228     if adj_add = 0 then do;				/* special case */
+      229         wordx = 1;
+      230         bitx = 2;
+      231       end;
+      232     else do;					/* round up */
+      233         wordx = divide (adj_add, 32, 17, 0) + 1;
+      234         bitx = mod (adj_add, 32) + 2;
+      235       end;
+      236 						/* if restarting  things may be confused */
+      237     if ^rldr_data_.per_pv (pvindex).restart & substr (fsmap.table (wordx), bitx, 1) then
+      238       call rldr_report_$error_output (rldr_datap, 0, myname, "Attempt to deposit free record on pv ^a",
+      239 	 rldr_data_.pvname (pvindex));
+      240 						/* mark record as unused */
+      241     substr (fsmap.table (wordx), bitx, 1) = "1"b;
+      242     return (volume_reloader_null_addr);
+      243 
+      244   end mark_unused_;
+      245 
+      246 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      247 
+      248 
+      249 sector: proc (add) returns (fixed bin);
+      250 
+      251 /* This proc converts a Multics record number to a sector number */
+      252 dcl add		     fixed bin;
+      253 dcl (dev_idx, sector)    fixed bin;
+      254 
+      255     dev_idx = rldr_data_.disk_type (pvindex);
+      256     sector = add * SECTORS_PER_RECORD (dev_idx);
+      257     sector = sector + divide (sector, rldr_data_.usable_sectors (pvindex), 17, 0) * rldr_data_.unusable_sectors (pvindex);
+      258     return (sector * words_per_sect (dev_idx) * 4);
+      259 
+      260   end sector;
+      261 
+  1     1 /* BEGIN INCLUDE FILE ... rldr_data_.incl.pl1 ... March 1976 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  1     6*     audit(86-05-22,GWMay), install(86-07-18,MR12.0-1098):
+  1     7*     Add device_name to support the -pvname_device argument to reload.
+  1     8*  2) change(88-10-05,GWMay), approve(88-10-05,MCR8005), audit(88-10-12,Farley),
+  1     9*     install(88-10-17,MR12.2-1173):
+  1    10*     Added pointer and length values for use as an input_buffer for
+  1    11*     intermediate reads.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 
+  1    15 /* Severely modified 3/1/83 by GA Texada to support multiple physical */
+  1    16 /*          volume reloading.				          */
+  1    17 /*          Modified: 3/5/84 by GA Texada to make restart a per pv attribute */
+  1    18 /*		  and add stranger flag.			*/
+  1    19 
+  1    20 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+  1    21 
+  1    22 
+  1    23 dcl rldr_datap	     ptr,
+  1    24   rldr_data_max_pvs	     fixed bin,
+  1    25 
+  1    26   1 rldr_data_	     aligned based (rldr_datap),
+  1    27     2 common	     like rldr_data_common,		/* only one of each needed			*/
+  1    28     2 per_pv	     (rldr_data_max_pvs refer (rldr_data_.npvs)) like rldr_data_perpv,
+  1    29 
+  1    30   1 rldr_data_common     aligned,
+  1    31     2 bits,
+  1    32     ( 3 save	     bit (1),			/* if on can use disk pack restored by BOS */
+  1    33       3 first_volume     bit (1),			/* if on indicates we are on first volume */
+  1    34       3 rpv	     bit (1),			/* if on indicates we are reloading rpv */
+  1    35       3 data_init	     bit (1),			/* if on data structure initialized to null state */
+  1    36       3 arg_init	     bit (1),			/* on if arguments have been processed */
+  1    37       3 disable_error_report bit (1),			/* if on will disable error messages */
+  1    38       3 no_object	     bit (1),			/* if on only vtoces will be reloaded */
+  1    39       3 err_online	     bit (1),			/* if on error messages written to error output */
+  1    40       3 detach	     bit (1),			/* if on attached media will  be detached */
+  1    41       3 brief	     bit (1),			/* if on brief mode enabled */
+  1    42       3 manual	     bit (1),			/* if on operator will select input volumes */
+  1    43       3 restart	     bit (1),			/* -restart was supplied			*/
+  1    44       3 stranger	     bit (1),			/* ON if the pv's do not belong to the mounted RPV*/
+  1    45       3 pad0	     bit (23)) unal,
+  1    46       3 old_256K_switch  bit (2) aligned,		/* state of 256KW connection switch before we came along*/
+  1    47       (3 last_pvid,					/* pvid of last good object read		*/
+  1    48       3 rpv_pvid,					/* rpv pvid */
+  1    49       3 rpv_lvid)	     bit (36),			/* rpv lvid */
+  1    50       3 last_valid_puid  (0:15) bit (36),		/* last non-zero path uid read from input medium */
+  1    51     2 chars,
+  1    52     ( 3 sys_dir,					/* directory where vologs are */
+  1    53       3 default_sys_dir) char (168),			/* default directory where vologs are */
+  1    54       (3 last_valid_vtoce_ename,			/* last valid entry name from VTOCE */
+  1    55       3 operator,					/* operator's name or initials */
+  1    56       3 io_module)	     char (32),			/* name of io outer module used to read input */
+  1    57       (3 input_volume_desc,				/* optional input medium attach description */
+  1    58       3 output_volume_desc) char (256),			/* optional output medium attach description */
+  1    59     2 fixed,
+  1    60     ( 3 num_abandoned,				/* count these as we go along			*/
+  1    61       3 last_vtocx,					/* vtocx of last valid object read		*/
+  1    62       3 npvs,					/* the number of pv names given to the reload_volume command*/
+  1    63       3 rpv_disk_type)   fixed bin,			/* model index of rpv disk drive */
+  1    64       (3 start_time,				/* time reload started */
+  1    65       3 from_time)	     fixed bin (71),		/*  time from which dump tapes should be skipped */
+  1    66       3 input_buffer_len fixed bin (21),		/* length of the data in the read buffer */
+  1    67       3 input_buffer_start fixed bin (21),		/* position in read buffer where new data begins */
+  1    68     2 ptrs,
+  1    69     ( 3 inputvol_iocbp,				/* iocb ptr for input */
+  1    70       3 error_iocbp,				/* iocb ptr for error output */
+  1    71       3 skip,					/* ptr to skip list */
+  1    72       3 volume_record_bp,				/* ptr to temp seg containing most recent volume record */
+  1    73       3 infop,					/* ptr to temp seg containig tdump info */
+  1    74       3 data_object_bp,				/* ptr to temp seg containing most recent object from input medium */
+  1    75       3 input_vol_lstp  ptr,				/* ptr to temp seg containing list of input media */
+  1    76       3 input_buffer_ptr)  ptr,			/* ptr to read buffer */
+  1    77  
+  1    78 
+  1    79   1 rldr_data_perpv	     aligned,			/* one entry per physical volume to be reloaded	*/
+  1    80     2 flags,
+  1    81       3 abandoned	     bit (1) unal,			/* we quit due to some error			*/
+  1    82       3 restart	     bit (1),			/* if on unitialized volume ok and reload will restart */
+  1    83       3 mbz0	     bit (34) unal,			/* beware, RFU				*/
+  1    84     (2 pvname,					/* physical volume name */
+  1    85     2 lvname,					/* logical volume name of physical volume being reloaded */
+  1    86     2 disk_model)	     char (32),			/* model name of disk drive */
+  1    87     2 device_name	     char (8),
+  1    88     (2 lvid,					/* logical volume id of volume being reloaded */
+  1    89     2 pvid)	     bit (36),			/* physical volume id of volume being reloaded */
+  1    90     (2 prev_wordx,					/* index to fsmap */
+  1    91     2 prev_bitx,					/* index to fsmap */
+  1    92     2 disk_type,					/* model index of disk drive */
+  1    93     2 usable_sectors,				/* usable sectors per cylinder of disk pack */
+  1    94     2 unusable_sectors,				/* unusable sectors per cylinder of disk pack */
+  1    95     2 n_vtoce)	     fixed bin,			/* number of vtoce on disk pack */
+  1    96     (2 vtocbp,					/* ptr to vtoc buffer seg */
+  1    97     2 vtoc_headerp,					/* ptr to temp seg containing the vtoc header */
+  1    98     2 labelp,					/* ptr to temp seg containing pack label */
+  1    99     2 bvlp,					/* ptr to volume log */
+  1   100     2 outputvol_iocbp,				/* iocb ptr for output */
+  1   101     2 controlp,					/* ptr to seg containing reload control info about vtoc */
+  1   102     2 vol_mapp)	     ptr,				/* ptr to temp seg containing volume map */
+  1   103 
+  1   104   1 rldr_data_nulled_pv  aligned int static options (constant),
+  1   105     2 flags,
+  1   106       3 abandoned	     bit (1) init ("0"b) unal,
+  1   107       3 restart	     bit (1) init ("0"b) unal,
+  1   108       3 mbz0	     bit (34) init ((34)"0"b) unal,
+  1   109       (2 pvname,
+  1   110     2 lvname,
+  1   111     2 disk_model)	     char (32) init (""),
+  1   112     2 device_name	     char (8) init (""),
+  1   113     (2 lvid,
+  1   114     2 pvid)	     bit (36) init ("0"b),
+  1   115     (2 prev_wordx,
+  1   116     2 prev_bitx,
+  1   117     2 disk_type,
+  1   118     2 usable_sectors,
+  1   119     2 unusable_sectors,
+  1   120     2 n_vtoce)	     fixed bin init (0),
+  1   121     (2 vtocbp,
+  1   122     2 vtoc_headerp,
+  1   123     2 labelp,
+  1   124     2 bvlp,
+  1   125     2 outputvol_iocbp,
+  1   126     2 controlp,
+  1   127     2 vol_mapp)	     ptr init (null ());
+  1   128 
+  1   129 
+  1   130 /* END INCLUDE FILE rldr_data_.incl.pl1 */
+      262 
+      263 
+  2     1 /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  2     2 
+  2     3 
+  2     4 
+  2     5 
+  2     6 /****^  HISTORY COMMENTS:
+  2     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  2     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  2     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  2    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  2    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  2    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  2    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  2    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  2    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18 
+  2    19 /*
+  2    20*   All disk packs have the standard layout described below:
+  2    21*
+  2    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  2    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  2    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  2    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  2    26*   Record  7		: formerly contained bad track list; no longer used.
+  2    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  2    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  2    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  2    30*
+  2    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  2    32*   of the particular partition.
+  2    33*
+  2    34*
+  2    35*
+  2    36*   A conceptual declaration for a disk pack could be:
+  2    37*
+  2    38*   dcl 1 disk_pack,
+  2    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  2    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  2    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  2    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  2    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  2    44*   2 vtoc_array_records	(8 : n-1),
+  2    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  2    46*   3 unused				bit(36 * 64),
+  2    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  2    48*
+  2    49*
+  2    50*
+  2    51*
+  2    52**/
+  2    53 
+  2    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  2    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  2    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  2    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  2    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  2    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  2    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  2    61 		         fixed bin (17) int static options (constant);
+  2    62 
+  2    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  2    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  2    65 /* or the physical volume table entry (pvte) device type.		      */
+  2    66 
+  2    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  2    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  2    69 
+  2    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  2    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  2    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  2    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  2    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  2    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  2    76 
+  2    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+      264 
+      265 
+  3     1 /* BEGIN INCLUDE FILE ... vol_map.incl.pl1 */
+  3     2 
+  3     3 dcl   vol_mapp	ptr;
+  3     4 
+  3     5 dcl 1 vol_map based (vol_mapp) aligned,
+  3     6 
+  3     7     2 n_rec fixed bin(17),				/* number of records represented in the map */
+  3     8     2 base_add fixed bin(17),				/* record number for first bit in bit map */
+  3     9     2 n_free_rec fixed bin(17),			/* number of free records */
+  3    10     2 bit_map_n_words fixed bin(17),			/* number of words of the bit map */
+  3    11     2 pad (60) bit(36),				/* pad to 64 words */
+  3    12     2 bit_map (3*1024 - 64) bit(36) ;			/* bit map - the entire vol map occupies 3 records */
+  3    13 
+  3    14 /* END INCLUDE ... vol_map */
+      266 
+      267 
+  4     1 /* BEGIN INCLUDE FILE ...... fsmap ...... last modified Oct 75 for nss */
+  4     2 
+  4     3 dcl  mapp ptr;					/* ptr to free storage map */
+  4     4 
+  4     5 dcl 1 fsmap based (mapp) aligned,			/* free storage data */
+  4     6     2 table (512) bit (36) unaligned;			/* bit table, only left 32 bits used */
+  4     7 
+  4     8 /* END OF INCLUDE FILE ...... fsmap ...... */
+      268 
+      269 
+  5     1 /* Begin fs_dev_types_sector.incl.pl1 */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  5     6*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  5     7*     Add the sector differance for devices that do 64 word IO and devices that
+  5     8*     do 512 word IO.
+  5     9*                                                   END HISTORY COMMENTS */
+  5    10 
+  5    11 /* Created by R. A. Fawcett for 512 word IO. for procedures that do not
+  5    12*	 need all the data in fs_dev_types. This is also included in
+  5    13*	 fs_dev_types.incl.pl1  */
+  5    14 
+  5    15 dcl  sect_per_cyl (9) fixed bin static options (constant) init /* table of # of sectors per cylinder on each device */
+  5    16     (0, 760, 760, 760, 589, 360, 1280, 255, 255);
+  5    17 
+  5    18 dcl  sect_per_sv (9) fixed bin (24) static options (constant) init /* table of # of sectors per cylinder on each subvolume */
+  5    19      (0, 0, 0, 0, 0, 0, 0, 112710, 150450);
+  5    20 
+  5    21 dcl  sect_per_rec (9) fixed bin static options (constant) init
+  5    22  /* table of # of sectors per record on each device */
+  5    23  /* coresponding array in disk_pack.incl.pl1 called SECTORS_PER_RECORD */
+  5    24     (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  5    25 
+  5    26 dcl  sect_per_vtoc (9) fixed bin static options (constant) init
+  5    27      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  5    28 	
+  5    29 dcl  vtoc_per_rec (9) fixed bin  static options  (constant) init
+  5    30 /* corespending array in disk_pack.incl.pl1 named VTOCES_PER_RECORD */
+  5    31      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  5    32 
+  5    33 dcl  sect_per_track (9) fixed bin static options (constant) init /* table of # of sectors per track on each device */
+  5    34     (0, 40, 40, 40, 31, 18, 64, 17, 17);
+  5    35 
+  5    36 dcl  words_per_sect (9) fixed bin static options (constant) init /* table of # of words per sector on each device */
+  5    37     (0, 64, 64, 64, 64, 64, 64, 512, 512);
+  5    38 
+  5    39 /* End fs_dev_types_sector.incl.pl1 */
+  5    40 
+      270 
+      271 
+  6     1 /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  6     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  6     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  6     4 
+  6     5 dcl  vtocep ptr;
+  6     6 
+  6     7 dcl 1 vtoce based (vtocep) aligned,
+  6     8 
+  6     9 
+  6    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  6    11 
+  6    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  6    13 
+  6    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  6    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  6    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  6    17     2 pad2 bit (9),
+  6    18 
+  6    19     2 dtu bit (36),					/* date and time segment was last used */
+  6    20 
+  6    21     2 dtm bit (36),					/* date and time segment was last modified */
+  6    22 
+  6    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  6    24     2 deciduous bit (1),				/* true if hc_sdw */
+  6    25     2 nid bit (1),					/* no incremental dump switch */
+  6    26     2 dnzp bit (1),					/* Dont null zero pages */
+  6    27     2 gtpd bit (1),					/* Global transparent paging device */
+  6    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  6    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  6    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  6    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  6    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  6    33     2 pad3 bit (8),
+  6    34     2 dirsw bit (1),				/* directory switch */
+  6    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  6    36     2 pad4 bit (16)) unaligned,			/* not used */
+  6    37 
+  6    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  6    39 
+  6    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  6    41 
+  6    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  6    43 
+  6    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  6    45 
+  6    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  6    47 
+  6    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  6    49 
+  6    50 
+  6    51 
+  6    52 
+  6    53 
+  6    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  6    55 
+  6    56     2 pad6 (10) bit (36),				/* not used */
+  6    57 
+  6    58     2 ncd bit (1),					/* no complete dump switch */
+  6    59     2 pad7 bit (17),
+  6    60     2 pad8 bit (18),
+  6    61 
+  6    62     2 dtd bit (36),					/* date-time-dumped */
+  6    63 
+  6    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  6    65 
+  6    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  6    67 
+  6    68 
+  6    69 
+  6    70 
+  6    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  6    72 
+  6    73     2 primary_name char (32),				/* primary name of the segment */
+  6    74 
+  6    75     2 time_created bit (36),				/* time the segment was created */
+  6    76 
+  6    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  6    78 
+  6    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  6    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  6    81 
+  6    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  6    83 
+  6    84     2 access_class bit (72),				/* access class in branch */
+  6    85     2 perm_flags aligned,
+  6    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  6    87       3 pad9 bit (35) unal,
+  6    88     2 owner bit (36);				/* pvid of this volume */
+  6    89 
+  6    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  6    91 
+  6    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  6    93     2 pad1 bit (7*36),
+  6    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  6    95     2 pad2 bit (184*36);
+  6    96 
+  6    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      272 
+      273 
+  7     1 /* BEGIN INCLUDE FILE  null_addresses.incl.pl1 */
+  7     2 /* Added segmove values, Benson Margulies, 84-01 */
+  7     3 
+  7     4 dcl (pc_move_page_table_1_null_addr init	("3770070"b3),
+  7     5      pc_move_page_table_2_null_addr init	("3770100"b3),
+  7     6      get_aste_null_addr init			("3770110"b3),
+  7     7      make_sdw_null_addr init			("3770120"b3),
+  7     8      put_aste_null_addr init			("3770130"b3),
+  7     9      page_bad_pd_null_addr init		("3770150"b3),
+  7    10      list_deposit_null_addr init		("3770160"b3),
+  7    11      get_file_map_null_addr init		("3770170"b3),
+  7    12      fill_page_table_null_addr init		("3770200"b3),
+  7    13      init_sst_null_addr init			("3770210"b3),
+  7    14      get_file_map_vt_null_addr init		("3770220"b3),
+  7    15      unprotected_null_addr init		("3770230"b3),
+  7    16      page_bad_null_addr init			("3770240"b3),
+  7    17      page_problem_null_addr init		("3770250"b3),
+  7    18      page_parity_null_addr init		("3770260"b3),
+  7    19      page_devparity_null_addr init		("3770270"b3),
+  7    20      segmove_old_addr_null_addr init              ("3770300"b3),
+  7    21      segmove_new_addr_null_addr init		("3770310"b3),
+  7    22      get_file_map_dumper_non_null_addr init	("3777720"b3),
+  7    23      append_null_addr	         init       ("3777770"b3)) bit (22) aligned static options (constant);
+  7    24 dcl create_vtoce_four_null_addrs fixed bin (71) int static init (-1);/* 777777 777777 777777 777777 */
+  7    25 
+  7    26 dcl (create_vtoce_null_addr init		("777777"b3),
+  7    27      update_vtoce_null_addr init		("777776"b3),
+  7    28      truncate_vtoce_fill_null_addr init		("777775"b3),
+  7    29      truncate_vtoce_null_addr init		("777002"b3),
+  7    30      pv_salv_null_addr init			("777004"b3),
+  7    31      pv_scav_null_addr init			("777006"b3),
+  7    32      volume_reloader_null_addr init		("777774"b3),
+  7    33      volume_retriever_null_addr init		("777773"b3),
+  7    34      salv_truncate_null_addr init		("777005"b3)) bit (18) aligned static options (constant);
+  7    35 
+  7    36 /* END INCLUDE FILE null_addresses.incl.pl1 */
+      274 
+      275 
+      276 /* BEGIN MESSAGE DOCUMENTATION
+      277*
+      278*   Message:
+      279*   rldr_volume_map_: Map position failed: ERROR_MESS
+      280*
+      281*   S:	$rld_out
+      282*
+      283*   T:	$reload
+      284*
+      285*   M:	An error was encountered during reload volume map construction. Reloading continues.
+      286*
+      287*   A:	$ignore
+      288*
+      289*
+      290*   Message:
+      291*   rldr_volume_map_: Error reading volume map: ERROR_MESS
+      292*
+      293*   S:	$rld_out
+      294*
+      295*   T:	$reload
+      296*
+      297*   M:	An error was encountered during reload volume map construction. Reloading continues.
+      298*
+      299*   A:	$ignore
+      300*
+      301*
+      302*   Message:
+      303*   rldr_volume_map_: Map position failed: ERROR_MESS
+      304*
+      305*   S:	$rld_out
+      306*
+      307*   T:	$reload
+      308*
+      309*   M:	An error was encountered during reload volume map construction. Reloading continues.
+      310*
+      311*   A:	$ignore
+      312*
+      313*
+      314*   Message:
+      315*   rldr_volume_map_: Error writing volume map: ERROR_MESS
+      316*
+      317*   S:	$rld_out
+      318*
+      319*   T:	$reload
+      320*
+      321*   M:	An error was encountered during reload volume map construction. Reloading continues.
+      322*
+      323*   A:	$ignore
+      324*
+      325*
+      326*   Message:
+      327*   rldr_volume_map_: Attempt to deposit out of range address WWW
+      328*
+      329*   S:	$rld_out
+      330*
+      331*   T:	$reload
+      332*
+      333*   M:	An error was encountered during reload volume map construction. Reloading continues.
+      334*
+      335*   A:	$ignore
+      336*
+      337*
+      338*   Message:
+      339*   rldr_volume_map_: Attempt to deposit free record
+      340*
+      341*   S:	$rld_out
+      342*
+      343*   T:	$reload
+      344*
+      345*   M:	An error was encountered during reload volume map construction. Reloading continues.
+      346*
+      347*   A:	$ignore
+      348*
+      349*
+      350*   END MESSAGE DOCUMENTATION */
+      351 
+      352   end rldr_volume_map_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/27/92  1329.6  rldr_volume_map_.pl1              >spec>install>1015>rldr_volume_map_.pl1
+262          1    10/18/88  1315.0  rldr_data_.incl.pl1               >ldd>incl>rldr_data_.incl.pl1
+264          2    10/22/86  1550.1  disk_pack.incl.pl1                >ldd>incl>disk_pack.incl.pl1
+266          3    04/29/76  1150.5  vol_map.incl.pl1                  >ldd>incl>vol_map.incl.pl1
+268          4    04/29/76  1150.3  fsmap.incl.pl1                    >ldd>incl>fsmap.incl.pl1
+270          5    07/24/86  2151.8  fs_dev_types_sector.incl.pl1      >ldd>incl>fs_dev_types_sector.incl.pl1
+272          6    10/04/83  1205.1  vtoce.incl.pl1                    >ldd>incl>vtoce.incl.pl1
+274          7    07/11/84  1037.3  null_addresses.incl.pl1           >ldd>incl>null_addresses.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+SECTORS_PER_RECORD              000011 constant        fixed bin(17,0)          initial array dcl 2-74 ref 256
+VOLMAP_ADDR                            constant        fixed bin(17,0)          initial dcl 2-54 set ref 61* 61* 86* 86*
+add                             000640 automatic       bit(18)                  packed unaligned dcl 159 in procedure "mark_used_"
+                                                                                  set ref 177* 179 182
+add                                    parameter       fixed bin(17,0)          dcl 252 in procedure "sector" ref 249 256
+add                                    parameter       bit(18)                  packed unaligned dcl 208 in procedure "mark_unused_"
+                                                                                  ref 203 212
+addr                                                   builtin function         dcl 50 ref 111 136
+adj_add                         000653 automatic       fixed bin(17,0)          dcl 210 set ref 226* 228 233 234
+base_add                  1            based           fixed bin(17,0)          level 2 dcl 3-5 ref 177 179 214 214 226
+bit                                                    builtin function         dcl 50 ref 177
+bit_map                 100            based           bit(36)                  array level 2 dcl 3-5 set ref 111 136
+bit_map_n_words           3            based           fixed bin(17,0)          level 2 dcl 3-5 ref 174
+bitx                            000101 automatic       fixed bin(17,0)          dcl 39 set ref 175* 176 177 178 181* 230* 234* 237
+                                                                                  241
+code                                   parameter       fixed bin(35,0)          dcl 38 set ref 55 59* 61* 62 63* 68* 70 70* 79 80
+                                                                                  84* 86* 87 88* 93* 95 95* 103 108* 122 129 133*
+                                                                                  167* 193*
+ctl                                    parameter       fixed bin(17,0)          dcl 39 ref 103 113 114 129 138 139 139 139
+dev_idx                         000662 automatic       fixed bin(17,0)          dcl 253 set ref 255* 256 258
+disk_type               475            based           fixed bin(17,0)          array level 3 dcl 1-23 ref 255
+divide                                                 builtin function         dcl 50 ref 233 257
+error_table_$end_of_info        000010 external static fixed bin(35,0)          dcl 43 ref 167 193
+fadd                            000652 automatic       fixed bin(18,0)          dcl 209 set ref 212* 214 214 216 217* 226
+fixed                                                  builtin function         dcl 50 ref 177 179 212
+flags                   434            based           structure                array level 3 dcl 1-23
+fm                       20            based           bit(18)                  array level 2 packed packed unaligned dcl 6-7 set
+                                                                                  ref 114* 119 119* 121* 139 139* 139* 145 145* 145*
+fsmap                                  based           structure                level 1 dcl 4-5
+i                               000103 automatic       fixed bin(17,0)          dcl 39 set ref 118* 119 119 121* 144* 145 145 145*
+iox_$get_chars                  000014 constant        entry                    external dcl 46 ref 68
+iox_$position                   000012 constant        entry                    external dcl 45 ref 61 86
+iox_$put_chars                  000016 constant        entry                    external dcl 47 ref 93
+mapp                            000626 automatic       pointer                  dcl 4-3 set ref 111* 136* 176 178 237 241
+mod                                                    builtin function         dcl 50 ref 234
+myname                          000022 constant        char(32)                 initial packed unaligned dcl 41 set ref 63* 70* 88*
+                                                                                  95* 217* 237*
+n_free_rec                2            based           fixed bin(17,0)          level 2 dcl 3-5 set ref 164* 164 165 166* 222 224*
+                                                                                  224
+n_read                          000102 automatic       fixed bin(17,0)          dcl 39 set ref 68*
+n_rec                                  based           fixed bin(17,0)          level 2 dcl 3-5 ref 179 214 222
+outputvol_iocbp         512            based           pointer                  array level 3 dcl 1-23 set ref 61* 68* 86* 93*
+per_pv                  434            based           structure                array level 2 dcl 1-23
+prev_bitx               474            based           fixed bin(17,0)          array level 3 dcl 1-23 set ref 175 181* 185*
+prev_wordx              473            based           fixed bin(17,0)          array level 3 dcl 1-23 set ref 174 180* 190*
+pvindex                                parameter       fixed bin(17,0)          dcl 39 ref 55 61 63 68 68 70 79 80 86 88 93 93 95
+                                                                                  103 110 129 135 174 175 180 181 185 190 216 217
+                                                                                  237 237 255 257 257
+pvname                  437            based           char(32)                 array level 3 dcl 1-23 set ref 63* 70* 88* 95* 217*
+                                                                                  237*
+rescan                          000641 automatic       bit(1)                   packed unaligned dcl 160 set ref 162* 188 189*
+restart                 435            based           bit(1)                   array level 4 dcl 1-23 ref 216 237
+rldr_data_                             based           structure                level 1 dcl 1-23
+rldr_data_common                000104 automatic       structure                level 1 dcl 1-23
+rldr_data_perpv                 000540 automatic       structure                level 1 dcl 1-23
+rldr_datap                             parameter       pointer                  dcl 1-23 set ref 55 61 63* 63 68 68 70* 70 79 80 86
+                                                                                  88* 88 93 93 95* 95 103 110 129 135 174 175 180
+                                                                                  181 185 190 216 217* 217 237 237* 237 255 257 257
+rldr_report_$error_output       000020 constant        entry                    external dcl 48 ref 63 70 88 95 217 237
+sector                          000663 automatic       fixed bin(17,0)          dcl 253 set ref 256* 257* 257 257 258
+size                                                   builtin function         dcl 50 ref 68 93
+substr                                                 builtin function         dcl 50 set ref 119 139 145 176 178* 237 241*
+table                                  based           bit(36)                  array level 2 packed packed unaligned dcl 4-5 set
+                                                                                  ref 176 178* 237 241*
+unusable_sectors        477            based           fixed bin(17,0)          array level 3 dcl 1-23 ref 257
+usable_sectors          476            based           fixed bin(17,0)          array level 3 dcl 1-23 ref 257
+vol_map                                based           structure                level 1 dcl 3-5 set ref 68 93
+vol_mapp                        000624 automatic       pointer                  dcl 3-3 in procedure "rldr_volume_map_" set ref 68
+                                                                                  93 110* 111 135* 136 164 164 165 166 174 177 179
+                                                                                  179 214 214 214 222 222 224 224 226
+vol_mapp                516            based           pointer                  array level 3 in structure "rldr_data_" dcl 1-23
+                                                                                  in procedure "rldr_volume_map_" set ref 68* 93*
+                                                                                  110 135
+volume_reloader_null_addr       001502 constant        bit(18)                  initial dcl 7-26 ref 121 194 242
+vtoce                                  based           structure                level 1 dcl 6-7
+vtocep                                 parameter       pointer                  dcl 6-5 ref 103 114 119 119 121 129 139 139 139 145
+                                                                                  145 145
+words_per_sect                  000000 constant        fixed bin(17,0)          initial array dcl 5-36 ref 258
+wordx                           000100 automatic       fixed bin(17,0)          dcl 39 set ref 174* 176 177 178 180* 229* 233* 237
+                                                                                  241
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 2-54
+DUMPER_BIT_MAP_ADDR                    internal static fixed bin(17,0)          initial dcl 2-54
+LABEL_ADDR                             internal static fixed bin(17,0)          initial dcl 2-54
+MAX_VTOCE_PER_PACK                     internal static fixed bin(17,0)          initial dcl 2-54
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 2-67
+SECTORS_PER_VTOCE                      internal static fixed bin(17,0)          initial array dcl 2-70
+VTOCES_PER_RECORD                      internal static fixed bin(17,0)          initial array dcl 2-72
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 2-68
+VTOC_MAP_ADDR                          internal static fixed bin(17,0)          initial dcl 2-54
+VTOC_ORIGIN                            internal static fixed bin(17,0)          initial dcl 2-54
+append_null_addr                       internal static bit(22)                  initial dcl 7-4
+create_vtoce_four_null_addrs           internal static fixed bin(71,0)          initial dcl 7-24
+create_vtoce_null_addr                 internal static bit(18)                  initial dcl 7-26
+fill_page_table_null_addr              internal static bit(22)                  initial dcl 7-4
+get_aste_null_addr                     internal static bit(22)                  initial dcl 7-4
+get_file_map_dumper_non_null_addr      internal static bit(22)                  initial dcl 7-4
+get_file_map_null_addr                 internal static bit(22)                  initial dcl 7-4
+get_file_map_vt_null_addr              internal static bit(22)                  initial dcl 7-4
+init_sst_null_addr                     internal static bit(22)                  initial dcl 7-4
+list_deposit_null_addr                 internal static bit(22)                  initial dcl 7-4
+make_sdw_null_addr                     internal static bit(22)                  initial dcl 7-4
+page_bad_null_addr                     internal static bit(22)                  initial dcl 7-4
+page_bad_pd_null_addr                  internal static bit(22)                  initial dcl 7-4
+page_devparity_null_addr               internal static bit(22)                  initial dcl 7-4
+page_parity_null_addr                  internal static bit(22)                  initial dcl 7-4
+page_problem_null_addr                 internal static bit(22)                  initial dcl 7-4
+pc_move_page_table_1_null_addr         internal static bit(22)                  initial dcl 7-4
+pc_move_page_table_2_null_addr         internal static bit(22)                  initial dcl 7-4
+put_aste_null_addr                     internal static bit(22)                  initial dcl 7-4
+pv_salv_null_addr                      internal static bit(18)                  initial dcl 7-26
+pv_scav_null_addr                      internal static bit(18)                  initial dcl 7-26
+rldr_data_max_pvs                      automatic       fixed bin(17,0)          dcl 1-23
+rldr_data_nulled_pv                    internal static structure                level 1 dcl 1-23
+salv_truncate_null_addr                internal static bit(18)                  initial dcl 7-26
+sect_per_cyl                           internal static fixed bin(17,0)          initial array dcl 5-15
+sect_per_rec                           internal static fixed bin(17,0)          initial array dcl 5-21
+sect_per_sv                            internal static fixed bin(24,0)          initial array dcl 5-18
+sect_per_track                         internal static fixed bin(17,0)          initial array dcl 5-33
+sect_per_vtoc                          internal static fixed bin(17,0)          initial array dcl 5-26
+seg_vtoce                              based           structure                level 1 dcl 6-92
+segmove_new_addr_null_addr             internal static bit(22)                  initial dcl 7-4
+segmove_old_addr_null_addr             internal static bit(22)                  initial dcl 7-4
+truncate_vtoce_fill_null_addr          internal static bit(18)                  initial dcl 7-26
+truncate_vtoce_null_addr               internal static bit(18)                  initial dcl 7-26
+unprotected_null_addr                  internal static bit(22)                  initial dcl 7-4
+update_vtoce_null_addr                 internal static bit(18)                  initial dcl 7-26
+volume_retriever_null_addr             internal static bit(18)                  initial dcl 7-26
+vtoc_per_rec                           internal static fixed bin(17,0)          initial array dcl 5-29
+vtoce_parts                            based           bit(2304)                array dcl 6-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+again                           001135 constant        label                    dcl 183 ref 179
+close                           000364 constant        entry                    external dcl 80
+deposit                         000674 constant        entry                    external dcl 129
+mark_unused_                    001177 constant        entry                    internal dcl 203 ref 139 145
+mark_used_                      000777 constant        entry                    internal dcl 153 ref 114 119
+open                            000142 constant        entry                    external dcl 55
+rldr_volume_map_                000130 constant        entry                    external dcl 30
+scan                            001020 constant        label                    dcl 174 ref 191
+sector                          001435 constant        entry                    internal dcl 249 ref 61 61 86 86
+update                          000351 constant        entry                    external dcl 79
+withdraw                        000574 constant        entry                    external dcl 103
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1636        1660    1505        1646
+Length      2174    1505        22         277     131           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rldr_volume_map_                    519 external procedure  is an external procedure.  
+mark_used_                              internal procedure  shares stack frame of external procedure rldr_volume_map_.  
+mark_unused_                            internal procedure  shares stack frame of external procedure rldr_volume_map_.  
+sector                                  internal procedure  shares stack frame of external procedure rldr_volume_map_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rldr_volume_map_         000100 wordx                       rldr_volume_map_
+                         000101 bitx                        rldr_volume_map_
+                         000102 n_read                      rldr_volume_map_
+                         000103 i                           rldr_volume_map_
+                         000104 rldr_data_common            rldr_volume_map_
+                         000540 rldr_data_perpv             rldr_volume_map_
+                         000624 vol_mapp                    rldr_volume_map_
+                         000626 mapp                        rldr_volume_map_
+                         000640 add                         mark_used_
+                         000641 rescan                      mark_used_
+                         000652 fadd                        mark_unused_
+                         000653 adj_add                     mark_unused_
+                         000662 dev_idx                     sector
+                         000663 sector                      sector
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+iox_$get_chars                iox_$position                 iox_$put_chars                rldr_report_$error_output
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$end_of_info
+
+
+CONSTANTS
+001466  aa     000004000000
+001467  aa     000000000000
+001470  ta     000042000000
+001471  aa     000000000000
+001472  aa     600000000041
+001473  aa     000665000000
+
+001474  aa     000004000000
+001475  aa     000000000000
+001476  ta     000042000000
+001477  aa     000000000000
+001500  aa     600000000041
+001501  aa     000666000000
+
+001502  aa     777774000000
+
+000000  aa     000000000000
+000001  aa     000000000100
+000002  aa     000000000100
+000003  aa     000000000100
+000004  aa     000000000100
+000005  aa     000000000100
+000006  aa     000000000100
+000007  aa     000000001000
+000010  aa     000000001000
+
+000011  aa     000000000000
+000012  aa     000000000020
+000013  aa     000000000020
+000014  aa     000000000020
+000015  aa     000000000020
+000016  aa     000000000020
+000017  aa     000000000020
+000020  aa     000000000002
+000021  aa     000000000002
+
+000022  aa  162 154 144 162	rldr
+000023  aa  137 166 157 154	_vol
+000024  aa  165 155 145 137	ume_
+000025  aa  155 141 160 137	map_
+000026  aa  040 040 040 040	    
+000027  aa  040 040 040 040	    
+000030  aa  040 040 040 040	    
+000031  aa  040 040 040 040	    
+
+000032  aa     524000000047
+
+000033  aa     404000000022
+
+000034  aa     524000000063
+
+000035  aa     404000000005
+
+001503  aa     000000000040
+
+001504  aa     777777777777
+
+000036  aa     524000000041
+
+000037  aa     524000000040
+
+000040  aa     524000000034
+
+000041  aa     526000000040
+
+000042  aa     000000000001
+
+000043  aa     464000000000
+
+000044  aa     516000000022
+
+000045  aa     404000000021
+
+000046  aa     404000000043
+
+000047  aa  115 141 160 040	Map 
+000050  aa  160 157 163 151	posi
+000051  aa  164 151 157 156	tion
+000052  aa  040 146 141 151	 fai
+000053  aa  154 145 144 040	led 
+000054  aa  157 156 040 160	on p
+000055  aa  166 040 136 141	v ^a
+
+000056  aa  105 162 162 157	Erro
+000057  aa  162 040 167 162	r wr
+000060  aa  151 164 151 156	itin
+000061  aa  147 040 166 157	g vo
+000062  aa  154 165 155 145	lume
+000063  aa  040 155 141 160	 map
+000064  aa  040 157 156 040	 on 
+000065  aa  160 166 040 136	pv ^
+000066  aa  141 000 000 000	a
+
+000067  aa  105 162 162 157	Erro
+000070  aa  162 040 162 145	r re
+000071  aa  141 144 151 156	adin
+000072  aa  147 040 166 157	g vo
+000073  aa  154 165 155 145	lume
+000074  aa  040 155 141 160	 map
+000075  aa  040 157 156 040	 on 
+000076  aa  160 166 040 136	pv ^
+000077  aa  141 000 000 000	a
+
+000100  aa  101 164 164 145	Atte
+000101  aa  155 160 164 040	mpt 
+000102  aa  164 157 040 144	to d
+000103  aa  145 160 157 163	epos
+000104  aa  151 164 040 146	it f
+000105  aa  162 145 145 040	ree 
+000106  aa  162 145 143 157	reco
+000107  aa  162 144 040 157	rd o
+000110  aa  156 040 160 166	n pv
+000111  aa  040 136 141 000	 ^a
+
+000112  aa  101 164 164 145	Atte
+000113  aa  155 160 164 040	mpt 
+000114  aa  164 157 040 144	to d
+000115  aa  145 160 157 163	epos
+000116  aa  151 164 040 157	it o
+000117  aa  165 164 040 157	ut o
+000120  aa  146 040 162 141	f ra
+000121  aa  156 147 145 040	nge 
+000122  aa  141 144 144 162	addr
+000123  aa  145 163 163 040	ess 
+000124  aa  136 157 040 157	^o o
+000125  aa  156 040 160 166	n pv
+000126  aa  040 136 141 000	 ^a
+
+BEGIN PROCEDURE rldr_volume_map_
+ENTRY TO rldr_volume_map_                                   STATEMENT 1 ON LINE 30
+rldr_volume_map_: proc;
+
+000127  da     000073200000
+000130  aa   001020 6270 00	eax7 	528
+000131  aa  7 00034 3521 20	epp2 	pr7|28,*
+000132  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000133  aa     000000000000
+000134  aa     000000000000
+						STATEMENT 1 ON LINE 55
+open: entry (rldr_datap, pvindex, code);
+
+000135  aa   000015 7100 04	tra  	13,ic		000152
+ENTRY TO open                                               STATEMENT 1 ON LINE 55
+open: entry (rldr_datap, pvindex, code);
+
+000136  at     000003000043
+000137  tt     000045000046
+000140  ta     000136000000
+000141  da     000100300000
+000142  aa   001020 6270 00	eax7 	528
+000143  aa  7 00034 3521 20	epp2 	pr7|28,*
+000144  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000145  aa     000006000000
+000146  aa     000000000000
+000147  aa  6 00032 3735 20	epp7 	pr6|26,*
+000150  aa  7 00006 3715 20	epp5 	pr7|6,*
+000151  aa  6 00630 6515 00	spri5	pr6|408
+						STATEMENT 1 ON LINE 59
+    code = 0;
+
+000152  aa  6 00630 4501 20	stz  	pr6|408,*		code
+						STATEMENT 1 ON LINE 61
+    call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (VOLMAP_ADDR), code);
+
+000153  aa  6 00032 3735 20	epp7 	pr6|26,*
+000154  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000155  aa   000064 4020 07	mpy  	52,dl
+000156  aa  6 00665 7561 00	stq  	pr6|437
+000157  aa   000002 2360 07	ldq  	2,dl
+000160  aa  6 00664 7561 00	stq  	pr6|436
+000161  aa   001313 3520 04	epp2 	715,ic		001474 = 000004000000
+000162  aa   001253 6700 04	tsp4 	683,ic		001435
+000163  aa  6 00032 3735 20	epp7 	pr6|26,*
+000164  aa  6 00665 7271 00	lxl7 	pr6|437
+000165  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000166  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000167  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000170  aa  6 00672 2521 00	spri2	pr6|442
+000171  aa  6 00664 3521 00	epp2 	pr6|436
+000172  aa  6 00674 2521 00	spri2	pr6|444
+000173  aa  6 00666 3521 00	epp2 	pr6|438
+000174  aa  6 00676 2521 00	spri2	pr6|446
+000175  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000176  aa  6 00700 2521 00	spri2	pr6|448
+000177  aa  6 00670 6211 00	eax1 	pr6|440
+000200  aa   020000 4310 07	fld  	8192,dl
+000201  aa  6 00044 3701 20	epp4 	pr6|36,*
+000202  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$position
+000203  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 62
+    if code ^= 0 then do;
+
+000204  aa  6 00630 2361 20	ldq  	pr6|408,*		code
+000205  aa   000045 6000 04	tze  	37,ic		000252
+						STATEMENT 1 ON LINE 63
+        call rldr_report_$error_output (rldr_datap, code, myname, "Map position failed on pv ^a",
+	   rldr_data_.pvname (pvindex));
+
+000206  aa   777631 2360 04	ldq  	-103,ic		000037 = 524000000040
+000207  aa  6 00666 7561 00	stq  	pr6|438
+000210  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000211  aa   777637 00 0034	desc9a	-97,28		000047 = 115141160040
+000212  aa  6 00670 00 0034	desc9a	pr6|440,28
+000213  aa  6 00032 3735 20	epp7 	pr6|26,*
+000214  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000215  aa   000064 4020 07	mpy  	52,dl
+000216  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+000217  aa  6 00704 2521 00	spri2	pr6|452
+000220  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000221  aa  6 00706 2521 00	spri2	pr6|454
+000222  aa   777600 3520 04	epp2 	-128,ic		000022 = 162154144162
+000223  aa  6 00710 2521 00	spri2	pr6|456
+000224  aa  6 00670 3521 00	epp2 	pr6|440
+000225  aa  6 00712 2521 00	spri2	pr6|458
+000226  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000227  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000230  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+000231  aa  6 00714 2521 00	spri2	pr6|460
+000232  aa   777611 3520 04	epp2 	-119,ic		000043 = 464000000000
+000233  aa  6 00716 2521 00	spri2	pr6|462
+000234  aa   777612 3520 04	epp2 	-118,ic		000046 = 404000000043
+000235  aa  6 00720 2521 00	spri2	pr6|464
+000236  aa   777603 3520 04	epp2 	-125,ic		000041 = 526000000040
+000237  aa  6 00722 2521 00	spri2	pr6|466
+000240  aa   777600 3520 04	epp2 	-128,ic		000040 = 524000000034
+000241  aa  6 00724 2521 00	spri2	pr6|468
+000242  aa  6 00666 3521 00	epp2 	pr6|438
+000243  aa  6 00726 2521 00	spri2	pr6|470
+000244  aa  6 00702 6211 00	eax1 	pr6|450
+000245  aa   024000 4310 07	fld  	10240,dl
+000246  aa  6 00044 3701 20	epp4 	pr6|36,*
+000247  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_report_$error_output
+000250  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 65
+        return;
+
+000251  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 66
+      end;
+
+						STATEMENT 1 ON LINE 68
+    call iox_$get_chars (rldr_data_.outputvol_iocbp (pvindex), rldr_data_.vol_mapp (pvindex), size (vol_map) * 4,
+         n_read, code);
+
+000252  aa  6 00032 3735 20	epp7 	pr6|26,*
+000253  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000254  aa   000064 4020 07	mpy  	52,dl
+000255  aa   000000 6270 06	eax7 	0,ql
+000256  aa   030000 2360 07	ldq  	12288,dl
+000257  aa  6 00666 7561 00	stq  	pr6|438
+000260  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000261  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000262  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000263  aa  6 00704 2521 00	spri2	pr6|452
+000264  aa  5 00432 3521 17	epp2 	pr5|282,7		rldr_data_.vol_mapp
+000265  aa  6 00706 2521 00	spri2	pr6|454
+000266  aa  6 00666 3521 00	epp2 	pr6|438
+000267  aa  6 00710 2521 00	spri2	pr6|456
+000270  aa  6 00102 3521 00	epp2 	pr6|66		n_read
+000271  aa  6 00712 2521 00	spri2	pr6|458
+000272  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000273  aa  6 00714 2521 00	spri2	pr6|460
+000274  aa  6 00702 6211 00	eax1 	pr6|450
+000275  aa   024000 4310 07	fld  	10240,dl
+000276  aa  6 00044 3701 20	epp4 	pr6|36,*
+000277  la  4 00014 3521 20	epp2 	pr4|12,*		iox_$get_chars
+000300  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 70
+    if code ^= 0 then
+      call rldr_report_$error_output (rldr_datap, code, myname, "Error reading volume map on pv ^a",
+	 rldr_data_.pvname (pvindex));
+
+000301  aa  6 00630 2361 20	ldq  	pr6|408,*		code
+000302  aa   000044 6000 04	tze  	36,ic		000346
+000303  aa   777534 2360 04	ldq  	-164,ic		000037 = 524000000040
+000304  aa  6 00666 7561 00	stq  	pr6|438
+000305  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000306  aa   777562 00 0044	desc9a	-142,36		000067 = 105162162157
+000307  aa  6 00670 00 0044	desc9a	pr6|440,36
+000310  aa  6 00032 3735 20	epp7 	pr6|26,*
+000311  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000312  aa   000064 4020 07	mpy  	52,dl
+000313  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+000314  aa  6 00704 2521 00	spri2	pr6|452
+000315  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000316  aa  6 00706 2521 00	spri2	pr6|454
+000317  aa   777503 3520 04	epp2 	-189,ic		000022 = 162154144162
+000320  aa  6 00710 2521 00	spri2	pr6|456
+000321  aa  6 00670 3521 00	epp2 	pr6|440
+000322  aa  6 00712 2521 00	spri2	pr6|458
+000323  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000324  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000325  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+000326  aa  6 00714 2521 00	spri2	pr6|460
+000327  aa   777514 3520 04	epp2 	-180,ic		000043 = 464000000000
+000330  aa  6 00716 2521 00	spri2	pr6|462
+000331  aa   777515 3520 04	epp2 	-179,ic		000046 = 404000000043
+000332  aa  6 00720 2521 00	spri2	pr6|464
+000333  aa   777506 3520 04	epp2 	-186,ic		000041 = 526000000040
+000334  aa  6 00722 2521 00	spri2	pr6|466
+000335  aa   777501 3520 04	epp2 	-191,ic		000036 = 524000000041
+000336  aa  6 00724 2521 00	spri2	pr6|468
+000337  aa  6 00666 3521 00	epp2 	pr6|438
+000340  aa  6 00726 2521 00	spri2	pr6|470
+000341  aa  6 00702 6211 00	eax1 	pr6|450
+000342  aa   024000 4310 07	fld  	10240,dl
+000343  aa  6 00044 3701 20	epp4 	pr6|36,*
+000344  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_report_$error_output
+000345  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 74
+    return;
+
+000346  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO update                                             STATEMENT 1 ON LINE 79
+update: entry (rldr_datap, pvindex, code);
+
+000347  ta     000136000000
+000350  da     000105300000
+000351  aa   001020 6270 00	eax7 	528
+000352  aa  7 00034 3521 20	epp2 	pr7|28,*
+000353  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000354  aa     000006000000
+000355  aa     000000000000
+000356  aa  6 00032 3735 20	epp7 	pr6|26,*
+000357  aa  7 00006 3715 20	epp5 	pr7|6,*
+000360  aa  6 00630 6515 00	spri5	pr6|408
+						STATEMENT 1 ON LINE 80
+close: entry (rldr_datap, pvindex, code);
+
+000361  aa   000013 7100 04	tra  	11,ic		000374
+ENTRY TO close                                              STATEMENT 1 ON LINE 80
+close: entry (rldr_datap, pvindex, code);
+
+000362  ta     000136000000
+000363  da     000112300000
+000364  aa   001020 6270 00	eax7 	528
+000365  aa  7 00034 3521 20	epp2 	pr7|28,*
+000366  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000367  aa     000006000000
+000370  aa     000000000000
+000371  aa  6 00032 3735 20	epp7 	pr6|26,*
+000372  aa  7 00006 3715 20	epp5 	pr7|6,*
+000373  aa  6 00630 6515 00	spri5	pr6|408
+						STATEMENT 1 ON LINE 84
+    code = 0;
+
+000374  aa  6 00630 4501 20	stz  	pr6|408,*		code
+						STATEMENT 1 ON LINE 86
+    call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (VOLMAP_ADDR), code);
+
+000375  aa  6 00032 3735 20	epp7 	pr6|26,*
+000376  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000377  aa   000064 4020 07	mpy  	52,dl
+000400  aa  6 00664 7561 00	stq  	pr6|436
+000401  aa   000002 2360 07	ldq  	2,dl
+000402  aa  6 00666 7561 00	stq  	pr6|438
+000403  aa   001063 3520 04	epp2 	563,ic		001466 = 000004000000
+000404  aa   001031 6700 04	tsp4 	537,ic		001435
+000405  aa  6 00032 3735 20	epp7 	pr6|26,*
+000406  aa  6 00664 7271 00	lxl7 	pr6|436
+000407  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000410  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000411  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000412  aa  6 00672 2521 00	spri2	pr6|442
+000413  aa  6 00666 3521 00	epp2 	pr6|438
+000414  aa  6 00674 2521 00	spri2	pr6|444
+000415  aa  6 00665 3521 00	epp2 	pr6|437
+000416  aa  6 00676 2521 00	spri2	pr6|446
+000417  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000420  aa  6 00700 2521 00	spri2	pr6|448
+000421  aa  6 00670 6211 00	eax1 	pr6|440
+000422  aa   020000 4310 07	fld  	8192,dl
+000423  aa  6 00044 3701 20	epp4 	pr6|36,*
+000424  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$position
+000425  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 87
+    if code ^= 0 then do;
+
+000426  aa  6 00630 2361 20	ldq  	pr6|408,*		code
+000427  aa   000045 6000 04	tze  	37,ic		000474
+						STATEMENT 1 ON LINE 88
+        call rldr_report_$error_output (rldr_datap, code, myname, "Map position failed on pv ^a",
+	   rldr_data_.pvname (pvindex));
+
+000430  aa   777407 2360 04	ldq  	-249,ic		000037 = 524000000040
+000431  aa  6 00665 7561 00	stq  	pr6|437
+000432  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000433  aa   777415 00 0034	desc9a	-243,28		000047 = 115141160040
+000434  aa  6 00670 00 0034	desc9a	pr6|440,28
+000435  aa  6 00032 3735 20	epp7 	pr6|26,*
+000436  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000437  aa   000064 4020 07	mpy  	52,dl
+000440  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+000441  aa  6 00704 2521 00	spri2	pr6|452
+000442  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000443  aa  6 00706 2521 00	spri2	pr6|454
+000444  aa   777356 3520 04	epp2 	-274,ic		000022 = 162154144162
+000445  aa  6 00710 2521 00	spri2	pr6|456
+000446  aa  6 00670 3521 00	epp2 	pr6|440
+000447  aa  6 00712 2521 00	spri2	pr6|458
+000450  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000451  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000452  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+000453  aa  6 00714 2521 00	spri2	pr6|460
+000454  aa   777367 3520 04	epp2 	-265,ic		000043 = 464000000000
+000455  aa  6 00716 2521 00	spri2	pr6|462
+000456  aa   777370 3520 04	epp2 	-264,ic		000046 = 404000000043
+000457  aa  6 00720 2521 00	spri2	pr6|464
+000460  aa   777361 3520 04	epp2 	-271,ic		000041 = 526000000040
+000461  aa  6 00722 2521 00	spri2	pr6|466
+000462  aa   777356 3520 04	epp2 	-274,ic		000040 = 524000000034
+000463  aa  6 00724 2521 00	spri2	pr6|468
+000464  aa  6 00665 3521 00	epp2 	pr6|437
+000465  aa  6 00726 2521 00	spri2	pr6|470
+000466  aa  6 00702 6211 00	eax1 	pr6|450
+000467  aa   024000 4310 07	fld  	10240,dl
+000470  aa  6 00044 3701 20	epp4 	pr6|36,*
+000471  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_report_$error_output
+000472  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 90
+        return;
+
+000473  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 91
+      end;
+
+						STATEMENT 1 ON LINE 93
+    call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), rldr_data_.vol_mapp (pvindex),
+         size (vol_map) * 4, code);
+
+000474  aa  6 00032 3735 20	epp7 	pr6|26,*
+000475  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000476  aa   000064 4020 07	mpy  	52,dl
+000477  aa   000000 6270 06	eax7 	0,ql
+000500  aa   030000 2360 07	ldq  	12288,dl
+000501  aa  6 00665 7561 00	stq  	pr6|437
+000502  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000503  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000504  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000505  aa  6 00672 2521 00	spri2	pr6|442
+000506  aa  5 00432 3521 17	epp2 	pr5|282,7		rldr_data_.vol_mapp
+000507  aa  6 00674 2521 00	spri2	pr6|444
+000510  aa  6 00665 3521 00	epp2 	pr6|437
+000511  aa  6 00676 2521 00	spri2	pr6|446
+000512  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000513  aa  6 00700 2521 00	spri2	pr6|448
+000514  aa  6 00670 6211 00	eax1 	pr6|440
+000515  aa   020000 4310 07	fld  	8192,dl
+000516  aa  6 00044 3701 20	epp4 	pr6|36,*
+000517  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$put_chars
+000520  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 95
+    if code ^= 0 then
+      call rldr_report_$error_output (rldr_datap, code, myname, "Error writing volume map on pv ^a",
+	 rldr_data_.pvname (pvindex));
+
+000521  aa  6 00630 2361 20	ldq  	pr6|408,*		code
+000522  aa   000044 6000 04	tze  	36,ic		000566
+000523  aa   777314 2360 04	ldq  	-308,ic		000037 = 524000000040
+000524  aa  6 00665 7561 00	stq  	pr6|437
+000525  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000526  aa   777331 00 0044	desc9a	-295,36		000056 = 105162162157
+000527  aa  6 00670 00 0044	desc9a	pr6|440,36
+000530  aa  6 00032 3735 20	epp7 	pr6|26,*
+000531  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000532  aa   000064 4020 07	mpy  	52,dl
+000533  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+000534  aa  6 00704 2521 00	spri2	pr6|452
+000535  aa  6 00630 3521 20	epp2 	pr6|408,*		code
+000536  aa  6 00706 2521 00	spri2	pr6|454
+000537  aa   777263 3520 04	epp2 	-333,ic		000022 = 162154144162
+000540  aa  6 00710 2521 00	spri2	pr6|456
+000541  aa  6 00670 3521 00	epp2 	pr6|440
+000542  aa  6 00712 2521 00	spri2	pr6|458
+000543  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000544  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000545  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+000546  aa  6 00714 2521 00	spri2	pr6|460
+000547  aa   777274 3520 04	epp2 	-324,ic		000043 = 464000000000
+000550  aa  6 00716 2521 00	spri2	pr6|462
+000551  aa   777275 3520 04	epp2 	-323,ic		000046 = 404000000043
+000552  aa  6 00720 2521 00	spri2	pr6|464
+000553  aa   777266 3520 04	epp2 	-330,ic		000041 = 526000000040
+000554  aa  6 00722 2521 00	spri2	pr6|466
+000555  aa   777261 3520 04	epp2 	-335,ic		000036 = 524000000041
+000556  aa  6 00724 2521 00	spri2	pr6|468
+000557  aa  6 00665 3521 00	epp2 	pr6|437
+000560  aa  6 00726 2521 00	spri2	pr6|470
+000561  aa  6 00702 6211 00	eax1 	pr6|450
+000562  aa   024000 4310 07	fld  	10240,dl
+000563  aa  6 00044 3701 20	epp4 	pr6|36,*
+000564  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_report_$error_output
+000565  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 98
+    return;
+
+000566  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO withdraw                                           STATEMENT 1 ON LINE 103
+withdraw: entry (rldr_datap, pvindex, vtocep, ctl, code);
+
+000567  at     000005000043
+000570  tt     000045000043
+000571  tt     000045000046
+000572  ta     000567000000
+000573  da     000120300000
+000574  aa   001020 6270 00	eax7 	528
+000575  aa  7 00034 3521 20	epp2 	pr7|28,*
+000576  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000577  aa     000012000000
+000600  aa     000000000000
+000601  aa  6 00032 3735 20	epp7 	pr6|26,*
+000602  aa  7 00012 3715 20	epp5 	pr7|10,*
+000603  aa  6 00630 6515 00	spri5	pr6|408
+						STATEMENT 1 ON LINE 108
+    code = 0;
+
+000604  aa  6 00630 4501 20	stz  	pr6|408,*		code
+						STATEMENT 1 ON LINE 110
+    vol_mapp = rldr_data_.vol_mapp (pvindex);
+
+000605  aa  6 00032 3735 20	epp7 	pr6|26,*
+000606  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000607  aa   000064 4020 07	mpy  	52,dl
+000610  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000611  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000612  aa  5 00432 3535 26	epp3 	pr5|282,ql*	rldr_data_.vol_mapp
+000613  aa  6 00624 2535 00	spri3	pr6|404		vol_mapp
+						STATEMENT 1 ON LINE 111
+    mapp = addr (vol_map.bit_map);
+
+000614  aa  3 00100 3515 00	epp1 	pr3|64		vol_map.bit_map
+000615  aa  6 00626 2515 00	spri1	pr6|406		mapp
+						STATEMENT 1 ON LINE 113
+    if ctl ^= -1 then do;
+
+000616  aa  7 00010 2361 20	ldq  	pr7|8,*		ctl
+000617  aa   000665 1160 04	cmpq 	437,ic		001504 = 777777777777
+000620  aa   000014 6000 04	tze  	12,ic		000634
+						STATEMENT 1 ON LINE 114
+        vtoce.fm (ctl) = mark_used_ ();
+
+000621  aa   000022 4020 07	mpy  	18,dl
+000622  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000623  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+000624  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+000625  aa  2 00000 5035 06	abd  	pr2|0,ql
+000626  aa  6 00672 2521 00	spri2	pr6|442
+000627  aa  6 00670 3521 00	epp2 	pr6|440
+000630  aa   004000 4310 07	fld  	2048,dl
+000631  aa  2 00000 7571 00	staq 	pr2|0
+000632  aa   000145 6700 04	tsp4 	101,ic		000777
+						STATEMENT 1 ON LINE 115
+        return;
+
+000633  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 116
+      end;
+
+						STATEMENT 1 ON LINE 118
+    do i = 0 to 255;
+
+000634  aa  6 00103 4501 00	stz  	pr6|67		i
+000635  aa   000000 0110 03	nop  	0,du
+000636  aa  6 00103 2361 00	ldq  	pr6|67		i
+000637  aa   000377 1160 07	cmpq 	255,dl
+000640  aa   000031 6054 04	tpnz 	25,ic		000671
+						STATEMENT 1 ON LINE 119
+      if ^substr (vtoce.fm (i), 1, 1) then
+        vtoce.fm (i) = mark_used_ ();
+
+000641  aa   000022 4020 07	mpy  	18,dl
+000642  aa  6 00665 7561 00	stq  	pr6|437
+000643  aa  6 00032 3735 20	epp7 	pr6|26,*
+000644  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000645  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+000646  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+000647  aa  5 00020 00 0001	descb	pr5|16,1		vtoce.fm
+000650  aa   000000 00 0000	descb	0,0
+000651  aa   000011 6010 04	tnz  	9,ic		000662
+000652  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+000653  aa  2 00000 5035 06	abd  	pr2|0,ql
+000654  aa  6 00672 2521 00	spri2	pr6|442
+000655  aa  6 00670 3521 00	epp2 	pr6|440
+000656  aa   004000 4310 07	fld  	2048,dl
+000657  aa  2 00000 7571 00	staq 	pr2|0
+000660  aa   000117 6700 04	tsp4 	79,ic		000777
+000661  aa   000004 7100 04	tra  	4,ic		000665
+						STATEMENT 1 ON LINE 121
+      else vtoce.fm (i) = volume_reloader_null_addr;
+
+000662  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000663  aa   000620 00 0022	descb	400,18		001502 = 777774000000
+000664  aa  5 00020 00 0022	descb	pr5|16,18		vtoce.fm
+						STATEMENT 1 ON LINE 122
+      if code ^= 0 then return;
+
+000665  aa  6 00630 2361 20	ldq  	pr6|408,*		code
+000666  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 123
+    end;
+
+000667  aa  6 00103 0541 00	aos  	pr6|67		i
+000670  aa   777746 7100 04	tra  	-26,ic		000636
+						STATEMENT 1 ON LINE 124
+    return;
+
+000671  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO deposit                                            STATEMENT 1 ON LINE 129
+deposit: entry (rldr_datap, pvindex, vtocep, ctl, code);
+
+000672  ta     000567000000
+000673  da     000125300000
+000674  aa   001020 6270 00	eax7 	528
+000675  aa  7 00034 3521 20	epp2 	pr7|28,*
+000676  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000677  aa     000012000000
+000700  aa     000000000000
+000701  aa  6 00032 3735 20	epp7 	pr6|26,*
+000702  aa  7 00012 3715 20	epp5 	pr7|10,*
+000703  aa  6 00630 6515 00	spri5	pr6|408
+						STATEMENT 1 ON LINE 133
+    code = 0;
+
+000704  aa  6 00630 4501 20	stz  	pr6|408,*		code
+						STATEMENT 1 ON LINE 135
+    vol_mapp = rldr_data_.vol_mapp (pvindex);
+
+000705  aa  6 00032 3735 20	epp7 	pr6|26,*
+000706  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000707  aa   000064 4020 07	mpy  	52,dl
+000710  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000711  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000712  aa  5 00432 3535 26	epp3 	pr5|282,ql*	rldr_data_.vol_mapp
+000713  aa  6 00624 2535 00	spri3	pr6|404		vol_mapp
+						STATEMENT 1 ON LINE 136
+    mapp = addr (vol_map.bit_map);
+
+000714  aa  3 00100 3515 00	epp1 	pr3|64		vol_map.bit_map
+000715  aa  6 00626 2515 00	spri1	pr6|406		mapp
+						STATEMENT 1 ON LINE 138
+    if ctl ^= -1 then do;
+
+000716  aa  7 00010 2361 20	ldq  	pr7|8,*		ctl
+000717  aa   000565 1160 04	cmpq 	373,ic		001504 = 777777777777
+000720  aa   000024 6000 04	tze  	20,ic		000744
+						STATEMENT 1 ON LINE 139
+        if ^substr (vtoce.fm (ctl), 1, 1) then
+	vtoce.fm (ctl) = mark_unused_ (vtoce.fm (ctl));
+
+000721  aa   000022 4020 07	mpy  	18,dl
+000722  aa  6 00665 7561 00	stq  	pr6|437
+000723  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000724  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+000725  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+000726  aa  5 00020 00 0001	descb	pr5|16,1		vtoce.fm
+000727  aa   000000 00 0000	descb	0,0
+000730  aa   000013 6010 04	tnz  	11,ic		000743
+000731  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+000732  aa  2 00000 5035 06	abd  	pr2|0,ql
+000733  aa  6 00672 2521 00	spri2	pr6|442
+000734  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+000735  aa  2 00000 5035 06	abd  	pr2|0,ql
+000736  aa  6 00674 2521 00	spri2	pr6|444
+000737  aa  6 00670 3521 00	epp2 	pr6|440
+000740  aa   010000 4310 07	fld  	4096,dl
+000741  aa  2 00000 7571 00	staq 	pr2|0
+000742  aa   000235 6700 04	tsp4 	157,ic		001177
+						STATEMENT 1 ON LINE 141
+        return;
+
+000743  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 142
+      end;
+
+						STATEMENT 1 ON LINE 144
+    do i = 0 to 255;
+
+000744  aa  6 00103 4501 00	stz  	pr6|67		i
+000745  aa   000000 0110 03	nop  	0,du
+000746  aa  6 00103 2361 00	ldq  	pr6|67		i
+000747  aa   000377 1160 07	cmpq 	255,dl
+000750  aa   000026 6054 04	tpnz 	22,ic		000776
+						STATEMENT 1 ON LINE 145
+      if ^substr (vtoce.fm (i), 1, 1) then
+        vtoce.fm (i) = mark_unused_ (vtoce.fm (i));
+
+000751  aa   000022 4020 07	mpy  	18,dl
+000752  aa  6 00665 7561 00	stq  	pr6|437
+000753  aa  6 00032 3735 20	epp7 	pr6|26,*
+000754  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000755  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+000756  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+000757  aa  5 00020 00 0001	descb	pr5|16,1		vtoce.fm
+000760  aa   000000 00 0000	descb	0,0
+000761  aa   000013 6010 04	tnz  	11,ic		000774
+000762  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+000763  aa  2 00000 5035 06	abd  	pr2|0,ql
+000764  aa  6 00672 2521 00	spri2	pr6|442
+000765  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+000766  aa  2 00000 5035 06	abd  	pr2|0,ql
+000767  aa  6 00674 2521 00	spri2	pr6|444
+000770  aa  6 00670 3521 00	epp2 	pr6|440
+000771  aa   010000 4310 07	fld  	4096,dl
+000772  aa  2 00000 7571 00	staq 	pr2|0
+000773  aa   000204 6700 04	tsp4 	132,ic		001177
+						STATEMENT 1 ON LINE 147
+    end;
+
+000774  aa  6 00103 0541 00	aos  	pr6|67		i
+000775  aa   777751 7100 04	tra  	-23,ic		000746
+						STATEMENT 1 ON LINE 148
+    return;
+
+000776  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 352
+  end rldr_volume_map_;
+
+BEGIN PROCEDURE mark_used_
+ENTRY TO mark_used_                                         STATEMENT 1 ON LINE 153
+mark_used_: proc returns (bit (18));
+
+000777  aa  6 00632 6501 00	spri4	pr6|410
+001000  aa  6 00634 2521 00	spri2	pr6|412
+						STATEMENT 1 ON LINE 162
+    rescan = "0"b;
+
+001001  aa  6 00641 4501 00	stz  	pr6|417		rescan
+						STATEMENT 1 ON LINE 164
+    vol_map.n_free_rec = vol_map.n_free_rec - 1;
+
+001002  aa   000001 3360 07	lcq  	1,dl
+001003  aa  6 00624 3735 20	epp7 	pr6|404,*		vol_mapp
+001004  aa  7 00002 0561 00	asq  	pr7|2		vol_map.n_free_rec
+						STATEMENT 1 ON LINE 165
+    if vol_map.n_free_rec < 0 then do;
+
+001005  aa  7 00002 2361 00	ldq  	pr7|2		vol_map.n_free_rec
+001006  aa   000012 6050 04	tpl  	10,ic		001020
+						STATEMENT 1 ON LINE 166
+        vol_map.n_free_rec = 0;
+
+001007  aa  7 00002 4501 00	stz  	pr7|2		vol_map.n_free_rec
+						STATEMENT 1 ON LINE 167
+        code = error_table_$end_of_info;
+
+001010  aa  6 00044 3701 20	epp4 	pr6|36,*
+001011  la  4 00010 2361 20	ldq  	pr4|8,*		error_table_$end_of_info
+001012  aa  6 00630 7561 20	stq  	pr6|408,*		code
+						STATEMENT 1 ON LINE 168
+        return ("0"b);
+
+001013  aa  2 00002 3715 20	epp5 	pr2|2,*
+001014  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+001015  aa   000000 00 0000	descb	0,0
+001016  aa  5 00000 00 0022	descb	pr5|0,18
+001017  aa  6 00632 6101 00	rtcd 	pr6|410
+						STATEMENT 1 ON LINE 169
+      end;
+
+						STATEMENT 1 ON LINE 174
+scan: do wordx = rldr_data_.prev_wordx (pvindex) to vol_map.bit_map_n_words;
+
+001020  aa  6 00624 3735 20	epp7 	pr6|404,*		vol_mapp
+001021  aa  7 00003 2361 00	ldq  	pr7|3		vol_map.bit_map_n_words
+001022  aa  6 00642 7561 00	stq  	pr6|418
+001023  aa  6 00032 3715 20	epp5 	pr6|26,*
+001024  aa  5 00004 2361 20	ldq  	pr5|4,*		pvindex
+001025  aa   000064 4020 07	mpy  	52,dl
+001026  aa  5 00002 3535 20	epp3 	pr5|2,*		rldr_datap
+001027  aa  3 00000 3535 20	epp3 	pr3|0,*		rldr_datap
+001030  aa  3 00407 2361 06	ldq  	pr3|263,ql	rldr_data_.prev_wordx
+001031  aa  6 00100 7561 00	stq  	pr6|64		wordx
+001032  aa  6 00100 2361 00	ldq  	pr6|64		wordx
+001033  aa  6 00642 1161 00	cmpq 	pr6|418
+001034  aa   000115 6054 04	tpnz 	77,ic		001151
+						STATEMENT 1 ON LINE 175
+      do bitx = rldr_data_.prev_bitx (pvindex) to 33;
+
+001035  aa  6 00032 3735 20	epp7 	pr6|26,*
+001036  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001037  aa   000064 4020 07	mpy  	52,dl
+001040  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001041  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001042  aa  5 00410 2361 06	ldq  	pr5|264,ql	rldr_data_.prev_bitx
+001043  aa  6 00101 7561 00	stq  	pr6|65		bitx
+001044  aa  6 00101 2361 00	ldq  	pr6|65		bitx
+001045  aa   000041 1160 07	cmpq 	33,dl
+001046  aa   000071 6054 04	tpnz 	57,ic		001137
+						STATEMENT 1 ON LINE 176
+        if substr (fsmap.table (wordx), bitx, 1) then do;
+
+001047  aa   000001 1760 07	sbq  	1,dl
+001050  aa  6 00730 7561 00	stq  	pr6|472
+001051  aa  6 00100 2361 00	ldq  	pr6|64		wordx
+001052  aa   000044 4020 07	mpy  	36,dl
+001053  aa  6 00730 0761 00	adq  	pr6|472
+001054  aa  6 00730 7561 00	stq  	pr6|472
+001055  aa  6 00626 3735 20	epp7 	pr6|406,*		mapp
+001056  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+001057  aa  7 77777 00 0001	descb	pr7|-1,1		fsmap.table
+001060  aa   000000 00 0000	descb	0,0
+001061  aa   000054 6000 04	tze  	44,ic		001135
+						STATEMENT 1 ON LINE 177
+	  add = bit (fixed ((wordx - 1) * 32 + (bitx - 2) + vol_map.base_add, 18), 18);
+
+001062  aa  6 00101 2361 00	ldq  	pr6|65		bitx
+001063  aa   000002 1760 07	sbq  	2,dl
+001064  aa  6 00731 7561 00	stq  	pr6|473
+001065  aa  6 00100 2361 00	ldq  	pr6|64		wordx
+001066  aa   000001 1760 07	sbq  	1,dl
+001067  aa   000005 7360 00	qls  	5
+001070  aa  6 00731 0761 00	adq  	pr6|473
+001071  aa  6 00624 3715 20	epp5 	pr6|404,*		vol_mapp
+001072  aa  5 00001 0761 00	adq  	pr5|1		vol_map.base_add
+001073  aa   000003 6050 04	tpl  	3,ic		001076
+001074  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+001075  aa   000001 0760 07	adq  	1,dl
+001076  aa   000066 7370 00	lls  	54
+001077  aa  6 00640 7551 00	sta  	pr6|416		add
+						STATEMENT 1 ON LINE 178
+	  substr (fsmap.table (wordx), bitx, 1) = "0"b;
+
+001100  aa  6 00730 7271 00	lxl7 	pr6|472
+001101  aa  003 117 060 400	csl  	(),(pr,x7),fill(0),bool(move)
+001102  aa   000000 00 0000	descb	0,0
+001103  aa  7 77777 00 0001	descb	pr7|-1,1		fsmap.table
+						STATEMENT 1 ON LINE 179
+	  if fixed (add, 18) > vol_map.n_rec + vol_map.base_add then goto again;
+
+001104  aa  5 00000 2361 00	ldq  	pr5|0		vol_map.n_rec
+001105  aa  5 00001 0761 00	adq  	pr5|1		vol_map.base_add
+001106  aa  6 00730 7561 00	stq  	pr6|472
+001107  aa   000066 7730 00	lrl  	54
+001110  aa  6 00730 1161 00	cmpq 	pr6|472
+001111  aa   000024 6054 04	tpnz 	20,ic		001135
+						STATEMENT 1 ON LINE 180
+	  rldr_data_.prev_wordx (pvindex) = wordx;
+
+001112  aa  6 00032 3535 20	epp3 	pr6|26,*
+001113  aa  3 00004 2361 20	ldq  	pr3|4,*		pvindex
+001114  aa   000064 4020 07	mpy  	52,dl
+001115  aa   000000 6260 06	eax6 	0,ql
+001116  aa  6 00100 2361 00	ldq  	pr6|64		wordx
+001117  aa  3 00002 3515 20	epp1 	pr3|2,*		rldr_datap
+001120  aa  1 00000 3515 20	epp1 	pr1|0,*		rldr_datap
+001121  aa  1 00407 7561 16	stq  	pr1|263,6		rldr_data_.prev_wordx
+						STATEMENT 1 ON LINE 181
+	  rldr_data_.prev_bitx (pvindex) = bitx;
+
+001122  aa  3 00004 2361 20	ldq  	pr3|4,*		pvindex
+001123  aa   000064 4020 07	mpy  	52,dl
+001124  aa   000000 6250 06	eax5 	0,ql
+001125  aa  6 00101 2361 00	ldq  	pr6|65		bitx
+001126  aa  1 00410 7561 15	stq  	pr1|264,5		rldr_data_.prev_bitx
+						STATEMENT 1 ON LINE 182
+	  return (add);
+
+001127  aa  6 00634 3515 20	epp1 	pr6|412,*
+001130  aa  1 00002 3735 20	epp7 	pr1|2,*
+001131  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001132  aa  6 00640 00 0022	descb	pr6|416,18	add
+001133  aa  7 00000 00 0022	descb	pr7|0,18
+001134  aa  6 00632 6101 00	rtcd 	pr6|410
+						STATEMENT 1 ON LINE 183
+again:	end;
+
+						STATEMENT 1 ON LINE 184
+      end;
+
+001135  aa  6 00101 0541 00	aos  	pr6|65		bitx
+001136  aa   777706 7100 04	tra  	-58,ic		001044
+						STATEMENT 1 ON LINE 185
+      rldr_data_.prev_bitx (pvindex) = 2;
+
+001137  aa  6 00032 3735 20	epp7 	pr6|26,*
+001140  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001141  aa   000064 4020 07	mpy  	52,dl
+001142  aa   000000 6270 06	eax7 	0,ql
+001143  aa   000002 2360 07	ldq  	2,dl
+001144  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001145  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001146  aa  5 00410 7561 17	stq  	pr5|264,7		rldr_data_.prev_bitx
+						STATEMENT 1 ON LINE 186
+    end;
+
+001147  aa  6 00100 0541 00	aos  	pr6|64		wordx
+001150  aa   777662 7100 04	tra  	-78,ic		001032
+						STATEMENT 1 ON LINE 188
+    if ^rescan then do;
+
+001151  aa  6 00641 2351 00	lda  	pr6|417		rescan
+001152  aa   000014 6010 04	tnz  	12,ic		001166
+						STATEMENT 1 ON LINE 189
+        rescan = "1"b;
+
+001153  aa   400000 2350 03	lda  	131072,du
+001154  aa  6 00641 7551 00	sta  	pr6|417		rescan
+						STATEMENT 1 ON LINE 190
+        rldr_data_.prev_wordx (pvindex) = 1;
+
+001155  aa  6 00032 3735 20	epp7 	pr6|26,*
+001156  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001157  aa   000064 4020 07	mpy  	52,dl
+001160  aa   000000 6270 06	eax7 	0,ql
+001161  aa   000001 2360 07	ldq  	1,dl
+001162  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001163  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001164  aa  5 00407 7561 17	stq  	pr5|263,7		rldr_data_.prev_wordx
+						STATEMENT 1 ON LINE 191
+        goto scan;
+
+001165  aa   777633 7100 04	tra  	-101,ic		001020
+						STATEMENT 1 ON LINE 192
+      end;
+
+						STATEMENT 1 ON LINE 193
+    code = error_table_$end_of_info;
+
+001166  aa  6 00044 3701 20	epp4 	pr6|36,*
+001167  la  4 00010 2361 20	ldq  	pr4|8,*		error_table_$end_of_info
+001170  aa  6 00630 7561 20	stq  	pr6|408,*		code
+						STATEMENT 1 ON LINE 194
+    return (volume_reloader_null_addr);
+
+001171  aa  6 00634 3735 20	epp7 	pr6|412,*
+001172  aa  7 00002 3715 20	epp5 	pr7|2,*
+001173  aa  003 100 060 404	csl  	(ic),(pr),fill(0),bool(move)
+001174  aa   000307 00 0022	descb	199,18		001502 = 777774000000
+001175  aa  5 00000 00 0022	descb	pr5|0,18
+001176  aa  6 00632 6101 00	rtcd 	pr6|410
+						STATEMENT 1 ON LINE 196
+  end mark_used_;
+
+  END PROCEDURE mark_used_
+BEGIN PROCEDURE mark_unused_
+ENTRY TO mark_unused_                                       STATEMENT 1 ON LINE 203
+mark_unused_: proc (add) returns (bit (18));
+
+001177  aa  6 00644 6501 00	spri4	pr6|420
+001200  aa  6 00646 2521 00	spri2	pr6|422
+						STATEMENT 1 ON LINE 212
+    fadd = fixed (add, 18);
+
+001201  aa  2 00002 3735 20	epp7 	pr2|2,*
+001202  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001203  aa  7 00000 00 0022	descb	pr7|0,18		add
+001204  aa  6 00056 00 0044	descb	pr6|46,36
+001205  aa  6 00056 2351 00	lda  	pr6|46
+001206  aa   000066 7730 00	lrl  	54
+001207  aa  6 00652 7561 00	stq  	pr6|426		fadd
+						STATEMENT 1 ON LINE 214
+    if fadd > vol_map.base_add + vol_map.n_rec
+         | fadd < vol_map.base_add then do;
+
+001210  aa  6 00624 3715 20	epp5 	pr6|404,*		vol_mapp
+001211  aa  5 00001 2361 00	ldq  	pr5|1		vol_map.base_add
+001212  aa  5 00000 0761 00	adq  	pr5|0		vol_map.n_rec
+001213  aa  6 00652 1161 00	cmpq 	pr6|426		fadd
+001214  aa   000004 6040 04	tmi  	4,ic		001220
+001215  aa  6 00652 2361 00	ldq  	pr6|426		fadd
+001216  aa  5 00001 1161 00	cmpq 	pr5|1		vol_map.base_add
+001217  aa   000066 6050 04	tpl  	54,ic		001305
+						STATEMENT 1 ON LINE 216
+        if rldr_data_.per_pv (pvindex).restart & fadd = 0 then ;
+
+001220  aa  6 00032 3535 20	epp3 	pr6|26,*
+001221  aa  3 00004 2361 20	ldq  	pr3|4,*		pvindex
+001222  aa   000064 4020 07	mpy  	52,dl
+001223  aa  6 00732 7561 00	stq  	pr6|474
+001224  aa  3 00002 3515 20	epp1 	pr3|2,*		rldr_datap
+001225  aa  1 00000 3515 20	epp1 	pr1|0,*		rldr_datap
+001226  aa  1 00351 2351 06	lda  	pr1|233,ql	rldr_data_.restart
+001227  aa   000004 6000 04	tze  	4,ic		001233
+001230  aa  6 00652 2361 00	ldq  	pr6|426		fadd
+001231  aa   000002 6010 04	tnz  	2,ic		001233
+001232  aa   000045 7100 04	tra  	37,ic		001277
+						STATEMENT 1 ON LINE 217
+        else call rldr_report_$error_output (rldr_datap, 0, myname,
+	        "Attempt to deposit out of range address ^o on pv ^a", fadd, rldr_data_.pvname (pvindex));
+
+001233  aa   776604 2360 04	ldq  	-636,ic		000037 = 524000000040
+001234  aa  6 00733 7561 00	stq  	pr6|475
+001235  aa  6 00734 4501 00	stz  	pr6|476
+001236  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001237  aa   776654 00 0064	desc9a	-596,52		000112 = 101164164145
+001240  aa  6 00736 00 0064	desc9a	pr6|478,52
+001241  aa  3 00002 3521 20	epp2 	pr3|2,*		rldr_datap
+001242  aa  6 00756 2521 00	spri2	pr6|494
+001243  aa  6 00734 3521 00	epp2 	pr6|476
+001244  aa  6 00760 2521 00	spri2	pr6|496
+001245  aa   776555 3520 04	epp2 	-659,ic		000022 = 162154144162
+001246  aa  6 00762 2521 00	spri2	pr6|498
+001247  aa  6 00736 3521 00	epp2 	pr6|478
+001250  aa  6 00764 2521 00	spri2	pr6|500
+001251  aa  6 00652 3521 00	epp2 	pr6|426		fadd
+001252  aa  6 00766 2521 00	spri2	pr6|502
+001253  aa  6 00732 7271 00	lxl7 	pr6|474
+001254  aa  1 00353 3521 17	epp2 	pr1|235,7		rldr_data_.pvname
+001255  aa  6 00770 2521 00	spri2	pr6|504
+001256  aa   776565 3520 04	epp2 	-651,ic		000043 = 464000000000
+001257  aa  6 00772 2521 00	spri2	pr6|506
+001260  aa   776555 3520 04	epp2 	-659,ic		000035 = 404000000005
+001261  aa  6 00774 2521 00	spri2	pr6|508
+001262  aa   776557 3520 04	epp2 	-657,ic		000041 = 526000000040
+001263  aa  6 00776 2521 00	spri2	pr6|510
+001264  aa   776550 3520 04	epp2 	-664,ic		000034 = 524000000063
+001265  aa  6 01000 2521 00	spri2	pr6|512
+001266  aa   776545 3520 04	epp2 	-667,ic		000033 = 404000000022
+001267  aa  6 01002 2521 00	spri2	pr6|514
+001270  aa  6 00733 3521 00	epp2 	pr6|475
+001271  aa  6 01004 2521 00	spri2	pr6|516
+001272  aa  6 00754 6211 00	eax1 	pr6|492
+001273  aa   030000 4310 07	fld  	12288,dl
+001274  aa  6 00044 3701 20	epp4 	pr6|36,*
+001275  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_report_$error_output
+001276  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 219
+        return ("0"b);
+
+001277  aa  6 00646 3735 20	epp7 	pr6|422,*
+001300  aa  7 00004 3715 20	epp5 	pr7|4,*
+001301  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+001302  aa   000000 00 0000	descb	0,0
+001303  aa  5 00000 00 0022	descb	pr5|0,18
+001304  aa  6 00644 6101 00	rtcd 	pr6|420
+						STATEMENT 1 ON LINE 220
+      end;
+
+						STATEMENT 1 ON LINE 222
+    if vol_map.n_free_rec = vol_map.n_rec then return ("0"b);
+
+001305  aa  5 00002 2361 00	ldq  	pr5|2		vol_map.n_free_rec
+001306  aa  5 00000 1161 00	cmpq 	pr5|0		vol_map.n_rec
+001307  aa   000006 6010 04	tnz  	6,ic		001315
+001310  aa  2 00004 3535 20	epp3 	pr2|4,*
+001311  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+001312  aa   000000 00 0000	descb	0,0
+001313  aa  3 00000 00 0022	descb	pr3|0,18
+001314  aa  6 00644 6101 00	rtcd 	pr6|420
+						STATEMENT 1 ON LINE 224
+    vol_map.n_free_rec = vol_map.n_free_rec + 1;
+
+001315  aa  5 00002 0541 00	aos  	pr5|2		vol_map.n_free_rec
+						STATEMENT 1 ON LINE 226
+    adj_add = fadd - vol_map.base_add;
+
+001316  aa  6 00652 2361 00	ldq  	pr6|426		fadd
+001317  aa  5 00001 1761 00	sbq  	pr5|1		vol_map.base_add
+001320  aa  6 00653 7561 00	stq  	pr6|427		adj_add
+						STATEMENT 1 ON LINE 228
+    if adj_add = 0 then do;
+
+001321  aa   000006 6010 04	tnz  	6,ic		001327
+						STATEMENT 1 ON LINE 229
+        wordx = 1;
+
+001322  aa   000001 2360 07	ldq  	1,dl
+001323  aa  6 00100 7561 00	stq  	pr6|64		wordx
+						STATEMENT 1 ON LINE 230
+        bitx = 2;
+
+001324  aa   000002 2360 07	ldq  	2,dl
+001325  aa  6 00101 7561 00	stq  	pr6|65		bitx
+						STATEMENT 1 ON LINE 231
+      end;
+
+001326  aa   000011 7100 04	tra  	9,ic		001337
+						STATEMENT 1 ON LINE 232
+    else do;
+
+						STATEMENT 1 ON LINE 233
+        wordx = divide (adj_add, 32, 17, 0) + 1;
+
+001327  aa   000040 5060 07	div  	32,dl
+001330  aa   000001 0760 07	adq  	1,dl
+001331  aa  6 00100 7561 00	stq  	pr6|64		wordx
+						STATEMENT 1 ON LINE 234
+        bitx = mod (adj_add, 32) + 2;
+
+001332  aa  6 00653 2361 00	ldq  	pr6|427		adj_add
+001333  aa   000150 3520 04	epp2 	104,ic		001503 = 000000000040
+001334  aa  0 00704 7001 00	tsx0 	pr0|452		mdfx1
+001335  aa   000002 0760 07	adq  	2,dl
+001336  aa  6 00101 7561 00	stq  	pr6|65		bitx
+						STATEMENT 1 ON LINE 235
+      end;
+
+						STATEMENT 1 ON LINE 237
+    if ^rldr_data_.per_pv (pvindex).restart & substr (fsmap.table (wordx), bitx, 1) then
+      call rldr_report_$error_output (rldr_datap, 0, myname, "Attempt to deposit free record on pv ^a",
+	 rldr_data_.pvname (pvindex));
+
+001337  aa   000001 1760 07	sbq  	1,dl
+001340  aa  6 00733 7561 00	stq  	pr6|475
+001341  aa  6 00100 2361 00	ldq  	pr6|64		wordx
+001342  aa   000044 4020 07	mpy  	36,dl
+001343  aa  6 00733 0761 00	adq  	pr6|475
+001344  aa  6 00032 3535 20	epp3 	pr6|26,*
+001345  aa  6 00733 7561 00	stq  	pr6|475
+001346  aa  3 00004 2361 20	ldq  	pr3|4,*		pvindex
+001347  aa   000064 4020 07	mpy  	52,dl
+001350  aa  3 00002 3515 20	epp1 	pr3|2,*		rldr_datap
+001351  aa  1 00000 3515 20	epp1 	pr1|0,*		rldr_datap
+001352  aa  1 00351 2351 06	lda  	pr1|233,ql	rldr_data_.restart
+001353  aa   000047 6010 04	tnz  	39,ic		001422
+001354  aa  6 00733 7271 00	lxl7 	pr6|475
+001355  aa  6 00626 3735 20	epp7 	pr6|406,*		mapp
+001356  aa  000 000 066 517	cmpb 	(pr,x7),(),fill(0)
+001357  aa  7 77777 00 0001	descb	pr7|-1,1		fsmap.table
+001360  aa   000000 00 0000	descb	0,0
+001361  aa   000041 6000 04	tze  	33,ic		001422
+001362  aa   000000 6260 06	eax6 	0,ql
+001363  aa   776454 2360 04	ldq  	-724,ic		000037 = 524000000040
+001364  aa  6 00734 7561 00	stq  	pr6|476
+001365  aa  6 00753 4501 00	stz  	pr6|491
+001366  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001367  aa   776512 00 0050	desc9a	-694,40		000100 = 101164164145
+001370  aa  6 00736 00 0050	desc9a	pr6|478,40
+001371  aa  3 00002 3521 20	epp2 	pr3|2,*		rldr_datap
+001372  aa  6 00756 2521 00	spri2	pr6|494
+001373  aa  6 00753 3521 00	epp2 	pr6|491
+001374  aa  6 00760 2521 00	spri2	pr6|496
+001375  aa   776425 3520 04	epp2 	-747,ic		000022 = 162154144162
+001376  aa  6 00762 2521 00	spri2	pr6|498
+001377  aa  6 00736 3521 00	epp2 	pr6|478
+001400  aa  6 00764 2521 00	spri2	pr6|500
+001401  aa  1 00353 3521 16	epp2 	pr1|235,6		rldr_data_.pvname
+001402  aa  6 00766 2521 00	spri2	pr6|502
+001403  aa   776440 3520 04	epp2 	-736,ic		000043 = 464000000000
+001404  aa  6 00770 2521 00	spri2	pr6|504
+001405  aa   776430 3520 04	epp2 	-744,ic		000035 = 404000000005
+001406  aa  6 00772 2521 00	spri2	pr6|506
+001407  aa   776432 3520 04	epp2 	-742,ic		000041 = 526000000040
+001410  aa  6 00774 2521 00	spri2	pr6|508
+001411  aa   776421 3520 04	epp2 	-751,ic		000032 = 524000000047
+001412  aa  6 00776 2521 00	spri2	pr6|510
+001413  aa  6 00734 3521 00	epp2 	pr6|476
+001414  aa  6 01000 2521 00	spri2	pr6|512
+001415  aa  6 00754 6211 00	eax1 	pr6|492
+001416  aa   024000 4310 07	fld  	10240,dl
+001417  aa  6 00044 3701 20	epp4 	pr6|36,*
+001420  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_report_$error_output
+001421  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 241
+    substr (fsmap.table (wordx), bitx, 1) = "1"b;
+
+001422  aa  6 00733 7271 00	lxl7 	pr6|475
+001423  aa  6 00626 3735 20	epp7 	pr6|406,*		mapp
+001424  aa  403 117 060 400	csl  	(),(pr,x7),fill(1),bool(move)
+001425  aa   000000 00 0000	descb	0,0
+001426  aa  7 77777 00 0001	descb	pr7|-1,1		fsmap.table
+						STATEMENT 1 ON LINE 242
+    return (volume_reloader_null_addr);
+
+001427  aa  6 00646 3715 20	epp5 	pr6|422,*
+001430  aa  5 00004 3535 20	epp3 	pr5|4,*
+001431  aa  003 100 060 404	csl  	(ic),(pr),fill(0),bool(move)
+001432  aa   000051 00 0022	descb	41,18		001502 = 777774000000
+001433  aa  3 00000 00 0022	descb	pr3|0,18
+001434  aa  6 00644 6101 00	rtcd 	pr6|420
+						STATEMENT 1 ON LINE 244
+  end mark_unused_;
+
+  END PROCEDURE mark_unused_
+BEGIN PROCEDURE sector
+ENTRY TO sector                                             STATEMENT 1 ON LINE 249
+sector: proc (add) returns (fixed bin);
+
+001435  aa  6 00654 6501 00	spri4	pr6|428
+001436  aa  6 00656 2521 00	spri2	pr6|430
+						STATEMENT 1 ON LINE 255
+    dev_idx = rldr_data_.disk_type (pvindex);
+
+001437  aa  6 00032 3735 20	epp7 	pr6|26,*
+001440  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001441  aa   000064 4020 07	mpy  	52,dl
+001442  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001443  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001444  aa   000000 6260 06	eax6 	0,ql
+001445  aa  5 00411 2361 06	ldq  	pr5|265,ql	rldr_data_.disk_type
+001446  aa  6 00662 7561 00	stq  	pr6|434		dev_idx
+						STATEMENT 1 ON LINE 256
+    sector = add * SECTORS_PER_RECORD (dev_idx);
+
+001447  aa  2 00002 2361 20	ldq  	pr2|2,*		add
+001450  aa  6 00662 7271 00	lxl7 	pr6|434		dev_idx
+001451  ta   000010 4020 17	mpy  	8,7
+001452  aa  6 00663 7561 00	stq  	pr6|435		sector
+						STATEMENT 1 ON LINE 257
+    sector = sector + divide (sector, rldr_data_.usable_sectors (pvindex), 17, 0) * rldr_data_.unusable_sectors (pvindex);
+
+001453  aa  5 00412 5061 16	div  	pr5|266,6		rldr_data_.usable_sectors
+001454  aa  5 00413 4021 16	mpy  	pr5|267,6		rldr_data_.unusable_sectors
+001455  aa   000044 7770 00	llr  	36
+001456  aa   000044 7330 00	lrs  	36
+001457  aa  6 00663 0331 00	adl  	pr6|435		sector
+001460  aa  6 00663 7561 00	stq  	pr6|435		sector
+						STATEMENT 1 ON LINE 258
+    return (sector * words_per_sect (dev_idx) * 4);
+
+001461  ta   777777 4020 17	mpy  	-1,7
+001462  aa   000004 4020 07	mpy  	4,dl
+001463  aa  2 00004 7561 20	stq  	pr2|4,*
+001464  aa  6 00654 6101 00	rtcd 	pr6|428
+						STATEMENT 1 ON LINE 260
+  end sector;
+
+  END PROCEDURE sector
+  END PROCEDURE rldr_volume_map_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

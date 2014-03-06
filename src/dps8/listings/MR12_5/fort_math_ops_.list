@@ -1,0 +1,916 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>fort_math_ops_.alm                                                                                                                                   
+ASSEMBLED ON:	11/11/89  0944.2 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1984 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+    000000                           6  	name	fort_math_ops_
+                                     7  
+                                     8  	include	stack_frame
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   1-3  "
+                                   1-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   1-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   1-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   1-7  "
+                        000020     1-8  	equ	stack_frame.prev_sp,16
+                        000020     1-9  	equ	stack_frame.condition_word,16
+                        000022    1-10  	equ	stack_frame.next_sp,18
+                        000022    1-11  	equ	stack_frame.signaller_word,18
+                        000024    1-12  	equ	stack_frame.return_ptr,20
+                        000026    1-13  	equ	stack_frame.entry_ptr,22
+                        000030    1-14  	equ	stack_frame.operator_ptr,24
+                        000030    1-15  	equ	stack_frame.lp_ptr,24
+                        000032    1-16  	equ	stack_frame.arg_ptr,26
+                        000034    1-17  	equ	stack_frame.static_ptr,28
+                        000035    1-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    1-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    1-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    1-21  	equ	stack_frame.translator_id,31
+                        000040    1-22  	equ	stack_frame.regs,32
+                        000060    1-23  	equ	stack_frame.min_length,48
+                        000020    1-24  	equ	stack_frame.flag_word,16
+                        020000    1-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    1-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    1-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    1-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    1-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    1-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    1-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    1-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  1-33  
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  1-36  "
+                                     9  
+                        000070      10  	equ	complex,56
+                        000050      11  	equ	temp_pt,40
+                                    12  
+                                    13  	macro	define	operator,store_inst,arg_count,approximator
+                              1     14  	segdef	&1
+                              2     15  &1:
+                              3     16  	&2	pr6|complex
+                              4     17  	tsx0	call_&3_arg_op
+                              5     18  	epp5	&4
+                              6     19  	&end
+                                    20  
+                                    21  	define	cabs,staq,1,<cabs_>|[cabs_]
+                        000000          	segdef	cabs
+    000000                              cabs:
+    000000  aa  6 00070 7571 00         	staq	pr6|complex
+    000001  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000002  4a  4 00010 3715 20         	epp5	<cabs_>|[cabs_]
+                                    22  	define	ccos,staq,1,<ccos_>|[ccos_]
+                        000003          	segdef	ccos
+    000003                              ccos:
+    000003  aa  6 00070 7571 00         	staq	pr6|complex
+    000004  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000005  4a  4 00012 3715 20         	epp5	<ccos_>|[ccos_]
+                                    23  	define	cexp,staq,1,<cexp_>|[cexp_]
+                        000006          	segdef	cexp
+    000006                              cexp:
+    000006  aa  6 00070 7571 00         	staq	pr6|complex
+    000007  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000010  4a  4 00014 3715 20         	epp5	<cexp_>|[cexp_]
+                                    24  	define	clog,staq,1,<clog_>|[clog_]
+                        000011          	segdef	clog
+    000011                              clog:
+    000011  aa  6 00070 7571 00         	staq	pr6|complex
+    000012  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000013  4a  4 00016 3715 20         	epp5	<clog_>|[clog_]
+                                    25  	define	cmpx_p_cmpx,staq,2,<cxp2_>|[cxp2_]
+                        000014          	segdef	cmpx_p_cmpx
+    000014                              cmpx_p_cmpx:
+    000014  aa  6 00070 7571 00         	staq	pr6|complex
+    000015  0a   000140 7000 00         	tsx0	call_2_arg_op
+    000016  4a  4 00020 3715 20         	epp5	<cxp2_>|[cxp2_]
+                                    26  	define	cosh,dfst,1,<cosh_>|[cosh_]
+                        000017          	segdef	cosh
+    000017                              cosh:
+    000017  aa  6 00070 4571 00         	dfst	pr6|complex
+    000020  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000021  4a  4 00022 3715 20         	epp5	<cosh_>|[cosh_]
+                                    27  	define	csin,staq,1,<csin_>|[csin_]
+                        000022          	segdef	csin
+    000022                              csin:
+    000022  aa  6 00070 7571 00         	staq	pr6|complex
+    000023  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000024  4a  4 00024 3715 20         	epp5	<csin_>|[csin_]
+                                    28  	define	csqrt,staq,1,<csqrt_>|[csqrt_]
+                        000025          	segdef	csqrt
+    000025                              csqrt:
+    000025  aa  6 00070 7571 00         	staq	pr6|complex
+    000026  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000027  4a  4 00026 3715 20         	epp5	<csqrt_>|[csqrt_]
+                                    29  	define	dcosh,dfst,1,<dcosh_>|[dcosh_]
+                        000030          	segdef	dcosh
+    000030                              dcosh:
+    000030  aa  6 00070 4571 00         	dfst	pr6|complex
+    000031  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000032  4a  4 00030 3715 20         	epp5	<dcosh_>|[dcosh_]
+                                    30  	define	dmod,dfst,2,<fort_bfp_builtins_>|[dmod_]
+                        000033          	segdef	dmod
+    000033                              dmod:
+    000033  aa  6 00070 4571 00         	dfst	pr6|complex
+    000034  0a   000140 7000 00         	tsx0	call_2_arg_op
+    000035  4a  4 00032 3715 20         	epp5	<fort_bfp_builtins_>|[dmod_]
+                                    31  	define	dsinh,dfst,1,<dsinh_>|[dsinh_]
+                        000036          	segdef	dsinh
+    000036                              dsinh:
+    000036  aa  6 00070 4571 00         	dfst	pr6|complex
+    000037  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000040  4a  4 00034 3715 20         	epp5	<dsinh_>|[dsinh_]
+                                    32  	define	dtanh,dfst,1,<dtanh_>|[dtanh_]
+                        000041          	segdef	dtanh
+    000041                              dtanh:
+    000041  aa  6 00070 4571 00         	dfst	pr6|complex
+    000042  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000043  4a  4 00036 3715 20         	epp5	<dtanh_>|[dtanh_]
+                                    33  	define	sinh,dfst,1,<sinh_>|[sinh_]
+                        000044          	segdef	sinh
+    000044                              sinh:
+    000044  aa  6 00070 4571 00         	dfst	pr6|complex
+    000045  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000046  4a  4 00040 3715 20         	epp5	<sinh_>|[sinh_]
+                                    34  	define	tanh,dfst,1,<tanh_>|[tanh_]
+                        000047          	segdef	tanh
+    000047                              tanh:
+    000047  aa  6 00070 4571 00         	dfst	pr6|complex
+    000050  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000051  4a  4 00042 3715 20         	epp5	<tanh_>|[tanh_]
+                                    35  
+                                    36  	define	hfp_cabs,staq,1,<fort_hfp_builtins_>|[cabs_]
+                        000052          	segdef	hfp_cabs
+    000052                              hfp_cabs:
+    000052  aa  6 00070 7571 00         	staq	pr6|complex
+    000053  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000054  4a  4 00044 3715 20         	epp5	<fort_hfp_builtins_>|[cabs_]
+                                    37  	define	hfp_ccos,staq,1,<fort_hfp_builtins_>|[ccos_]
+                        000055          	segdef	hfp_ccos
+    000055                              hfp_ccos:
+    000055  aa  6 00070 7571 00         	staq	pr6|complex
+    000056  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000057  4a  4 00046 3715 20         	epp5	<fort_hfp_builtins_>|[ccos_]
+                                    38  	define	hfp_cexp,staq,1,<fort_hfp_builtins_>|[cexp_]
+                        000060          	segdef	hfp_cexp
+    000060                              hfp_cexp:
+    000060  aa  6 00070 7571 00         	staq	pr6|complex
+    000061  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000062  4a  4 00050 3715 20         	epp5	<fort_hfp_builtins_>|[cexp_]
+                                    39  	define	hfp_clog,staq,1,<fort_hfp_builtins_>|[clog_]
+                        000063          	segdef	hfp_clog
+    000063                              hfp_clog:
+    000063  aa  6 00070 7571 00         	staq	pr6|complex
+    000064  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000065  4a  4 00052 3715 20         	epp5	<fort_hfp_builtins_>|[clog_]
+                                    40  	define	hfp_cmpx_p_cmpx,staq,2,<fort_hfp_builtins_>|[cxp2_]
+                        000066          	segdef	hfp_cmpx_p_cmpx
+    000066                              hfp_cmpx_p_cmpx:
+    000066  aa  6 00070 7571 00         	staq	pr6|complex
+    000067  0a   000140 7000 00         	tsx0	call_2_arg_op
+    000070  4a  4 00054 3715 20         	epp5	<fort_hfp_builtins_>|[cxp2_]
+                                    41  	define	hfp_cosh,dfst,1,<fort_hfp_builtins_>|[cosh_]
+                        000071          	segdef	hfp_cosh
+    000071                              hfp_cosh:
+    000071  aa  6 00070 4571 00         	dfst	pr6|complex
+    000072  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000073  4a  4 00056 3715 20         	epp5	<fort_hfp_builtins_>|[cosh_]
+                                    42  	define	hfp_csin,staq,1,<fort_hfp_builtins_>|[csin_]
+                        000074          	segdef	hfp_csin
+    000074                              hfp_csin:
+    000074  aa  6 00070 7571 00         	staq	pr6|complex
+    000075  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000076  4a  4 00060 3715 20         	epp5	<fort_hfp_builtins_>|[csin_]
+                                    43  	define	hfp_csqrt,staq,1,<fort_hfp_builtins_>|[csqrt_]
+                        000077          	segdef	hfp_csqrt
+    000077                              hfp_csqrt:
+    000077  aa  6 00070 7571 00         	staq	pr6|complex
+    000100  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000101  4a  4 00062 3715 20         	epp5	<fort_hfp_builtins_>|[csqrt_]
+                                    44  	define	hfp_dcosh,dfst,1,<fort_hfp_builtins_>|[dcosh_]
+                        000102          	segdef	hfp_dcosh
+    000102                              hfp_dcosh:
+    000102  aa  6 00070 4571 00         	dfst	pr6|complex
+    000103  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000104  4a  4 00064 3715 20         	epp5	<fort_hfp_builtins_>|[dcosh_]
+                                    45  	define	hfp_dmod,dfst,2,<fort_hfp_builtins_>|[dmod_]
+                        000105          	segdef	hfp_dmod
+    000105                              hfp_dmod:
+    000105  aa  6 00070 4571 00         	dfst	pr6|complex
+    000106  0a   000140 7000 00         	tsx0	call_2_arg_op
+    000107  4a  4 00066 3715 20         	epp5	<fort_hfp_builtins_>|[dmod_]
+                                    46  	define	hfp_dsinh,dfst,1,<fort_hfp_builtins_>|[dsinh_]
+                        000110          	segdef	hfp_dsinh
+    000110                              hfp_dsinh:
+    000110  aa  6 00070 4571 00         	dfst	pr6|complex
+    000111  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000112  4a  4 00070 3715 20         	epp5	<fort_hfp_builtins_>|[dsinh_]
+                                    47  	define	hfp_dtanh,dfst,1,<fort_hfp_builtins_>|[dtanh_]
+                        000113          	segdef	hfp_dtanh
+    000113                              hfp_dtanh:
+    000113  aa  6 00070 4571 00         	dfst	pr6|complex
+    000114  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000115  4a  4 00072 3715 20         	epp5	<fort_hfp_builtins_>|[dtanh_]
+                                    48  	define	hfp_sinh,dfst,1,<fort_hfp_builtins_>|[sinh_]
+                        000116          	segdef	hfp_sinh
+    000116                              hfp_sinh:
+    000116  aa  6 00070 4571 00         	dfst	pr6|complex
+    000117  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000120  4a  4 00074 3715 20         	epp5	<fort_hfp_builtins_>|[sinh_]
+                                    49  	define	hfp_tanh,dfst,1,<fort_hfp_builtins_>|[tanh_]
+                        000121          	segdef	hfp_tanh
+    000121                              hfp_tanh:
+    000121  aa  6 00070 4571 00         	dfst	pr6|complex
+    000122  0a   000124 7000 00         	tsx0	call_1_arg_op
+    000123  4a  4 00076 3715 20         	epp5	<fort_hfp_builtins_>|[tanh_]
+                                    50  
+    000124                          51  call_1_arg_op:
+    000124  aa  6 00024 2535 00     52  	spri3	pr6|stack_frame.return_ptr	save return address
+    000125  aa  6 00025 7541 00     53  	sti	pr6|stack_frame.return_ptr+1	save indicators
+    000126  aa  2 00000 3501 00     54  	epp0	pr2|0		build arg list:
+    000127  aa   010000 4310 07     55  	fld	2*2048,dl
+    000130  aa  0 00000 7571 00     56  	staq	pr0|0		  set arg count
+    000131  aa  6 00070 3735 00     57  	epp7	pr6|complex
+    000132  aa  0 00002 6535 00     58  	spri7	pr0|2		  set arg address
+    000133  aa  6 00050 3735 00     59  	epp7	pr6|temp_pt
+    000134  aa  0 00004 6535 00     60  	spri7	pr0|4		  set result address
+    000135  4a  4 00100 7011 20     61  	tsx1	<pl1_operators_>|[get_our_lp]
+    000136  aa   000000 7160 10     62  	xec	0,x0		PR5 = address of approximator
+    000137  aa  5 00000 7131 00     63  	call6	pr5|0		invoke approximator
+                                    64  
+    000140                          65  call_2_arg_op:
+    000140  aa  6 00024 2535 00     66  	spri3	pr6|stack_frame.return_ptr	save return address
+    000141  aa  6 00025 7541 00     67  	sti	pr6|stack_frame.return_ptr+1	save indicators
+    000142  aa  2 00000 3501 00     68  	epp0	pr2|0		build arg list:
+    000143  aa   014000 4310 07     69  	fld	3*2048,dl
+    000144  aa  0 00000 7571 00     70  	staq	pr0|0		  set arg count
+    000145  aa  6 00070 3735 00     71  	epp7	pr6|complex
+    000146  aa  0 00002 6535 00     72  	spri7	pr0|2		  set 1st arg address
+    000147  aa  0 00004 2515 00     73  	spri1	pr0|4		  set 2nd arg address
+    000150  aa  6 00050 3735 00     74  	epp7	pr6|temp_pt
+    000151  aa  0 00006 6535 00     75  	spri7	pr0|6		  set result address
+    000152  4a  4 00100 7011 20     76  	tsx1	<pl1_operators_>|[get_our_lp]
+    000153  aa   000000 7160 10     77  	xec	0,x0		PR5 = address of approximator
+    000154  aa  5 00000 7131 00     78  	call6	pr5|0		invoke approximator
+                                    79  
+                                    80  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000156  5a   000003 000000 
+    000157  5a   000255 600000 
+    000160  aa   000000 000000 
+    000161  55   000012 000002 
+    000162  5a   000002 400003 
+    000163  55   000006 000012 
+    000164  aa  016 146 157 162
+    000165  aa  164 137 155 141
+    000166  aa  164 150 137 157
+    000167  aa  160 163 137 000
+    000170  55   000020 000003 
+    000171  0a   000121 400000 
+    000172  55   000015 000003 
+    000173  aa  010 150 146 160         hfp_tanh
+    000174  aa  137 164 141 156
+    000175  aa  150 000 000 000
+    000176  55   000026 000012 
+    000177  0a   000116 400000 
+    000200  55   000023 000003 
+    000201  aa  010 150 146 160         hfp_sinh
+    000202  aa  137 163 151 156
+    000203  aa  150 000 000 000
+    000204  55   000034 000020 
+    000205  0a   000113 400000 
+    000206  55   000031 000003 
+    000207  aa  011 150 146 160         hfp_dtanh
+    000210  aa  137 144 164 141
+    000211  aa  156 150 000 000
+    000212  55   000042 000026 
+    000213  0a   000110 400000 
+    000214  55   000037 000003 
+    000215  aa  011 150 146 160         hfp_dsinh
+    000216  aa  137 144 163 151
+    000217  aa  156 150 000 000
+    000220  55   000050 000034 
+    000221  0a   000105 400000 
+    000222  55   000045 000003 
+    000223  aa  010 150 146 160         hfp_dmod
+    000224  aa  137 144 155 157
+    000225  aa  144 000 000 000
+    000226  55   000056 000042 
+    000227  0a   000102 400000 
+    000230  55   000053 000003 
+    000231  aa  011 150 146 160         hfp_dcosh
+    000232  aa  137 144 143 157
+    000233  aa  163 150 000 000
+    000234  55   000064 000050 
+    000235  0a   000077 400000 
+    000236  55   000061 000003 
+    000237  aa  011 150 146 160         hfp_csqrt
+    000240  aa  137 143 163 161
+    000241  aa  162 164 000 000
+    000242  55   000072 000056 
+    000243  0a   000074 400000 
+    000244  55   000067 000003 
+    000245  aa  010 150 146 160         hfp_csin
+    000246  aa  137 143 163 151
+    000247  aa  156 000 000 000
+    000250  55   000100 000064 
+    000251  0a   000071 400000 
+    000252  55   000075 000003 
+    000253  aa  010 150 146 160         hfp_cosh
+    000254  aa  137 143 157 163
+    000255  aa  150 000 000 000
+    000256  55   000107 000072 
+    000257  0a   000066 400000 
+    000260  55   000103 000003 
+    000261  aa  017 150 146 160         hfp_cmpx_p_cmpx
+    000262  aa  137 143 155 160
+    000263  aa  170 137 160 137
+    000264  aa  143 155 160 170
+    000265  55   000115 000100 
+    000266  0a   000063 400000 
+    000267  55   000112 000003 
+    000270  aa  010 150 146 160         hfp_clog
+    000271  aa  137 143 154 157
+    000272  aa  147 000 000 000
+    000273  55   000123 000107 
+    000274  0a   000060 400000 
+    000275  55   000120 000003 
+    000276  aa  010 150 146 160         hfp_cexp
+    000277  aa  137 143 145 170
+    000300  aa  160 000 000 000
+    000301  55   000131 000115 
+    000302  0a   000055 400000 
+    000303  55   000126 000003 
+    000304  aa  010 150 146 160         hfp_ccos
+    000305  aa  137 143 143 157
+    000306  aa  163 000 000 000
+    000307  55   000137 000123 
+    000310  0a   000052 400000 
+    000311  55   000134 000003 
+    000312  aa  010 150 146 160         hfp_cabs
+    000313  aa  137 143 141 142
+    000314  aa  163 000 000 000
+    000315  55   000144 000131 
+    000316  0a   000047 400000 
+    000317  55   000142 000003 
+    000320  aa  004 164 141 156         tanh
+    000321  aa  150 000 000 000
+    000322  55   000151 000137 
+    000323  0a   000044 400000 
+    000324  55   000147 000003 
+    000325  aa  004 163 151 156         sinh
+    000326  aa  150 000 000 000
+    000327  55   000156 000144 
+    000330  0a   000041 400000 
+    000331  55   000154 000003 
+    000332  aa  005 144 164 141         dtanh
+    000333  aa  156 150 000 000
+    000334  55   000163 000151 
+    000335  0a   000036 400000 
+    000336  55   000161 000003 
+    000337  aa  005 144 163 151         dsinh
+    000340  aa  156 150 000 000
+    000341  55   000170 000156 
+    000342  0a   000033 400000 
+    000343  55   000166 000003 
+    000344  aa  004 144 155 157         dmod
+    000345  aa  144 000 000 000
+    000346  55   000175 000163 
+    000347  0a   000030 400000 
+    000350  55   000173 000003 
+    000351  aa  005 144 143 157         dcosh
+    000352  aa  163 150 000 000
+    000353  55   000202 000170 
+    000354  0a   000025 400000 
+    000355  55   000200 000003 
+    000356  aa  005 143 163 161         csqrt
+    000357  aa  162 164 000 000
+    000360  55   000207 000175 
+    000361  0a   000022 400000 
+    000362  55   000205 000003 
+    000363  aa  004 143 163 151         csin
+    000364  aa  156 000 000 000
+    000365  55   000214 000202 
+    000366  0a   000017 400000 
+    000367  55   000212 000003 
+    000370  aa  004 143 157 163         cosh
+    000371  aa  150 000 000 000
+    000372  55   000222 000207 
+    000373  0a   000014 400000 
+    000374  55   000217 000003 
+    000375  aa  013 143 155 160         cmpx_p_cmpx
+    000376  aa  170 137 160 137
+    000377  aa  143 155 160 170
+    000400  55   000227 000214 
+    000401  0a   000011 400000 
+    000402  55   000225 000003 
+    000403  aa  004 143 154 157         clog
+    000404  aa  147 000 000 000
+    000405  55   000234 000222 
+    000406  0a   000006 400000 
+    000407  55   000232 000003 
+    000410  aa  004 143 145 170         cexp
+    000411  aa  160 000 000 000
+    000412  55   000241 000227 
+    000413  0a   000003 400000 
+    000414  55   000237 000003 
+    000415  aa  004 143 143 157         ccos
+    000416  aa  163 000 000 000
+    000417  55   000246 000234 
+    000420  0a   000000 400000 
+    000421  55   000244 000003 
+    000422  aa  004 143 141 142         cabs
+    000423  aa  163 000 000 000
+    000424  55   000002 000241 
+    000425  6a   000000 400002 
+    000426  55   000251 000003 
+    000427  aa  014 163 171 155         symbol_table
+    000430  aa  142 157 154 137
+    000431  aa  164 141 142 154
+    000432  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000433  aa   000000 000065 
+    000434  5a   000050 000000 
+    000435  5a   000056 000000 
+    000436  5a   000064 000000 
+    000437  5a   000072 000000 
+    000440  5a   000107 000000 
+    000441  5a   000115 000000 
+    000442  5a   000123 000000 
+    000443  5a   000131 000000 
+    000444  5a   000137 000000 
+    000445  5a   000156 000000 
+    000446  5a   000175 000000 
+    000447  5a   000202 000000 
+    000450  5a   000227 000000 
+    000451  5a   000163 000000 
+    000452  5a   000241 000000 
+    000453  5a   000144 000000 
+    000454  aa   000000 000000 
+    000455  aa   000000 000000 
+    000456  aa   000000 000000 
+    000457  aa   000000 000000 
+    000460  aa   000000 000000 
+    000461  aa   000000 000000 
+    000462  aa   000000 000000 
+    000463  aa   000000 000000 
+    000464  aa   000000 000000 
+    000465  5a   000222 000000 
+    000466  aa   000000 000000 
+    000467  aa   000000 000000 
+    000470  5a   000207 000000 
+    000471  5a   000234 000000 
+    000472  5a   000151 000000 
+    000473  5a   000246 000000 
+    000474  5a   000170 000000 
+    000475  aa   000000 000000 
+    000476  aa   000000 000000 
+    000477  aa   000000 000000 
+    000500  5a   000100 000000 
+    000501  aa   000000 000000 
+    000502  aa   000000 000000 
+    000503  aa   000000 000000 
+    000504  aa   000000 000000 
+    000505  aa   000000 000000 
+    000506  aa   000000 000000 
+    000507  aa   000000 000000 
+    000510  aa   000000 000000 
+    000511  aa   000000 000000 
+    000512  aa   000000 000000 
+    000513  5a   000214 000000 
+    000514  5a   000026 000000 
+    000515  5a   000034 000000 
+    000516  5a   000012 000000 
+    000517  5a   000020 000000 
+    000520  5a   000042 000000 
+
+EXTERNAL NAMES
+
+    000521  aa  012 147 145 164         get_our_lp
+    000522  aa  137 157 165 162
+    000523  aa  137 154 160 000
+    000524  aa  016 160 154 061         pl1_operators_
+    000525  aa  137 157 160 145
+    000526  aa  162 141 164 157
+    000527  aa  162 163 137 000
+    000530  aa  022 146 157 162         fort_hfp_builtins_
+    000531  aa  164 137 150 146
+    000532  aa  160 137 142 165
+    000533  aa  151 154 164 151
+    000534  aa  156 163 137 000
+    000535  aa  005 164 141 156         tanh_
+    000536  aa  150 137 000 000
+    000537  aa  005 163 151 156         sinh_
+    000540  aa  150 137 000 000
+    000541  aa  006 144 164 141         dtanh_
+    000542  aa  156 150 137 000
+    000543  aa  006 144 163 151         dsinh_
+    000544  aa  156 150 137 000
+    000545  aa  005 144 155 157         dmod_
+    000546  aa  144 137 000 000
+    000547  aa  022 146 157 162         fort_bfp_builtins_
+    000550  aa  164 137 142 146
+    000551  aa  160 137 142 165
+    000552  aa  151 154 164 151
+    000553  aa  156 163 137 000
+    000554  aa  006 144 143 157         dcosh_
+    000555  aa  163 150 137 000
+    000556  aa  006 143 163 161         csqrt_
+    000557  aa  162 164 137 000
+    000560  aa  005 143 163 151         csin_
+    000561  aa  156 137 000 000
+    000562  aa  005 143 157 163         cosh_
+    000563  aa  150 137 000 000
+    000564  aa  005 143 170 160         cxp2_
+    000565  aa  062 137 000 000
+    000566  aa  005 143 154 157         clog_
+    000567  aa  147 137 000 000
+    000570  aa  005 143 145 170         cexp_
+    000571  aa  160 137 000 000
+    000572  aa  005 143 143 157         ccos_
+    000573  aa  163 137 000 000
+    000574  aa  005 143 141 142         cabs_
+    000575  aa  163 137 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000576  aa   000004 000000 
+    000577  55   000346 000343 
+    000600  aa   000004 000000 
+    000601  55   000352 000357 
+    000602  aa   000004 000000 
+    000603  55   000352 000361 
+    000604  aa   000004 000000 
+    000605  55   000352 000363 
+    000606  aa   000004 000000 
+    000607  55   000352 000365 
+    000610  aa   000004 000000 
+    000611  55   000352 000367 
+    000612  aa   000004 000000 
+    000613  55   000352 000376 
+    000614  aa   000004 000000 
+    000615  55   000352 000400 
+    000616  aa   000004 000000 
+    000617  55   000352 000402 
+    000620  aa   000004 000000 
+    000621  55   000352 000404 
+    000622  aa   000004 000000 
+    000623  55   000352 000406 
+    000624  aa   000004 000000 
+    000625  55   000352 000410 
+    000626  aa   000004 000000 
+    000627  55   000352 000412 
+    000630  aa   000004 000000 
+    000631  55   000352 000414 
+    000632  aa   000004 000000 
+    000633  55   000352 000416 
+    000634  aa   000004 000000 
+    000635  55   000357 000357 
+    000636  aa   000004 000000 
+    000637  55   000361 000361 
+    000640  aa   000004 000000 
+    000641  55   000363 000363 
+    000642  aa   000004 000000 
+    000643  55   000365 000365 
+    000644  aa   000004 000000 
+    000645  55   000371 000367 
+    000646  aa   000004 000000 
+    000647  55   000376 000376 
+    000650  aa   000004 000000 
+    000651  55   000400 000400 
+    000652  aa   000004 000000 
+    000653  55   000402 000402 
+    000654  aa   000004 000000 
+    000655  55   000404 000404 
+    000656  aa   000004 000000 
+    000657  55   000406 000406 
+    000660  aa   000004 000000 
+    000661  55   000410 000410 
+    000662  aa   000004 000000 
+    000663  55   000412 000412 
+    000664  aa   000004 000000 
+    000665  55   000414 000414 
+    000666  aa   000004 000000 
+    000667  55   000416 000416 
+    000670  aa   000001 000000 
+    000671  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000672  5a   000420 000000 
+    000673  5a   000422 000000 
+    000674  5a   000424 000000 
+    000675  5a   000426 000000 
+    000676  5a   000430 000000 
+    000677  5a   000432 000000 
+    000700  5a   000434 000000 
+    000701  5a   000436 000000 
+    000702  5a   000440 000000 
+    000703  5a   000442 000000 
+    000704  5a   000444 000000 
+    000705  5a   000446 000000 
+    000706  5a   000450 000000 
+    000707  5a   000452 000000 
+    000710  5a   000454 000000 
+    000711  5a   000456 000000 
+    000712  5a   000460 000000 
+    000713  5a   000462 000000 
+    000714  5a   000464 000000 
+    000715  5a   000466 000000 
+    000716  5a   000470 000000 
+    000717  5a   000472 000000 
+    000720  5a   000474 000000 
+    000721  5a   000476 000000 
+    000722  5a   000500 000000 
+    000723  5a   000502 000000 
+    000724  5a   000504 000000 
+    000725  5a   000506 000000 
+    000726  5a   000510 000000 
+    000727  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000156 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000102 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         cabs_|cabs_
+    000011  5a   000550 0000 00
+    000012  9a   777766 0000 46         ccos_|ccos_
+    000013  5a   000547 0000 00
+    000014  9a   777764 0000 46         cexp_|cexp_
+    000015  5a   000546 0000 00
+    000016  9a   777762 0000 46         clog_|clog_
+    000017  5a   000545 0000 00
+    000020  9a   777760 0000 46         cxp2_|cxp2_
+    000021  5a   000544 0000 00
+    000022  9a   777756 0000 46         cosh_|cosh_
+    000023  5a   000543 0000 00
+    000024  9a   777754 0000 46         csin_|csin_
+    000025  5a   000542 0000 00
+    000026  9a   777752 0000 46         csqrt_|csqrt_
+    000027  5a   000541 0000 00
+    000030  9a   777750 0000 46         dcosh_|dcosh_
+    000031  5a   000540 0000 00
+    000032  9a   777746 0000 46         fort_bfp_builtins_|dmod_
+    000033  5a   000537 0000 00
+    000034  9a   777744 0000 46         dsinh_|dsinh_
+    000035  5a   000536 0000 00
+    000036  9a   777742 0000 46         dtanh_|dtanh_
+    000037  5a   000535 0000 00
+    000040  9a   777740 0000 46         sinh_|sinh_
+    000041  5a   000534 0000 00
+    000042  9a   777736 0000 46         tanh_|tanh_
+    000043  5a   000533 0000 00
+    000044  9a   777734 0000 46         fort_hfp_builtins_|cabs_
+    000045  5a   000532 0000 00
+    000046  9a   777732 0000 46         fort_hfp_builtins_|ccos_
+    000047  5a   000531 0000 00
+    000050  9a   777730 0000 46         fort_hfp_builtins_|cexp_
+    000051  5a   000530 0000 00
+    000052  9a   777726 0000 46         fort_hfp_builtins_|clog_
+    000053  5a   000527 0000 00
+    000054  9a   777724 0000 46         fort_hfp_builtins_|cxp2_
+    000055  5a   000526 0000 00
+    000056  9a   777722 0000 46         fort_hfp_builtins_|cosh_
+    000057  5a   000525 0000 00
+    000060  9a   777720 0000 46         fort_hfp_builtins_|csin_
+    000061  5a   000524 0000 00
+    000062  9a   777716 0000 46         fort_hfp_builtins_|csqrt_
+    000063  5a   000523 0000 00
+    000064  9a   777714 0000 46         fort_hfp_builtins_|dcosh_
+    000065  5a   000522 0000 00
+    000066  9a   777712 0000 46         fort_hfp_builtins_|dmod_
+    000067  5a   000521 0000 00
+    000070  9a   777710 0000 46         fort_hfp_builtins_|dsinh_
+    000071  5a   000520 0000 00
+    000072  9a   777706 0000 46         fort_hfp_builtins_|dtanh_
+    000073  5a   000517 0000 00
+    000074  9a   777704 0000 46         fort_hfp_builtins_|sinh_
+    000075  5a   000516 0000 00
+    000076  9a   777702 0000 46         fort_hfp_builtins_|tanh_
+    000077  5a   000515 0000 00
+    000100  9a   777700 0000 46         pl1_operators_|get_our_lp
+    000101  5a   000514 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253076 216727 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000250 
+    000020  aa   000000 000121 
+    000021  aa   000155 000140 
+    000022  aa   000241 000121 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000045 
+    000067  aa   175453 020001 
+    000070  aa   000000 117547 
+    000071  aa   176455 200000 
+    000072  aa   000110 000041 
+    000073  aa   052721 247134 
+    000074  aa   000000 105272 
+    000075  aa   317215 400000 
+    000076  aa   076163 160145          >spec>install>1110>fort_math_ops_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061060 076146 
+    000103  aa   157162 164137 
+    000104  aa   155141 164150 
+    000105  aa   137157 160163 
+    000106  aa   137056 141154 
+    000107  aa   155040 040040 
+    000110  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000111  aa   076151 156143 
+    000112  aa   154165 144145 
+    000113  aa   076163 164141 
+    000114  aa   143153 137146 
+    000115  aa   162141 155145 
+    000116  aa   056151 156143 
+    000117  aa   154056 141154 
+    000120  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    cabs                     fort_math_ops_:      21.
+                cabs_                    fort_math_ops_:      21,   36.
+         124    call_1_arg_op            fort_math_ops_:      21,   22,   23,   24,   26,   27,   28,   29,   31,   32,   33,
+                                                              34,   36,   37,   38,   39,   41,   42,   43,   44,   46,   47,
+                                                              48,   49,   51.
+         140    call_2_arg_op            fort_math_ops_:      25,   30,   40,   45,   65.
+           3    ccos                     fort_math_ops_:      22.
+                ccos_                    fort_math_ops_:      22,   37.
+           6    cexp                     fort_math_ops_:      23.
+                cexp_                    fort_math_ops_:      23,   38.
+          11    clog                     fort_math_ops_:      24.
+                clog_                    fort_math_ops_:      24,   39.
+          14    cmpx_p_cmpx              fort_math_ops_:      25.
+          70    complex                  fort_math_ops_:      10,   21,   22,   23,   24,   25,   26,   27,   28,   29,   30,
+                                                              31,   32,   33,   34,   36,   37,   38,   39,   40,   41,   42,
+                                                              43,   44,   45,   46,   47,   48,   49,   57,   71.
+          17    cosh                     fort_math_ops_:      26.
+                cosh_                    fort_math_ops_:      26,   41.
+          22    csin                     fort_math_ops_:      27.
+                csin_                    fort_math_ops_:      27,   42.
+          25    csqrt                    fort_math_ops_:      28.
+                csqrt_                   fort_math_ops_:      28,   43.
+                cxp2_                    fort_math_ops_:      25,   40.
+          30    dcosh                    fort_math_ops_:      29.
+                dcosh_                   fort_math_ops_:      29,   44.
+          33    dmod                     fort_math_ops_:      30.
+                dmod_                    fort_math_ops_:      30,   45.
+          36    dsinh                    fort_math_ops_:      31.
+                dsinh_                   fort_math_ops_:      31,   46.
+          41    dtanh                    fort_math_ops_:      32.
+                dtanh_                   fort_math_ops_:      32,   47.
+                fort_bfp_builtins_       fort_math_ops_:      30.
+                fort_hfp_builtins_       fort_math_ops_:      36,   37,   38,   39,   40,   41,   42,   43,   44,   45,   46,
+                                                              47,   48,   49.
+                get_our_lp               fort_math_ops_:      61,   76.
+          52    hfp_cabs                 fort_math_ops_:      36.
+          55    hfp_ccos                 fort_math_ops_:      37.
+          60    hfp_cexp                 fort_math_ops_:      38.
+          63    hfp_clog                 fort_math_ops_:      39.
+          66    hfp_cmpx_p_cmpx          fort_math_ops_:      40.
+          71    hfp_cosh                 fort_math_ops_:      41.
+          74    hfp_csin                 fort_math_ops_:      42.
+          77    hfp_csqrt                fort_math_ops_:      43.
+         102    hfp_dcosh                fort_math_ops_:      44.
+         105    hfp_dmod                 fort_math_ops_:      45.
+         110    hfp_dsinh                fort_math_ops_:      46.
+         113    hfp_dtanh                fort_math_ops_:      47.
+         116    hfp_sinh                 fort_math_ops_:      48.
+         121    hfp_tanh                 fort_math_ops_:      49.
+                pl1_operators_           fort_math_ops_:      61,   76.
+          44    sinh                     fort_math_ops_:      33.
+                sinh_                    fort_math_ops_:      33,   48.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   fort_math_ops_:      52,   53,   66,   67,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          47    tanh                     fort_math_ops_:      34.
+                tanh_                    fort_math_ops_:      34,   49.
+          50    temp_pt                  fort_math_ops_:      11,   59,   74.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

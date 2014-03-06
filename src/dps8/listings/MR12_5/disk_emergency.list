@@ -1,0 +1,762 @@
+	COMPILATION LISTING OF SEGMENT disk_emergency
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0945.5 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(88-02-23,Farley), approve(88-02-23,MCR7759),
+       17*     audit(88-02-24,Fawcett), install(88-03-01,MR12.2-1029):
+       18*     Corrected main entry to copy a_errflags to erflagbuf.
+       19*                                                   END HISTORY COMMENTS */
+       20 
+       21 
+       22 disk_emergency: proc (a_pvtx, a_errflags);
+       23 
+       24 /* Procedure in wired world to mark disks as inoperative
+       25*   at appropriate times.
+       26*
+       27*   Bernard Greenberg  02/27/77  
+       28*
+       29*   Modified March 1982 by J. Bongiovanni for new PVTE format
+       30**/
+       31 
+       32 dcl  a_pvtx fixed bin;
+       33 dcl  a_errflags bit (36) aligned;
+       34 
+       35 dcl  addr builtin;
+       36 dcl  erflagbuf bit (36) aligned;
+       37 dcl  pvtx fixed bin;
+       38 dcl  tc_data$system_shutdown fixed bin (35) ext;
+       39 dcl  pvt$n_entries fixed bin ext;
+       40 dcl  syserr entry options (variable);
+       41 dcl (pmut$wire_and_mask, pmut$unwire_unmask) entry (fixed bin (71), ptr);
+       42 dcl  page$time_out entry;
+       43 dcl  disk_control$test_drive entry (fixed bin);
+       44 
+       45 dcl  ptwp ptr;
+       46 dcl  oldmask fixed bin (71);
+       47 dcl  p99 pic "99";
+       48 dcl  masked bit (1) init ("0"b);
+       49 
+  1     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  1     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  1     8*     Add the support for subvolumes
+  1     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  1    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  1    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  1    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  1    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  1    14*     Added inconsistent_dbm bit for determining the status of volume
+  1    15*     dumper bit maps.
+  1    16*                                                   END HISTORY COMMENTS */
+  1    17 
+  1    18      dcl	   pvt$array	      aligned external;
+  1    19      dcl	   pvt$max_n_entries      fixed bin external;
+  1    20 
+  1    21      dcl	   pvt_arrayp	      ptr;
+  1    22      dcl	   pvtep		      ptr;
+  1    23 
+  1    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  1    25 
+  1    26      dcl	   1 pvte		      based (pvtep) aligned,
+  1    27 
+  1    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  1    29 
+  1    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  1    31 
+  1    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  1    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  1    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  1    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  1    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  1    37 	     2 pad3	      bit (2) unaligned,
+  1    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  1    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  1    40 
+  1    41 
+  1    42 
+  1    43 	     2 devname	      char (4),		/* device name */
+  1    44 
+  1    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  1    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  1    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  1    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  1    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  1    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  1    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  1    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  1    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  1    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  1    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  1    56 	     2 scav_check_address
+  1    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  1    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  1    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  1    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  1    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  1    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  1    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  1    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  1    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  1    66 
+  1    67 
+  1    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  1    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  1    70 
+  1    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  1    72 
+  1    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  1    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  1    75 
+  1    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  1    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  1    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  1    79 	     2 records_per_cyl    fixed bin,
+  1    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  1    81 	     2 sv_name            char (2) aligned,
+  1    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  1    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  1    84 
+  1    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  1    86 	     2 pad2	      bit (18) unaligned,
+  1    87 
+  1    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  1    89 
+  1    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  1    91 
+  1    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  1    93 
+  1    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  1    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  1    96 
+  1    97 
+  1    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  1    99 
+  1   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  1   101 
+  1   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  1   103 
+  1   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  1   105 
+  1   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  1   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  1   108 
+  1   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  1   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  1   111 
+  1   112 
+  1   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  1   114 	   VOLMAP_ASYNC_READ      init (1),
+  1   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  1   116 
+  1   117 
+  1   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+       50 
+  2     1 
+  2     2 /*  BEGIN INCLUDE FILE ... device_error.incl.pl1 */
+  2     3 
+  2     4 
+  2     5 /****^  HISTORY COMMENTS:
+  2     6*  1) change(88-02-23,Farley), approve(88-02-23,MCR7759),
+  2     7*     audit(88-02-24,Fawcett), install(88-03-01,MR12.2-1029):
+  2     8*     Added all_paths_bad flag.
+  2     9*                                                   END HISTORY COMMENTS */
+  2    10 
+  2    11 
+  2    12 /* Error code produced by disk_control$disk_inter and passed to page control */
+  2    13 
+  2    14 dcl erfp ptr;
+  2    15 
+  2    16 dcl 1 errflags based (erfp) aligned,
+  2    17    (2 pad bit (29),
+  2    18     2 all_paths_bad bit (1),                                /* All paths have been tried and failed */
+  2    19     2 memory_unusable bit (1),			/* Main memory frame bad */
+  2    20     2 device_inoperative bit (1),			/* device cannot be used */
+  2    21     2 reassign_address bit (1),			/* device address cannot be written - try another */
+  2    22     2 seg_unusable bit (1),				/* segment cannot be accessed */
+  2    23     2 please_repeat_call bit (1),			/* request must be requeued */
+  2    24     2 fatal_error bit (1)) unal;			/* all other errors */
+  2    25 
+  2    26 /*  END INCLUDE FILE ... device_error.incl.pl1 */
+  2    27 
+       51 
+       52 
+       53 
+       54 
+       55           pvt_arrayp = addr (pvt$array);
+       56 	pvtx = a_pvtx;
+       57 	pvtep = addr (pvt_array (pvtx));
+       58 	erflagbuf = a_errflags;
+       59 	erfp = addr (erflagbuf);
+       60 
+       61 	if tc_data$system_shutdown = 0 then return;
+       62 
+       63 	if ^pvte.device_inoperative then call mark;
+       64 	return;
+       65 
+       66 
+       67 test_all_drives_masked: entry;
+       68 
+       69 	masked = "1"b;
+       70 
+       71 
+       72 test_all_drives: entry;				/* does like it says */
+       73 	pvt_arrayp = addr (pvt$array);
+       74 	erfp = addr (erflagbuf);
+       75 	errflags.device_inoperative = "1"b;
+       76 
+       77 
+       78 	if ^masked then call pmut$wire_and_mask (oldmask, ptwp);
+       79 
+       80 
+       81 	do pvtx = 1 to pvt$n_entries;
+       82 	     pvtep = addr (pvt_array (pvtx));
+       83 	     if (pvte.used | pvte.permanent) & pvte.storage_system
+       84 		then do;
+       85 		pvte.device_inoperative = "0"b;
+       86 		pvte.testing = "1"b;
+       87 		call disk_control$test_drive (pvtx);
+       88 		do while (pvte.testing);
+       89 		     call page$time_out;
+       90 		end;
+       91 		if pvte.device_inoperative then call mark;
+       92 	     end;
+       93 	end;
+       94 
+       95 	if ^masked then call pmut$unwire_unmask (oldmask, ptwp);
+       96 	return;
+       97 
+       98 
+       99 mark:	proc;					/* Perform the actual marking */
+      100 
+      101 	     if errflags.device_inoperative then do;
+      102 		pvte.device_inoperative = "1"b;
+      103 		p99 = pvte.logical_area_number;
+      104 		call syserr (3, "disk_emergency: ^a_^a inoperative: shutdown of ^a_^a suspended.",
+      105 		     pvte.devname, p99, pvte.devname, p99);
+      106 	     end;
+      107 	     return;
+      108 	end mark;
+      109 
+      110 /* BEGIN MESSAGE DOCUMENTATION
+      111*
+      112*   Message:
+      113*   disk_emergency: DSKX_NN inoperative; shutdown of DSKX_NN suspended
+      114*
+      115*   S: $beep
+      116*
+      117*   T: Emergency shutdown.
+      118*
+      119*   M: During emergency shutdown, DSKX_NN was found inoperative.
+      120*   Data in main memory or on the paging device
+      121*   which need to be flushed
+      122*   to the pack on DSKX_NN cannot be written out.
+      123*   The data remain where they were and ESD may be tried again.
+      124*
+      125*   A: If the drive
+      126*   can be made ready, make it ready and try ESD again.
+      127*   Do NOT move packs before trying ESD,
+      128*   unless address plugs are changed so that the same pack
+      129*   appears to have the same address.
+      130*   (If this action is performed, the MPC must be halted
+      131*   and restarted with a reset and branch.)
+      132*   If the pack is not successfully shut down,
+      133*   the system will volume salvage it
+      134*   when it is next brought up,
+      135*   and data from main memory which belongs on the pack will be lost.
+      136*
+      137*   END MESSAGE DOCUMENTATION */
+      138 
+      139      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.6  disk_emergency.pl1                >spec>install>1115>disk_emergency.pl1
+50           1    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+51           2    03/10/88  2009.6  device_error.incl.pl1             >ldd>include>device_error.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_errflags                             parameter       bit(36)                  dcl 33 ref 22 58
+a_pvtx                                 parameter       fixed bin(17,0)          dcl 32 ref 22 56
+addr                                                   builtin function         dcl 35 ref 55 57 59 73 74 82
+device_inoperative        0(31)        based           bit(1)                   level 2 in structure "errflags" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "disk_emergency"
+                                                                                  set ref 75* 101
+device_inoperative        4(25)        based           bit(1)                   level 2 in structure "pvte" packed packed unaligned
+                                                                                  dcl 1-26 in procedure "disk_emergency" set ref 63
+                                                                                  85* 91 102*
+devname                   3            based           char(4)                  level 2 dcl 1-26 set ref 104* 104*
+disk_control$test_drive         000024 constant        entry                    external dcl 43 ref 87
+erflagbuf                       000100 automatic       bit(36)                  dcl 36 set ref 58* 59 74
+erfp                            000114 automatic       pointer                  dcl 2-14 set ref 59* 74* 75 101
+errflags                               based           structure                level 1 dcl 2-16
+logical_area_number       4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-26 ref 103
+masked                          000107 automatic       bit(1)                   initial packed unaligned dcl 48 set ref 48* 69* 78
+                                                                                  95
+oldmask                         000104 automatic       fixed bin(71,0)          dcl 46 set ref 78* 95*
+p99                             000106 automatic       picture(2)               packed unaligned dcl 47 set ref 103* 104* 104*
+page$time_out                   000022 constant        entry                    external dcl 42 ref 89
+permanent                 4(20)        based           bit(1)                   level 2 packed packed unaligned dcl 1-26 ref 83
+pmut$unwire_unmask              000020 constant        entry                    external dcl 41 ref 95
+pmut$wire_and_mask              000016 constant        entry                    external dcl 41 ref 78
+ptwp                            000102 automatic       pointer                  dcl 45 set ref 78* 95*
+pvt$array                       000026 external static fixed bin(17,0)          dcl 1-18 set ref 55 73
+pvt$n_entries                   000012 external static fixed bin(17,0)          dcl 39 ref 81
+pvt_array                              based           structure                array level 1 dcl 1-24 set ref 57 82
+pvt_arrayp                      000110 automatic       pointer                  dcl 1-21 set ref 55* 57 73* 82
+pvte                                   based           structure                level 1 dcl 1-26
+pvtep                           000112 automatic       pointer                  dcl 1-22 set ref 57* 63 82* 83 83 83 85 86 88 91 102
+                                                                                  103 104 104
+pvtx                            000101 automatic       fixed bin(17,0)          dcl 37 set ref 56* 57 81* 82 87*
+storage_system            4(19)        based           bit(1)                   level 2 packed packed unaligned dcl 1-26 ref 83
+syserr                          000014 constant        entry                    external dcl 40 ref 104
+tc_data$system_shutdown         000010 external static fixed bin(35,0)          dcl 38 ref 61
+testing                   4(21)        based           bit(1)                   level 2 packed packed unaligned dcl 1-26 set ref 86*
+                                                                                  88
+used                      4(18)        based           bit(1)                   level 2 packed packed unaligned dcl 1-26 ref 83
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 1-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 1-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 1-113
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 1-19
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+disk_emergency                  000036 constant        entry                    external dcl 22
+mark                            000224 constant        entry                    internal dcl 99 ref 63 91
+test_all_drives                 000103 constant        entry                    external dcl 72
+test_all_drives_masked          000071 constant        entry                    external dcl 67
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       454         504     312         464
+Length       720     312        30         200     141           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+disk_emergency                      138 external procedure  is an external procedure.  
+mark                                    internal procedure  shares stack frame of external procedure disk_emergency.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+disk_emergency           000100 erflagbuf                   disk_emergency
+                         000101 pvtx                        disk_emergency
+                         000102 ptwp                        disk_emergency
+                         000104 oldmask                     disk_emergency
+                         000106 p99                         disk_emergency
+                         000107 masked                      disk_emergency
+                         000110 pvt_arrayp                  disk_emergency
+                         000112 pvtep                       disk_emergency
+                         000114 erfp                        disk_emergency
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+disk_control$test_drive       page$time_out                 pmut$unwire_unmask            pmut$wire_and_mask
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$array                     pvt$n_entries                 tc_data$system_shutdown
+
+
+CONSTANTS
+000310  aa  070 322 000 000	8Ò
+
+000311  aa     777777775777
+
+000000  aa     526000000002
+
+000001  aa     524000000004
+
+000002  aa     524000000077
+
+000003  aa     404000000005
+
+000004  aa     514000000044
+
+000005  aa     404000000021
+
+000006  aa  144 151 163 153	disk
+000007  aa  137 145 155 145	_eme
+000010  aa  162 147 145 156	rgen
+000011  aa  143 171 072 040	cy: 
+000012  aa  136 141 137 136	^a_^
+000013  aa  141 040 151 156	a in
+000014  aa  157 160 145 162	oper
+000015  aa  141 164 151 166	ativ
+000016  aa  145 072 040 163	e: s
+000017  aa  150 165 164 144	hutd
+000020  aa  157 167 156 040	own 
+000021  aa  157 146 040 136	of ^
+000022  aa  141 137 136 141	a_^a
+000023  aa  040 163 165 163	 sus
+000024  aa  160 145 156 144	pend
+000025  aa  145 144 056 000	ed.
+
+BEGIN PROCEDURE disk_emergency
+PROLOGUE SEQUENCE
+000026  aa  6 00126 4401 00	sxl0 	pr6|86
+						STATEMENT 1 ON LINE 48
+000027  aa  6 00107 4501 00	stz  	pr6|71		masked
+000030  aa  6 00126 7201 00	lxl0 	pr6|86
+000031  aa   000000 7100 10	tra  	0,0
+MAIN SEQUENCE
+ENTRY TO disk_emergency                                     STATEMENT 1 ON LINE 22
+disk_emergency: proc (a_pvtx, a_errflags);
+
+000032  at     000002000005
+000033  ta     000004000000
+000034  ta     000032000000
+000035  da     000115300000
+000036  aa   000220 6270 00	eax7 	144
+000037  aa  7 00034 3521 20	epp2 	pr7|28,*
+000040  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000041  aa     000004000000
+000042  aa     000000000000
+000043  aa   777763 7000 04	tsx0 	-13,ic		000026
+						STATEMENT 1 ON LINE 55
+          pvt_arrayp = addr (pvt$array);
+
+000044  aa  6 00044 3701 20	epp4 	pr6|36,*
+000045  la  4 00026 3735 20	epp7 	pr4|22,*		pvt$array
+000046  aa  6 00110 6535 00	spri7	pr6|72		pvt_arrayp
+						STATEMENT 1 ON LINE 56
+	pvtx = a_pvtx;
+
+000047  aa  6 00032 3715 20	epp5 	pr6|26,*
+000050  aa  5 00002 2361 20	ldq  	pr5|2,*		a_pvtx
+000051  aa  6 00101 7561 00	stq  	pr6|65		pvtx
+						STATEMENT 1 ON LINE 57
+	pvtep = addr (pvt_array (pvtx));
+
+000052  aa   000034 4020 07	mpy  	28,dl
+000053  aa  7 77744 3535 06	epp3 	pr7|-28,ql	pvt_array
+000054  aa  6 00112 2535 00	spri3	pr6|74		pvtep
+						STATEMENT 1 ON LINE 58
+	erflagbuf = a_errflags;
+
+000055  aa  5 00004 2351 20	lda  	pr5|4,*		a_errflags
+000056  aa  6 00100 7551 00	sta  	pr6|64		erflagbuf
+						STATEMENT 1 ON LINE 59
+	erfp = addr (erflagbuf);
+
+000057  aa  6 00100 3515 00	epp1 	pr6|64		erflagbuf
+000060  aa  6 00114 2515 00	spri1	pr6|76		erfp
+						STATEMENT 1 ON LINE 61
+	if tc_data$system_shutdown = 0 then return;
+
+000061  la  4 00010 2361 20	ldq  	pr4|8,*		tc_data$system_shutdown
+000062  aa  0 00631 6001 00	tze  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 63
+	if ^pvte.device_inoperative then call mark;
+
+000063  aa  3 00004 2351 00	lda  	pr3|4		pvte.device_inoperative
+000064  aa   002000 3150 07	cana 	1024,dl
+000065  aa   000002 6010 04	tnz  	2,ic		000067
+000066  aa   000136 6700 04	tsp4 	94,ic		000224
+						STATEMENT 1 ON LINE 64
+	return;
+
+000067  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO test_all_drives_masked                             STATEMENT 1 ON LINE 67
+test_all_drives_masked: entry;
+
+000070  da     000126200000
+000071  aa   000220 6270 00	eax7 	144
+000072  aa  7 00034 3521 20	epp2 	pr7|28,*
+000073  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000074  aa     000000000000
+000075  aa     000000000000
+000076  aa   777730 7000 04	tsx0 	-40,ic		000026
+						STATEMENT 1 ON LINE 69
+	masked = "1"b;
+
+000077  aa   400000 2350 03	lda  	131072,du
+000100  aa  6 00107 7551 00	sta  	pr6|71		masked
+						STATEMENT 1 ON LINE 72
+test_all_drives: entry;
+
+000101  aa   000010 7100 04	tra  	8,ic		000111
+ENTRY TO test_all_drives                                    STATEMENT 1 ON LINE 72
+test_all_drives: entry;
+
+000102  da     000135200000
+000103  aa   000220 6270 00	eax7 	144
+000104  aa  7 00034 3521 20	epp2 	pr7|28,*
+000105  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000106  aa     000000000000
+000107  aa     000000000000
+000110  aa   777716 7000 04	tsx0 	-50,ic		000026
+						STATEMENT 1 ON LINE 73
+	pvt_arrayp = addr (pvt$array);
+
+000111  aa  6 00044 3701 20	epp4 	pr6|36,*
+000112  la  4 00026 3735 20	epp7 	pr4|22,*		pvt$array
+000113  aa  6 00110 6535 00	spri7	pr6|72		pvt_arrayp
+						STATEMENT 1 ON LINE 74
+	erfp = addr (erflagbuf);
+
+000114  aa  6 00100 3715 00	epp5 	pr6|64		erflagbuf
+000115  aa  6 00114 6515 00	spri5	pr6|76		erfp
+						STATEMENT 1 ON LINE 75
+	errflags.device_inoperative = "1"b;
+
+000116  aa   000020 2350 07	lda  	16,dl
+000117  aa  5 00000 2551 00	orsa 	pr5|0		errflags.device_inoperative
+						STATEMENT 1 ON LINE 78
+	if ^masked then call pmut$wire_and_mask (oldmask, ptwp);
+
+000120  aa  6 00107 2351 00	lda  	pr6|71		masked
+000121  aa   000011 6010 04	tnz  	9,ic		000132
+000122  aa  6 00104 3521 00	epp2 	pr6|68		oldmask
+000123  aa  6 00132 2521 00	spri2	pr6|90
+000124  aa  6 00102 3521 00	epp2 	pr6|66		ptwp
+000125  aa  6 00134 2521 00	spri2	pr6|92
+000126  aa  6 00130 6211 00	eax1 	pr6|88
+000127  aa   010000 4310 07	fld  	4096,dl
+000130  la  4 00016 3521 20	epp2 	pr4|14,*		pmut$wire_and_mask
+000131  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 81
+	do pvtx = 1 to pvt$n_entries;
+
+000132  aa  6 00044 3701 20	epp4 	pr6|36,*
+000133  la  4 00012 2361 20	ldq  	pr4|10,*		pvt$n_entries
+000134  aa  6 00116 7561 00	stq  	pr6|78
+000135  aa   000001 2360 07	ldq  	1,dl
+000136  aa  6 00101 7561 00	stq  	pr6|65		pvtx
+000137  aa   000000 0110 03	nop  	0,du
+000140  aa  6 00101 2361 00	ldq  	pr6|65		pvtx
+000141  aa  6 00116 1161 00	cmpq 	pr6|78
+000142  aa   000046 6054 04	tpnz 	38,ic		000210
+						STATEMENT 1 ON LINE 82
+	     pvtep = addr (pvt_array (pvtx));
+
+000143  aa   000034 4020 07	mpy  	28,dl
+000144  aa  6 00110 3735 20	epp7 	pr6|72,*		pvt_arrayp
+000145  aa  7 77744 3735 06	epp7 	pr7|-28,ql	pvt_array
+000146  aa  6 00112 6535 00	spri7	pr6|74		pvtep
+						STATEMENT 1 ON LINE 83
+	     if (pvte.used | pvte.permanent) & pvte.storage_system
+		then do;
+
+000147  aa  7 00004 2351 00	lda  	pr7|4		pvte.permanent
+000150  aa   500000 3150 07	cana 	163840,dl
+000151  aa   000035 6000 04	tze  	29,ic		000206
+000152  aa  7 00004 2351 00	lda  	pr7|4		pvte.storage_system
+000153  aa   200000 3150 07	cana 	65536,dl
+000154  aa   000032 6000 04	tze  	26,ic		000206
+						STATEMENT 1 ON LINE 85
+		pvte.device_inoperative = "0"b;
+
+000155  aa   000134 2350 04	lda  	92,ic		000311 = 777777775777
+000156  aa  7 00004 3551 00	ansa 	pr7|4		pvte.device_inoperative
+						STATEMENT 1 ON LINE 86
+		pvte.testing = "1"b;
+
+000157  aa   040000 2350 07	lda  	16384,dl
+000160  aa  7 00004 2551 00	orsa 	pr7|4		pvte.testing
+						STATEMENT 1 ON LINE 87
+		call disk_control$test_drive (pvtx);
+
+000161  aa  6 00101 3521 00	epp2 	pr6|65		pvtx
+000162  aa  6 00132 2521 00	spri2	pr6|90
+000163  aa  6 00130 6211 00	eax1 	pr6|88
+000164  aa   004000 4310 07	fld  	2048,dl
+000165  aa  6 00044 3701 20	epp4 	pr6|36,*
+000166  la  4 00024 3521 20	epp2 	pr4|20,*		disk_control$test_drive
+000167  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 88
+		do while (pvte.testing);
+
+000170  aa  6 00112 3735 20	epp7 	pr6|74,*		pvtep
+000171  aa  7 00004 2351 00	lda  	pr7|4		pvte.testing
+000172  aa   040000 3150 07	cana 	16384,dl
+000173  aa   000007 6000 04	tze  	7,ic		000202
+						STATEMENT 1 ON LINE 89
+		     call page$time_out;
+
+000174  aa  6 00056 6211 00	eax1 	pr6|46
+000175  aa   000000 4310 07	fld  	0,dl
+000176  aa  6 00044 3701 20	epp4 	pr6|36,*
+000177  la  4 00022 3521 20	epp2 	pr4|18,*		page$time_out
+000200  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 90
+		end;
+
+000201  aa   777767 7100 04	tra  	-9,ic		000170
+						STATEMENT 1 ON LINE 91
+		if pvte.device_inoperative then call mark;
+
+000202  aa  7 00004 2351 00	lda  	pr7|4		pvte.device_inoperative
+000203  aa   002000 3150 07	cana 	1024,dl
+000204  aa   000002 6000 04	tze  	2,ic		000206
+000205  aa   000017 6700 04	tsp4 	15,ic		000224
+						STATEMENT 1 ON LINE 92
+	     end;
+
+						STATEMENT 1 ON LINE 93
+	end;
+
+000206  aa  6 00101 0541 00	aos  	pr6|65		pvtx
+000207  aa   777731 7100 04	tra  	-39,ic		000140
+						STATEMENT 1 ON LINE 95
+	if ^masked then call pmut$unwire_unmask (oldmask, ptwp);
+
+000210  aa  6 00107 2351 00	lda  	pr6|71		masked
+000211  aa   000012 6010 04	tnz  	10,ic		000223
+000212  aa  6 00104 3521 00	epp2 	pr6|68		oldmask
+000213  aa  6 00132 2521 00	spri2	pr6|90
+000214  aa  6 00102 3521 00	epp2 	pr6|66		ptwp
+000215  aa  6 00134 2521 00	spri2	pr6|92
+000216  aa  6 00130 6211 00	eax1 	pr6|88
+000217  aa   010000 4310 07	fld  	4096,dl
+000220  aa  6 00044 3701 20	epp4 	pr6|36,*
+000221  la  4 00020 3521 20	epp2 	pr4|16,*		pmut$unwire_unmask
+000222  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 96
+	return;
+
+000223  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 139
+     end;
+
+BEGIN PROCEDURE mark
+ENTRY TO mark                                               STATEMENT 1 ON LINE 99
+mark:	proc;
+
+000224  aa  6 00120 6501 00	spri4	pr6|80
+						STATEMENT 1 ON LINE 101
+	     if errflags.device_inoperative then do;
+
+000225  aa  6 00114 2351 20	lda  	pr6|76,*		errflags.device_inoperative
+000226  aa   000020 3150 07	cana 	16,dl
+000227  aa   000060 6000 04	tze  	48,ic		000307
+						STATEMENT 1 ON LINE 102
+		pvte.device_inoperative = "1"b;
+
+000230  aa   002000 2350 07	lda  	1024,dl
+000231  aa  6 00112 3735 20	epp7 	pr6|74,*		pvtep
+000232  aa  7 00004 2551 00	orsa 	pr7|4		pvte.device_inoperative
+						STATEMENT 1 ON LINE 103
+		p99 = pvte.logical_area_number;
+
+000233  aa  7 00004 2351 00	lda  	pr7|4		pvte.logical_area_number
+000234  aa   000011 7350 00	als  	9
+000235  aa   000077 7330 00	lrs  	63
+000236  aa  6 00137 7561 00	stq  	pr6|95		pvte.logical_area_number
+000237  aa  000 100 301 500	btd  	(pr),(pr)
+000240  aa  6 00137 00 0004	desc9a	pr6|95,4		pvte.logical_area_number
+000241  aa  6 00136 01 0003	desc9ls	pr6|94,3,0
+000242  aa  6 00106 4501 00	stz  	pr6|70		p99
+000243  aa  100 004 024 500	mvne 	(pr),(ic),(pr)
+000244  aa  6 00136 01 0003	desc9ls	pr6|94,3,0
+000245  aa   000045 00 0002	desc9a	37,2		000310 = 070322000000
+000246  aa  6 00106 00 0002	desc9a	pr6|70,2		p99
+						STATEMENT 1 ON LINE 104
+		call syserr (3, "disk_emergency: ^a_^a inoperative: shutdown of ^a_^a suspended.",
+		     pvte.devname, p99, pvte.devname, p99);
+
+000247  aa   000003 2360 07	ldq  	3,dl
+000250  aa  6 00136 7561 00	stq  	pr6|94
+000251  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000252  aa   777535 00 0100	desc9a	-163,64		000006 = 144151163153
+000253  aa  6 00140 00 0100	desc9a	pr6|96,64
+000254  aa  6 00136 3521 00	epp2 	pr6|94
+000255  aa  6 00162 2521 00	spri2	pr6|114
+000256  aa  6 00140 3521 00	epp2 	pr6|96
+000257  aa  6 00164 2521 00	spri2	pr6|116
+000260  aa  7 00003 3521 00	epp2 	pr7|3		pvte.devname
+000261  aa  6 00166 2521 00	spri2	pr6|118
+000262  aa  6 00106 3521 00	epp2 	pr6|70		p99
+000263  aa  6 00170 2521 00	spri2	pr6|120
+000264  aa  7 00003 3521 00	epp2 	pr7|3		pvte.devname
+000265  aa  6 00172 2521 00	spri2	pr6|122
+000266  aa  6 00106 3521 00	epp2 	pr6|70		p99
+000267  aa  6 00174 2521 00	spri2	pr6|124
+000270  aa   777513 3520 04	epp2 	-181,ic		000003 = 404000000005
+000271  aa  6 00176 2521 00	spri2	pr6|126
+000272  aa   777510 3520 04	epp2 	-184,ic		000002 = 524000000077
+000273  aa  6 00200 2521 00	spri2	pr6|128
+000274  aa   777505 3520 04	epp2 	-187,ic		000001 = 524000000004
+000275  aa  6 00202 2521 00	spri2	pr6|130
+000276  aa  6 00206 2521 00	spri2	pr6|134
+000277  aa   777501 3520 04	epp2 	-191,ic		000000 = 526000000002
+000300  aa  6 00204 2521 00	spri2	pr6|132
+000301  aa  6 00210 2521 00	spri2	pr6|136
+000302  aa  6 00160 6211 00	eax1 	pr6|112
+000303  aa   030000 4310 07	fld  	12288,dl
+000304  aa  6 00044 3701 20	epp4 	pr6|36,*
+000305  la  4 00014 3521 20	epp2 	pr4|12,*		syserr
+000306  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 106
+	     end;
+
+						STATEMENT 1 ON LINE 107
+	     return;
+
+000307  aa  6 00120 6101 00	rtcd 	pr6|80
+						STATEMENT 1 ON LINE 108
+	end mark;
+
+  END PROCEDURE mark
+  END PROCEDURE disk_emergency
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

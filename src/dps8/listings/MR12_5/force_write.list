@@ -1,0 +1,1994 @@
+	COMPILATION LISTING OF SEGMENT force_write
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: ACTC Technologies Inc.          
+	Compiled on: 10/23/92  1026.2 mdt Fri
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1992   *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*        *                                                         *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        8*        *                                                         *
+        9*        * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*        * Technology and Honeywell Information Systems, Inc.      *
+       11*        *                                                         *
+       12*        *********************************************************** */
+       13 
+       14 
+       15 
+       16 
+       17 /****^  HISTORY COMMENTS:
+       18*  1) change(92-09-16,WAAnderson), approve(92-09-16,MCR8261),
+       19*     audit(92-09-24,Vu), install(92-10-23,MR12.5-1040):
+       20*     The values sst$fw_none and sst$force_pwrites were not being updated
+       21*     correctly due to the uninitialized variable num_writ in WRITE_ONE_SEGMENT.
+       22*     It was possible to use the value to determine the actions taken by a
+       23*     conditional statement and used in a calculation before it was ever set.
+       24*                                                   END HISTORY COMMENTS */
+       25 
+       26 
+       27 /* format: style3 */
+       28 force_write:
+       29      proc (Segp, Fwf, Code);
+       30 
+       31 /* Force_write-- procedure to force I/O on a segment from user ring.
+       32*
+       33*   Bernard Greenberg  2/3/77 */
+       34 /* Bob Mullen made this program a lot better, several times in '77, '78 */
+       35 /* pds limit, BSG 8/18/78 */
+       36 /* Modified for ADP PTWs, SDWs, 03/21/81, W. Olin Sibert */
+       37 /* Modified for consecutive, list entries, November 1982, J. Bongiovanni */
+       38 /* Modified to work on segments which are currently not connected to the caller's process, 30mar83, M.Pandolf */
+       39 
+       40 /* Note: we do not use search_ast$check, to avoid the expense of deriving the
+       41*   pvid and vtocx for the segment.  If there is actually a double-uid conflict,
+       42*   we are either going to write the correct segment, or harrass some other segment.
+       43*   In either case, we end up with the pages of the 'correct' segment on disk,
+       44*   if at all possible. */
+       45 
+       46 /*  Parameter  */
+       47 
+       48 dcl	Code		fixed bin (35) parameter;	/* Standard error code */
+       49 dcl	Flush_Consecp	ptr parameter;		/* -> structure describing segments to be flushed */
+       50 dcl	Flushp		ptr parameter;		/* -> structure describing pages to be flushed */
+       51 dcl	Fwf		bit (36) unaligned parameter; /* Flags - see force_write_flags.incl.pl1 */
+       52 dcl	Segp		pointer parameter;		/* -> segment to be written */
+       53 dcl	Write_Limit	fixed bin parameter;	/* Maximum outstanding I/Os for this val level on force-write */
+       54 
+       55 /*  Automatic  */
+       56 
+       57 dcl	code		fixed bin (35);
+       58 dcl	done_list		bit (1) aligned;
+       59 dcl	done_seg		bit (1) aligned;
+       60 dcl	first_page	fixed bin;
+       61 dcl	1 fwf		like force_write_flags aligned;
+       62 dcl	have_list		bit (1) aligned;
+       63 dcl	n_pages		fixed bin;
+       64 dcl	page_list		(0:255) fixed bin;
+       65 dcl	page_no		fixed bin;
+       66 dcl	pagex		fixed bin;
+       67 dcl	seg_no		fixed bin;
+       68 dcl	seg_pagex		fixed bin;
+       69 dcl	segp		ptr;
+       70 dcl	segx		fixed bin;
+       71 dcl	write_limit	fixed bin;
+       72 
+       73 /*  Based  */
+       74 
+       75 dcl	1 Flush_Consec	aligned like flush_consec based (Flush_Consecp);
+       76 dcl	1 Flush		aligned like flush based (Flushp);
+       77 
+       78 /*  External  */
+       79 
+       80 dcl	error_table_$argerr fixed bin (35) external static;
+       81 dcl	error_table_$dirseg fixed bin (35) external static;
+       82 dcl	error_table_$invalidsegno
+       83 			fixed bin (35) external static;
+       84 dcl	error_table_$unimplemented_version
+       85 			fixed bin (35) external static;
+       86 dcl	pds$force_write_limit
+       87 			(0:7) fixed bin external static;
+       88 dcl	pds$validation_level
+       89 			fixed bin external static;
+       90 dcl	sst$astsize	fixed bin external static;
+       91 dcl	sst$force_pwrites	fixed bin (35) external static;
+       92 dcl	sst$force_swrites	fixed bin (35) external static;
+       93 dcl	sst$force_updatevs	fixed bin (35) external static;
+       94 dcl	sst$fw_none	fixed bin (35) external static;
+       95 dcl	sst$fw_retries	fixed bin (35) external static;
+       96 
+       97 /*  Entry  */
+       98 
+       99 dcl	get_ptrs_$given_segno
+      100 			entry (fixed bin (17)) returns (ptr);
+      101 dcl	lock$lock_ast	entry ();
+      102 dcl	lock$unlock_ast	entry ();
+      103 dcl	pc_wired$write_wait_uid
+      104 			entry (ptr, fixed bin, fixed bin, bit (36) aligned);
+      105 dcl	pc_wired$write_wait_uid_list
+      106 			entry (ptr, ptr, fixed bin, fixed bin, bit (36) aligned);
+      107 dcl	ptw_util_$get_phm	entry (pointer, bit (1) aligned);
+      108 dcl	search_ast	entry (bit (36) aligned) returns (ptr);
+      109 dcl	update_vtoce	entry (ptr);
+      110 
+      111 /*  Builtin  */
+      112 
+      113 dcl	addr		builtin;
+      114 dcl	addrel		builtin;
+      115 dcl	baseno		builtin;
+      116 dcl	baseptr		builtin;
+      117 dcl	fixed		builtin;
+      118 dcl	hbound		builtin;
+      119 dcl	min		builtin;
+      120 dcl	null		builtin;
+      121 dcl	string		builtin;
+      122 dcl	unspec		builtin;
+      123 
+      124 
+      125 
+      126 	segp = Segp;
+      127 	string (fwf) = Fwf;
+      128 	have_list = "0"b;
+      129 	n_pages = -1;
+      130 
+      131 	call WRITE_ONE_SEGMENT (code);
+      132 
+      133 	Code = code;
+      134 	return;
+      135 
+      136 consecutive:
+      137      entry (Flush_Consecp, Code);
+      138 
+      139 	Code = 0;
+      140 	unspec (fwf) = ""b;
+      141 	have_list = "1"b;
+      142 
+      143 	if Flush_Consec.version ^= FLUSH_CONSEC_VERSION_1
+      144 	then do;
+      145 		Code = error_table_$unimplemented_version;
+      146 		return;
+      147 	     end;
+      148 
+      149 	do segx = 1 to Flush_Consec.n_segs;
+      150 	     segp = baseptr (Flush_Consec.seg (segx).segno);
+      151 	     first_page = Flush_Consec.seg (segx).first_page;
+      152 	     n_pages = Flush_Consec.seg (segx).n_pages;
+      153 	     if first_page < 0 | (first_page + n_pages) > 255
+      154 	     then do;
+      155 		     Code = error_table_$argerr;
+      156 		     return;
+      157 		end;
+      158 	     unspec (page_list) = ""b;
+      159 	     do pagex = 0 to n_pages - 1;
+      160 		page_list (pagex) = first_page + pagex;
+      161 	     end;
+      162 
+      163 	     call WRITE_ONE_SEGMENT (Code);
+      164 	     if Code ^= 0
+      165 	     then return;
+      166 	end;
+      167 
+      168 	return;
+      169 
+      170 list:
+      171      entry (Flushp, Code);
+      172 
+      173 	Code = 0;
+      174 	unspec (fwf) = ""b;
+      175 	have_list = "1"b;
+      176 
+      177 	if Flush.version ^= FLUSH_VERSION_1
+      178 	then do;
+      179 		Code = error_table_$unimplemented_version;
+      180 		return;
+      181 	     end;
+      182 
+      183 	done_list = "0"b;
+      184 	seg_pagex = 1;
+      185 	do while (^done_list);
+      186 	     if seg_pagex > Flush.n_pages
+      187 	     then done_list = "1"b;
+      188 	     else do;
+      189 		     seg_no = Flush.seg_page (seg_pagex).seg_no;
+      190 		     segp = baseptr (seg_no);
+      191 		     pagex = 0;
+      192 		     done_seg = "0"b;
+      193 		     do while (^done_seg);
+      194 			if seg_pagex > Flush.n_pages
+      195 			then done_seg = "1"b;
+      196 			else if Flush.seg_page (seg_pagex).seg_no ^= seg_no
+      197 			then done_seg = "1"b;
+      198 			else do;
+      199 				page_no = Flush.seg_page (seg_pagex).page_no;
+      200 				if page_no < 0 | page_no > 255
+      201 				then do;
+      202 ARGERR:
+      203 					Code = error_table_$argerr;
+      204 					return;
+      205 				     end;
+      206 				if pagex > hbound (page_list, 1)
+      207 				then goto ARGERR;
+      208 				page_list (pagex) = page_no;
+      209 				pagex = pagex + 1;
+      210 				seg_pagex = seg_pagex + 1;
+      211 			     end;
+      212 		     end;
+      213 		     n_pages = pagex;
+      214 		     call WRITE_ONE_SEGMENT (Code);
+      215 		     if Code ^= 0
+      216 		     then return;
+      217 		end;
+      218 	end;
+      219 
+      220 	return;
+      221 
+      222 
+      223 
+      224 
+      225 set_force_write_limit:
+      226      entry (Write_Limit, Code);
+      227 
+      228 
+      229 	write_limit = Write_Limit;
+      230 
+      231 	if write_limit < 1 | write_limit > 256
+      232 	then code = error_table_$argerr;
+      233 	else do;
+      234 		pds$force_write_limit (pds$validation_level) = write_limit;
+      235 		code = 0;
+      236 	     end;
+      237 
+      238 	Code = code;
+      239 	return;
+      240 
+      241 
+      242 /*  Internal Procedure to do the work for one segment  */
+      243 
+      244 WRITE_ONE_SEGMENT:
+      245      proc (Code);
+      246 
+      247 dcl	Code		fixed bin (35) parameter;
+      248 
+      249 dcl	first_page	fixed bin;
+      250 dcl	force_write_limit	fixed bin;
+      251 dcl	i		fixed bin;
+      252 dcl	increment		fixed bin;
+      253 dcl	last_page		fixed bin;
+      254 dcl	lp		fixed bin;
+      255 dcl	num_writ		fixed bin;
+      256 dcl	page_no		fixed bin;
+      257 dcl	phm_bit		bit (1) aligned;
+      258 dcl	ptp		pointer;
+      259 dcl	segno		fixed bin (17);
+      260 dcl	tuid		bit (36) aligned;
+      261 
+      262 
+      263 
+      264 	Code = 0;
+      265 	num_writ = 0;
+      266 	segno = fixed (baseno (segp));		/* Get segno */
+      267 	kstp = pds$kstp;
+      268 	force_write_limit = pds$force_write_limit (pds$validation_level);
+      269 
+      270 	if segno < kst.lowseg | segno > kst.highest_used_segno
+      271 	then do;					/* Validate segno range */
+      272 segno_is_bad:
+      273 		Code = error_table_$invalidsegno;
+      274 		return;
+      275 	     end;
+      276 
+      277 	sst$force_swrites = sst$force_swrites + 1;	/* Meter */
+      278 
+      279 	kstep = addr (kst.kst_entry (segno));
+      280 	if unspec (kste.entryp) = ""b
+      281 	then goto segno_is_bad;			/* Verify that seg is initiated */
+      282 	if kste.dirsw
+      283 	then do;					/* Don't force write dirs */
+      284 		Code = error_table_$dirseg;
+      285 		return;
+      286 	     end;
+      287 
+      288 	tuid = kste.uid;
+      289 	astep = get_ptrs_$given_segno (segno);		/* Get astep via dseg */
+      290 
+      291 	if astep = null
+      292 	then do;					/* Segment is not connected */
+      293 
+      294 		call lock$lock_ast;
+      295 		astep = search_ast (tuid);
+      296 		call lock$unlock_ast;
+      297 
+      298 		if astep = null			/* Segment is not active */
+      299 		then goto ret;
+      300 
+      301 	     end;
+      302 
+      303 	if aste.uid = ""b
+      304 	then do;
+      305 		Code = error_table_$invalidsegno;
+      306 		goto ret;				/* No soap on hc segs */
+      307 	     end;
+      308 
+      309 RETRY:
+      310 	ptp = addrel (astep, sst$astsize);
+      311 
+      312 	num_writ = 0;				/* nothing written yet */
+      313 	first_page = -1;
+      314 	if force_write_limit < 2
+      315 	then fwf.serial_write = "1"b;
+      316 
+      317 	if have_list
+      318 	then lp = n_pages - 1;
+      319 	else lp = fixed (aste.csl, 9) - 1;
+      320 	do i = 0 to lp;
+      321 	     if have_list
+      322 	     then page_no = page_list (i);
+      323 	     else page_no = i;
+      324 	     call ptw_util_$get_phm (addrel (ptp, page_no), phm_bit);
+      325 						/* Modified anytime? */
+      326 	     if phm_bit				/* See if page needs writing, */
+      327 	     then do;				/* and do so if we are to write serially */
+      328 		     last_page = i;
+      329 		     if first_page = -1
+      330 		     then first_page = i;
+      331 		     num_writ = num_writ + 1;
+      332 		     if fwf.serial_write
+      333 		     then call pc_wired$write_wait_uid (astep, page_no, 1, tuid);
+      334 		end;
+      335 	end;
+      336 
+      337 
+      338 	if ^fwf.serial_write & num_writ ^= 0		/* If parallel write and we have pages */
+      339 	then do;					/* then write the lot out */
+      340 		if num_writ <= force_write_limit
+      341 		then increment = last_page - first_page + 1;
+      342 		else increment = force_write_limit;
+      343 		do i = first_page to last_page by increment;
+      344 		     if have_list
+      345 		     then call pc_wired$write_wait_uid_list (astep, addr (page_list), i,
+      346 			     min ((last_page - i + 1), increment), tuid);
+      347 		     else call pc_wired$write_wait_uid (astep, i, min ((last_page - i + 1), increment), tuid);
+      348 		end;
+      349 	     end;
+      350 
+      351 	if aste.uid ^= tuid
+      352 	then do;					/* check race with segmove */
+      353 		call lock$lock_ast;
+      354 		astep = search_ast (tuid);
+      355 		call lock$unlock_ast;
+      356 		if astep ^= null ()
+      357 		then do;
+      358 			sst$fw_retries = sst$fw_retries + 1;
+      359 			goto RETRY;
+      360 		     end;
+      361 		else goto ret;			/* deactivated seg means all done */
+      362 	     end;
+      363 
+      364 /* if here then valid astep and aste.uid = tuid */
+      365 
+      366 	if ^aste.fmchanged				/* no change in aste? */
+      367 	then if aste.uid = tuid			/* and still same aste? */
+      368 	     then goto ret;				/* then this is the EZ case */
+      369 
+      370 	call lock$lock_ast;				/* If here then looks like vtoce needs updating */
+      371 
+      372 	if aste.uid ^= tuid				/* Has aste moved? */
+      373 	then astep = search_ast (tuid);		/* If so then find it */
+      374 	if astep ^= null
+      375 	then if aste.fmchanged			/* no one else did update */
+      376 	     then do;
+      377 		     sst$force_updatevs = sst$force_updatevs + 1;
+      378 		     call update_vtoce (astep);
+      379 		end;
+      380 
+      381 	call lock$unlock_ast;
+      382 
+      383 ret:
+      384 	if num_writ = 0
+      385 	then sst$fw_none = sst$fw_none + 1;
+      386 	else sst$force_pwrites = sst$force_pwrites + num_writ;
+      387 
+      388 	return;
+      389 
+      390      end WRITE_ONE_SEGMENT;
+      391 
+      392 
+      393 /* format: off */
+      394  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      394 
+      395  /*  START OF:	flush_structures.incl.pl1     October 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3      dcl	   flush_consecp	      ptr;
+  2     4      dcl	   flushp		      ptr;
+  2     5 
+  2     6      dcl	   1 flush_consec	      aligned based (flush_consecp), /* Structure for flushing consecutive pages */
+  2     7 	     2 version	      fixed bin,		/* Version of this structure */
+  2     8 	     2 n_segs	      fixed bin,		/* Number of segments */
+  2     9 	     2 seg	      (0 refer (flush_consec.n_segs)) aligned, /* One per segment */
+  2    10 	       3 segno	      fixed bin (15),	/* Segment number */
+  2    11 	       3 first_page	      fixed bin,		/* First page (zero-based) */
+  2    12 	       3 n_pages	      fixed bin;		/* Number of pages */
+  2    13 
+  2    14      dcl	   1 flush	      aligned based (flushp), /* Structure for flushing arbitrary pages */
+  2    15 	     2 version	      fixed bin,		/* Version of this structure */
+  2    16 	     2 n_pages	      fixed bin,		/* Number of pages to flush */
+  2    17 	     2 seg_page	      (0 refer (flush.n_pages)), /* One per page - for efficiency group by segment */
+  2    18 	       3 seg_no	      fixed bin (17) unaligned, /* Segment number */
+  2    19 	       3 page_no	      fixed bin (17) unaligned; /* Page number (zero-based */
+  2    20 
+  2    21      dcl	   (FLUSH_CONSEC_VERSION_1 init (1),
+  2    22 	   FLUSH_VERSION_1	      init (1)) fixed bin internal static options (constant);
+  2    23 
+  2    24 /*  END OF:	flush_structures.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      395 
+      396  /*	BEGIN INCLUDE FILE ... force_write_flags.incl.pl1 ... Created January 1977 */
+  3     2 
+  3     3 dcl  fwfp ptr;
+  3     4 
+  3     5 dcl 1 force_write_flags aligned based (fwfp),
+  3     6     2 priority_write bit (1) unal,			/* "1"b if request to be queued for priority write */
+  3     7 						/* "0"b if request to be queued for normal write */
+  3     8     2 serial_write bit (1) unal,			/* "1"b if force write to be done serially */
+  3     9 						/* "0"b if force write to be done in parallel */
+  3    10     2 lru_or_mru bit (1) unal,			/* "1"b thread force written pages into list as mru */
+  3    11 						/* "0"b thread force written pages into lru list */
+  3    12     2 mbz bit (33) unal;
+  3    13 
+  3    14 /*	END INCLUDE FILE ... force_write_flags.incl.pl1 */
+      396 
+      397  /*  START OF:	kst.incl.pl1			  *  *  *  *  *  */
+  4     2 
+  4     3 /*
+  4     4*Modified March 1976 by R. Bratt 
+  4     5*Modified November 1984 to remove hdr, Keith Loepere. */
+  4     6 
+  4     7 
+  4     8 /****^  HISTORY COMMENTS:
+  4     9*  1) change(86-08-08,GDixon), approve(86-08-08,MCR7388),
+  4    10*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+  4    11*     Add warning on use of kste.entryp.
+  4    12*                                                   END HISTORY COMMENTS */
+  4    13 
+  4    14 
+  4    15 dcl  pds$kstp ext ptr,
+  4    16     (kstp, kstep) ptr;
+  4    17 
+  4    18 dcl 1 kst aligned based (kstp),			/* KST header declaration */
+  4    19     2 lowseg fixed bin (17),				/* lowest segment number described by kst */
+  4    20     2 highseg fixed bin (17),				/* highest segment number described by kst */
+  4    21     2 highest_used_segno fixed bin (17),		/* highest segment number yet used  */
+  4    22     2 lvs fixed bin (8),				/* number of private LVs this process is connected to */
+  4    23     2 time_of_bootload fixed bin (71),			/* bootload time during prelinking */
+  4    24     2 garbage_collections fixed bin (17) unaligned,	/* KST garbage collections */
+  4    25     2 entries_collected fixed bin (17) unaligned,		/* KST entries recovered by garbage collection */
+  4    26     2 free_list bit (18) unaligned,			/* relative pointer to first free kste */
+  4    27     2 prelinked_ring (7) bit (1) unaligned,		/* rings prelinked in process */
+  4    28     2 template bit (1) unaligned,			/* this is a template kst if set */
+  4    29     2 allow_256K_connect bit (1) unaligned,		/* can use 256K segments */
+  4    30     2 unused_2 bit (9) unaligned,
+  4    31     2 uid_hash_bucket (0 : 127) bit (18) unaligned,	/* hash buckets */
+  4    32     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+  4    33     2 lv (1:256) bit (36),				/* private logical volume connection list */
+  4    34     2 end_of_kst bit (36);
+  4    35 
+  4    36 dcl 1 kste based (kstep) aligned,			/* KST entry declaration */
+  4    37     2 fp bit (18) unaligned,				/* forward rel pointer */
+  4    38     2 segno fixed bin (17) unaligned,			/* segment number of this kste */
+  4    39     2 usage_count (0:7) fixed bin (8) unaligned,		/* outstanding initiates/ring */
+  4    40     2 entryp ptr unaligned,				/* branch pointer */
+  4    41 						/* See WARNING below for requirements to use entryp. */
+  4    42     2 uid bit (36) aligned,				/* unique identifier */
+  4    43     2 access_information unaligned,
+  4    44       3 dtbm bit (36),				/* date time branch modified */
+  4    45       3 extended_access bit (33),			/* extended access from the branch */
+  4    46       3 access bit (3),				/* rew */
+  4    47       3 ex_rb (3) bit (3),				/* ring brackets from branch */
+  4    48     2 pad1 bit (3) unaligned,
+  4    49     2 flags unaligned,
+  4    50       3 dirsw bit (1),				/* directory switch */
+  4    51       3 allow_write bit (1),				/* set if initiated with write permission */
+  4    52       3 priv_init bit (1),				/* privileged initiation */
+  4    53       3 tms bit (1),				/* transparent modification switch */
+  4    54       3 tus bit (1),				/* transparent usage switch */
+  4    55       3 tpd bit (1),				/* transparent paging device switch */
+  4    56       3 audit bit (1),				/* audit switch */
+  4    57       3 explicit_deact_ok bit (1),			/* set if I am willing to have a user force deactivate */
+  4    58       3 pad bit (3),
+  4    59     2 infcount fixed bin (12) unaligned;		/* _i_f dirsw _t_h_e_n inferior count _e_l_s_e lv index */
+  4    60 
+  4    61 
+  4    62 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    63 /*							       */
+  4    64 /* WARNING: Before using kste.entryp to get a pointer to the directory       */
+  4    65 /* entry associated with the kst entry, you must first validate its value    */
+  4    66 /* by calling sum$getbranch or sum$getbranch_root_my.  This call also locks  */
+  4    67 /* the containing directory.  The containing directory must remain locked    */
+  4    68 /* during the entire period when kste.entryp and the directory entry are     */
+  4    69 /* being referenced.  Once the directory is unlocked, kste.entryp can no     */
+  4    70 /* longer be used to get a pointer to the entry within the unlocked	       */
+  4    71 /* directory since the dir entry could have been moved within the directory  */
+  4    72 /* by another processor.					       */
+  4    73 /*							       */
+  4    74 /* If you only need a pointer to the directory containing the associated     */
+  4    75 /* dir entry (but not to the dir entry itself), you can use:	       */
+  4    76 /*    pointer (kste.entryp, 0)				       */
+  4    77 /* without calling sum to lock the directory and validate entryp.  GDixon    */
+  4    78 /*							       */
+  4    79 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    80 
+  4    81 /*  END OF:	kst.incl.pl1			  *  *  *  *  *  */
+      397 
+      398 
+      399 	end force_write;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    10/23/92  1026.2  force_write.pl1                   >spec>install>1040>force_write.pl1
+394          1    01/30/85  1623.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+395          2    11/23/82  1053.8  flush_structures.incl.pl1         >ldd>include>flush_structures.incl.pl1
+396          3    11/16/78  0818.7  force_write_flags.incl.pl1        >ldd>include>force_write_flags.incl.pl1
+397          4    09/18/86  1408.1  kst.incl.pl1                      >ldd>include>kst.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 48 in procedure "force_write" set ref 28 133*
+                                                                                  136 139* 145* 155* 163* 164 170 173* 179* 202*
+                                                                                  214* 215 225 238*
+Code                                   parameter       fixed bin(35,0)          dcl 247 in procedure "WRITE_ONE_SEGMENT" set ref 244
+                                                                                  264* 272* 284* 305*
+FLUSH_CONSEC_VERSION_1                 constant        fixed bin(17,0)          initial dcl 2-21 ref 143
+FLUSH_VERSION_1                        constant        fixed bin(17,0)          initial dcl 2-21 ref 177
+Flush                                  based           structure                level 1 dcl 76
+Flush_Consec                           based           structure                level 1 dcl 75
+Flush_Consecp                          parameter       pointer                  dcl 49 ref 136 143 149 150 151 152
+Flushp                                 parameter       pointer                  dcl 50 ref 170 177 186 189 194 196 199
+Fwf                                    parameter       bit(36)                  packed unaligned dcl 51 ref 28 127
+Segp                                   parameter       pointer                  dcl 52 ref 28 126
+Write_Limit                            parameter       fixed bin(17,0)          dcl 53 ref 225 229
+addr                                                   builtin function         dcl 113 ref 279 344 344
+addrel                                                 builtin function         dcl 114 ref 309 324 324
+aste                                   based           structure                level 1 dcl 1-11
+astep                           000520 automatic       pointer                  dcl 1-9 set ref 289* 291 295* 298 303 309 319 332*
+                                                                                  344* 347* 351 354* 356 366 366 372 372* 374 374
+                                                                                  378*
+baseno                                                 builtin function         dcl 115 ref 266
+baseptr                                                builtin function         dcl 116 ref 150 190
+code                            000100 automatic       fixed bin(35,0)          dcl 57 set ref 131* 133 231* 235* 238
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 1-11 ref 319
+dirsw                     7(12)        based           bit(1)                   level 3 packed packed unaligned dcl 4-36 ref 282
+done_list                       000101 automatic       bit(1)                   dcl 58 set ref 183* 185 186*
+done_seg                        000102 automatic       bit(1)                   dcl 59 set ref 192* 193 194* 196*
+entryp                    3            based           pointer                  level 2 packed packed unaligned dcl 4-36 ref 280
+error_table_$argerr             000010 external static fixed bin(35,0)          dcl 80 ref 155 202 231
+error_table_$dirseg             000012 external static fixed bin(35,0)          dcl 81 ref 284
+error_table_$invalidsegno       000014 external static fixed bin(35,0)          dcl 82 ref 272 305
+error_table_$unimplemented_version
+                                000016 external static fixed bin(35,0)          dcl 84 ref 145 179
+first_page                3            based           fixed bin(17,0)          array level 3 in structure "Flush_Consec" dcl 75
+                                                                                  in procedure "force_write" ref 151
+first_page                      000540 automatic       fixed bin(17,0)          dcl 249 in procedure "WRITE_ONE_SEGMENT" set ref
+                                                                                  313* 329 329* 340 343
+first_page                      000103 automatic       fixed bin(17,0)          dcl 60 in procedure "force_write" set ref 151* 153
+                                                                                  153 160
+fixed                                                  builtin function         dcl 117 ref 266 319
+flags                     7(12)        based           structure                level 2 packed packed unaligned dcl 4-36
+flush                                  based           structure                level 1 dcl 2-14
+flush_consec                           based           structure                level 1 dcl 2-6
+fmchanged                12(09)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 ref 366 374
+force_write_flags                      based           structure                level 1 dcl 3-5
+force_write_limit               000541 automatic       fixed bin(17,0)          dcl 250 set ref 268* 314 340 342
+fwf                             000104 automatic       structure                level 1 dcl 61 set ref 127* 140* 174*
+get_ptrs_$given_segno           000040 constant        entry                    external dcl 99 ref 289
+have_list                       000105 automatic       bit(1)                   dcl 62 set ref 128* 141* 175* 317 321 344
+hbound                                                 builtin function         dcl 118 ref 206
+highest_used_segno        2            based           fixed bin(17,0)          level 2 dcl 4-18 ref 270
+i                               000542 automatic       fixed bin(17,0)          dcl 251 set ref 320* 321 323 328 329* 343* 344* 344
+                                                                                  344 347* 347 347*
+increment                       000543 automatic       fixed bin(17,0)          dcl 252 set ref 340* 342* 343 344 344 347 347
+kst                                    based           structure                level 1 dcl 4-18
+kst_entry               110            based           structure                array level 2 dcl 4-18 set ref 279
+kste                                   based           structure                level 1 dcl 4-36
+kstep                           000524 automatic       pointer                  dcl 4-15 set ref 279* 280 282 288
+kstp                            000522 automatic       pointer                  dcl 4-15 set ref 267* 270 270 279
+last_page                       000544 automatic       fixed bin(17,0)          dcl 253 set ref 328* 340 343 344 344 347 347
+lock$lock_ast                   000042 constant        entry                    external dcl 101 ref 294 353 370
+lock$unlock_ast                 000044 constant        entry                    external dcl 102 ref 296 355 381
+lowseg                                 based           fixed bin(17,0)          level 2 dcl 4-18 ref 270 279
+lp                              000545 automatic       fixed bin(17,0)          dcl 254 set ref 317* 319* 320
+min                                                    builtin function         dcl 119 ref 344 344 347 347
+n_pages                   1            based           fixed bin(17,0)          level 2 in structure "Flush" dcl 76 in procedure
+                                                                                  "force_write" ref 186 194
+n_pages                         000106 automatic       fixed bin(17,0)          dcl 63 in procedure "force_write" set ref 129* 152*
+                                                                                  153 159 213* 317
+n_pages                   4            based           fixed bin(17,0)          array level 3 in structure "Flush_Consec" dcl 75
+                                                                                  in procedure "force_write" ref 152
+n_segs                    1            based           fixed bin(17,0)          level 2 dcl 75 ref 149
+null                                                   builtin function         dcl 120 ref 291 298 356 374
+num_writ                        000546 automatic       fixed bin(17,0)          dcl 255 set ref 265* 312* 331* 331 338 340 383 386
+page_list                       000107 automatic       fixed bin(17,0)          array dcl 64 set ref 158* 160* 206 208* 321 344 344
+page_no                   2(18)        based           fixed bin(17,0)          array level 3 in structure "Flush" packed packed
+                                                                                  unaligned dcl 76 in procedure "force_write" ref
+                                                                                  199
+page_no                         000507 automatic       fixed bin(17,0)          dcl 65 in procedure "force_write" set ref 199* 200
+                                                                                  200 208
+page_no                         000547 automatic       fixed bin(17,0)          dcl 256 in procedure "WRITE_ONE_SEGMENT" set ref
+                                                                                  321* 323* 324 324 332*
+pagex                           000510 automatic       fixed bin(17,0)          dcl 66 set ref 159* 160 160* 191* 206 208 209* 209
+                                                                                  213
+pc_wired$write_wait_uid         000046 constant        entry                    external dcl 103 ref 332 347
+pc_wired$write_wait_uid_list    000050 constant        entry                    external dcl 105 ref 344
+pds$force_write_limit           000020 external static fixed bin(17,0)          array dcl 86 set ref 234* 268
+pds$kstp                        000060 external static pointer                  dcl 4-15 ref 267
+pds$validation_level            000022 external static fixed bin(17,0)          dcl 88 ref 234 268
+phm_bit                         000550 automatic       bit(1)                   dcl 257 set ref 324* 326
+ptp                             000552 automatic       pointer                  dcl 258 set ref 309* 324 324
+ptw_util_$get_phm               000052 constant        entry                    external dcl 107 ref 324
+search_ast                      000054 constant        entry                    external dcl 108 ref 295 354 372
+seg                       2            based           structure                array level 2 dcl 75
+seg_no                    2            based           fixed bin(17,0)          array level 3 in structure "Flush" packed packed
+                                                                                  unaligned dcl 76 in procedure "force_write" ref
+                                                                                  189 196
+seg_no                          000511 automatic       fixed bin(17,0)          dcl 67 in procedure "force_write" set ref 189* 190
+                                                                                  196
+seg_page                  2            based           structure                array level 2 dcl 76
+seg_pagex                       000512 automatic       fixed bin(17,0)          dcl 68 set ref 184* 186 189 194 196 199 210* 210
+segno                           000554 automatic       fixed bin(17,0)          dcl 259 in procedure "WRITE_ONE_SEGMENT" set ref
+                                                                                  266* 270 270 279 289*
+segno                     2            based           fixed bin(15,0)          array level 3 in structure "Flush_Consec" dcl 75
+                                                                                  in procedure "force_write" ref 150
+segp                            000514 automatic       pointer                  dcl 69 set ref 126* 150* 190* 266
+segx                            000516 automatic       fixed bin(17,0)          dcl 70 set ref 149* 150 151 152*
+serial_write              0(01) 000104 automatic       bit(1)                   level 2 packed packed unaligned dcl 61 set ref 314*
+                                                                                  332 338
+sst$astsize                     000024 external static fixed bin(17,0)          dcl 90 ref 309
+sst$force_pwrites               000026 external static fixed bin(35,0)          dcl 91 set ref 386* 386
+sst$force_swrites               000030 external static fixed bin(35,0)          dcl 92 set ref 277* 277
+sst$force_updatevs              000032 external static fixed bin(35,0)          dcl 93 set ref 377* 377
+sst$fw_none                     000034 external static fixed bin(35,0)          dcl 94 set ref 383* 383
+sst$fw_retries                  000036 external static fixed bin(35,0)          dcl 95 set ref 358* 358
+string                                                 builtin function         dcl 121 set ref 127*
+tuid                            000555 automatic       bit(36)                  dcl 260 set ref 288* 295* 332* 344* 347* 351 354*
+                                                                                  366 372 372*
+uid                       4            based           bit(36)                  level 2 in structure "kste" dcl 4-36 in procedure
+                                                                                  "force_write" ref 288
+uid                       3            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "force_write" ref 303 351
+                                                                                  366 372
+unspec                                                 builtin function         dcl 122 set ref 140* 158* 174* 280
+update_vtoce                    000056 constant        entry                    external dcl 109 ref 378
+version                                based           fixed bin(17,0)          level 2 in structure "Flush" dcl 76 in procedure
+                                                                                  "force_write" ref 177
+version                                based           fixed bin(17,0)          level 2 in structure "Flush_Consec" dcl 75
+                                                                                  in procedure "force_write" ref 143
+write_limit                     000517 automatic       fixed bin(17,0)          dcl 71 set ref 229* 231 231 234
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+flush_consecp                          automatic       pointer                  dcl 2-3
+flushp                                 automatic       pointer                  dcl 2-4
+fwfp                                   automatic       pointer                  dcl 3-3
+seg_aste                               based           structure                level 1 dcl 1-96
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ARGERR                          000274 constant        label                    dcl 202 ref 206
+RETRY                           000516 constant        label                    dcl 309 ref 359
+WRITE_ONE_SEGMENT               000363 constant        entry                    internal dcl 244 ref 131 163 214
+consecutive                     000045 constant        entry                    external dcl 136
+force_write                     000012 constant        entry                    external dcl 28
+list                            000165 constant        entry                    external dcl 170
+ret                             001075 constant        label                    dcl 383 ref 298 306 356 366
+segno_is_bad                    000410 constant        label                    dcl 272 ref 280
+set_force_write_limit           000331 constant        entry                    external dcl 225
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1422        1504    1121        1432
+Length      2006    1121        62         265     300           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+force_write                         408 external procedure  is an external procedure.  
+WRITE_ONE_SEGMENT                       internal procedure  shares stack frame of external procedure force_write.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+force_write              000100 code                        force_write
+                         000101 done_list                   force_write
+                         000102 done_seg                    force_write
+                         000103 first_page                  force_write
+                         000104 fwf                         force_write
+                         000105 have_list                   force_write
+                         000106 n_pages                     force_write
+                         000107 page_list                   force_write
+                         000507 page_no                     force_write
+                         000510 pagex                       force_write
+                         000511 seg_no                      force_write
+                         000512 seg_pagex                   force_write
+                         000514 segp                        force_write
+                         000516 segx                        force_write
+                         000517 write_limit                 force_write
+                         000520 astep                       force_write
+                         000522 kstp                        force_write
+                         000524 kstep                       force_write
+                         000540 first_page                  WRITE_ONE_SEGMENT
+                         000541 force_write_limit           WRITE_ONE_SEGMENT
+                         000542 i                           WRITE_ONE_SEGMENT
+                         000543 increment                   WRITE_ONE_SEGMENT
+                         000544 last_page                   WRITE_ONE_SEGMENT
+                         000545 lp                          WRITE_ONE_SEGMENT
+                         000546 num_writ                    WRITE_ONE_SEGMENT
+                         000547 page_no                     WRITE_ONE_SEGMENT
+                         000550 phm_bit                     WRITE_ONE_SEGMENT
+                         000552 ptp                         WRITE_ONE_SEGMENT
+                         000554 segno                       WRITE_ONE_SEGMENT
+                         000555 tuid                        WRITE_ONE_SEGMENT
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_ptrs_$given_segno         lock$lock_ast                 lock$unlock_ast               pc_wired$write_wait_uid
+pc_wired$write_wait_uid_list  ptw_util_$get_phm             search_ast                    update_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr           error_table_$dirseg           error_table_$invalidsegno
+error_table_$unimplemented_version                          pds$force_write_limit         pds$kstp
+pds$validation_level          sst$astsize                   sst$force_pwrites             sst$force_swrites
+sst$force_updatevs            sst$fw_none                   sst$fw_retries
+
+
+CONSTANTS
+001114  aa     000002000000
+001115  aa     000000000000
+001116  aa     600000000041
+001117  aa     000100000000
+
+001120  aa     777777777777
+
+000000  aa     404000000021
+
+000001  aa     516000000044
+
+000002  aa     464000000000
+
+000003  aa     404000000043
+
+000004  aa     077777000043
+000005  aa     000001000000
+
+BEGIN PROCEDURE force_write
+ENTRY TO force_write                                        STATEMENT 1 ON LINE 28
+force_write:
+     proc (Segp, Fwf, Code);
+
+000006  at     000003000002
+000007  tt     000001000003
+000010  ta     000006000000
+000011  da     000250300000
+000012  aa   000640 6270 00	eax7 	416
+000013  aa  7 00034 3521 20	epp2 	pr7|28,*
+000014  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000015  aa     000006000000
+000016  aa     000000000000
+000017  aa  6 00032 3735 20	epp7 	pr6|26,*
+000020  aa  7 00006 3715 20	epp5 	pr7|6,*
+000021  aa  6 00526 6515 00	spri5	pr6|342
+						STATEMENT 1 ON LINE 126
+	segp = Segp;
+
+000022  aa  7 00002 3535 20	epp3 	pr7|2,*		Segp
+000023  aa  3 00000 3535 20	epp3 	pr3|0,*		Segp
+000024  aa  6 00514 2535 00	spri3	pr6|332		segp
+						STATEMENT 1 ON LINE 127
+	string (fwf) = Fwf;
+
+000025  aa  7 00004 3515 20	epp1 	pr7|4,*
+000026  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000027  aa  1 00000 00 0044	descb	pr1|0,36		Fwf
+000030  aa  6 00104 00 0044	descb	pr6|68,36
+						STATEMENT 1 ON LINE 128
+	have_list = "0"b;
+
+000031  aa  6 00105 4501 00	stz  	pr6|69		have_list
+						STATEMENT 1 ON LINE 129
+	n_pages = -1;
+
+000032  aa   000001 3360 07	lcq  	1,dl
+000033  aa  6 00106 7561 00	stq  	pr6|70		n_pages
+						STATEMENT 1 ON LINE 131
+	call WRITE_ONE_SEGMENT (code);
+
+000034  aa   001060 3520 04	epp2 	560,ic		001114 = 000002000000
+000035  aa   000326 6700 04	tsp4 	214,ic		000363
+						STATEMENT 1 ON LINE 133
+	Code = code;
+
+000036  aa  6 00100 2361 00	ldq  	pr6|64		code
+000037  aa  6 00526 7561 20	stq  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 134
+	return;
+
+000040  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO consecutive                                        STATEMENT 1 ON LINE 136
+consecutive:
+     entry (Flush_Consecp, Code);
+
+000041  at     000002000002
+000042  ta     000003000000
+000043  ta     000041000000
+000044  da     000256300000
+000045  aa   000640 6270 00	eax7 	416
+000046  aa  7 00034 3521 20	epp2 	pr7|28,*
+000047  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000050  aa     000004000000
+000051  aa     000000000000
+000052  aa  6 00032 3735 20	epp7 	pr6|26,*
+000053  aa  7 00004 3715 20	epp5 	pr7|4,*
+000054  aa  6 00526 6515 00	spri5	pr6|342
+						STATEMENT 1 ON LINE 139
+	Code = 0;
+
+000055  aa  6 00526 4501 20	stz  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 140
+	unspec (fwf) = ""b;
+
+000056  aa  6 00104 4501 00	stz  	pr6|68
+						STATEMENT 1 ON LINE 141
+	have_list = "1"b;
+
+000057  aa   400000 2350 03	lda  	131072,du
+000060  aa  6 00105 7551 00	sta  	pr6|69		have_list
+						STATEMENT 1 ON LINE 143
+	if Flush_Consec.version ^= FLUSH_CONSEC_VERSION_1
+	then do;
+
+000061  aa  6 00032 3735 20	epp7 	pr6|26,*
+000062  aa  7 00002 3715 20	epp5 	pr7|2,*		Flush_Consecp
+000063  aa  5 00000 2361 20	ldq  	pr5|0,*		Flush_Consec.version
+000064  aa   000001 1160 07	cmpq 	1,dl
+000065  aa   000005 6000 04	tze  	5,ic		000072
+						STATEMENT 1 ON LINE 145
+		Code = error_table_$unimplemented_version;
+
+000066  aa  6 00044 3701 20	epp4 	pr6|36,*
+000067  la  4 00016 2361 20	ldq  	pr4|14,*		error_table_$unimplemented_version
+000070  aa  6 00526 7561 20	stq  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 146
+		return;
+
+000071  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 147
+	     end;
+
+						STATEMENT 1 ON LINE 149
+	do segx = 1 to Flush_Consec.n_segs;
+
+000072  aa  5 00000 3535 20	epp3 	pr5|0,*		Flush_Consecp
+000073  aa  3 00001 2361 00	ldq  	pr3|1		Flush_Consec.n_segs
+000074  aa  6 00530 7561 00	stq  	pr6|344
+000075  aa   000001 2360 07	ldq  	1,dl
+000076  aa  6 00516 7561 00	stq  	pr6|334		segx
+000077  aa   000000 0110 03	nop  	0,du
+000100  aa  6 00516 2361 00	ldq  	pr6|334		segx
+000101  aa  6 00530 1161 00	cmpq 	pr6|344
+000102  aa   000060 6054 04	tpnz 	48,ic		000162
+						STATEMENT 1 ON LINE 150
+	     segp = baseptr (Flush_Consec.seg (segx).segno);
+
+000103  aa   000003 4020 07	mpy  	3,dl
+000104  aa  6 00032 3735 20	epp7 	pr6|26,*
+000105  aa  7 00002 3715 20	epp5 	pr7|2,*		Flush_Consecp
+000106  aa  5 00000 3715 20	epp5 	pr5|0,*		Flush_Consecp
+000107  aa   000000 6270 06	eax7 	0,ql
+000110  aa  5 77777 2361 06	ldq  	pr5|-1,ql		Flush_Consec.segno
+000111  aa  6 00000 3525 00	epbp2	pr6|0
+000112  aa   000000 3130 06	easp2	0,ql
+000113  aa  6 00514 2521 00	spri2	pr6|332		segp
+						STATEMENT 1 ON LINE 151
+	     first_page = Flush_Consec.seg (segx).first_page;
+
+000114  aa  5 00000 2361 17	ldq  	pr5|0,7		Flush_Consec.first_page
+000115  aa  6 00103 7561 00	stq  	pr6|67		first_page
+						STATEMENT 1 ON LINE 152
+	     n_pages = Flush_Consec.seg (segx).n_pages;
+
+000116  aa  5 00001 2361 17	ldq  	pr5|1,7		Flush_Consec.n_pages
+000117  aa  6 00106 7561 00	stq  	pr6|70		n_pages
+						STATEMENT 1 ON LINE 153
+	     if first_page < 0 | (first_page + n_pages) > 255
+	     then do;
+
+000120  aa  6 00103 2361 00	ldq  	pr6|67		first_page
+000121  aa   000004 6040 04	tmi  	4,ic		000125
+000122  aa  6 00106 0761 00	adq  	pr6|70		n_pages
+000123  aa   000377 1160 07	cmpq 	255,dl
+000124  aa   000005 6044 04	tmoz 	5,ic		000131
+						STATEMENT 1 ON LINE 155
+		     Code = error_table_$argerr;
+
+000125  aa  6 00044 3701 20	epp4 	pr6|36,*
+000126  la  4 00010 2361 20	ldq  	pr4|8,*		error_table_$argerr
+000127  aa  6 00526 7561 20	stq  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 156
+		     return;
+
+000130  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 157
+		end;
+
+						STATEMENT 1 ON LINE 158
+	     unspec (page_list) = ""b;
+
+000131  aa  000 100 100 400	mlr  	(),(pr),fill(000)
+000132  aa   000000 00 0000	desc9a	0,0
+000133  aa  6 00107 00 2000	desc9a	pr6|71,1024
+						STATEMENT 1 ON LINE 159
+	     do pagex = 0 to n_pages - 1;
+
+000134  aa  6 00106 2361 00	ldq  	pr6|70		n_pages
+000135  aa   000001 1760 07	sbq  	1,dl
+000136  aa  6 00531 7561 00	stq  	pr6|345
+000137  aa  6 00510 4501 00	stz  	pr6|328		pagex
+000140  aa  6 00510 2361 00	ldq  	pr6|328		pagex
+000141  aa  6 00531 1161 00	cmpq 	pr6|345
+000142  aa   000006 6054 04	tpnz 	6,ic		000150
+						STATEMENT 1 ON LINE 160
+		page_list (pagex) = first_page + pagex;
+
+000143  aa  6 00103 0761 00	adq  	pr6|67		first_page
+000144  aa  6 00510 7271 00	lxl7 	pr6|328		pagex
+000145  aa  6 00107 7561 17	stq  	pr6|71,7		page_list
+						STATEMENT 1 ON LINE 161
+	     end;
+
+000146  aa  6 00510 0541 00	aos  	pr6|328		pagex
+000147  aa   777771 7100 04	tra  	-7,ic		000140
+						STATEMENT 1 ON LINE 163
+	     call WRITE_ONE_SEGMENT (Code);
+
+000150  aa  6 00526 3521 20	epp2 	pr6|342,*		Code
+000151  aa  6 00564 2521 00	spri2	pr6|372
+000152  aa  6 00562 3521 00	epp2 	pr6|370
+000153  aa   004000 4310 07	fld  	2048,dl
+000154  aa  2 00000 7571 00	staq 	pr2|0
+000155  aa   000206 6700 04	tsp4 	134,ic		000363
+						STATEMENT 1 ON LINE 164
+	     if Code ^= 0
+	     then return;
+
+000156  aa  6 00526 2361 20	ldq  	pr6|342,*		Code
+000157  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 166
+	end;
+
+000160  aa  6 00516 0541 00	aos  	pr6|334		segx
+000161  aa   777717 7100 04	tra  	-49,ic		000100
+						STATEMENT 1 ON LINE 168
+	return;
+
+000162  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO list                                               STATEMENT 1 ON LINE 170
+list:
+     entry (Flushp, Code);
+
+000163  ta     000041000000
+000164  da     000263300000
+000165  aa   000640 6270 00	eax7 	416
+000166  aa  7 00034 3521 20	epp2 	pr7|28,*
+000167  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000170  aa     000004000000
+000171  aa     000000000000
+000172  aa  6 00032 3735 20	epp7 	pr6|26,*
+000173  aa  7 00004 3715 20	epp5 	pr7|4,*
+000174  aa  6 00526 6515 00	spri5	pr6|342
+						STATEMENT 1 ON LINE 173
+	Code = 0;
+
+000175  aa  6 00526 4501 20	stz  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 174
+	unspec (fwf) = ""b;
+
+000176  aa  6 00104 4501 00	stz  	pr6|68
+						STATEMENT 1 ON LINE 175
+	have_list = "1"b;
+
+000177  aa   400000 2350 03	lda  	131072,du
+000200  aa  6 00105 7551 00	sta  	pr6|69		have_list
+						STATEMENT 1 ON LINE 177
+	if Flush.version ^= FLUSH_VERSION_1
+	then do;
+
+000201  aa  6 00032 3735 20	epp7 	pr6|26,*
+000202  aa  7 00002 3715 20	epp5 	pr7|2,*		Flushp
+000203  aa  5 00000 2361 20	ldq  	pr5|0,*		Flush.version
+000204  aa   000001 1160 07	cmpq 	1,dl
+000205  aa   000005 6000 04	tze  	5,ic		000212
+						STATEMENT 1 ON LINE 179
+		Code = error_table_$unimplemented_version;
+
+000206  aa  6 00044 3701 20	epp4 	pr6|36,*
+000207  la  4 00016 2361 20	ldq  	pr4|14,*		error_table_$unimplemented_version
+000210  aa  6 00526 7561 20	stq  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 180
+		return;
+
+000211  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 181
+	     end;
+
+						STATEMENT 1 ON LINE 183
+	done_list = "0"b;
+
+000212  aa  6 00101 4501 00	stz  	pr6|65		done_list
+						STATEMENT 1 ON LINE 184
+	seg_pagex = 1;
+
+000213  aa   000001 2360 07	ldq  	1,dl
+000214  aa  6 00512 7561 00	stq  	pr6|330		seg_pagex
+						STATEMENT 1 ON LINE 185
+	do while (^done_list);
+
+000215  aa   000000 0110 03	nop  	0,du
+000216  aa  6 00101 2351 00	lda  	pr6|65		done_list
+000217  aa   000105 6010 04	tnz  	69,ic		000324
+						STATEMENT 1 ON LINE 186
+	     if seg_pagex > Flush.n_pages
+	     then done_list = "1"b;
+
+000220  aa  6 00512 2361 00	ldq  	pr6|330		seg_pagex
+000221  aa  6 00032 3735 20	epp7 	pr6|26,*
+000222  aa  7 00002 3715 20	epp5 	pr7|2,*		Flushp
+000223  aa  5 00000 3715 20	epp5 	pr5|0,*		Flushp
+000224  aa  5 00001 1161 00	cmpq 	pr5|1		Flush.n_pages
+000225  aa   000004 6044 04	tmoz 	4,ic		000231
+000226  aa   400000 2350 03	lda  	131072,du
+000227  aa  6 00101 7551 00	sta  	pr6|65		done_list
+000230  aa   777766 7100 04	tra  	-10,ic		000216
+						STATEMENT 1 ON LINE 188
+	     else do;
+
+						STATEMENT 1 ON LINE 189
+		     seg_no = Flush.seg_page (seg_pagex).seg_no;
+
+000231  aa  5 00001 2351 06	lda  	pr5|1,ql		Flush.seg_no
+000232  aa   000066 7330 00	lrs  	54
+000233  aa  6 00511 7561 00	stq  	pr6|329		seg_no
+						STATEMENT 1 ON LINE 190
+		     segp = baseptr (seg_no);
+
+000234  aa  6 00000 3525 00	epbp2	pr6|0
+000235  aa   000000 3130 06	easp2	0,ql
+000236  aa  6 00514 2521 00	spri2	pr6|332		segp
+						STATEMENT 1 ON LINE 191
+		     pagex = 0;
+
+000237  aa  6 00510 4501 00	stz  	pr6|328		pagex
+						STATEMENT 1 ON LINE 192
+		     done_seg = "0"b;
+
+000240  aa  6 00102 4501 00	stz  	pr6|66		done_seg
+						STATEMENT 1 ON LINE 193
+		     do while (^done_seg);
+
+000241  aa   000000 0110 03	nop  	0,du
+000242  aa  6 00102 2351 00	lda  	pr6|66		done_seg
+000243  aa   000046 6010 04	tnz  	38,ic		000311
+						STATEMENT 1 ON LINE 194
+			if seg_pagex > Flush.n_pages
+			then done_seg = "1"b;
+
+000244  aa  6 00512 2361 00	ldq  	pr6|330		seg_pagex
+000245  aa  6 00032 3735 20	epp7 	pr6|26,*
+000246  aa  7 00002 3715 20	epp5 	pr7|2,*		Flushp
+000247  aa  5 00000 3715 20	epp5 	pr5|0,*		Flushp
+000250  aa  5 00001 1161 00	cmpq 	pr5|1		Flush.n_pages
+000251  aa   000004 6044 04	tmoz 	4,ic		000255
+000252  aa   400000 2350 03	lda  	131072,du
+000253  aa  6 00102 7551 00	sta  	pr6|66		done_seg
+000254  aa   777766 7100 04	tra  	-10,ic		000242
+						STATEMENT 1 ON LINE 196
+			else if Flush.seg_page (seg_pagex).seg_no ^= seg_no
+			then done_seg = "1"b;
+
+000255  aa  5 00001 2351 06	lda  	pr5|1,ql		Flush.seg_no
+000256  aa   000066 7330 00	lrs  	54
+000257  aa  6 00511 1161 00	cmpq 	pr6|329		seg_no
+000260  aa   000004 6000 04	tze  	4,ic		000264
+000261  aa   400000 2350 03	lda  	131072,du
+000262  aa  6 00102 7551 00	sta  	pr6|66		done_seg
+000263  aa   777757 7100 04	tra  	-17,ic		000242
+						STATEMENT 1 ON LINE 198
+			else do;
+
+						STATEMENT 1 ON LINE 199
+				page_no = Flush.seg_page (seg_pagex).page_no;
+
+000264  aa  6 00512 7271 00	lxl7 	pr6|330		seg_pagex
+000265  aa  5 00001 2351 17	lda  	pr5|1,7		Flush.page_no
+000266  aa   000022 7350 00	als  	18
+000267  aa   000066 7330 00	lrs  	54
+000270  aa  6 00507 7561 00	stq  	pr6|327		page_no
+						STATEMENT 1 ON LINE 200
+				if page_no < 0 | page_no > 255
+				then do;
+
+000271  aa   000003 6040 04	tmi  	3,ic		000274
+000272  aa   000377 1160 07	cmpq 	255,dl
+000273  aa   000005 6044 04	tmoz 	5,ic		000300
+						STATEMENT 1 ON LINE 202
+ARGERR:
+					Code = error_table_$argerr;
+
+000274  aa  6 00044 3701 20	epp4 	pr6|36,*
+000275  la  4 00010 2361 20	ldq  	pr4|8,*		error_table_$argerr
+000276  aa  6 00526 7561 20	stq  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 204
+					return;
+
+000277  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 205
+				     end;
+
+						STATEMENT 1 ON LINE 206
+				if pagex > hbound (page_list, 1)
+				then goto ARGERR;
+
+000300  aa  6 00510 2361 00	ldq  	pr6|328		pagex
+000301  aa   000377 1160 07	cmpq 	255,dl
+000302  aa   777772 6054 04	tpnz 	-6,ic		000274
+						STATEMENT 1 ON LINE 208
+				page_list (pagex) = page_no;
+
+000303  aa  6 00507 2361 00	ldq  	pr6|327		page_no
+000304  aa  6 00510 7261 00	lxl6 	pr6|328		pagex
+000305  aa  6 00107 7561 16	stq  	pr6|71,6		page_list
+						STATEMENT 1 ON LINE 209
+				pagex = pagex + 1;
+
+000306  aa  6 00510 0541 00	aos  	pr6|328		pagex
+						STATEMENT 1 ON LINE 210
+				seg_pagex = seg_pagex + 1;
+
+000307  aa  6 00512 0541 00	aos  	pr6|330		seg_pagex
+						STATEMENT 1 ON LINE 211
+			     end;
+
+						STATEMENT 1 ON LINE 212
+		     end;
+
+000310  aa   777732 7100 04	tra  	-38,ic		000242
+						STATEMENT 1 ON LINE 213
+		     n_pages = pagex;
+
+000311  aa  6 00510 2361 00	ldq  	pr6|328		pagex
+000312  aa  6 00106 7561 00	stq  	pr6|70		n_pages
+						STATEMENT 1 ON LINE 214
+		     call WRITE_ONE_SEGMENT (Code);
+
+000313  aa  6 00526 3521 20	epp2 	pr6|342,*		Code
+000314  aa  6 00564 2521 00	spri2	pr6|372
+000315  aa  6 00562 3521 00	epp2 	pr6|370
+000316  aa   004000 4310 07	fld  	2048,dl
+000317  aa  2 00000 7571 00	staq 	pr2|0
+000320  aa   000043 6700 04	tsp4 	35,ic		000363
+						STATEMENT 1 ON LINE 215
+		     if Code ^= 0
+		     then return;
+
+000321  aa  6 00526 2361 20	ldq  	pr6|342,*		Code
+000322  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 217
+		end;
+
+						STATEMENT 1 ON LINE 218
+	end;
+
+000323  aa   777673 7100 04	tra  	-69,ic		000216
+						STATEMENT 1 ON LINE 220
+	return;
+
+000324  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO set_force_write_limit                              STATEMENT 1 ON LINE 225
+set_force_write_limit:
+     entry (Write_Limit, Code);
+
+000325  at     000002000000
+000326  ta     000003000000
+000327  ta     000325000000
+000330  da     000274300000
+000331  aa   000640 6270 00	eax7 	416
+000332  aa  7 00034 3521 20	epp2 	pr7|28,*
+000333  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000334  aa     000004000000
+000335  aa     000000000000
+000336  aa  6 00032 3735 20	epp7 	pr6|26,*
+000337  aa  7 00004 3715 20	epp5 	pr7|4,*
+000340  aa  6 00526 6515 00	spri5	pr6|342
+						STATEMENT 1 ON LINE 229
+	write_limit = Write_Limit;
+
+000341  aa  6 00032 3735 20	epp7 	pr6|26,*
+000342  aa  7 00002 2361 20	ldq  	pr7|2,*		Write_Limit
+000343  aa  6 00517 7561 00	stq  	pr6|335		write_limit
+						STATEMENT 1 ON LINE 231
+	if write_limit < 1 | write_limit > 256
+	then code = error_table_$argerr;
+
+000344  aa   000001 1160 07	cmpq 	1,dl
+000345  aa   000003 6040 04	tmi  	3,ic		000350
+000346  aa   000400 1160 07	cmpq 	256,dl
+000347  aa   000005 6044 04	tmoz 	5,ic		000354
+000350  aa  6 00044 3701 20	epp4 	pr6|36,*
+000351  la  4 00010 2361 20	ldq  	pr4|8,*		error_table_$argerr
+000352  aa  6 00100 7561 00	stq  	pr6|64		code
+000353  aa   000005 7100 04	tra  	5,ic		000360
+						STATEMENT 1 ON LINE 233
+	else do;
+
+						STATEMENT 1 ON LINE 234
+		pds$force_write_limit (pds$validation_level) = write_limit;
+
+000354  aa  6 00044 3701 20	epp4 	pr6|36,*
+000355  la  4 00022 7271 20	lxl7 	pr4|18,*		pds$validation_level
+000356  la  4 00020 7561 77	stq  	pr4|16,*7		pds$force_write_limit
+						STATEMENT 1 ON LINE 235
+		code = 0;
+
+000357  aa  6 00100 4501 00	stz  	pr6|64		code
+						STATEMENT 1 ON LINE 236
+	     end;
+
+						STATEMENT 1 ON LINE 238
+	Code = code;
+
+000360  aa  6 00100 2361 00	ldq  	pr6|64		code
+000361  aa  6 00526 7561 20	stq  	pr6|342,*		Code
+						STATEMENT 1 ON LINE 239
+	return;
+
+000362  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 399
+	end force_write;
+
+BEGIN PROCEDURE WRITE_ONE_SEGMENT
+ENTRY TO WRITE_ONE_SEGMENT                                  STATEMENT 1 ON LINE 244
+WRITE_ONE_SEGMENT:
+     proc (Code);
+
+000363  aa  6 00532 6501 00	spri4	pr6|346
+000364  aa  6 00534 2521 00	spri2	pr6|348
+						STATEMENT 1 ON LINE 264
+	Code = 0;
+
+000365  aa  2 00002 4501 20	stz  	pr2|2,*		Code
+						STATEMENT 1 ON LINE 265
+	num_writ = 0;
+
+000366  aa  6 00546 4501 00	stz  	pr6|358		num_writ
+						STATEMENT 1 ON LINE 266
+	segno = fixed (baseno (segp));
+
+000367  aa  6 00514 2131 20	epaq 	pr6|332,*		segp
+000370  aa   077777 3750 03	ana  	32767,du
+000371  aa   000066 7730 00	lrl  	54
+000372  aa  6 00554 7561 00	stq  	pr6|364		segno
+						STATEMENT 1 ON LINE 267
+	kstp = pds$kstp;
+
+000373  aa  6 00044 3701 20	epp4 	pr6|36,*
+000374  la  4 00060 3735 20	epp7 	pr4|48,*		pds$kstp
+000375  aa  7 00000 3735 20	epp7 	pr7|0,*		pds$kstp
+000376  aa  6 00522 6535 00	spri7	pr6|338		kstp
+						STATEMENT 1 ON LINE 268
+	force_write_limit = pds$force_write_limit (pds$validation_level);
+
+000377  la  4 00022 7271 20	lxl7 	pr4|18,*		pds$validation_level
+000400  la  4 00020 2361 77	ldq  	pr4|16,*7		pds$force_write_limit
+000401  aa  6 00541 7561 00	stq  	pr6|353		force_write_limit
+						STATEMENT 1 ON LINE 270
+	if segno < kst.lowseg | segno > kst.highest_used_segno
+	then do;
+
+000402  aa  6 00554 2361 00	ldq  	pr6|364		segno
+000403  aa  6 00522 1161 20	cmpq 	pr6|338,*		kst.lowseg
+000404  aa   000004 6040 04	tmi  	4,ic		000410
+000405  aa  6 00522 3715 20	epp5 	pr6|338,*		kstp
+000406  aa  5 00002 1161 00	cmpq 	pr5|2		kst.highest_used_segno
+000407  aa   000006 6044 04	tmoz 	6,ic		000415
+						STATEMENT 1 ON LINE 272
+segno_is_bad:
+		Code = error_table_$invalidsegno;
+
+000410  aa  6 00044 3701 20	epp4 	pr6|36,*
+000411  la  4 00014 2361 20	ldq  	pr4|12,*		error_table_$invalidsegno
+000412  aa  6 00534 3735 20	epp7 	pr6|348,*
+000413  aa  7 00002 7561 20	stq  	pr7|2,*		Code
+						STATEMENT 1 ON LINE 274
+		return;
+
+000414  aa  6 00532 6101 00	rtcd 	pr6|346
+						STATEMENT 1 ON LINE 275
+	     end;
+
+						STATEMENT 1 ON LINE 277
+	sst$force_swrites = sst$force_swrites + 1;
+
+000415  la  4 00030 2351 20	lda  	pr4|24,*		sst$force_swrites
+000416  aa   000044 7330 00	lrs  	36
+000417  aa   000001 0330 07	adl  	1,dl
+000420  la  4 00030 7561 20	stq  	pr4|24,*		sst$force_swrites
+						STATEMENT 1 ON LINE 279
+	kstep = addr (kst.kst_entry (segno));
+
+000421  aa  5 00000 2361 00	ldq  	pr5|0		kst.lowseg
+000422  aa   000003 7360 00	qls  	3
+000423  aa  6 00570 7561 00	stq  	pr6|376
+000424  aa  6 00554 2361 00	ldq  	pr6|364		segno
+000425  aa   000003 7360 00	qls  	3
+000426  aa  6 00570 1761 00	sbq  	pr6|376
+000427  aa  5 00110 3535 06	epp3 	pr5|72,ql		kst.kst_entry
+000430  aa  6 00524 2535 00	spri3	pr6|340		kstep
+						STATEMENT 1 ON LINE 280
+	if unspec (kste.entryp) = ""b
+	then goto segno_is_bad;
+
+000431  aa  3 00003 2351 00	lda  	pr3|3
+000432  aa   777756 6000 04	tze  	-18,ic		000410
+						STATEMENT 1 ON LINE 282
+	if kste.dirsw
+	then do;
+
+000433  aa  3 00007 2351 00	lda  	pr3|7		kste.dirsw
+000434  aa   000040 3150 03	cana 	32,du
+000435  aa   000004 6000 04	tze  	4,ic		000441
+						STATEMENT 1 ON LINE 284
+		Code = error_table_$dirseg;
+
+000436  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$dirseg
+000437  aa  2 00002 7561 20	stq  	pr2|2,*		Code
+						STATEMENT 1 ON LINE 285
+		return;
+
+000440  aa  6 00532 6101 00	rtcd 	pr6|346
+						STATEMENT 1 ON LINE 286
+	     end;
+
+						STATEMENT 1 ON LINE 288
+	tuid = kste.uid;
+
+000441  aa  3 00004 2351 00	lda  	pr3|4		kste.uid
+000442  aa  6 00555 7551 00	sta  	pr6|365		tuid
+						STATEMENT 1 ON LINE 289
+	astep = get_ptrs_$given_segno (segno);
+
+000443  aa  6 00554 3521 00	epp2 	pr6|364		segno
+000444  aa  6 00574 2521 00	spri2	pr6|380
+000445  aa  6 00520 3521 00	epp2 	pr6|336		astep
+000446  aa  6 00576 2521 00	spri2	pr6|382
+000447  aa  6 00572 6211 00	eax1 	pr6|378
+000450  aa   010000 4310 07	fld  	4096,dl
+000451  la  4 00040 3521 20	epp2 	pr4|32,*		get_ptrs_$given_segno
+000452  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 291
+	if astep = null
+	then do;
+
+000453  aa  6 00520 2371 00	ldaq 	pr6|336		astep
+000454  aa   777330 6770 04	eraq 	-296,ic		000004 = 077777000043 000001000000
+000455  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000456  aa   000030 6010 04	tnz  	24,ic		000506
+						STATEMENT 1 ON LINE 294
+		call lock$lock_ast;
+
+000457  aa  6 00056 6211 00	eax1 	pr6|46
+000460  aa   000000 4310 07	fld  	0,dl
+000461  aa  6 00044 3701 20	epp4 	pr6|36,*
+000462  la  4 00042 3521 20	epp2 	pr4|34,*		lock$lock_ast
+000463  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 295
+		astep = search_ast (tuid);
+
+000464  aa  6 00555 3521 00	epp2 	pr6|365		tuid
+000465  aa  6 00574 2521 00	spri2	pr6|380
+000466  aa  6 00520 3521 00	epp2 	pr6|336		astep
+000467  aa  6 00576 2521 00	spri2	pr6|382
+000470  aa  6 00572 6211 00	eax1 	pr6|378
+000471  aa   010000 4310 07	fld  	4096,dl
+000472  aa  6 00044 3701 20	epp4 	pr6|36,*
+000473  la  4 00054 3521 20	epp2 	pr4|44,*		search_ast
+000474  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 296
+		call lock$unlock_ast;
+
+000475  aa  6 00056 6211 00	eax1 	pr6|46
+000476  aa   000000 4310 07	fld  	0,dl
+000477  aa  6 00044 3701 20	epp4 	pr6|36,*
+000500  la  4 00044 3521 20	epp2 	pr4|36,*		lock$unlock_ast
+000501  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 298
+		if astep = null			/* Segment is not active */
+		then goto ret;
+
+000502  aa  6 00520 2371 00	ldaq 	pr6|336		astep
+000503  aa   777301 6770 04	eraq 	-319,ic		000004 = 077777000043 000001000000
+000504  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000505  aa   000370 6000 04	tze  	248,ic		001075
+						STATEMENT 1 ON LINE 301
+	     end;
+
+						STATEMENT 1 ON LINE 303
+	if aste.uid = ""b
+	then do;
+
+000506  aa  6 00520 3735 20	epp7 	pr6|336,*		astep
+000507  aa  7 00003 2351 00	lda  	pr7|3		aste.uid
+000510  aa   000006 6010 04	tnz  	6,ic		000516
+						STATEMENT 1 ON LINE 305
+		Code = error_table_$invalidsegno;
+
+000511  aa  6 00044 3701 20	epp4 	pr6|36,*
+000512  la  4 00014 2361 20	ldq  	pr4|12,*		error_table_$invalidsegno
+000513  aa  6 00534 3715 20	epp5 	pr6|348,*
+000514  aa  5 00002 7561 20	stq  	pr5|2,*		Code
+						STATEMENT 1 ON LINE 306
+		goto ret;
+
+000515  aa   000360 7100 04	tra  	240,ic		001075
+						STATEMENT 1 ON LINE 307
+	     end;
+
+						STATEMENT 1 ON LINE 309
+RETRY:
+	ptp = addrel (astep, sst$astsize);
+
+000516  aa  6 00044 3701 20	epp4 	pr6|36,*
+000517  la  4 00024 2361 20	ldq  	pr4|20,*		sst$astsize
+000520  aa  6 00520 3521 66	epp2 	pr6|336,*ql	astep
+000521  aa   000000 0520 03	adwp2	0,du
+000522  aa  6 00552 2521 00	spri2	pr6|362		ptp
+						STATEMENT 1 ON LINE 312
+	num_writ = 0;
+
+000523  aa  6 00546 4501 00	stz  	pr6|358		num_writ
+						STATEMENT 1 ON LINE 313
+	first_page = -1;
+
+000524  aa   000001 3360 07	lcq  	1,dl
+000525  aa  6 00540 7561 00	stq  	pr6|352		first_page
+						STATEMENT 1 ON LINE 314
+	if force_write_limit < 2
+	then fwf.serial_write = "1"b;
+
+000526  aa  6 00541 2361 00	ldq  	pr6|353		force_write_limit
+000527  aa   000002 1160 07	cmpq 	2,dl
+000530  aa   000003 6050 04	tpl  	3,ic		000533
+000531  aa   200000 2350 03	lda  	65536,du
+000532  aa  6 00104 2551 00	orsa 	pr6|68		fwf.serial_write
+						STATEMENT 1 ON LINE 317
+	if have_list
+	then lp = n_pages - 1;
+
+000533  aa  6 00105 2351 00	lda  	pr6|69		have_list
+000534  aa   000005 6000 04	tze  	5,ic		000541
+000535  aa  6 00106 2361 00	ldq  	pr6|70		n_pages
+000536  aa   000001 1760 07	sbq  	1,dl
+000537  aa  6 00545 7561 00	stq  	pr6|357		lp
+000540  aa   000006 7100 04	tra  	6,ic		000546
+						STATEMENT 1 ON LINE 319
+	else lp = fixed (aste.csl, 9) - 1;
+
+000541  aa  6 00520 3735 20	epp7 	pr6|336,*		astep
+000542  aa  7 00012 2351 00	lda  	pr7|10		aste.csl
+000543  aa   000077 7730 00	lrl  	63
+000544  aa   000001 1760 07	sbq  	1,dl
+000545  aa  6 00545 7561 00	stq  	pr6|357		lp
+						STATEMENT 1 ON LINE 320
+	do i = 0 to lp;
+
+000546  aa  6 00556 7561 00	stq  	pr6|366
+000547  aa  6 00542 4501 00	stz  	pr6|354		i
+000550  aa  6 00542 2361 00	ldq  	pr6|354		i
+000551  aa  6 00556 1161 00	cmpq 	pr6|366
+000552  aa   000062 6054 04	tpnz 	50,ic		000634
+						STATEMENT 1 ON LINE 321
+	     if have_list
+	     then page_no = page_list (i);
+
+000553  aa  6 00105 2351 00	lda  	pr6|69		have_list
+000554  aa   000004 6000 04	tze  	4,ic		000560
+000555  aa  6 00107 2361 06	ldq  	pr6|71,ql		page_list
+000556  aa  6 00547 7561 00	stq  	pr6|359		page_no
+000557  aa   000002 7100 04	tra  	2,ic		000561
+						STATEMENT 1 ON LINE 323
+	     else page_no = i;
+
+000560  aa  6 00547 7561 00	stq  	pr6|359		page_no
+						STATEMENT 1 ON LINE 324
+	     call ptw_util_$get_phm (addrel (ptp, page_no), phm_bit);
+
+000561  aa  6 00552 3521 66	epp2 	pr6|362,*ql	ptp
+000562  aa   000000 0520 03	adwp2	0,du
+000563  aa  6 00600 2521 00	spri2	pr6|384
+000564  aa  6 00600 3521 00	epp2 	pr6|384
+000565  aa  6 00574 2521 00	spri2	pr6|380
+000566  aa  6 00550 3521 00	epp2 	pr6|360		phm_bit
+000567  aa  6 00576 2521 00	spri2	pr6|382
+000570  aa  6 00572 6211 00	eax1 	pr6|378
+000571  aa   010000 4310 07	fld  	4096,dl
+000572  aa  6 00044 3701 20	epp4 	pr6|36,*
+000573  la  4 00052 3521 20	epp2 	pr4|42,*		ptw_util_$get_phm
+000574  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 326
+	     if phm_bit				/* See if page needs writing, */
+	     then do;
+
+000575  aa  6 00550 2351 00	lda  	pr6|360		phm_bit
+000576  aa   400000 3150 03	cana 	131072,du
+000577  aa   000033 6000 04	tze  	27,ic		000632
+						STATEMENT 1 ON LINE 328
+		     last_page = i;
+
+000600  aa  6 00542 2361 00	ldq  	pr6|354		i
+000601  aa  6 00544 7561 00	stq  	pr6|356		last_page
+						STATEMENT 1 ON LINE 329
+		     if first_page = -1
+		     then first_page = i;
+
+000602  aa  6 00540 2361 00	ldq  	pr6|352		first_page
+000603  aa   000315 1160 04	cmpq 	205,ic		001120 = 777777777777
+000604  aa   000003 6010 04	tnz  	3,ic		000607
+000605  aa  6 00542 2361 00	ldq  	pr6|354		i
+000606  aa  6 00540 7561 00	stq  	pr6|352		first_page
+						STATEMENT 1 ON LINE 331
+		     num_writ = num_writ + 1;
+
+000607  aa  6 00546 0541 00	aos  	pr6|358		num_writ
+						STATEMENT 1 ON LINE 332
+		     if fwf.serial_write
+		     then call pc_wired$write_wait_uid (astep, page_no, 1, tuid);
+
+000610  aa  6 00104 2351 00	lda  	pr6|68		fwf.serial_write
+000611  aa   200000 3150 03	cana 	65536,du
+000612  aa   000020 6000 04	tze  	16,ic		000632
+000613  aa   000001 2360 07	ldq  	1,dl
+000614  aa  6 00571 7561 00	stq  	pr6|377
+000615  aa  6 00520 3521 00	epp2 	pr6|336		astep
+000616  aa  6 00604 2521 00	spri2	pr6|388
+000617  aa  6 00547 3521 00	epp2 	pr6|359		page_no
+000620  aa  6 00606 2521 00	spri2	pr6|390
+000621  aa  6 00571 3521 00	epp2 	pr6|377
+000622  aa  6 00610 2521 00	spri2	pr6|392
+000623  aa  6 00555 3521 00	epp2 	pr6|365		tuid
+000624  aa  6 00612 2521 00	spri2	pr6|394
+000625  aa  6 00602 6211 00	eax1 	pr6|386
+000626  aa   020000 4310 07	fld  	8192,dl
+000627  aa  6 00044 3701 20	epp4 	pr6|36,*
+000630  la  4 00046 3521 20	epp2 	pr4|38,*		pc_wired$write_wait_uid
+000631  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 334
+		end;
+
+						STATEMENT 1 ON LINE 335
+	end;
+
+000632  aa  6 00542 0541 00	aos  	pr6|354		i
+000633  aa   777715 7100 04	tra  	-51,ic		000550
+						STATEMENT 1 ON LINE 338
+	if ^fwf.serial_write & num_writ ^= 0		/* If parallel write and we have pages */
+	then do;
+
+000634  aa  6 00104 2351 00	lda  	pr6|68		fwf.serial_write
+000635  aa   200000 3150 03	cana 	65536,du
+000636  aa   000116 6010 04	tnz  	78,ic		000754
+000637  aa  6 00546 2361 00	ldq  	pr6|358		num_writ
+000640  aa   000114 6000 04	tze  	76,ic		000754
+						STATEMENT 1 ON LINE 340
+		if num_writ <= force_write_limit
+		then increment = last_page - first_page + 1;
+
+000641  aa  6 00541 1161 00	cmpq 	pr6|353		force_write_limit
+000642  aa   000006 6054 04	tpnz 	6,ic		000650
+000643  aa  6 00544 2361 00	ldq  	pr6|356		last_page
+000644  aa  6 00540 1761 00	sbq  	pr6|352		first_page
+000645  aa   000001 0760 07	adq  	1,dl
+000646  aa  6 00543 7561 00	stq  	pr6|355		increment
+000647  aa   000003 7100 04	tra  	3,ic		000652
+						STATEMENT 1 ON LINE 342
+		else increment = force_write_limit;
+
+000650  aa  6 00541 2361 00	ldq  	pr6|353		force_write_limit
+000651  aa  6 00543 7561 00	stq  	pr6|355		increment
+						STATEMENT 1 ON LINE 343
+		do i = first_page to last_page by increment;
+
+000652  aa  6 00544 2361 00	ldq  	pr6|356		last_page
+000653  aa  6 00557 7561 00	stq  	pr6|367
+000654  aa  6 00543 2361 00	ldq  	pr6|355		increment
+000655  aa  6 00560 7561 00	stq  	pr6|368
+000656  aa  6 00540 2361 00	ldq  	pr6|352		first_page
+000657  aa  6 00542 7561 00	stq  	pr6|354		i
+000660  aa  6 00560 2361 00	ldq  	pr6|368
+000661  aa   000004 6040 04	tmi  	4,ic		000665
+000662  aa  6 00542 2361 00	ldq  	pr6|354		i
+000663  aa  6 00557 1161 00	cmpq 	pr6|367
+000664  aa   000070 6054 04	tpnz 	56,ic		000754
+000665  aa  6 00560 2361 00	ldq  	pr6|368
+000666  aa   000004 6050 04	tpl  	4,ic		000672
+000667  aa  6 00542 2361 00	ldq  	pr6|354		i
+000670  aa  6 00557 1161 00	cmpq 	pr6|367
+000671  aa   000063 6040 04	tmi  	51,ic		000754
+						STATEMENT 1 ON LINE 344
+		     if have_list
+		     then call pc_wired$write_wait_uid_list (astep, addr (page_list), i,
+			     min ((last_page - i + 1), increment), tuid);
+
+000672  aa  6 00105 2351 00	lda  	pr6|69		have_list
+000673  aa   000032 6000 04	tze  	26,ic		000725
+000674  aa  6 00107 3735 00	epp7 	pr6|71		page_list
+000675  aa  6 00600 6535 00	spri7	pr6|384
+000676  aa  6 00544 2361 00	ldq  	pr6|356		last_page
+000677  aa  6 00542 1761 00	sbq  	pr6|354		i
+000700  aa   000001 0760 07	adq  	1,dl
+000701  aa  6 00543 1161 00	cmpq 	pr6|355		increment
+000702  aa   000002 6040 04	tmi  	2,ic		000704
+000703  aa  6 00543 2361 00	ldq  	pr6|355		increment
+000704  aa  6 00571 7561 00	stq  	pr6|377
+000705  aa  6 00520 3521 00	epp2 	pr6|336		astep
+000706  aa  6 00616 2521 00	spri2	pr6|398
+000707  aa  6 00600 3521 00	epp2 	pr6|384
+000710  aa  6 00620 2521 00	spri2	pr6|400
+000711  aa  6 00542 3521 00	epp2 	pr6|354		i
+000712  aa  6 00622 2521 00	spri2	pr6|402
+000713  aa  6 00571 3521 00	epp2 	pr6|377
+000714  aa  6 00624 2521 00	spri2	pr6|404
+000715  aa  6 00555 3521 00	epp2 	pr6|365		tuid
+000716  aa  6 00626 2521 00	spri2	pr6|406
+000717  aa  6 00614 6211 00	eax1 	pr6|396
+000720  aa   024000 4310 07	fld  	10240,dl
+000721  aa  6 00044 3701 20	epp4 	pr6|36,*
+000722  la  4 00050 3521 20	epp2 	pr4|40,*		pc_wired$write_wait_uid_list
+000723  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000724  aa   000025 7100 04	tra  	21,ic		000751
+						STATEMENT 1 ON LINE 347
+		     else call pc_wired$write_wait_uid (astep, i, min ((last_page - i + 1), increment), tuid);
+
+000725  aa  6 00544 2361 00	ldq  	pr6|356		last_page
+000726  aa  6 00542 1761 00	sbq  	pr6|354		i
+000727  aa   000001 0760 07	adq  	1,dl
+000730  aa  6 00543 1161 00	cmpq 	pr6|355		increment
+000731  aa   000002 6040 04	tmi  	2,ic		000733
+000732  aa  6 00543 2361 00	ldq  	pr6|355		increment
+000733  aa  6 00571 7561 00	stq  	pr6|377
+000734  aa  6 00520 3521 00	epp2 	pr6|336		astep
+000735  aa  6 00604 2521 00	spri2	pr6|388
+000736  aa  6 00542 3521 00	epp2 	pr6|354		i
+000737  aa  6 00606 2521 00	spri2	pr6|390
+000740  aa  6 00571 3521 00	epp2 	pr6|377
+000741  aa  6 00610 2521 00	spri2	pr6|392
+000742  aa  6 00555 3521 00	epp2 	pr6|365		tuid
+000743  aa  6 00612 2521 00	spri2	pr6|394
+000744  aa  6 00602 6211 00	eax1 	pr6|386
+000745  aa   020000 4310 07	fld  	8192,dl
+000746  aa  6 00044 3701 20	epp4 	pr6|36,*
+000747  la  4 00046 3521 20	epp2 	pr4|38,*		pc_wired$write_wait_uid
+000750  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 348
+		end;
+
+000751  aa  6 00560 2361 00	ldq  	pr6|368
+000752  aa  6 00542 0561 00	asq  	pr6|354		i
+000753  aa   777705 7100 04	tra  	-59,ic		000660
+						STATEMENT 1 ON LINE 349
+	     end;
+
+						STATEMENT 1 ON LINE 351
+	if aste.uid ^= tuid
+	then do;
+
+000754  aa  6 00520 3735 20	epp7 	pr6|336,*		astep
+000755  aa  7 00003 2351 00	lda  	pr7|3		aste.uid
+000756  aa  6 00555 1151 00	cmpa 	pr6|365		tuid
+000757  aa   000036 6000 04	tze  	30,ic		001015
+						STATEMENT 1 ON LINE 353
+		call lock$lock_ast;
+
+000760  aa  6 00056 6211 00	eax1 	pr6|46
+000761  aa   000000 4310 07	fld  	0,dl
+000762  aa  6 00044 3701 20	epp4 	pr6|36,*
+000763  la  4 00042 3521 20	epp2 	pr4|34,*		lock$lock_ast
+000764  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 354
+		astep = search_ast (tuid);
+
+000765  aa  6 00555 3521 00	epp2 	pr6|365		tuid
+000766  aa  6 00574 2521 00	spri2	pr6|380
+000767  aa  6 00520 3521 00	epp2 	pr6|336		astep
+000770  aa  6 00576 2521 00	spri2	pr6|382
+000771  aa  6 00572 6211 00	eax1 	pr6|378
+000772  aa   010000 4310 07	fld  	4096,dl
+000773  aa  6 00044 3701 20	epp4 	pr6|36,*
+000774  la  4 00054 3521 20	epp2 	pr4|44,*		search_ast
+000775  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 355
+		call lock$unlock_ast;
+
+000776  aa  6 00056 6211 00	eax1 	pr6|46
+000777  aa   000000 4310 07	fld  	0,dl
+001000  aa  6 00044 3701 20	epp4 	pr6|36,*
+001001  la  4 00044 3521 20	epp2 	pr4|36,*		lock$unlock_ast
+001002  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 356
+		if astep ^= null ()
+		then do;
+
+001003  aa  6 00520 2371 00	ldaq 	pr6|336		astep
+001004  aa   777000 6770 04	eraq 	-512,ic		000004 = 077777000043 000001000000
+001005  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001006  aa   000067 6000 04	tze  	55,ic		001075
+						STATEMENT 1 ON LINE 358
+			sst$fw_retries = sst$fw_retries + 1;
+
+001007  aa  6 00044 3701 20	epp4 	pr6|36,*
+001010  la  4 00036 2351 20	lda  	pr4|30,*		sst$fw_retries
+001011  aa   000044 7330 00	lrs  	36
+001012  aa   000001 0330 07	adl  	1,dl
+001013  la  4 00036 7561 20	stq  	pr4|30,*		sst$fw_retries
+						STATEMENT 1 ON LINE 359
+			goto RETRY;
+
+001014  aa   777502 7100 04	tra  	-190,ic		000516
+						STATEMENT 1 ON LINE 360
+		     end;
+
+						STATEMENT 1 ON LINE 362
+	     end;
+
+						STATEMENT 1 ON LINE 366
+	if ^aste.fmchanged				/* no change in aste? */
+	then if aste.uid = tuid			/* and still same aste? */
+	     then goto ret;
+
+001015  aa  7 00012 2351 00	lda  	pr7|10		aste.fmchanged
+001016  aa   000400 3150 03	cana 	256,du
+001017  aa   000004 6010 04	tnz  	4,ic		001023
+001020  aa  7 00003 2351 00	lda  	pr7|3		aste.uid
+001021  aa  6 00555 1151 00	cmpa 	pr6|365		tuid
+001022  aa   000053 6000 04	tze  	43,ic		001075
+						STATEMENT 1 ON LINE 370
+	call lock$lock_ast;
+
+001023  aa  6 00056 6211 00	eax1 	pr6|46
+001024  aa   000000 4310 07	fld  	0,dl
+001025  aa  6 00044 3701 20	epp4 	pr6|36,*
+001026  la  4 00042 3521 20	epp2 	pr4|34,*		lock$lock_ast
+001027  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 372
+	if aste.uid ^= tuid				/* Has aste moved? */
+	then astep = search_ast (tuid);
+
+001030  aa  6 00520 3735 20	epp7 	pr6|336,*		astep
+001031  aa  7 00003 2351 00	lda  	pr7|3		aste.uid
+001032  aa  6 00555 1151 00	cmpa 	pr6|365		tuid
+001033  aa   000012 6000 04	tze  	10,ic		001045
+001034  aa  6 00555 3521 00	epp2 	pr6|365		tuid
+001035  aa  6 00574 2521 00	spri2	pr6|380
+001036  aa  6 00520 3521 00	epp2 	pr6|336		astep
+001037  aa  6 00576 2521 00	spri2	pr6|382
+001040  aa  6 00572 6211 00	eax1 	pr6|378
+001041  aa   010000 4310 07	fld  	4096,dl
+001042  aa  6 00044 3701 20	epp4 	pr6|36,*
+001043  la  4 00054 3521 20	epp2 	pr4|44,*		search_ast
+001044  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 374
+	if astep ^= null
+	then if aste.fmchanged			/* no one else did update */
+	     then do;
+
+001045  aa  6 00520 2371 00	ldaq 	pr6|336		astep
+001046  aa   776736 6770 04	eraq 	-546,ic		000004 = 077777000043 000001000000
+001047  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001050  aa   000020 6000 04	tze  	16,ic		001070
+001051  aa  6 00520 3735 20	epp7 	pr6|336,*		astep
+001052  aa  7 00012 2351 00	lda  	pr7|10		aste.fmchanged
+001053  aa   000400 3150 03	cana 	256,du
+001054  aa   000014 6000 04	tze  	12,ic		001070
+						STATEMENT 1 ON LINE 377
+		     sst$force_updatevs = sst$force_updatevs + 1;
+
+001055  aa  6 00044 3701 20	epp4 	pr6|36,*
+001056  la  4 00032 2351 20	lda  	pr4|26,*		sst$force_updatevs
+001057  aa   000044 7330 00	lrs  	36
+001060  aa   000001 0330 07	adl  	1,dl
+001061  la  4 00032 7561 20	stq  	pr4|26,*		sst$force_updatevs
+						STATEMENT 1 ON LINE 378
+		     call update_vtoce (astep);
+
+001062  aa  6 00520 3521 00	epp2 	pr6|336		astep
+001063  aa  6 00574 2521 00	spri2	pr6|380
+001064  aa  6 00572 6211 00	eax1 	pr6|378
+001065  aa   004000 4310 07	fld  	2048,dl
+001066  la  4 00056 3521 20	epp2 	pr4|46,*		update_vtoce
+001067  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 379
+		end;
+
+						STATEMENT 1 ON LINE 381
+	call lock$unlock_ast;
+
+001070  aa  6 00056 6211 00	eax1 	pr6|46
+001071  aa   000000 4310 07	fld  	0,dl
+001072  aa  6 00044 3701 20	epp4 	pr6|36,*
+001073  la  4 00044 3521 20	epp2 	pr4|36,*		lock$unlock_ast
+001074  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 383
+ret:
+	if num_writ = 0
+	then sst$fw_none = sst$fw_none + 1;
+
+001075  aa  6 00546 2361 00	ldq  	pr6|358		num_writ
+001076  aa   000007 6010 04	tnz  	7,ic		001105
+001077  aa  6 00044 3701 20	epp4 	pr6|36,*
+001100  la  4 00034 2351 20	lda  	pr4|28,*		sst$fw_none
+001101  aa   000044 7330 00	lrs  	36
+001102  aa   000001 0330 07	adl  	1,dl
+001103  la  4 00034 7561 20	stq  	pr4|28,*		sst$fw_none
+001104  aa   000006 7100 04	tra  	6,ic		001112
+						STATEMENT 1 ON LINE 386
+	else sst$force_pwrites = sst$force_pwrites + num_writ;
+
+001105  aa   000044 7770 00	llr  	36
+001106  aa   000044 7330 00	lrs  	36
+001107  aa  6 00044 3701 20	epp4 	pr6|36,*
+001110  la  4 00026 0331 20	adl  	pr4|22,*		sst$force_pwrites
+001111  la  4 00026 7561 20	stq  	pr4|22,*		sst$force_pwrites
+						STATEMENT 1 ON LINE 388
+	return;
+
+001112  aa  6 00532 6101 00	rtcd 	pr6|346
+						STATEMENT 1 ON LINE 390
+     end WRITE_ONE_SEGMENT;
+
+  END PROCEDURE WRITE_ONE_SEGMENT
+  END PROCEDURE force_write
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,130 @@
+	COMPILATION LISTING OF SEGMENT illegal_procedure
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* ******************************************************
+       10*   *                                                    *
+       11*   *                                                    *
+       12*   * Copyright (c) 1972 by Massachusetts Institute of   *
+       13*   * Technology and Honeywell Information Systems, Inc. *
+       14*   *                                                    *
+       15*   *                                                    *
+       16*   ****************************************************** */
+       17 
+       18 /*
+       19*   Last Modified (Date and Reason):
+       20*   10/15/73 Steve Webber -- Initial coding.
+       21*   10/09/74 Lee Scheffler - Add auditing of bona fide illegal procedure faults.
+       22*   06/07/76 Bernard Greenberg- mc.resignal for truncation fault, incl. internal procedure for lth.
+       23*   85-01-15 EJ Sharpe - deleted all but set_pl1_machine entry since unused
+       24*   */
+       25 
+       26 illegal_procedure$set_pl1_machine_mode: proc (new_mode, old_mode);
+       27 
+       28 /* This entry will change the state of a process from a "pl1 machine" to a "bare machine".
+       29*   In the pl1 machine mode certain illegal procedure are ignored. In the bare
+       30*   machine mode these faults are signalled to the user. */
+       31 
+       32 dcl (new_mode, old_mode) fixed bin;
+       33 dcl  pds$pl1_machine fixed bin ext;
+       34 dcl  i fixed bin;
+       35 
+       36 
+       37 	i = pds$pl1_machine;			/* return old value of the mode */
+       38 	pds$pl1_machine = new_mode;			/* change the mode for the process */
+       39 	old_mode = i;				/* return the copied old value */
+       40 	return;
+       41 
+       42      end illegal_procedure$set_pl1_machine_mode;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.1  illegal_procedure.pl1             >special_ldd>install>MR12.3-1114>illegal_procedure.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+i                               000100 automatic       fixed bin(17,0)          dcl 34 set ref 37* 39
+new_mode                               parameter       fixed bin(17,0)          dcl 32 ref 26 38
+old_mode                               parameter       fixed bin(17,0)          dcl 32 set ref 26 39*
+pds$pl1_machine                 000010 external static fixed bin(17,0)          dcl 33 set ref 37 38*
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+illegal_procedure$set_pl1_machine_mode
+                                000005 constant        entry                    external dcl 26
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       102         114      22         112
+Length       266      22        12         135      60           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+illegal_procedure$set_pl1_machine_mode
+                                     65 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+illegal_procedure$set_pl1_machine_mode
+                         000100 i                           illegal_procedure$set_pl1_machine_mode
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$pl1_machine
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000001        37 000012        38 000014        39 000017        40 000021
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

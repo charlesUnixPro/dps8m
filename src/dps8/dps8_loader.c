@@ -93,6 +93,8 @@ segment *newSegment(char *name, int size, bool bDeferred)
     s->linkOffset = -1;
     s->linkSize = 0;
     
+    s->filename = NULL;
+
     s->next = NULL;
     s->prev = NULL;
     
@@ -120,6 +122,8 @@ void freeSegment(segment *s)
         free(s->M);
     if (s->name)
         free(s->name);
+    if (s->filename)
+        free(s->filename);
 }
 
 segment *segments = NULL;   // segment for current load unit
@@ -241,7 +245,11 @@ int objSize = -1;
 
 int segNamecmp(segment *a, segment *b)
 {
-    return strcmp(a->name, b->name);
+    if (*a->name && *b->name)
+      return strcmp(a->name, b->name);
+    if (*a->name)
+      return 1;
+    return -1;
 }
 int segdefNamecmp(segdef *a, segdef *b)
 {
@@ -502,7 +510,7 @@ int resolveLinks(bool bVerbose)
 PRIVATE
 int loadDeferredSegment(segment *sg, int addr24)
 {
-    if (!sim_quiet) sim_printf("    loading %s as segment# %d\n", sg->name, sg->segno);
+    if (!sim_quiet) sim_printf("    loading %s as segment# 0%o\n", sg->name, sg->segno);
         
     int segno = sg->segno;
         
@@ -572,15 +580,21 @@ int loadDeferredSegments(bool bVerbose)
         loadDeferredSegment(sg, ldaddr);
         int segno = sg->segno;
 
-        // set PR4 to point to LOT
+        // set PR4/7 to point to LOT
         if (strcmp(sg->name, LOT) == 0)
         {
             PR[4].BITNO = 0;
-            PR[4].CHAR = 0;
+            // PR[4].CHAR = 0; // Covered by the BITNO above
             PR[4].SNR = segno;
             PR[4].WORDNO = 0;
+            
+            PR[5] = PR[4];
+            
             int n = 4;
             if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+            n = 5;
+            if (bVerbose) sim_printf("LOT => PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+
         }
         
         // bump next load address to a 16-word boundary
@@ -687,7 +701,7 @@ t_stat snapLOT(bool bVerbose)
         
     // Now go through each segment getting the linkage address and filling in the LOT table with the address (in sprn/lprn packed pointer format)
     
-    if (bVerbose) sim_printf("snapping %s links", LOT);
+    if (bVerbose) sim_printf("snapping %s links...\n", LOT);
     
     DL_FOREACH(segments, s)
     {
@@ -708,12 +722,21 @@ t_stat snapLOT(bool bVerbose)
             M[lot->ldaddr + s->segno] = pp & DMASK; // LOT is in-core
 
             if (bVerbose)
-                //printf("%o %o %012llo.", lot->ldaddr, s->segno, pp);
-                sim_printf(".");
+                printf("\t%o + %o => %012llo\n", lot->ldaddr, s->segno, pp);
+                //sim_printf(".");
         }
     }
-    if (bVerbose) sim_printf("\n");
-    
+    //if (bVerbose) sim_printf("\n");
+//    sim_printf("Dumping _lot ....\n");
+//    for(int n = 0 ; n < 0777777 + 1; n += 1)
+//    {
+//        word36 c = M[lot->ldaddr + n]; // LOT is in-core
+//        if (c)
+//        {
+//            sim_printf("%06o %012llo\n", n, c);
+//        }
+//
+//    }
     return SCPE_OK;
 }
 
@@ -776,7 +799,7 @@ t_stat setupFXE()
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
+t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
 {
     long curpos = ftell(f);
     
@@ -809,9 +832,9 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
         if (strcasecmp(args[0], "!go") == 0)
         {
             long addr = strtol(args[1], NULL, 0);
-            rIC = addr & AMASK;
+            PPR.IC = addr & AMASK;
             
-            if (rIC)
+            if (PPR.IC)
                 sim_printf("!GO address: %06lo\n", addr);
         }
         
@@ -826,7 +849,8 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             
             // make a new segment
             segment *s = newSegment(args[1], objSize, bDeferred);
-           
+            s -> filename = strdup (fnam);
+   
             // see if segment already exists
             if (segments)
             {
@@ -870,6 +894,12 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
         //if (bDeferred && !strcasecmp(args[0], "!segdef"))
         if (!strcasecmp(args[0], "!segdef"))
         {
+            if (!currSegment)
+            {
+                sim_printf("Oops! No 'currentSegment'. Have you perhaps forgotten a 'name' directive?");
+                return SCPE_UNK;
+            }
+            
             char symbol[256];
             int value;
             
@@ -1194,9 +1224,43 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     return SCPE_OK;
 }
 
+// Warning: returns ptr to static buffer
+char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
+{
+    static char buf [129];
+    segment *s;
+    DL_FOREACH(segments, s)
+    {
+        if (s -> segno == segno)
+        {
+            if (compname)
+                * compname = s -> name;
+            if (compoffset)
+                * compoffset = 0;  
+            sprintf (buf, "%s:+0%0o", s -> name, offset);
+            return buf;
+        }
+    }
+    return NULL;
+}
+
+t_stat sim_dump (FILE *fileref, char *cptr, char *fnam, int flag)
+{
+    size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
+    if (rc != MEMSIZE)
+    {
+        sim_printf ("fwrite returned %ld; expected %d\n", rc, MEMSIZE);
+        return SCPE_IOERR;  
+    }
+    return SCPE_OK;
+}
+
 // This is part of the simh interface
 t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
 {
+    if (flag)
+        return sim_dump (fileref, cptr, fnam, flag);
+      
     size_t fmt;
     
     int32 segno = -1;
@@ -1278,9 +1342,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     {
         char s[1024], *end_ptr, sn[1024], def[1024];
         
-#ifndef QUIET_UNUSED
-        long n = sscanf(cptr, "%*s %s %s %s", s, sn, def);
-#endif
+        sscanf(cptr, "%*s %s %s %s", s, sn, def);
 
         if (!strmask(s, "seg*"))
         {
@@ -1316,7 +1378,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     }
     
     // process any special directives from assembly
-    scanDirectives(fileref, bDeferred, bVerbose);
+    scanDirectives(fileref, fnam, bDeferred, bVerbose);
     
     switch (fmt) {                                          /* case fmt */
         case FMT_O:                                         /*!< OCT */

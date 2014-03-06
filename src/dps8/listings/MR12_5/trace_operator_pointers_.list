@@ -1,0 +1,393 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1115>trace_operator_pointers_.alm                                                                                                                         
+ASSEMBLED ON:	11/11/89  0918.9 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " * This version of operator_pointers_ is for use by trace *
+                                    13  " *                 trace_operator_pointers_.alm           *
+                                    14  
+                                    15  
+                                    16  " This is the operator pointers vector used by basic and (perhaps)
+                                    17  " other translators.  The trans_op_tv_ptr field in the base of the
+                                    18  " stack will point at <operator_pointers_>|[operator_pointers].
+                                    19  " Programs will obtain a pointer to their own operator segment by
+                                    20  " the instruction sequence
+                                    21  "		epp2	sb|op_vector,*
+                                    22  "		epp2	2|op,*	where op specifies desired operator
+                                    23  "
+                                    24  " This segment makes use of the manner in which the current alm
+                                    25  " generates links.  This segment is probably not bindable.
+                                    26  "
+                                    27  " Last modified (date and reason)
+                                    28  "	12/74    by S. E. Barr to add probe break line
+                                    29  "	06/20/75 by S. Webber to add cobol_operators_$entry_version_1
+                                    30  "         09/20/77 by P. Krupp to extend the trace interface to cobol programs
+                                    31  "	07/26/79 by M. Weaver to turn on perprocess static
+                                    32  "
+    000000                          33  	perprocess_static
+                                    34  "
+                                    35            include   link_vector
+                                   1-1  
+                                   1-2  "
+                                   1-3  "         BEGIN INCLUDE FILE ... link_vector.incl.alm   9/77 P. Krupp
+                                   1-4  "
+                                   1-5  " Macro to generate the operator pointers vector for BASIC, COBOL, and the probe command.
+                                   1-6  " Two versions of the vector are generated.  One for use by trace with COBOL and the other for standard use.
+                                   1-7  "
+                                   1-8  " The link to cicg_pascal_operators_ was added because of a communication mixup.
+                                   1-9  " operator_pointers_ is a system  module and should not be used by private translators.
+                                  1-10  " Pointers in this vector are a resource that must be shared across all
+                                  1-11  " Multics sites.  This resource is allocated by CISL.  Private translators
+                                  1-12  " should generate a link in the object segment to the operator segment.
+                                  1-13  "
+                                  1-14  " Modified 07/23/81 by M. Weaver to add cicg_pascal_operators_ and algol68_operators_
+                                  1-15  "
+                                  1-16            macro     link_vector
+                              1   1-17  	segdef	&1operator_pointers_
+                              2   1-18  &1operator_pointers_:
+                              3   1-19  
+                              4   1-20  "
+                              5   1-21  	link	&1l0,<basic_operators_>|[enter_main]
+                              6   1-22  	link	&1l1,<basic_operators_>|[enter_proc]
+                              7   1-23  	link	&1l2,<probe>|[break]
+                              8   1-24  	link	&1l3,<cobol_operators_>|[&1entry_version_1]
+                              9   1-25  	link	&1l4,<cicg_pascal_operators_>|[&1transfer_vector]
+                             10   1-26  	link	&1l5,<algol68_operators_>|[&1operator_table]
+                             11   1-27  "
+                             12   1-28  " New links should be added before this line.  Order of existing
+                             13   1-29  " links MUST NOT BE CHANGED!
+                             14   1-30  "
+                             15   1-31            &end
+                                  1-32  "
+                                  1-33  "         END INCLUDE FILE ... link_vector.incl.alm
+                                  1-34  
+                                    36            use       linkc
+                                    37            join      /link/linkc
+                                    38            link_vector trace_
+                        000010          	segdef	trace_operator_pointers_
+    000010                              trace_operator_pointers_:
+                                        
+                                        "
+                        000010          	link	trace_l0,<basic_operators_>|[enter_main]
+                        000012          	link	trace_l1,<basic_operators_>|[enter_proc]
+                        000014          	link	trace_l2,<probe>|[break]
+                        000016          	link	trace_l3,<cobol_operators_>|[trace_entry_version_1]
+                        000020          	link	trace_l4,<cicg_pascal_operators_>|[trace_transfer_vector]
+                        000022          	link	trace_l5,<algol68_operators_>|[trace_operator_table]
+                                        "
+                                        " New links should be added before this line.  Order of existing
+                                        " links MUST NOT BE CHANGED!
+                                        "
+                                    39  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000000  5a   000003 000000 
+    000001  5a   000036 600000 
+    000002  aa   000000 000000 
+    000003  55   000015 000002 
+    000004  5a   000002 400003 
+    000005  55   000006 000015 
+    000006  aa  030 164 162 141
+    000007  aa  143 145 137 157
+    000010  aa  160 145 162 141
+    000011  aa  164 157 162 137
+    000012  aa  160 157 151 156
+    000013  aa  164 145 162 163
+    000014  aa  137 000 000 000
+    000015  55   000027 000003 
+    000016  2a   000010 400001 
+    000017  55   000020 000003 
+    000020  aa  030 164 162 141         trace_operator_pointers_
+    000021  aa  143 145 137 157
+    000022  aa  160 145 162 141
+    000023  aa  164 157 162 137
+    000024  aa  160 157 151 156
+    000025  aa  164 145 162 163
+    000026  aa  137 000 000 000
+    000027  55   000002 000015 
+    000030  6a   000000 400002 
+    000031  55   000032 000003 
+    000032  aa  014 163 171 155         symbol_table
+    000033  aa  142 157 154 137
+    000034  aa  164 141 142 154
+    000035  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000036  aa   000000 000015 
+    000037  aa   000000 000000 
+    000040  aa   000000 000000 
+    000041  5a   000015 000000 
+    000042  aa   000000 000000 
+    000043  aa   000000 000000 
+    000044  aa   000000 000000 
+    000045  5a   000027 000000 
+    000046  aa   000000 000000 
+    000047  aa   000000 000000 
+    000050  aa   000000 000000 
+    000051  aa   000000 000000 
+    000052  aa   000000 000000 
+    000053  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000054  aa  024 164 162 141         trace_operator_table
+    000055  aa  143 145 137 157
+    000056  aa  160 145 162 141
+    000057  aa  164 157 162 137
+    000060  aa  164 141 142 154
+    000061  aa  145 000 000 000
+    000062  aa  022 141 154 147         algol68_operators_
+    000063  aa  157 154 066 070
+    000064  aa  137 157 160 145
+    000065  aa  162 141 164 157
+    000066  aa  162 163 137 000
+    000067  aa  025 164 162 141         trace_transfer_vector
+    000070  aa  143 145 137 164
+    000071  aa  162 141 156 163
+    000072  aa  146 145 162 137
+    000073  aa  166 145 143 164
+    000074  aa  157 162 000 000
+    000075  aa  026 143 151 143         cicg_pascal_operators_
+    000076  aa  147 137 160 141
+    000077  aa  163 143 141 154
+    000100  aa  137 157 160 145
+    000101  aa  162 141 164 157
+    000102  aa  162 163 137 000
+    000103  aa  025 164 162 141         trace_entry_version_1
+    000104  aa  143 145 137 145
+    000105  aa  156 164 162 171
+    000106  aa  137 166 145 162
+    000107  aa  163 151 157 156
+    000110  aa  137 061 000 000
+    000111  aa  020 143 157 142         cobol_operators_
+    000112  aa  157 154 137 157
+    000113  aa  160 145 162 141
+    000114  aa  164 157 162 163
+    000115  aa  137 000 000 000
+    000116  aa  005 142 162 145         break
+    000117  aa  141 153 000 000
+    000120  aa  005 160 162 157         probe
+    000121  aa  142 145 000 000
+    000122  aa  012 145 156 164         enter_proc
+    000123  aa  145 162 137 160
+    000124  aa  162 157 143 000
+    000125  aa  012 145 156 164         enter_main
+    000126  aa  145 162 137 155
+    000127  aa  141 151 156 000
+    000130  aa  020 142 141 163         basic_operators_
+    000131  aa  151 143 137 157
+    000132  aa  160 145 162 141
+    000133  aa  164 157 162 163
+    000134  aa  137 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000135  aa   000004 000000 
+    000136  55   000062 000054 
+    000137  aa   000004 000000 
+    000140  55   000075 000067 
+    000141  aa   000004 000000 
+    000142  55   000111 000103 
+    000143  aa   000004 000000 
+    000144  55   000120 000116 
+    000145  aa   000004 000000 
+    000146  55   000130 000122 
+    000147  aa   000004 000000 
+    000150  55   000130 000125 
+    000151  aa   000001 000000 
+    000152  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000153  5a   000135 000000 
+    000154  5a   000137 000000 
+    000155  5a   000141 000000 
+    000156  5a   000143 000000 
+    000157  5a   000145 000000 
+    000160  5a   000147 000000 
+    000161  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000000 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000024 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         basic_operators_|enter_main
+    000011  5a   000160 0000 00
+    000012  9a   777766 0000 46         basic_operators_|enter_proc
+    000013  5a   000157 0000 00
+    000014  9a   777764 0000 46         probe|break
+    000015  5a   000156 0000 00
+    000016  9a   777762 0000 46         cobol_operators_|trace_entry_version_1
+    000017  5a   000155 0000 00
+    000020  9a   777760 0000 46         cicg_pascal_operators_|trace_transfer_vector
+    000021  5a   000154 0000 00
+    000022  9a   777756 0000 46         algol68_operators_|trace_operator_table
+    000023  5a   000153 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   237635 635152 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000156 
+    000020  aa   000000 000123 
+    000021  aa   000132 000125 
+    000022  aa   000147 000123 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000057 
+    000067  aa   175453 030754 
+    000070  aa   000000 117547 
+    000071  aa   227521 400000 
+    000072  aa   000112 000041 
+    000073  aa   102323 734456 
+    000074  aa   000000 110233 
+    000075  aa   065274 200000 
+    000076  aa   076163 160145          >spec>install>1115>trace_operator_pointers_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061065 076164 
+    000103  aa   162141 143145 
+    000104  aa   137157 160145 
+    000105  aa   162141 164157 
+    000106  aa   162137 160157 
+    000107  aa   151156 164145 
+    000110  aa   162163 137056 
+    000111  aa   141154 155040 
+    000112  aa   076154 144144          >ldd>include>link_vector.incl.alm
+    000113  aa   076151 156143 
+    000114  aa   154165 144145 
+    000115  aa   076154 151156 
+    000116  aa   153137 166145 
+    000117  aa   143164 157162 
+    000120  aa   056151 156143 
+    000121  aa   154056 141154 
+    000122  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                algol68_operators_       trace_operator_pointers_:        38.
+                basic_operators_         trace_operator_pointers_:        38.
+                break                    trace_operator_pointers_:        38.
+                cicg_pascal_operators_   trace_operator_pointers_:        38.
+                cobol_operators_         trace_operator_pointers_:        38.
+                enter_main               trace_operator_pointers_:        38.
+                enter_proc               trace_operator_pointers_:        38.
+          10    linkc                    trace_operator_pointers_:        36,   37.
+                probe                    trace_operator_pointers_:        38.
+                trace_entry_version_1    trace_operator_pointers_:        38.
+          10    trace_l0                 trace_operator_pointers_:        38.
+          12    trace_l1                 trace_operator_pointers_:        38.
+          14    trace_l2                 trace_operator_pointers_:        38.
+          16    trace_l3                 trace_operator_pointers_:        38.
+          20    trace_l4                 trace_operator_pointers_:        38.
+          22    trace_l5                 trace_operator_pointers_:        38.
+          10    trace_operator_pointers_       trace_operator_pointers_:        38.
+                trace_operator_table     trace_operator_pointers_:        38.
+                trace_transfer_vector    trace_operator_pointers_:        38.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

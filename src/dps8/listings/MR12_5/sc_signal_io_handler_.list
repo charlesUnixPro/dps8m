@@ -1,0 +1,791 @@
+	COMPILATION LISTING OF SEGMENT sc_signal_io_handler_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1015.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style2,idind30 */
+       10 
+       11 /**** sc_signal_io_handler_
+       12*   Handler for signal_io_ in the system control environment.
+       13*   This program performs and logs the I/O requested via the signal.
+       14**/
+       15 
+       16 /**** Written 1984-11-01 BIM */
+       17 /**** Modified 1985-04-01, E. Swenson: add NL to "(printer masked)" entries. */
+       18 
+       19 
+       20 /****^  HISTORY COMMENTS:
+       21*  1) change(87-02-06,GDixon), approve(87-05-25,MCR7680),
+       22*     audit(87-05-06,Parisek), install(87-08-04,MR12.1-1055):
+       23*     Correct coding standards violations.
+       24*                                                   END HISTORY COMMENTS */
+       25 
+       26 
+       27 sc_signal_io_handler_:
+       28      procedure;
+       29 
+       30 	declare 1 CI		        aligned like condition_info;
+       31 	declare code		        fixed bin (35);
+       32 	declare real_iocb		        pointer;
+       33 
+       34 	declare (addr, null)	        builtin;
+       35 
+       36 	declare find_condition_info_	        entry (pointer, pointer, fixed binary (35));
+       37 	declare ioa_$ioa_switch	        entry () options (variable);
+       38 	declare ioa_$ioa_switch_nnl	        entry () options (variable);
+       39 	declare ssu_$get_info_ptr	        entry (ptr) returns (ptr);
+       40 
+       41 	declare error_table_$io_no_permission fixed bin (35) ext static;
+       42 
+       43 
+       44 	CI.version = condition_info_version_1;
+       45 	call find_condition_info_ (null (), addr (CI), code);
+       46 	if code ^= 0
+       47 	then return;
+       48 	if sc_stat_$admin_sci_ptr = null ()
+       49 	then return;
+       50 	sc_subsystem_info_ptr = ssu_$get_info_ptr (sc_stat_$admin_sci_ptr);
+       51 	real_iocb = sc_subsystem_info.real_iocb;
+       52 	if real_iocb = null ()
+       53 	then return;
+       54 
+       55 	signal_io_info_ptr = CI.info_ptr;
+       56 
+       57 	if signal_io_info.operation = SGI_OP_GET_LINE
+       58 	then call GET_LINE;
+       59 	else if signal_io_info.operation = SGI_OP_GET_CHARS
+       60 	then call GET_CHARS;
+       61 	else if signal_io_info.operation = SGI_OP_PUT_CHARS
+       62 	then call PUT_CHARS;
+       63 	else if signal_io_info.operation = SGI_OP_POSITION
+       64 	then call POSITION;
+       65 	else if signal_io_info.operation = SGI_OP_CONTROL
+       66 	then call CONTROL;
+       67 	else if signal_io_info.operation = SGI_OP_MODES
+       68 	then call MODES;
+       69 
+       70 	return;					/* If we get here, then we needn't unwind */
+       71 
+       72 
+       73 
+       74 GET_LINE:
+       75      procedure;
+       76 
+       77 
+       78 	declare returned_string	        char (signal_io_info.returned_data_length)
+       79 				        based (signal_io_info.data_ptr);
+       80 
+       81 	call ioa_$ioa_switch_nnl (sc_stat_$admin_log_iocb, "^/");
+       82 						/* in case of prompt */
+       83 	call iox_$get_line (real_iocb, signal_io_info.data_ptr, signal_io_info.data_length,
+       84 	     signal_io_info.returned_data_length, signal_io_info.returned_error_code);
+       85 	if signal_io_info.returned_error_code = 0 & signal_io_info.returned_data_length > 0
+       86 	then if ^sc_subsystem_info.printer_offed
+       87 	     then call ioa_$ioa_switch_nnl (sc_stat_$admin_log_iocb, "input: ^a", returned_string);
+       88 	     else call ioa_$ioa_switch (sc_stat_$admin_log_iocb, "input: (printer masked)");
+       89 	call check_hangup;
+       90 	return;
+       91      end GET_LINE;
+       92 
+       93 GET_CHARS:
+       94      procedure;
+       95 	declare returned_string	        char (signal_io_info.returned_data_length)
+       96 				        based (signal_io_info.data_ptr);
+       97 
+       98 	call iox_$get_chars (real_iocb, signal_io_info.data_ptr, signal_io_info.data_length,
+       99 	     signal_io_info.returned_data_length, signal_io_info.returned_error_code);
+      100 	if signal_io_info.returned_error_code = 0 & signal_io_info.returned_data_length > 0
+      101 	then if ^sc_subsystem_info.printer_offed
+      102 	     then call ioa_$ioa_switch_nnl (sc_stat_$admin_log_iocb, "input: ^a", returned_string);
+      103 	     else call ioa_$ioa_switch (sc_stat_$admin_log_iocb, "input: (printer masked)");
+      104 	call check_hangup;
+      105 	return;
+      106      end GET_CHARS;
+      107 
+      108 POSITION:
+      109      procedure;
+      110 	call iox_$position (real_iocb, signal_io_info.position_type, (signal_io_info.position_amount),
+      111 	     signal_io_info.returned_error_code);
+      112 	call check_hangup;
+      113 	return;
+      114      end POSITION;
+      115 
+      116 MODES:
+      117      procedure;
+      118 
+      119 	call iox_$modes (real_iocb, signal_io_new_modes, signal_io_old_modes, signal_io_info.returned_error_code);
+      120 	call check_hangup;
+      121 	return;
+      122      end MODES;
+      123 
+      124 PUT_CHARS:
+      125      procedure;
+      126 
+      127 	call iox_$put_chars (real_iocb, signal_io_info.data_ptr, signal_io_info.data_length,
+      128 	     signal_io_info.returned_error_code);
+      129 	call ioa_$ioa_switch_nnl (sc_stat_$admin_log_iocb, "^a", signal_io_io_buffer);
+      130 	call check_hangup;
+      131 	return;
+      132      end PUT_CHARS;
+      133 
+      134 CONTROL:
+      135      procedure;
+      136 
+      137 	if signal_io_order_name = "printer_off"
+      138 	then sc_subsystem_info.printer_offed = "1"b;
+      139 	if signal_io_order_name = "printer_on"
+      140 	then sc_subsystem_info.printer_offed = "0"b;
+      141 
+      142 	call iox_$control (real_iocb, signal_io_order_name, signal_io_info.control_order_info_ptr,
+      143 	     signal_io_info.returned_error_code);
+      144 	call check_hangup;
+      145 	return;
+      146      end CONTROL;
+      147 
+      148 check_hangup:
+      149      procedure;
+      150 
+      151 	if signal_io_info.returned_error_code = error_table_$io_no_permission
+      152 	then call sc_subsystem_info.hangup_entry (sc_stat_$admin_sci_ptr);
+      153 	return;
+      154      end check_hangup;
+      155 
+  1     1 /* BEGIN INCLUDE FILE ... condition_info.incl.pl1 */
+  1     2 
+  1     3 /* Structure for find_condition_info_.
+  1     4*
+  1     5*   Written 1-Mar-79 by M. N. Davidoff.
+  1     6**/
+  1     7 
+  1     8 /* automatic */
+  1     9 
+  1    10      declare condition_info_ptr     pointer;
+  1    11 
+  1    12 /* based */
+  1    13 
+  1    14      declare 1 condition_info	      aligned based (condition_info_ptr),
+  1    15 	     2 mc_ptr	      pointer,		/* pointer to machine conditions at fault time */
+  1    16 	     2 version	      fixed binary,		/* Must be 1 */
+  1    17 	     2 condition_name     char (32) varying,	/* name of condition */
+  1    18 	     2 info_ptr	      pointer,		/* pointer to the condition data structure */
+  1    19 	     2 wc_ptr	      pointer,		/* pointer to wall crossing machine conditions */
+  1    20 	     2 loc_ptr	      pointer,		/* pointer to location where condition occured */
+  1    21 	     2 flags	      unaligned,
+  1    22 	       3 crawlout	      bit (1),		/* on if condition occured in lower ring */
+  1    23 	       3 pad1	      bit (35),
+  1    24 	     2 pad2	      bit (36),
+  1    25 	     2 user_loc_ptr	      pointer,		/* ptr to most recent nonsupport loc before condition occurred */
+  1    26 	     2 pad3	      (4) bit (36);
+  1    27 
+  1    28 /* internal static */
+  1    29 
+  1    30      declare condition_info_version_1
+  1    31 			      fixed binary internal static options (constant) initial (1);
+  1    32 
+  1    33 /* END INCLUDE FILE ... condition_info.incl.pl1 */
+      156 
+      157 
+  2     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  2     2 /* format: style2 */
+  2     3 
+  2     4      declare condition_info_header_ptr
+  2     5 			      pointer;
+  2     6      declare 1 condition_info_header
+  2     7 			      aligned based (condition_info_header_ptr),
+  2     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  2     9 	     2 version	      fixed bin,		/* version number of this structure */
+  2    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  2    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  2    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  2    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  2    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  2    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  2    16 	       3 pad	      bit (32) unaligned,
+  2    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  2    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  2    19 
+  2    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+      158 
+      159 
+  3     1 /* BEGIN INCLUDE FILE ..... iocb.incl.pl1 ..... 13 Feb 1975, M. Asherman */
+  3     2 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+  3     3*      version number to IOX2. */
+  3     4 /* format: style2 */
+  3     5 
+  3     6      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  3     7 	     2 version	      character (4) aligned,	/* IOX2 */
+  3     8 	     2 name	      char (32),		/* I/O name of this block. */
+  3     9 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  3    10 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  3    11 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  3    12 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  3    13 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  3    14 	     2 reserved	      bit (72),		/* Reserved for future use. */
+  3    15 	     2 detach_iocb	      entry (ptr, fixed (35)),/* detach_iocb(p,s) */
+  3    16 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed (35)),
+  3    17 						/* open(p,mode,not_used,s) */
+  3    18 	     2 close	      entry (ptr, fixed (35)),/* close(p,s) */
+  3    19 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  3    20 						/* get_line(p,bufptr,buflen,actlen,s) */
+  3    21 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  3    22 						/* get_chars(p,bufptr,buflen,actlen,s) */
+  3    23 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed (35)),
+  3    24 						/* put_chars(p,bufptr,buflen,s) */
+  3    25 	     2 modes	      entry (ptr, char (*), char (*), fixed (35)),
+  3    26 						/* modes(p,newmode,oldmode,s) */
+  3    27 	     2 position	      entry (ptr, fixed, fixed (21), fixed (35)),
+  3    28 						/* position(p,u1,u2,s) */
+  3    29 	     2 control	      entry (ptr, char (*), ptr, fixed (35)),
+  3    30 						/* control(p,order,infptr,s) */
+  3    31 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  3    32 						/* read_record(p,bufptr,buflen,actlen,s) */
+  3    33 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed (35)),
+  3    34 						/* write_record(p,bufptr,buflen,s) */
+  3    35 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed (35)),
+  3    36 						/* rewrite_record(p,bufptr,buflen,s) */
+  3    37 	     2 delete_record      entry (ptr, fixed (35)),/* delete_record(p,s) */
+  3    38 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  3    39 						/* seek_key(p,key,len,s) */
+  3    40 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  3    41 						/* read_key(p,key,len,s) */
+  3    42 	     2 read_length	      entry (ptr, fixed (21), fixed (35)),
+  3    43 						/* read_length(p,len,s) */
+  3    44 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+  3    45 						/* open_file(p,mode,desc,not_used,s) */
+  3    46 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+  3    47 						/* close_file(p,desc,s) */
+  3    48 	     2 detach	      entry (ptr, char (*), fixed bin (35));
+  3    49 						/* detach(p,desc,s) */
+  3    50 
+  3    51      declare iox_$iocb_version_sentinel
+  3    52 			      character (4) aligned external static;
+  3    53 
+  3    54 /* END INCLUDE FILE ..... iocb.incl.pl1 ..... */
+      160 
+      161 
+  4     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  4     2 
+  4     3 /* Written 05/04/78 by C. D. Tavares */
+  4     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  4     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  4     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  4     7 
+  4     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  4     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  4    10      iox_$close entry (pointer, fixed bin (35)),
+  4    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  4    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  4    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  4    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  4    15      iox_$err_not_attached entry options (variable),
+  4    16      iox_$err_not_closed entry options (variable),
+  4    17      iox_$err_no_operation entry options (variable),
+  4    18      iox_$err_not_open entry options (variable),
+  4    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  4    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  4    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  4    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  4    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  4    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  4    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  4    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  4    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  4    28      iox_$propagate entry (pointer),
+  4    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  4    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  4    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  4    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  4    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  4    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  4    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  4    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  4    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  4    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  4    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  4    40 
+  4    41 dcl (iox_$user_output,
+  4    42      iox_$user_input,
+  4    43      iox_$user_io,
+  4    44      iox_$error_output) external static pointer;
+  4    45 
+  4    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      162 
+      163 
+  5     1 /* Begin include file signal_io_info.incl.pl1 */
+  5     2 /* format: style3,idind30 */
+  5     3 
+  5     4 /* This include file requires condition_info_header */
+  5     5 
+  5     6 declare	signal_io_info_ptr		pointer;
+  5     7 declare	1 signal_io_info		aligned based (signal_io_info_ptr),
+  5     8 	  2 header		aligned like condition_info_header,
+  5     9 	  2 iocb_ptr		pointer,
+  5    10 	  2 iocb_name		char (32) unaligned,
+  5    11 	  2 operation		char (32),
+  5    12 	  2 control_order_info_ptr	pointer,
+  5    13 	  2 position_type		fixed bin,
+  5    14 	  2 position_amount		fixed bin (35),
+  5    15 	  2 data_ptr		pointer,		/* points to control_order name on control */
+  5    16 	  2 data_length		fixed bin (21),
+  5    17 	  2 returned_data_length	fixed bin (21),
+  5    18 	  2 returned_error_code	fixed bin (35),
+  5    19 	  2 old_modes		aligned,
+  5    20 	    3 pointer		pointer,
+  5    21 	    3 length		fixed bin (21),
+  5    22 	  2 new_modes		aligned,
+  5    23 	    3 pointer		pointer,
+  5    24 	    3 length		fixed bin (21),
+  5    25 	  2 key			char (256) varying;
+  5    26 
+  5    27 declare	(
+  5    28 	SGI_OP_GET_LINE		init ("get_line"),
+  5    29 	SGI_OP_GET_CHARS		init ("get_chars"),
+  5    30 	SGI_OP_PUT_CHARS		init ("put_chars"),
+  5    31 	SGI_OP_MODES		init ("modes"),
+  5    32 	SGI_OP_POSITION		init ("position"),
+  5    33 	SGI_OP_CONTROL		init ("control"),
+  5    34 	SGI_OP_READ_RECORD		init ("read_record"),
+  5    35 	SGI_OP_WRITE_RECORD		init ("write_record"),
+  5    36 	SGI_OP_REWRITE_RECORD	init ("rewrite_record"),
+  5    37 	SGI_OP_DELETE_RECORD	init ("delete_record"),
+  5    38 	SGI_OP_SEEK_KEY		init ("seek_key"),
+  5    39 	SGI_OP_READ_KEY		init ("read_key"),
+  5    40 	SGI_OP_READ_LENGTH		init ("read_length")
+  5    41 	)			char (32) int static options (constant);
+  5    42 
+  5    43 declare	signal_io_io_buffer		char (signal_io_info.data_length) based (signal_io_info.data_ptr);
+  5    44 declare	signal_io_order_name	char (signal_io_info.data_length) based (signal_io_info.data_ptr);
+  5    45 declare	signal_io_old_modes		char (signal_io_info.old_modes.length) based (signal_io_info.old_modes.pointer);
+  5    46 declare	signal_io_new_modes		char (signal_io_info.new_modes.length) based (signal_io_info.new_modes.pointer);
+  5    47 
+  5    48 /* End include file signal_io_info.incl.pl1 */
+      164 
+      165 
+  6     1 /*  BEGIN:   sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+  6     2 
+  6     3 /* format:style3,idind30 */
+  6     4 
+  6     5 /* Created  1984-10-24  BIM */
+  6     6 /* Modified 1985-01-07, BIM: access control flags that track admin and X */
+  6     7 /* Modified 1985-02-18, E. Swenson to save away abort_line procedure. */
+  6     8 
+  6     9 
+  6    10 /****^  HISTORY COMMENTS:
+  6    11*  1) change(87-02-17,GDixon), approve(87-07-03,MCR7680),
+  6    12*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  6    13*     Correct formatting problems.  Add sc_subsystem_info.flags.dont_mask_calls
+  6    14*     switch.
+  6    15*  2) change(87-07-03,GDixon), approve(87-07-03,MCR7680),
+  6    16*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  6    17*     Removed dont_mask_calls flag.  It is no longer needed to correctly perform
+  6    18*     masking on a per-request basis.
+  6    19*                                                   END HISTORY COMMENTS */
+  6    20 
+  6    21 
+  6    22 declare	sc_subsystem_info_ptr	pointer;
+  6    23 declare	1 sc_subsystem_info		aligned based (sc_subsystem_info_ptr),
+  6    24 	  2 restriction_flags	bit (36) aligned,	/* copied from mc atep or fabricated */
+  6    25 	  2 flags			aligned,
+  6    26 	    3 no_real_tty		bit (1) unaligned,	/* for sc_admin_command_ */
+  6    27 	    3 print_ready		bit (1) unal,	/* on for all except the system console,	*/
+  6    28 						/*  instructs sc_process_command_line_ to deal	*/
+  6    29 						/*  with the prompt				*/
+  6    30 	    3 the_system_console	bit (1) unal,	/* syserr messages are printed here (but console	*/
+  6    31 						/*  recover doesn't try to fix this) copied here	*/
+  6    32 						/*  from the mc_ate to save other looking in there*/
+  6    33 	    3 printer_offed		bit (1) unal,	/* suppress logging */
+  6    34 	    3 pad			bit (32) unaligned,
+  6    35 	  2 source_name		char (32) unaligned,
+  6    36 	  2 area_ptr		pointer,
+  6    37 	  2 mc_atep		pointer,		/* needed to play with attachments */
+  6    38 	  2 real_iocb		pointer,		/* for sc_signal_io_handler_ */
+  6    39 	  2 hangup_entry		entry (pointer) variable,
+  6    40 						/* called on io_no_permission. */
+  6    41 	  2 real_execute_line	entry (ptr, ptr, fixed bin (21), fixed bin (35)),
+  6    42 	  2 real_locate_request	entry (ptr, char (*), ptr, fixed bin (35)),
+  6    43 	  2 access_control_name	char (32) unaligned,
+  6    44 	  2 real_invoke_request	entry,		/* since MR11 ssu_ lacks the ability to	abort a	*/
+  6    45 						/*  single request, we have an invoke_request that*/
+  6    46 						/*  handles a condition to unwind the request	*/
+  6    47 	  2 abort_request_label	label,		/* go here (nonlocally) to unwind a single request */
+  6    48 	  2 real_abort_line		entry options (variable);
+  6    49 
+  6    50 declare	sc_ss_area		area based (sc_subsystem_info.area_ptr);
+  6    51 
+  6    52 /* The following defines the user flags for the request table. */
+  6    53 
+  6    54 declare	sc_rf_ptr			pointer;
+  6    55 declare	1 sc_request_flags		unaligned based (sc_rf_ptr),
+  6    56 	  2 dont_parse_arguments	bit,		/* reply, intercom */
+  6    57 	  2 obsolete		bit,		/* warn opr to not use it */
+  6    58 	  2 dont_mask_calls		bit,		/* this runs without masking ev calls */
+  6    59 	  2 requires_as		bit,		/* not before AS */
+  6    60 	  2 requires_no_as		bit,		/* only before AS */
+  6    61 	  2 complete_disks_first	bit,		/* try to mount disks */
+  6    62 	  2 no_login_needed		bit,		/* sign_on */
+  6    63 	  2 pad			bit (5),
+  6    64 	  2 restriction_type	fixed bin (6) unsigned;
+  6    65 						/* index into restriction flag string */
+  6    66 
+  6    67 
+  6    68 /*  END OF:  sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+      166 
+      167 
+  7     1 /*  BEGIN:   sc_stat_.incl.pl1			  *  *  *  *  *  */
+  7     2 
+  7     3 
+  7     4 /****^  HISTORY COMMENTS:
+  7     5*  1) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  7     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  7     7*     Add sc_stat_$vchn_requires_accept in support of DSA virtual channels.
+  7     8*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7680),
+  7     9*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  7    10*     Reorganized by type of data to improve readability.
+  7    11*                                                   END HISTORY COMMENTS */
+  7    12 
+  7    13 
+  7    14 			      /* ACCESS NAMES		       */
+  7    15 dcl (
+  7    16  sc_stat_$exec_access_name,	      /* check MC access in an exec request    */
+  7    17  sc_stat_$unidentified_access_name  /* check access if no one is logged in.  */
+  7    18     ) char(32) ext static;
+  7    19 
+  7    20 		        /* PATHNAMES			       */
+  7    21 dcl (
+  7    22  sc_stat_$info_dir,	        /* admin info segs directory		       */
+  7    23  sc_stat_$log_dir,	        /* as log segs directory		       */
+  7    24  sc_stat_$mc_acs_dir,       /* message coordinator ACS segments (.mcacs) dir */
+  7    25  sc_stat_$sysdir	        /* system control directory		       */
+  7    26     ) char(168) ext static;
+  7    27 
+  7    28 		        /* OTHER CHAR STRINGS			       */
+  7    29 dcl (
+  7    30  sc_stat_$master_channel    /* Master TTY channel.		       */
+  7    31     )  char(6) aligned ext static;
+  7    32 
+  7    33 			       /* LABELS			       */
+  7    34 dcl (
+  7    35  sc_stat_$admin_listener_exit_label, /* GO here to exit admin mode.  Set to  */
+  7    36 			       /*    ssu_$null_label unless 	       */
+  7    37 			       /*	   admin_listener is active.	       */
+  7    38  sc_stat_$master_abort_label,	       /* GO here after fault that is not      */
+  7    39 			       /*    attributable to a particular      */
+  7    40 			       /*	   command.		       */
+  7    41  sc_stat_$system_shutdown_label      /* GO here to shut down system	       */
+  7    42     ) label variable ext static;
+  7    43 
+  7    44 			 /* POINTERS TO			       */
+  7    45 dcl (
+  7    46  sc_stat_$admin_log_iocb,	 /* IOCB for admin log		       */
+  7    47  sc_stat_$admin_log_write_ptr, /* DATA for log_write_ calls on the admin log */
+  7    48  sc_stat_$admin_sci_ptr,	 /* DATA ssu_ for terminal currently executing */
+  7    49  sc_stat_$as_log_write_ptr,	 /* DATA for log_write_ calls on as log, used  */
+  7    50 			 /*      by sys_log_.		       */
+  7    51  sc_stat_$initzer_ttyp,	 /* ENT  mc_ate for initializer terminal       */
+  7    52  sc_stat_$master_iocb,	 /* IOCB for "master_i/o"		       */
+  7    53  sc_stat_$master_sci_ptr,	 /* DATA ssu_ (permanent) for system control   */
+  7    54  sc_stat_$mc_ansp,		 /* HEAD of mc_anstbl		       */
+  7    55  sc_stat_$mc_iocb,		 /* IOCB ptr for "mc_i/o"		       */
+  7    56  sc_stat_$sv1_iocb,		 /* IOCB ptr for "severity1"		       */
+  7    57  sc_stat_$sv2_iocb,		 /* IOCB ptr for "severity2"		       */
+  7    58  sc_stat_$sv3_iocb		 /* IOCB ptr for "severity3"		       */
+  7    59     ) ptr ext static;
+  7    60 
+  7    61 			   /* SWITCHES			       */
+  7    62 dcl (
+  7    63  sc_stat_$Go,		   /* TRUE after answering service is listening*/
+  7    64  sc_stat_$Go_typed,		   /* TRUE immediately after 'go' is typed     */
+  7    65  sc_stat_$Multics,		   /* TRUE after answering service started     */
+  7    66  sc_stat_$Multics_typed,	   /* TRUE immediately after 'mult' is typed   */
+  7    67  sc_stat_$Star_typed,	   /* TRUE if 'mult' and 'go' came from 'star' */
+  7    68  sc_stat_$admin_listener_switch, /* TRUE if in the admin listener	       */
+  7    69  sc_stat_$did_part1,	   /* TRUE if part 1 of system startup ec done */
+  7    70  sc_stat_$did_part2,	   /* TRUE if part 2 of system startup ec done */
+  7    71  sc_stat_$did_part3,	   /* TRUE if part 3 of system startup ec done */
+  7    72  sc_stat_$mc_is_on,		   /* TRUE if message coordinator running      */
+  7    73  sc_stat_$no_operator_login,	   /* TRUE if operator login not required, or  */
+  7    74 			   /*	 if PNT not yet available.	       */
+  7    75  sc_stat_$shutdown_typed,	   /* TRUE if 'shutdown' command in progress.  */
+  7    76  sc_stat_$test_mode,	   /* TRUE if in test environment	       */
+  7    77  sc_stat_$vchn_requires_accept   /* TRUE if vchn may only be used if accepted*/
+  7    78 			   /*      by operator signed on system console*/
+  7    79     ) bit(1) aligned ext static;
+  7    80 
+  7    81 
+  7    82 /*  END OF:  sc_stat_.incl.pl1			  *  *  *  *  *  */
+      168 
+      169 
+      170      end sc_signal_io_handler_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.2  sc_signal_io_handler_.pl1         >spec>install>1112>sc_signal_io_handler_.pl1
+156          1    06/28/79  1204.8  condition_info.incl.pl1           >ldd>include>condition_info.incl.pl1
+158          2    03/24/82  1347.2  condition_info_header.incl.pl1    >ldd>include>condition_info_header.incl.pl1
+160          3    05/20/83  1846.4  iocb.incl.pl1                     >ldd>include>iocb.incl.pl1
+162          4    05/23/83  0916.6  iox_entries.incl.pl1              >ldd>include>iox_dcls.incl.pl1
+164          5    11/28/84  1016.3  signal_io_info.incl.pl1           >ldd>include>signal_io_info.incl.pl1
+166          6    08/06/87  0913.5  sc_subsystem_info_.incl.pl1       >ldd>include>sc_subsystem_info_.incl.pl1
+168          7    08/06/87  0913.5  sc_stat_.incl.pl1                 >ldd>include>sc_stat_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CI                              000100 automatic       structure                level 1 dcl 30 set ref 45 45
+SGI_OP_CONTROL                  000000 constant        char(32)                 initial packed unaligned dcl 5-27 ref 65
+SGI_OP_GET_CHARS                000040 constant        char(32)                 initial packed unaligned dcl 5-27 ref 59
+SGI_OP_GET_LINE                 000050 constant        char(32)                 initial packed unaligned dcl 5-27 ref 57
+SGI_OP_MODES                    000020 constant        char(32)                 initial packed unaligned dcl 5-27 ref 67
+SGI_OP_POSITION                 000010 constant        char(32)                 initial packed unaligned dcl 5-27 ref 63
+SGI_OP_PUT_CHARS                000030 constant        char(32)                 initial packed unaligned dcl 5-27 ref 61
+addr                                                   builtin function         dcl 34 ref 45 45
+code                            000132 automatic       fixed bin(35,0)          dcl 31 set ref 45* 46
+condition_info                         based           structure                level 1 dcl 1-14
+condition_info_header                  based           structure                level 1 dcl 2-6
+condition_info_version_1               constant        fixed bin(17,0)          initial dcl 1-30 ref 44
+control_order_info_ptr
+                        130            based           pointer                  level 2 dcl 5-7 set ref 142*
+data_length             136            based           fixed bin(21,0)          level 2 dcl 5-7 set ref 83* 98* 127* 129 129 137 139
+                                                                                  142 142
+data_ptr                134            based           pointer                  level 2 dcl 5-7 set ref 83* 85 98* 100 127* 129 137
+                                                                                  139 142
+error_table_$io_no_permission   000020 external static fixed bin(35,0)          dcl 41 ref 151
+find_condition_info_            000010 constant        entry                    external dcl 36 ref 45
+flags                     1            based           structure                level 2 dcl 6-23
+hangup_entry             20            based           entry variable           level 2 dcl 6-23 ref 151
+info_ptr                 14     000100 automatic       pointer                  level 2 dcl 30 set ref 55
+ioa_$ioa_switch                 000012 constant        entry                    external dcl 37 ref 88 103
+ioa_$ioa_switch_nnl             000014 constant        entry                    external dcl 38 ref 81 85 100 129
+iox_$control                    000022 constant        entry                    external dcl 4-8 ref 142
+iox_$get_chars                  000024 constant        entry                    external dcl 4-8 ref 98
+iox_$get_line                   000026 constant        entry                    external dcl 4-8 ref 83
+iox_$modes                      000030 constant        entry                    external dcl 4-8 ref 119
+iox_$position                   000032 constant        entry                    external dcl 4-8 ref 110
+iox_$put_chars                  000034 constant        entry                    external dcl 4-8 ref 127
+length                  144            based           fixed bin(21,0)          level 3 in structure "signal_io_info" dcl 5-7
+                                                                                  in procedure "sc_signal_io_handler_" ref 119 119
+length                  150            based           fixed bin(21,0)          level 3 in structure "signal_io_info" dcl 5-7
+                                                                                  in procedure "sc_signal_io_handler_" ref 119 119
+new_modes               146            based           structure                level 2 dcl 5-7
+null                                                   builtin function         dcl 34 ref 45 45 48 52
+old_modes               142            based           structure                level 2 dcl 5-7
+operation               120            based           char(32)                 level 2 dcl 5-7 ref 57 59 61 63 65 67
+pointer                 146            based           pointer                  level 3 in structure "signal_io_info" dcl 5-7
+                                                                                  in procedure "sc_signal_io_handler_" ref 119
+pointer                 142            based           pointer                  level 3 in structure "signal_io_info" dcl 5-7
+                                                                                  in procedure "sc_signal_io_handler_" ref 119
+position_amount         133            based           fixed bin(35,0)          level 2 dcl 5-7 ref 110
+position_type           132            based           fixed bin(17,0)          level 2 dcl 5-7 set ref 110*
+printer_offed             1(03)        based           bit(1)                   level 3 packed packed unaligned dcl 6-23 set ref 85
+                                                                                  100 137* 139*
+real_iocb                16            based           pointer                  level 2 in structure "sc_subsystem_info" dcl 6-23
+                                                                                  in procedure "sc_signal_io_handler_" ref 51
+real_iocb                       000134 automatic       pointer                  dcl 32 in procedure "sc_signal_io_handler_" set ref
+                                                                                  51* 52 83* 98* 110* 119* 127* 142*
+returned_data_length    137            based           fixed bin(21,0)          level 2 dcl 5-7 set ref 83* 85 85 85 98* 100 100 100
+returned_error_code     140            based           fixed bin(35,0)          level 2 dcl 5-7 set ref 83* 85 98* 100 110* 119*
+                                                                                  127* 142* 151
+returned_string                        based           char                     packed unaligned dcl 78 in procedure "GET_LINE" set
+                                                                                  ref 85*
+returned_string                        based           char                     packed unaligned dcl 95 in procedure "GET_CHARS" set
+                                                                                  ref 100*
+sc_stat_$admin_log_iocb         000036 external static pointer                  dcl 7-45 set ref 81* 85* 88* 100* 103* 129*
+sc_stat_$admin_sci_ptr          000040 external static pointer                  dcl 7-45 set ref 48 50* 151*
+sc_subsystem_info                      based           structure                level 1 dcl 6-23
+sc_subsystem_info_ptr           000140 automatic       pointer                  dcl 6-22 set ref 50* 51 85 100 137 139 151
+signal_io_info                         based           structure                level 1 dcl 5-7
+signal_io_info_ptr              000136 automatic       pointer                  dcl 5-6 set ref 55* 57 59 61 63 65 67 83 83 83 83 85
+                                                                                  85 85 85 85 98 98 98 98 100 100 100 100 100 110
+                                                                                  110 110 119 119 119 119 119 119 119 127 127 127
+                                                                                  129 129 129 137 137 139 139 142 142 142 142 142
+                                                                                  151
+signal_io_io_buffer                    based           char                     packed unaligned dcl 5-43 set ref 129*
+signal_io_new_modes                    based           char                     packed unaligned dcl 5-46 set ref 119*
+signal_io_old_modes                    based           char                     packed unaligned dcl 5-45 set ref 119*
+signal_io_order_name                   based           char                     packed unaligned dcl 5-44 set ref 137 139 142*
+ssu_$get_info_ptr               000016 constant        entry                    external dcl 39 ref 50
+version                   2     000100 automatic       fixed bin(17,0)          level 2 dcl 30 set ref 44*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+SGI_OP_DELETE_RECORD                   internal static char(32)                 initial packed unaligned dcl 5-27
+SGI_OP_READ_KEY                        internal static char(32)                 initial packed unaligned dcl 5-27
+SGI_OP_READ_LENGTH                     internal static char(32)                 initial packed unaligned dcl 5-27
+SGI_OP_READ_RECORD                     internal static char(32)                 initial packed unaligned dcl 5-27
+SGI_OP_REWRITE_RECORD                  internal static char(32)                 initial packed unaligned dcl 5-27
+SGI_OP_SEEK_KEY                        internal static char(32)                 initial packed unaligned dcl 5-27
+SGI_OP_WRITE_RECORD                    internal static char(32)                 initial packed unaligned dcl 5-27
+condition_info_header_ptr              automatic       pointer                  dcl 2-4
+condition_info_ptr                     automatic       pointer                  dcl 1-10
+iocb                                   based           structure                level 1 dcl 3-6
+iox_$attach_loud                000000 constant        entry                    external dcl 4-8
+iox_$attach_name                000000 constant        entry                    external dcl 4-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 4-8
+iox_$close                      000000 constant        entry                    external dcl 4-8
+iox_$close_file                 000000 constant        entry                    external dcl 4-8
+iox_$delete_record              000000 constant        entry                    external dcl 4-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 4-8
+iox_$detach                     000000 constant        entry                    external dcl 4-8
+iox_$detach_iocb                000000 constant        entry                    external dcl 4-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 4-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 4-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 4-8
+iox_$err_not_open               000000 constant        entry                    external dcl 4-8
+iox_$error_output                      external static pointer                  dcl 4-41
+iox_$find_iocb                  000000 constant        entry                    external dcl 4-8
+iox_$find_iocb_n                000000 constant        entry                    external dcl 4-8
+iox_$iocb_version_sentinel             external static char(4)                  dcl 3-51
+iox_$look_iocb                  000000 constant        entry                    external dcl 4-8
+iox_$move_attach                000000 constant        entry                    external dcl 4-8
+iox_$open                       000000 constant        entry                    external dcl 4-8
+iox_$open_file                  000000 constant        entry                    external dcl 4-8
+iox_$propagate                  000000 constant        entry                    external dcl 4-8
+iox_$read_key                   000000 constant        entry                    external dcl 4-8
+iox_$read_length                000000 constant        entry                    external dcl 4-8
+iox_$read_record                000000 constant        entry                    external dcl 4-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 4-8
+iox_$seek_key                   000000 constant        entry                    external dcl 4-8
+iox_$user_input                        external static pointer                  dcl 4-41
+iox_$user_io                           external static pointer                  dcl 4-41
+iox_$user_output                       external static pointer                  dcl 4-41
+iox_$write_record               000000 constant        entry                    external dcl 4-8
+sc_request_flags                       based           structure                level 1 packed packed unaligned dcl 6-55
+sc_rf_ptr                              automatic       pointer                  dcl 6-54
+sc_ss_area                             based           area(1024)               dcl 6-50
+sc_stat_$Go                            external static bit(1)                   dcl 7-62
+sc_stat_$Go_typed                      external static bit(1)                   dcl 7-62
+sc_stat_$Multics                       external static bit(1)                   dcl 7-62
+sc_stat_$Multics_typed                 external static bit(1)                   dcl 7-62
+sc_stat_$Star_typed                    external static bit(1)                   dcl 7-62
+sc_stat_$admin_listener_exit_label     external static label variable           dcl 7-34
+sc_stat_$admin_listener_switch         external static bit(1)                   dcl 7-62
+sc_stat_$admin_log_write_ptr           external static pointer                  dcl 7-45
+sc_stat_$as_log_write_ptr              external static pointer                  dcl 7-45
+sc_stat_$did_part1                     external static bit(1)                   dcl 7-62
+sc_stat_$did_part2                     external static bit(1)                   dcl 7-62
+sc_stat_$did_part3                     external static bit(1)                   dcl 7-62
+sc_stat_$exec_access_name              external static char(32)                 packed unaligned dcl 7-15
+sc_stat_$info_dir                      external static char(168)                packed unaligned dcl 7-21
+sc_stat_$initzer_ttyp                  external static pointer                  dcl 7-45
+sc_stat_$log_dir                       external static char(168)                packed unaligned dcl 7-21
+sc_stat_$master_abort_label            external static label variable           dcl 7-34
+sc_stat_$master_channel                external static char(6)                  dcl 7-29
+sc_stat_$master_iocb                   external static pointer                  dcl 7-45
+sc_stat_$master_sci_ptr                external static pointer                  dcl 7-45
+sc_stat_$mc_acs_dir                    external static char(168)                packed unaligned dcl 7-21
+sc_stat_$mc_ansp                       external static pointer                  dcl 7-45
+sc_stat_$mc_iocb                       external static pointer                  dcl 7-45
+sc_stat_$mc_is_on                      external static bit(1)                   dcl 7-62
+sc_stat_$no_operator_login             external static bit(1)                   dcl 7-62
+sc_stat_$shutdown_typed                external static bit(1)                   dcl 7-62
+sc_stat_$sv1_iocb                      external static pointer                  dcl 7-45
+sc_stat_$sv2_iocb                      external static pointer                  dcl 7-45
+sc_stat_$sv3_iocb                      external static pointer                  dcl 7-45
+sc_stat_$sysdir                        external static char(168)                packed unaligned dcl 7-21
+sc_stat_$system_shutdown_label         external static label variable           dcl 7-34
+sc_stat_$test_mode                     external static bit(1)                   dcl 7-62
+sc_stat_$unidentified_access_name      external static char(32)                 packed unaligned dcl 7-15
+sc_stat_$vchn_requires_accept          external static bit(1)                   dcl 7-62
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CONTROL                         000613 constant        entry                    internal dcl 134 ref 65
+GET_CHARS                       000355 constant        entry                    internal dcl 93 ref 59
+GET_LINE                        000232 constant        entry                    internal dcl 74 ref 57
+MODES                           000504 constant        entry                    internal dcl 116 ref 67
+POSITION                        000461 constant        entry                    internal dcl 108 ref 63
+PUT_CHARS                       000543 constant        entry                    internal dcl 124 ref 61
+check_hangup                    000667 constant        entry                    internal dcl 148 ref 89 104 112 120 130 144
+sc_signal_io_handler_           000110 constant        entry                    external dcl 27
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1100        1142     706        1110
+Length      1472     706        42         314     171           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_signal_io_handler_               302 external procedure  is an external procedure.  
+GET_LINE                                internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+GET_CHARS                               internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+POSITION                                internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+MODES                                   internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+PUT_CHARS                               internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+CONTROL                                 internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+check_hangup                            internal procedure  shares stack frame of external procedure sc_signal_io_handler_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sc_signal_io_handler_    000100 CI                          sc_signal_io_handler_
+                         000132 code                        sc_signal_io_handler_
+                         000134 real_iocb                   sc_signal_io_handler_
+                         000136 signal_io_info_ptr          sc_signal_io_handler_
+                         000140 sc_subsystem_info_ptr       sc_signal_io_handler_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var        call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+find_condition_info_          ioa_$ioa_switch               ioa_$ioa_switch_nnl           iox_$control
+iox_$get_chars                iox_$get_line                 iox_$modes                    iox_$position
+iox_$put_chars                ssu_$get_info_ptr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$io_no_permission sc_stat_$admin_log_iocb       sc_stat_$admin_sci_ptr
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     27 000107        44 000115        45 000117        46 000135        48 000137        50 000144        51 000154
+     52 000157        55 000163        57 000165        59 000174        61 000202        63 000210        65 000216
+     67 000224        70 000231        74 000232        81 000233        83 000252        85 000272        88 000333
+     89 000353        90 000354        93 000355        98 000356       100 000376       103 000437       104 000457
+    105 000460       108 000461       110 000462       112 000502       113 000503       116 000504       119 000505
+    120 000541       121 000542       124 000543       127 000544       129 000562       130 000611       131 000612
+    134 000613       137 000614       139 000626       142 000636       144 000665       145 000666       148 000667
+    151 000670       153 000704
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

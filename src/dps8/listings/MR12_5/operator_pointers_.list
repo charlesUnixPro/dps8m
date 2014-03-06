@@ -1,0 +1,378 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1115>operator_pointers_.alm                                                                                                                               
+ASSEMBLED ON:	11/11/89  0922.1 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " This is the operator pointers vector used by basic and (perhaps)
+                                    13  " other translators.  The trans_op_tv_ptr field in the base of the
+                                    14  " stack will point at <operator_pointers_>|[operator_pointers].
+                                    15  " Programs will obtain a pointer to their own operator segment by
+                                    16  " the instruction sequence
+                                    17  "		epp2	sb|op_vector,*
+                                    18  "		epp2	2|op,*	where op specifies desired operator
+                                    19  "
+                                    20  " This segment makes use of the manner in which the current alm
+                                    21  " generates links.  This segment is probably not bindable.
+                                    22  "
+                                    23  " Last modified (date and reason)
+                                    24  "	12/74    by S. E. Barr to add probe break line
+                                    25  "	06/20/75 by S. Webber to add cobol_operators_$entry_version_1
+                                    26  "         09/20/77 by P. Krupp to extend the trace interface to cobol programs
+                                    27  "	07/26/79 by M. Weaver to turn on perprocess static
+                                    28  "
+    000000                          29  	perprocess_static
+                                    30  "
+                                    31            include   link_vector
+                                   1-1  
+                                   1-2  "
+                                   1-3  "         BEGIN INCLUDE FILE ... link_vector.incl.alm   9/77 P. Krupp
+                                   1-4  "
+                                   1-5  " Macro to generate the operator pointers vector for BASIC, COBOL, and the probe command.
+                                   1-6  " Two versions of the vector are generated.  One for use by trace with COBOL and the other for standard use.
+                                   1-7  "
+                                   1-8  " The link to cicg_pascal_operators_ was added because of a communication mixup.
+                                   1-9  " operator_pointers_ is a system  module and should not be used by private translators.
+                                  1-10  " Pointers in this vector are a resource that must be shared across all
+                                  1-11  " Multics sites.  This resource is allocated by CISL.  Private translators
+                                  1-12  " should generate a link in the object segment to the operator segment.
+                                  1-13  "
+                                  1-14  " Modified 07/23/81 by M. Weaver to add cicg_pascal_operators_ and algol68_operators_
+                                  1-15  "
+                                  1-16            macro     link_vector
+                              1   1-17  	segdef	&1operator_pointers_
+                              2   1-18  &1operator_pointers_:
+                              3   1-19  
+                              4   1-20  "
+                              5   1-21  	link	&1l0,<basic_operators_>|[enter_main]
+                              6   1-22  	link	&1l1,<basic_operators_>|[enter_proc]
+                              7   1-23  	link	&1l2,<probe>|[break]
+                              8   1-24  	link	&1l3,<cobol_operators_>|[&1entry_version_1]
+                              9   1-25  	link	&1l4,<cicg_pascal_operators_>|[&1transfer_vector]
+                             10   1-26  	link	&1l5,<algol68_operators_>|[&1operator_table]
+                             11   1-27  "
+                             12   1-28  " New links should be added before this line.  Order of existing
+                             13   1-29  " links MUST NOT BE CHANGED!
+                             14   1-30  "
+                             15   1-31            &end
+                                  1-32  "
+                                  1-33  "         END INCLUDE FILE ... link_vector.incl.alm
+                                  1-34  
+                                    32            use       linkc
+                                    33            join      /link/linkc
+                                    34            link_vector
+                        000010          	segdef	operator_pointers_
+    000010                              operator_pointers_:
+                                        
+                                        "
+                        000010          	link	l0,<basic_operators_>|[enter_main]
+                        000012          	link	l1,<basic_operators_>|[enter_proc]
+                        000014          	link	l2,<probe>|[break]
+                        000016          	link	l3,<cobol_operators_>|[entry_version_1]
+                        000020          	link	l4,<cicg_pascal_operators_>|[transfer_vector]
+                        000022          	link	l5,<algol68_operators_>|[operator_table]
+                                        "
+                                        " New links should be added before this line.  Order of existing
+                                        " links MUST NOT BE CHANGED!
+                                        "
+                                    35  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000000  5a   000003 000000 
+    000001  5a   000032 600000 
+    000002  aa   000000 000000 
+    000003  55   000013 000002 
+    000004  5a   000002 400003 
+    000005  55   000006 000013 
+    000006  aa  022 157 160 145
+    000007  aa  162 141 164 157
+    000010  aa  162 137 160 157
+    000011  aa  151 156 164 145
+    000012  aa  162 163 137 000
+    000013  55   000023 000003 
+    000014  2a   000010 400001 
+    000015  55   000016 000003 
+    000016  aa  022 157 160 145         operator_pointers_
+    000017  aa  162 141 164 157
+    000020  aa  162 137 160 157
+    000021  aa  151 156 164 145
+    000022  aa  162 163 137 000
+    000023  55   000002 000013 
+    000024  6a   000000 400002 
+    000025  55   000026 000003 
+    000026  aa  014 163 171 155         symbol_table
+    000027  aa  142 157 154 137
+    000030  aa  164 141 142 154
+    000031  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000032  aa   000000 000015 
+    000033  aa   000000 000000 
+    000034  aa   000000 000000 
+    000035  aa   000000 000000 
+    000036  aa   000000 000000 
+    000037  aa   000000 000000 
+    000040  5a   000013 000000 
+    000041  5a   000023 000000 
+    000042  aa   000000 000000 
+    000043  aa   000000 000000 
+    000044  aa   000000 000000 
+    000045  aa   000000 000000 
+    000046  aa   000000 000000 
+    000047  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000050  aa  016 157 160 145         operator_table
+    000051  aa  162 141 164 157
+    000052  aa  162 137 164 141
+    000053  aa  142 154 145 000
+    000054  aa  022 141 154 147         algol68_operators_
+    000055  aa  157 154 066 070
+    000056  aa  137 157 160 145
+    000057  aa  162 141 164 157
+    000060  aa  162 163 137 000
+    000061  aa  017 164 162 141         transfer_vector
+    000062  aa  156 163 146 145
+    000063  aa  162 137 166 145
+    000064  aa  143 164 157 162
+    000065  aa  026 143 151 143         cicg_pascal_operators_
+    000066  aa  147 137 160 141
+    000067  aa  163 143 141 154
+    000070  aa  137 157 160 145
+    000071  aa  162 141 164 157
+    000072  aa  162 163 137 000
+    000073  aa  017 145 156 164         entry_version_1
+    000074  aa  162 171 137 166
+    000075  aa  145 162 163 151
+    000076  aa  157 156 137 061
+    000077  aa  020 143 157 142         cobol_operators_
+    000100  aa  157 154 137 157
+    000101  aa  160 145 162 141
+    000102  aa  164 157 162 163
+    000103  aa  137 000 000 000
+    000104  aa  005 142 162 145         break
+    000105  aa  141 153 000 000
+    000106  aa  005 160 162 157         probe
+    000107  aa  142 145 000 000
+    000110  aa  012 145 156 164         enter_proc
+    000111  aa  145 162 137 160
+    000112  aa  162 157 143 000
+    000113  aa  012 145 156 164         enter_main
+    000114  aa  145 162 137 155
+    000115  aa  141 151 156 000
+    000116  aa  020 142 141 163         basic_operators_
+    000117  aa  151 143 137 157
+    000120  aa  160 145 162 141
+    000121  aa  164 157 162 163
+    000122  aa  137 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000123  aa   000004 000000 
+    000124  55   000054 000050 
+    000125  aa   000004 000000 
+    000126  55   000065 000061 
+    000127  aa   000004 000000 
+    000130  55   000077 000073 
+    000131  aa   000004 000000 
+    000132  55   000106 000104 
+    000133  aa   000004 000000 
+    000134  55   000116 000110 
+    000135  aa   000004 000000 
+    000136  55   000116 000113 
+    000137  aa   000001 000000 
+    000140  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000141  5a   000123 000000 
+    000142  5a   000125 000000 
+    000143  5a   000127 000000 
+    000144  5a   000131 000000 
+    000145  5a   000133 000000 
+    000146  5a   000135 000000 
+    000147  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000000 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000024 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         basic_operators_|enter_main
+    000011  5a   000146 0000 00
+    000012  9a   777766 0000 46         basic_operators_|enter_proc
+    000013  5a   000145 0000 00
+    000014  9a   777764 0000 46         probe|break
+    000015  5a   000144 0000 00
+    000016  9a   777762 0000 46         cobol_operators_|entry_version_1
+    000017  5a   000143 0000 00
+    000020  9a   777760 0000 46         cicg_pascal_operators_|transfer_vector
+    000021  5a   000142 0000 00
+    000022  9a   777756 0000 46         algol68_operators_|operator_table
+    000023  5a   000141 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   241162 205344 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000154 
+    000020  aa   000000 000122 
+    000021  aa   000131 000124 
+    000022  aa   000145 000122 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000051 
+    000067  aa   175453 030122 
+    000070  aa   000000 117547 
+    000071  aa   227155 400000 
+    000072  aa   000111 000041 
+    000073  aa   102323 734456 
+    000074  aa   000000 110233 
+    000075  aa   065274 200000 
+    000076  aa   076163 160145          >spec>install>1115>operator_pointers_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061065 076157 
+    000103  aa   160145 162141 
+    000104  aa   164157 162137 
+    000105  aa   160157 151156 
+    000106  aa   164145 162163 
+    000107  aa   137056 141154 
+    000110  aa   155040 040040 
+    000111  aa   076154 144144          >ldd>include>link_vector.incl.alm
+    000112  aa   076151 156143 
+    000113  aa   154165 144145 
+    000114  aa   076154 151156 
+    000115  aa   153137 166145 
+    000116  aa   143164 157162 
+    000117  aa   056151 156143 
+    000120  aa   154056 141154 
+    000121  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                algol68_operators_       operator_pointers_:        34.
+                basic_operators_         operator_pointers_:        34.
+                break                    operator_pointers_:        34.
+                cicg_pascal_operators_   operator_pointers_:        34.
+                cobol_operators_         operator_pointers_:        34.
+                enter_main               operator_pointers_:        34.
+                enter_proc               operator_pointers_:        34.
+                entry_version_1          operator_pointers_:        34.
+          10    l0                       operator_pointers_:        34.
+          12    l1                       operator_pointers_:        34.
+          14    l2                       operator_pointers_:        34.
+          16    l3                       operator_pointers_:        34.
+          20    l4                       operator_pointers_:        34.
+          22    l5                       operator_pointers_:        34.
+          10    linkc                    operator_pointers_:        32,   33.
+          10    operator_pointers_       operator_pointers_:        34.
+                operator_table           operator_pointers_:        34.
+                probe                    operator_pointers_:        34.
+                transfer_vector          operator_pointers_:        34.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

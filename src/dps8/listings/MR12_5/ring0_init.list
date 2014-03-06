@@ -1,0 +1,181 @@
+	COMPILATION LISTING OF SEGMENT ring0_init
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1043.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 ring0_init: proc ;
+       14 
+       15 /* last modified by Kobziar 1/25/75 to call priv_init entries */
+       16 /* last modified by Greenberg 05/27/76 who changed it back again, and added terminate entries. */
+       17 /* last modified by Loepere 11/05/84 to rename terminate to terminate_. */
+       18 
+       19 dcl (level$get, level$set) ext entry (fixed bin) ;
+       20 
+       21 dcl  initiate ext entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr, fixed bin (35)) ;
+       22 dcl  initiate$initiate_count ext entry (char (*), char (*), char (*), fixed bin (24), fixed bin (2), ptr, fixed bin (35)) ;
+       23 dcl  terminate_$noname entry (ptr, fixed bin (35));
+       24 dcl  terminate_$teseg entry (ptr, fixed bin (1), fixed bin (35));
+       25 
+       26 dcl (dirname, ename, rname) char (*) ;
+       27 dcl  tcode fixed bin (35);
+       28 dcl  tsptr ptr;
+       29 dcl  tsw fixed bin (1);
+       30 dcl  segsw fixed bin (1) ;
+       31 dcl  copysw fixed bin (2) ;
+       32 dcl  count fixed bin (24) ;
+       33 dcl  segptr ptr ;
+       34 dcl  code fixed bin (35) ;
+       35 
+       36 dcl  save_level fixed bin ;
+       37 dcl  esw fixed bin ;
+       38 
+       39 initiate:	entry (dirname, ename, rname, segsw, copysw, segptr, code) ;
+       40 
+       41 	esw = 1 ;
+       42 	goto start ;
+       43 
+       44 initiate_count: entry (dirname, ename, rname, count, copysw, segptr, code) ;
+       45 
+       46 	esw = 2 ;
+       47 	go to start;
+       48 
+       49 terminate_noname: entry (tsptr, tcode);
+       50 
+       51 	esw = 3;
+       52 	go to start;
+       53 
+       54 terminate_seg: entry (tsptr, tsw, tcode);
+       55 
+       56 	esw = 4;
+       57 
+       58 start:
+       59 	call level$get (save_level) ;
+       60 
+       61 	call level$set (0) ;
+       62 
+       63 	if esw = 1 then call initiate (dirname, ename, rname, segsw, copysw, segptr, code) ;
+       64 	else if esw = 2 then call initiate$initiate_count (dirname, ename, rname, count, copysw, segptr, code);
+       65 	else if esw = 3 then call terminate_$noname (tsptr, tcode);
+       66 	else if esw = 4 then call terminate_$teseg (tsptr, tsw, tcode);
+       67 
+       68 	call level$set (save_level) ;
+       69 
+       70 	return ;
+       71 
+       72      end ;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.6  ring0_init.pl1                    >spec>install>1110>ring0_init.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+code                                   parameter       fixed bin(35,0)          dcl 34 set ref 39 44 63* 64*
+copysw                                 parameter       fixed bin(2,0)           dcl 31 set ref 39 44 63* 64*
+count                                  parameter       fixed bin(24,0)          dcl 32 set ref 44 64*
+dirname                                parameter       char                     packed unaligned dcl 26 set ref 39 44 63* 64*
+ename                                  parameter       char                     packed unaligned dcl 26 set ref 39 44 63* 64*
+esw                             000101 automatic       fixed bin(17,0)          dcl 37 set ref 41* 46* 51* 56* 63 64 65 66
+initiate                        000014 constant        entry                    external dcl 21 ref 63
+initiate$initiate_count         000016 constant        entry                    external dcl 22 ref 64
+level$get                       000010 constant        entry                    external dcl 19 ref 58
+level$set                       000012 constant        entry                    external dcl 19 ref 61 68
+rname                                  parameter       char                     packed unaligned dcl 26 set ref 39 44 63* 64*
+save_level                      000100 automatic       fixed bin(17,0)          dcl 36 set ref 58* 68*
+segptr                                 parameter       pointer                  dcl 33 set ref 39 44 63* 64*
+segsw                                  parameter       fixed bin(1,0)           dcl 30 set ref 39 63*
+tcode                                  parameter       fixed bin(35,0)          dcl 27 set ref 49 54 65* 66*
+terminate_$noname               000020 constant        entry                    external dcl 23 ref 65
+terminate_$teseg                000022 constant        entry                    external dcl 24 ref 66
+tsptr                                  parameter       pointer                  dcl 28 set ref 49 54 65* 66*
+tsw                                    parameter       fixed bin(1,0)           dcl 29 set ref 54 66*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+initiate                        000023 constant        entry                    external dcl 39
+initiate_count                  000061 constant        entry                    external dcl 44
+ring0_init                      000007 constant        entry                    external dcl 13
+start                           000146 constant        label                    dcl 58 ref 42 47 52
+terminate_noname                000115 constant        entry                    external dcl 49
+terminate_seg                   000134 constant        entry                    external dcl 54
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       462         506     345         472
+Length       670     345        24         145     115           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ring0_init                          106 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ring0_init               000100 save_level                  ring0_init
+                         000101 esw                         ring0_init
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+initiate                      initiate$initiate_count       level$get                     level$set
+terminate_$noname             terminate_$teseg
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000006        39 000014        41 000050        42 000052        44 000053        46 000106        47 000110
+     49 000111        51 000125        52 000127        54 000130        56 000144        58 000146        61 000155
+     63 000165        64 000234        65 000302        66 000317        68 000335        70 000344
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

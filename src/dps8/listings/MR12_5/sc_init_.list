@@ -1,0 +1,1954 @@
+	COMPILATION LISTING OF SEGMENT sc_init_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1017.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style2,idind30 */
+       13 
+       14 sc_init_:
+       15      procedure ();
+       16 
+       17 /* SC_INIT_ - initialize system control */
+       18 /* probably removed from system_control_ by THVV sometime in the dim past.
+       19*   Updated to remove tty console support for new iox_, April 1981, Benson I. Margulies */
+       20 /* Changed to heed iox_ error codes for all streams, August 1981, E. N. Kittlitz */
+       21 /* added back >unb to search rules after it was backed out once. 8/26/81 Holmstedt */
+       22 /* pit_ refname added Benson I. Margulies 81/12. */
+       23 /* call_bce change Keith Loepere 8/83 */
+       24 /* 09/23/84 by R. Michael Tague:  Set up handler for system_shutdown_scheduled_
+       25*   and dm_system_shutdown_ IPS signals */
+       26 /* Modified 1984-10-08 BIM for demise of communications */
+       27 /* Modified 1984-10-27 by E. Swenson to rename >sc1>admin_log to >sc1>as_logs
+       28*   since this is what sc_stat_$log_dir says this directory is supposed to be
+       29*   called. */
+       30 /* Modified 1984-11-01 BIM for ssu_ */
+       31 /* 12/11/84 by R. Michael Tague:  Changed to use dm_misc_util_$shutdown_handler
+       32*   for the dm_system_shutodown_ IPS signal. */
+       33 /* Modified 1985-01-15, BIM: fixed to use syserr, not sys_log_, before
+       34*   as log is available. */
+       35 /* Modified 1985-03-27, E. Swenson: for forced emergency listener. */
+       36 /* Modified 1985-04-16, EJ Sharpe: for attempting log salvage on bad logs */
+       37 
+       38 /****^  HISTORY COMMENTS:
+       39*  1) change(85-11-27,Herbst), approve(87-05-25,MCR7680),
+       40*     audit(87-01-08,GDixon), install(87-08-04,MR12.1-1055):
+       41*     Added static handler for system_message_.
+       42*  2) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       43*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       44*     Correct error message documentation.
+       45*  3) change(86-06-27,Swenson), approve(87-05-25,MCR7680),
+       46*     audit(87-01-08,GDixon), install(87-08-04,MR12.1-1055):
+       47*     Modified to support a test system control environment.
+       48*  4) change(86-12-03,Fawcett), approve(87-05-25,MCR7680),
+       49*     audit(87-01-08,GDixon), install(87-08-04,MR12.1-1055):
+       50*     Merged 2) with 1) & 3) DSA to MR12 conversion.
+       51*  5) change(87-01-08,GDixon), approve(87-01-08,PBF7479),
+       52*     audit(87-01-08,Fawcett), install(87-01-12,MR12.0-1268):
+       53*     Make Initializer properly handle asynchronous event call channels (to
+       54*     prevent wkp_ signals from causing as_dumps).
+       55*  6) change(87-02-06,GDixon), approve(87-05-25,MCR7680),
+       56*     audit(87-05-06,Parisek), install(87-08-04,MR12.1-1055):
+       57*     Replace calls to the nonexistent kill_sc_process_ subroutine with calls to
+       58*     hphcs_$syserr_error_code.  Corrected error message documentation, and
+       59*     code which creates log and admin_log if they are not found.  Correct
+       60*     coding standard violations.
+       61*                                                   END HISTORY COMMENTS */
+       62 
+       63 
+       64 /* DECLARATION OF EXTERNAL SYMBOLS */
+       65 
+       66 	dcl     active_all_rings_data$initializer_tty
+       67 				        ext char (32);
+       68 						/* TTY channel ID for operator tty from boot deck. */
+       69 	dcl     active_all_rings_data$initializer_dim
+       70 				        ext char (32);
+       71 						/* always ocd_ */
+       72 
+       73 
+       74 /* DECLARATION OF BUILTIN FUNCTIONS */
+       75 
+       76 	dcl     (addr, codeptr, hbound, max, null, rtrim, substr, unspec)
+       77 				        builtin;
+       78 
+       79 /* Entries */
+       80 
+       81 	dcl     com_err_		        entry () options (variable);
+       82 	dcl     config_$find	        entry (char (4) aligned, ptr);
+       83 	dcl     copy_on_write_handler_        entry ();
+       84 	dcl     cu_$cl		        entry options (variable);
+       85 	dcl     dm_misc_util_$shutdown_handler
+       86 				        entry ();
+       87 	dcl     get_pdir_		        entry () returns (char (168));
+       88 	dcl     hcs_$append_branchx	        entry (char (*), char (*), fixed bin (5), (3) fixed bin (3), char (*),
+       89 				        fixed bin (1), fixed bin (1), fixed bin (24), fixed bin (35));
+       90 	dcl     hcs_$chname_file	        entry (char (*), char (*), char (*), char (*), fixed bin (35));
+       91 	dcl     hcs_$fs_search_set_wdir       entry (char (*), fixed bin (35));
+       92 	dcl     hcs_$initiate	        entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr,
+       93 				        fixed bin (35));
+       94 	dcl     hcs_$initiate_search_rules    entry (ptr, fixed bin (35));
+       95 	dcl     hcs_$status_minf	        entry (char (*), char (*), fixed bin (1), fixed bin (2), fixed bin (24),
+       96 				        fixed bin (35));
+       97 	dcl     hphcs_$call_bce	        entry;
+       98 	dcl     hphcs_$set_mask_ring	        entry;
+       99 	dcl     hphcs_$syserr	        entry options (variable);
+      100 	dcl     hphcs_$syserr_error_code      entry options (variable);
+      101 	dcl     ioa_		        entry () options (variable);
+      102 	dcl     ioa_$rsnnl		        entry () options (variable);
+      103 	dcl     iox_$init_standard_iocbs      entry;
+      104 	dcl     log_salvage_	        entry (char (*), char (*), ptr, fixed bin (35));
+      105 	dcl     log_write_$open	        entry (character (*), character (*), bit (1) aligned, pointer,
+      106 				        fixed binary (35));
+      107 	dcl     pathname_		        entry (char (*), char (*)) returns (char (168));
+      108 	dcl     pl1_resignaller_$establish_handlers
+      109 				        entry;
+      110 	dcl     sc_create_sci_	        entry (pointer, fixed binary (35));
+      111 	dcl     sct_manager_$set	        entry (fixed bin, entry, fixed bin (35));
+      112 	dcl     ssu_$get_info_ptr	        entry (ptr) returns (ptr);
+      113 	dcl     system_message_handler_       entry ();
+      114 	dcl     timer_manager_$cpu_time_interrupt
+      115 				        entry ();
+      116 	dcl     timer_manager_$alarm_interrupt
+      117 				        entry ();
+      118 	dcl     system_shutdown_handler_      entry ();
+      119 	dcl     wkp_signal_handler_	        entry ();
+      120 	dcl     unique_chars_	        entry (bit (*)) returns (char (15));
+      121 
+      122 	dcl     (
+      123 	        error_table_$noentry,
+      124 	        error_table_$notadir
+      125 	        )			        fixed bin (35) ext static;
+      126 
+      127 /* DECLARATION OF AUTOMATIC STORAGE VARIABLES */
+      128 
+      129 	dcl     atd		        char (200); /* Attach description for master console */
+      130 	dcl     1 auto_log_salvage_arg        aligned like log_salvage_arg;
+      131 	dcl     code		        fixed bin (35);
+      132 						/* iox errcode */
+      133 	dcl     log_salv_code	        fixed bin (35);
+      134 						/* returned from log_salvage_ */
+      135 	dcl     log_salv_err_cnt	        fixed bin;	/* count of errors occurring on each log */
+      136 	dcl     log_salv_name	        char (32);	/* name of log being salvaged */
+      137 	dcl     type		        fixed bin (2);
+      138 						/* for status_minf */
+      139 
+      140 /* Constant */
+      141 
+      142 /* Here are the search rules used by the initializer process. */
+      143 
+      144 	dcl     1 search_rules	        int static options (constant) aligned,
+      145 						/* The search rules structure from SWS */
+      146 		2 number		        fixed bin init (7),
+      147 		2 dirs		        (7) char (168)
+      148 				        init ("initiated_segments", "referencing_dir", "working_dir",
+      149 				        ">system_library_standard", ">system_library_1", ">system_library_tools",
+      150 						/* Important. answering service & opr cons */
+      151 				        ">system_library_unbundled");
+      152 						/* bound_mcs_init_ */
+      153 
+      154 	declare DIR_RINGS		        (3) fixed bin (3) init (4, 5, 5) int static options (constant);
+      155 	dcl     ME		        char (32) initial ("sc_init_") internal static options (constant);
+      156 
+      157 /* Program */
+      158 
+      159 	if ^sc_stat_$test_mode
+      160 	then do;
+      161 		call pl1_resignaller_$establish_handlers;
+      162 		call sct_manager_$set (cput_sct_index, timer_manager_$cpu_time_interrupt, code);
+      163 		call sct_manager_$set (alrm_sct_index, timer_manager_$alarm_interrupt, code);
+      164 		call sct_manager_$set (system_shutdown_scheduled_sct_index, system_shutdown_handler_, code);
+      165 		call sct_manager_$set (dm_shutdown_scheduled_sct_index, dm_misc_util_$shutdown_handler, code);
+      166 		call sct_manager_$set (no_write_permission_sct_index, copy_on_write_handler_, code);
+      167 		call sct_manager_$set (not_in_write_bracket_sct_index, copy_on_write_handler_, code);
+      168 		call sct_manager_$set (system_message_sct_index, system_message_handler_, code);
+      169 		call sct_manager_$set (wkp_sct_index, wkp_signal_handler_, code);
+      170 	     end;
+      171 
+      172 	code = 0;					/* ignore it */
+      173 	begin;
+      174 	     declare pp			   pointer;
+      175 	     pp = null ();
+      176 	     call hcs_$initiate (get_pdir_ (), "pit", "pit_", (0), (0), pp, code);
+      177 						/* the refname is important */
+      178 	     if pp = null ()
+      179 	     then do while ("1"b);
+      180 		     if ^sc_stat_$test_mode
+      181 		     then do;
+      182 			     call hphcs_$syserr_error_code (BEEP, code,
+      183 				"sc_init_: Could not initiate the PIT for the Initializer.");
+      184 			     call hphcs_$call_bce;
+      185 			end;
+      186 		     else do;
+      187 			     call com_err_ (code, ME, "Could not initiate the PIT for the Initializer.");
+      188 			     call cu_$cl ();
+      189 			end;
+      190 		end;
+      191 	     code = 0;
+      192 	end;
+      193 
+      194 /**** make sure we are in >sc1 */
+      195 	call hcs_$fs_search_set_wdir ((sc_stat_$sysdir), code);
+      196 	if code ^= 0
+      197 	then if ^sc_stat_$test_mode
+      198 	     then call hphcs_$syserr_error_code (BEEP, code, "sc_init_: Could not set working directory to ^a.",
+      199 		     sc_stat_$sysdir);
+      200 	     else call com_err_ (code, ME, "Could not set working directory to ^a.", sc_stat_$sysdir);
+      201 
+      202 	if sc_stat_$test_mode
+      203 	then do;
+      204 		call iox_$find_iocb ("master_i/o", sc_stat_$master_iocb, code);
+      205 		if code ^= 0
+      206 		then do;
+      207 			call com_err_ (code, ME, "Could not create master_i/o switch.");
+      208 			return;
+      209 		     end;
+      210 		call iox_$close (iox_$user_io, code);
+      211 		if code ^= 0
+      212 		then do;
+      213 			call com_err_ (code, ME, "Could not close user_i/o switch.");
+      214 			return;
+      215 		     end;
+      216 /**** Can't print an error message if any of these fail.  */
+      217 		call iox_$move_attach (iox_$user_io, sc_stat_$master_iocb, code);
+      218 		call iox_$open (sc_stat_$master_iocb, Stream_input_output, ""b, code);
+      219 		call iox_$attach_ptr (iox_$user_io, "syn_ master_i/o", codeptr (sc_init_), code);
+      220 	     end;
+      221 	else do;
+      222 		call hphcs_$set_mask_ring;		/* Set "initial ring" to 4 so timer_manager_ work */
+      223 		call hcs_$initiate_search_rules (addr (search_rules), code);
+      224 		if code ^= 0
+      225 		then call hphcs_$syserr_error_code (BEEP, code, "sc_init_: Error from initiate_search_rules");
+      226 
+      227 		call iox_$init_standard_iocbs;
+      228 /**** sc_stat_$master_channel is only declared as a char(6) while
+      229*      active_all_rings_data$initializer_tty is declared char(32).  Note
+      230*      that the value of these character strings is always "otw_". */
+      231 		sc_stat_$master_channel = substr (active_all_rings_data$initializer_tty, 1, 6);
+      232 
+      233 		atd = rtrim (active_all_rings_data$initializer_dim) || " " || sc_stat_$master_channel;
+      234 		call iox_$attach_name ("master_i/o", sc_stat_$master_iocb, atd, codeptr (sc_init_), code);
+      235 		if code ^= 0
+      236 		then call hphcs_$syserr_error_code (CRASH, code, "sc_init_: Error from iox_$attach master_i/o ^a",
+      237 			atd);			/* attach to console. */
+      238 		call iox_$open (sc_stat_$master_iocb, Stream_input_output, ""b, code);
+      239 		if code ^= 0
+      240 		then call hphcs_$syserr_error_code (CRASH, code,
+      241 			"sc_init_: Error from iox_$open master_i/o stream_input_output");
+      242 
+      243 		call iox_$attach_name ("user_i/o", iox_$user_io, "syn_ master_i/o", codeptr (sc_init_), code);
+      244 		if code ^= 0
+      245 		then call hphcs_$syserr_error_code (CRASH, code,
+      246 			"sc_init_: Error from iox_$attach user_i/o syn_ master_i/o");
+      247 	     end;
+      248 
+      249 /**** Here we check to see if the "nosc" parameter was specified on
+      250*      the BCE boot command line.  If so, we invoke the emergency
+      251*      listener.  This is useful in case we have problems with the
+      252*      logging software later on. */
+      253 
+      254 	if INVOKE_EMERGENCY_LISTENER ()
+      255 	then do;
+      256 		call hphcs_$syserr (BEEP,
+      257 		     "sc_init_: Invoking emergency listener because ""nosc"" parameter specified.");
+      258 		call EMERGENCY_LISTENER ();
+      259 	     end;
+      260 
+      261 	call iox_$attach_name ("severity3", sc_stat_$sv3_iocb, "syn_ user_i/o", codeptr (sc_init_), code);
+      262 	if code ^= 0
+      263 	then go to SEVERITY_ERROR;
+      264 	call iox_$attach_name ("severity2", sc_stat_$sv2_iocb, "syn_ user_i/o", codeptr (sc_init_), code);
+      265 	if code ^= 0
+      266 	then go to SEVERITY_ERROR;
+      267 	call iox_$attach_name ("severity1", sc_stat_$sv1_iocb, "syn_ user_i/o", codeptr (sc_init_), code);
+      268 	if code ^= 0
+      269 	then go to SEVERITY_ERROR;
+      270 
+      271 	call hcs_$status_minf (sc_stat_$sysdir, "as_logs", 1, type, (0), code);
+      272 	if code = 0 & type ^= 2
+      273 	then code = error_table_$notadir;
+      274 	if code ^= 0
+      275 	then do;
+      276 		if ^sc_stat_$test_mode
+      277 		then call hphcs_$syserr_error_code (BEEP, code,
+      278 			"sc_init_: ^a>as_logs does not exist or is not a directory.", sc_stat_$sysdir);
+      279 		else call com_err_ (code, ME, "^a>as_logs does not exist or is not a directory.", sc_stat_$sysdir);
+      280 
+      281 		call hcs_$chname_file (sc_stat_$sysdir, "as_logs", "as_logs", "as_logs." || unique_chars_ (""b), code)
+      282 		     ;				/* rename if its there */
+      283 		if code = 0
+      284 		then if ^sc_stat_$test_mode
+      285 		     then call hphcs_$syserr (ANNOUNCE, "sc_init_: Renamed non-directory object ^a>as_logs.",
+      286 			     sc_stat_$sysdir);
+      287 		     else call com_err_ (code, ME, "Renamed non-directory object ^a>as_logs.", sc_stat_$sysdir);
+      288 
+      289 		call hcs_$append_branchx (sc_stat_$sysdir, "as_logs", SMA_ACCESS_BIN, DIR_RINGS, "*.SysDaemon.*", 1,
+      290 		     0, 0, code);
+      291 		if code = 0
+      292 		then if ^sc_stat_$test_mode
+      293 		     then call hphcs_$syserr (ANNOUNCE, "sc_init_: Created ^a>as_logs", sc_stat_$sysdir);
+      294 		     else call ioa_ ("^a: Created ^a>as_logs.", ME, sc_stat_$sysdir);
+      295 	     end;
+      296 
+      297 	sc_stat_$as_log_write_ptr = null ();
+      298 	call log_write_$open (sc_stat_$log_dir, "log", "0"b /* don't create */, sc_stat_$as_log_write_ptr, code);
+      299 	if code ^= 0
+      300 	then do;
+      301 		if code ^= error_table_$noentry
+      302 		then do;
+      303 			log_salv_err_cnt = 0;	/* for the benefit of ... */
+      304 			log_salv_name = "log";	/* ... print_log_salv_error */
+      305 			unspec (auto_log_salvage_arg) = ""b;
+      306 			log_salvage_arg_ptr = addr (auto_log_salvage_arg);
+      307 			log_salvage_arg.version = LOG_SALVAGE_ARG_VERSION_1;
+      308 			log_salvage_arg.reporter_proc = print_log_salv_error;
+      309 			call log_salvage_ (sc_stat_$log_dir, log_salv_name, log_salvage_arg_ptr, log_salv_code);
+      310 		     end;
+      311 		else log_salv_code = 0;
+      312 		if log_salv_code = 0
+      313 		then do;				/* try again */
+      314 			call log_write_$open (sc_stat_$log_dir, "log", "1"b /* create */, sc_stat_$as_log_write_ptr,
+      315 			     code);
+      316 		     end;
+      317 		if code ^= 0
+      318 		then do;				/* still didn't fly */
+      319 			if ^sc_stat_$test_mode
+      320 			then call hphcs_$syserr_error_code (BEEP, code,
+      321 				"sc_init_: Failed to open the AS log (^a>log).", sc_stat_$log_dir);
+      322 			else call com_err_ (code, ME, "Failed to open the AS log (^a>log).", sc_stat_$log_dir);
+      323 			call EMERGENCY_LISTENER;
+      324 		     end;
+      325 
+      326 	     end;
+      327 
+      328 /**** At this point we probably could use sys_log_, but syserr is surer */
+      329 
+      330 	call ioa_$rsnnl ("log_output_ ^a>admin_log -no_create", atd, (0), sc_stat_$log_dir);
+      331 	sc_stat_$admin_log_iocb = null ();
+      332 	call iox_$attach_name ("admin_log_", sc_stat_$admin_log_iocb, (atd), codeptr (sc_init_), code);
+      333 	if code ^= 0				/* switches are set, we can sys_log_ */
+      334 	then do;
+      335 		if ^sc_stat_$test_mode
+      336 		then call hphcs_$syserr_error_code (BEEP, code, "sc_init_: Failed to attach admin_log log.");
+      337 		else call com_err_ (code, ME, "Failed to attach admin_log log.");
+      338 		call EMERGENCY_LISTENER;
+      339 	     end;
+      340 
+      341 	call iox_$open (sc_stat_$admin_log_iocb, Stream_output, "1"b, code);
+      342 	if code ^= 0
+      343 	then do;
+      344 		if code ^= error_table_$noentry
+      345 		then do;
+      346 			log_salv_err_cnt = 0;	/* for the benefit of ... */
+      347 			log_salv_name = "admin_log";	/* ... print_log_salv_error */
+      348 			unspec (auto_log_salvage_arg) = ""b;
+      349 			log_salvage_arg_ptr = addr (auto_log_salvage_arg);
+      350 			log_salvage_arg.version = LOG_SALVAGE_ARG_VERSION_1;
+      351 			log_salvage_arg.reporter_proc = print_log_salv_error;
+      352 			call log_salvage_ (sc_stat_$log_dir, log_salv_name, log_salvage_arg_ptr, log_salv_code);
+      353 		     end;
+      354 		else log_salv_code = 0;
+      355 		if log_salv_code = 0
+      356 		then do;				/* try again */
+      357 			call iox_$detach_iocb (sc_stat_$admin_log_iocb, (0));
+      358 			sc_stat_$admin_log_iocb = null ();
+      359 			call ioa_$rsnnl ("log_output_ ^a>admin_log -create", atd, (0), sc_stat_$log_dir);
+      360 			call iox_$attach_name ("admin_log_", sc_stat_$admin_log_iocb, (atd), codeptr (sc_init_),
+      361 			     code);
+      362 			if code ^= 0		/* switches are set, we can sys_log_ */
+      363 			then do;
+      364 				if ^sc_stat_$test_mode
+      365 				then call hphcs_$syserr_error_code (BEEP, code,
+      366 					"sc_init_: Failed to attach admin_log log.");
+      367 				else call com_err_ (code, ME, "Failed to attach admin_log log.");
+      368 				call EMERGENCY_LISTENER;
+      369 			     end;
+      370 			call iox_$open (sc_stat_$admin_log_iocb, Stream_output, "1"b, code);
+      371 		     end;
+      372 		if code ^= 0
+      373 		then do;				/* still didn't fly */
+      374 			if ^sc_stat_$test_mode
+      375 			then call hphcs_$syserr_error_code (BEEP, code, "sc_init_: Failed to open admin_log log.");
+      376 			else call com_err_ (code, ME, "Failed to open admin_log log.");
+      377 			call iox_$detach_iocb (sc_stat_$admin_log_iocb, (0));
+      378 			call EMERGENCY_LISTENER;
+      379 		     end;
+      380 	     end;
+      381 	call iox_$control (sc_stat_$admin_log_iocb, "get_log_write_data_ptr", addr (sc_stat_$admin_log_write_ptr), code)
+      382 	     ;
+      383 	if code ^= 0
+      384 	then do;
+      385 		if ^sc_stat_$test_mode
+      386 		then call hphcs_$syserr_error_code (BEEP, code,
+      387 			"sc_init_: Failed to get log_write_ ptr for admin_log.");
+      388 		else call com_err_ (code, ME, "Failed to get log_write_ ptr for admin_log.");
+      389 		call EMERGENCY_LISTENER;
+      390 	     end;
+      391 
+      392 	call sc_create_sci_ (sc_stat_$master_sci_ptr, code);
+      393 	if code ^= 0
+      394 	then do;
+      395 		if ^sc_stat_$test_mode
+      396 		then call hphcs_$syserr_error_code (BEEP, code,
+      397 			"sc_init_: Failed to create ssu invocation for system control.");
+      398 		else call com_err_ (code, ME, "Failed to create ssu invocation for system control.");
+      399 		call EMERGENCY_LISTENER;
+      400 	     end;
+      401 
+      402 	sc_subsystem_info_ptr = ssu_$get_info_ptr (sc_stat_$master_sci_ptr);
+      403 	sc_subsystem_info.source_name = "otw_";
+      404 	sc_subsystem_info.real_iocb = sc_stat_$master_iocb;
+      405 	sc_subsystem_info.the_system_console = "1"b;
+      406 	return;
+      407 
+      408 SEVERITY_ERROR:
+      409 	if ^sc_stat_$test_mode
+      410 	then call hphcs_$syserr (BEEP, "sc_init_: Failed to attach one of the severityN (1, 2, 3) switches.");
+      411 	else call com_err_ (code, ME, "Failed to attach one of the severityN (1, 2, 3) switches.");
+      412 	call EMERGENCY_LISTENER;
+      413 	return;
+      414 
+      415 print_log_salv_error:
+      416      procedure (P_msg);
+      417 
+      418 	dcl     P_msg		        char (*) parameter;
+      419 	dcl     msg		        char (1024) varying;
+      420 
+      421 	msg = P_msg;
+      422 
+      423 	log_salv_err_cnt = log_salv_err_cnt + 1;
+      424 
+      425 	if log_salv_err_cnt = 1
+      426 	then if ^sc_stat_$test_mode
+      427 	     then call hphcs_$syserr (SYSERR_PRINT_ON_CONSOLE, "sc_init_: Messages from log salvage of ^a:",
+      428 		     pathname_ (sc_stat_$log_dir, log_salv_name));
+      429 	     else call com_err_ (code, ME, "Messages from log salvage of ^a:",
+      430 		     pathname_ (sc_stat_$log_dir, log_salv_name));
+      431 	if ^sc_stat_$test_mode
+      432 	then call hphcs_$syserr (SYSERR_PRINT_ON_CONSOLE, "sc_init_ (log_salvage_): ^a", msg);
+      433 	else call com_err_ (code, ME, "^a", msg);
+      434 	return;
+      435      end print_log_salv_error;
+      436 
+      437 EMERGENCY_LISTENER:
+      438      procedure;
+      439 
+      440 /**** We have enough I/O switches for a primitive ADMIN mode. */
+      441 
+      442 	declare default_error_handler_$wall   entry;
+      443 	declare any_other		        condition;
+      444 	declare listen_		        entry (character (*) var);
+      445 
+      446 	on any_other call default_error_handler_$wall;
+      447 
+      448 	call ioa_ ("sc_init_: A serious error was encountered setting up the system control");
+      449 	call ioa_ (" environment. The system will attempt to establish a Multics");
+      450 	call ioa_ (" listener level. You should repair the problem, and then type:");
+      451 	call ioa_ ("     ""hphcs_$shutdown"", and reboot the system.");
+      452 
+      453 
+      454 	call listen_ ("");
+      455      end EMERGENCY_LISTENER;
+      456 
+      457 INVOKE_EMERGENCY_LISTENER:
+      458      procedure () returns (bit (1) aligned);
+      459 
+      460 	dcl     i			        fixed bin;	/* loop index */
+      461 
+      462 	if sc_stat_$test_mode
+      463 	then return ("0"b);
+      464 	intk_cardp = null ();
+      465 	call config_$find (INTK_CARD_WORD, intk_cardp);
+      466 	if intk_cardp = null ()
+      467 	then /* no INTK card? */
+      468 	     return ("0"b);				/* then no emergency listener */
+      469 
+      470 /**** INTK card found, check for "nosc" parameter */
+      471 
+      472 	do i = 1 to hbound (intk_card_array.parms, 1);
+      473 	     if intk_card.parms (i) = "nosc"
+      474 	     then return ("1"b);			/* yes, it was specified */
+      475 	end;
+      476 
+      477 	return ("0"b);				/* parameter not found */
+      478 
+      479      end INVOKE_EMERGENCY_LISTENER;
+      480 
+      481 /* format: off */
+      482  /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      482 
+      483  /* BEGIN INCLUDE FILE ... config_intk_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 
+  2     3 dcl  intk_cardp pointer;				/* pointer to INTK card */
+  2     4 
+  2     5 dcl 1 intk_card aligned based (intk_cardp),		/* INTK card declaration */
+  2     6     2 word char (4),				/* "intk" */
+  2     7     2 warm_or_cold char (4),				/* Type of bootload: "warm" or "cold" */
+  2     8     2 boot_drive fixed bin,				/* Tape drive on which MST is mounted */
+  2     9     2 parms (12) char (4),				/* up to 12 arbitrary bootload parameters */
+  2    10 
+  2    11     2 type_word aligned,
+  2    12       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    13       3 pad1 bit (4) unaligned,
+  2    14       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    15 
+  2    16 dcl 1 intk_card_array aligned based (intk_cardp),		/* Overlay for counting parameters */
+  2    17     2 pad (3) bit (36) aligned,
+  2    18     2 parms (max (0, intk_card.n_fields - 2)) bit (36) aligned;
+  2    19 
+  2    20 dcl  INTK_CARD_WORD char (4) aligned internal static options (constant) init ("intk");
+  2    21 
+  2    22 /* END INCLUDE FILE ... config_intk_card.incl.pl1 */
+      483 
+      484  /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  3     2 
+  3     3 /* Written 05/04/78 by C. D. Tavares */
+  3     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  3     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  3     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  3     7 
+  3     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  3     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  3    10      iox_$close entry (pointer, fixed bin (35)),
+  3    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  3    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  3    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  3    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  3    15      iox_$err_not_attached entry options (variable),
+  3    16      iox_$err_not_closed entry options (variable),
+  3    17      iox_$err_no_operation entry options (variable),
+  3    18      iox_$err_not_open entry options (variable),
+  3    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  3    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  3    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  3    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  3    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  3    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  3    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  3    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  3    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  3    28      iox_$propagate entry (pointer),
+  3    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  3    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  3    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  3    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  3    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  3    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  3    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  3    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  3    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  3    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  3    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  3    40 
+  3    41 dcl (iox_$user_output,
+  3    42      iox_$user_input,
+  3    43      iox_$user_io,
+  3    44      iox_$error_output) external static pointer;
+  3    45 
+  3    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      484 
+      485  /* Begin include file ..... iox_modes.incl.pl1 */
+  4     2 
+  4     3 /* Written by C. D. Tavares, 03/17/75 */
+  4     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+  4     5 
+  4     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+  4     7     ("stream_input", "stream_output", "stream_input_output",
+  4     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+  4     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+  4    10      "direct_input", "direct_output", "direct_update");
+  4    11 
+  4    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+  4    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+  4    14 
+  4    15 dcl (Stream_input initial (1),
+  4    16      Stream_output initial (2),
+  4    17      Stream_input_output initial (3),
+  4    18      Sequential_input initial (4),
+  4    19      Sequential_output initial (5),
+  4    20      Sequential_input_output initial (6),
+  4    21      Sequential_update initial (7),
+  4    22      Keyed_sequential_input initial (8),
+  4    23      Keyed_sequential_output initial (9),
+  4    24      Keyed_sequential_update initial (10),
+  4    25      Direct_input initial (11),
+  4    26      Direct_output initial (12),
+  4    27      Direct_update initial (13)) fixed bin int static options (constant);
+  4    28 
+  4    29 /* End include file ..... iox_modes.incl.pl1 */
+      485 
+      486  /* begin include file ... log_salvage_arg.incl.pl1 */
+  5     2 
+  5     3 /* History:
+  5     4*	1985-04-09, EJ Sharpe: initial coding
+  5     5**/
+  5     6 
+  5     7 declare	log_salvage_arg_ptr	pointer;
+  5     8 
+  5     9 declare 1	log_salvage_arg	aligned based (log_salvage_arg_ptr),
+  5    10 	2 version		char (8),		/* LOG_SALVAGE_ARG_VERSION_1 */
+  5    11 	2 reporter_proc	entry (char (*)) variable,	/* called to deal with error msgs */
+  5    12 	2 from_time	fixed bin (71),	/* amount of history to check */
+  5    13 					/* will check only last 5 segs if this is zero */
+  5    14 	2 flags,
+  5    15 	  3 migrating	bit (1) unal,	/* there should not be a live log seg */
+  5    16 	  3 pad		bit (35) unal;
+  5    17 
+  5    18 declare	LOG_SALVAGE_ARG_VERSION_1 char (8) static options (constant) init ("LOGSLV01");
+  5    19 
+  5    20 /* end include file ... log_salvage_arg.incl.pl1 */
+      486 
+      487  /*  BEGIN:   sc_stat_.incl.pl1			  *  *  *  *  *  */
+  6     2 
+  6     3 
+  6     4 /****^  HISTORY COMMENTS:
+  6     5*  1) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  6     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  6     7*     Add sc_stat_$vchn_requires_accept in support of DSA virtual channels.
+  6     8*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7680),
+  6     9*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  6    10*     Reorganized by type of data to improve readability.
+  6    11*                                                   END HISTORY COMMENTS */
+  6    12 
+  6    13 
+  6    14 			      /* ACCESS NAMES		       */
+  6    15 dcl (
+  6    16  sc_stat_$exec_access_name,	      /* check MC access in an exec request    */
+  6    17  sc_stat_$unidentified_access_name  /* check access if no one is logged in.  */
+  6    18     ) char(32) ext static;
+  6    19 
+  6    20 		        /* PATHNAMES			       */
+  6    21 dcl (
+  6    22  sc_stat_$info_dir,	        /* admin info segs directory		       */
+  6    23  sc_stat_$log_dir,	        /* as log segs directory		       */
+  6    24  sc_stat_$mc_acs_dir,       /* message coordinator ACS segments (.mcacs) dir */
+  6    25  sc_stat_$sysdir	        /* system control directory		       */
+  6    26     ) char(168) ext static;
+  6    27 
+  6    28 		        /* OTHER CHAR STRINGS			       */
+  6    29 dcl (
+  6    30  sc_stat_$master_channel    /* Master TTY channel.		       */
+  6    31     )  char(6) aligned ext static;
+  6    32 
+  6    33 			       /* LABELS			       */
+  6    34 dcl (
+  6    35  sc_stat_$admin_listener_exit_label, /* GO here to exit admin mode.  Set to  */
+  6    36 			       /*    ssu_$null_label unless 	       */
+  6    37 			       /*	   admin_listener is active.	       */
+  6    38  sc_stat_$master_abort_label,	       /* GO here after fault that is not      */
+  6    39 			       /*    attributable to a particular      */
+  6    40 			       /*	   command.		       */
+  6    41  sc_stat_$system_shutdown_label      /* GO here to shut down system	       */
+  6    42     ) label variable ext static;
+  6    43 
+  6    44 			 /* POINTERS TO			       */
+  6    45 dcl (
+  6    46  sc_stat_$admin_log_iocb,	 /* IOCB for admin log		       */
+  6    47  sc_stat_$admin_log_write_ptr, /* DATA for log_write_ calls on the admin log */
+  6    48  sc_stat_$admin_sci_ptr,	 /* DATA ssu_ for terminal currently executing */
+  6    49  sc_stat_$as_log_write_ptr,	 /* DATA for log_write_ calls on as log, used  */
+  6    50 			 /*      by sys_log_.		       */
+  6    51  sc_stat_$initzer_ttyp,	 /* ENT  mc_ate for initializer terminal       */
+  6    52  sc_stat_$master_iocb,	 /* IOCB for "master_i/o"		       */
+  6    53  sc_stat_$master_sci_ptr,	 /* DATA ssu_ (permanent) for system control   */
+  6    54  sc_stat_$mc_ansp,		 /* HEAD of mc_anstbl		       */
+  6    55  sc_stat_$mc_iocb,		 /* IOCB ptr for "mc_i/o"		       */
+  6    56  sc_stat_$sv1_iocb,		 /* IOCB ptr for "severity1"		       */
+  6    57  sc_stat_$sv2_iocb,		 /* IOCB ptr for "severity2"		       */
+  6    58  sc_stat_$sv3_iocb		 /* IOCB ptr for "severity3"		       */
+  6    59     ) ptr ext static;
+  6    60 
+  6    61 			   /* SWITCHES			       */
+  6    62 dcl (
+  6    63  sc_stat_$Go,		   /* TRUE after answering service is listening*/
+  6    64  sc_stat_$Go_typed,		   /* TRUE immediately after 'go' is typed     */
+  6    65  sc_stat_$Multics,		   /* TRUE after answering service started     */
+  6    66  sc_stat_$Multics_typed,	   /* TRUE immediately after 'mult' is typed   */
+  6    67  sc_stat_$Star_typed,	   /* TRUE if 'mult' and 'go' came from 'star' */
+  6    68  sc_stat_$admin_listener_switch, /* TRUE if in the admin listener	       */
+  6    69  sc_stat_$did_part1,	   /* TRUE if part 1 of system startup ec done */
+  6    70  sc_stat_$did_part2,	   /* TRUE if part 2 of system startup ec done */
+  6    71  sc_stat_$did_part3,	   /* TRUE if part 3 of system startup ec done */
+  6    72  sc_stat_$mc_is_on,		   /* TRUE if message coordinator running      */
+  6    73  sc_stat_$no_operator_login,	   /* TRUE if operator login not required, or  */
+  6    74 			   /*	 if PNT not yet available.	       */
+  6    75  sc_stat_$shutdown_typed,	   /* TRUE if 'shutdown' command in progress.  */
+  6    76  sc_stat_$test_mode,	   /* TRUE if in test environment	       */
+  6    77  sc_stat_$vchn_requires_accept   /* TRUE if vchn may only be used if accepted*/
+  6    78 			   /*      by operator signed on system console*/
+  6    79     ) bit(1) aligned ext static;
+  6    80 
+  6    81 
+  6    82 /*  END OF:  sc_stat_.incl.pl1			  *  *  *  *  *  */
+      487 
+      488  /*  BEGIN:   sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+  7     2 
+  7     3 /* format:style3,idind30 */
+  7     4 
+  7     5 /* Created  1984-10-24  BIM */
+  7     6 /* Modified 1985-01-07, BIM: access control flags that track admin and X */
+  7     7 /* Modified 1985-02-18, E. Swenson to save away abort_line procedure. */
+  7     8 
+  7     9 
+  7    10 /****^  HISTORY COMMENTS:
+  7    11*  1) change(87-02-17,GDixon), approve(87-07-03,MCR7680),
+  7    12*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  7    13*     Correct formatting problems.  Add sc_subsystem_info.flags.dont_mask_calls
+  7    14*     switch.
+  7    15*  2) change(87-07-03,GDixon), approve(87-07-03,MCR7680),
+  7    16*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  7    17*     Removed dont_mask_calls flag.  It is no longer needed to correctly perform
+  7    18*     masking on a per-request basis.
+  7    19*                                                   END HISTORY COMMENTS */
+  7    20 
+  7    21 
+  7    22 declare	sc_subsystem_info_ptr	pointer;
+  7    23 declare	1 sc_subsystem_info		aligned based (sc_subsystem_info_ptr),
+  7    24 	  2 restriction_flags	bit (36) aligned,	/* copied from mc atep or fabricated */
+  7    25 	  2 flags			aligned,
+  7    26 	    3 no_real_tty		bit (1) unaligned,	/* for sc_admin_command_ */
+  7    27 	    3 print_ready		bit (1) unal,	/* on for all except the system console,	*/
+  7    28 						/*  instructs sc_process_command_line_ to deal	*/
+  7    29 						/*  with the prompt				*/
+  7    30 	    3 the_system_console	bit (1) unal,	/* syserr messages are printed here (but console	*/
+  7    31 						/*  recover doesn't try to fix this) copied here	*/
+  7    32 						/*  from the mc_ate to save other looking in there*/
+  7    33 	    3 printer_offed		bit (1) unal,	/* suppress logging */
+  7    34 	    3 pad			bit (32) unaligned,
+  7    35 	  2 source_name		char (32) unaligned,
+  7    36 	  2 area_ptr		pointer,
+  7    37 	  2 mc_atep		pointer,		/* needed to play with attachments */
+  7    38 	  2 real_iocb		pointer,		/* for sc_signal_io_handler_ */
+  7    39 	  2 hangup_entry		entry (pointer) variable,
+  7    40 						/* called on io_no_permission. */
+  7    41 	  2 real_execute_line	entry (ptr, ptr, fixed bin (21), fixed bin (35)),
+  7    42 	  2 real_locate_request	entry (ptr, char (*), ptr, fixed bin (35)),
+  7    43 	  2 access_control_name	char (32) unaligned,
+  7    44 	  2 real_invoke_request	entry,		/* since MR11 ssu_ lacks the ability to	abort a	*/
+  7    45 						/*  single request, we have an invoke_request that*/
+  7    46 						/*  handles a condition to unwind the request	*/
+  7    47 	  2 abort_request_label	label,		/* go here (nonlocally) to unwind a single request */
+  7    48 	  2 real_abort_line		entry options (variable);
+  7    49 
+  7    50 declare	sc_ss_area		area based (sc_subsystem_info.area_ptr);
+  7    51 
+  7    52 /* The following defines the user flags for the request table. */
+  7    53 
+  7    54 declare	sc_rf_ptr			pointer;
+  7    55 declare	1 sc_request_flags		unaligned based (sc_rf_ptr),
+  7    56 	  2 dont_parse_arguments	bit,		/* reply, intercom */
+  7    57 	  2 obsolete		bit,		/* warn opr to not use it */
+  7    58 	  2 dont_mask_calls		bit,		/* this runs without masking ev calls */
+  7    59 	  2 requires_as		bit,		/* not before AS */
+  7    60 	  2 requires_no_as		bit,		/* only before AS */
+  7    61 	  2 complete_disks_first	bit,		/* try to mount disks */
+  7    62 	  2 no_login_needed		bit,		/* sign_on */
+  7    63 	  2 pad			bit (5),
+  7    64 	  2 restriction_type	fixed bin (6) unsigned;
+  7    65 						/* index into restriction flag string */
+  7    66 
+  7    67 
+  7    68 /*  END OF:  sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+      488 
+      489  /* BEGIN INCLUDE FILE sys_log_constants.incl.pl1 ... 82-09-24 E. N. Kittlitz */
+  8     2 
+  8     3 
+  8     4 /****^  HISTORY COMMENTS:
+  8     5*  1) change(87-04-22,GDixon), approve(87-06-10,MCR7708),
+  8     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  8     7*     Added sl_info structure and associated named constants for use in calling
+  8     8*     sys_log_$general.
+  8     9*                                                   END HISTORY COMMENTS */
+  8    10 
+  8    11 
+  8    12 /* format: style4 */
+  8    13 
+  8    14 dcl  (
+  8    15      SL_TYPE_CRASH init (-3),				/* type message with banner & kill system */
+  8    16      SL_TYPE_BEEP init (-2),				/* type message with banner */
+  8    17      SL_TYPE init (-1),				/* type message */
+  8    18      SL_LOG_SILENT init (0),				/* log message */
+  8    19      SL_LOG init (1),				/* log & type message */
+  8    20      SL_LOG_BEEP init (2),				/* log & type message with banner */
+  8    21      SL_LOG_CRASH init (3)				/* log & type message with banner & kill system */
+  8    22      ) fixed bin internal static options (constant);
+  8    23 
+  8    24 dcl  1 sl_info aligned automatic,
+  8    25        2 version char(8),			/* structure version       */
+  8    26        2 arg_list_ptr ptr,			/* arg_list with values    */
+  8    27        2 loc,
+  8    28          3 (mode, severity, code, caller, data, class, ioa_msg) fixed bin,
+  8    29            /* These flags control where the corresponding data item is found.*/
+  8    30 	 /*  -1: data appears in the corresponding structure element below */
+  8    31 	 /*   0: data is not present anywhere			       */
+  8    32 	 /*  +N: data is Nth item in argument list pointed to by 	       */
+  8    33 	 /*      sl_info.arg_list_ptr.  Upon return, data copied into      */
+  8    34 	 /*      corresponding structure element.		       */
+  8    35 	 /*  if data = +N:					       */
+  8    36 	 /*      argN is data_ptr, argN+1 is data_len		       */
+  8    37 	 /*  if ioa_msg = +N:				       */
+  8    38 	 /*      argN+1, ... argLAST are arguments substituted into the    */
+  8    39 	 /*      ioa_msg control string.  The formatted msg is returned.   */
+  8    40        2 flags,
+  8    41          3 ioa_msg_is_error_code bit(1) unal,	/* ioa_ctl is error code.  */
+  8    42          3 flags_pad bit(35) unal,
+  8    43        2 mode fixed bin,			/* as-mode, command-mode   */
+  8    44        2 severity fixed bin,			/* error severity	       */
+  8    45        2 code fixed bin(35),			/* error table code        */
+  8    46        2 caller char(65) varying,		/* caller refname$entryname*/
+  8    47        2 data,				/* binary data ptr/length  */
+  8    48          3 data_ptr ptr,
+  8    49          3 data_lth fixed bin(21),
+  8    50        2 class char(10) varying,		/* binary data class       */
+  8    51        2 ioa_msg char(500) varying;		/* formatted message text  */
+  8    52 
+  8    53 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  8    54 /*							       */
+  8    55 /* If data values (eg, sl_info.caller) are passed in the argument list,      */
+  8    56 /* their data types should be as shown in the structure above, except that   */
+  8    57 /* character strings should be char(*) nonvarying.		       */
+  8    58 /*							       */
+  8    59 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  8    60 
+  8    61 /* value for sl_info.version */
+  8    62 dcl  SL_INFO_version_1 char (8) int static options(constant) init("sl_info1");
+  8    63 
+  8    64 /* values for sl_info.mode */
+  8    65 dcl (SL_INFO_as_mode init(1),
+  8    66      SL_INFO_command_mode init(2)) fixed bin int static options(constant);
+  8    67 
+  8    68 /* values for sl_info.loc.(severity code caller data class ioa_ctl arg) */
+  8    69 dcl (SL_INFO_arg_given_in_structure init(-1),
+  8    70      SL_INFO_arg_not_given init(0)) fixed bin int static options(constant);
+  8    71 
+  8    72 
+  8    73 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  8    74 /*							       */
+  8    75 /* The following static structures are commonly used in the Login Server     */
+  8    76 /* user control software.					       */
+  8    77 /*							       */
+  8    78 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  8    79 
+  8    80 /* Syntax: call Abort (severity, code, ioa_ctl, args);		       */
+  8    81 
+  8    82 dcl  1 sl_info_sev_code_msg		aligned int static options(constant),
+  8    83        2 version char(8)		init ("sl_info1"),
+  8    84        2 arg_list_ptr ptr		init (null),
+  8    85        2 loc,
+  8    86          3 (mode			init (-1),
+  8    87 	  severity  		init ( 1),
+  8    88 	  code 			init ( 2),
+  8    89 	  caller 			init (-1),
+  8    90 	  data 			init ( 0),
+  8    91 	  class 			init ( 0),
+  8    92 	  ioa_msg			init ( 3)) fixed bin,
+  8    93        2 flags,
+  8    94          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  8    95          3 flags_pad bit(35) unal	init ("0"b),
+  8    96        2 mode fixed bin		init ( 1),
+  8    97        2 severity fixed bin		init ( 0),
+  8    98        2 code fixed bin(35)		init ( 0),
+  8    99        2 caller char(65) varying	init (""),
+  8   100        2 data,
+  8   101          3 data_ptr ptr		init (null),
+  8   102          3 data_lth fixed bin(21)	init ( 0),
+  8   103        2 class char(10) varying	init (""),
+  8   104        2 ioa_msg char(500) varying	init ("");
+  8   105 
+  8   106 /* Syntax: call Abort (severity, ioa_ctl, args);			       */
+  8   107 
+  8   108 dcl  1 sl_info_sev_msg		aligned int static options(constant),
+  8   109        2 version char(8)		init ("sl_info1"),
+  8   110        2 arg_list_ptr ptr		init (null),
+  8   111        2 loc,
+  8   112          3 (mode			init (-1),
+  8   113 	  severity  		init ( 1),
+  8   114 	  code 			init ( 0),
+  8   115 	  caller 			init (-1),
+  8   116 	  data 			init ( 0),
+  8   117 	  class 			init ( 0),
+  8   118 	  ioa_msg			init ( 2)) fixed bin,
+  8   119        2 flags,
+  8   120          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  8   121          3 flags_pad bit(35) unal	init ("0"b),
+  8   122        2 mode fixed bin		init ( 1),
+  8   123        2 severity fixed bin		init ( 0),
+  8   124        2 code fixed bin(35)		init ( 0),
+  8   125        2 caller char(65) varying	init (""),
+  8   126        2 data,
+  8   127          3 data_ptr ptr		init (null),
+  8   128          3 data_lth fixed bin(21)	init ( 0),
+  8   129        2 class char(10) varying	init (""),
+  8   130        2 ioa_msg char(500) varying	init ("");
+  8   131 
+  8   132 /* Syntax: call Abort (severity, ioa_ctl_as_error_code, args);	       */
+  8   133 
+  8   134 dcl  1 sl_info_sev_coded_msg		aligned int static options(constant),
+  8   135        2 version char(8)		init ("sl_info1"),
+  8   136        2 arg_list_ptr ptr		init (null),
+  8   137        2 loc,
+  8   138          3 (mode			init (-1),
+  8   139 	  severity  		init ( 1),
+  8   140 	  code 			init ( 0),
+  8   141 	  caller 			init (-1),
+  8   142 	  data 			init ( 0),
+  8   143 	  class 			init ( 0),
+  8   144 	  ioa_msg			init ( 2)) fixed bin,
+  8   145        2 flags,
+  8   146          3 ioa_msg_is_error_code bit(1) unal init ("1"b),
+  8   147          3 flags_pad bit(35) unal	init ("0"b),
+  8   148        2 mode fixed bin		init ( 1),
+  8   149        2 severity fixed bin		init ( 0),
+  8   150        2 code fixed bin(35)		init ( 0),
+  8   151        2 caller char(65) varying	init (""),
+  8   152        2 data,
+  8   153          3 data_ptr ptr		init (null),
+  8   154          3 data_lth fixed bin(21)	init ( 0),
+  8   155        2 class char(10) varying	init (""),
+  8   156        2 ioa_msg char(500) varying	init ("");
+  8   157 
+  8   158 
+  8   159 /* Syntax: call Abort (severity, code, error_return_label, ioa_ctl, args);   */
+  8   160 
+  8   161 dcl  1 sl_info_sev_code_label_msg	aligned int static options(constant),
+  8   162        2 version char(8)		init ("sl_info1"),
+  8   163        2 arg_list_ptr ptr		init (null),
+  8   164        2 loc,
+  8   165          3 (mode			init (-1),
+  8   166 	  severity  		init ( 1),
+  8   167 	  code 			init ( 2),
+  8   168 	  caller 			init (-1),
+  8   169 	  data 			init ( 0),
+  8   170 	  class 			init ( 0),
+  8   171 	  ioa_msg			init ( 4)) fixed bin,
+  8   172        2 flags,
+  8   173          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  8   174          3 flags_pad bit(35) unal	init ("0"b),
+  8   175        2 mode fixed bin		init ( 1),
+  8   176        2 severity fixed bin		init ( 0),
+  8   177        2 code fixed bin(35)		init ( 0),
+  8   178        2 caller char(65) varying	init (""),
+  8   179        2 data,
+  8   180          3 data_ptr ptr		init (null),
+  8   181          3 data_lth fixed bin(21)	init ( 0),
+  8   182        2 class char(10) varying	init (""),
+  8   183        2 ioa_msg char(500) varying	init ("");
+  8   184 
+  8   185 /* Syntax:  call Log_error (code, ioa_ctl, args);			       */
+  8   186 
+  8   187 dcl  1 sl_info_code_msg		aligned int static options(constant),
+  8   188        2 version char(8)		init ("sl_info1"),
+  8   189        2 arg_list_ptr ptr		init (null),
+  8   190        2 loc,
+  8   191          3 (mode			init (-1),
+  8   192 	  severity  		init (-1),
+  8   193 	  code 			init ( 1),
+  8   194 	  caller 			init (-1),
+  8   195 	  data 			init ( 0),
+  8   196 	  class 			init ( 0),
+  8   197 	  ioa_msg			init ( 2)) fixed bin,
+  8   198        2 flags,
+  8   199          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  8   200          3 flags_pad bit(35) unal	init ("0"b),
+  8   201        2 mode fixed bin		init ( 1),
+  8   202        2 severity fixed bin		init ( 0),
+  8   203        2 code fixed bin(35)		init ( 0),
+  8   204        2 caller char(65) varying	init (""),
+  8   205        2 data,
+  8   206          3 data_ptr ptr		init (null),
+  8   207          3 data_lth fixed bin(21)	init ( 0),
+  8   208        2 class char(10) varying	init (""),
+  8   209        2 ioa_msg char(500) varying	init ("");
+  8   210 
+  8   211 
+  8   212 /* Syntax:  call Trace (ioa_ctl, args);				       */
+  8   213 
+  8   214 dcl  1 sl_info_msg			aligned int static options(constant),
+  8   215        2 version char(8)		init ("sl_info1"),
+  8   216        2 arg_list_ptr ptr		init (null),
+  8   217        2 loc,
+  8   218          3 (mode			init (-1),
+  8   219 	  severity  		init (-1),
+  8   220 	  code 			init ( 0),
+  8   221 	  caller 			init (-1),
+  8   222 	  data 			init ( 0),
+  8   223 	  class 			init ( 0),
+  8   224 	  ioa_msg			init ( 1)) fixed bin,
+  8   225        2 flags,
+  8   226          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  8   227          3 flags_pad bit(35) unal	init ("0"b),
+  8   228        2 mode fixed bin		init ( 1),
+  8   229        2 severity fixed bin		init ( 0),
+  8   230        2 code fixed bin(35)		init ( 0),
+  8   231        2 caller char(65) varying	init (""),
+  8   232        2 data,
+  8   233          3 data_ptr ptr		init (null),
+  8   234          3 data_lth fixed bin(21)	init ( 0),
+  8   235        2 class char(10) varying	init (""),
+  8   236        2 ioa_msg char(500) varying	init ("");
+  8   237 
+  8   238 /* END INCLUDE FILE sys_log_constants.incl.pl1 */
+      489 
+      490  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  9     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  9     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  9     4 
+  9     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  9     6 
+  9     7 dcl (
+  9     8 
+  9     9 /* The following constants define the message action codes.  This indicates
+  9    10*how a message is to be handled.  */
+  9    11 
+  9    12      SYSERR_CRASH_SYSTEM	init (1),			
+  9    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  9    14 
+  9    15      SYSERR_TERMINATE_PROCESS	init (2),
+  9    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  9    17 
+  9    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  9    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  9    20 
+  9    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  9    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  9    23 
+  9    24      SYSERR_LOG_OR_PRINT	init (4),
+  9    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  9    26 
+  9    27      SYSERR_LOG_OR_DISCARD	init (5),
+  9    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  9    29 
+  9    30 
+  9    31 /* The following constants are added to the normal severities to indicate
+  9    32*different sorting classes of messages.  */
+  9    33 
+  9    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  9    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  9    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  9    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  9    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  9    39 	) fixed bin internal static options (constant);
+  9    40 
+  9    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      490 
+      491  /* BEGIN INCLUDE FILE  static_handlers.incl.pl1  */
+ 10     2 
+ 10     3 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 10     4 
+ 10     5 /* HISTORY:
+ 10     6*Written by S. H. Webber, 06/20/75.
+ 10     7*Modified:
+ 10     8*12/15/83 by Benson Margulies:  added undefined_pointer_sct_index and
+ 10     9*	  pgt_sct_index.
+ 10    10*06/11/84 by Lee A. Newcomb:  added dm_shutdown_warning_sct_index and
+ 10    11*            dm_user_shutdown_sct_index for handling of Data Management
+ 10    12*            shutdown.
+ 10    13*08/22/84 by R. Michael Tague:  Removed dm_shutdown_warning_sct_index and
+ 10    14*            dm_user_shutdown_sct_index.  Added
+ 10    15*            system_shutdown_scheduled_sct_index and
+ 10    16*            dm_shutdown_scheduled_sct_index.
+ 10    17**/
+ 10    18 
+ 10    19 
+ 10    20 /****^  HISTORY COMMENTS:
+ 10    21*  1) change(85-11-13,Herbst), approve(87-07-21,MCR7697),
+ 10    22*     audit(87-07-21,GDixon), install(87-08-04,MR12.1-1056):
+ 10    23*     Add system_message_sct_index.
+ 10    24*                                                   END HISTORY COMMENTS */
+ 10    25 
+ 10    26 
+ 10    27 dcl  (
+ 10    28      shutdown_sct_index	        init (0),
+ 10    29      store_sct_index	        init (1),
+ 10    30      mme1_sct_index		        init (2),
+ 10    31      fault_tag_1_sct_index	        init (3),
+ 10    32      timer_runout_sct_index	        init (4),
+ 10    33      command_sct_index	        init (5),
+ 10    34      derail_sct_index	        init (6),
+ 10    35      lockup_sct_index	        init (7),
+ 10    36      connect_sct_index	        init (8),
+ 10    37      parity_sct_index	        init (9),
+ 10    38      illegal_procedure_sct_index      init (10),
+ 10    39      op_not_complete_sct_index        init (11),
+ 10    40      startup_sct_index	        init (12),
+ 10    41      ovrflo_sct_index	        init (13),
+ 10    42      zerodivide_sct_index	        init (14),
+ 10    43      execute_sct_index	        init (15),
+ 10    44      seg_fault_error_sct_index        init (16),
+ 10    45      page_fault_error_sct_index       init (17),
+ 10    46      directed_fault_2_sct_index       init (18),
+ 10    47      directed_fault_3_sct_index       init (19),
+ 10    48      accessviolation_sct_index        init (20),
+ 10    49      mme2_sct_index		        init (21),
+ 10    50      mme3_sct_index		        init (22),
+ 10    51      mme4_sct_index		        init (23),
+ 10    52      linkage_error_sct_index	        init (24),
+ 10    53      fault_tag_3_sct_index	        init (25),
+ 10    54      undefined_fault_sct_index        init (26),
+ 10    55      trouble_sct_index	        init (31),
+ 10    56      illegal_opcode_sct_index	        init (32),
+ 10    57      simfault_000000_sct_index        init (33),
+ 10    58      illegal_modifier_sct_index       init (34),
+ 10    59      illegal_ring_order_sct_index     init (35),
+ 10    60      not_in_execute_bracket_sct_index init (36),
+ 10    61      no_execute_permission_sct_index  init (37),
+ 10    62      not_in_read_bracket_sct_index    init (38),
+ 10    63      no_read_permission_sct_index     init (39),
+ 10    64      not_in_write_bracket_sct_index   init (40),
+ 10    65      no_write_permission_sct_index    init (41),
+ 10    66      not_a_gate_sct_index	        init (42),
+ 10    67      not_in_call_bracket_sct_index    init (43),
+ 10    68      outward_call_sct_index	        init (44),
+ 10    69      bad_outward_call_sct_index       init (45),
+ 10    70      inward_return_sct_index	        init (46),
+ 10    71      cross_ring_transfer_sct_index    init (47),
+ 10    72      ring_alarm_fault_sct_index       init (48),
+ 10    73      am_fault_sct_index	        init (49),
+ 10    74      out_of_bounds_sct_index	        init (50),
+ 10    75      fixedoverflow_sct_index	        init (51),
+ 10    76      overflow_sct_index	        init (52),
+ 10    77      underflow_sct_index	        init (53),
+ 10    78      stringsize_sct_index	        init (54),
+ 10    79      other_illegal_proc_sct_index     init (55),
+ 10    80      storage_sct_index	        init (56),
+ 10    81      packed_pointer_fault_sct_index   init (57),
+ 10    82      lot_fault_sct_index	        init (58),
+ 10    83      isot_fault_sct_index	        init (59),
+ 10    84      system_packed_pointer_sct_index  init (60),
+ 10    85      quit_sct_index		        init (61),
+ 10    86      alrm_sct_index		        init (62),
+ 10    87      cput_sct_index		        init (63),
+ 10    88      record_quota_overflow_sct_index  init (64),
+ 10    89      size_sct_index		        init (65),
+ 10    90      neti_sct_index		        init (66),
+ 10    91      other_command_sct_index	        init (67),
+ 10    92      susp_sct_index		        init (68),
+ 10    93      term_sct_index		        init (69),
+ 10    94      wkp_sct_index		        init (70),
+ 10    95      undefined_pointer_sct_index      init (71),
+ 10    96      pgt_sct_index		        init (72),
+ 10    97      system_shutdown_scheduled_sct_index
+ 10    98 	                            init (73),
+ 10    99      dm_shutdown_scheduled_sct_index  init (74),
+ 10   100      system_message_sct_index	        init (75)
+ 10   101      )			        fixed bin (17) int static options (constant);
+ 10   102 
+ 10   103 /* END INCLUDE FILE  static_handlers.incl.pl1 */
+      491 
+      492 /* format: on */
+      493 
+      494 
+      495 /* BEGIN MESSAGE DOCUMENTATION
+      496*
+      497*   Message:
+      498*   sc_init_:  ERROR_MESSAGE.  Error from iox_$attach master_i/o ATD
+      499*
+      500*   S: $crash
+      501*
+      502*   T: $init
+      503*
+      504*   M: Some error was detected while attaching the master_i/o switch.
+      505*   ATD is the text of the attach description.  This error is usually caused
+      506*   by a hardware failure in the operator's console.  Correct the failure
+      507*   and reboot the system.
+      508*
+      509*   A: $contact
+      510*
+      511*
+      512*   Message:
+      513*   sc_init_:  ERROR_MESSAGE.  Error from iox_$open master_i/o stream_input_output
+      514*
+      515*   S: $crash
+      516*
+      517*   T: $init
+      518*
+      519*   M: Some error was detected while opening the master_i/o switch.
+      520*   This is usually caused by a hardware failure in the operator's console.
+      521*   Correct the failure and reboot the system.
+      522*
+      523*   A: $contact
+      524*
+      525*   Message:
+      526*   sc_init_:  ERROR_MESSAGE.  Error from iox_$attach user_i/o syn_ master_i/o
+      527*
+      528*   S: $crash
+      529*
+      530*   T: $init
+      531*
+      532*   M: Some error was detected while attaching user_i/o as a synonym for the
+      533*   master_i/o switch in the Initializer process.  This is usually caused by a 
+      534*   hardware failure in the operator's console.  Correct the failure and reboot
+      535*   the system.
+      536*
+      537*   A: $contact
+      538*
+      539*
+      540*   Message:
+      541*   sc_init_:  Invoking emergency listener because "nosc" parameter specified.
+      542*
+      543*   S: $info
+      544*
+      545*   T: $init
+      546*
+      547*   M: The parm config card specified nosc (no system control).  This parameter
+      548*   requests that an emergency listener be entered to allow repair of >sc1 or
+      549*   other parts of the system hierarchy at the earliest possible point during 
+      550*   system initialization.  Once the repairs are made, shutdown the system by
+      551*   typing:  "hphcs_$shutdown" and then reboot the system.
+      552*
+      553*   A: Repair the problem, shutdown the system, then reboot.
+      554*
+      555*
+      556*   Message:
+      557*   sc_init_:  Messages from log salvage of LOG_PATHNAME:
+      558*
+      559*   S: $info
+      560*
+      561*   T: $init
+      562*
+      563*   M: Some error was detected in opening the admin or answering service
+      564*   log specified by LOG_PATHNAME.  A salvage was invoked to attempt
+      565*   correction of the problem.  One or more messages will succeed this
+      566*   message which describe inconsistancies found in the log, repairs
+      567*   which were made, or conditions which prevent automatic repair.
+      568*   These will be of the form "sc_init_: (log_salvage_) MESSAGE".
+      569*
+      570*   A: $contact
+      571*
+      572*
+      573*   Message:
+      574*   sc_init_: Failed to attach one of the severityN (1, 2, 3) switches.
+      575*
+      576*   S: $info
+      577*
+      578*   T: $init
+      579*
+      580*   M: The Initializer failed to make a syn_ for one of the three switches
+      581*   severity1, severity2, or severity3. There may be a problem with the
+      582*   system tape, the libraries, or the hardware.
+      583*
+      584*   A: The system attempts to enter a primitive listener environment on
+      585*   the bootload console. You should diagnose and/or correct the problem
+      586*   and then reboot the system.
+      587*
+      588*  
+      589*   Message: 
+      590*   sc_init_: A serious error was encountered setting up the system control
+      591*   environment. The system will attempt to establish a Multics
+      592*   listener level. You should repair the problem, and then type:
+      593*         "hphcs_$shutdown", and reboot the system.
+      594*
+      595*   S: $info
+      596* 
+      597*   T: $init
+      598*
+      599*   A: $contact
+      600*
+      601*
+      602*   Message:
+      603*   sc_init_: Cound not initiate the PIT for the Initializer.
+      604*
+      605*   S:    $crash
+      606*
+      607*   T:    $init
+      608*
+      609*   M:    The Initializer has failed to initiate the segment "pit" in its
+      610*   process directory.  This could indicate problems with the bootload
+      611*   tape, the online libraries, or the hardware.
+      612*
+      613*   A:    $contact
+      614*
+      615*
+      616*   Message:
+      617*   sc_init_: ERROR_MESSAGE.  Error from initiate_search_rules.
+      618*
+      619*   S:	$beep
+      620*
+      621*   T:	$init
+      622*
+      623*   M:	The Initializer is attempting to set its search rules
+      624*   and has encountered an error.  This message may occur
+      625*   if an error has been introduced into the system tape,
+      626*   or it may indicate that one of the directories searched
+      627*   by the Initializer has been destroyed.
+      628*
+      629*   A:	$contact
+      630*
+      631*   Message:
+      632*   sc_init_: ERROR_MESSAGE.  Could not set working directory to PATH.
+      633*
+      634*   S:     $beep
+      635*
+      636*   T:	$init
+      637*
+      638*   M:	Either some program is in error, or the directory
+      639*   PATH does not exist.
+      640*
+      641*   A:	$contact
+      642*   Correct the problem, shut down, and reboot.
+      643*
+      644*
+      645*   Message:
+      646*   sc_init_: ERROR_MESSAGE.  >system_control_dir>as_logs does not exist or is not a directory.
+      647*
+      648*   S:  $beep
+      649*
+      650*   T:  $init
+      651*
+      652*   M:  The directory >sc1>as_logs must exist for the ring 4 environment to
+      653*   be set up. 
+      654*
+      655*   A:  The system continues operation, trying to repair the situation. 
+      656*   Subsequent messages indicate the success or failure of repairs.
+      657*
+      658*
+      659*   Message:
+      660*   sc_init_: Created >system_control_dir>as_logs
+      661*
+      662*   S:  $beep
+      663*
+      664*   T:  $init
+      665*
+      666*   M:  The system has successfully created a new directory >sc1>as_logs.
+      667*
+      668*   A: $ignore
+      669*   If this is not the first bootload of the system under MR11 or later,
+      670*   you may need to retrieve log segments lost in a crash into the new
+      671*   directory.
+      672*
+      673*
+      674*   Message:
+      675*   sc_init_: Renamed non-directory object >system_control_dir>as_logs.
+      676*
+      677*   S:  $beep
+      678*
+      679*   T:  $init
+      680*
+      681*   M:  The system found something that was not a directory in the place
+      682*   of the directory >sc1>as_logs, and renamed it to permit a new directory
+      683*   to be created.
+      684*
+      685*   A: $ignore
+      686*
+      687*
+      688*   Message:
+      689*   sc_init_: ERROR_MESSAGE.  Failed to attach admin_log log.
+      690*
+      691*   S:  $beep
+      692*
+      693*   T:  $init
+      694*
+      695*   M:  The system failed to attach a switch to write information to the 
+      696*   admin log, >sc1>as_logs>admin_log. The segment >sc1>as_logs>admin_log may be
+      697*   damaged. The system enters a primitive Multics listener on the bootload
+      698*   console.
+      699*
+      700*   A:  Repair the problem. You may have to delete or rename the segment
+      701*   >sc1>as_logs>admin_log.   Then shutdown and reboot.
+      702*
+      703*   Message:
+      704*   sc_init_:  ERROR_MESSAGE.  Failed to open admin_log log.
+      705*
+      706*   S:  $beep
+      707*
+      708*   T:  $init
+      709*
+      710*   M: The system failed to iox open the switch for the log >sc1>as_logs>admin_log.
+      711*   The segment >sc1>as_logs>admin_log may be damaged. The system enters
+      712*   a primitive Multics listener on the bootload console.   
+      713*
+      714*   A:  Repair the problem.
+      715*   You may need to rename or delete the segment >sc1>as_logs>admin_log.
+      716*   Then shutdown and reboot.
+      717*
+      718*
+      719*   Message:
+      720*   sc_init_: ERROR_MESSAGE.  Failed to get log_write_ ptr for admin_log.
+      721*
+      722*   S:  $beep
+      723*
+      724*   T:  $init
+      725*
+      726*   M:  This indicated an internal programming error. The online libraries
+      727*   may be damaged.
+      728*
+      729*   A:  $contact
+      730*
+      731*
+      732*   Message:
+      733*   sc_init_: ERROR_MESSAGE.  Failed to open the AS log (>system_control_dir>as_logs>log).
+      734*
+      735*   S:  $beep
+      736*
+      737*   T:  $init
+      738*
+      739*   M:  The system was unable to open the log >sc1>as_logs>log. This may 
+      740*   indicate damage to the segment >sc1>as_logs>log. The system enters a 
+      741*   primitive Multics listener on the bootload console.
+      742*
+      743*   A:  Repair the problem. You may have to rename or delete >sc1>as_logs>log.
+      744*   Then shutdown and reboot.
+      745*
+      746*
+      747*   Message:
+      748*   sc_init_: Failed to create ssu invocation for system control.
+      749*
+      750*   S:  $beep
+      751*
+      752*   T:  $init
+      753*
+      754*   M:  The system failed to set up the subsystem data structure for
+      755*   the bootload console. This indicates a programming error or trouble
+      756*   with the system libraries.
+      757*
+      758*   A:  $contact
+      759*
+      760*   END MESSAGE DOCUMENTATION */
+      761 
+      762      end sc_init_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.2  sc_init_.pl1                      >spec>install>1112>sc_init_.pl1
+482          1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+483          2    05/08/81  1853.6  config_intk_card.incl.pl1         >ldd>include>config_intk_card.incl.pl1
+484          3    05/23/83  0916.6  iox_entries.incl.pl1              >ldd>include>iox_dcls.incl.pl1
+485          4    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+486          5    04/25/85  0909.8  log_salvage_arg.incl.pl1          >ldd>include>log_salvage_arg.incl.pl1
+487          6    08/06/87  0913.5  sc_stat_.incl.pl1                 >ldd>include>sc_stat_.incl.pl1
+488          7    08/06/87  0913.5  sc_subsystem_info_.incl.pl1       >ldd>include>sc_subsystem_info_.incl.pl1
+489          8    08/06/87  0913.5  sys_log_constants.incl.pl1        >ldd>include>sys_log_constants.incl.pl1
+490          9    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+491         10    08/06/87  0913.5  static_handlers.incl.pl1          >ldd>include>static_handlers.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000570 constant        fixed bin(17,0)          initial dcl 9-7 set ref 283* 291*
+BEEP                            000571 constant        fixed bin(17,0)          initial dcl 9-7 set ref 182* 196* 224* 256* 276*
+                                                                                  319* 335* 364* 374* 385* 395* 408*
+CRASH                           000576 constant        fixed bin(17,0)          initial dcl 9-7 set ref 235* 239* 244*
+DIR_RINGS                       000474 constant        fixed bin(3,0)           initial array dcl 154 set ref 289*
+INTK_CARD_WORD                  000462 constant        char(4)                  initial dcl 2-20 set ref 465*
+LOG_SALVAGE_ARG_VERSION_1       000460 constant        char(8)                  initial packed unaligned dcl 5-18 ref 307 350
+ME                              000464 constant        char(32)                 initial packed unaligned dcl 155 set ref 187* 200*
+                                                                                  207* 213* 279* 287* 294* 322* 337* 367* 376* 388*
+                                                                                  398* 411* 429* 433*
+P_msg                                  parameter       char                     packed unaligned dcl 418 ref 415 421
+SMA_ACCESS_BIN                  000463 constant        fixed bin(5,0)           initial dcl 1-36 set ref 289*
+SYSERR_PRINT_ON_CONSOLE         000570 constant        fixed bin(17,0)          initial dcl 9-7 set ref 425* 431*
+Stream_input_output             000571 constant        fixed bin(17,0)          initial dcl 4-15 set ref 218* 238*
+Stream_output                   000572 constant        fixed bin(17,0)          initial dcl 4-15 set ref 341* 370*
+active_all_rings_data$initializer_dim
+                                000012 external static char(32)                 packed unaligned dcl 69 ref 233
+active_all_rings_data$initializer_tty
+                                000010 external static char(32)                 packed unaligned dcl 66 ref 231
+addr                                                   builtin function         dcl 76 ref 223 223 306 349 381 381
+alrm_sct_index                  000454 constant        fixed bin(17,0)          initial dcl 10-27 set ref 163*
+any_other                       000100 stack reference condition                dcl 443 ref 446
+atd                             000100 automatic       char(200)                packed unaligned dcl 129 set ref 233* 234* 235* 330*
+                                                                                  332 359* 360
+auto_log_salvage_arg            000162 automatic       structure                level 1 dcl 130 set ref 305* 306 348* 349
+code                            000173 automatic       fixed bin(35,0)          dcl 131 set ref 162* 163* 164* 165* 166* 167* 168*
+                                                                                  169* 172* 176* 182* 187* 191* 195* 196 196* 200*
+                                                                                  204* 205 207* 210* 211 213* 217* 218* 219* 223*
+                                                                                  224 224* 234* 235 235* 238* 239 239* 243* 244 244*
+                                                                                  261* 262 264* 265 267* 268 271* 272 272* 274 276*
+                                                                                  279* 281* 283 287* 289* 291 298* 299 301 314* 317
+                                                                                  319* 322* 332* 333 335* 337* 341* 342 344 360* 362
+                                                                                  364* 367* 370* 372 374* 376* 381* 383 385* 388*
+                                                                                  392* 393 395* 398* 411* 429* 433*
+codeptr                                                builtin function         dcl 76 ref 219 219 234 234 243 243 261 261 264 264
+                                                                                  267 267 332 332 360 360
+com_err_                        000014 constant        entry                    external dcl 81 ref 187 200 207 213 279 287 322 337
+                                                                                  367 376 388 398 411 429 433
+config_$find                    000016 constant        entry                    external dcl 82 ref 465
+copy_on_write_handler_          000020 constant        entry                    external dcl 83 ref 166 166 167 167
+cput_sct_index                  000453 constant        fixed bin(17,0)          initial dcl 10-27 set ref 162*
+cu_$cl                          000022 constant        entry                    external dcl 84 ref 188
+default_error_handler_$wall     000172 constant        entry                    external dcl 442 ref 446
+dm_misc_util_$shutdown_handler  000024 constant        entry                    external dcl 85 ref 165 165
+dm_shutdown_scheduled_sct_index 000450 constant        fixed bin(17,0)          initial dcl 10-27 set ref 165*
+error_table_$noentry            000114 external static fixed bin(35,0)          dcl 122 ref 301 344
+error_table_$notadir            000116 external static fixed bin(35,0)          dcl 122 ref 272
+flags                     1            based           structure                level 2 dcl 7-23
+get_pdir_                       000026 constant        entry                    external dcl 87 ref 176 176
+hbound                                                 builtin function         dcl 76 ref 472
+hcs_$append_branchx             000030 constant        entry                    external dcl 88 ref 289
+hcs_$chname_file                000032 constant        entry                    external dcl 90 ref 281
+hcs_$fs_search_set_wdir         000034 constant        entry                    external dcl 91 ref 195
+hcs_$initiate                   000036 constant        entry                    external dcl 92 ref 176
+hcs_$initiate_search_rules      000040 constant        entry                    external dcl 94 ref 223
+hcs_$status_minf                000042 constant        entry                    external dcl 95 ref 271
+hphcs_$call_bce                 000044 constant        entry                    external dcl 97 ref 184
+hphcs_$set_mask_ring            000046 constant        entry                    external dcl 98 ref 222
+hphcs_$syserr                   000050 constant        entry                    external dcl 99 ref 256 283 291 408 425 431
+hphcs_$syserr_error_code        000052 constant        entry                    external dcl 100 ref 182 196 224 235 239 244 276 319
+                                                                                  335 364 374 385 395
+i                               000226 automatic       fixed bin(17,0)          dcl 460 set ref 472* 473*
+intk_card                              based           structure                level 1 dcl 2-5
+intk_card_array                        based           structure                level 1 dcl 2-16
+intk_cardp                      000210 automatic       pointer                  dcl 2-3 set ref 464* 465* 466 472 472 473
+ioa_                            000054 constant        entry                    external dcl 101 ref 294 448 449 450 451
+ioa_$rsnnl                      000056 constant        entry                    external dcl 102 ref 330 359
+iox_$attach_name                000120 constant        entry                    external dcl 3-8 ref 234 243 261 264 267 332 360
+iox_$attach_ptr                 000122 constant        entry                    external dcl 3-8 ref 219
+iox_$close                      000124 constant        entry                    external dcl 3-8 ref 210
+iox_$control                    000126 constant        entry                    external dcl 3-8 ref 381
+iox_$detach_iocb                000130 constant        entry                    external dcl 3-8 ref 357 377
+iox_$find_iocb                  000132 constant        entry                    external dcl 3-8 ref 204
+iox_$init_standard_iocbs        000060 constant        entry                    external dcl 103 ref 227
+iox_$move_attach                000134 constant        entry                    external dcl 3-8 ref 217
+iox_$open                       000136 constant        entry                    external dcl 3-8 ref 218 238 341 370
+iox_$user_io                    000140 external static pointer                  dcl 3-41 set ref 210* 217* 219* 243*
+listen_                         000174 constant        entry                    external dcl 444 ref 454
+log_salv_code                   000174 automatic       fixed bin(35,0)          dcl 133 set ref 309* 311* 312 352* 354* 355
+log_salv_err_cnt                000175 automatic       fixed bin(17,0)          dcl 135 set ref 303* 346* 423* 423 425
+log_salv_name                   000176 automatic       char(32)                 packed unaligned dcl 136 set ref 304* 309* 347* 352*
+                                                                                  425* 425* 429* 429*
+log_salvage_                    000062 constant        entry                    external dcl 104 ref 309 352
+log_salvage_arg                        based           structure                level 1 dcl 5-9
+log_salvage_arg_ptr             000212 automatic       pointer                  dcl 5-7 set ref 306* 307 308 309* 349* 350 351 352*
+log_write_$open                 000064 constant        entry                    external dcl 105 ref 298 314
+max                                                    builtin function         dcl 76 ref 472
+msg                             000100 automatic       varying char(1024)       dcl 419 set ref 421* 431* 433*
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 packed packed unsigned unaligned dcl 2-5 ref
+                                                                                  472
+no_write_permission_sct_index   000455 constant        fixed bin(17,0)          initial dcl 10-27 set ref 166*
+not_in_write_bracket_sct_index  000456 constant        fixed bin(17,0)          initial dcl 10-27 set ref 167*
+null                                                   builtin function         dcl 76 ref 175 178 297 331 358 464 466
+parms                     3            based           char(4)                  array level 2 in structure "intk_card" dcl 2-5
+                                                                                  in procedure "sc_init_" ref 473
+parms                     3            based           bit(36)                  array level 2 in structure "intk_card_array"
+                                                                                  dcl 2-16 in procedure "sc_init_" ref 472
+pathname_                       000066 constant        entry                    external dcl 107 ref 425 425 429 429
+pl1_resignaller_$establish_handlers
+                                000070 constant        entry                    external dcl 108 ref 161
+pp                              000216 automatic       pointer                  dcl 174 set ref 175* 176* 178
+real_iocb                16            based           pointer                  level 2 dcl 7-23 set ref 404*
+reporter_proc             2            based           entry variable           level 2 dcl 5-9 set ref 308* 351*
+rtrim                                                  builtin function         dcl 76 ref 233
+sc_create_sci_                  000072 constant        entry                    external dcl 110 ref 392
+sc_stat_$admin_log_iocb         000150 external static pointer                  dcl 6-45 set ref 331* 332* 341* 357* 358* 360* 370*
+                                                                                  377* 381*
+sc_stat_$admin_log_write_ptr    000152 external static pointer                  dcl 6-45 set ref 381 381
+sc_stat_$as_log_write_ptr       000154 external static pointer                  dcl 6-45 set ref 297* 298* 314*
+sc_stat_$log_dir                000142 external static char(168)                packed unaligned dcl 6-21 set ref 298* 309* 314*
+                                                                                  319* 322* 330* 352* 359* 425* 425* 429* 429*
+sc_stat_$master_channel         000146 external static char(6)                  dcl 6-29 set ref 231* 233
+sc_stat_$master_iocb            000156 external static pointer                  dcl 6-45 set ref 204* 217* 218* 234* 238* 404
+sc_stat_$master_sci_ptr         000160 external static pointer                  dcl 6-45 set ref 392* 402*
+sc_stat_$sv1_iocb               000162 external static pointer                  dcl 6-45 set ref 267*
+sc_stat_$sv2_iocb               000164 external static pointer                  dcl 6-45 set ref 264*
+sc_stat_$sv3_iocb               000166 external static pointer                  dcl 6-45 set ref 261*
+sc_stat_$sysdir                 000144 external static char(168)                packed unaligned dcl 6-21 set ref 195 196* 200* 271*
+                                                                                  276* 279* 281* 283* 287* 289* 291* 294*
+sc_stat_$test_mode              000170 external static bit(1)                   dcl 6-62 ref 159 180 196 202 276 283 291 319 335 364
+                                                                                  374 385 395 408 425 431 462
+sc_subsystem_info                      based           structure                level 1 dcl 7-23
+sc_subsystem_info_ptr           000214 automatic       pointer                  dcl 7-22 set ref 402* 403 404 405
+sct_manager_$set                000074 constant        entry                    external dcl 111 ref 162 163 164 165 166 167 168 169
+search_rules                    000000 constant        structure                level 1 dcl 144 set ref 223 223
+source_name               2            based           char(32)                 level 2 packed packed unaligned dcl 7-23 set ref
+                                                                                  403*
+ssu_$get_info_ptr               000076 constant        entry                    external dcl 112 ref 402
+substr                                                 builtin function         dcl 76 ref 231
+system_message_handler_         000100 constant        entry                    external dcl 113 ref 168 168
+system_message_sct_index        000447 constant        fixed bin(17,0)          initial dcl 10-27 set ref 168*
+system_shutdown_handler_        000106 constant        entry                    external dcl 118 ref 164 164
+system_shutdown_scheduled_sct_index
+                                000451 constant        fixed bin(17,0)          initial dcl 10-27 set ref 164*
+the_system_console        1(02)        based           bit(1)                   level 3 packed packed unaligned dcl 7-23 set ref
+                                                                                  405*
+timer_manager_$alarm_interrupt  000104 constant        entry                    external dcl 116 ref 163 163
+timer_manager_$cpu_time_interrupt
+                                000102 constant        entry                    external dcl 114 ref 162 162
+type                            000206 automatic       fixed bin(2,0)           dcl 137 set ref 271* 272
+type_word                17            based           structure                level 2 dcl 2-5
+unique_chars_                   000112 constant        entry                    external dcl 120 ref 281
+unspec                                                 builtin function         dcl 76 set ref 305* 348*
+version                                based           char(8)                  level 2 dcl 5-9 set ref 307* 350*
+wkp_sct_index                   000452 constant        fixed bin(17,0)          initial dcl 10-27 set ref 169*
+wkp_signal_handler_             000110 constant        entry                    external dcl 119 ref 169 169
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+Direct_input                           internal static fixed bin(17,0)          initial dcl 4-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 4-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 4-15
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 9-7
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 4-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 4-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 4-15
+LOG                                    internal static fixed bin(17,0)          initial dcl 9-7
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SL_INFO_arg_given_in_structure         internal static fixed bin(17,0)          initial dcl 8-69
+SL_INFO_arg_not_given                  internal static fixed bin(17,0)          initial dcl 8-69
+SL_INFO_as_mode                        internal static fixed bin(17,0)          initial dcl 8-65
+SL_INFO_command_mode                   internal static fixed bin(17,0)          initial dcl 8-65
+SL_INFO_version_1                      internal static char(8)                  initial packed unaligned dcl 8-62
+SL_LOG                                 internal static fixed bin(17,0)          initial dcl 8-14
+SL_LOG_BEEP                            internal static fixed bin(17,0)          initial dcl 8-14
+SL_LOG_CRASH                           internal static fixed bin(17,0)          initial dcl 8-14
+SL_LOG_SILENT                          internal static fixed bin(17,0)          initial dcl 8-14
+SL_TYPE                                internal static fixed bin(17,0)          initial dcl 8-14
+SL_TYPE_BEEP                           internal static fixed bin(17,0)          initial dcl 8-14
+SL_TYPE_CRASH                          internal static fixed bin(17,0)          initial dcl 8-14
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 9-7
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 4-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 4-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 4-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 4-15
+Stream_input                           internal static fixed bin(17,0)          initial dcl 4-15
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 9-7
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+accessviolation_sct_index              internal static fixed bin(17,0)          initial dcl 10-27
+am_fault_sct_index                     internal static fixed bin(17,0)          initial dcl 10-27
+bad_outward_call_sct_index             internal static fixed bin(17,0)          initial dcl 10-27
+command_sct_index                      internal static fixed bin(17,0)          initial dcl 10-27
+connect_sct_index                      internal static fixed bin(17,0)          initial dcl 10-27
+cross_ring_transfer_sct_index          internal static fixed bin(17,0)          initial dcl 10-27
+derail_sct_index                       internal static fixed bin(17,0)          initial dcl 10-27
+directed_fault_2_sct_index             internal static fixed bin(17,0)          initial dcl 10-27
+directed_fault_3_sct_index             internal static fixed bin(17,0)          initial dcl 10-27
+execute_sct_index                      internal static fixed bin(17,0)          initial dcl 10-27
+fault_tag_1_sct_index                  internal static fixed bin(17,0)          initial dcl 10-27
+fault_tag_3_sct_index                  internal static fixed bin(17,0)          initial dcl 10-27
+fixedoverflow_sct_index                internal static fixed bin(17,0)          initial dcl 10-27
+illegal_modifier_sct_index             internal static fixed bin(17,0)          initial dcl 10-27
+illegal_opcode_sct_index               internal static fixed bin(17,0)          initial dcl 10-27
+illegal_procedure_sct_index            internal static fixed bin(17,0)          initial dcl 10-27
+illegal_ring_order_sct_index           internal static fixed bin(17,0)          initial dcl 10-27
+inward_return_sct_index                internal static fixed bin(17,0)          initial dcl 10-27
+iox_$attach_loud                000000 constant        entry                    external dcl 3-8
+iox_$close_file                 000000 constant        entry                    external dcl 3-8
+iox_$delete_record              000000 constant        entry                    external dcl 3-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 3-8
+iox_$detach                     000000 constant        entry                    external dcl 3-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 3-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 3-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 3-8
+iox_$err_not_open               000000 constant        entry                    external dcl 3-8
+iox_$error_output                      external static pointer                  dcl 3-41
+iox_$find_iocb_n                000000 constant        entry                    external dcl 3-8
+iox_$get_chars                  000000 constant        entry                    external dcl 3-8
+iox_$get_line                   000000 constant        entry                    external dcl 3-8
+iox_$look_iocb                  000000 constant        entry                    external dcl 3-8
+iox_$modes                      000000 constant        entry                    external dcl 3-8
+iox_$open_file                  000000 constant        entry                    external dcl 3-8
+iox_$position                   000000 constant        entry                    external dcl 3-8
+iox_$propagate                  000000 constant        entry                    external dcl 3-8
+iox_$put_chars                  000000 constant        entry                    external dcl 3-8
+iox_$read_key                   000000 constant        entry                    external dcl 3-8
+iox_$read_length                000000 constant        entry                    external dcl 3-8
+iox_$read_record                000000 constant        entry                    external dcl 3-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 3-8
+iox_$seek_key                   000000 constant        entry                    external dcl 3-8
+iox_$user_input                        external static pointer                  dcl 3-41
+iox_$user_output                       external static pointer                  dcl 3-41
+iox_$write_record               000000 constant        entry                    external dcl 3-8
+iox_modes                              internal static char(24)                 initial array dcl 4-6
+isot_fault_sct_index                   internal static fixed bin(17,0)          initial dcl 10-27
+linkage_error_sct_index                internal static fixed bin(17,0)          initial dcl 10-27
+lockup_sct_index                       internal static fixed bin(17,0)          initial dcl 10-27
+lot_fault_sct_index                    internal static fixed bin(17,0)          initial dcl 10-27
+mme1_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+mme2_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+mme3_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+mme4_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+neti_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+no_execute_permission_sct_index        internal static fixed bin(17,0)          initial dcl 10-27
+no_read_permission_sct_index           internal static fixed bin(17,0)          initial dcl 10-27
+not_a_gate_sct_index                   internal static fixed bin(17,0)          initial dcl 10-27
+not_in_call_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 10-27
+not_in_execute_bracket_sct_index       internal static fixed bin(17,0)          initial dcl 10-27
+not_in_read_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 10-27
+op_not_complete_sct_index              internal static fixed bin(17,0)          initial dcl 10-27
+other_command_sct_index                internal static fixed bin(17,0)          initial dcl 10-27
+other_illegal_proc_sct_index           internal static fixed bin(17,0)          initial dcl 10-27
+out_of_bounds_sct_index                internal static fixed bin(17,0)          initial dcl 10-27
+outward_call_sct_index                 internal static fixed bin(17,0)          initial dcl 10-27
+overflow_sct_index                     internal static fixed bin(17,0)          initial dcl 10-27
+ovrflo_sct_index                       internal static fixed bin(17,0)          initial dcl 10-27
+packed_pointer_fault_sct_index         internal static fixed bin(17,0)          initial dcl 10-27
+page_fault_error_sct_index             internal static fixed bin(17,0)          initial dcl 10-27
+parity_sct_index                       internal static fixed bin(17,0)          initial dcl 10-27
+pgt_sct_index                          internal static fixed bin(17,0)          initial dcl 10-27
+quit_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+record_quota_overflow_sct_index        internal static fixed bin(17,0)          initial dcl 10-27
+ring_alarm_fault_sct_index             internal static fixed bin(17,0)          initial dcl 10-27
+sc_request_flags                       based           structure                level 1 packed packed unaligned dcl 7-55
+sc_rf_ptr                              automatic       pointer                  dcl 7-54
+sc_ss_area                             based           area(1024)               dcl 7-50
+sc_stat_$Go                            external static bit(1)                   dcl 6-62
+sc_stat_$Go_typed                      external static bit(1)                   dcl 6-62
+sc_stat_$Multics                       external static bit(1)                   dcl 6-62
+sc_stat_$Multics_typed                 external static bit(1)                   dcl 6-62
+sc_stat_$Star_typed                    external static bit(1)                   dcl 6-62
+sc_stat_$admin_listener_exit_label     external static label variable           dcl 6-34
+sc_stat_$admin_listener_switch         external static bit(1)                   dcl 6-62
+sc_stat_$admin_sci_ptr                 external static pointer                  dcl 6-45
+sc_stat_$did_part1                     external static bit(1)                   dcl 6-62
+sc_stat_$did_part2                     external static bit(1)                   dcl 6-62
+sc_stat_$did_part3                     external static bit(1)                   dcl 6-62
+sc_stat_$exec_access_name              external static char(32)                 packed unaligned dcl 6-15
+sc_stat_$info_dir                      external static char(168)                packed unaligned dcl 6-21
+sc_stat_$initzer_ttyp                  external static pointer                  dcl 6-45
+sc_stat_$master_abort_label            external static label variable           dcl 6-34
+sc_stat_$mc_acs_dir                    external static char(168)                packed unaligned dcl 6-21
+sc_stat_$mc_ansp                       external static pointer                  dcl 6-45
+sc_stat_$mc_iocb                       external static pointer                  dcl 6-45
+sc_stat_$mc_is_on                      external static bit(1)                   dcl 6-62
+sc_stat_$no_operator_login             external static bit(1)                   dcl 6-62
+sc_stat_$shutdown_typed                external static bit(1)                   dcl 6-62
+sc_stat_$system_shutdown_label         external static label variable           dcl 6-34
+sc_stat_$unidentified_access_name      external static char(32)                 packed unaligned dcl 6-15
+sc_stat_$vchn_requires_accept          external static bit(1)                   dcl 6-62
+seg_fault_error_sct_index              internal static fixed bin(17,0)          initial dcl 10-27
+short_iox_modes                        internal static char(4)                  initial array dcl 4-12
+shutdown_sct_index                     internal static fixed bin(17,0)          initial dcl 10-27
+simfault_000000_sct_index              internal static fixed bin(17,0)          initial dcl 10-27
+size_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+sl_info                                automatic       structure                level 1 dcl 8-24
+sl_info_code_msg                       internal static structure                level 1 dcl 8-187
+sl_info_msg                            internal static structure                level 1 dcl 8-214
+sl_info_sev_code_label_msg             internal static structure                level 1 dcl 8-161
+sl_info_sev_code_msg                   internal static structure                level 1 dcl 8-82
+sl_info_sev_coded_msg                  internal static structure                level 1 dcl 8-134
+sl_info_sev_msg                        internal static structure                level 1 dcl 8-108
+startup_sct_index                      internal static fixed bin(17,0)          initial dcl 10-27
+storage_sct_index                      internal static fixed bin(17,0)          initial dcl 10-27
+store_sct_index                        internal static fixed bin(17,0)          initial dcl 10-27
+stringsize_sct_index                   internal static fixed bin(17,0)          initial dcl 10-27
+susp_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+system_packed_pointer_sct_index        internal static fixed bin(17,0)          initial dcl 10-27
+term_sct_index                         internal static fixed bin(17,0)          initial dcl 10-27
+timer_runout_sct_index                 internal static fixed bin(17,0)          initial dcl 10-27
+trouble_sct_index                      internal static fixed bin(17,0)          initial dcl 10-27
+undefined_fault_sct_index              internal static fixed bin(17,0)          initial dcl 10-27
+undefined_pointer_sct_index            internal static fixed bin(17,0)          initial dcl 10-27
+underflow_sct_index                    internal static fixed bin(17,0)          initial dcl 10-27
+zerodivide_sct_index                   internal static fixed bin(17,0)          initial dcl 10-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+EMERGENCY_LISTENER              005436 constant        entry                    internal dcl 437 ref 258 323 338 368 378 389 399 412
+INVOKE_EMERGENCY_LISTENER       005557 constant        entry                    internal dcl 457 ref 254
+SEVERITY_ERROR                  005133 constant        label                    dcl 408 ref 262 265 268
+print_log_salv_error            005207 constant        entry                    internal dcl 415 ref 308 351
+sc_init_                        001566 constant        entry                    external dcl 14 ref 219 219 234 234 243 243 261 261
+                                                                                  264 264 267 267 332 332 360 360
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      6576        6774    5651        6606
+Length      7570    5651       176         560     725           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_init_                            378 external procedure  is an external procedure.  
+begin block on line 173                 begin block         shares stack frame of external procedure sc_init_.  
+print_log_salv_error                408 internal procedure  is assigned to an entry variable.  
+EMERGENCY_LISTENER                   95 internal procedure  enables or reverts conditions.  
+on unit on line 446                  64 on unit               
+INVOKE_EMERGENCY_LISTENER               internal procedure  shares stack frame of external procedure sc_init_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+print_log_salv_error     000100 msg                         print_log_salv_error
+sc_init_                 000100 atd                         sc_init_
+                         000162 auto_log_salvage_arg        sc_init_
+                         000173 code                        sc_init_
+                         000174 log_salv_code               sc_init_
+                         000175 log_salv_err_cnt            sc_init_
+                         000176 log_salv_name               sc_init_
+                         000206 type                        sc_init_
+                         000210 intk_cardp                  sc_init_
+                         000212 log_salvage_arg_ptr         sc_init_
+                         000214 sc_subsystem_info_ptr       sc_init_
+                         000216 pp                          begin block on line 173
+                         000226 i                           INVOKE_EMERGENCY_LISTENER
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        call_int_this       return_mac
+enable_op           shorten_stack       ext_entry           int_entry           int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      config_$find                  copy_on_write_handler_        cu_$cl
+default_error_handler_$wall   dm_misc_util_$shutdown_handler                              get_pdir_
+hcs_$append_branchx           hcs_$chname_file              hcs_$fs_search_set_wdir       hcs_$initiate
+hcs_$initiate_search_rules    hcs_$status_minf              hphcs_$call_bce               hphcs_$set_mask_ring
+hphcs_$syserr                 hphcs_$syserr_error_code      ioa_                          ioa_$rsnnl
+iox_$attach_name              iox_$attach_ptr               iox_$close                    iox_$control
+iox_$detach_iocb              iox_$find_iocb                iox_$init_standard_iocbs      iox_$move_attach
+iox_$open                     listen_                       log_salvage_                  log_write_$open
+pathname_                     pl1_resignaller_$establish_handlers                         sc_create_sci_
+sct_manager_$set              ssu_$get_info_ptr             system_message_handler_       system_shutdown_handler_
+timer_manager_$alarm_interrupt                              timer_manager_$cpu_time_interrupt
+unique_chars_                 wkp_signal_handler_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_all_rings_data$initializer_dim                       active_all_rings_data$initializer_tty
+error_table_$noentry          error_table_$notadir          iox_$user_io                  sc_stat_$admin_log_iocb
+sc_stat_$admin_log_write_ptr  sc_stat_$as_log_write_ptr     sc_stat_$log_dir              sc_stat_$master_channel
+sc_stat_$master_iocb          sc_stat_$master_sci_ptr       sc_stat_$sv1_iocb             sc_stat_$sv2_iocb
+sc_stat_$sv3_iocb             sc_stat_$sysdir               sc_stat_$test_mode
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 001565       159 001573       161 001575       162 001601       163 001620       164 001637       165 001656
+    166 001675       167 001714       168 001733       169 001752       172 001771       175 001772       176 001774
+    178 002052       180 002056       182 002061       184 002104       185 002111       187 002112       188 002135
+    190 002142       191 002143       195 002144       196 002165       200 002222       202 002251       204 002254
+    205 002300       207 002302       208 002326       210 002327       211 002340       213 002342       214 002366
+    217 002367       218 002402       219 002421       220 002455       222 002456       223 002462       224 002475
+    227 002523       231 002530       233 002540       234 002601       235 002637       238 002671       239 002710
+    243 002736       244 003000       254 003026       256 003033       258 003053       261 003057       262 003124
+    264 003126       265 003172       267 003174       268 003241       271 003243       272 003305       274 003315
+    276 003317       279 003352       281 003401       283 003457       287 003510       289 003537       291 003623
+    294 003654       297 003677       298 003702       299 003736       301 003740       303 003743       304 003744
+    305 003747       306 003752       307 003754       308 003757       309 003762       310 004006       311 004007
+    312 004010       314 004012       317 004047       319 004051       322 004104       323 004133       330 004137
+    331 004170       332 004173       333 004233       335 004235       337 004264       338 004307       341 004313
+    342 004332       344 004334       346 004337       347 004340       348 004343       349 004346       350 004350
+    351 004353       352 004356       353 004402       354 004403       355 004404       357 004406       358 004420
+    359 004423       360 004453       362 004514       364 004516       367 004545       368 004570       370 004574
+    372 004613       374 004615       376 004644       377 004667       378 004701       381 004705       383 004736
+    385 004740       388 004767       389 005012       392 005016       393 005027       395 005031       398 005060
+    399 005103       402 005107       403 005120       404 005124       405 005130       406 005132       408 005133
+    411 005156       412 005201       413 005205       415 005206       421 005222       423 005233       425 005235
+    429 005306       431 005356       433 005405       434 005434       437 005435       446 005443       448 005464
+    449 005500       450 005514       451 005530       454 005544       455 005556       457 005557       462 005561
+    464 005566       465 005570       466 005600       472 005607       473 005625       475 005635       477 005637
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

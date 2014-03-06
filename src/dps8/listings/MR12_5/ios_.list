@@ -1,0 +1,1475 @@
+	COMPILATION LISTING OF SEGMENT ios_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1012.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* Last modified (Date and Reason):
+       10*   Aug 9, 1977 by S. Webber to make better use of static storage and remove refences to obsolete dims.
+       11*   August 1981 by C. Hornig to make it compile again.
+       12*   19 August 1982 by G. Palter to make ios_$attach work as "documented"
+       13**/
+       14 
+       15 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       16 
+       17 ios_:
+       18      procedure;
+       19 
+       20 /* A replacement for the old I/O switch 'ios_' which implements most of its calls
+       21*   via write-arounds to the new I/O system 'iox_'.  However, unknown DIMs continue to
+       22*   be supported in a straight-through fashion for compatibility. */
+       23 
+       24 
+       25 /* Declarations. */
+       26 
+       27 /* Parameters. */
+       28 
+       29 dcl  amount fixed (21);
+       30 dcl  breaklist (*) bit (*);
+       31 dcl  delimlist (*) bit (*);
+       32 dcl  device char (*);
+       33 dcl  dim char (*);
+       34 dcl  elemsize fixed (21);
+       35 dcl  infptr ptr;
+       36 dcl  iocb_ptr_ ptr;
+       37 dcl  mode char (*);
+       38 dcl  name1 char (*);
+       39 dcl  name2 char (*);
+       40 dcl  nbreaks fixed;
+       41 dcl  ndelims fixed;
+       42 dcl  nelem fixed (21);
+       43 dcl  nelemt fixed (21);
+       44 dcl  newmode char (*);
+       45 dcl  offset fixed (21);
+       46 dcl  oldmode char (*);
+       47 dcl  1 oldstatus aligned like status;
+       48 dcl  order char (*);
+       49 dcl  1 status aligned,
+       50        2 code fixed (35),
+       51        2 bits bit (36);
+       52 dcl  stream char (*);
+       53 dcl  wsptr ptr;
+       54 
+       55 /* Automatic. */
+       56 
+       57 dcl  actual_iocb_ptr ptr;
+       58 dcl  arg0 (zero) char (0) varying;
+       59 dcl  blkptr ptr;
+       60 dcl  caller_ptr ptr;
+       61 dcl  code fixed (35);
+       62 dcl  i fixed;
+       63 dcl  1 ics aligned,
+       64        2 sdbptr ptr,
+       65        2 dimptr ptr,
+       66        2 entry fixed;
+       67 dcl  iocb_ptr ptr;
+       68 dcl  mask fixed (35);
+       69 dcl  1 mystatus aligned like status;
+       70 dcl  old_attachment pointer;
+       71 dcl  p ptr;
+       72 dcl  1 ti aligned,
+       73        2 version fixed,
+       74        2 code fixed (35);
+       75 
+       76 /* Internal Static. */
+       77 
+       78 dcl  free_blks_ptr ptr int static init (null ());
+       79 dcl  system_storage_ptr ptr int static init (null ());
+       80 
+       81 
+       82 /* Procedures. */
+       83 
+       84 dcl  cu_$arg_list_ptr ext entry () returns (ptr);
+       85 dcl  cu_$caller_ptr entry (ptr);
+       86 dcl  cu_$grow_stack_frame ext entry (fixed, ptr) returns (fixed (35));
+       87 dcl  default_handler_$set ext entry (entry);
+       88 dcl  hcs_$make_ptr ext entry (ptr, char (*), char (*), ptr) returns (fixed (35));
+       89 dcl  get_system_free_area_ entry (ptr);
+       90 dcl  hcs_$set_ips_mask ext entry (fixed (35), fixed (35));
+       91 dcl  hcs_$reset_ips_mask ext entry (fixed (35), fixed (35));
+       92 dcl  discard_$discard_attach ext entry (ptr, (*) char (*) varying, bit (1), fixed bin (35));
+       93 dcl  mr_$mr_attach ext entry (ptr, (*) char (*) varying, bit (1), fixed bin (35));
+       94 dcl  netd_$netd_attach ext entry (ptr, (*) char (*) varying, bit (1), fixed bin (35));
+       95 dcl  ocd_$ocd_attach ext entry (ptr, (*) char (*) varying, bit (1), fixed bin (35));
+       96 dcl  syn_$syn_attach ext entry (ptr, (*) char (*) varying, bit (1), fixed bin (35));
+       97 dcl  tty_$tty_attach ext entry (ptr, (*) char (*) varying, bit (1), fixed bin (35));
+       98 dcl  iox_$init_standard_iocbs entry;
+       99 dcl  iox_$ios_call ext entry options (variable);
+      100 dcl  iox_$ios_call_attach ext entry options (variable);
+      101 dcl  ios_signal_ ext entry (char (32), fixed (35));
+      102 dcl  terminate_process_ ext entry (char (*), ptr);
+      103 dcl  unique_chars_ entry (bit (*)) returns (char (15));
+      104 
+      105 /* Constants. */
+      106 
+      107 dcl  zero fixed int static init (0);
+      108 dcl  detached_status bit (36) int static init ("0000000000000001"b);
+      109 dcl  error_table_$end_of_info fixed (35) ext;
+      110 dcl  error_table_$ioname_not_active fixed (35) ext;
+      111 dcl  error_table_$long_record fixed (35) ext;
+      112 dcl  error_table_$ioname_not_found fixed (35) ext;
+      113 dcl  error_table_$ionmat fixed (35) ext;
+      114 dcl  error_table_$missent fixed (35) ext;
+      115 dcl  error_table_$typename_not_found fixed (35) ext;
+      116 dcl  iox_$err_old_dim ext entry options (variable);
+      117 dcl  ios_write_around_$ios_write_around_get_line ext entry options (variable);
+      118 dcl  ios_write_around_$ios_write_around_get_chars ext entry options (variable);
+      119 dcl  ios_write_around_$ios_write_around_put_chars ext entry options (variable);
+      120 dcl  ios_write_around_$ios_write_around_control ext entry options (variable);
+      121 dcl  ios_write_around_$ios_write_around_modes ext entry options (variable);
+      122 dcl  ios_write_around_$ios_write_around_position ext entry options (variable);
+      123 dcl  detach_offset fixed int static init (1);
+      124 dcl  read_offset fixed int static init (2);
+      125 dcl  write_offset fixed int static init (3);
+      126 dcl  abort_offset fixed int static init (4);
+      127 dcl  order_offset fixed int static init (5);
+      128 dcl  resetread_offset fixed int static init (6);
+      129 dcl  resetwrite_offset fixed int static init (7);
+      130 dcl  setsize_offset fixed int static init (8);
+      131 dcl  getsize_offset fixed int static init (9);
+      132 dcl  setdelim_offset fixed int static init (10);
+      133 dcl  getdelim_offset fixed int static init (11);
+      134 dcl  seek_offset fixed int static init (12);
+      135 dcl  tell_offset fixed int static init (13);
+      136 dcl  changemode_offset fixed int static init (14);
+      137 dcl  readsync_offset fixed int static init (19);
+      138 dcl  writesync_offset fixed int static init (20);
+      139 dcl  stream_output_mode fixed int static init (2);
+      140 dcl  stream_input_output_mode fixed int static init (3);
+      141 
+      142 /* Built-in. */
+      143 
+      144 dcl  (addr, divide, length, min, null, size, substr, unspec) builtin;
+      145 
+      146 /* Based. */
+      147 
+      148 dcl  system_storage area based (system_storage_ptr);
+      149 dcl  1 aligned_based aligned based,
+      150        2 char (0:9999) char (1) unaligned;
+      151 dcl  arg (1) char (length (device)) varying based (p);
+      152 dcl  1 args aligned based (p),
+      153        2 nargs fixed (16) unaligned,
+      154        2 other fixed,
+      155        2 arg (0 refer (args.nargs)) ptr;
+      156 dcl  fixed_aligned_based fixed (35) aligned based;
+      157 dcl  1 blk aligned based (blkptr),
+      158        2 sdbptr ptr,
+      159        2 dimptr ptr,
+      160        2 attach char (234) varying,
+      161        2 open char (50) varying;
+  1     1 /* BEGIN INCLUDE FILE iocbx.incl.pl1 */
+  1     2 /* written 27 Dec 1973, M. G. Smith */
+  1     3 /* returns attributes removed, hashing support BIM Spring 1981 */
+  1     4 /* version made character string June 1981 BIM */
+  1     5 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+  1     6*      version number to IOX2. */
+  1     7 /* format: style2 */
+  1     8 
+  1     9      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  1    10 	     2 version	      character (4) aligned,	/* IOX2 */
+  1    11 	     2 name	      char (32),		/* I/O name of this block. */
+  1    12 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  1    13 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  1    14 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  1    15 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  1    16 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  1    17 	     2 event_channel      bit (72),		/* Event channel for asynchronous I/O. */
+  1    18 	     2 detach_iocb	      entry (ptr, fixed bin (35)),
+  1    19 						/* detach_iocb(p) */
+  1    20 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed bin (35)),
+  1    21 						/* open(p,mode,not_used) */
+  1    22 	     2 close	      entry (ptr, fixed bin (35)),
+  1    23 						/* close(p) */
+  1    24 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    25 						/* get_line(p,bufptr,buflen,actlen) */
+  1    26 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    27 						/* get_chars(p,bufptr,buflen,actlen) */
+  1    28 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    29 						/* put_chars(p,bufptr,buflen) */
+  1    30 	     2 modes	      entry (ptr, char (*), char (*), fixed bin (35)),
+  1    31 						/* modes(p,newmode,oldmode) */
+  1    32 	     2 position	      entry (ptr, fixed, fixed (21), fixed bin (35)),
+  1    33 						/* position(p,u1,u2) */
+  1    34 	     2 control	      entry (ptr, char (*), ptr, fixed bin (35)),
+  1    35 						/* control(p,order,infptr) */
+  1    36 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    37 						/* read_record(p,bufptr,buflen,actlen) */
+  1    38 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    39 						/* write_record(p,bufptr,buflen) */
+  1    40 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    41 						/* rewrite_record(p,bufptr,buflen) */
+  1    42 	     2 delete_record      entry (ptr, fixed bin (35)),
+  1    43 						/* delete_record(p) */
+  1    44 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+  1    45 						/* seek_key(p,key,len) */
+  1    46 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+  1    47 						/* read_key(p,key,len) */
+  1    48 	     2 read_length	      entry (ptr, fixed (21), fixed bin (35)),
+  1    49 						/* read_length(p,len) */
+  1    50 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+  1    51 						/* open_file(p,mode,desc,not_used,s) */
+  1    52 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+  1    53 						/* close_file(p,desc,s) */
+  1    54 	     2 detach	      entry (ptr, char (*), fixed bin (35)),
+  1    55 						/* detach(p,desc,s) */
+  1    56 						/* Hidden information, to support SYN attachments. */
+  1    57 	     2 ios_compatibility  ptr,		/* Ptr to old DIM's IOS transfer vector. */
+  1    58 	     2 syn_inhibits	      bit (36),		/* Operations inhibited by SYN. */
+  1    59 	     2 syn_father	      ptr,		/* IOCB immediately SYNed to. */
+  1    60 	     2 syn_brother	      ptr,		/* Next IOCB SYNed as this one is. */
+  1    61 	     2 syn_son	      ptr,		/* First IOCB SYNed to this one. */
+  1    62 	     2 hash_chain_ptr     ptr;		/* Next IOCB in hash bucket */
+  1    63 
+  1    64      declare iox_$iocb_version_sentinel
+  1    65 			      character (4) aligned external static;
+  1    66 
+  1    67 /* END INCLUDE FILE iocbx.incl.pl1 */
+      162 
+      163 
+      164 /* End of declarations. */
+      165 
+      166 
+      167 
+      168 
+      169 
+      170 /* Beginning of entry point ..... ios_$attach(stream,dim,device,mode,status) ..... */
+      171 
+      172 attach:
+      173      entry (stream, dim, device, mode, status);
+      174 
+      175 	if system_storage_ptr = null then call get_system_free_area_ (system_storage_ptr);
+      176 	unspec (status) = "0"b;
+      177 	call iox_$find_iocb (stream, iocb_ptr, status.code);
+      178 	if status.code ^= 0 then return;
+      179 	mask = 0;
+      180 	call default_handler_$set (handler);
+      181 	if dim = "syn" then go to new;
+      182 	else if dim = "tw_" then go to new;
+      183 	else if dim = "ntw_" then go to new;
+      184 	else if dim = "mrd_" then go to new;
+      185 	else if dim = "oc_" then go to new;
+      186 	else if dim = "discard_output_" then go to new;
+      187 	call cu_$caller_ptr (caller_ptr);
+      188 	i = hcs_$make_ptr (caller_ptr, dim, rtrim (dim) || "module", ics.dimptr);
+      189 	call hcs_$set_ips_mask (0, mask);
+      190 	if ics.dimptr = null () then status.code = error_table_$typename_not_found;
+      191 	else if iocb_ptr -> iocb.attach_descrip_ptr = null () then ics.sdbptr = null ();
+      192 	else if iocb_ptr -> iocb.actual_iocb_ptr ^= iocb_ptr then ics.sdbptr = null ();
+      193 	else if iocb_ptr -> iocb.ios_compatibility ^= ics.dimptr then status.code = error_table_$ionmat;
+      194 	else ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      195 	call hcs_$reset_ips_mask (mask, mask);
+      196 	if status.code ^= 0 then return;
+      197 	call iox_$ios_call_attach (stream, dim, device, mode, status, addr (ics));
+      198 	if status.bits & detached_status then return;
+      199 	call hcs_$set_ips_mask (0, mask);
+      200 	if iocb_ptr -> iocb.attach_descrip_ptr = null () then go to fill_iocb;
+      201 	else if iocb_ptr -> iocb.actual_iocb_ptr ^= iocb_ptr then do;
+      202 	     call iocb_ptr -> iocb.detach_iocb (iocb_ptr, (0));
+      203 fill_iocb:
+      204 	     blkptr = free_blks_ptr;
+      205 	     if blkptr ^= null ()
+      206 	     then free_blks_ptr = blkptr -> blk.sdbptr;
+      207 	     else do;
+      208 		allocate blk in (system_storage) set (blkptr);
+      209 		end;
+      210 	     if blkptr = null () then do;
+      211 		call hcs_$reset_ips_mask (mask, mask);
+      212 		return;
+      213 		end;
+      214 	     blkptr -> blk.sdbptr = ics.sdbptr;
+      215 	     blkptr -> blk.dimptr = ics.dimptr;
+      216 	     blkptr -> blk.attach = rtrim (dim) || " " || substr (device, 1, min (201, length (device)));
+      217 	     blkptr -> blk.open = "IOS compatibility";
+      218 	     if mode ^= ""
+      219 	     then blkptr -> blk.open = blkptr -> blk.open || " " || substr (mode, 1, min (32, length (mode)));
+      220 	     iocb_ptr -> iocb.attach_descrip_ptr = addr (blkptr -> blk.attach);
+      221 	     iocb_ptr -> iocb.attach_data_ptr = blkptr;
+      222 	     iocb_ptr -> iocb.open_descrip_ptr = addr (blkptr -> blk.open);
+      223 	     iocb_ptr -> iocb.open_data_ptr = ics.sdbptr;
+      224 	     iocb_ptr -> iocb.detach_iocb = iox_$err_old_dim;
+      225 	     iocb_ptr -> iocb.open = iox_$err_old_dim;
+      226 	     iocb_ptr -> iocb.close = iox_close;
+      227 	     iocb_ptr -> iocb.get_line = ios_write_around_$ios_write_around_get_line;
+      228 	     iocb_ptr -> iocb.get_chars = ios_write_around_$ios_write_around_get_chars;
+      229 	     iocb_ptr -> iocb.put_chars = ios_write_around_$ios_write_around_put_chars;
+      230 	     iocb_ptr -> iocb.modes = ios_write_around_$ios_write_around_modes;
+      231 	     iocb_ptr -> iocb.position = ios_write_around_$ios_write_around_position;
+      232 	     iocb_ptr -> iocb.control = ios_write_around_$ios_write_around_control;
+      233 	     iocb_ptr -> iocb.read_record = iox_$err_old_dim;
+      234 	     iocb_ptr -> iocb.write_record = iox_$err_old_dim;
+      235 	     iocb_ptr -> iocb.rewrite_record = iox_$err_old_dim;
+      236 	     iocb_ptr -> iocb.delete_record = iox_$err_old_dim;
+      237 	     iocb_ptr -> iocb.seek_key = iox_$err_old_dim;
+      238 	     iocb_ptr -> iocb.read_key = iox_$err_old_dim;
+      239 	     iocb_ptr -> iocb.read_length = iox_$err_old_dim;
+      240 	     iocb_ptr -> iocb.ios_compatibility = ics.dimptr;
+      241 	     call iox_$propagate (iocb_ptr);
+      242 	     end;
+      243 	call hcs_$reset_ips_mask (mask, mask);
+      244 	return;
+      245 
+      246 /* We know about this kind of DIM.  Use write-arounds to the new I/O system to simulate it. */
+      247 
+      248 new:
+      249 	status.code = cu_$grow_stack_frame (divide (length (device) + 7, 4, 17, 0), p);
+      250 	if status.code ^= 0 then return;
+      251 	p -> arg (1) = device;
+      252 	call hcs_$set_ips_mask (0, mask);
+      253 	old_attachment = null ();
+      254 	if iocb_ptr -> iocb.actual_iocb_ptr ^= iocb_ptr then do;
+      255 	     call iox_$find_iocb (unique_chars_ (""b), old_attachment, status.code);
+      256 	     if status.code ^= 0 then return;
+      257 	     call iox_$move_attach (iocb_ptr, old_attachment, status.code);
+      258 	     if status.code ^= 0 then return;
+      259 	     end;					/* leaves iocb_ptr detached */
+      260 	if iocb_ptr -> iocb.attach_descrip_ptr ^= null () then status.code = error_table_$ionmat;
+      261 	else if dim = "syn" then do;
+      262 	     call syn_$syn_attach (iocb_ptr, arg, "0"b, status.code);
+      263 	     end;
+      264 	else if dim = "tw_" then do;
+      265 	     call tty_$tty_attach (iocb_ptr, arg, "0"b, status.code);
+      266 	     if status.code = 0 then call iox_$open (iocb_ptr, stream_input_output_mode, "0"b, (0));
+      267 	     if status.code = 0 then call iox_$modes (iocb_ptr, mode, "", status.code);
+      268 	     end;
+      269 	else if dim = "ntw_" then do;
+      270 	     call netd_$netd_attach (iocb_ptr, arg, "0"b, status.code);
+      271 	     if status.code = 0 then call iox_$open (iocb_ptr, stream_input_output_mode, "0"b, (0));
+      272 	     if status.code = 0 then call iox_$modes (iocb_ptr, mode, "", (0));
+      273 	     end;
+      274 	else if dim = "mrd_" then do;
+      275 	     call mr_$mr_attach (iocb_ptr, arg, "0"b, status.code);
+      276 	     if status.code = 0 then call iox_$open (iocb_ptr, stream_input_output_mode, "0"b, (0));
+      277 	     if status.code = 0 then call iox_$modes (iocb_ptr, mode, "", (0));
+      278 	     end;
+      279 	else if dim = "oc_" then do;
+      280 	     call ocd_$ocd_attach (iocb_ptr, arg, "0"b, status.code);
+      281 	     if status.code = 0 then call iox_$open (iocb_ptr, stream_input_output_mode, "0"b, (0));
+      282 	     if status.code = 0 then call iox_$modes (iocb_ptr, mode, "", (0));
+      283 	     end;
+      284 	else if dim = "discard_output_" then do;
+      285 	     call discard_$discard_attach (iocb_ptr, arg0, "0"b, status.code);
+      286 	     if status.code = 0 then call iox_$open (iocb_ptr, stream_output_mode, "0"b, (0));
+      287 	     end;
+      288 	else status.code = error_table_$typename_not_found;
+      289 	if old_attachment ^= null () then do;
+      290 	     if status.code = 0
+      291 	     then call iox_$detach_iocb (old_attachment, (0));
+      292 	     else call iox_$move_attach (old_attachment, iocb_ptr, (0));
+      293 	     call iox_$destroy_iocb (old_attachment, (0));
+      294 	     end;
+      295 	call hcs_$reset_ips_mask (mask, mask);
+      296 	return;
+      297 
+      298 /* End of entry point ..... ios_$attach(stream,dim,device,mode,status) ..... */
+      299 
+      300 
+      301 
+      302 
+      303 
+      304 
+      305 /* Beginning of entry point ..... ios_$detach(stream,device,mode,status) ..... */
+      306 
+      307 detach:
+      308      entry (stream, device, mode, status);
+      309 	unspec (status) = "0"b;
+      310 	call iox_$look_iocb (stream, iocb_ptr, status.code);
+      311 	mask = 0;
+      312 	call default_handler_$set (handler);
+      313 	call hcs_$set_ips_mask (0, mask);
+      314 	if status.code ^= 0 then status.code = error_table_$ioname_not_found;
+      315 	else if iocb_ptr -> iocb.attach_descrip_ptr = null () then status.code = error_table_$ioname_not_found;
+      316 	else if iocb_ptr -> iocb.actual_iocb_ptr ^= iocb_ptr then do;
+      317 	     call iocb_ptr -> iocb.detach_iocb (iocb_ptr, status.code);
+      318 	     if status.code = 0 then status.bits = detached_status;
+      319 	     end;
+      320 	else if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      321 	     blkptr = iocb_ptr -> iocb.attach_data_ptr;
+      322 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      323 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      324 	     ics.entry = detach_offset;
+      325 	     call hcs_$reset_ips_mask (mask, mask);
+      326 	     call iox_$ios_call (addr (ics), device, mode, status);
+      327 	     call hcs_$set_ips_mask (0, mask);
+      328 	     if iocb_ptr -> iocb.attach_descrip_ptr = null () then status.code = error_table_$ioname_not_found;
+      329 	     else if iocb_ptr -> iocb.actual_iocb_ptr ^= iocb_ptr then status.code = error_table_$ionmat;
+      330 	     else if iocb_ptr -> iocb.ios_compatibility = null () then status.code = error_table_$ionmat;
+      331 	     else if status.bits & detached_status then do;
+      332 		blkptr -> blk.sdbptr = free_blks_ptr;
+      333 		free_blks_ptr = blkptr;
+      334 		iocb_ptr -> iocb.attach_descrip_ptr, iocb_ptr -> iocb.attach_data_ptr,
+      335 		     iocb_ptr -> iocb.open_descrip_ptr, iocb_ptr -> iocb.open_data_ptr = null ();
+      336 		iocb_ptr -> iocb.detach_iocb = iox_$err_not_attached;
+      337 		iocb_ptr -> iocb.open = iox_$err_not_attached;
+      338 		iocb_ptr -> iocb.close = iox_$err_not_open;
+      339 		iocb_ptr -> iocb.get_line = iox_$err_not_open;
+      340 		iocb_ptr -> iocb.get_chars = iox_$err_not_open;
+      341 		iocb_ptr -> iocb.put_chars = iox_$err_not_open;
+      342 		iocb_ptr -> iocb.control = iox_$err_not_open;
+      343 		iocb_ptr -> iocb.modes = iox_$err_not_open;
+      344 		iocb_ptr -> iocb.read_record = iox_$err_not_open;
+      345 		iocb_ptr -> iocb.write_record = iox_$err_not_open;
+      346 		iocb_ptr -> iocb.rewrite_record = iox_$err_not_open;
+      347 		iocb_ptr -> iocb.delete_record = iox_$err_not_open;
+      348 		iocb_ptr -> iocb.position = iox_$err_not_open;
+      349 		iocb_ptr -> iocb.seek_key = iox_$err_not_open;
+      350 		iocb_ptr -> iocb.read_key = iox_$err_not_open;
+      351 		iocb_ptr -> iocb.read_length = iox_$err_not_open;
+      352 		iocb_ptr -> iocb.ios_compatibility = null ();
+      353 		call iox_$propagate (iocb_ptr);
+      354 		end;
+      355 	     end;
+      356 	else do;
+      357 	     if iocb_ptr -> iocb.open_descrip_ptr ^= null () then call iocb_ptr -> iocb.close (iocb_ptr, status.code);
+      358 	     if iocb_ptr -> iocb.attach_descrip_ptr ^= null ()
+      359 	     then call iocb_ptr -> iocb.detach_iocb (iocb_ptr, status.code);
+      360 	     if iocb_ptr -> iocb.attach_descrip_ptr = null () then status.bits = detached_status;
+      361 	     end;
+      362 	call hcs_$reset_ips_mask (mask, mask);
+      363 	return;
+      364 
+      365 /* End of entry point ..... ios_$detach(stream,device,mode,status) ..... */
+      366 
+      367 
+      368 
+      369 
+      370 
+      371 /* Beginning of entry point ..... ios_$read(stream,wsptr,offset,nelem,nelemt,status) ..... */
+      372 
+      373 read:
+      374      entry (stream, wsptr, offset, nelem, nelemt, status);
+      375 	call setup ();
+      376 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      377 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      378 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      379 	     ics.entry = read_offset;
+      380 	     call iox_$ios_call (addr (ics), wsptr, offset, nelem, nelemt, status);
+      381 	     end;
+      382 	else do;
+      383 	     call iox_$get_line (iocb_ptr, addr (wsptr -> aligned_based.char (offset)), nelem, nelemt, status.code);
+      384 	     if status.code = error_table_$long_record then status.code = 0;
+      385 	     end;
+      386 	return;
+      387 
+      388 /* End of entry point ..... ios_$read(stream,wsptr,offset,nelem,nelemt,status) ..... */
+      389 
+      390 
+      391 
+      392 
+      393 
+      394 /* Beginning of entry point ..... ios_$write(stream,wsptr,offset,nelem,nelemt,status) ..... */
+      395 
+      396 write:
+      397      entry (stream, wsptr, offset, nelem, nelemt, status);
+      398 	call setup ();
+      399 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      400 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      401 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      402 	     ics.entry = write_offset;
+      403 	     call iox_$ios_call (addr (ics), wsptr, offset, nelem, nelemt, status);
+      404 	     end;
+      405 	else do;
+      406 	     call iox_$put_chars (iocb_ptr, addr (wsptr -> aligned_based.char (offset)), nelem, status.code);
+      407 	     if status.code = 0
+      408 	     then nelemt = nelem;
+      409 	     else nelemt = 0;
+      410 	     end;
+      411 	return;
+      412 
+      413 /* End of entry point ..... ios_$write(stream,wsptr,offset,nelem,nelemt,status) ..... */
+      414 
+      415 
+      416 
+      417 
+      418 
+      419 /* Beginning of entry point ..... ios_$abort(stream,oldstatus,status) ..... */
+      420 
+      421 abort:
+      422      entry (stream, oldstatus, status);
+      423 	call setup ();
+      424 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      425 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      426 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      427 	     ics.entry = abort_offset;
+      428 	     call iox_$ios_call (addr (ics), oldstatus, status);
+      429 	     end;
+      430 	else call iox_$control (iocb_ptr, "abort", null (), status.code);
+      431 	return;
+      432 
+      433 /* End of entry point ..... ios_$abort(stream,oldstatus,status) ..... */
+      434 
+      435 
+      436 
+      437 
+      438 
+      439 /* Beginning of entry point ..... ios_$order(stream,order,infptr,status) ..... */
+      440 
+      441 order:
+      442      entry (stream, order, infptr, status);
+      443 	call setup ();
+      444 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      445 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      446 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      447 	     ics.entry = order_offset;
+      448 	     call iox_$ios_call (addr (ics), order, infptr, status);
+      449 	     end;
+      450 	else call iox_$control (iocb_ptr, order, infptr, status.code);
+      451 	return;
+      452 
+      453 /* End of entry point ..... ios_$order(stream,order,infptr,status) ..... */
+      454 
+      455 
+      456 
+      457 
+      458 
+      459 /* Beginning of entry point ..... ios_$resetread(stream,status) ..... */
+      460 
+      461 resetread:
+      462      entry (stream, status);
+      463 	call setup ();
+      464 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      465 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      466 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      467 	     ics.entry = resetread_offset;
+      468 	     call iox_$ios_call (addr (ics), status);
+      469 	     end;
+      470 	else call iox_$control (iocb_ptr, "resetread", null (), status.code);
+      471 	return;
+      472 
+      473 /* End of entry point ..... ios_$resetread(stream,status) ..... */
+      474 
+      475 
+      476 
+      477 
+      478 
+      479 /* Beginning of entry point ..... ios_$resetwrite(stream,status) ..... */
+      480 
+      481 resetwrite:
+      482      entry (stream, status);
+      483 	call setup ();
+      484 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      485 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      486 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      487 	     ics.entry = resetwrite_offset;
+      488 	     call iox_$ios_call (addr (ics), status);
+      489 	     end;
+      490 	else call iox_$control (iocb_ptr, "resetwrite", null (), status.code);
+      491 	return;
+      492 
+      493 /* End of entry point ..... ios_$resetwrite(stream,status) ..... */
+      494 
+      495 
+      496 
+      497 
+      498 
+      499 /* Beginning of entry point ..... ios_$setsize(stream,elemsize,status) ..... */
+      500 
+      501 setsize:
+      502      entry (stream, elemsize, status);
+      503 	call setup ();
+      504 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      505 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      506 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      507 	     ics.entry = setsize_offset;
+      508 	     call iox_$ios_call (addr (ics), elemsize, status);
+      509 	     end;
+      510 	else status.code = error_table_$missent;
+      511 	return;
+      512 
+      513 /* End of entry point ..... ios_$setsize(stream,elemsize,status) ..... */
+      514 
+      515 
+      516 
+      517 
+      518 
+      519 /* Beginning of entry point ..... ios_$getsize(stream,elemsize,status) ..... */
+      520 
+      521 getsize:
+      522      entry (stream, elemsize, status);
+      523 	call setup ();
+      524 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      525 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      526 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      527 	     ics.entry = getsize_offset;
+      528 	     call iox_$ios_call (addr (ics), elemsize, status);
+      529 	     end;
+      530 	else elemsize = 9;
+      531 	return;
+      532 
+      533 /* End of entry point ..... ios_$getsize(stream,elemsize,status) ..... */
+      534 
+      535 
+      536 
+      537 
+      538 
+      539 /* Beginning of entry point ..... ios_$setdelim(stream,nbreaks,breaklist,ndelims,delimlist,status) ..... */
+      540 
+      541 setdelim:
+      542      entry (stream, nbreaks, breaklist, ndelims, delimlist, status);
+      543 	call setup ();
+      544 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      545 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      546 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      547 	     ics.entry = setdelim_offset;
+      548 	     call iox_$ios_call (addr (ics), nbreaks, breaklist, ndelims, delimlist, status);
+      549 	     end;
+      550 	else status.code = error_table_$missent;
+      551 	return;
+      552 
+      553 /* End of entry point ..... ios_$setdelim(stream,nbreaks,breaklist,ndelims,delimlist,status) ..... */
+      554 
+      555 
+      556 
+      557 
+      558 
+      559 /* Beginning of entry point ..... ios_$getdelim(stream,nbreaks,breaklist,ndelims,delimlist,status) ..... */
+      560 
+      561 getdelim:
+      562      entry (stream, nbreaks, breaklist, ndelims, delimlist, status);
+      563 	call setup ();
+      564 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      565 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      566 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      567 	     ics.entry = getdelim_offset;
+      568 	     call iox_$ios_call (addr (ics), nbreaks, breaklist, ndelims, delimlist, status);
+      569 	     end;
+      570 	else status.code = error_table_$missent;
+      571 	return;
+      572 
+      573 /* End of entry point ..... ios_$getdelim(stream,nbreaks,breaklist,ndelims,delimlist,status) ..... */
+      574 
+      575 
+      576 
+      577 
+      578 
+      579 /* Beginning of entry point ..... ios_$seek(stream,name1,name2,amount,status) ..... */
+      580 
+      581 seek:
+      582      entry (stream, name1, name2, amount, status);
+      583 	call setup ();
+      584 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      585 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      586 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      587 	     ics.entry = seek_offset;
+      588 	     call iox_$ios_call (addr (ics), name1, name2, amount, status);
+      589 	     end;
+      590 	else status.code = error_table_$missent;
+      591 	return;
+      592 
+      593 /* End of entry point ..... ios_$seek(stream,name1,name2,amount,status) ..... */
+      594 
+      595 
+      596 
+      597 
+      598 
+      599 /* Beginning of entry point ios_$tell(stream,name1,name2,amount,status) ..... */
+      600 
+      601 tell:
+      602      entry (stream, name1, name2, amount, status);
+      603 	call setup ();
+      604 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      605 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      606 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      607 	     ics.entry = tell_offset;
+      608 	     call iox_$ios_call (addr (ics), name1, name2, amount, status);
+      609 	     end;
+      610 	else status.code = error_table_$missent;
+      611 	return;
+      612 
+      613 /* End of entry point ..... ios_$tell(stream,name1,name2,amount,status) ..... */
+      614 
+      615 
+      616 
+      617 
+      618 
+      619 /* Beginning of entry point ..... ios_$changemode(stream,newmode,oldmode,status) ..... */
+      620 
+      621 changemode:
+      622      entry (stream, newmode, oldmode, status);
+      623 	call setup ();
+      624 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      625 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      626 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      627 	     ics.entry = changemode_offset;
+      628 	     call iox_$ios_call (addr (ics), newmode, oldmode, status);
+      629 	     end;
+      630 	else call iox_$modes (iocb_ptr, newmode, oldmode, status.code);
+      631 	return;
+      632 
+      633 /* End of entry point ..... ios_$changemode(stream,newmode,oldmode,status) ..... */
+      634 
+      635 
+      636 
+      637 
+      638 
+      639 /* Beginning of entry point ..... ios_$readsync(stream,mode,amount,status) ..... */
+      640 
+      641 readsync:
+      642      entry (stream, mode, amount, status);
+      643 	call setup ();
+      644 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      645 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      646 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      647 	     ics.entry = readsync_offset;
+      648 	     call iox_$ios_call (addr (ics), mode, amount, status);
+      649 	     end;
+      650 	else status.code = error_table_$missent;
+      651 	return;
+      652 
+      653 /* End of entry point ..... ios_$readsync(stream,mode,amount,status) ..... */
+      654 
+      655 
+      656 
+      657 
+      658 
+      659 
+      660 /* Beginning of entry point ..... ios_$writesync(stream,mode,amount,status) ..... */
+      661 
+      662 writesync:
+      663      entry (stream, mode, amount, status);
+      664 	call setup ();
+      665 	if iocb_ptr -> iocb.ios_compatibility ^= null () then do;
+      666 	     ics.sdbptr = iocb_ptr -> iocb.open_data_ptr;
+      667 	     ics.dimptr = iocb_ptr -> iocb.ios_compatibility;
+      668 	     ics.entry = writesync_offset;
+      669 	     call iox_$ios_call (addr (ics), mode, amount, status);
+      670 	     end;
+      671 	else status.code = error_table_$missent;
+      672 	return;
+      673 
+      674 /* End of entry point ..... ios_$writesync(stream,mode,amount,status) ..... */
+      675 
+      676 
+      677 
+      678 
+      679 
+      680 
+      681 
+      682 
+      683 
+      684 /* Internal procedure called by most entry points of the IOS write-arounds to clear
+      685*   the status argument, look up the IOCB pointer, and verify that the IOCB is attached
+      686*   and open.  If there are any errors, a non-local go-to causes the write-around
+      687*   to return immediately to its caller. */
+      688 
+      689 setup:
+      690      proc;
+      691 	unspec (status) = "0"b;
+      692 	call iox_$look_iocb (stream, iocb_ptr, status.code);
+      693 	if status.code ^= 0 then status.code = error_table_$ioname_not_found;
+      694 	else if iocb_ptr -> iocb.attach_descrip_ptr = null () then status.code = error_table_$ioname_not_found;
+      695 	else if iocb_ptr -> iocb.open_descrip_ptr = null () then status.code = error_table_$ioname_not_active;
+      696 	else return;
+      697 	go to return;
+      698      end setup;
+      699 
+      700 /* End of internal procedure ..... setup() ..... */
+      701 
+      702 
+      703 
+      704 
+      705 
+      706 return:
+      707 	return;
+      708 
+      709 
+      710 
+      711 
+      712 
+      713 /* Internal procedure to handle faults while IPS interrupts
+      714*   are masked.  While not masked, any signals are simply
+      715*   passed on up the stack to their normal handlers.  For a
+      716*   fault while masked, the process is terminated (with the
+      717*   reason "unable to do critical I/O") because the I/O
+      718*   control blocks are in an inconsistent state, and we can
+      719*   tolerate neither spawning a command loop with interrupts
+      720*   masked nor a restart with a possibly changed mask. */
+      721 
+      722 handler:
+      723      proc (p1, name, p2, p3, continue);
+      724 
+      725 dcl  (p1, p2, p3) ptr;
+      726 dcl  name char (*);
+      727 dcl  continue bit (1) aligned;
+      728 dcl  error_table_$unable_to_do_io fixed (35) ext;
+      729 dcl  addr builtin;
+      730 
+      731 	if mask ^= 0 then do;
+      732 	     ti.version = 0;
+      733 	     ti.code = error_table_$unable_to_do_io;
+      734 	     call terminate_process_ ("fatal_error", addr (ti));
+      735 	     end;
+      736 	if name ^= "cleanup" then continue = "1"b;
+      737 
+      738      end handler;
+      739 
+      740 
+      741 
+      742 
+      743 
+      744 /* Handler for the 'close' I/O operation--the only new I/O call permitted to an
+      745*   old DIM.  It closes and detaches the IOCB. */
+      746 
+      747 iox_close:
+      748      entry (iocb_ptr_) returns (fixed);
+      749 	mask = 0;
+      750 	call default_handler_$set (handler);
+      751 	call hcs_$set_ips_mask (0, mask);
+      752 	if iocb_ptr_ -> iocb.close ^= iox_close then do;
+      753 	     call hcs_$reset_ips_mask (mask, mask);
+      754 	     call iox_$close (iocb_ptr_, code);
+      755 	     return (code);
+      756 	     end;
+      757 	actual_iocb_ptr = iocb_ptr_ -> iocb.actual_iocb_ptr;
+      758 	blkptr = actual_iocb_ptr -> iocb.attach_data_ptr;
+      759 	ics.sdbptr = blkptr -> blk.sdbptr;
+      760 	ics.dimptr = blkptr -> blk.dimptr;
+      761 	ics.entry = detach_offset;
+      762 	call hcs_$reset_ips_mask (mask, mask);
+      763 	call iox_$ios_call (addr (ics), "", "", mystatus);
+      764 	call hcs_$set_ips_mask (0, mask);
+      765 	if iocb_ptr_ -> iocb.close ^= iox_close then do;
+      766 	     call hcs_$reset_ips_mask (mask, mask);
+      767 	     call iocb_ptr -> iocb.close (iocb_ptr_, code);
+      768 	     return (code);
+      769 	     end;
+      770 	if mystatus.bits & detached_status then do;
+      771 	     blkptr -> blk.sdbptr = free_blks_ptr;
+      772 	     free_blks_ptr = blkptr;
+      773 	     actual_iocb_ptr -> iocb.attach_descrip_ptr, actual_iocb_ptr -> iocb.attach_data_ptr,
+      774 		actual_iocb_ptr -> iocb.open_descrip_ptr, actual_iocb_ptr -> iocb.open_data_ptr = null ();
+      775 	     actual_iocb_ptr -> iocb.detach_iocb = iox_$err_not_attached;
+      776 	     actual_iocb_ptr -> iocb.open = iox_$err_not_attached;
+      777 	     actual_iocb_ptr -> iocb.close = iox_$err_not_open;
+      778 	     actual_iocb_ptr -> iocb.get_line = iox_$err_not_open;
+      779 	     actual_iocb_ptr -> iocb.get_chars = iox_$err_not_open;
+      780 	     actual_iocb_ptr -> iocb.put_chars = iox_$err_not_open;
+      781 	     actual_iocb_ptr -> iocb.modes = iox_$err_not_open;
+      782 	     actual_iocb_ptr -> iocb.position = iox_$err_not_open;
+      783 	     actual_iocb_ptr -> iocb.control = iox_$err_not_open;
+      784 	     actual_iocb_ptr -> iocb.read_record = iox_$err_not_open;
+      785 	     actual_iocb_ptr -> iocb.write_record = iox_$err_not_open;
+      786 	     actual_iocb_ptr -> iocb.rewrite_record = iox_$err_not_open;
+      787 	     actual_iocb_ptr -> iocb.delete_record = iox_$err_not_open;
+      788 	     actual_iocb_ptr -> iocb.seek_key = iox_$err_not_open;
+      789 	     actual_iocb_ptr -> iocb.read_key = iox_$err_not_open;
+      790 	     actual_iocb_ptr -> iocb.read_length = iox_$err_not_open;
+      791 	     actual_iocb_ptr -> iocb.ios_compatibility = null ();
+      792 	     call iox_$propagate (actual_iocb_ptr);
+      793 	     mystatus.code = 0;
+      794 	     end;
+      795 	call hcs_$reset_ips_mask (mask, mask);
+      796 	return (mystatus.code);
+      797 
+      798 /* End of 'close' handler. */
+      799 
+      800 
+      801 
+      802 
+      803 
+      804 /* Beginning of entry point ..... ios_$no_entry( ... ,status) ..... */
+      805 
+      806 no_entry:
+      807      entry;
+      808 	p = cu_$arg_list_ptr ();
+      809 	i = p -> args.nargs;
+      810 	if i ^= 0 then p -> args.arg (i) -> fixed_aligned_based = error_table_$missent;
+      811 	return;
+      812 
+      813 /* End of entry point ..... ios_$no_entry( ... ,status) ..... */
+      814 
+      815 
+      816 
+      817 
+      818 
+      819 /* Beginning of entry point ..... ios_$read_ptr(wsptr,nelem,nelemt) ..... */
+      820 
+      821 read_ptr:
+      822      entry (wsptr, nelem, nelemt);
+      823 rloop:
+      824 	call iox_$get_line (iox_$user_input, wsptr, nelem, nelemt, code);
+      825 	if code ^= 0
+      826 	then if code ^= error_table_$long_record & code ^= error_table_$end_of_info then do;
+      827 		call ios_signal_ ("user_input", code);
+      828 		go to rloop;
+      829 		end;
+      830 	return;
+      831 
+      832 /* End of entry point ..... ios_$read_ptr(wsptr,nelem,nelemt) ..... */
+      833 
+      834 
+      835 
+      836 
+      837 
+      838 /* Beginning of entry point ..... ios_$write_ptr(wsptr,offset,nelem) ..... */
+      839 
+      840 write_ptr:
+      841      entry (wsptr, offset, nelem);
+      842 wloop:
+      843 	call iox_$put_chars (iox_$user_output, addr (wsptr -> aligned_based.char (offset)), nelem, code);
+      844 	if code ^= 0 then do;
+      845 	     call ios_signal_ ("user_output", code);
+      846 	     go to wloop;
+      847 	     end;
+      848 	return;
+      849 
+      850 /* End of entry point ..... ios_$write_ptr(wsptr,offset,nelem) ..... */
+      851 
+      852 
+      853 
+      854 
+      855 
+      856 /* Beginning of entry point ..... ios_$ios_quick_init() ..... */
+      857 
+      858 ios_quick_init:
+      859      entry;
+      860 
+      861 	call iox_$init_standard_iocbs;
+      862 	return;
+      863 
+      864 /* End of entry point ..... ios_$ios_quick_init() ..... */
+      865 
+  2     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  2     2 
+  2     3 /* Written 05/04/78 by C. D. Tavares */
+  2     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  2     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  2     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  2     7 
+  2     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  2     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  2    10      iox_$close entry (pointer, fixed bin (35)),
+  2    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  2    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  2    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  2    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  2    15      iox_$err_not_attached entry options (variable),
+  2    16      iox_$err_not_closed entry options (variable),
+  2    17      iox_$err_no_operation entry options (variable),
+  2    18      iox_$err_not_open entry options (variable),
+  2    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  2    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  2    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  2    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  2    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  2    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  2    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  2    28      iox_$propagate entry (pointer),
+  2    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  2    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  2    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  2    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  2    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  2    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  2    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  2    40 
+  2    41 dcl (iox_$user_output,
+  2    42      iox_$user_input,
+  2    43      iox_$user_io,
+  2    44      iox_$error_output) external static pointer;
+  2    45 
+  2    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      866 
+      867 
+      868      end ios_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  ios_.pl1                          >spec>install>1110>ios_.pl1
+162          1    06/03/83  1008.5  iocbx.incl.pl1                    >ldd>include>iocbx.incl.pl1
+866          2    05/23/83  0916.6  iox_dcls.incl.pl1                 >ldd>include>iox_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+abort_offset                           constant        fixed bin(17,0)          initial dcl 126 ref 427
+actual_iocb_ptr          12            based           pointer                  level 2 in structure "iocb" dcl 1-9 in procedure
+                                                                                  "ios_" ref 192 201 254 316 329 757
+actual_iocb_ptr                 000100 automatic       pointer                  dcl 57 in procedure "ios_" set ref 757* 758 773 773
+                                                                                  773 773 775 776 777 778 779 780 781 782 783 784
+                                                                                  785 786 787 788 789 790 791 792*
+addr                                                   builtin function         dcl 729 in procedure "handler" ref 734 734
+addr                                                   builtin function         dcl 144 in procedure "ios_" ref 197 197 220 222 326
+                                                                                  326 380 380 383 383 403 403 406 406 428 428 448
+                                                                                  448 468 468 488 488 508 508 528 528 548 548 568
+                                                                                  568 588 588 608 608 628 628 648 648 669 669 763
+                                                                                  763 842 842
+aligned_based                          based           structure                level 1 dcl 149
+amount                                 parameter       fixed bin(21,0)          dcl 29 set ref 581 588* 601 608* 641 648* 662 669*
+arg                                    based           varying char             array dcl 151 in procedure "ios_" set ref 251* 262*
+                                                                                  265* 270* 275* 280*
+arg                       2            based           pointer                  array level 2 in structure "args" dcl 152
+                                                                                  in procedure "ios_" ref 810
+arg0                            000102 automatic       varying char             array dcl 58 set ref 285*
+args                                   based           structure                level 1 dcl 152
+attach                    4            based           varying char(234)        level 2 dcl 157 set ref 216* 220
+attach_data_ptr          16            based           pointer                  level 2 dcl 1-9 set ref 221* 321 334* 758 773*
+attach_descrip_ptr       14            based           pointer                  level 2 dcl 1-9 set ref 191 200 220* 260 315 328
+                                                                                  334* 358 360 694 773*
+bits                      1     000122 automatic       bit(36)                  level 2 in structure "mystatus" dcl 69 in procedure
+                                                                                  "ios_" set ref 770
+bits                      1            parameter       bit(36)                  level 2 in structure "status" dcl 49 in procedure
+                                                                                  "ios_" set ref 198 318* 331 360*
+blk                                    based           structure                level 1 dcl 157 set ref 208
+blkptr                          000102 automatic       pointer                  dcl 59 set ref 203* 205 205 208* 210 214 215 216 217
+                                                                                  218 218 220 221 222 321* 332 333 758* 759 760 771
+                                                                                  772
+breaklist                              parameter       bit                      array packed unaligned dcl 30 set ref 541 548* 561
+                                                                                  568*
+caller_ptr                      000104 automatic       pointer                  dcl 60 set ref 187* 188*
+changemode_offset                      constant        fixed bin(17,0)          initial dcl 136 ref 627
+char                                   based           char(1)                  array level 2 packed packed unaligned dcl 149 set
+                                                                                  ref 383 383 406 406 842 842
+close                    36            based           entry variable           level 2 dcl 1-9 set ref 226* 338* 357 752 765 767
+                                                                                  777*
+code                      1     000130 automatic       fixed bin(35,0)          level 2 in structure "ti" dcl 72 in procedure "ios_"
+                                                                                  set ref 733*
+code                            000106 automatic       fixed bin(35,0)          dcl 61 in procedure "ios_" set ref 754* 755 767* 768
+                                                                                  823* 825 825 825 827* 842* 844 845*
+code                                   parameter       fixed bin(35,0)          level 2 in structure "status" dcl 49 in procedure
+                                                                                  "ios_" set ref 177* 178 190* 193* 196 248* 250
+                                                                                  255* 256 257* 258 260* 262* 265* 266 267 267* 270*
+                                                                                  271 272 275* 276 277 280* 281 282 285* 286 288*
+                                                                                  290 310* 314 314* 315* 317* 318 328* 329* 330*
+                                                                                  357* 358* 383* 384 384* 406* 407 430* 450* 470*
+                                                                                  490* 510* 550* 570* 590* 610* 630* 650* 671* 692*
+                                                                                  693 693* 694* 695*
+code                            000122 automatic       fixed bin(35,0)          level 2 in structure "mystatus" dcl 69 in procedure
+                                                                                  "ios_" set ref 793* 796
+continue                               parameter       bit(1)                   dcl 727 set ref 722 736*
+control                  66            based           entry variable           level 2 dcl 1-9 set ref 232* 342* 783*
+cu_$arg_list_ptr                000016 constant        entry                    external dcl 84 ref 808
+cu_$caller_ptr                  000020 constant        entry                    external dcl 85 ref 187
+cu_$grow_stack_frame            000022 constant        entry                    external dcl 86 ref 248
+default_handler_$set            000024 constant        entry                    external dcl 87 ref 180 312 750
+delete_record           106            based           entry variable           level 2 dcl 1-9 set ref 236* 347* 787*
+delimlist                              parameter       bit                      array packed unaligned dcl 31 set ref 541 548* 561
+                                                                                  568*
+detach_iocb              26            based           entry variable           level 2 dcl 1-9 set ref 202 224* 317 336* 358 775*
+detach_offset                          constant        fixed bin(17,0)          initial dcl 123 ref 324 761
+detached_status                        constant        bit(36)                  initial packed unaligned dcl 108 ref 198 318 331 360
+                                                                                  770
+device                                 parameter       char                     packed unaligned dcl 32 set ref 172 197* 216 216 248
+                                                                                  248 251 251 251 251 262 262 265 265 270 270 275
+                                                                                  275 280 280 307 326*
+dim                                    parameter       char                     packed unaligned dcl 33 set ref 172 181 182 183 184
+                                                                                  185 186 188* 188 197* 216 261 264 269 274 279 284
+dimptr                    2            based           pointer                  level 2 in structure "blk" dcl 157 in procedure
+                                                                                  "ios_" set ref 215* 760
+dimptr                    2     000110 automatic       pointer                  level 2 in structure "ics" dcl 63 in procedure
+                                                                                  "ios_" set ref 188* 190 193 215 240 323* 378* 401*
+                                                                                  426* 446* 466* 486* 506* 526* 546* 566* 586* 606*
+                                                                                  626* 646* 667* 760*
+discard_$discard_attach         000036 constant        entry                    external dcl 92 ref 285
+divide                                                 builtin function         dcl 144 ref 248 248
+elemsize                               parameter       fixed bin(21,0)          dcl 34 set ref 501 508* 521 528* 530*
+entry                     4     000110 automatic       fixed bin(17,0)          level 2 dcl 63 set ref 324* 379* 402* 427* 447* 467*
+                                                                                  487* 507* 527* 547* 567* 587* 607* 627* 647* 668*
+                                                                                  761*
+error_table_$end_of_info        000066 external static fixed bin(35,0)          dcl 109 ref 825
+error_table_$ioname_not_active  000070 external static fixed bin(35,0)          dcl 110 ref 695
+error_table_$ioname_not_found   000074 external static fixed bin(35,0)          dcl 112 ref 314 315 328 693 694
+error_table_$ionmat             000076 external static fixed bin(35,0)          dcl 113 ref 193 260 329 330
+error_table_$long_record        000072 external static fixed bin(35,0)          dcl 111 ref 384 825
+error_table_$missent            000100 external static fixed bin(35,0)          dcl 114 ref 510 550 570 590 610 650 671 810
+error_table_$typename_not_found 000102 external static fixed bin(35,0)          dcl 115 ref 190 288
+error_table_$unable_to_do_io    000162 external static fixed bin(35,0)          dcl 728 ref 733
+fixed_aligned_based                    based           fixed bin(35,0)          dcl 156 set ref 810*
+free_blks_ptr                   000010 internal static pointer                  initial dcl 78 set ref 203 205* 332 333* 771 772*
+get_chars                46            based           entry variable           level 2 dcl 1-9 set ref 228* 340* 779*
+get_line                 42            based           entry variable           level 2 dcl 1-9 set ref 227* 339* 778*
+get_system_free_area_           000030 constant        entry                    external dcl 89 ref 175
+getdelim_offset                        constant        fixed bin(17,0)          initial dcl 133 ref 567
+getsize_offset                         constant        fixed bin(17,0)          initial dcl 131 ref 527
+hcs_$make_ptr                   000026 constant        entry                    external dcl 88 ref 188
+hcs_$reset_ips_mask             000034 constant        entry                    external dcl 91 ref 195 211 243 295 325 362 753 762
+                                                                                  766 795
+hcs_$set_ips_mask               000032 constant        entry                    external dcl 90 ref 189 199 252 313 327 751 764
+i                               000107 automatic       fixed bin(17,0)          dcl 62 set ref 188* 809* 810 810
+ics                             000110 automatic       structure                level 1 dcl 63 set ref 197 197 326 326 380 380 403
+                                                                                  403 428 428 448 448 468 468 488 488 508 508 528
+                                                                                  528 548 548 568 568 588 588 608 608 628 628 648
+                                                                                  648 669 669 763 763
+infptr                                 parameter       pointer                  dcl 35 set ref 441 448* 450*
+iocb                                   based           structure                level 1 dcl 1-9
+iocb_ptr                        000116 automatic       pointer                  dcl 67 set ref 177* 191 192 192 193 194 200 201 201
+                                                                                  202 202* 220 221 222 223 224 225 226 227 228 229
+                                                                                  230 231 232 233 234 235 236 237 238 239 240 241*
+                                                                                  254 254 257* 260 262* 265* 266* 267* 270* 271*
+                                                                                  272* 275* 276* 277* 280* 281* 282* 285* 286* 292*
+                                                                                  310* 315 316 316 317 317* 320 321 322 323 328 329
+                                                                                  329 330 334 334 334 334 336 337 338 339 340 341
+                                                                                  342 343 344 345 346 347 348 349 350 351 352 353*
+                                                                                  357 357 357* 358 358 358* 360 376 377 378 383* 399
+                                                                                  400 401 406* 424 425 426 430* 444 445 446 450* 464
+                                                                                  465 466 470* 484 485 486 490* 504 505 506 524 525
+                                                                                  526 544 545 546 564 565 566 584 585 586 604 605
+                                                                                  606 624 625 626 630* 644 645 646 665 666 667 692*
+                                                                                  694 695 767
+iocb_ptr_                              parameter       pointer                  dcl 36 set ref 747 752 754* 757 765 767*
+ios_compatibility       142            based           pointer                  level 2 dcl 1-9 set ref 193 240* 320 323 330 352*
+                                                                                  376 378 399 401 424 426 444 446 464 466 484 486
+                                                                                  504 506 524 526 544 546 564 566 584 586 604 606
+                                                                                  624 626 644 646 665 667 791*
+ios_signal_                     000060 constant        entry                    external dcl 101 ref 827 845
+ios_write_around_$ios_write_around_control
+                                000114 constant        entry                    external dcl 120 ref 232
+ios_write_around_$ios_write_around_get_chars
+                                000110 constant        entry                    external dcl 118 ref 228
+ios_write_around_$ios_write_around_get_line
+                                000106 constant        entry                    external dcl 117 ref 227
+ios_write_around_$ios_write_around_modes
+                                000116 constant        entry                    external dcl 121 ref 230
+ios_write_around_$ios_write_around_position
+                                000120 constant        entry                    external dcl 122 ref 231
+ios_write_around_$ios_write_around_put_chars
+                                000112 constant        entry                    external dcl 119 ref 229
+iox_$close                      000122 constant        entry                    external dcl 2-8 ref 754
+iox_$control                    000124 constant        entry                    external dcl 2-8 ref 430 450 470 490
+iox_$destroy_iocb               000126 constant        entry                    external dcl 2-8 ref 293
+iox_$detach_iocb                000130 constant        entry                    external dcl 2-8 ref 290
+iox_$err_not_attached           000132 constant        entry                    external dcl 2-8 ref 336 337 775 776
+iox_$err_not_open               000134 constant        entry                    external dcl 2-8 ref 338 339 340 341 342 343 344 345
+                                                                                  346 347 348 349 350 351 777 778 779 780 781 782
+                                                                                  783 784 785 786 787 788 789 790
+iox_$err_old_dim                000104 constant        entry                    external dcl 116 ref 224 225 233 234 235 236 237 238
+                                                                                  239
+iox_$find_iocb                  000136 constant        entry                    external dcl 2-8 ref 177 255
+iox_$get_line                   000140 constant        entry                    external dcl 2-8 ref 383 823
+iox_$init_standard_iocbs        000052 constant        entry                    external dcl 98 ref 861
+iox_$ios_call                   000054 constant        entry                    external dcl 99 ref 326 380 403 428 448 468 488 508
+                                                                                  528 548 568 588 608 628 648 669 763
+iox_$ios_call_attach            000056 constant        entry                    external dcl 100 ref 197
+iox_$look_iocb                  000142 constant        entry                    external dcl 2-8 ref 310 692
+iox_$modes                      000144 constant        entry                    external dcl 2-8 ref 267 272 277 282 630
+iox_$move_attach                000146 constant        entry                    external dcl 2-8 ref 257 292
+iox_$open                       000150 constant        entry                    external dcl 2-8 ref 266 271 276 281 286
+iox_$propagate                  000152 constant        entry                    external dcl 2-8 ref 241 353 792
+iox_$put_chars                  000154 constant        entry                    external dcl 2-8 ref 406 842
+iox_$user_input                 000160 external static pointer                  dcl 2-41 set ref 823*
+iox_$user_output                000156 external static pointer                  dcl 2-41 set ref 842*
+length                                                 builtin function         dcl 144 ref 216 218 248 248 251 251 251 262 262 265
+                                                                                  265 270 270 275 275 280 280
+mask                            000120 automatic       fixed bin(35,0)          dcl 68 set ref 179* 189* 195* 195* 199* 211* 211*
+                                                                                  243* 243* 252* 295* 295* 311* 313* 325* 325* 327*
+                                                                                  362* 362* 731 749* 751* 753* 753* 762* 762* 764*
+                                                                                  766* 766* 795* 795*
+min                                                    builtin function         dcl 144 ref 216 218
+mode                                   parameter       char                     packed unaligned dcl 37 set ref 172 197* 218 218 218
+                                                                                  267* 272* 277* 282* 307 326* 641 648* 662 669*
+modes                    56            based           entry variable           level 2 dcl 1-9 set ref 230* 343* 781*
+mr_$mr_attach                   000040 constant        entry                    external dcl 93 ref 275
+mystatus                        000122 automatic       structure                level 1 dcl 69 set ref 763*
+name                                   parameter       char                     packed unaligned dcl 726 ref 722 736
+name1                                  parameter       char                     packed unaligned dcl 38 set ref 581 588* 601 608*
+name2                                  parameter       char                     packed unaligned dcl 39 set ref 581 588* 601 608*
+nargs                                  based           fixed bin(16,0)          level 2 packed packed unaligned dcl 152 ref 809
+nbreaks                                parameter       fixed bin(17,0)          dcl 40 set ref 541 548* 561 568*
+ndelims                                parameter       fixed bin(17,0)          dcl 41 set ref 541 548* 561 568*
+nelem                                  parameter       fixed bin(21,0)          dcl 42 set ref 373 380* 383* 396 403* 406* 407 821
+                                                                                  823* 840 842*
+nelemt                                 parameter       fixed bin(21,0)          dcl 43 set ref 373 380* 383* 396 403* 407* 409* 821
+                                                                                  823*
+netd_$netd_attach               000042 constant        entry                    external dcl 94 ref 270
+newmode                                parameter       char                     packed unaligned dcl 44 set ref 621 628* 630*
+null                                                   builtin function         dcl 144 ref 175 190 191 191 192 200 205 210 253 260
+                                                                                  289 315 320 328 330 334 352 357 358 360 376 399
+                                                                                  424 430 430 444 464 470 470 484 490 490 504 524
+                                                                                  544 564 584 604 624 644 665 694 695 773 791
+ocd_$ocd_attach                 000044 constant        entry                    external dcl 95 ref 280
+offset                                 parameter       fixed bin(21,0)          dcl 45 set ref 373 380* 383 383 396 403* 406 406 840
+                                                                                  842 842
+old_attachment                  000124 automatic       pointer                  dcl 70 set ref 253* 255* 257* 289 290* 292* 293*
+oldmode                                parameter       char                     packed unaligned dcl 46 set ref 621 628* 630*
+oldstatus                              parameter       structure                level 1 dcl 47 set ref 421 428*
+open                     32            based           entry variable           level 2 in structure "iocb" dcl 1-9 in procedure
+                                                                                  "ios_" set ref 225* 337* 776*
+open                    100            based           varying char(50)         level 2 in structure "blk" dcl 157 in procedure
+                                                                                  "ios_" set ref 217* 218* 218 222
+open_data_ptr            22            based           pointer                  level 2 dcl 1-9 set ref 194 223* 322 334* 377 400
+                                                                                  425 445 465 485 505 525 545 565 585 605 625 645
+                                                                                  666 773*
+open_descrip_ptr         20            based           pointer                  level 2 dcl 1-9 set ref 222* 334* 357 695 773*
+order                                  parameter       char                     packed unaligned dcl 48 set ref 441 448* 450*
+order_offset                           constant        fixed bin(17,0)          initial dcl 127 ref 447
+p                               000126 automatic       pointer                  dcl 71 set ref 248* 251 262 265 270 275 280 808* 809
+                                                                                  810
+p1                                     parameter       pointer                  dcl 725 ref 722
+p2                                     parameter       pointer                  dcl 725 ref 722
+p3                                     parameter       pointer                  dcl 725 ref 722
+position                 62            based           entry variable           level 2 dcl 1-9 set ref 231* 348* 782*
+put_chars                52            based           entry variable           level 2 dcl 1-9 set ref 229* 341* 780*
+read_key                116            based           entry variable           level 2 dcl 1-9 set ref 238* 350* 789*
+read_length             122            based           entry variable           level 2 dcl 1-9 set ref 239* 351* 790*
+read_offset                            constant        fixed bin(17,0)          initial dcl 124 ref 379
+read_record              72            based           entry variable           level 2 dcl 1-9 set ref 233* 344* 784*
+readsync_offset                        constant        fixed bin(17,0)          initial dcl 137 ref 647
+resetread_offset                       constant        fixed bin(17,0)          initial dcl 128 ref 467
+resetwrite_offset                      constant        fixed bin(17,0)          initial dcl 129 ref 487
+rewrite_record          102            based           entry variable           level 2 dcl 1-9 set ref 235* 346* 786*
+sdbptr                          000110 automatic       pointer                  level 2 in structure "ics" dcl 63 in procedure
+                                                                                  "ios_" set ref 191* 192* 194* 214 223 322* 377*
+                                                                                  400* 425* 445* 465* 485* 505* 525* 545* 565* 585*
+                                                                                  605* 625* 645* 666* 759*
+sdbptr                                 based           pointer                  level 2 in structure "blk" dcl 157 in procedure
+                                                                                  "ios_" set ref 205 214* 332* 759 771*
+seek_key                112            based           entry variable           level 2 dcl 1-9 set ref 237* 349* 788*
+seek_offset                            constant        fixed bin(17,0)          initial dcl 134 ref 587
+setdelim_offset                        constant        fixed bin(17,0)          initial dcl 132 ref 547
+setsize_offset                         constant        fixed bin(17,0)          initial dcl 130 ref 507
+status                                 parameter       structure                level 1 dcl 49 set ref 172 176* 197* 307 309* 326*
+                                                                                  373 380* 396 403* 421 428* 441 448* 461 468* 481
+                                                                                  488* 501 508* 521 528* 541 548* 561 568* 581 588*
+                                                                                  601 608* 621 628* 641 648* 662 669* 691*
+stream                                 parameter       char                     packed unaligned dcl 52 set ref 172 177* 197* 307
+                                                                                  310* 373 396 421 441 461 481 501 521 541 561 581
+                                                                                  601 621 641 662 692*
+stream_input_output_mode        000015 internal static fixed bin(17,0)          initial dcl 140 set ref 266* 271* 276* 281*
+stream_output_mode              000014 internal static fixed bin(17,0)          initial dcl 139 set ref 286*
+substr                                                 builtin function         dcl 144 ref 216 218
+syn_$syn_attach                 000046 constant        entry                    external dcl 96 ref 262
+system_storage                         based           area(1024)               dcl 148 ref 208
+system_storage_ptr              000012 internal static pointer                  initial dcl 79 set ref 175 175* 208
+tell_offset                            constant        fixed bin(17,0)          initial dcl 135 ref 607
+terminate_process_              000062 constant        entry                    external dcl 102 ref 734
+ti                              000130 automatic       structure                level 1 dcl 72 set ref 734 734
+tty_$tty_attach                 000050 constant        entry                    external dcl 97 ref 265
+unique_chars_                   000064 constant        entry                    external dcl 103 ref 255 255
+unspec                                                 builtin function         dcl 144 set ref 176* 309* 691*
+version                         000130 automatic       fixed bin(17,0)          level 2 dcl 72 set ref 732*
+write_offset                           constant        fixed bin(17,0)          initial dcl 125 ref 402
+write_record             76            based           entry variable           level 2 dcl 1-9 set ref 234* 345* 785*
+writesync_offset                       constant        fixed bin(17,0)          initial dcl 138 ref 668
+wsptr                                  parameter       pointer                  dcl 53 set ref 373 380* 383 383 396 403* 406 406 821
+                                                                                  823* 840 842 842
+zero                                   constant        fixed bin(17,0)          initial dcl 107 ref 58
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+iox_$attach_loud                000000 constant        entry                    external dcl 2-8
+iox_$attach_name                000000 constant        entry                    external dcl 2-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 2-8
+iox_$close_file                 000000 constant        entry                    external dcl 2-8
+iox_$delete_record              000000 constant        entry                    external dcl 2-8
+iox_$detach                     000000 constant        entry                    external dcl 2-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 2-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 2-8
+iox_$error_output                      external static pointer                  dcl 2-41
+iox_$find_iocb_n                000000 constant        entry                    external dcl 2-8
+iox_$get_chars                  000000 constant        entry                    external dcl 2-8
+iox_$iocb_version_sentinel             external static char(4)                  dcl 1-64
+iox_$open_file                  000000 constant        entry                    external dcl 2-8
+iox_$position                   000000 constant        entry                    external dcl 2-8
+iox_$read_key                   000000 constant        entry                    external dcl 2-8
+iox_$read_length                000000 constant        entry                    external dcl 2-8
+iox_$read_record                000000 constant        entry                    external dcl 2-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 2-8
+iox_$seek_key                   000000 constant        entry                    external dcl 2-8
+iox_$user_io                           external static pointer                  dcl 2-41
+iox_$write_record               000000 constant        entry                    external dcl 2-8
+size                                                   builtin function         dcl 144
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+abort                           003276 constant        entry                    external dcl 421
+attach                          000141 constant        entry                    external dcl 172
+changemode                      004743 constant        entry                    external dcl 621
+detach                          002321 constant        entry                    external dcl 307
+fill_iocb                       000620 constant        label                    dcl 203 ref 200
+getdelim                        004346 constant        entry                    external dcl 561
+getsize                         004120 constant        entry                    external dcl 521
+handler                         006253 constant        entry                    internal dcl 722 ref 180 180 312 312 750 750
+ios_                            000123 constant        entry                    external dcl 17
+ios_quick_init                  006145 constant        entry                    external dcl 858
+iox_close                       005336 constant        entry                    external dcl 747 ref 226 752 765
+new                             001144 constant        label                    dcl 248 ref 181 182 183 184 185 186
+no_entry                        005717 constant        entry                    external dcl 806
+order                           003423 constant        entry                    external dcl 441
+read                            002765 constant        entry                    external dcl 373
+read_ptr                        005763 constant        entry                    external dcl 821
+readsync                        005107 constant        entry                    external dcl 641
+resetread                       003557 constant        entry                    external dcl 461
+resetwrite                      003677 constant        entry                    external dcl 481
+return                          005323 constant        label                    dcl 706 ref 697
+rloop                           006002 constant        label                    dcl 823 ref 828
+seek                            004475 constant        entry                    external dcl 581
+setdelim                        004222 constant        entry                    external dcl 541
+setsize                         004022 constant        entry                    external dcl 501
+setup                           006171 constant        entry                    internal dcl 689 ref 375 398 423 443 463 483 503 523
+                                                                                  543 563 583 603 623 643 664
+tell                            004620 constant        entry                    external dcl 601
+wloop                           006074 constant        label                    dcl 842 ref 846
+write                           003131 constant        entry                    external dcl 396
+write_ptr                       006055 constant        entry                    external dcl 840
+writesync                       005216 constant        entry                    external dcl 662
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+rtrim                                                  builtin function         ref 188 216
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      7350        7534    6333        7360
+Length     10164    6333       164         414    1015           6
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ios_                                218 external procedure  is an external procedure.  
+setup                                   internal procedure  shares stack frame of external procedure ios_.  
+handler                              82 internal procedure  is assigned to an entry variable.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 free_blks_ptr               ios_
+000012 system_storage_ptr          ios_
+000014 stream_output_mode          ios_
+000015 stream_input_output_mode    ios_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ios_                     000100 actual_iocb_ptr             ios_
+                         000102 arg0                        ios_
+                         000102 blkptr                      ios_
+                         000104 caller_ptr                  ios_
+                         000106 code                        ios_
+                         000107 i                           ios_
+                         000110 ics                         ios_
+                         000116 iocb_ptr                    ios_
+                         000120 mask                        ios_
+                         000122 mystatus                    ios_
+                         000124 old_attachment              ios_
+                         000126 p                           ios_
+                         000130 ti                          ios_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ent_var        call_ext_out_desc   call_ext_out        return_mac
+alloc_auto_adj      signal_op           shorten_stack       ext_entry           ext_entry_desc      int_entry_desc
+op_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cu_$arg_list_ptr              cu_$caller_ptr                cu_$grow_stack_frame          default_handler_$set
+discard_$discard_attach       get_system_free_area_         hcs_$make_ptr                 hcs_$reset_ips_mask
+hcs_$set_ips_mask             ios_signal_                   ios_write_around_$ios_write_around_control
+ios_write_around_$ios_write_around_get_chars                ios_write_around_$ios_write_around_get_line
+ios_write_around_$ios_write_around_modes                    ios_write_around_$ios_write_around_position
+ios_write_around_$ios_write_around_put_chars                iox_$close                    iox_$control
+iox_$destroy_iocb             iox_$detach_iocb              iox_$err_not_attached         iox_$err_not_open
+iox_$err_old_dim              iox_$find_iocb                iox_$get_line                 iox_$init_standard_iocbs
+iox_$ios_call                 iox_$ios_call_attach          iox_$look_iocb                iox_$modes
+iox_$move_attach              iox_$open                     iox_$propagate                iox_$put_chars
+mr_$mr_attach                 netd_$netd_attach             ocd_$ocd_attach               syn_$syn_attach
+terminate_process_            tty_$tty_attach               unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$end_of_info      error_table_$ioname_not_active                              error_table_$ioname_not_found
+error_table_$ionmat           error_table_$long_record      error_table_$missent
+error_table_$typename_not_found                             error_table_$unable_to_do_io  iox_$user_input
+iox_$user_output
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     58 000104       285 000110        17 000122       172 000133       175 000177       176 000212       177 000216
+    178 000241       179 000252       180 000253       181 000265       182 000274       183 000300       184 000304
+    185 000310       186 000314       187 000320       188 000327       189 000413       190 000426       191 000436
+    192 000446       193 000455       194 000465       195 000467       196 000477       197 000510       198 000551
+    199 000564       200 000576       201 000603       202 000607       203 000620       205 000623       208 000633
+    210 000641       211 000645       212 000655       214 000664       215 000666       216 000671       217 000751
+    218 000757       220 001031       221 001035       222 001036       223 001040       224 001042       225 001047
+    226 001051       227 001054       228 001057       229 001062       230 001065       231 001070       232 001073
+    233 001076       234 001101       235 001103       236 001105       237 001107       238 001111       239 001113
+    240 001115       241 001117       243 001125       244 001135       248 001144       250 001166       251 001177
+    252 001211       253 001223       254 001225       255 001232       256 001270       257 001301       258 001314
+    260 001325       261 001336       262 001345       263 001414       264 001415       265 001421       266 001470
+    267 001512       268 001541       269 001542       270 001546       271 001615       272 001637       273 001667
+    274 001670       275 001674       276 001743       277 001765       278 002015       279 002016       280 002022
+    281 002071       282 002113       283 002143       284 002144       285 002150       286 002200       287 002222
+    288 002223       289 002226       290 002232       292 002247       293 002263       295 002275       296 002305
+    307 002314       309 002352       310 002356       311 002401       312 002402       313 002414       314 002426
+    315 002434       316 002445       317 002451       318 002461       319 002466       320 002467       321 002473
+    322 002475       323 002477       324 002501       325 002503       326 002513       327 002542       328 002554
+    329 002565       330 002575       331 002605       332 002611       333 002614       334 002616       336 002623
+    337 002627       338 002631       339 002634       340 002636       341 002640       342 002642       343 002644
+    344 002646       345 002650       346 002652       347 002654       348 002656       349 002660       350 002662
+    351 002664       352 002666       353 002670       355 002676       357 002677       358 002713       360 002730
+    362 002740       363 002750       373 002757       375 003016       376 003017       377 003024       378 003026
+    379 003030       380 003032       381 003066       383 003067       384 003113       386 003120       396 003127
+    398 003162       399 003163       400 003170       401 003172       402 003174       403 003176       404 003232
+    406 003233       407 003255       409 003262       411 003263       421 003272       423 003317       424 003320
+    425 003325       426 003327       427 003331       428 003333       429 003356       430 003357       431 003407
+    441 003416       443 003451       444 003452       445 003457       446 003461       447 003463       448 003465
+    449 003515       450 003516       451 003544       461 003553       463 003600       464 003601       465 003606
+    466 003610       467 003612       468 003614       469 003633       470 003634       471 003666       481 003675
+    483 003720       484 003721       485 003726       486 003730       487 003732       488 003734       489 003753
+    490 003754       491 004007       501 004016       503 004043       504 004044       505 004051       506 004053
+    507 004055       508 004057       509 004103       510 004104       511 004107       521 004116       523 004141
+    524 004142       525 004147       526 004151       527 004153       528 004155       529 004201       530 004202
+    531 004205       541 004214       543 004255       544 004256       545 004263       546 004265       547 004267
+    548 004271       549 004331       550 004332       551 004335       561 004344       563 004401       564 004402
+    565 004407       566 004411       567 004413       568 004415       569 004455       570 004456       571 004461
+    581 004470       583 004532       584 004533       585 004540       586 004542       587 004544       588 004546
+    589 004603       590 004604       591 004607       601 004616       603 004655       604 004656       605 004663
+    606 004665       607 004667       608 004671       609 004726       610 004727       611 004732       621 004741
+    623 004776       624 004777       625 005004       626 005006       627 005010       628 005012       629 005043
+    630 005044       631 005073       641 005102       643 005136       644 005137       645 005144       646 005146
+    647 005150       648 005152       649 005201       650 005202       651 005205       662 005214       664 005245
+    665 005246       666 005253       667 005255       668 005257       669 005261       670 005310       671 005311
+    672 005314       706 005323       747 005332       749 005345       750 005346       751 005360       752 005372
+    753 005411       754 005421       755 005433       757 005445       758 005447       759 005451       760 005453
+    761 005455       762 005457       763 005467       764 005515       765 005527       766 005546       767 005556
+    768 005570       770 005602       771 005605       772 005610       773 005612       775 005620       776 005624
+    777 005626       778 005631       779 005633       780 005635       781 005637       782 005641       783 005643
+    784 005645       785 005647       786 005651       787 005653       788 005655       789 005657       790 005661
+    791 005663       792 005665       793 005673       795 005674       796 005704       806 005716       808 005727
+    809 005736       810 005741       811 005750       821 005757       823 006002       825 006021       827 006030
+    828 006043       830 006044       840 006053       842 006074       844 006116       845 006120       846 006134
+    848 006135       858 006144       861 006155       862 006162       689 006171       691 006172       692 006176
+    693 006221       694 006227       695 006240       696 006250       697 006251       722 006252       731 006266
+    732 006271       733 006272       734 006274       736 006316       738 006327
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

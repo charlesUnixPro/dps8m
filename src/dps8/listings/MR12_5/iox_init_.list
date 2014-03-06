@@ -1,0 +1,219 @@
+	COMPILATION LISTING OF SEGMENT iox_init_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0959.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* procedure to initialize the user ring iox_ environment */
+       14 /* The process is terminated in this program on failure so that stack history
+       15*   will be useful. It this program returned a code it would be
+       16*   lose the information of what attachment failed. Already_attached
+       17*   switches are not considered to be errors so that calling this
+       18*   program twice will not kill the process. */
+       19 
+       20 /* format: style2 */
+       21 
+       22 iox_init_:
+       23      procedure;
+       24 	return;
+       25 
+       26 /*
+       27*This procedure attached the switches specified in the constant
+       28*data in iox_.alm for a standard user ring io system.
+       29**/
+       30 
+       31 	declare iox_$n_standard_iocbs	 fixed bin (35) external static;
+       32 	declare iox_$standard_iocb_ptrs
+       33 				 bit (36) aligned external static;
+       34 	declare iox_$standard_iocb_info
+       35 				 bit (36) aligned external static;
+       36 
+       37 	declare iocb_ptrs_ptr	 pointer;
+       38 	declare iocb_info_ptr	 pointer;
+       39 	declare i			 fixed bin;
+       40 
+       41 	declare 1 iocb_info		 (iox_$n_standard_iocbs) aligned based (iocb_info_ptr),
+       42 		2 name		 character (32) unaligned,
+       43 		2 attach_description character (72) unaligned;
+       44 
+       45 	declare iocb_ptrs		 (iox_$n_standard_iocbs) pointer aligned based (iocb_ptrs_ptr);
+       46 
+       47 	declare code		 fixed bin (35);
+       48 
+       49 	declare error_table_$not_detached
+       50 				 fixed bin (35) external static;
+       51 
+       52 	declare iox_$attach_name	 entry (character (*), pointer, character (*), pointer, fixed bin (35));
+       53 	declare iox_$find_iocb	 entry (character (*), pointer, fixed bin (35));
+       54 
+       55 
+       56 init_standard_iocbs:
+       57      entry;
+       58 	iocb_ptrs_ptr = addr (iox_$standard_iocb_ptrs);
+       59 	iocb_info_ptr = addr (iox_$standard_iocb_info);
+       60 
+       61 	do i = 1 to iox_$n_standard_iocbs;
+       62 	     code = 0;
+       63 	     if iocb_info.attach_description (i) ^= ""
+       64 	     then call iox_$attach_name (iocb_info.name (i), iocb_ptrs (i), rtrim (iocb_info.attach_description (i)),
+       65 		     null (), code);		/* allow io modules in the home directory */
+       66 	     else call iox_$find_iocb (iocb_info.name (i), iocb_ptrs (i), code);
+       67 	     if code ^= 0 & code ^= error_table_$not_detached
+       68 	     then call failure (code, i, iocb_ptrs (i), iocb_info.name (i), rtrim (iocb_info.attach_description (i)));
+       69 
+       70 	end;
+       71 	return;
+       72 
+       73 failure:
+       74      procedure (code, switchx, iocb_ptr, name, atd) options (non_quick);
+       75 
+       76 	/*** the stack frame of this procedure is very informative
+       77*	     in a saved dead process */
+       78 
+       79 	declare code		 fixed bin (35);
+       80 	declare switchx		 fixed bin;
+       81 	declare iocb_ptr		 pointer;
+       82 	declare name		 character (32);
+       83 	declare atd		 character (72);
+       84 	declare terminate_process_	 entry (char (*), ptr);
+       85 
+       86 	declare 1 terminate_info	 aligned,
+       87 		2 version		 fixed bin,
+       88 		2 s_code		 fixed bin (35);
+       89 
+       90 	terminate_info.version = 0;
+       91 	terminate_info.s_code = code;
+       92 
+       93 	call terminate_process_ ("io_attach", addr (terminate_info));
+       94      end failure;
+       95      end iox_init_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.5  iox_init_.pl1                     >spec>install>1111>iox_init_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+atd                                    parameter       char(72)                 packed unaligned dcl 83 ref 73
+attach_description       10            based           char(72)                 array level 2 packed packed unaligned dcl 41 ref 63
+                                                                                  63 63 67 67
+code                            000105 automatic       fixed bin(35,0)          dcl 47 in procedure "iox_init_" set ref 62* 63* 66*
+                                                                                  67 67 67*
+code                                   parameter       fixed bin(35,0)          dcl 79 in procedure "failure" ref 73 91
+error_table_$not_detached       000016 external static fixed bin(35,0)          dcl 49 ref 67
+i                               000104 automatic       fixed bin(17,0)          dcl 39 set ref 61* 63 63 63 63 63 66 66 67* 67 67 67
+                                                                                  67*
+iocb_info                              based           structure                array level 1 dcl 41
+iocb_info_ptr                   000102 automatic       pointer                  dcl 38 set ref 59* 63 63 63 63 66 67 67 67
+iocb_ptr                               parameter       pointer                  dcl 81 ref 73
+iocb_ptrs                              based           pointer                  array dcl 45 set ref 63* 66* 67*
+iocb_ptrs_ptr                   000100 automatic       pointer                  dcl 37 set ref 58* 63 66 67
+iox_$attach_name                000020 constant        entry                    external dcl 52 ref 63
+iox_$find_iocb                  000022 constant        entry                    external dcl 53 ref 66
+iox_$n_standard_iocbs           000010 external static fixed bin(35,0)          dcl 31 ref 61
+iox_$standard_iocb_info         000014 external static bit(36)                  dcl 34 set ref 59
+iox_$standard_iocb_ptrs         000012 external static bit(36)                  dcl 32 set ref 58
+name                                   based           char(32)                 array level 2 in structure "iocb_info" packed packed
+                                                                                  unaligned dcl 41 in procedure "iox_init_" set ref
+                                                                                  63* 66* 67*
+name                                   parameter       char(32)                 packed unaligned dcl 82 in procedure "failure" ref
+                                                                                  73
+s_code                    1     000100 automatic       fixed bin(35,0)          level 2 dcl 86 set ref 91*
+switchx                                parameter       fixed bin(17,0)          dcl 80 ref 73
+terminate_info                  000100 automatic       structure                level 1 dcl 86 set ref 93 93
+terminate_process_              000024 constant        entry                    external dcl 84 ref 93
+version                         000100 automatic       fixed bin(17,0)          level 2 dcl 86 set ref 90*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+failure                         000274 constant        entry                    internal dcl 73 ref 67
+init_standard_iocbs             000025 constant        entry                    external dcl 56
+iox_init_                       000016 constant        entry                    external dcl 22
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 58 59 93 93
+null                                                   builtin function         ref 63 63
+rtrim                                                  builtin function         ref 63 63 67 67
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       462         510     330         472
+Length       664     330        26         137     132           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+iox_init_                           118 external procedure  is an external procedure.  
+failure                              82 internal procedure  is declared options(non_quick).  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+failure                  000100 terminate_info              failure
+iox_init_                000100 iocb_ptrs_ptr               iox_init_
+                         000102 iocb_info_ptr               iox_init_
+                         000104 i                           iox_init_
+                         000105 code                        iox_init_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_int_this       return_mac          shorten_stack       ext_entry
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+iox_$attach_name              iox_$find_iocb                terminate_process_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$not_detached     iox_$n_standard_iocbs         iox_$standard_iocb_info       iox_$standard_iocb_ptrs
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     22 000015        24 000023        56 000024        58 000032        59 000035        61 000037        62 000047
+     63 000050        66 000157        67 000212        70 000270        71 000272        73 000273        90 000301
+     91 000302        93 000305        94 000327
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

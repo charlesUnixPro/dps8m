@@ -1,0 +1,44 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	test_cmpc_fill
+	entry	test_cmpc_fill
+
+test_cmpc_fill: push
+	eppbp	data1-1
+	eppbb	data2-1
+	ldx6	31,du
+	ldx7	31,du
+	cmpc	(pr,rl),(pr,rl),fill(040)
+	desc9a	bp|1,x6
+	desc9a	bb|1,x7
+	tnz	error
+	return
+
+error:	oct	0		"ZOP
+
+	org	1026
+data1:	aci	"when in the course of human eve                         "
+
+	org	2048-7
+data2:	aci	"when in the course of human eve........................."
+
+"force fill to page bound for next test case
+	bss	,1014
+
+	end

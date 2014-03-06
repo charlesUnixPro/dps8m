@@ -1,0 +1,1346 @@
+	COMPILATION LISTING OF SEGMENT mdc_repair_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1020.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2,indcomtxt */
+       14 /* MDC_REPAIR_: This modules contains a collection of privlidged and/or repair entries */
+       15 
+       16 /* Written March 1976 by Larry Johnson */
+       17 /* Modified 83-12-07 BIM for quota repair when validating uidpaths */
+       18 /* Modified 84-08-29 by EJ Sharpe - new param lists for make_mdcs, rename_mdcs, update_hvid, and delete_mdcs */
+       19 /* Modified 84-09-04 by EJSharpe to change refs to hdx to volume_registration_mgr_
+       20*   change "hvid" to "lvid"
+       21*   change "hvname" to "lvname"
+       22**/
+       23 /* Modified 84-10-30 by EJ Sharpe to use pl1 area instead of area_ and some minor fixes */
+       24 /* Modified 84-11-08 by EJ Sharpe to use based bit array for copying MDCS */
+       25 /* Modified 85-02-21 by EJ Sharpe to use syserr_constants.incl.pl1 and fix bad call to admin_gate_$syserr_binary */
+       26 /* Modified 85-05-13 by EJ Sharpe to use admin_gate_$mdir_status_uid_priv,
+       27*   also to set dir privileges on validate_uidpaths entry. */
+       28 
+       29 mdc_repair_:
+       30      procedure;
+       31 
+       32 /* Arguments */
+       33 
+       34 	dcl     arg_volume		 char (*);
+       35 	dcl     arg_code		 fixed bin (35);
+       36 	dcl     arg_dir		 char (*);
+       37 	dcl     arg_ename		 char (*);
+       38 	dcl     arg_ptr		 ptr;
+       39 	dcl     arg_uid		 bit (36) aligned;
+       40 	dcl     arg_new_uid		 bit (36) aligned;
+       41 	dcl     arg_newvol		 char (*);
+       42 
+       43 /* Automatic */
+       44 
+       45 	dcl     volume		 char (32);
+       46 	dcl     r0_volume		 bit (36) aligned;
+       47 	dcl     temp_lvname		 char (32);
+       48 	dcl     code		 fixed bin (35);
+       49 	dcl     voluid		 bit (36) aligned;
+       50 	dcl     uidpath		 (0:15) bit (36) aligned;
+       51 	dcl     quota		 fixed bin (18);
+       52 	dcl     dir		 char (168);
+       53 	dcl     dirl		 fixed bin;
+       54 	dcl     ename		 char (32);
+       55 	dcl     access		 bit (36) aligned;
+       56 	dcl     p			 ptr;
+       57 	dcl     newvol		 char (32);
+       58 	dcl     new_voluid		 bit (36) aligned;
+       59 	dcl     person		 char (22);
+       60 	dcl     project		 char (9);
+       61 	dcl     msg		 char (50);
+       62 	dcl     call_check		 bit (1);
+       63 	dcl     paths_deleted	 bit (1);
+       64 	dcl     next_rel		 bit (18);
+       65 	dcl     set_privileges	 bit (1) init ("0"b);
+       66 						/* tells cleanup to reset the privileges */
+       67 	dcl     old_privileges	 bit (36) aligned;	/* save privileges for restoration */
+       68 	dcl     based_seg_size	 fixed bin (18);
+       69 	dcl     based_seg_bit_array	 (based_seg_size) bit (36) aligned based;
+       70 	dcl     1 status_struc	 aligned like status_branch;
+       71 
+       72 /* External things */
+       73 
+       74 	dcl     admin_gate_$decode_uidpath
+       75 				 entry (dim (0:15) bit (36) aligned, char (*), char (*), fixed bin (35));
+       76 	dcl     admin_gate_$mdir_status
+       77 				 entry (char (*), char (*), dim (0:15) bit (36) aligned, bit (36) aligned,
+       78 				 fixed bin (18), fixed bin (35));
+       79 	dcl     admin_gate_$mdir_status_uid_priv
+       80 				 entry ((0:15) bit (36) aligned, character (*), character (*), bit (36) aligned,
+       81 				 fixed binary (18), fixed binary (35));
+       82 	dcl     admin_gate_$reset_privileges
+       83 				 entry (bit (36) aligned);
+       84 	dcl     admin_gate_$set_privileges
+       85 				 entry (bit (36) aligned, bit (36) aligned);
+       86 	dcl     admin_gate_$syserr	 entry options (variable);
+       87 	dcl     admin_gate_$syserr_binary
+       88 				 entry options (variable);
+       89 	dcl     hcs_$status_long	 entry (char (*), char (*), fixed bin (1), ptr, ptr, fixed bin (35));
+       90 	dcl     hcs_$fs_get_path_name	 entry (ptr, char (*), fixed bin, char (*), fixed bin (35));
+       91 	dcl     volume_registration_mgr_$find_lvname
+       92 				 entry (bit (36) aligned, char (*), fixed bin (35));
+       93 	dcl     mdc_check_mdcs_	 entry (ptr, fixed bin (35));
+       94 	dcl     mdc_lock_$cleanup	 entry;
+       95 	dcl     mdc_lock_$reset	 entry;
+       96 	dcl     mdc_lock_$set	 entry (fixed bin (35));
+       97 	dcl     mdc_lock_$set_test_mode
+       98 				 entry;
+       99 	dcl     mdc_parse_acct_$default
+      100 				 entry (char (*), char (*));
+      101 	dcl     mdc_util_$find_acctent entry (ptr, char (*), char (*), ptr);
+      102 	dcl     mdc_util_$find_mdirent entry (ptr, dim (0:15) bit (36) aligned, ptr);
+      103 	dcl     mdc_util_$free_mdirent entry (ptr);
+      104 	dcl     mdc_util_$free_pathent entry (bit (18) aligned, ptr);
+      105 	dcl     mdc_util_$get_acctent	 entry (ptr, ptr, fixed bin (35));
+      106 	dcl     mdc_util_$get_mdirent	 entry (ptr, ptr, fixed bin (35));
+      107 	dcl     mdc_util_$thread_acctent
+      108 				 entry (ptr);
+      109 	dcl     mdc_util_$thread_mdirent
+      110 				 entry (ptr);
+      111 	dcl     mdcs_util_$create_mdcs entry (char (*), bit (36) aligned, fixed bin (35));
+      112 	dcl     mdcs_util_$delete_mdcs entry (char (*), bit (36) aligned, fixed bin (35));
+      113 	dcl     mdcs_util_$find_mdcs	 entry (char (*), ptr, bit (36) aligned, fixed bin (35));
+      114 	dcl     mdcs_util_$find_mdcs_and_check
+      115 				 entry (char (*), ptr, bit (36) aligned, fixed bin (35));
+      116 	dcl     mdcs_util_$find_mdcs_uid
+      117 				 entry (bit (36) aligned, ptr, bit (36) aligned, fixed bin (35));
+      118 	dcl     mdcs_util_$rename_mdcs entry (char (*), bit (36) aligned, char (*), fixed bin (35));
+      119 	dcl     mdcs_util_$set_mdcsdir entry (char (*));
+      120 	dcl     mdcs_util_$term_mdcs	 entry (ptr);
+      121 	dcl     mdcs_util_$update_lvid entry (char (*), bit (36) aligned, bit (36) aligned, fixed bin (35));
+      122 
+      123 	dcl     error_table_$namedup	 ext fixed bin (35);
+      124 	dcl     error_table_$bad_uidpath
+      125 				 ext fixed bin (35);
+      126 
+      127 	dcl     cleanup		 condition;
+      128 
+      129 	dcl     (addr, rtrim, bin, ptr, null, rel)
+      130 				 builtin;
+      131 
+      132 /* Entry to create a master directory control segment (MDCS) */
+      133 
+      134 make_mdcs:
+      135      entry (arg_volume, arg_uid, arg_code);
+      136 
+      137 /* This entry is called by volume_registration_mgr_$add_lvr when a new LV is registered */
+      138 
+      139 	volume = arg_volume;
+      140 	voluid = arg_uid;
+      141 
+      142 	on cleanup call mdc_lock_$cleanup;
+      143 	call mdc_lock_$set (code);
+      144 	if code ^= 0
+      145 	then go to return_code;
+      146 
+      147 	call mdcs_util_$create_mdcs (volume, voluid, code);
+      148 						/* Try to create it */
+      149 	go to unlock_return;
+      150 
+      151 /* Most entries return to one of the following labels to exit. */
+      152 
+      153 good_return:
+      154 	code = 0;
+      155 term_return:
+      156 	call mdcs_util_$term_mdcs (mdcsp);
+      157 unlock_return:
+      158 	call mdc_lock_$reset;
+      159 return_code:
+      160 	arg_code = code;
+      161 	return;
+      162 
+      163 
+      164 
+      165 /* Special entry call from ring1 during system initiaization to create a mdcs.
+      166*   It performs the same function as make_mdcs, but does not set locks or call any volume registration entries. */
+      167 
+      168 recreate_mdcs:
+      169      entry (arg_volume, arg_uid, arg_code);
+      170 
+      171 	volume = arg_volume;
+      172 	voluid = arg_uid;
+      173 	call mdcs_util_$create_mdcs (volume, voluid, code);
+      174 	go to return_code;
+      175 
+      176 /* Entry that will copy the mdcs to an outer ring */
+      177 
+      178 copy_mdcs:
+      179      entry (arg_volume, arg_ptr, arg_code);
+      180 
+      181 	volume = arg_volume;
+      182 	p = arg_ptr;
+      183 	arg_code = 0;
+      184 
+      185 	mdcsp = null;
+      186 	on cleanup call reg_cleanup;
+      187 	call mdc_lock_$set (code);
+      188 	if code ^= 0
+      189 	then go to return_code;
+      190 
+      191 	call mdcs_util_$find_mdcs (volume, mdcsp, access, code);
+      192 	if code ^= 0
+      193 	then go to unlock_return;
+      194 
+      195 	call hcs_$fs_get_path_name (mdcsp, dir, dirl, ename, code);
+      196 	if code ^= 0
+      197 	then goto term_return;
+      198 
+      199 	call hcs_$status_long (dir, ename, 0, addr (status_struc), null (), code);
+      200 	if code ^= 0
+      201 	then goto term_return;
+      202 
+      203 	based_seg_size = status_struc.current_length * 1024;
+      204 	p -> based_seg_bit_array = mdcsp -> based_seg_bit_array;
+      205 
+      206 	go to good_return;
+      207 
+      208 /* Entry to rename a mdcs */
+      209 
+      210 rename_mdcs:
+      211      entry (arg_volume, arg_uid, arg_newvol, arg_code);
+      212 
+      213 /* This entry is called by volume_registrtaion_mgr_$change_lvr when the name of an LV is changed */
+      214 
+      215 	volume = arg_volume;
+      216 	newvol = arg_newvol;
+      217 	voluid = arg_uid;
+      218 	on cleanup call mdc_lock_$cleanup;
+      219 	call mdc_lock_$set (code);
+      220 	if code ^= 0
+      221 	then go to return_code;
+      222 	call mdcs_util_$rename_mdcs (volume, voluid, newvol, code);
+      223 	go to unlock_return;
+      224 
+      225 
+      226 /* Entry to store a new unique id for a logical volume */
+      227 
+      228 update_lvid:
+      229      entry (arg_volume, arg_uid, arg_new_uid, arg_code);
+      230 
+      231 /* This entry is called by volume_registration_mgr_$change_lvr when the UID of an LV is changed */
+      232 
+      233 	volume = arg_volume;
+      234 	voluid = arg_uid;				/* Old uid */
+      235 	new_voluid = arg_new_uid;
+      236 	on cleanup call mdc_lock_$cleanup;
+      237 	call mdc_lock_$set (code);
+      238 	if code ^= 0
+      239 	then go to return_code;
+      240 	call mdcs_util_$update_lvid (volume, voluid, new_voluid, code);
+      241 	go to unlock_return;
+      242 
+      243 
+      244 /* Entry to delete a mdcs. It will fail if the mdcs is not empty */
+      245 
+      246 delete_mdcs:
+      247      entry (arg_volume, arg_uid, arg_code);
+      248 
+      249 /* THis entry is called by volume_registration_mgr_$delete_lvr when an LV registration is deleted */
+      250 
+      251 	volume = arg_volume;
+      252 	voluid = arg_uid;
+      253 	on cleanup call mdc_lock_$cleanup;
+      254 	call mdc_lock_$set (code);
+      255 	if code ^= 0
+      256 	then go to return_code;
+      257 	call mdcs_util_$delete_mdcs (volume, voluid, code);
+      258 	go to unlock_return;
+      259 
+      260 
+      261 /* Debugging entry that changes the name of the mdcs directory */
+      262 
+      263 set_mdcsdir:
+      264      entry (arg_dir);
+      265 
+      266 	dir = arg_dir;
+      267 	call mdcs_util_$set_mdcsdir (dir);
+      268 	call mdc_lock_$set_test_mode;
+      269 	return;
+      270 
+      271 /* This entry, given a pathname of maybe a master directory, updates ring1 to be consistent */
+      272 
+      273 register_mdir:
+      274      entry (arg_dir, arg_ename, arg_code);
+      275 
+      276 	dir = arg_dir;
+      277 	ename = arg_ename;
+      278 	arg_code = 0;
+      279 	call admin_gate_$mdir_status (dir, ename, uidpath, voluid, quota, code);
+      280 						/* Be sure its a master dir */
+      281 	if code ^= 0
+      282 	then go to return_code;
+      283 
+      284 	mdcsp = null;
+      285 	on cleanup call reg_cleanup;
+      286 	call mdc_lock_$set (code);
+      287 	if code ^= 0
+      288 	then go to return_code;
+      289 
+      290 	call mdcs_util_$find_mdcs_uid (voluid, mdcsp, access, code);
+      291 						/* This finds the MDCS, given uid */
+      292 	if code ^= 0
+      293 	then go to unlock_return;
+      294 
+      295 	call mdc_util_$find_mdirent (mdcsp, uidpath, mdirp);
+      296 						/* See if directry registered */
+      297 	if mdirp ^= null
+      298 	then do;					/* It is */
+      299 		call fix_mdirent_quota (mdirp, dir, ename, quota, code);
+      300 		if code = 0
+      301 		then code = error_table_$namedup;
+      302 		go to term_return;
+      303 	     end;
+      304 
+      305 	call mdc_util_$get_mdirent (mdcsp, mdirp, code);	/* Get free directory entry */
+      306 	if code ^= 0
+      307 	then go to term_return;
+      308 	mdirent.uidpath = uidpath;			/* Initialize it */
+      309 	mdirent.quota = quota;
+      310 	call mdc_parse_acct_$default (person, project);	/* Get name of default account */
+      311 	mdirent.owner.person = person;
+      312 	mdirent.owner.project = project;
+      313 
+      314 	call mdc_util_$find_acctent (mdcsp, person, project, acctp);
+      315 						/* Find default quota account */
+      316 	if acctp = null
+      317 	then do;					/* Must make one */
+      318 		call mdc_util_$get_acctent (mdcsp, acctp, code);
+      319 		if code ^= 0
+      320 		then go to term_return;
+      321 		acctent.name.person = person;
+      322 		acctent.name.project = project;
+      323 		call mdc_util_$thread_acctent (acctp);
+      324 	     end;
+      325 	mdirent.quota_offset = rel (acctp);		/* Mdir entry complete */
+      326 	call mdc_util_$thread_mdirent (mdirp);
+      327 
+      328 	call admin_gate_$syserr (LOG, "mdc_repair_$register_mdir: ^a^[>^]^a registered on ^a, quota=^d.", dir,
+      329 	     bin (dir ^= ">", 1), ename, mdcs.volume, quota);
+      330 	call mdc_check_mdcs_ (mdcsp, code);		/* This will repair quota accpunt */
+      331 	go to term_return;
+      332 
+      333 /* This entry checks all the uid pathnames in an mdcs and deletes any that do not point at real directorys anymore. */
+      334 
+      335 validate_uidpaths:
+      336      entry (arg_volume, arg_code);
+      337 
+      338 	volume = arg_volume;
+      339 	arg_code = 0;
+      340 	mdcsp = null;
+      341 	on cleanup call reg_cleanup;
+      342 	call mdc_lock_$set (code);
+      343 	if code ^= 0
+      344 	then go to return_code;
+      345 
+      346 	call mdcs_util_$find_mdcs_and_check (volume, mdcsp, access, code);
+      347 	if code ^= 0
+      348 	then go to unlock_return;			/* Cant find volume */
+      349 	call admin_gate_$set_privileges (DIR_PRIVILEGE, old_privileges);
+      350 	set_privileges = "1"b;
+      351 	paths_deleted, call_check = "0"b;
+      352 	msg = "volume path restriction list";
+      353 	call check_restrict (mdcs.restrict_path);
+      354 	msg = "volume default path restriction list";
+      355 	call check_restrict (mdcs.default_path);
+      356 
+      357 	do mdirp = ptr (mdcsp, mdcs.dir_offset) repeat (ptr (mdcsp, next_rel)) while (rel (mdirp) ^= "0"b);
+      358 						/* Scan all master directory entries  */
+      359 	     next_rel = mdirent.next;			/* Save in case this entry deleted */
+      360 	     call admin_gate_$mdir_status_uid_priv (mdirent.uidpath, dir, ename, r0_volume, quota, code);
+      361 	     if code = error_table_$bad_uidpath
+      362 	     then do;				/* Found a bad entry */
+      363 		     /*** decode_uidpath returns as much as is available */
+      364 		     call admin_gate_$decode_uidpath (mdirent.uidpath, dir, ename, code);
+      365 		     call admin_gate_$syserr_binary (LOG, addr (mdirent.uidpath), SB_mdc_del_uidpath,
+      366 			SBL_mdc_del_uidpath,
+      367 			"mdc_repair_$validate_uidpaths: Master directory entry with bad uidpath deleted from ^a. ^a>??",
+      368 			volume, dir);
+      369 		     call mdc_util_$free_mdirent (mdirp);
+      370 		     call_check = "1"b;		/* Must call mdc_check_mdcs to fix quota */
+      371 		     paths_deleted = "1"b;
+      372 		end;
+      373 	     else if r0_volume ^= mdcs.uid
+      374 	     then do;				/* it exists, but does not belong to us */
+      375 		     temp_lvname = "";
+      376 		     call volume_registration_mgr_$find_lvname (r0_volume, temp_lvname, (0));
+      377 
+      378 		     call admin_gate_$syserr_binary (LOG, addr (mdirent.uidpath), SB_mdc_del_uidpath,
+      379 			SBL_mdc_del_uidpath,
+      380 			"mdc_repair_$validate_uidpaths: Master directory ^a^[>^]^a entry for wrong logical volume (^w ^a) deleted from ^a.",
+      381 			dir, (dir ^= ">"), ename, r0_volume, temp_lvname, volume);
+      382 		     call mdc_util_$free_mdirent (mdirp);
+      383 
+      384 		     call_check = "1"b;
+      385 		     paths_deleted = "1"b;
+      386 		end;
+      387 	     else /* valid path, lets check some more */
+      388 		call fix_mdirent_quota (mdirp, dir, ename, quota, code);
+      389 						/* ignore code */
+      390 	end;
+      391 
+      392 	do acctp = ptr (mdcsp, mdcs.acct_offset) repeat (ptr (mdcsp, acctent.next)) while (rel (acctp) ^= "0"b);
+      393 	     msg = "path restriction for " || rtrim (acctent.person) || "." || rtrim (acctent.project);
+      394 	     call check_restrict (acctent.restrict_path);
+      395 	end;
+      396 
+      397 	if call_check
+      398 	then call mdc_check_mdcs_ (mdcsp, code);
+      399 	if paths_deleted
+      400 	then code = error_table_$bad_uidpath;
+      401 	else code = 0;
+      402 	call admin_gate_$reset_privileges (old_privileges);
+      403 	go to term_return;
+      404 
+      405 check_restrict:
+      406      proc (head);					/* Check each entry in a restriction list */
+      407 
+      408 	dcl     head		 bit (18) aligned;
+      409 
+      410 	do pathp = ptr (mdcsp, head) repeat (ptr (mdcsp, next_rel)) while (rel (pathp) ^= "0"b);
+      411 	     next_rel = pathent.next;			/* Save in case this entry deleted */
+      412 	     call admin_gate_$decode_uidpath (pathent.uidpath, dir, ename, code);
+      413 	     if code = error_table_$bad_uidpath
+      414 	     then do;				/* Found a bad one */
+      415 		     call admin_gate_$syserr_binary (LOG, addr (pathent.uidpath), SB_mdc_del_uidpath,
+      416 			SBL_mdc_del_uidpath,
+      417 			"mdc_repair_$validate_uidpaths: Bad uidpath name deleted from ^a for ^a. ^a>??", msg,
+      418 			volume, dir);
+      419 		     call mdc_util_$free_pathent (head, pathp);
+      420 		     paths_deleted = "1"b;
+      421 		end;
+      422 	end;
+      423 	return;
+      424 
+      425      end check_restrict;
+      426 
+      427 fix_mdirent_quota:
+      428      procedure (Mdirp, Dir_name, Ename, Quota, Code);
+      429 
+      430 	declare Mdirp		 pointer;
+      431 	declare Quota		 fixed bin (18);
+      432 	declare Dir_name		 char (168);
+      433 	declare Ename		 char (32);
+      434 	declare Code		 fixed bin (35);
+      435 
+      436 	if Quota < 1
+      437 	then do;					/* this is bad */
+      438 		call admin_gate_$syserr (LOG,
+      439 		     "mdc_repair_: Quota of ^d reported by ring 0 for ^a^[>^]^a on ^a. 1 assumed.", Quota, Dir_name,
+      440 		     Dir_name ^= ">", Ename, Mdirp -> mdcs.volume);
+      441 		Quota = 1;
+      442 	     end;
+      443 	if Quota ^= Mdirp -> mdirent.quota
+      444 	then do;					/* Check quota */
+      445 		call admin_gate_$syserr (LOG, "mdc_repair_: Quota for ^a^[>^]^a on ^a changed from ^d to ^d.",
+      446 		     Dir_name, Dir_name ^= ">", Ename, mdcs.volume, Mdirp -> mdirent.quota, Quota);
+      447 		mdirent.quota = Quota;		/* Fix it */
+      448 		call mdc_check_mdcs_ (mdcsp, Code);	/* This repairs quota account */
+      449 	     end;
+      450      end fix_mdirent_quota;
+      451 
+      452 /* Cleanup handler */
+      453 
+      454 reg_cleanup:
+      455      proc;
+      456 
+      457 	if mdcsp ^= null
+      458 	then call mdcs_util_$term_mdcs (mdcsp);
+      459 
+      460 	if set_privileges
+      461 	then call admin_gate_$reset_privileges (old_privileges);
+      462 
+      463 	call mdc_lock_$cleanup;
+      464 	return;
+      465 
+      466      end reg_cleanup;				/* format: off */
+      467 
+  1     1 /* Begin include file ..... mdcs.incl.pl1 */
+  1     2 /* Modified to give quota enough precision BIM 83-12-07 */
+  1     3 
+  1     4 /* Format of a master directory control segment */
+  1     5 
+  1     6 dcl  mdcsp ptr;					/* Pointer to structure */
+  1     7 
+  1     8 dcl 1 mdcs aligned based (mdcsp),			/* A master directory control segment */
+  1     9     2 head like mdcs_head,				/* First the header */
+  1    10     2 area area (0 refer (mdcs.area_size));		/* Followed by an area for allocating data */
+  1    11 
+  1    12 dcl 1 mdcs_head aligned based,			/* The header portion of the mdcs */
+  1    13     2 version fixed bin,				/* Version of structure */
+  1    14     2 init bit (1) unal,				/* Set when mdcs created */
+  1    15     2 free_bits bit (35) unal,
+  1    16     2 time_checked fixed bin (71),			/* Time this MDCS last checked for consistency */
+  1    17     2 volume char (32),				/* Name of volume */
+  1    18     2 uid bit (36),					/* Unique id of volume */
+  1    19     2 acct_offset bit (18),				/* Offset to first account entry */
+  1    20     2 dir_offset bit (18),				/* Pointer to first directory entry */
+  1    21     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  1    22     2 area_size fixed bin (18),			/* Size of the area (rest of segment) */
+  1    23     2 restrict_path bit (18),				/* List of pathnames in volume restict list */
+  1    24     2 default_path bit (18),				/* List of pathnames in volume default list */
+  1    25     2 fill (43) bit (36) aligned;			/* Pad to octal 100 */
+  1    26 
+  1    27 dcl  mdcs_version fixed bin int static options (constant) init (1); /* Latest version */
+  1    28 
+  1    29 dcl  mdirp ptr;					/* Pointer to directory entry */
+  1    30 
+  1    31 dcl 1 mdirent aligned based (mdirp),
+  1    32     2 next bit (18) unal,				/* Pointer to next entry */
+  1    33     2 fill bit (18) unal,
+  1    34     2 uidpath (0:15) bit (36),			/* Uid pathname of master dir */
+  1    35     2 owner,					/* Owner of directory */
+  1    36       3 person char (22) unal,
+  1    37       3 project char (9) unal,
+  1    38     2 quota_offset bit (18),				/* Rel pointer to quota account */
+  1    39     2 quota fixed bin (18),				/* The quota */
+  1    40     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  1    41     2 fill2 (10) bit (36) aligned;
+  1    42 
+  1    43 dcl  acctp ptr;					/* Pointer to account entry */
+  1    44 
+  1    45 dcl 1 acctent aligned based (acctp),
+  1    46     2 next bit (18) unal,				/* Relative pointer to next entry */
+  1    47     2 fill bit (18) unal,
+  1    48     2 name,					/* Name of quota account */
+  1    49       3 person char (22) unal,
+  1    50       3 project char (9) unal,
+  1    51     2 quota fixed bin (35),				/* Total quota for account */
+  1    52     2 quota_used fixed bin (35),			/* Amount of quota assigned to master dirs */
+  1    53     2 trp fixed bin (71) unal,			/* Time record product for deleted dirs */
+  1    54     2 backup (3) fixed bin (35),			/* Backup accounting data */
+  1    55     2 restrict_path bit (18),				/* List of restricting paths for account */
+  1    56     2 fill2 (7) bit (36) aligned;
+  1    57 
+  1    58 dcl  pathp ptr;					/* Pointer to uid pathname entry */
+  1    59 
+  1    60 dcl 1 pathent aligned based (pathp),			/* Entry in a list of pathnames */
+  1    61     2 next bit (18) unal,
+  1    62     2 fill bit (18) unal,
+  1    63     2 uidpath (0:15) bit (36);
+  1    64 
+  1    65 
+  1    66 /* End include file ..... mdcs.incl.pl1 */
+      468 
+      469 
+  2     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  2     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  2     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  2     4 
+  2     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  2     6 
+  2     7 dcl (
+  2     8 
+  2     9 /* The following constants define the message action codes.  This indicates
+  2    10*how a message is to be handled.  */
+  2    11 
+  2    12      SYSERR_CRASH_SYSTEM	init (1),			
+  2    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  2    14 
+  2    15      SYSERR_TERMINATE_PROCESS	init (2),
+  2    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  2    17 
+  2    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  2    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  2    20 
+  2    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  2    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  2    23 
+  2    24      SYSERR_LOG_OR_PRINT	init (4),
+  2    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  2    26 
+  2    27      SYSERR_LOG_OR_DISCARD	init (5),
+  2    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  2    29 
+  2    30 
+  2    31 /* The following constants are added to the normal severities to indicate
+  2    32*different sorting classes of messages.  */
+  2    33 
+  2    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  2    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  2    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  2    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  2    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  2    39 	) fixed bin internal static options (constant);
+  2    40 
+  2    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      470 
+      471 
+  3     1 /* BEGIN INCLUDE FILE .. syserr_binary_def.incl.pl1 */
+  3     2 
+  3     3 /* This include file has an ALM version, keep 'em in sync. */
+  3     4 
+  3     5 /* format: off */
+  3     6 
+  3     7 /* Modified January 1984 by Paul Farley to add an array of entry values
+  3     8*   to be examined by display_cpu_error. */
+  3     9 /* Modified October 1984 by EJ Sharpe to include SB_audit_message */
+  3    10 /* Modified January 1985 by EJ Sharpe for SB_char_data_classes */
+  3    11 /* Modified 1985-01-25, BIM: added ring alarm audit support. */
+  3    12 /* Modified 1985-02-20, EJ Sharpe: added SB_ibm3270_mde, syserr_binary_(seg vol)damage_class,
+  3    13*		also changed some codes to "SB_unused_NN" - see line comments */
+  3    14 
+  3    15 /* In the future, these will be the only constants needed in this include
+  3    16*file.  They are the binary data class strings for messages in the new format
+  3    17*syserr logs.  The names are all of the form SB_ZZZZZZZ_data_class where
+  3    18*ZZZZZZZ is the value of the data class string.  Message expanders are named
+  3    19*expand_ZZZZZZZ_msg_ and are referenced by the log perusal tools. */
+  3    20 
+  3    21 dcl (						/* include file name */
+  3    22 SB_io_status_data_class	init ("io_status"),		/* io_syserr_msg */
+  3    23 SB_hwfault_data_class	init ("hwfault"),		/* syserr_fault_msg */
+  3    24 SB_mos_data_class		init ("mos"),		/* scr */
+  3    25 SB_segdamage_data_class	init ("segdamage"),		/* segdamage_msg */
+  3    26 SB_voldamage_data_class	init ("voldamage"),		/* segdamage_msg (first two words) */
+  3    27 SB_mdc_del_uidpath_data_class	init ("mdc_del_uidpath"),	/* none - 16 word UID path */
+  3    28 SB_mmdam_data_class		init ("mmdam"),		/* syserr_mmdam_msg */
+  3    29 SB_mpc_poll_data_class	init ("mpc_poll"),		/* poll_mpc_data */
+  3    30 SB_fnp_poll_data_class	init ("fnp_poll"),		/* poll_fnp_data */
+  3    31 SB_config_deck_data_class	init ("config_deck"),	/* config_deck */
+  3    32 SB_vtoce_data_class		init ("vtoce"),		/* vtoce */
+  3    33 SB_access_audit_data_class	init ("access_audit"),	/* access_audit_bin_header */
+  3    34 SB_ibm3270_mde_data_class	init ("ibm3270_mde")	/* ibm3270_mpx_data */
+  3    35 ) static internal char (16) varying options (constant);
+  3    36 
+  3    37 
+  3    38 /************************
+  3    39*Once the syserr$binary is replaced with something that takes real data classes
+  3    40*and all system modules and tools are upgraded to use the new interface, the
+  3    41*rest of this include file may be discarded.
+  3    42*************************/
+  3    43 
+  3    44 /* The limit of 36 is arbitrary- there is no reason that it can not be
+  3    45*   extended at any time. */
+  3    46 
+  3    47 dcl (
+  3    48 SB_disk_err	init (1),		SBL_disk_err	init (5),
+  3    49 SB_hw_fault	init (2),		SBL_hw_fault	init (176),
+  3    50 SB_io_err		init (3),		SBL_io_err	init (5),
+  3    51 SB_unused_4	init (4),		SBL_unused_4	init (1),	/* was "mos_poll" (mos poll time) */
+  3    52 SB_mos_err	init (5),		SBL_mos_err	init (2),	/* mos memory error data */
+  3    53 SB_unused_6	init (6),		SBL_unused_6	init (1),	/* was "bulk_status" (bulk dcb status) */
+  3    54 SB_unused_7	init (7),		SBL_unused_7	init (1), /* was "bulk_csb" (bulk csb status) */
+  3    55 SB_unused_8	init (8),		SBL_unused_8	init (3), /* was "free_st_1" */
+  3    56 SB_unused_9	init (9),		SBL_unused_9	init (2), /* was "free_st_2" */
+  3    57 SB_unused_10	init (10),	SBL_unused_10	init (21), /* was "unpr_add" */
+  3    58 SB_zerpag		init (11),	SBL_zerpag	init (20),
+  3    59 SB_unused_12	init (12),	SBL_unused_12	init (20), /* was "unpr_add" */
+  3    60 SB_vtoc_salv_dam	init (13),	SBL_vtoc_salv_dam	init (20),
+  3    61 SB_unused_14	init (14),	SBL_unused_14	init (20), /* was "page_rw_err" */
+  3    62 SB_unused_15	init (15),	SBL_unused_15	init (3), /* was "ruad" */
+  3    63 SB_random_segdamage	init (16),	SBL_random_segdamage init (20),
+  3    64 SB_read_nc	init (17),	SBL_read_nc	init (2),
+  3    65 SB_unused_18	init (18),	SBL_unused_18	init (2), /* was "vtoc_err" */
+  3    66 SB_mdc_del_uidpath	init (19),	SBL_mdc_del_uidpath	init (16),
+  3    67 SB_ocdcm_err	init (20),	SBL_ocdcm_err	init (5),
+  3    68 SB_mmdam		init (21),	SBL_mmdam		init (2),
+  3    69 SB_verify_lock	init (22),	SBL_verify_lock	init (176),
+  3    70 SB_io_err_detail	init (23),	SBL_io_err_detail	init (11),
+  3    71 SB_mpc_poll	init (24),	SBL_mpc_poll	init (256) /* max */,
+  3    72 SB_fnp_poll	init (25),	SBL_fnp_poll	init (256) /* max */,
+  3    73 SB_config_deck	init (26),	SBL_config_deck	init (256) /* 16 cards at 16 words */,
+  3    74 SB_vtoce		init (27),	SBL_vtoce		init (192),    /* 1 VTOCE */
+  3    75 SB_access_audit	init (28),	SBL_access_audit	init (256), /* max */
+  3    76 SB_ibm3270_mde	init (35),	SBL_ibm3270_mde	init (256), /* max */
+  3    77 SB_end_of_table	init (36),	SBL_end_of_table	init (1)
+  3    78   ) internal static options (constant) fixed bin;
+  3    79 
+  3    80 
+  3    81 /* The following array is a mapping of the old syserr$binary codes into the
+  3    82*new data classes for MR11.  It is primarily used by syserr_copy to translate
+  3    83*the binary data codes stored in the wired syserr log (see above) into the data
+  3    84*classes needed by the ring-0 paged syserr log which is a new format log.  It
+  3    85*is also used by syserr_log_util_ to translate the data classes back into the
+  3    86*corresponding binary code (for tools not yet upgraded to deal with the new
+  3    87*format log messages). */
+  3    88 
+  3    89 dcl SB_char_data_classes (36) char (16) varying internal static options (constant)
+  3    90 	init (	"io_status",		/* 1 */
+  3    91 		"hwfault",		/* 2 */
+  3    92 		"io_status",		/* 3 */
+  3    93 		"unused_4",		/* 4 */
+  3    94 		"mos",			/* 5 */
+  3    95 
+  3    96 		"unused_6",		/* 6 */
+  3    97 		"unused_7",		/* 7 */
+  3    98 		"unused_8",		/* 8 */
+  3    99 		"unused_9",		/* 9 */ 
+  3   100 		"unused_10",		/* 10 */
+  3   101 
+  3   102 		"segdamage",		/* 11 */
+  3   103 		"unused_12",		/* 12 */
+  3   104 		"segdamage",		/* 13 */
+  3   105 		"unused_14",		/* 14 */
+  3   106 		"unused_15",		/* 15 */
+  3   107 
+  3   108 		"segdamage",		/* 16 */
+  3   109 		"voldamage",		/* 17 */
+  3   110 		"unused_18",		/* 18 */
+  3   111 		"mdc_del_uidpath",		/* 19 */
+  3   112 		"io_status",		/* 20 */
+  3   113 
+  3   114 		"mmdam",			/* 21 */
+  3   115 		"hwfault",		/* 22 */
+  3   116 		"io_status",		/* 23 */
+  3   117 		"mpc_poll",		/* 24 */
+  3   118 		"fnp_poll",		/* 25 */
+  3   119 
+  3   120 		"config_deck",		/* 26 */
+  3   121 		"vtoce",			/* 27 */
+  3   122 		"access_audit",		/* 28 */
+  3   123 		"unused_29",		/* 29 */
+  3   124 		"unused_30",		/* 30 */
+  3   125 		"unused_31",		/* 31 */
+  3   126 		"unused_32",		/* 32 */
+  3   127 		"unused_33",		/* 33 */
+  3   128 		"unused_34",		/* 34 */
+  3   129 		"ibm3270_mde",		/* 35 */
+  3   130 		"unused_36"		/* 36 */
+  3   131 	);
+  3   132 
+  3   133 
+  3   134 /* format: on */
+  3   135 
+  3   136 /* These constants are used by various tools which analyze syserr messages and
+  3   137*still call the old interface "syserr_log_util_". */
+  3   138 
+  3   139      dcl	   syserr_binary_mos_mask init ("060000000000"b3) bit (36) static options (constant);
+  3   140      dcl	   syserr_binary_seg_damage_mask init ("000374000000"b3) bit (36) static options (constant);
+  3   141      dcl	   syserr_binary_vol_damage_mask init ("003413000000"b3) bit (36) static options (constant);
+  3   142      dcl	   syserr_binary_address_damage_mask init ("002010000000"b3) bit (36) static options (constant);
+  3   143 
+  3   144      dcl	   display_cpu_error_binary_defs (2) init (
+  3   145 			      2,			/** SB_hw_fault */
+  3   146 			      22			/** SB_verify_lock */
+  3   147 			      ) internal static options (constant) fixed bin;
+  3   148 
+  3   149 /* END INCLUDE FILE syserr_binary_def.incl.pl1 */
+      472 
+      473 
+  4     1 /* --------------- BEGIN include file status_structures.incl.pl1 --------------- */
+  4     2 
+  4     3 /* Revised from existing include files 09/26/78 by C. D. Tavares */
+  4     4 
+  4     5 /* This include file contains branch and link structures returned by
+  4     6*   hcs_$status_ and hcs_$status_long. */
+  4     7 
+  4     8 dcl 1 status_branch aligned based (status_ptr),
+  4     9     2 short aligned,
+  4    10       3 type fixed bin (2) unaligned unsigned,		/* seg, dir, or link */
+  4    11       3 nnames fixed bin (16) unaligned unsigned,		/* number of names */
+  4    12       3 names_relp bit (18) unaligned,			/* see entry_names dcl */
+  4    13       3 dtcm bit (36) unaligned,			/* date/time contents last modified */
+  4    14       3 dtu bit (36) unaligned,			/* date/time last used */
+  4    15       3 mode bit (5) unaligned,			/* caller's effective access */
+  4    16       3 raw_mode bit (5) unaligned,			/* caller's raw "rew" modes */
+  4    17       3 pad1 bit (8) unaligned,
+  4    18       3 records_used fixed bin (18) unaligned unsigned,	/* number of NONZERO pages used */
+  4    19 
+  4    20 /* Limit of information returned by hcs_$status_ */
+  4    21 
+  4    22     2 long aligned,
+  4    23       3 dtd bit (36) unaligned,			/* date/time last dumped */
+  4    24       3 dtem bit (36) unaligned,			/* date/time branch last modified */
+  4    25       3 lvid bit (36) unaligned,			/* logical volume ID */
+  4    26       3 current_length fixed bin (12) unaligned unsigned,	/* number of last page used */
+  4    27       3 bit_count fixed bin (24) unaligned unsigned,	/* reported length in bits */
+  4    28       3 pad2 bit (8) unaligned,
+  4    29       3 copy_switch bit (1) unaligned,			/* copy switch */
+  4    30       3 tpd_switch bit (1) unaligned,			/* transparent to paging device switch */
+  4    31       3 mdir_switch bit (1) unaligned,			/* is a master dir */
+  4    32       3 damaged_switch bit (1) unaligned,		/* salvager warned of possible damage */
+  4    33       3 synchronized_switch bit (1) unaligned,		/* DM synchronized file */
+  4    34       3 pad3 bit (5) unaligned,
+  4    35       3 ring_brackets (0:2) fixed bin (6) unaligned unsigned, 
+  4    36       3 uid bit (36) unaligned;			/* unique ID */
+  4    37 
+  4    38 dcl 1 status_link aligned based (status_ptr),
+  4    39     2 type fixed bin (2) unaligned unsigned,		/* as above */
+  4    40     2 nnames fixed bin (16) unaligned unsigned,
+  4    41     2 names_relp bit (18) unaligned,
+  4    42     2 dtem bit (36) unaligned,
+  4    43     2 dtd bit (36) unaligned,
+  4    44     2 pathname_length fixed bin (17) unaligned,		/* see pathname */
+  4    45     2 pathname_relp bit (18) unaligned;			/* see pathname */
+  4    46 
+  4    47 dcl  status_entry_names (status_branch.nnames) character (32) aligned
+  4    48 	based (pointer (status_area_ptr, status_branch.names_relp)),
+  4    49 						/* array of names returned */
+  4    50      status_pathname character (status_link.pathname_length) aligned
+  4    51 	based (pointer (status_area_ptr, status_link.pathname_relp)),
+  4    52 						/* link target path */
+  4    53      status_area_ptr pointer,
+  4    54      status_ptr pointer;
+  4    55 
+  4    56 dcl (Link initial (0),
+  4    57      Segment initial (1),
+  4    58      Directory initial (2)) fixed bin internal static options (constant);
+  4    59 						/* values for type fields declared above */
+  4    60 
+  4    61 /* ---------------- END include file status_structures.incl.pl1 ---------------- */
+      474 
+      475 
+  5     1 /* Begin include file aim_privileges.incl.pl1  BIM 831206 */
+  5     2 /* format: style3 */
+  5     3 
+  5     4 declare	aim_privileges_ptr	pointer;
+  5     5 declare	1 aim_privileges	unaligned based (aim_privileges_ptr),
+  5     6 	( 2 ipc,					/** interprocess communication privilege */
+  5     7 	  2 dir,					/** directory privilege */
+  5     8 	  2 seg,					/** segment privilege */
+  5     9 	  2 soos,					/** security out-of-service privilege */
+  5    10 	  2 ring1,				/** ring 1 access privilege */
+  5    11 	  2 rcp,					/** RCP resource access privilege */
+  5    12 	  2 comm					/** communications cross-AIM privilege */
+  5    13 	  )		bit (1),
+  5    14 	  2 pad		bit (29);
+  5    15 
+  5    16 declare	(
+  5    17 	IPC_PRIVILEGE	init ("1"b),
+  5    18 	DIR_PRIVILEGE	init ("01"b),
+  5    19 	SEG_PRIVILEGE	init ("001"b),
+  5    20 	SOOS_PRIVILEGE	init ("0001"b),
+  5    21 	RING1_PRIVILEGE	init ("00001"b),
+  5    22 	RCP_PRIVILEGE	init ("000001"b),
+  5    23 	COMM_PRIVILEGE	init ("0000001"b),
+  5    24 	ALL_PRIVILEGES	init ("1111111"b)
+  5    25 	)		bit (36) int static aligned options (constant);
+  5    26 
+  5    27 
+  5    28 /* End include file aim_privileges.incl.pl1 */
+      476 
+      477 
+      478 /* BEGIN MESSAGE DOCUMENTATION
+      479*
+      480*   Message:
+      481*   mdc_repair_$register_mdir: Quota of N reported by ring 0 for DIRNAME on LVNAME. 1 assumed.
+      482*
+      483*   S: $log
+      484*
+      485*   T: $run
+      486*
+      487*   M: The master directory DIRNAME for volume LVNAME has been found
+      488*   to have an invalid quota. The quota has been assumed to be 1.
+      489*   The message can only appear as a result of a register_mdir command
+      490*   performed by a system administrator.
+      491*
+      492*   A: $ignore
+      493*
+      494*   Message:
+      495*   mdc_repair_$register_mdir: Quota for DIRNAME on LVNAME changed from OLD to NEW.
+      496*
+      497*   S: $log
+      498*
+      499*   T: $run
+      500*
+      501*   M: The quota of master directory DIRNAME was found be different from the
+      502*   quota recorded in the MDCS. The real quota is assumed to be correct and
+      503*   the MDCS is updated to reflect this quota. This may happen if a set_quota
+      504*   command had been used on a master directory.
+      505*   This message can only appear as a result of a register_mdir command
+      506*   performed by a system administrator.
+      507*
+      508*   A: $ignore
+      509*
+      510*   Message:
+      511*   mdc_repair_$register_mdir: DIRNAME registered on LVNAME, quota=N.
+      512*
+      513*   S: $log
+      514*
+      515*   T: $run
+      516*
+      517*   M: The master directory DIRNAME has been found which had not been
+      518*   recorded in the MDCS for volume LVNAME. The master directory has been
+      519*   registered and the quota of N has been charged to the Initializer.SysDaemon
+      520*   quota account.
+      521*   This problem may have been caused by the loss and subsequent retreival of the
+      522*   master directory control segment, or by retreving a master directory.
+      523*   This message can only appear as a result of a register_mdir command
+      524*   performed by a system administrator.
+      525*
+      526*   A: $ignore
+      527*
+      528*   Message:
+      529*   mdc_repair_:validate_uidpaths: Master directory entry with bad uidpath deleted from LVNAME. PARTIAL-PATHNAME.
+      530*
+      531*   S: $log
+      532*
+      533*   T: $run
+      534*
+      535*   M: The master directory control segment for LVNAME contains an
+      536*   entry for a mastr directory which no longer exists. The entry has been deleted and
+      537*   the quota is returned to the account from which it was drawn.
+      538*   This can happen if a master directory control segment has been lost and retreived,
+      539*   or if a mastr directory has been lost.
+      540*
+      541*   A: $ignore
+      542*
+      543*   END MESSAGE DOCUMENTATION */
+      544 
+      545      end mdc_repair_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  mdc_repair_.pl1                   >spec>install>1111>mdc_repair_.pl1
+468          1    11/20/84  1944.9  mdcs.incl.pl1                     >ldd>include>mdcs.incl.pl1
+470          2    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+472          3    03/15/85  0953.1  syserr_binary_def.incl.pl1        >ldd>include>syserr_binary_def.incl.pl1
+474          4    11/22/82  0955.7  status_structures.incl.pl1        >ldd>include>status_structures.incl.pl1
+476          5    08/19/84  1445.6  aim_privileges.incl.pl1           >ldd>include>aim_privileges.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 434 set ref 427 448*
+DIR_PRIVILEGE                   000000 constant        bit(36)                  initial dcl 5-16 set ref 349*
+Dir_name                               parameter       char(168)                packed unaligned dcl 432 set ref 427 438* 438 445*
+                                                                                  445
+Ename                                  parameter       char(32)                 packed unaligned dcl 433 set ref 427 438* 445*
+LOG                             000020 constant        fixed bin(17,0)          initial dcl 2-7 set ref 328* 365* 378* 415* 438*
+                                                                                  445*
+Mdirp                                  parameter       pointer                  dcl 430 ref 427 438 443 445
+Quota                                  parameter       fixed bin(18,0)          dcl 431 set ref 427 436 438* 441* 443 445* 447
+SBL_mdc_del_uidpath             000016 constant        fixed bin(17,0)          initial dcl 3-47 set ref 365* 378* 415*
+SB_mdc_del_uidpath              000001 constant        fixed bin(17,0)          initial dcl 3-47 set ref 365* 378* 415*
+access                          000227 automatic       bit(36)                  dcl 55 set ref 191* 290* 346*
+acct_offset              15            based           bit(18)                  level 3 dcl 1-8 ref 392
+acctent                                based           structure                level 1 dcl 1-45
+acctp                           000324 automatic       pointer                  dcl 1-43 set ref 314* 316 318* 321 322 323* 325 392*
+                                                                                  392* 393 393 394* 395
+addr                                                   builtin function         dcl 129 ref 199 199 365 365 378 378 415 415
+admin_gate_$decode_uidpath      000010 constant        entry                    external dcl 74 ref 364 412
+admin_gate_$mdir_status         000012 constant        entry                    external dcl 76 ref 279
+admin_gate_$mdir_status_uid_priv
+                                000014 constant        entry                    external dcl 79 ref 360
+admin_gate_$reset_privileges    000016 constant        entry                    external dcl 82 ref 402 460
+admin_gate_$set_privileges      000020 constant        entry                    external dcl 84 ref 349
+admin_gate_$syserr              000022 constant        entry                    external dcl 86 ref 328 438 445
+admin_gate_$syserr_binary       000024 constant        entry                    external dcl 87 ref 365 378 415
+arg_code                               parameter       fixed bin(35,0)          dcl 35 set ref 134 159* 168 178 183* 210 228 246 273
+                                                                                  278* 335 339*
+arg_dir                                parameter       char                     packed unaligned dcl 36 ref 263 266 273 276
+arg_ename                              parameter       char                     packed unaligned dcl 37 ref 273 277
+arg_new_uid                            parameter       bit(36)                  dcl 40 ref 228 235
+arg_newvol                             parameter       char                     packed unaligned dcl 41 ref 210 216
+arg_ptr                                parameter       pointer                  dcl 38 ref 178 182
+arg_uid                                parameter       bit(36)                  dcl 39 ref 134 140 168 172 210 217 228 234 246 252
+arg_volume                             parameter       char                     packed unaligned dcl 34 ref 134 139 168 171 178 181
+                                                                                  210 215 228 233 246 251 335 338
+based_seg_bit_array                    based           bit(36)                  array dcl 69 set ref 204* 204
+based_seg_size                  000276 automatic       fixed bin(18,0)          dcl 68 set ref 203* 204
+bin                                                    builtin function         dcl 129 ref 328 328
+call_check                      000271 automatic       bit(1)                   packed unaligned dcl 62 set ref 351* 370* 384* 397
+cleanup                         000312 stack reference condition                dcl 127 ref 142 186 218 236 253 285 341
+code                            000121 automatic       fixed bin(35,0)          dcl 48 set ref 143* 144 147* 153* 159 173* 187* 188
+                                                                                  191* 192 195* 196 199* 200 219* 220 222* 237* 238
+                                                                                  240* 254* 255 257* 279* 281 286* 287 290* 292 299*
+                                                                                  300 300* 305* 306 318* 319 330* 342* 343 346* 347
+                                                                                  360* 361 364* 387* 397* 399* 401* 412* 413
+current_length            7     000277 automatic       fixed bin(12,0)          level 3 packed packed unsigned unaligned dcl 70 set
+                                                                                  ref 203
+default_path             24            based           bit(18)                  level 3 dcl 1-8 set ref 355*
+dir                             000144 automatic       char(168)                packed unaligned dcl 52 set ref 195* 199* 266* 267*
+                                                                                  276* 279* 299* 328* 328 328 360* 364* 365* 378*
+                                                                                  378 387* 412* 415*
+dir_offset               16            based           bit(18)                  level 3 dcl 1-8 ref 357
+dirl                            000216 automatic       fixed bin(17,0)          dcl 53 set ref 195*
+ename                           000217 automatic       char(32)                 packed unaligned dcl 54 set ref 195* 199* 277* 279*
+                                                                                  299* 328* 360* 364* 378* 387* 412*
+error_table_$bad_uidpath        000114 external static fixed bin(35,0)          dcl 124 ref 361 399 413
+error_table_$namedup            000112 external static fixed bin(35,0)          dcl 123 ref 300
+hcs_$fs_get_path_name           000030 constant        entry                    external dcl 90 ref 195
+hcs_$status_long                000026 constant        entry                    external dcl 89 ref 199
+head                                   parameter       bit(18)                  dcl 408 in procedure "check_restrict" set ref 405
+                                                                                  410 419*
+head                                   based           structure                level 2 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdc_repair_"
+long                      4     000277 automatic       structure                level 2 dcl 70
+mdc_check_mdcs_                 000034 constant        entry                    external dcl 93 ref 330 397 448
+mdc_lock_$cleanup               000036 constant        entry                    external dcl 94 ref 142 218 236 253 463
+mdc_lock_$reset                 000040 constant        entry                    external dcl 95 ref 157
+mdc_lock_$set                   000042 constant        entry                    external dcl 96 ref 143 187 219 237 254 286 342
+mdc_lock_$set_test_mode         000044 constant        entry                    external dcl 97 ref 268
+mdc_parse_acct_$default         000046 constant        entry                    external dcl 99 ref 310
+mdc_util_$find_acctent          000050 constant        entry                    external dcl 101 ref 314
+mdc_util_$find_mdirent          000052 constant        entry                    external dcl 102 ref 295
+mdc_util_$free_mdirent          000054 constant        entry                    external dcl 103 ref 369 382
+mdc_util_$free_pathent          000056 constant        entry                    external dcl 104 ref 419
+mdc_util_$get_acctent           000060 constant        entry                    external dcl 105 ref 318
+mdc_util_$get_mdirent           000062 constant        entry                    external dcl 106 ref 305
+mdc_util_$thread_acctent        000064 constant        entry                    external dcl 107 ref 323
+mdc_util_$thread_mdirent        000066 constant        entry                    external dcl 109 ref 326
+mdcs                                   based           structure                level 1 dcl 1-8
+mdcs_head                              based           structure                level 1 dcl 1-12
+mdcs_util_$create_mdcs          000070 constant        entry                    external dcl 111 ref 147 173
+mdcs_util_$delete_mdcs          000072 constant        entry                    external dcl 112 ref 257
+mdcs_util_$find_mdcs            000074 constant        entry                    external dcl 113 ref 191
+mdcs_util_$find_mdcs_and_check  000076 constant        entry                    external dcl 114 ref 346
+mdcs_util_$find_mdcs_uid        000100 constant        entry                    external dcl 116 ref 290
+mdcs_util_$rename_mdcs          000102 constant        entry                    external dcl 118 ref 222
+mdcs_util_$set_mdcsdir          000104 constant        entry                    external dcl 119 ref 267
+mdcs_util_$term_mdcs            000106 constant        entry                    external dcl 120 ref 155 457
+mdcs_util_$update_lvid          000110 constant        entry                    external dcl 121 ref 240
+mdcsp                           000320 automatic       pointer                  dcl 1-6 set ref 155* 185* 191* 195* 204 284* 290*
+                                                                                  295* 305* 314* 318* 328 330* 340* 346* 353 355 357
+                                                                                  357 373 390 392 392 395 397* 410 422 445 448* 457
+                                                                                  457*
+mdirent                                based           structure                level 1 dcl 1-31
+mdirp                           000322 automatic       pointer                  dcl 1-29 set ref 295* 297 299* 305* 308 309 311 312
+                                                                                  325 326* 357* 357* 359 360 364 365 365 369* 378
+                                                                                  378 382* 387* 447
+msg                             000254 automatic       char(50)                 packed unaligned dcl 61 set ref 352* 354* 393* 415*
+name                      1            based           structure                level 2 dcl 1-45
+new_voluid                      000242 automatic       bit(36)                  dcl 58 set ref 235* 240*
+newvol                          000232 automatic       char(32)                 packed unaligned dcl 57 set ref 216* 222*
+next                                   based           bit(18)                  level 2 in structure "acctent" packed packed
+                                                                                  unaligned dcl 1-45 in procedure "mdc_repair_" ref
+                                                                                  395
+next                                   based           bit(18)                  level 2 in structure "pathent" packed packed
+                                                                                  unaligned dcl 1-60 in procedure "mdc_repair_" ref
+                                                                                  411
+next                                   based           bit(18)                  level 2 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 1-31 in procedure "mdc_repair_" ref
+                                                                                  359
+next_rel                        000273 automatic       bit(18)                  packed unaligned dcl 64 set ref 359* 390 411* 422
+null                                                   builtin function         dcl 129 ref 185 199 199 284 297 316 340 457
+old_privileges                  000275 automatic       bit(36)                  dcl 67 set ref 349* 402* 460*
+owner                    21            based           structure                level 2 dcl 1-31
+p                               000230 automatic       pointer                  dcl 56 set ref 182* 204
+pathent                                based           structure                level 1 dcl 1-60
+pathp                           000326 automatic       pointer                  dcl 1-58 set ref 410* 410* 411 412 415 415 419*
+paths_deleted                   000272 automatic       bit(1)                   packed unaligned dcl 63 set ref 351* 371* 385* 399
+                                                                                  420*
+person                   21            based           char(22)                 level 3 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 1-31 in procedure "mdc_repair_" set
+                                                                                  ref 311*
+person                          000243 automatic       char(22)                 packed unaligned dcl 59 in procedure "mdc_repair_"
+                                                                                  set ref 310* 311 314* 321
+person                    1            based           char(22)                 level 3 in structure "acctent" packed packed
+                                                                                  unaligned dcl 1-45 in procedure "mdc_repair_" set
+                                                                                  ref 321* 393
+project                   6(18)        based           char(9)                  level 3 in structure "acctent" packed packed
+                                                                                  unaligned dcl 1-45 in procedure "mdc_repair_" set
+                                                                                  ref 322* 393
+project                         000251 automatic       char(9)                  packed unaligned dcl 60 in procedure "mdc_repair_"
+                                                                                  set ref 310* 312 314* 322
+project                  26(18)        based           char(9)                  level 3 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 1-31 in procedure "mdc_repair_" set
+                                                                                  ref 312*
+ptr                                                    builtin function         dcl 129 ref 357 390 392 395 410 422
+quota                    32            based           fixed bin(18,0)          level 2 in structure "mdirent" dcl 1-31 in procedure
+                                                                                  "mdc_repair_" set ref 309* 443 445* 447*
+quota                           000143 automatic       fixed bin(18,0)          dcl 51 in procedure "mdc_repair_" set ref 279* 299*
+                                                                                  309 328* 360* 387*
+quota_offset             31            based           bit(18)                  level 2 dcl 1-31 set ref 325*
+r0_volume                       000110 automatic       bit(36)                  dcl 46 set ref 360* 373 376* 378*
+rel                                                    builtin function         dcl 129 ref 325 357 392 410
+restrict_path            20            based           bit(18)                  level 2 in structure "acctent" dcl 1-45 in procedure
+                                                                                  "mdc_repair_" set ref 394*
+restrict_path            23            based           bit(18)                  level 3 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdc_repair_" set ref 353*
+rtrim                                                  builtin function         dcl 129 ref 393 393
+set_privileges                  000274 automatic       bit(1)                   initial packed unaligned dcl 65 set ref 65* 350* 460
+status_branch                          based           structure                level 1 dcl 4-8
+status_struc                    000277 automatic       structure                level 1 dcl 70 set ref 199 199
+temp_lvname                     000111 automatic       char(32)                 packed unaligned dcl 47 set ref 375* 376* 378*
+uid                      14            based           bit(36)                  level 3 dcl 1-8 ref 373
+uidpath                         000123 automatic       bit(36)                  array dcl 50 in procedure "mdc_repair_" set ref 279*
+                                                                                  295* 308
+uidpath                   1            based           bit(36)                  array level 2 in structure "mdirent" dcl 1-31
+                                                                                  in procedure "mdc_repair_" set ref 308* 360* 364*
+                                                                                  365 365 378 378
+uidpath                   1            based           bit(36)                  array level 2 in structure "pathent" dcl 1-60
+                                                                                  in procedure "mdc_repair_" set ref 412* 415 415
+voluid                          000122 automatic       bit(36)                  dcl 49 set ref 140* 147* 172* 173* 217* 222* 234*
+                                                                                  240* 252* 257* 279* 290*
+volume                    4            based           char(32)                 level 3 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdc_repair_" set ref 328* 438* 445*
+volume                          000100 automatic       char(32)                 packed unaligned dcl 45 in procedure "mdc_repair_"
+                                                                                  set ref 139* 147* 171* 173* 181* 191* 215* 222*
+                                                                                  233* 240* 251* 257* 338* 346* 365* 378* 415*
+volume_registration_mgr_$find_lvname
+                                000032 constant        entry                    external dcl 91 ref 376
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ALL_PRIVILEGES                         internal static bit(36)                  initial dcl 5-16
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 2-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 2-7
+COMM_PRIVILEGE                         internal static bit(36)                  initial dcl 5-16
+CRASH                                  internal static fixed bin(17,0)          initial dcl 2-7
+Directory                              internal static fixed bin(17,0)          initial dcl 4-56
+IPC_PRIVILEGE                          internal static bit(36)                  initial dcl 5-16
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 2-7
+Link                                   internal static fixed bin(17,0)          initial dcl 4-56
+RCP_PRIVILEGE                          internal static bit(36)                  initial dcl 5-16
+RING1_PRIVILEGE                        internal static bit(36)                  initial dcl 5-16
+SBL_access_audit                       internal static fixed bin(17,0)          initial dcl 3-47
+SBL_config_deck                        internal static fixed bin(17,0)          initial dcl 3-47
+SBL_disk_err                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_end_of_table                       internal static fixed bin(17,0)          initial dcl 3-47
+SBL_fnp_poll                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_hw_fault                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_ibm3270_mde                        internal static fixed bin(17,0)          initial dcl 3-47
+SBL_io_err                             internal static fixed bin(17,0)          initial dcl 3-47
+SBL_io_err_detail                      internal static fixed bin(17,0)          initial dcl 3-47
+SBL_mmdam                              internal static fixed bin(17,0)          initial dcl 3-47
+SBL_mos_err                            internal static fixed bin(17,0)          initial dcl 3-47
+SBL_mpc_poll                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_ocdcm_err                          internal static fixed bin(17,0)          initial dcl 3-47
+SBL_random_segdamage                   internal static fixed bin(17,0)          initial dcl 3-47
+SBL_read_nc                            internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_10                          internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_12                          internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_14                          internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_15                          internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_18                          internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_4                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_6                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_7                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_8                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_unused_9                           internal static fixed bin(17,0)          initial dcl 3-47
+SBL_verify_lock                        internal static fixed bin(17,0)          initial dcl 3-47
+SBL_vtoc_salv_dam                      internal static fixed bin(17,0)          initial dcl 3-47
+SBL_vtoce                              internal static fixed bin(17,0)          initial dcl 3-47
+SBL_zerpag                             internal static fixed bin(17,0)          initial dcl 3-47
+SB_access_audit                        internal static fixed bin(17,0)          initial dcl 3-47
+SB_access_audit_data_class             internal static varying char(16)         initial dcl 3-21
+SB_char_data_classes                   internal static varying char(16)         initial array dcl 3-89
+SB_config_deck                         internal static fixed bin(17,0)          initial dcl 3-47
+SB_config_deck_data_class              internal static varying char(16)         initial dcl 3-21
+SB_disk_err                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_end_of_table                        internal static fixed bin(17,0)          initial dcl 3-47
+SB_fnp_poll                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_fnp_poll_data_class                 internal static varying char(16)         initial dcl 3-21
+SB_hw_fault                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_hwfault_data_class                  internal static varying char(16)         initial dcl 3-21
+SB_ibm3270_mde                         internal static fixed bin(17,0)          initial dcl 3-47
+SB_ibm3270_mde_data_class              internal static varying char(16)         initial dcl 3-21
+SB_io_err                              internal static fixed bin(17,0)          initial dcl 3-47
+SB_io_err_detail                       internal static fixed bin(17,0)          initial dcl 3-47
+SB_io_status_data_class                internal static varying char(16)         initial dcl 3-21
+SB_mdc_del_uidpath_data_class          internal static varying char(16)         initial dcl 3-21
+SB_mmdam                               internal static fixed bin(17,0)          initial dcl 3-47
+SB_mmdam_data_class                    internal static varying char(16)         initial dcl 3-21
+SB_mos_data_class                      internal static varying char(16)         initial dcl 3-21
+SB_mos_err                             internal static fixed bin(17,0)          initial dcl 3-47
+SB_mpc_poll                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_mpc_poll_data_class                 internal static varying char(16)         initial dcl 3-21
+SB_ocdcm_err                           internal static fixed bin(17,0)          initial dcl 3-47
+SB_random_segdamage                    internal static fixed bin(17,0)          initial dcl 3-47
+SB_read_nc                             internal static fixed bin(17,0)          initial dcl 3-47
+SB_segdamage_data_class                internal static varying char(16)         initial dcl 3-21
+SB_unused_10                           internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_12                           internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_14                           internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_15                           internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_18                           internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_4                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_6                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_7                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_8                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_unused_9                            internal static fixed bin(17,0)          initial dcl 3-47
+SB_verify_lock                         internal static fixed bin(17,0)          initial dcl 3-47
+SB_voldamage_data_class                internal static varying char(16)         initial dcl 3-21
+SB_vtoc_salv_dam                       internal static fixed bin(17,0)          initial dcl 3-47
+SB_vtoce                               internal static fixed bin(17,0)          initial dcl 3-47
+SB_vtoce_data_class                    internal static varying char(16)         initial dcl 3-21
+SB_zerpag                              internal static fixed bin(17,0)          initial dcl 3-47
+SEG_PRIVILEGE                          internal static bit(36)                  initial dcl 5-16
+SOOS_PRIVILEGE                         internal static bit(36)                  initial dcl 5-16
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 2-7
+Segment                                internal static fixed bin(17,0)          initial dcl 4-56
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 2-7
+aim_privileges                         based           structure                level 1 packed packed unaligned dcl 5-5
+aim_privileges_ptr                     automatic       pointer                  dcl 5-4
+display_cpu_error_binary_defs          internal static fixed bin(17,0)          initial array dcl 3-144
+mdcs_version                           internal static fixed bin(17,0)          initial dcl 1-27
+status_area_ptr                        automatic       pointer                  dcl 4-47
+status_entry_names                     based           char(32)                 array dcl 4-47
+status_link                            based           structure                level 1 dcl 4-38
+status_pathname                        based           char                     dcl 4-47
+status_ptr                             automatic       pointer                  dcl 4-47
+syserr_binary_address_damage_mask      internal static bit(36)                  initial packed unaligned dcl 3-142
+syserr_binary_mos_mask                 internal static bit(36)                  initial packed unaligned dcl 3-139
+syserr_binary_seg_damage_mask          internal static bit(36)                  initial packed unaligned dcl 3-140
+syserr_binary_vol_damage_mask          internal static bit(36)                  initial packed unaligned dcl 3-141
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+check_restrict                  002652 constant        entry                    internal dcl 405 ref 353 355 394
+copy_mdcs                       000506 constant        entry                    external dcl 178
+delete_mdcs                     001200 constant        entry                    external dcl 246
+fix_mdirent_quota               003013 constant        entry                    internal dcl 427 ref 299 387
+good_return                     000407 constant        label                    dcl 153 ref 206
+make_mdcs                       000304 constant        entry                    external dcl 134
+mdc_repair_                     000271 constant        entry                    external dcl 29
+recreate_mdcs                   000431 constant        entry                    external dcl 168
+reg_cleanup                     003203 constant        entry                    internal dcl 454 ref 186 285 341
+register_mdir                   001353 constant        entry                    external dcl 273
+rename_mdcs                     000741 constant        entry                    external dcl 210
+return_code                     000424 constant        label                    dcl 159 ref 144 174 188 220 238 255 281 287 343
+set_mdcsdir                     001306 constant        entry                    external dcl 263
+term_return                     000410 constant        label                    dcl 155 ref 196 200 302 306 319 331 403
+unlock_return                   000417 constant        label                    dcl 157 ref 149 192 223 241 258 292 347
+update_lvid                     001066 constant        entry                    external dcl 228
+validate_uidpaths               002012 constant        entry                    external dcl 335
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4042        4160    3262        4052
+Length      4560    3262       116         363     557           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+mdc_repair_                         560 external procedure  is an external procedure.  
+on unit on line 142                  64 on unit               
+on unit on line 186                  64 on unit               
+on unit on line 218                  64 on unit               
+on unit on line 236                  64 on unit               
+on unit on line 253                  64 on unit               
+on unit on line 285                  64 on unit               
+on unit on line 341                  64 on unit               
+check_restrict                          internal procedure  shares stack frame of external procedure mdc_repair_.  
+fix_mdirent_quota                       internal procedure  shares stack frame of external procedure mdc_repair_.  
+reg_cleanup                          68 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+mdc_repair_              000100 volume                      mdc_repair_
+                         000110 r0_volume                   mdc_repair_
+                         000111 temp_lvname                 mdc_repair_
+                         000121 code                        mdc_repair_
+                         000122 voluid                      mdc_repair_
+                         000123 uidpath                     mdc_repair_
+                         000143 quota                       mdc_repair_
+                         000144 dir                         mdc_repair_
+                         000216 dirl                        mdc_repair_
+                         000217 ename                       mdc_repair_
+                         000227 access                      mdc_repair_
+                         000230 p                           mdc_repair_
+                         000232 newvol                      mdc_repair_
+                         000242 new_voluid                  mdc_repair_
+                         000243 person                      mdc_repair_
+                         000251 project                     mdc_repair_
+                         000254 msg                         mdc_repair_
+                         000271 call_check                  mdc_repair_
+                         000272 paths_deleted               mdc_repair_
+                         000273 next_rel                    mdc_repair_
+                         000274 set_privileges              mdc_repair_
+                         000275 old_privileges              mdc_repair_
+                         000276 based_seg_size              mdc_repair_
+                         000277 status_struc                mdc_repair_
+                         000320 mdcsp                       mdc_repair_
+                         000322 mdirp                       mdc_repair_
+                         000324 acctp                       mdc_repair_
+                         000326 pathp                       mdc_repair_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        call_int_other
+return_mac          enable_op           shorten_stack       ext_entry           ext_entry_desc      int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$decode_uidpath    admin_gate_$mdir_status       admin_gate_$mdir_status_uid_priv
+admin_gate_$reset_privileges  admin_gate_$set_privileges    admin_gate_$syserr            admin_gate_$syserr_binary
+hcs_$fs_get_path_name         hcs_$status_long              mdc_check_mdcs_               mdc_lock_$cleanup
+mdc_lock_$reset               mdc_lock_$set                 mdc_lock_$set_test_mode       mdc_parse_acct_$default
+mdc_util_$find_acctent        mdc_util_$find_mdirent        mdc_util_$free_mdirent        mdc_util_$free_pathent
+mdc_util_$get_acctent         mdc_util_$get_mdirent         mdc_util_$thread_acctent      mdc_util_$thread_mdirent
+mdcs_util_$create_mdcs        mdcs_util_$delete_mdcs        mdcs_util_$find_mdcs
+mdcs_util_$find_mdcs_and_check                              mdcs_util_$find_mdcs_uid      mdcs_util_$rename_mdcs
+mdcs_util_$set_mdcsdir        mdcs_util_$term_mdcs          mdcs_util_$update_lvid
+volume_registration_mgr_$find_lvname
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_uidpath      error_table_$namedup
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     65 000265        29 000270       134 000277       139 000323       140 000331       142 000333       143 000354
+    144 000363       147 000365       149 000406       153 000407       155 000410       157 000417       159 000424
+    161 000426       168 000427       171 000450       172 000456       173 000460       174 000501       178 000502
+    181 000525       182 000533       183 000536       185 000537       186 000541       187 000563       188 000572
+    191 000574       192 000621       195 000623       196 000654       199 000656       200 000717       203 000721
+    204 000725       206 000733       210 000734       215 000765       216 000773       217 001000       218 001002
+    219 001023       220 001032       222 001034       223 001060       228 001061       233 001105       234 001113
+    235 001115       236 001117       237 001140       238 001147       240 001151       241 001175       246 001176
+    251 001217       252 001225       253 001227       254 001250       255 001257       257 001261       258 001302
+    263 001303       266 001322       267 001330       268 001341       269 001346       273 001347       276 001377
+    277 001405       278 001412       279 001413       281 001450       284 001452       285 001454       286 001476
+    287 001505       290 001507       292 001524       295 001526       297 001541       299 001545       300 001547
+    302 001554       305 001555       306 001570       308 001572       309 001576       310 001600       311 001615
+    312 001621       314 001624       316 001650       318 001654       319 001667       321 001671       322 001675
+    323 001700       325 001707       326 001712       328 001721       330 001774       331 002005       335 002006
+    338 002031       339 002037       340 002040       341 002042       342 002064       343 002073       346 002075
+    347 002122       349 002124       350 002135       351 002137       352 002141       353 002144       354 002153
+    355 002156       357 002165       359 002174       360 002177       361 002235       364 002241       365 002266
+    369 002333       370 002342       371 002344       372 002345       373 002346       375 002352       376 002355
+    378 002376       382 002466       384 002475       385 002477       386 002500       387 002501       390 002503
+    392 002510       393 002520       394 002603       395 002612       397 002620       399 002633       401 002641
+    402 002642       403 002651       405 002652       410 002654       411 002664       412 002667       413 002715
+    415 002721       419 002771       420 003003       422 003005       423 003012       427 003013       436 003015
+    438 003020       441 003075       443 003100       445 003106       447 003164       448 003170       450 003201
+    454 003202       457 003210       460 003223       463 003235       464 003242
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

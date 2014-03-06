@@ -1,0 +1,649 @@
+	COMPILATION LISTING OF SEGMENT fs_alloc
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1716.66_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 fs_alloc: proc;					/* Procedure to allocate things. */
+       15 
+       16 /*
+       17*   NAME:	fs_alloc
+       18*
+       19*   This program is a general purpose file system allocation proceedure.
+       20*
+       21*   ENTRY:	fs_alloc$init
+       22*
+       23*   This entry is called once per allocation area to set up the sizes of elements
+       24*   to be allocated and the size of the area.
+       25*
+       26*   USAGE:	call fs_alloc$init (areap, areasize, arrayp, nosize);
+       27*
+       28*   1) areap (pointer)			pointer to the area to be initialized (Input)
+       29*   2) areasize (fixed bin (17))		size of the area to be initialized (Input)
+       30*   3) arrayp (pointer)			pointer to  an arry  of sizes of elements which
+       31*   may be allocated in the area (Input)
+       32*   4) nosize (fixed bin (17))		number of different sizes to be allocated (Input)
+       33*
+       34*   ENTRY:	fs_alloc$alloc
+       35*
+       36*   This entry is called to allocate space in the area.
+       37*
+       38*   USAGE:	call fs_alloc$alloc (areap, size, ptr);
+       39*
+       40*   1) areap (pointer)			pointer to the base of the area where space is
+       41*   to be allocated (Input)
+       42*   2) size (fixed bin (17))			size of space to allocate (Input)
+       43*   3) ptr (pointer)			pointer to the allocated space (Output)
+       44*
+       45*   NOTE:	The argument ptr is null if space cannot be allocated.
+       46*   All allocation is done mod 2 and starts on an even word boundary.
+       47*
+       48*   ENTRY:	fs_alloc$free
+       49*
+       50*   This entry is called to free previously allocated space.
+       51*
+       52*   USAGE:	call fs_alloc$free (areap, size, ptr);
+       53*
+       54*   The arguments are as for the alloc entry except that here ptr is input.
+       55*
+       56*   */
+       57 /* Modified 3/77 by S.E. Barr to clear the size/type word in blocks that are freed. This prevents the salvager
+       58*   from recovering these blocks later. */
+       59 /* Modified 07/77 by THVV for bad_dir_ check */
+       60 
+       61 
+       62 dcl  arrayp ptr,
+       63      nbits fixed bin,
+       64     (size, nsizes) fixed bin (17);
+       65 
+  1     1 /*     BEGIN INCLUDE FILE ... dir_allocation_area.incl.pl1 ... last modified December 1973 */
+  1     2 
+  1     3 dcl  areap ptr;
+  1     4 
+  1     5 dcl 1 area based (areap) aligned,
+  1     6     2 nsizes fixed bin (18),				/* Number of types. */
+  1     7     2 lu fixed bin (18),				/* Next available word in area. */
+  1     8     2 lw fixed bin (18),				/* Last usable word. */
+  1     9     2 array (100) aligned,				/* Array of types. */
+  1    10       3 fptr bit (18) unaligned,			/* Free pointer for this size. */
+  1    11       3 size fixed bin (17) unaligned;			/* Size. */
+  1    12 
+  1    13 /*     END INCLUDE FILE ... dir_allocation_area.incl.pl1 */
+       66 
+       67 
+       68 dcl  last_free_rp bit (18) based (arrayp) aligned;
+       69 dcl  clear bit (nbits) aligned based;
+       70 dcl  ia (100) fixed bin (17) aligned based (arrayp);
+       71 dcl  word (2) bit (36) aligned based;			/* 2nd word of all blocks contains size/type fields */
+       72 
+       73 
+       74 dcl  i fixed bin (17);				/* convenient index */
+       75 
+       76 
+       77 dcl (addr, bin, divide, null, ptr, rel) builtin;
+       78 dcl bad_dir_ condition;
+       79 
+       80 
+       81 init:	entry (ap, s, arp, ns);			/* Entry to init. the area. */
+       82 
+       83 dcl (ap, arp) ptr,
+       84     (s, ns) fixed bin (17);
+       85 
+       86 	areap = ap;				/* Copy args. */
+       87 	size = s;
+       88 	arrayp = arp;
+       89 	nsizes = ns;
+       90 
+       91 	do i = 1 to nsizes;				/* Loop over all slots. */
+       92 	     areap -> area.array (i).size = arrayp -> ia (i); /* Set size in area. */
+       93 	     areap -> area.array (i).fptr = "0"b;	/* Clear free pointer. */
+       94 	end;
+       95 	areap -> area.nsizes = nsizes;		/* Set number of diff. sizes to allocate. */
+       96 	areap -> area.lw = bin (rel (areap), 18) + size -1; /* Set rel. ptr to last good word. */
+       97 	areap -> area.lu = divide (bin (rel (addr (areap -> area.array (nsizes+1))), 18)+1, 2, 17, 0) * 2;
+       98 						/* Set rel. ptr to next good even word. */
+       99 	return;
+      100 
+      101 alloc:	entry (ap, s, rp);				/* Entry to allocate some things. */
+      102 
+      103 dcl  rp ptr;
+      104 
+      105 	size = s;					/* Copy args. */
+      106 	areap = ap;
+      107 
+      108 allocate: 
+      109 	do i = 1 to areap -> area.nsizes;		/* Loop over all size slots. */
+      110 	     if areap -> area.array (i).size = size then do; /* Look for right one. */
+      111 		if areap -> area.array (i).fptr then do; /* See if one is free. */
+      112 		     rp = ptr (areap, areap -> area.array (i).fptr); /* Set return ptr. */
+      113 		     areap -> area.array (i).fptr = rp -> last_free_rp; /* Rethread free list. */
+      114 		end;
+      115 		else do;				/* Nothing free..get more. */
+      116 		     if areap -> area.lu + size - 1 > areap -> area.lw
+      117 			then do;			/* return null ptr if empty */
+      118 			rp = null;
+      119 			return;
+      120 		     end;
+      121 		     else do;
+      122 			rp = ptr (areap, areap -> area.lu); /* Set return ptr to enw space. */
+      123 			areap -> area.lu = areap -> area.lu + divide (size+1, 2, 17, 0) * 2;
+      124 							/* Bump last used ptr. */
+      125 		     end;
+      126 		end;
+      127 
+      128 		nbits = size * 36;			/* Clear newly allocated words. */
+      129 		rp -> clear = "0"b;			/* Best way to zero out space - Sept 1974 */
+      130 		return;
+      131 	     end;
+      132 	end;
+      133 	signal bad_dir_;				/* Used to crash system here with illegal allocation */
+      134 
+      135 free:	entry (ap, s, rp);				/* Entry to free up space. */
+      136 
+      137 	areap = ap;				/* Copy args. */
+      138 	size = s;
+      139 
+      140 	do i = 1 to areap -> area.nsizes;		/* Look for right slot. */
+      141 	     if areap -> area.array (i).size = size then do; /* ... */
+      142 		rp -> last_free_rp = areap -> area.array (i).fptr; /* Thread onto free list. */
+      143 		areap -> area.array (i).fptr = rel (rp);
+      144 		rp -> word (2) = "0"b;
+      145 		return;
+      146 	     end;
+      147 	end;
+      148 	signal bad_dir_;				/* used to crash system with illegal freeing */
+      149 
+      150      end fs_alloc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1716.6  fs_alloc.pl1                      >udd>sm>ds>w>ml>fs_alloc.pl1
+66           1    10/15/76  1342.9  dir_allocation_area.incl.pl1      >ldd>incl>dir_allocation_area.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 77 ref 97
+ap                                     parameter       pointer                  dcl 83 ref 81 86 101 106 135 137
+area                                   based           structure                level 1 dcl 1-5
+areap                           000106 automatic       pointer                  dcl 1-3 set ref 86* 92 93 95 96 96 97 97 106* 108
+                                                                                  110 111 112 112 113 116 116 122 122 123 123 137*
+                                                                                  140 141 142 143
+arp                                    parameter       pointer                  dcl 83 ref 81 88
+array                     3            based           structure                array level 2 dcl 1-5 set ref 97
+arrayp                          000100 automatic       pointer                  dcl 62 set ref 88* 92
+bad_dir_                        000112 stack reference condition                dcl 78 ref 133 148
+bin                                                    builtin function         dcl 77 ref 96 97
+clear                                  based           bit                      dcl 69 set ref 129*
+divide                                                 builtin function         dcl 77 ref 97 123
+fptr                      3            based           bit(18)                  array level 3 packed packed unaligned dcl 1-5 set
+                                                                                  ref 93* 111 112 113* 142 143*
+i                               000110 automatic       fixed bin(17,0)          dcl 74 set ref 91* 92 92 93* 108* 110 111 112 113*
+                                                                                  140* 141 142 143*
+ia                                     based           fixed bin(17,0)          array dcl 70 ref 92
+last_free_rp                           based           bit(18)                  dcl 68 set ref 113 142*
+lu                        1            based           fixed bin(18,0)          level 2 dcl 1-5 set ref 97* 116 122 123* 123
+lw                        2            based           fixed bin(18,0)          level 2 dcl 1-5 set ref 96* 116
+nbits                           000102 automatic       fixed bin(17,0)          dcl 62 set ref 128* 129
+ns                                     parameter       fixed bin(17,0)          dcl 83 ref 81 89
+nsizes                          000104 automatic       fixed bin(17,0)          dcl 62 in procedure "fs_alloc" set ref 89* 91 95 97
+nsizes                                 based           fixed bin(18,0)          level 2 in structure "area" dcl 1-5 in procedure
+                                                                                  "fs_alloc" set ref 95* 108 140
+null                                                   builtin function         dcl 77 ref 118
+ptr                                                    builtin function         dcl 77 ref 112 122
+rel                                                    builtin function         dcl 77 ref 96 97 143
+rp                                     parameter       pointer                  dcl 103 set ref 101 112* 113 118* 122* 129 135 142
+                                                                                  143 144
+s                                      parameter       fixed bin(17,0)          dcl 83 ref 81 87 101 105 135 138
+size                      3(18)        based           fixed bin(17,0)          array level 3 in structure "area" packed packed
+                                                                                  unaligned dcl 1-5 in procedure "fs_alloc" set ref
+                                                                                  92* 110 141
+size                            000103 automatic       fixed bin(17,0)          dcl 62 in procedure "fs_alloc" set ref 87* 96 105*
+                                                                                  110 116 123 128 138* 141
+word                                   based           bit(36)                  array dcl 71 set ref 144*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+alloc                           000110 constant        entry                    external dcl 101
+allocate                        000123 constant        label                    dcl 108
+free                            000224 constant        entry                    external dcl 135
+fs_alloc                        000007 constant        entry                    external dcl 14
+init                            000022 constant        entry                    external dcl 81
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       342         352     277         352
+Length       534     277        10         146      43           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+fs_alloc                             84 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+fs_alloc                 000100 arrayp                      fs_alloc
+                         000102 nbits                       fs_alloc
+                         000103 size                        fs_alloc
+                         000104 nsizes                      fs_alloc
+                         000106 areap                       fs_alloc
+                         000110 i                           fs_alloc
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          signal_op           ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+CONSTANTS
+000000  aa     404000000021
+
+000001  aa     464000000000
+
+000002  aa     077777000043
+000003  aa     000001000000
+
+000004  aa  142 141 144 137	bad_
+000005  aa  144 151 162 137	dir_
+
+BEGIN PROCEDURE fs_alloc
+ENTRY TO fs_alloc                                           STATEMENT 1 ON LINE 14
+fs_alloc: proc;
+
+000006  da     000020200000
+000007  aa   000140 6270 00	eax7 	96
+000010  aa  7 00034 3521 20	epp2 	pr7|28,*
+000011  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000012  aa     000000000000
+000013  aa     000000000000
+						STATEMENT 1 ON LINE 81
+init:	entry (ap, s, arp, ns);
+
+000014  aa   000013 7100 04	tra  	11,ic		000027
+ENTRY TO init                                               STATEMENT 1 ON LINE 81
+init:	entry (ap, s, arp, ns);
+
+000015  at     000004000001
+000016  tt     000000000001
+000017  ta     000000000000
+000020  ta     000015000000
+000021  da     000025300000
+000022  aa   000140 6270 00	eax7 	96
+000023  aa  7 00034 3521 20	epp2 	pr7|28,*
+000024  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000025  aa     000010000000
+000026  aa     000000000000
+						STATEMENT 1 ON LINE 86
+	areap = ap;
+
+000027  aa  6 00032 3735 20	epp7 	pr6|26,*
+000030  aa  7 00002 3715 20	epp5 	pr7|2,*		ap
+000031  aa  5 00000 3715 20	epp5 	pr5|0,*		ap
+000032  aa  6 00106 6515 00	spri5	pr6|70		areap
+						STATEMENT 1 ON LINE 87
+	size = s;
+
+000033  aa  7 00004 2361 20	ldq  	pr7|4,*		s
+000034  aa  6 00103 7561 00	stq  	pr6|67		size
+						STATEMENT 1 ON LINE 88
+	arrayp = arp;
+
+000035  aa  7 00006 3535 20	epp3 	pr7|6,*		arp
+000036  aa  3 00000 3535 20	epp3 	pr3|0,*		arp
+000037  aa  6 00100 2535 00	spri3	pr6|64		arrayp
+						STATEMENT 1 ON LINE 89
+	nsizes = ns;
+
+000040  aa  7 00010 2361 20	ldq  	pr7|8,*		ns
+000041  aa  6 00104 7561 00	stq  	pr6|68		nsizes
+						STATEMENT 1 ON LINE 91
+	do i = 1 to nsizes;
+
+000042  aa  6 00120 7561 00	stq  	pr6|80
+000043  aa   000001 2360 07	ldq  	1,dl
+000044  aa  6 00110 7561 00	stq  	pr6|72		i
+000045  aa   000000 0110 03	nop  	0,du
+000046  aa  6 00110 2361 00	ldq  	pr6|72		i
+000047  aa  6 00120 1161 00	cmpq 	pr6|80
+000050  aa   000013 6054 04	tpnz 	11,ic		000063
+						STATEMENT 1 ON LINE 92
+	     areap -> area.array (i).size = arrayp -> ia (i);
+
+000051  aa  6 00100 3735 20	epp7 	pr6|64,*		arrayp
+000052  aa  7 77777 2361 06	ldq  	pr7|-1,ql		ia
+000053  aa  6 00110 7271 00	lxl7 	pr6|72		i
+000054  aa  6 00106 3715 20	epp5 	pr6|70,*		areap
+000055  aa  5 00002 3535 17	epp3 	pr5|2,7		area.size
+000056  aa  3 00000 5521 14	stbq 	pr3|0,14		area.size
+						STATEMENT 1 ON LINE 93
+	     areap -> area.array (i).fptr = "0"b;
+
+000057  aa   777777 2350 07	lda  	262143,dl
+000060  aa  5 00002 3551 17	ansa 	pr5|2,7		area.fptr
+						STATEMENT 1 ON LINE 94
+	end;
+
+000061  aa  6 00110 0541 00	aos  	pr6|72		i
+000062  aa   777764 7100 04	tra  	-12,ic		000046
+						STATEMENT 1 ON LINE 95
+	areap -> area.nsizes = nsizes;
+
+000063  aa  6 00104 2361 00	ldq  	pr6|68		nsizes
+000064  aa  6 00106 7561 20	stq  	pr6|70,*		area.nsizes
+						STATEMENT 1 ON LINE 96
+	areap -> area.lw = bin (rel (areap), 18) + size -1;
+
+000065  aa  6 00106 6351 20	eaa  	pr6|70,*		areap
+000066  aa   000066 7730 00	lrl  	54
+000067  aa  6 00103 0761 00	adq  	pr6|67		size
+000070  aa   000001 1760 07	sbq  	1,dl
+000071  aa  6 00106 3735 20	epp7 	pr6|70,*		areap
+000072  aa  7 00002 7561 00	stq  	pr7|2		area.lw
+						STATEMENT 1 ON LINE 97
+	areap -> area.lu = divide (bin (rel (addr (areap -> area.array (nsizes+1))), 18)+1, 2, 17, 0) * 2;
+
+000073  aa  6 00104 7271 00	lxl7 	pr6|68		nsizes
+000074  aa  7 00003 3715 17	epp5 	pr7|3,7		area.array
+000075  aa  5 00000 6351 00	eaa  	pr5|0
+000076  aa   000066 7730 00	lrl  	54
+000077  aa   000001 0760 07	adq  	1,dl
+000100  aa   000002 5060 07	div  	2,dl
+000101  aa   000001 7360 00	qls  	1
+000102  aa  7 00001 7561 00	stq  	pr7|1		area.lu
+						STATEMENT 1 ON LINE 99
+	return;
+
+000103  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO alloc                                              STATEMENT 1 ON LINE 101
+alloc:	entry (ap, s, rp);
+
+000104  at     000003000001
+000105  tt     000000000001
+000106  ta     000104000000
+000107  da     000032300000
+000110  aa   000140 6270 00	eax7 	96
+000111  aa  7 00034 3521 20	epp2 	pr7|28,*
+000112  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000113  aa     000006000000
+000114  aa     000000000000
+						STATEMENT 1 ON LINE 105
+	size = s;
+
+000115  aa  6 00032 3735 20	epp7 	pr6|26,*
+000116  aa  7 00004 2361 20	ldq  	pr7|4,*		s
+000117  aa  6 00103 7561 00	stq  	pr6|67		size
+						STATEMENT 1 ON LINE 106
+	areap = ap;
+
+000120  aa  7 00002 3715 20	epp5 	pr7|2,*		ap
+000121  aa  5 00000 3715 20	epp5 	pr5|0,*		ap
+000122  aa  6 00106 6515 00	spri5	pr6|70		areap
+						STATEMENT 1 ON LINE 108
+allocate: 
+	do i = 1 to areap -> area.nsizes;
+
+000123  aa  5 00000 2361 00	ldq  	pr5|0		area.nsizes
+000124  aa  6 00121 7561 00	stq  	pr6|81
+000125  aa   000001 2360 07	ldq  	1,dl
+000126  aa  6 00110 7561 00	stq  	pr6|72		i
+000127  aa   000000 0110 03	nop  	0,du
+000130  aa  6 00110 2361 00	ldq  	pr6|72		i
+000131  aa  6 00121 1161 00	cmpq 	pr6|81
+000132  aa   000064 6054 04	tpnz 	52,ic		000216
+						STATEMENT 1 ON LINE 110
+	     if areap -> area.array (i).size = size then do;
+
+000133  aa  6 00106 3735 20	epp7 	pr6|70,*		areap
+000134  aa  7 00002 2351 06	lda  	pr7|2,ql		area.size
+000135  aa   000022 7350 00	als  	18
+000136  aa   000066 7330 00	lrs  	54
+000137  aa  6 00103 1161 00	cmpq 	pr6|67		size
+000140  aa   000054 6010 04	tnz  	44,ic		000214
+						STATEMENT 1 ON LINE 111
+		if areap -> area.array (i).fptr then do;
+
+000141  aa  6 00110 7271 00	lxl7 	pr6|72		i
+000142  aa  7 00002 2351 17	lda  	pr7|2,7		area.fptr
+000143  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+000144  aa  6 00123 7551 00	sta  	pr6|83		area.fptr
+000145  aa   000011 6000 04	tze  	9,ic		000156
+						STATEMENT 1 ON LINE 112
+		     rp = ptr (areap, areap -> area.array (i).fptr);
+
+000146  aa  7 00000 3521 00	epp2 	pr7|0
+000147  aa   000000 3120 01	eawp2	0,au
+000150  aa  6 00032 3715 20	epp5 	pr6|26,*
+000151  aa  5 00006 2521 20	spri2	pr5|6,*		rp
+						STATEMENT 1 ON LINE 113
+		     areap -> area.array (i).fptr = rp -> last_free_rp;
+
+000152  aa  2 00000 2351 00	lda  	pr2|0		last_free_rp
+000153  aa  7 00002 3535 17	epp3 	pr7|2,7		area.fptr
+000154  aa  3 00000 5511 60	stba 	pr3|0,60		area.fptr
+						STATEMENT 1 ON LINE 114
+		end;
+
+000155  aa   000024 7100 04	tra  	20,ic		000201
+						STATEMENT 1 ON LINE 115
+		else do;
+
+						STATEMENT 1 ON LINE 116
+		     if areap -> area.lu + size - 1 > areap -> area.lw
+			then do;
+
+000156  aa  7 00001 2361 00	ldq  	pr7|1		area.lu
+000157  aa  6 00103 0761 00	adq  	pr6|67		size
+000160  aa   000001 1760 07	sbq  	1,dl
+000161  aa  7 00002 1161 00	cmpq 	pr7|2		area.lw
+000162  aa   000005 6044 04	tmoz 	5,ic		000167
+						STATEMENT 1 ON LINE 118
+			rp = null;
+
+000163  aa   777617 2370 04	ldaq 	-113,ic		000002 = 077777000043 000001000000
+000164  aa  6 00032 3715 20	epp5 	pr6|26,*
+000165  aa  5 00006 7571 20	staq 	pr5|6,*		rp
+						STATEMENT 1 ON LINE 119
+			return;
+
+000166  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 120
+		     end;
+
+						STATEMENT 1 ON LINE 121
+		     else do;
+
+						STATEMENT 1 ON LINE 122
+			rp = ptr (areap, areap -> area.lu);
+
+000167  aa  7 00001 2361 00	ldq  	pr7|1		area.lu
+000170  aa  7 00000 3521 00	epp2 	pr7|0
+000171  aa   000000 3120 06	eawp2	0,ql
+000172  aa  6 00032 3715 20	epp5 	pr6|26,*
+000173  aa  5 00006 2521 20	spri2	pr5|6,*		rp
+						STATEMENT 1 ON LINE 123
+			areap -> area.lu = areap -> area.lu + divide (size+1, 2, 17, 0) * 2;
+
+000174  aa  6 00103 2361 00	ldq  	pr6|67		size
+000175  aa   000001 0760 07	adq  	1,dl
+000176  aa   000002 5060 07	div  	2,dl
+000177  aa   000001 7360 00	qls  	1
+000200  aa  7 00001 0561 00	asq  	pr7|1		area.lu
+						STATEMENT 1 ON LINE 125
+		     end;
+
+						STATEMENT 1 ON LINE 126
+		end;
+
+						STATEMENT 1 ON LINE 128
+		nbits = size * 36;
+
+000201  aa  6 00103 2361 00	ldq  	pr6|67		size
+000202  aa   000044 4020 07	mpy  	36,dl
+000203  aa  6 00102 7561 00	stq  	pr6|66		nbits
+						STATEMENT 1 ON LINE 129
+		rp -> clear = "0"b;
+
+000204  aa   000010 0760 07	adq  	8,dl
+000205  aa   000011 5060 07	div  	9,dl
+000206  aa  5 00006 3535 20	epp3 	pr5|6,*		rp
+000207  aa  3 00000 3535 20	epp3 	pr3|0,*		rp
+000210  aa  000 140 100 400	mlr  	(),(pr,rl),fill(000)
+000211  aa   000000 00 0000	desc9a	0,0
+000212  aa  3 00000 00 0006	desc9a	pr3|0,ql		clear
+						STATEMENT 1 ON LINE 130
+		return;
+
+000213  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 131
+	     end;
+
+						STATEMENT 1 ON LINE 132
+	end;
+
+000214  aa  6 00110 0541 00	aos  	pr6|72		i
+000215  aa   777713 7100 04	tra  	-53,ic		000130
+						STATEMENT 1 ON LINE 133
+	signal bad_dir_;
+
+000216  aa   000010 7260 07	lxl6 	8,dl
+000217  aa   777565 3520 04	epp2 	-139,ic		000004 = 142141144137
+000220  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 135
+free:	entry (ap, s, rp);
+
+000221  aa   000010 7100 04	tra  	8,ic		000231
+ENTRY TO free                                               STATEMENT 1 ON LINE 135
+free:	entry (ap, s, rp);
+
+000222  ta     000104000000
+000223  da     000037300000
+000224  aa   000140 6270 00	eax7 	96
+000225  aa  7 00034 3521 20	epp2 	pr7|28,*
+000226  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000227  aa     000006000000
+000230  aa     000000000000
+						STATEMENT 1 ON LINE 137
+	areap = ap;
+
+000231  aa  6 00032 3735 20	epp7 	pr6|26,*
+000232  aa  7 00002 3715 20	epp5 	pr7|2,*		ap
+000233  aa  5 00000 3715 20	epp5 	pr5|0,*		ap
+000234  aa  6 00106 6515 00	spri5	pr6|70		areap
+						STATEMENT 1 ON LINE 138
+	size = s;
+
+000235  aa  7 00004 2361 20	ldq  	pr7|4,*		s
+000236  aa  6 00103 7561 00	stq  	pr6|67		size
+						STATEMENT 1 ON LINE 140
+	do i = 1 to areap -> area.nsizes;
+
+000237  aa  5 00000 2361 00	ldq  	pr5|0		area.nsizes
+000240  aa  6 00122 7561 00	stq  	pr6|82
+000241  aa   000001 2360 07	ldq  	1,dl
+000242  aa  6 00110 7561 00	stq  	pr6|72		i
+000243  aa   000000 0110 03	nop  	0,du
+000244  aa  6 00110 2361 00	ldq  	pr6|72		i
+000245  aa  6 00122 1161 00	cmpq 	pr6|82
+000246  aa   000025 6054 04	tpnz 	21,ic		000273
+						STATEMENT 1 ON LINE 141
+	     if areap -> area.array (i).size = size then do;
+
+000247  aa  6 00106 3735 20	epp7 	pr6|70,*		areap
+000250  aa  7 00002 2351 06	lda  	pr7|2,ql		area.size
+000251  aa   000022 7350 00	als  	18
+000252  aa   000066 7330 00	lrs  	54
+000253  aa  6 00103 1161 00	cmpq 	pr6|67		size
+000254  aa   000015 6010 04	tnz  	13,ic		000271
+						STATEMENT 1 ON LINE 142
+		rp -> last_free_rp = areap -> area.array (i).fptr;
+
+000255  aa  6 00110 7271 00	lxl7 	pr6|72		i
+000256  aa  7 00002 2351 17	lda  	pr7|2,7		area.fptr
+000257  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+000260  aa  6 00032 3715 20	epp5 	pr6|26,*
+000261  aa  5 00006 3535 20	epp3 	pr5|6,*		rp
+000262  aa  3 00000 7551 20	sta  	pr3|0,*		last_free_rp
+						STATEMENT 1 ON LINE 143
+		areap -> area.array (i).fptr = rel (rp);
+
+000263  aa  3 00000 6351 20	eaa  	pr3|0,*		rp
+000264  aa  7 00002 3515 17	epp1 	pr7|2,7		area.fptr
+000265  aa  1 00000 5511 60	stba 	pr1|0,60		area.fptr
+						STATEMENT 1 ON LINE 144
+		rp -> word (2) = "0"b;
+
+000266  aa  3 00000 3515 20	epp1 	pr3|0,*		rp
+000267  aa  1 00001 4501 00	stz  	pr1|1		word
+						STATEMENT 1 ON LINE 145
+		return;
+
+000270  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 146
+	     end;
+
+						STATEMENT 1 ON LINE 147
+	end;
+
+000271  aa  6 00110 0541 00	aos  	pr6|72		i
+000272  aa   777752 7100 04	tra  	-22,ic		000244
+						STATEMENT 1 ON LINE 148
+	signal bad_dir_;
+
+000273  aa   000010 7260 07	lxl6 	8,dl
+000274  aa   777510 3520 04	epp2 	-184,ic		000004 = 142141144137
+000275  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 150
+     end fs_alloc;
+
+000276  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END PROCEDURE fs_alloc
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

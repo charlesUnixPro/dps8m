@@ -1,0 +1,120 @@
+	COMPILATION LISTING OF SEGMENT display_access_class_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1006.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 /* format: style2 */
+       12 
+       13 /**** DISPLAY_ACCESS_CLASS_ - This module converts a bit (72) representation of
+       14*   the Multics Access Isolation Mechanism (AIM) access class marking
+       15*   into a string of the form:
+       16*
+       17*   LLL...L:CCC...C
+       18*
+       19*   where "LLL...L" is a octal sensitivity level number (generally one digit)
+       20*   and "CCC...C" is an octal for the access category set.
+       21*
+       22*   for a range, L:CCCCCC-L:CCCCC is used.
+       23*
+       24*   for an authorization, L:CCCCCC,PPPPPP is used, where P are the privileges.
+       25*
+       26*/* Originally coded 8/21/74 by Lee J. Scheffler */
+       27 /* 84-04-02 BIM : Range entrypoint added. */
+       28 /* 84-04-27 BIM : display_authorization_ added, modernized. */
+       29 
+       30 display_access_class_: convert_aim_attributes_:
+       31      procedure (aim_attributes) returns (char (32) aligned);
+       32 
+       33 	dcl     aim_attributes	 bit (72) aligned parameter;
+       34 						/* access authorization or class */
+       35 
+       36 	dcl     aim_string		 char (32);
+       37 	dcl     display_privileges	 bit (1) aligned;
+       38 
+       39 	dcl     ioa_$rsnnl		 entry () options (variable);
+       40 
+       41 
+  1     1 /* BEGIN INCLUDE FILE aim_template.incl.pl1 */
+  1     2 
+  1     3 /* Created 740723 by PG */
+  1     4 /* Modified 06/28/78 by C. D. Tavares to add rcp privilege */
+  1     5 /* Modified 83-05-10 by E. N. Kitltitz to add communications privilege */
+  1     6 
+  1     7 /* This structure defines the components of both an access
+  1     8*   class and an access authorization as interpreted by the
+  1     9*   Access Isolation Mechanism. */
+  1    10 
+  1    11 
+  1    12 dcl  1 aim_template aligned based,			/* authorization/access class template */
+  1    13        2 categories bit (36),				/* access categories */
+  1    14        2 level fixed bin (17) unaligned,		/* sensitivity level */
+  1    15        2 privileges unaligned,			/* special access privileges (in authorization only) */
+  1    16         (3 ipc,					/* interprocess communication privilege */
+  1    17          3 dir,					/* directory privilege */
+  1    18          3 seg,					/* segment privilege */
+  1    19          3 soos,					/* security out-of-service privilege */
+  1    20          3 ring1,					/* ring 1 access privilege */
+  1    21          3 rcp,					/* RCP resource access privilege */
+  1    22          3 comm) bit (1),				/* communications cross-AIM privilege */
+  1    23          3 pad bit (11);
+  1    24 
+  1    25 
+  1    26 /* END INCLUDE FILE aim_template.incl.pl1 */
+       42 
+       43 	declare 1 AIM		 aligned like aim_template;
+       44 
+       45 
+       46 	display_privileges = "0"b;
+       47 	go to COMMON;
+       48 
+       49 display_authorization_:
+       50      entry (aim_attributes) returns (char (32) aligned);
+       51 
+       52 	display_privileges = "1"b;
+       53 
+       54 COMMON:
+       55 	unspec (AIM) = aim_attributes;
+       56 
+       57 	a
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

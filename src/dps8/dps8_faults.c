@@ -1,4 +1,4 @@
-//
+ //
 //  dps8_faults.c
 //  dps8
 //
@@ -10,7 +10,9 @@
 
 #include "dps8.h"
 
+#ifndef QUIET_UNUSED
 static t_uint64 FR;
+#endif
 
 /*
  FAULT RECOGNITION
@@ -176,9 +178,9 @@ typedef enum {
 // "MR" Mode Register, L68
 typedef struct {
     // See member "word" for the raw bits, other member values are derivations
-    flag_t mr_enable; // bit 35 "n"
-    flag_t strobe; // bit 30 "l"
-    flag_t fault_reset; // bit 31 "m"
+    bool mr_enable; // bit 35 "n"
+    bool strobe; // bit 30 "l"
+    bool fault_reset; // bit 31 "m"
     t_uint64 word;
 } mode_reg_t;
 static mode_reg_t MR;
@@ -355,7 +357,9 @@ t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
 
 static bool bFaultCycle = false;       // when true then in FAULT CYCLE
 static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
+#ifndef QUIET_UNUSED
 static int nFaultNumber = -1;
+#endif
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 static int g7Faults = 0;
@@ -409,7 +413,7 @@ For now, at least, we must remember a few things:
 
 void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
 {
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d, fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037)  // quicker?
@@ -436,7 +440,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
                 sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
-                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", rIC);
+                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
                 sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
@@ -478,7 +482,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 #endif
     
 #if 0
-    int fltAddress = (rFAULTBASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
+    int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
     word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
   
     bFaultCycle = true;                 // enter FAULT CYCLE
@@ -493,7 +497,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     
     PPR.PRR = 0;
     
-    set_addr_mode(TEMPORARY_ABSOLUTE_mode);
+    set_TEMPORARY_ABSOLUTE_mode ();
     
     // MME expects the IC to point to the code being XEDed
     //if (f == &_faults[FAULT_MME] ||
@@ -513,7 +517,12 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 
     if (xrv == CONT_TRA)
     {
-        set_addr_mode(ABSOLUTE_mode);
+        // set_addr_mode(ABSOLUTE_mode);
+// The tricky case: We entered the fault in appending mode, and the fault
+// pair transfered in absolute mode. According to AL39 and T&D, we should
+// stay in absolute mode, not return to appending mode.
+        if (!clear_TEMPORARY_ABSOLUTE_mode ())
+          set_addr_mode (ABSOLUTE_mode);
         sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
     }
@@ -551,7 +560,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 //    _processor_addressing_mode modeTemp = processorAddressingMode;
 //    
 //    processorAddressingMode = ABSOLUTE_MODE;
-//    word24 rIC_temp = rIC;
+//    word24 rIC_temp = PPR.IC;
 //    
 //    t_stat ret = doFaultInstructionPair(i, fltAddress);
 //    

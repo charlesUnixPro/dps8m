@@ -1,0 +1,954 @@
+	COMPILATION LISTING OF SEGMENT rcp_ring1_init_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0942.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(85-09-11,Fawcett), approve(85-09-11,MCR6979),
+       17*     audit(85-12-19,CLJones), install(86-03-21,MR12.0-1033):
+       18*     Add MCA support
+       19*  2) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       20*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       21*     Correct error message documentation.
+       22*                                                   END HISTORY COMMENTS */
+       23 
+       24 /* format: indattr,inddcls,dclind5,idind30,struclvlind5,ifthenstmt,ifthendo,^inditerdo,^indnoniterend,case,^tree,^indproc,^indend,^delnl,^insnl,comcol81,indcom,linecom,^indcomtxt */
+       25 
+       26 rcp_ring1_init_: procedure (arg_rif, arg_ecode);
+       27 
+       28 	/*	This program is called to perform RCP initialization during the
+       29*   *	initialization of the answering service.  It is called by as_init_.
+       30*   *	It will create the RCP directory if it does not already exist.
+       31*   *	It will create an ACS for each device that does not already have one.
+       32*   *
+       33*   *	Created on 05/08/75 by Bill Silver.
+       34*   *	Modified on 09/21/77 by R.J.C. Kissel to add the workspace ACS.
+       35*   *	Modified on 04/24/78 by Michael R. Jordan to add RCPD modes initialization.
+       36*   *	Modified 11/14/78 by C. D. Tavares to add >sss to initializer's search rules for RCPRM use.
+       37*   *	Modified 3/79 by Michael R. Jordan for MR7.0R.
+       38*   *      Modified 04/79 by CDT for new authentication levels.
+       39*   *	Modified 4/82 by E. N. Kittlitz to log error setting search rules. 
+       40*   *	Modified 830103 to preassign operator's consoles... -E. A. Ranzenbach
+       41*   *      Modified 1984-10-27 by E. Swenson to remove setting of search rules
+       42*   *         for ring-1.  In a cold boot, the shutting down and rebooting
+       43*   *         which is directed in the installation instructions will get
+       44*   *         the ring-1 search rules in order.  In a non-cold boot, the
+       45*   *         the search rules will already be those specified as default in
+       46*   *         active_hardcore_data.
+       47*   *      Modified 1985-03-08, BIM: remove OPC preassignment -- it does
+       48*   *         the wrong thing.	         
+       49*   *      Modified 1985-04-03, PKF / RAF to add MCA support
+       50**/
+       51 
+       52 	dcl  arg_ecode		     fixed bin (35);		/* (O) error_table_ code. */
+       53 	dcl  1 arg_rif		     like rcp_init_flags;		/* pointer to rcp_info in installation parms */
+       54 
+       55 	dcl  rings		     (3) fixed bin (3);		/* Ring brackets for RCP directory. */
+       56 
+       57 	dcl  access		     fixed bin (5);			/* Access to an ACS segment. */
+       58 	dcl  caller_level		     fixed bin;			/* Caller's validation level. */
+       59 	dcl  dir_name		     char (168);			/* Directory containing the RCP direcotry. */
+       60 	dcl  ecode		     fixed bin (35);
+       61 	dcl  entryname		     char (32);			/* Entry name of the RCP directory. */
+       62 	dcl  group_id		     char (32);			/* Initializer process group ID. */
+       63 	dcl  i			     fixed bin;
+       64 
+       65 	dcl  rcp_level		     fixed bin;			/* Current validation level. */
+       66 	dcl  syserr_code		     fixed bin;			/* used in calls to syserr. */
+       67 
+       68 	dcl  wkspace_acs		     char (13) aligned internal static options (constant)
+       69 				     init ("workspace.acs");
+       70 
+       71 	dcl  (addr, substr, unspec)
+       72 				     builtin;
+       73 
+       74 	dcl  cleanup		     condition;
+       75 
+       76 	dcl  (error_table_$no_dir,
+       77 	     error_table_$noentry)	     fixed bin (35) external;
+       78 
+       79 	dcl  admin_gate_$syserr	     entry options (variable);
+       80 	dcl  admin_gate_$syserr_error_code entry options (variable);
+       81 	dcl  cu_$level_get		     entry (fixed bin);
+       82 	dcl  cu_$level_set		     entry (fixed bin);
+       83 	dcl  expand_pathname_	     entry (char (*), char (*), char (*), fixed bin (35));
+       84 	dcl  get_group_id_		     entry returns (char (32));
+       85 	dcl  get_ring_		     entry returns (fixed bin);
+       86 	dcl  hcs_$append_branch	     entry (char (*) aligned, char (*) aligned, fixed bin (5), fixed bin (35));
+       87 	dcl  hcs_$append_branchx	     entry (char (*), char (*), fixed bin (5), (3) fixed bin (3), char (*),
+       88 				     fixed bin (1), fixed bin (1), fixed bin (24), fixed bin (35));
+       89 	dcl  hcs_$get_user_effmode	     entry (char (*) aligned, char (*) aligned, char (*), fixed bin, fixed bin (5), fixed bin (35));
+       90 	dcl  hcs_$set_max_length	     entry (char (*) aligned, char (*) aligned, fixed bin (19), fixed bin (35));
+       91 	dcl  rcp_pointers_$com_seg	     entry returns (ptr);
+       92 	dcl  rcp_pointers_$data	     entry returns (ptr);
+       93 	dcl  rcprm_verify_registries_	     ext entry (char (*), fixed bin (35));
+       94 
+  1     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+       95 
+       96 
+  2     1 /*	Begin  include file ... rcp_data.incl.pl1
+  2     2*   *
+  2     3*   *	Created on 09/06/74 by Bill Silver.
+  2     4*   *	This include file defines the Resource Control Package data base, rcp_data.
+  2     5*   *	It is initialized in ring 0 by rcp_init.  It is maintained in ring 1 by RCP.
+  2     6*   *	It contains information about all of the devices and volumes managed by RCP.
+  2     7*   *	This include file references rcp_com_seg.incl.pl1.
+  2     8*
+  2     9*   *	Modified by R.J.C. Kissel on 10/5/77 to add the check_label bit.
+  2    10*   *	Modified by Michael R. Jordan on 04/24/78 to add modes and attached flag.
+  2    11*   *	Modified on 12/09/78 to add removable media bit.
+  2    12*   *	Modified 3/79 by Michael R. Jordan for MR7.0R.
+  2    13*   *	Modified 3/79 by C. D. Tavares for expandable RCP modes.
+  2    14*   *	Modified 11/84 by Paul Farley to add fips flag.
+  2    15*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  2    16**/
+  2    17 
+  2    18 /****^  HISTORY COMMENTS:
+  2    19*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  2    20*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  2    21*     Support FIPS and IMU.
+  2    22*                                                   END HISTORY COMMENTS */
+  2    23 
+  2    24 dcl  rcpd_ptr ptr;					/* Points to base of RCPD. */
+  2    25 dcl  dtype_ptr ptr;					/* Points to a device type entry. */
+  2    26 dcl  device_ptr ptr;				/* Points to a device entry. */
+  2    27 dcl  volume_ptr ptr;				/* Points to a volume entry. */
+  2    28 
+  2    29 dcl 1 rcpd based (rcpd_ptr) aligned,			/* Begin at word 0 of RCPD. */
+  2    30     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  2    31     2 init bit (1) unal,				/* ON => rcp_ring1_init_ has executed */
+  2    32     2 modes like rcp_init_flags unaligned,
+  2    33     2 tot_dtypes fixed bin,				/* Number of known device types. */
+  2    34     2 tot_devices fixed bin,				/* Total number of devices configured. */
+  2    35     2 tot_volumes fixed bin,				/* Number of possible attached volumes. */
+  2    36     2 last_volume fixed bin,				/* The last volume entry currently in use. */
+  2    37     2 mtimer_chan fixed bin (71),			/* Event channel for mount timer. */
+  2    38     2 mtimer_pid bit (36),				/* ID of mount timer process. */
+  2    39     2 accounting_chan fixed bin (71),			/* Event channel for device accounting */
+  2    40     2 accounting_pid bit (36),			/* ID of accounting process */
+  2    41     2 unload_sleep_time fixed bin (71),			/* Number of microseconds to wait for unload completion. */
+  2    42     2 pad (7) fixed bin,
+  2    43     2 dtype (0 refer (rcpd.tot_dtypes))			/* One entry per device type. */
+  2    44      like dtype,					/* See structure below. */
+  2    45     2 device (0 refer (rcpd.tot_devices))		/* One entry per configured device. */
+  2    46      like device,					/* See structure below. */
+  2    47     2 volume (0 refer (rcpd.tot_volumes))		/* One entry per possible attached volume. */
+  2    48      like volume,					/* See structure below. */
+  2    49     2 end bit (36) aligned;				/* End of rcp_data. */
+  2    50 
+  2    51 dcl 1 dtype based (dtype_ptr) aligned,			/* Entry for one device type. */
+  2    52     2 device_type char (32),				/* Name of this device type. */
+  2    53     2 max_concurrent fixed bin,			/* Max number of concurrently assigned devices. */
+  2    54     2 num_reserved fixed bin,				/* Num of devices reserved for system processes. */
+  2    55     2 num_devices fixed bin,				/* Num of devices of this type that are configured. */
+  2    56     2 first_off bit (18),				/* Offset of first device entry. */
+  2    57     2 histo_times (3) fixed bin;			/* Used to compute histograms for this device type. */
+  2    58 
+  2    59 dcl 1 device based (device_ptr) aligned,		/* Up to state must = rcs.rcse. */
+  2    60     2 device_name char (8),				/* Name of device associated with this entry. */
+  2    61     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  2    62     2 dtypex fixed bin,				/* Device type index. */
+  2    63     2 model fixed bin,				/* Device model number. */
+  2    64     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  2    65     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  2    66     2 state_time fixed bin (71),			/* Time device put into current state. */
+  2    67     2 state fixed bin,				/* 0 => free,  1 => assigned,  2 => deleted,
+  2    68*						   3 => storage system, 4 => reserved */
+  2    69 
+  2    70 /*	*	*	*	*	** Following fields are unique to device entry. */
+  2    71 
+  2    72     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  2    73     2 acs_name char (12),				/* Entry name of ACS for this device. */
+  2    74     2 next_off bit (18),				/* Offset of next entry for this device type. */
+  2    75     2 iom_num fixed bin,				/* IOM number for this device. */
+  2    76     2 chan_num fixed bin,				/* Channel number for this device. */
+  2    77     2 num_channels fixed bin,				/* Num channels that may address device. */
+  2    78     2 flags,					/* Special info flags. */
+  2    79      (3 delete bit (1),				/* ON => Delete device when it is unassigned. */
+  2    80       3 priv bit (1),				/* ON => Deleted device assigned for priv attach. */
+  2    81       3 reservable bit (1),				/* ON => may be reserved for system process. */
+  2    82       3 reserved bit (1),				/* ON => reserved to a reserved process. */
+  2    83       3 mounting bit (1),				/* ON => mount pending. */
+  2    84       3 writing bit (1),				/* ON => mounting for writing. */
+  2    85       3 attached bit (1) unal,			/* ON => device is attached. */
+  2    86       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  2    87       3 fips bit (1),				/* ON => FIPS device. */
+  2    88       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  2    89       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  2    90       3 unused bit (25)) unal,
+  2    91     2 process_id bit (36),				/* ID of assigned process. */
+  2    92     2 group_id char (32),				/* Process group ID. */
+  2    93     2 error_count fixed bin (35),			/* Total error count.  Defined by user ring. */
+  2    94     2 num_assigns fixed bin (35),			/* Total # of times device assigned & unassigned. */
+  2    95     2 tot_assign_time fixed bin (71),			/* Total time that device was assigned. */
+  2    96     2 histogram (4) fixed bin,			/* Assignment time histogram. */
+  2    97     2 reservation_id fixed bin (71),
+  2    98     2 reserved_by char (32),				/* Who made this reservation. */
+  2    99     2 current_authorization bit (72) aligned;		/* Authoization of process using this device. */
+  2   100 
+  2   101 dcl 1 volume based (volume_ptr) aligned,		/* Entry for one volume. */
+  2   102     2 process_id bit (36),				/* "0"b => unassigned. */
+  2   103     2 volume_name char (32),				/* Volume name. */
+  2   104     2 vtypex fixed bin,				/* Volume type index. */
+  2   105     2 group_id char (32),				/* This is used for the reserved_for field. */
+  2   106     2 reserved_by char (32),
+  2   107     2 reservation_id fixed bin (71),
+  2   108     2 state_time fixed bin (71),			/* Same as for a device. */
+  2   109     2 state fixed bin,				/* Same as for a device. */
+  2   110     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  2   111     2 current_authorization bit (72) aligned;		/* Authorization of process using this volume. */
+  2   112 
+  3     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  3     2 
+  3     3 /* Created on 04/24/78 by Michael R. Jordan */
+  3     4 /* Modified 04/10/79 by C. D. Tavares */
+  3     5 
+  3     6 dcl  rifp ptr;
+  3     7 
+  3     8 dcl 1 rcp_init_flags based (rifp),
+  3     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  3    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  3    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  3    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  3    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  3    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  3    15 
+  3    16 dcl (No_authentication initial (0),
+  3    17      Nominal_authentication initial (1),
+  3    18      Automatic_authentication initial (2),
+  3    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  3    20 
+  3    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  3    22     ("none", "nominal", "automatic", "manual");
+  3    23 
+  3    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  2   113 
+  2   114 
+  2   115 /*	End of include file ... rcp_data.incl.pl1	*/
+       97 
+       98 
+  4     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  4     2*   *
+  4     3*   *	Created on 11/20/74 by Bill Silver.
+  4     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  4     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  4     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  4     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  4     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  4     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  4    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  4    11*   *	This include file defines the Resource Control Package communication segment.
+  4    12*   *	This segment is used to communicate requests between the various internal
+  4    13*   *	parts of RCP.
+  4    14**/
+  4    15 
+  4    16 /****^  HISTORY COMMENTS:
+  4    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  4    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  4    19*     Support MCA and FIPS.
+  4    20*                                                   END HISTORY COMMENTS */
+  4    21 
+  4    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  4    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  4    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  4    25 
+  4    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  4    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  4    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  4    29 
+  4    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  4    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  4    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  4    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  4    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  4    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  4    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  4    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  4    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  4    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  4    40     2 num_entries fixed bin,				/* Total number of entries. */
+  4    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  4    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  4    43      like rcse,					/* See structure below. */
+  4    44     2 end bit (36);					/* End of rcp_com_seg. */
+  4    45 
+  4    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  4    47     2 lock bit (36),				/* The lock itself. */
+  4    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  4    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  4    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  4    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  4    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  4    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  4    54 
+  4    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  4    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  4    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  4    58     2 dtypex fixed bin,				/* Device type index. */
+  4    59     2 model fixed bin,				/* Device model number. */
+  4    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  4    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  4    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  4    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  4    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  4    65 
+  4    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  4    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  4    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  4    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  4    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  4    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  4    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  4    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  4    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  4    75     2 flags,					/* Special info flags. */
+  4    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  4    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  4    78       3 system bit (1),				/* ON => assigned to a system process. */
+  4    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  4    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  4    81       3 writing bit (1),				/* ON => writing on volume. */
+  4    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  4    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  4    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  4    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  4    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  4    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  4    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  4    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  4    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  4    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  4    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  4    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  4    94       3 fips bit (1),				/* ON => FIPS device. */
+  4    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  4    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  4    97       3 unused bit (6),
+  4    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  4    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  4   100     2 rcp_id bit (36),				/* ID of this entry. */
+  4   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  4   102     2 process_id bit (36),				/* ID of calling process. */
+  4   103     2 group_id char (32),				/* Group ID of calling process. */
+  4   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  4   105     2 version_num fixed bin,				/* Device info version number. */
+  4   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  4   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  4   108     2 ioi_index fixed bin,				/* IOI device index. */
+  4   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  4   110     2 caller_comment char (64);			/* Caller's comment. */
+  4   111 
+  4   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+       99 
+      100 
+  5     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  5     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  5     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  5     4 
+  5     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  5     6 
+  5     7 dcl (
+  5     8 
+  5     9 /* The following constants define the message action codes.  This indicates
+  5    10*how a message is to be handled.  */
+  5    11 
+  5    12      SYSERR_CRASH_SYSTEM	init (1),			
+  5    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  5    14 
+  5    15      SYSERR_TERMINATE_PROCESS	init (2),
+  5    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  5    17 
+  5    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  5    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  5    20 
+  5    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  5    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  5    23 
+  5    24      SYSERR_LOG_OR_PRINT	init (4),
+  5    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  5    26 
+  5    27      SYSERR_LOG_OR_DISCARD	init (5),
+  5    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  5    29 
+  5    30 
+  5    31 /* The following constants are added to the normal severities to indicate
+  5    32*different sorting classes of messages.  */
+  5    33 
+  5    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  5    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  5    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  5    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  5    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  5    39 	) fixed bin internal static options (constant);
+  5    40 
+  5    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      101 
+      102 
+      103 	/*	Begin rcp_ring1_init_.pl1
+      104**/
+      105 
+      106 	rcp_level = get_ring_ ();					/* Get RCP's validation level. */
+      107 	call cu_$level_get (caller_level);				/* Get caller's validation level. */
+      108 	on cleanup begin;						/* If trouble cleanup. */
+      109 		call cu_$level_set (caller_level);
+      110 	     end;
+      111 	call cu_$level_set (rcp_level);				/* Set validation level to RCP level. */
+      112 
+      113 
+      114 	rcpd_ptr = rcp_pointers_$data ();				/* We need info in rcp_data and rcp_com_seg. */
+      115 	rcs_ptr = rcp_pointers_$com_seg ();
+      116 
+      117 	call cu_$level_set (caller_level);				/* Now we have pointers, use caller level. */
+      118 	arg_ecode = 0;						/* No bad error code returned. */
+      119 
+      120 	unspec (rcpd.modes) = unspec (arg_rif);
+      121 
+      122 	if rcpd.init then return;					/* already initalized, don't bother */
+      123 	group_id = get_group_id_ ();					/* Get this info once. */
+      124 	syserr_code = SYSERR_PRINT_WITH_ALARM;				/* Turn on bleeper once. */
+      125 
+      126 	/* First just see if directory is there. */
+      127 	call hcs_$get_user_effmode (rcs.acs_directory, rcpd.device (1).acs_name,
+      128 	     group_id, caller_level, access, ecode);
+      129 	if ecode = error_table_$no_dir				/* Is directory there? */
+      130 	then do;							/* No, go create the RCP directory. */
+      131 		call CREATE_RCP_DIR;
+      132 		if ecode ^= 0
+      133 		then goto err_return;
+      134 	     end;
+      135 
+      136 	if ^rcpd.modes.resource_mgmt_enabled then
+      137 	     do i = 1 to rcpd.tot_devices;				/* Test each device. */
+      138 	     device_ptr = addr (rcpd.device (i));
+      139 	     call hcs_$get_user_effmode (rcs.acs_directory, device.acs_name, group_id, rcp_level, access, ecode);
+      140 	     if ecode = error_table_$noentry				/* Does this ACS exist? */
+      141 	     then call CREATE_ACS (device.acs_name);			/* No, we will create it. */
+      142 	end;
+      143 
+      144 	call hcs_$get_user_effmode (rcs.acs_directory, wkspace_acs, group_id, rcp_level, access, ecode);
+      145 
+      146 	if ecode = error_table_$noentry				/* Is there a workspace ACS? */
+      147 	then call CREATE_ACS (wkspace_acs);				/* No, create it. */
+      148 
+      149 	if rcpd.modes.resource_mgmt_enabled then
+      150 	     call rcprm_verify_registries_ (">system_control_1", ecode);
+      151 	if ecode ^= 0 then goto err_return;
+      152 
+      153 	if rcpd.modes.resource_mgmt_enabled
+      154 	     & rcpd.modes.auto_registration
+      155 	     & (rcpd.modes.authentication_level < Automatic_authentication) then
+      156 	     call admin_gate_$syserr (SYSERR_PRINT_WITH_ALARM,
+      157 		"RCP: Auto registration enabled without strict authentication required.
+      158 ^8xThis may cause errors in automatic registration of volumes.");
+      159 	rcpd.init = "1"b;						/* initialization complete */
+      160 
+      161 	return;
+      162 
+      163 err_return:
+      164 	arg_ecode = ecode;
+      165 	return;
+      166 
+      167 	/* 	*/
+      168 CREATE_RCP_DIR: procedure;
+      169 
+      170 	/*	This procedure is called to create the RCP directory that will contain
+      171*   *	the Access Control Segments for each device.   The default access to
+      172*   *	this directory will be taken from the initial directory ACL of the
+      173*   *	containing directory.  In addition all users will be given S access.
+      174**/
+      175 	call expand_pathname_ ((rcs.acs_directory), dir_name, entryname, ecode);
+      176 	if ecode ^= 0
+      177 	then do;
+      178 		call admin_gate_$syserr_error_code (SYSERR_PRINT_WITH_ALARM, ecode, "RCP: Error expanding ^a:", rcs.acs_directory);
+      179 		return;
+      180 	     end;
+      181 
+      182 	rings (*) = 7;
+      183 	call hcs_$append_branchx (dir_name, entryname, S_ACCESS_BIN, rings, "*.*.*", 1, 0, 0, ecode);
+      184 	if ecode ^= 0
+      185 	then do;
+      186 		call admin_gate_$syserr_error_code (SYSERR_PRINT_WITH_ALARM, ecode, "RCP: Error creating ^a:", rcs.acs_directory);
+      187 		return;
+      188 	     end;
+      189 
+      190 	call admin_gate_$syserr (SYSERR_PRINT_WITH_ALARM, "RCP: Created ^a with default access.", rcs.acs_directory);
+      191 
+      192 	syserr_code = SYSERR_PRINT_ON_CONSOLE;				/* Only turn on bleeper once. */
+      193 
+      194      end CREATE_RCP_DIR;
+      195 
+      196 	/* 	*/
+      197 CREATE_ACS: procedure (acs_name);
+      198 
+      199 	/*	This procedure is called to create an ACS for the current device.
+      200*   *	The default access to this device will be RW for the current process.
+      201*   *	In addition to creating the ACS we will set the max segment length
+      202*   *	of this segment to 0.
+      203**/
+      204 
+      205 	dcl  acs_name		     char (*) aligned;		/* name of the segment to create. */
+      206 
+      207 	call cu_$level_get (caller_level);
+      208 	if substr (acs_name, 1, 3) = "mca" then do;
+      209 		rcp_level = get_ring_ ();
+      210 
+      211 		on cleanup begin;
+      212 			call cu_$level_set (caller_level);
+      213 		     end;
+      214 		call cu_$level_set (rcp_level);
+      215 		rings (*) = 1;					/* must be in ring 1 */
+      216 		call hcs_$append_branchx ((rcs.acs_directory), (acs_name), RW_ACCESS_BIN, rings, "", 0, 0, 0, ecode);
+      217 		if ecode ^= 0
+      218 		then do;
+      219 			call admin_gate_$syserr_error_code (SYSERR_PRINT_WITH_ALARM, ecode, "RCP: Error creating ACS ^a:", acs_name);
+      220 			goto CREATE_ACS_EXIT;
+      221 		     end;
+      222 
+      223 		call admin_gate_$syserr (syserr_code, "RCP: Created ^a>^a with default access.",
+      224 		     rcs.acs_directory, acs_name);
+      225 
+      226 		call hcs_$set_max_length (rcs.acs_directory, acs_name, 0, ecode);
+      227 		if ecode ^= 0
+      228 		then call admin_gate_$syserr_error_code (SYSERR_PRINT_WITH_ALARM, ecode, "RCP: Error setting max length of ^a:", acs_name);
+      229 
+      230 		goto CREATE_ACS_EXIT;
+      231 	     end;
+      232 	else do;
+      233 		call hcs_$append_branch (rcs.acs_directory, acs_name, RW_ACCESS_BIN, ecode);
+      234 		if ecode ^= 0
+      235 		then do;
+      236 			call admin_gate_$syserr_error_code (SYSERR_PRINT_WITH_ALARM, ecode, "RCP: Error creating ACS ^a:", acs_name);
+      237 			goto CREATE_ACS_EXIT;
+      238 		     end;
+      239 
+      240 		call admin_gate_$syserr (syserr_code, "RCP: Created ^a>^a with default access.",
+      241 		     rcs.acs_directory, acs_name);
+      242 
+      243 		call hcs_$set_max_length (rcs.acs_directory, acs_name, 0, ecode);
+      244 		if ecode ^= 0
+      245 		then call admin_gate_$syserr_error_code (SYSERR_PRINT_WITH_ALARM, ecode, "RCP: Error setting max length of ^a:", acs_name);
+      246 	     end;
+      247 
+      248 CREATE_ACS_EXIT:
+      249 
+      250 	syserr_code = SYSERR_PRINT_ON_CONSOLE;				/* Turn on bleeper only once. */
+      251 	call cu_$level_set (caller_level);
+      252 
+      253      end CREATE_ACS;
+      254 
+      255 
+      256 
+      257 	/* BEGIN MESSAGE DOCUMENTATION
+      258*
+      259*   Message:
+      260*   RCP: Error expanding DIR: ERROR_MESSAGE
+      261*
+      262*   S:	$beep
+      263*
+      264*   T:	$run
+      265*
+      266*   M:	The pathname of the acs directory is incorrect. It should be >system_control_1>acs.
+      267*   $err
+      268*   The system may be unable to use I/O devices.
+      269*
+      270*   A:	$contact
+      271*
+      272*
+      273*   Message:
+      274*   RCP: Error creating DIR: ERROR_MESSAGE
+      275*
+      276*   S:	$beep
+      277*
+      278*   T:	$run
+      279*
+      280*   M:	The system was unable to create the ACS directory.
+      281*   It should be >system_control_1>acs.
+      282*   The system may be unable to use I/O devices.
+      283*
+      284*   A:	$contact
+      285*
+      286*
+      287*   Message:
+      288*   RCP: Created DIR with default access.
+      289*
+      290*   S:	$beep
+      291*
+      292*   T:	$run
+      293*
+      294*   M:	The directory (usually >system_control_1>rcp) was created
+      295*   because it was not found at startup.
+      296*   It may have been destroyed in a crash.
+      297*   This message is normal during a cold boot of the Multics hierarchy.
+      298*
+      299*   A:	If users other than system processes should have access to the directory,
+      300*   the system administrator must set the ACL appropriately.
+      301*
+      302*
+      303*   Message:
+      304*   RCP: Error creating ACS DEVICE.acs: ERROR_MESSAGE
+      305*
+      306*   S:	$beep
+      307*
+      308*   T:	$run
+      309*
+      310*   M:	The system was unable to create an access control segment for DEVICE.
+      311*   No user will be able to attach it.
+      312*
+      313*   A:	$contact
+      314*
+      315*
+      316*   Message:
+      317*   RCP: Created DIR>DEVICE.acs with default access.
+      318*
+      319*   S:	$beep
+      320*
+      321*   T:	$run
+      322*
+      323*   M:	The system has created an access control segment for DEVICE
+      324*   because one was not found at startup.
+      325*   It may have been destroyed in a crash.
+      326*   This message is normal during the first use of a device on the system, and at cold boot.
+      327*
+      328*   A:	If users other than system processes should have access to DEVICE,
+      329*   the system administrator must set the ACL of DEVICE.acs appropriately.
+      330*
+      331*
+      332*   Message:
+      333*   RCP: Error setting max length of DEVICE.acs: ERROR_MESSAGE
+      334*
+      335*   S:	$beep
+      336*
+      337*   T:	$run
+      338*
+      339*   M:	$err
+      340*
+      341*   A:	$contact
+      342*
+      343*   Message:
+      344*   RCP: Auto Registration is enabled without Exact Authentication required.  This could lead to errors in automatic registration of volumes.
+      345*
+      346*   S:	$beep
+      347*
+      348*   T:	$run
+      349*
+      350*   M:	This is a warning.  If the system is operated with auto registration enabled and exact authentication
+      351*   of tape volumes is not required, there is a better chance of errors occurring in the registration of tape
+      352*   volumes.  Again, it is very important to make sure the volume mounted is the proper one
+      353*   for the request if auto registration is enabled.
+      354*
+      355*   A:	$ignore
+      356*
+      357*
+      358*   END MESSAGE DOCUMENTATION */
+      359 
+      360      end rcp_ring1_init_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.9  rcp_ring1_init_.pl1               >spec>install>1111>rcp_ring1_init_.pl1
+95           1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+97           2    03/27/86  1120.0  rcp_data.incl.pl1                 >ldd>include>rcp_data.incl.pl1
+2-113        3    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+99           4    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+101          5    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Automatic_authentication               constant        fixed bin(17,0)          initial dcl 3-16 ref 153
+RW_ACCESS_BIN                   000031 constant        fixed bin(5,0)           initial dcl 1-36 set ref 216* 233*
+SYSERR_PRINT_ON_CONSOLE                constant        fixed bin(17,0)          initial dcl 5-7 ref 192 248
+SYSERR_PRINT_WITH_ALARM         000030 constant        fixed bin(17,0)          initial dcl 5-7 set ref 124 153* 178* 186* 190* 219*
+                                                                                  227* 236* 244*
+S_ACCESS_BIN                    000027 constant        fixed bin(5,0)           initial dcl 1-36 set ref 183*
+access                          000103 automatic       fixed bin(5,0)           dcl 57 set ref 127* 139* 144*
+acs_directory            74            based           char(32)                 level 2 dcl 4-30 set ref 127* 139* 144* 175 178*
+                                                                                  186* 190* 216 223* 226* 233* 240* 243*
+acs_name                               parameter       char                     dcl 205 in procedure "CREATE_ACS" set ref 197 208
+                                                                                  216 219* 223* 226* 227* 233* 236* 240* 243* 244*
+acs_name                               based           char(12)                 array level 3 in structure "rcpd" dcl 2-29
+                                                                                  in procedure "rcp_ring1_init_" set ref 127*
+acs_name                 26            based           char(12)                 level 2 in structure "device" dcl 2-59 in procedure
+                                                                                  "rcp_ring1_init_" set ref 139* 140*
+addr                                                   builtin function         dcl 71 ref 138
+admin_gate_$syserr              000014 constant        entry                    external dcl 79 ref 153 190 223 240
+admin_gate_$syserr_error_code   000016 constant        entry                    external dcl 80 ref 178 186 219 227 236 244
+arg_ecode                              parameter       fixed bin(35,0)          dcl 52 set ref 26 118* 163*
+arg_rif                                parameter       structure                level 1 packed packed unaligned dcl 53 ref 26 120
+authentication_level     14(08)        based           fixed bin(2,0)           level 3 packed packed unsigned unaligned dcl 2-29
+                                                                                  set ref 153
+auto_registration        14(05)        based           bit(1)                   level 3 packed packed unaligned dcl 2-29 set ref 153
+caller_level                    000104 automatic       fixed bin(17,0)          dcl 58 set ref 107* 109* 117* 127* 207* 212* 251*
+cleanup                         000204 stack reference condition                dcl 74 ref 108 211
+cu_$level_get                   000020 constant        entry                    external dcl 81 ref 107 207
+cu_$level_set                   000022 constant        entry                    external dcl 82 ref 109 111 117 212 214 251
+device                                 based           structure                array level 2 in structure "rcpd" dcl 2-29
+                                                                                  in procedure "rcp_ring1_init_" set ref 138
+device                                 based           structure                level 1 dcl 2-59 in procedure "rcp_ring1_init_"
+device_ptr                      000214 automatic       pointer                  dcl 2-26 set ref 138* 139 140
+dir_name                        000105 automatic       char(168)                packed unaligned dcl 59 set ref 175* 183*
+dtype                                  based           structure                level 1 dcl 2-51
+ecode                           000157 automatic       fixed bin(35,0)          dcl 60 set ref 127* 129 132 139* 140 144* 146 149*
+                                                                                  151 163 175* 176 178* 183* 184 186* 216* 217 219*
+                                                                                  226* 227 227* 233* 234 236* 243* 244 244*
+entryname                       000160 automatic       char(32)                 packed unaligned dcl 61 set ref 175* 183*
+error_table_$no_dir             000010 external static fixed bin(35,0)          dcl 76 ref 129
+error_table_$noentry            000012 external static fixed bin(35,0)          dcl 76 ref 140 146
+expand_pathname_                000024 constant        entry                    external dcl 83 ref 175
+get_group_id_                   000026 constant        entry                    external dcl 84 ref 123
+get_ring_                       000030 constant        entry                    external dcl 85 ref 106 209
+group_id                        000170 automatic       char(32)                 packed unaligned dcl 62 set ref 123* 127* 139* 144*
+hcs_$append_branch              000032 constant        entry                    external dcl 86 ref 233
+hcs_$append_branchx             000034 constant        entry                    external dcl 87 ref 183 216
+hcs_$get_user_effmode           000036 constant        entry                    external dcl 89 ref 127 139 144
+hcs_$set_max_length             000040 constant        entry                    external dcl 90 ref 226 243
+i                               000200 automatic       fixed bin(17,0)          dcl 63 set ref 136* 138*
+init                     14            based           bit(1)                   level 2 packed packed unaligned dcl 2-29 set ref 122
+                                                                                  159*
+lock_info                              based           structure                level 1 dcl 4-46
+modes                    14(01)        based           structure                level 2 packed packed unaligned dcl 2-29 set ref
+                                                                                  120*
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 3-8
+rcp_level                       000201 automatic       fixed bin(17,0)          dcl 65 set ref 106* 111* 139* 144* 209* 214*
+rcp_pointers_$com_seg           000042 constant        entry                    external dcl 91 ref 115
+rcp_pointers_$data              000044 constant        entry                    external dcl 92 ref 114
+rcpd                                   based           structure                level 1 dcl 2-29
+rcpd_ptr                        000212 automatic       pointer                  dcl 2-24 set ref 114* 120 122 127 136 136 138 149
+                                                                                  153 153 153 159
+rcprm_verify_registries_        000046 constant        entry                    external dcl 93 ref 149
+rcs                                    based           structure                level 1 dcl 4-30
+rcs_ptr                         000216 automatic       pointer                  dcl 4-23 set ref 115* 127 139 144 175 178 186 190
+                                                                                  216 223 226 233 240 243
+rcse                                   based           structure                level 1 dcl 4-55
+resource_mgmt_enabled
+                         14(04)        based           bit(1)                   level 3 packed packed unaligned dcl 2-29 set ref 136
+                                                                                  149 153
+rings                           000100 automatic       fixed bin(3,0)           array dcl 55 set ref 182* 183* 215* 216*
+substr                                                 builtin function         dcl 71 ref 208
+syserr_code                     000202 automatic       fixed bin(17,0)          dcl 66 set ref 124* 192* 223* 240* 248*
+tot_devices              16            based           fixed bin(17,0)          level 2 dcl 2-29 ref 136
+tot_dtypes               15            based           fixed bin(17,0)          level 2 dcl 2-29 ref 127 138
+unspec                                                 builtin function         dcl 71 set ref 120* 120
+volume                                 based           structure                level 1 dcl 2-101
+wkspace_acs                     000000 constant        char(13)                 initial dcl 68 set ref 144* 146*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 5-7
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+BEEP                                   internal static fixed bin(17,0)          initial dcl 5-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 5-7
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 5-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 5-7
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+Manual_authentication                  internal static fixed bin(17,0)          initial dcl 3-16
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+No_authentication                      internal static fixed bin(17,0)          initial dcl 3-16
+Nominal_authentication                 internal static fixed bin(17,0)          initial dcl 3-16
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 5-7
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 5-7
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 3-21
+based_rcp_id                           based           structure                level 1 dcl 4-26
+dtype_ptr                              automatic       pointer                  dcl 2-25
+lock_info_ptr                          automatic       pointer                  dcl 4-22
+rcse_ptr                               automatic       pointer                  dcl 4-24
+rifp                                   automatic       pointer                  dcl 3-6
+volume_ptr                             automatic       pointer                  dcl 2-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CREATE_ACS                      001124 constant        entry                    internal dcl 197 ref 140 146
+CREATE_ACS_EXIT                 001714 constant        label                    dcl 248 ref 220 230 237
+CREATE_RCP_DIR                  000661 constant        entry                    internal dcl 168 ref 131
+err_return                      000656 constant        label                    dcl 163 ref 132 151
+rcp_ring1_init_                 000207 constant        entry                    external dcl 26
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2166        2236    1727        2176
+Length      2552    1727        50         277     236           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_ring1_init_                     298 external procedure  is an external procedure.  
+on unit on line 108                  68 on unit               
+CREATE_RCP_DIR                          internal procedure  shares stack frame of external procedure rcp_ring1_init_.  
+CREATE_ACS                          148 internal procedure  enables or reverts conditions.  
+on unit on line 211                  68 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_ring1_init_          000100 rings                       rcp_ring1_init_
+                         000103 access                      rcp_ring1_init_
+                         000104 caller_level                rcp_ring1_init_
+                         000105 dir_name                    rcp_ring1_init_
+                         000157 ecode                       rcp_ring1_init_
+                         000160 entryname                   rcp_ring1_init_
+                         000170 group_id                    rcp_ring1_init_
+                         000200 i                           rcp_ring1_init_
+                         000201 rcp_level                   rcp_ring1_init_
+                         000202 syserr_code                 rcp_ring1_init_
+                         000212 rcpd_ptr                    rcp_ring1_init_
+                         000214 device_ptr                  rcp_ring1_init_
+                         000216 rcs_ptr                     rcp_ring1_init_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        call_int_this_desc  return_mac          enable_op
+shorten_stack       ext_entry           int_entry           int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$syserr            admin_gate_$syserr_error_code cu_$level_get                 cu_$level_set
+expand_pathname_              get_group_id_                 get_ring_                     hcs_$append_branch
+hcs_$append_branchx           hcs_$get_user_effmode         hcs_$set_max_length           rcp_pointers_$com_seg
+rcp_pointers_$data            rcprm_verify_registries_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$no_dir           error_table_$noentry
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000203       106 000214       107 000222       108 000231       109 000245       110 000254       111 000255
+    114 000264       115 000273       117 000302       118 000311       120 000313       122 000320       123 000323
+    124 000332       127 000334       129 000402       131 000406       132 000407       136 000411       138 000425
+    139 000440       140 000476       142 000513       144 000515       146 000553       149 000567       151 000616
+    153 000620       159 000652       161 000655       163 000656       165 000660       168 000661       175 000662
+    176 000713       178 000715       179 000746       182 000747       183 000761       184 001037       186 001041
+    187 001072       190 001073       192 001120       194 001122       197 001123       207 001137       208 001146
+    209 001153       211 001163       212 001177       213 001207       214 001210       215 001220       216 001232
+    217 001322       219 001326       220 001360       223 001361       226 001414       227 001446       230 001503
+    233 001504       234 001534       236 001537       237 001571       240 001572       243 001625       244 001657
+    248 001714       251 001717       253 001726
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,5 +1,5 @@
 // Take an file from extract_tape_files that mfile as identified as a Multics
-// backup file, and extract fhe segments.
+// backup file (".archive"), and extract fhe segments.
 
 #include <stdio.h>
 #include <stdint.h>
@@ -75,7 +75,7 @@ int main (int argc, char * argv [])
 
     static char notice [] = "\r\n\r\n\r\nHistorical Background";
 
-    if (memcmp (comp_header, notice, sizeof (notice)) != 0)
+    if (memcmp (comp_header, notice, sizeof (notice)) == 0)
       {
         printf ("Notice at file end found\n");
         exit (1);

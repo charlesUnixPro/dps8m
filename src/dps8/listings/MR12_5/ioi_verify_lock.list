@@ -1,0 +1,569 @@
+	COMPILATION LISTING OF SEGMENT ioi_verify_lock
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1016.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       10 
+       11 ioi_verify_lock:
+       12      proc () returns (bit (1) aligned);
+       13 
+       14 /* Program to unlock any locks a process has when it crawls out. */
+       15 /* Written 1 August 1983 by Chris Jones. */
+       16 /* Modified 1985-03-28, EJ Sharpe: log unlocks, return bit(1) */
+       17 
+       18 
+       19 /****^  HISTORY COMMENTS:
+       20*  1) change(85-10-01,Farley), approve(86-07-18,MCR7439),
+       21*     audit(86-08-18,Fawcett), install(86-10-20,MR12.0-1189):
+       22*     Changed to execute in the BCE environment.
+       23*                                                   END HISTORY COMMENTS */
+       24 
+       25 
+       26 dcl	dtx		   fixed bin;
+       27 dcl	gtx		   fixed bin;
+       28 
+       29 dcl	unlocked_something	   bit (1) aligned;
+       30 
+       31 dcl	addr		   builtin;
+       32 
+       33 dcl	lock$unlock_fast	   entry (ptr);
+       34 dcl	syserr		   entry () options (variable);
+       35 
+       36 dcl	pds$process_id	   external bit (36) aligned;
+       37 dcl	pds$process_group_id   external char (32);
+       38 
+       39 dcl	sys_info$service_system
+       40 			   bit (1) aligned external static;
+       41 
+       42 dcl	stacq		   builtin;
+       43 
+       44 
+       45 	unlocked_something = "0"b;
+       46 	if ^sys_info$service_system then
+       47 	     return (unlocked_something);		/* not up far enough to worry about it */
+       48 	idp = addr (ioi_data$);
+       49 	if unlock_needed (ioi_data.reconfig_lock) then
+       50 	     call syserr (SYSERR_LOG_OR_PRINT, "ioi_verify_lock: Force unlocked reconfigure lock for ^a.",
+       51 		pds$process_group_id);
+       52 
+       53 	do dtx = 1 to ioi_data.ndt;
+       54 	     dtep = addr (ioi_data.dt (dtx));
+       55 	     if unlock_needed (dte.lock) then
+       56 		call syserr (SYSERR_LOG_OR_PRINT, "ioi_verify_lock: Force unlocked device entry lock #^d for ^a.",
+       57 		     dtx, pds$process_group_id);
+       58 	end;
+       59 
+       60 	do gtx = 1 to ioi_data.ngt;
+       61 	     gtep = addr (ioi_data.gt (gtx));
+       62 	     if gte.lock = pds$process_id then do;
+       63 		if stacq (gte.lock, ""b, pds$process_id) then
+       64 		     ;
+       65 		call syserr (SYSERR_LOG_OR_PRINT, "ioi_verify_lock: Force unlocked group entry lock #^d for ^a.", gtx,
+       66 		     pds$process_group_id);
+       67 		unlocked_something = "1"b;
+       68 	     end;
+       69 	end;
+       70 
+       71 	return (unlocked_something);
+       72 
+       73 /* Procedure which does the actual unlocking.  It assumes all locks it is called with are fast locks,
+       74*   and unlocks the lock if it is held by this process. */
+       75 
+       76 unlock_needed:
+       77      proc (lock_in_question) returns (bit (1) aligned);
+       78 
+       79 dcl	1 lock_in_question	   like lock aligned parameter;
+       80 
+       81 	lock_ptr = addr (lock_in_question);
+       82 	if lock.pid = pds$process_id then do;
+       83 	     call lock$unlock_fast (lock_ptr);
+       84 	     unlocked_something = "1"b;
+       85 	     return ("1"b);
+       86 	end;
+       87 	else return ("0"b);
+       88 
+       89      end unlock_needed;
+       90 
+  1     1 /* Begin include file ...... ioi_data.incl.pl1 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1     6*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1     7*     Support for FIPS and
+  1     8*     IMU.
+  1     9*  2) change(86-05-16,Kissel), approve(86-07-30,MCR7461), audit(86-07-31,Coren),
+  1    10*     install(86-08-19,MR12.0-1120):
+  1    11*     Changed the value of IOI_DEFAULT_MAX_BOUND from 4096 to 1024.  This
+  1    12*     corrects a problem when RCP tries to set the maximum workspace size if it
+  1    13*     is less than 4096.  Since ioi_ (actually grab_aste) touched all the pages
+  1    14*     at assignment time, the current length is 4, and trying to set the max
+  1    15*     length to less than 4 (e.g. because the max unprivileged workspace size in
+  1    16*     RCP for a special device is 1) returns an error.
+  1    17*                                                   END HISTORY COMMENTS */
+  1    18 
+  1    19 /* Rewritten May 1982 by C. Hornig for new ioi_ */
+  1    20 /* Rewrite finished March 1983 by Chris Jones */
+  1    21 /* Extended for reconfiguration April 1983 by Chris Jones. */
+  1    22 /* Modified November 1983 by Chris Jones to separate items in the dte protected by different locks. */
+  1    23 /* Modified January 1984 by Chris Jones to add ite's. */
+  1    24 /* Modified Feb 1984 by Rich Fawcett to add ipc and fips */
+  1    25 /* Modified Sept 1985 by Paul Farley to add controller flag to dte. */
+  1    26 
+  1    27 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    28 
+  1    29 dcl	idp		   ptr;			/* pointer to IOI data structure */
+  1    30 dcl	gtep		   ptr;			/* pointer to channel/device group entry */
+  1    31 dcl	ctep		   ptr;			/* pointer to channel table entry */
+  1    32 dcl	dtep		   ptr;			/* pointer to wired device table entry */
+  1    33 dcl	itep		   ptr;			/* pointer to I/O multiplexer entry */
+  1    34 
+  1    35 dcl	(ioi_subsystems, ioi_devices, ioi_channels, ioi_multiplexers)
+  1    36 			   fixed bin;
+  1    37 dcl	ioi_data$		   external;		/* IOI data segment */
+  1    38 
+  1    39 
+  1    40 dcl	1 ioi_data	   based (idp) aligned,	/* I/O Interfacer data structure */
+  1    41 	  2 ngt		   fixed bin,		/* number of groups */
+  1    42 	  2 nct		   fixed bin,		/* number of channels */
+  1    43 	  2 ndt		   fixed bin,		/* number of devices */
+  1    44 	  2 nit		   fixed bin,		/* number of IOMs */
+  1    45 	  2 spurious_interrupts
+  1    46 			   fixed bin (35),		/* interrupts with no status */
+  1    47 	  2 reconfig_lock	   like lock,		/* lock for reconfiguring devices, channels, etc. */
+  1    48 	  2 flags,
+  1    49 	    3 setup	   bit (1) unal,		/* "1"b => ioi_init has run */
+  1    50 	    3 pad1	   bit (35) unal,
+  1    51 	  2 rss_idcw	   bit (36),		/* reset status IDCW */
+  1    52 	  2 pad2		   (6) fixed bin (35),	/* pad to 16 words */
+  1    53 	  2 dt		   (ioi_devices refer (ioi_data.ndt)) like dte aligned,
+  1    54 						/* device table */
+  1    55 	  2 gt		   (ioi_subsystems refer (ioi_data.ngt)) like gte aligned,
+  1    56 						/* channel/device group table */
+  1    57 	  2 ct		   (ioi_channels refer (ioi_data.nct)) like cte aligned,
+  1    58 						/* channel table */
+  1    59 	  2 it		   (ioi_multiplexers refer (ioi_data.nit)) like ite aligned;
+  1    60 						/* multiplexer table */
+  2     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  2     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  2     3*   encourages name conflicts.
+  2     4*   USE HC_FAST_LOCK INSTEAD!
+  2     5**/
+  2     6 
+  2     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  2     8 
+  2     9 /* format: style3 */
+  2    10 
+  2    11 declare	lock_ptr		pointer;
+  2    12 declare	1 lock		aligned based (lock_ptr),
+  2    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  2    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  2    15 	  2 flags		aligned,
+  2    16 	    3 notify_sw	bit (1) unaligned,
+  2    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  2    18 
+  2    19 /* End include file hc_lock.incl.pl1 */
+  1    61 
+  1    62 
+  1    63 dcl	1 ite		   based (itep) aligned,	/* I/O multiplexer table entry */
+  1    64 	  2 model		   char (4),		/* which flavor we are */
+  1    65 	  2 flags,
+  1    66 	  ( 3 deleting	   bit (1),
+  1    67 	    3 deleted	   bit (1)
+  1    68 	    )		   unaligned,
+  1    69 	  2 pad1		   bit (16) unaligned,
+  1    70 	  2 iom_table_idx	   fixed bin (17) unaligned,
+  1    71 	  2 tag		   fixed bin (3),
+  1    72 	  2 pad2		   (5) bit (36);
+  1    73 
+  1    74 dcl	1 gte		   based (gtep) aligned,	/* channel/device group table entry */
+  1    75 	  2 lock		   bit (36),		/* (0) loop lock */
+  1    76 	  2 name		   char (4),		/* (1) subsystem name */
+  1    77 	  2 dtep		   bit (18) unaligned,	/* (2) rel ptr to device just serviced */
+  1    78 	  2 ctep		   bit (18) unaligned,	/* (2) rel ptr to thread of channel table entries */
+  1    79 	  2 detailed_status_cmd
+  1    80 			   bit (6) unal,		/* (3) idcw command to read detailed status */
+  1    81 	  2 flags		   unaligned,		/* (3) */
+  1    82 	    3 psia	   bit (1),		/* "1"b if channel is PSIA */
+  1    83 	    3 suspend_devices  bit (1),		/* "1"b if device I/O suspended */
+  1    84 	    3 dual_controller  bit (1),		/* "1"b if dual controller subsystem (disk only) */
+  1    85 	    3 ascii_dtst	   bit (1),		/* "1"b if detailed status sent in ASCII mode */
+  1    86 	    3 mplex	   bit (1),		/* "1"b if channels are multiplexed among devices */
+  1    87 	    3 ipc		   bit (1),		/* "1"b if devices are on an IMU */
+  1    88 	    3 fips	   bit (1),		/* "1"b if devices start at zero */
+  1    89 	    3 pad		   bit (23),
+  1    90 	  2 n_devices	   fixed bin,		/* (4) number of devices in device table thread */
+  1    91 	  2 pending_connects   fixed bin,		/* (5) count of pending connect requests */
+  1    92 	  2 io_log_info_index  fixed bin,		/* (6) index into io_log_status_info table */
+  1    93 	  2 disk_data_subsystem_idx
+  1    94 			   fixed bin;		/* (7) index into disk_data.array for disks */
+  1    95 
+  1    96 dcl	1 cte		   based (ctep) aligned,	/* channel table entry */
+  1    97 	  2 next_ctep	   bit (18) unaligned,	/* (0) rel ptr to next channel table entry */
+  1    98 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  1    99 	  2 flags1	   unaligned,		/* (1) */
+  1   100 	    3 ioi_use	   bit (1),		/* "1"b if channel currently being used */
+  1   101 	    3 connected	   bit (1),		/* "1"b if channel is connected */
+  1   102 	    3 toss_status	   bit (1),		/* "1"b if status is to be ignored */
+  1   103 	    3 quiescing	   bit (1),		/* "1"b if the channel is just finishing what it's doing */
+  1   104 	    3 direct	   bit (1),		/* "1"b if this is a direct channel */
+  1   105 	    3 pad1	   bit (4),
+  1   106 	  2 disktab_ctx	   fixed bin (9) uns unal,	/* (1) index into disktab.chantab for this channel */
+  1   107 	  2 cur_dtep	   bit (18) unaligned,	/* (1) current device table entry */
+  1   108 	  2 chanid	   char (8),		/* (2) io_manager's name for channel */
+  1   109 	  2 statusp	   ptr unal,		/* (4) pointer to first word of status */
+  1   110 	  2 chx		   fixed bin (35),		/* (5) channel index for io_manager */
+  1   111 	  2 time_limit	   fixed bin (71),		/* (6) connect time limit */
+  1   112 	  2 saved_status	   unaligned,		/* (8) status repository while reading detailed status */
+  1   113 	    3 word1	   bit (36),
+  1   114 	    3 word2	   bit (36),
+  1   115 	    3 word4	   bit (36),
+  1   116 	    3 next_lpw_offset  bit (18),
+  1   117 	    3 command	   bit (6),
+  1   118 	  2 pad3		   bit (12) unaligned,	/* (11) */
+  1   119 	  2 base_ctep	   bit (18) unaligned,	/* (12) rel ptr to base logical chan. of physical chan. */
+  1   120 	  2 itep		   bit (18) unaligned,	/* (12) rel ptr to itep */
+  1   121 	  2 flags2	   unaligned,		/* (13) */
+  1   122 	    3 deleting	   bit (1),		/* "1"b if attempting to delete this channel */
+  1   123 	    3 deleted	   bit (1),		/* "1"b if channel deleted */
+  1   124 	  2 pad4		   bit (16) unaligned,	/* (13) */
+  1   125 	  2 channel_table_idx  fixed bin (17) unaligned,
+  1   126 	  2 pad5		   (2) bit (36);		/* (14) pad to 8 word boundary */
+  1   127 
+  1   128 dcl	1 dte		   based (dtep) aligned,	/* wired device table entry */
+  1   129 	  2 next_dtep	   bit (18) unaligned,	/* (0) rel ptr to next entry in thread */
+  1   130 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  1   131 	  2 cur_ctep	   bit (18) unaligned,	/* (1) rel ptr to channel in use */
+  1   132 	  2 flags1	   unaligned,		/* (1) flags protected by gte lock */
+  1   133 	    3 connected	   bit (1),		/* "1"b if device has a channel */
+  1   134 	    3 log_status_cnt   bit (1),		/* "1"b if count in log_status is valid */
+  1   135 	    3 reading_detailed_status
+  1   136 			   bit (1),		/* "1"b if read of detailed device status in progress */
+  1   137 	    3 pad1	   bit (15),
+  1   138 	  2 channel_required   char (8),		/* (2) channel name of required channel */
+  1   139 	  2 ev_chn	   fixed bin (71),		/* (4) event ID for status wakeups */
+  1   140 	  2 workspace_ptr	   ptr,			/* (6) workspace pointer */
+  1   141 	  2 workspace_astep	   ptr,			/* (8) workspace ASTE ptr */
+  1   142 	  2 workspace_sdw	   fixed bin (71),		/* (10) SDW of workspace segment */
+  1   143 	  2 ptp		   ptr,			/* (12) device page table */
+  1   144 	  2 max_bound	   fixed bin (19),		/* (14) largest allowable bound of workspace segment */
+  1   145 	  2 bound		   fixed bin (19),		/* (15) bound of workspace */
+  1   146 	  2 process_id	   bit (36),		/* (16) ID of process owning device */
+  1   147 	  2 ring		   fixed bin (3),		/* (17) highest ring allowed to access device */
+  1   148 	  2 device	   bit (6) unal,		/* (18) device code */
+  1   149 	  2 flags2	   unal,			/* (18) constant or protected by dte lock */
+  1   150 	    3 priv	   bit (1),		/* "1"b if privileged user */
+  1   151 	    3 in_use	   bit (1),		/* "1"b if device is to be used */
+  1   152 	    3 deleting	   bit (1),		/* "1"b if trying to delete this device */
+  1   153 	    3 deleted	   bit (1),		/* "1"b if this device is deleted */
+  1   154 	    3 suspended	   bit (1),		/* "1"b if device isn't to be used temporarily */
+  1   155 	    3 workspace_wired  bit (1),		/* "1"b if workspace is wired */
+  1   156               3 direct           bit (1),                   /* "1"b if device is connected to a direct channel */
+  1   157 	    3 controller	   bit (1),		/* "1"b if dte for the devices controller */
+  1   158 	    3 pad2	   bit (4),
+  1   159 	  2 device_table_idx   fixed bin (17) unaligned,
+  1   160 	  2 listx		   uns fixed bin (18) unal,	/* (19) DCW list index for connect */
+  1   161 	  2 idcw_listx	   uns fixed bin (18) unal,	/* (19) DCW list index of IDCW */
+  1   162 	  2 timeout	   fixed bin (35),		/* (20) time limit for I/O completion (usec) */
+  1   163 	  2 max_timeout	   fixed bin (35),		/* (21) maximum allowable timeout grace time (usec) */
+  1   164 	  2 unwire_time	   fixed bin (71),		/* (22) when to unwire the workspace */
+  1   165 	  2 pcw		   bit (36),		/* (24) peripheral control word (PCW) */
+  1   166 	  2 status_control,				/* (25) */
+  1   167 	    3 status_offset	   fixed bin (18) unsigned unaligned,
+  1   168 						/* offset of status queue in user workspace */
+  1   169 	    3 status_entries   fixed bin (9) unsigned unaligned,
+  1   170 						/* number of entries in status queue */
+  1   171 	    3 status_entry_idx fixed bin (9) unsigned unaligned,
+  1   172 						/* next entry to be used */
+  1   173 	  2 idcw		   bit (36),		/* (26) instruction DCW (KEEP ON EVEN WORD BOUNDARY) */
+  1   174 	  2 tdcw		   bit (36),		/* (27) transfer DCW to remainder of list */
+  1   175 	  2 special_status	   bit (36),		/* (28) special interrupt status */
+  1   176 	  2 lock		   like lock,		/* (29) wait lock */
+  1   177 	  2 log_status,				/* (32) */
+  1   178 	  ( 3 level	   fixed bin (3) unsigned,
+  1   179 	    3 time_out	   bit (1),
+  1   180 	    3 type	   bit (2),
+  1   181 	    3 command	   bit (6),
+  1   182 	    3 count	   fixed bin (6) unsigned,
+  1   183 	    3 channel	   bit (18),
+  1   184 	    3 status	   bit (36)
+  1   185 	    )		   unaligned,
+  1   186 	  2 ptx		   fixed bin,		/* (34) index of page table */
+  1   187 	  2 active	   bit (1),		/* (35) "1"b if device running or to run */
+  1   188 	  2 special_interrupt  bit (1),		/* (36) "1"b if special interrupt received */
+  1   189 	  2 detailed_status_valid
+  1   190 			   bit (1),		/* (37) "1"b if detailed status read sucessfully */
+  1   191 	  2 last_log_time	   fixed bin (71),		/* (38) when status was last logged */
+  1   192 	  2 detailed_status	   (8) bit (36),		/* (40) (buffer for reading most recent detailed status */
+  1   193 	  2 log_detailed_status
+  1   194 			   (8) bit (36);		/* (48) copy of last detailed status logged */
+  1   195 
+  1   196 /**** Defaults for various I/O parameters */
+  1   197 
+  1   198 dcl	IOI_DEFAULT_MAX_BOUND  fixed bin (19) static options (constant) init (1024);
+  1   199 dcl	IOI_DEFAULT_MAX_TIMEOUT
+  1   200 			   fixed bin (35) static options (constant) init (30000000);
+  1   201 dcl	IOI_DEFAULT_TIMEOUT	   fixed bin (35) static options (constant) init (30000000);
+  1   202 
+  1   203 dcl	IO_STATUS_ERROR_MASK   bit (36) static options (constant) init ("370000770000"b3);
+  1   204 
+  1   205 dcl	IO_CHANNEL_LOCK_TEMPLATE
+  1   206 			   char (2) int static options (constant) init ("ch");
+  1   207 dcl	IOI_DEVICE_LOCK_EVENT_TEMPLATE
+  1   208 			   char (2) static options (constant) init ("dv");
+  1   209 
+  1   210 /* End of include file ...... ioi_data.incl.pl1 */
+       91 
+       92 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       93 
+       94 
+       95 /* BEGIN MESSAGE DOCUMENTATION
+       96*
+       97*   Message:
+       98*   ioi_verify_lock: Force unlocked reconfigure lock for USERID.
+       99*
+      100*   S:	$info
+      101*
+      102*   T:	$run
+      103*
+      104*   M:	$err
+      105*   The process encountered a condition in ring-0 which forced a
+      106*   crawlout.  IOI unlocks all locks for the process.
+      107*
+      108*   A:	$notify
+      109*
+      110*
+      111*   Message:
+      112*   ioi_verify_lock: Force unlocked device entry lock #N for USERID.
+      113*
+      114*   S:	$info
+      115*
+      116*   T:	$run
+      117*
+      118*   M:	$err
+      119*   The process encountered a condition in ring-0 which forced a
+      120*   crawlout.  IOI unlocks all locks for the process.
+      121*
+      122*   A:	$notify
+      123*
+      124*
+      125*   Message:
+      126*   ioi_verify_lock: Force unlocked group entry lock for USERID.
+      127*
+      128*   S:	$info
+      129*
+      130*   T:	$run
+      131*
+      132*   M:	$err
+      133*   The process encountered a condition in ring-0 which forced a
+      134*   crawlout.  IOI unlocks all locks for the process.
+      135*
+      136*   A:	$notify
+      137*
+      138*   END MESSAGE DOCUMENTATION */
+      139 
+      140      end ioi_verify_lock;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.3  ioi_verify_lock.pl1               >spec>install>1110>ioi_verify_lock.pl1
+91           1    09/02/86  1552.9  ioi_data.incl.pl1                 >ldd>include>ioi_data.incl.pl1
+1-61         2    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+93           3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+SYSERR_LOG_OR_PRINT             000005 constant        fixed bin(17,0)          initial dcl 3-7 set ref 49* 55* 65*
+addr                                                   builtin function         dcl 31 ref 48 54 61 81
+cte                                    based           structure                level 1 dcl 1-96
+dt                       20            based           structure                array level 2 dcl 1-40 set ref 54
+dte                                    based           structure                level 1 dcl 1-128
+dtep                            000110 automatic       pointer                  dcl 1-32 set ref 54* 55
+dtx                             000100 automatic       fixed bin(17,0)          dcl 26 set ref 53* 54 55*
+gt                                     based           structure                array level 2 dcl 1-40 set ref 61
+gte                                    based           structure                level 1 dcl 1-74
+gtep                            000106 automatic       pointer                  dcl 1-30 set ref 61* 62 63
+gtx                             000101 automatic       fixed bin(17,0)          dcl 27 set ref 60* 61 65*
+idp                             000104 automatic       pointer                  dcl 1-29 set ref 48* 49 53 54 60 61
+ioi_data                               based           structure                level 1 dcl 1-40
+ioi_data$                       000022 external static fixed bin(17,0)          dcl 1-37 set ref 48
+ite                                    based           structure                level 1 dcl 1-63
+lock                                   based           structure                level 1 dcl 2-12 in procedure "ioi_verify_lock"
+lock                     35            based           structure                level 2 in structure "dte" dcl 1-128 in procedure
+                                                                                  "ioi_verify_lock" set ref 55*
+lock                                   based           bit(36)                  level 2 in structure "gte" dcl 1-74 in procedure
+                                                                                  "ioi_verify_lock" ref 62 63
+lock$unlock_fast                000010 constant        entry                    external dcl 33 ref 83
+lock_in_question                       parameter       structure                level 1 dcl 79 set ref 76 81
+lock_ptr                        000112 automatic       pointer                  dcl 2-11 set ref 81* 82 83*
+ndt                       2            based           fixed bin(17,0)          level 2 dcl 1-40 ref 53 61
+ngt                                    based           fixed bin(17,0)          level 2 dcl 1-40 ref 60
+pds$process_group_id            000016 external static char(32)                 packed unaligned dcl 37 set ref 49* 55* 65*
+pds$process_id                  000014 external static bit(36)                  dcl 36 ref 62 63 82
+pid                                    based           bit(36)                  level 2 dcl 2-12 ref 82
+reconfig_lock             5            based           structure                level 2 dcl 1-40 set ref 49*
+stacq                                                  builtin function         dcl 42 ref 63
+sys_info$service_system         000020 external static bit(1)                   dcl 39 ref 46
+syserr                          000012 constant        entry                    external dcl 34 ref 49 55 65
+unlocked_something              000102 automatic       bit(1)                   dcl 29 set ref 45* 46 67* 71 84*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 3-7
+IOI_DEFAULT_MAX_BOUND                  internal static fixed bin(19,0)          initial dcl 1-198
+IOI_DEFAULT_MAX_TIMEOUT                internal static fixed bin(35,0)          initial dcl 1-199
+IOI_DEFAULT_TIMEOUT                    internal static fixed bin(35,0)          initial dcl 1-201
+IOI_DEVICE_LOCK_EVENT_TEMPLATE         internal static char(2)                  initial packed unaligned dcl 1-207
+IO_CHANNEL_LOCK_TEMPLATE               internal static char(2)                  initial packed unaligned dcl 1-205
+IO_STATUS_ERROR_MASK                   internal static bit(36)                  initial packed unaligned dcl 1-203
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+ctep                                   automatic       pointer                  dcl 1-31
+ioi_channels                           automatic       fixed bin(17,0)          dcl 1-35
+ioi_devices                            automatic       fixed bin(17,0)          dcl 1-35
+ioi_multiplexers                       automatic       fixed bin(17,0)          dcl 1-35
+ioi_subsystems                         automatic       fixed bin(17,0)          dcl 1-35
+itep                                   automatic       pointer                  dcl 1-33
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ioi_verify_lock                 000075 constant        entry                    external dcl 11
+unlock_needed                   000323 constant        entry                    internal dcl 76 ref 49 55
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       452         476     350         462
+Length       722     350        24         210     101           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ioi_verify_lock                     160 external procedure  is an external procedure.  
+unlock_needed                           internal procedure  shares stack frame of external procedure ioi_verify_lock.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ioi_verify_lock          000100 dtx                         ioi_verify_lock
+                         000101 gtx                         ioi_verify_lock
+                         000102 unlocked_something          ioi_verify_lock
+                         000104 idp                         ioi_verify_lock
+                         000106 gtep                        ioi_verify_lock
+                         000110 dtep                        ioi_verify_lock
+                         000112 lock_ptr                    ioi_verify_lock
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           stacq_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+lock$unlock_fast              syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+ioi_data$                     pds$process_group_id          pds$process_id                sys_info$service_system
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000072        45 000102        46 000103        48 000111        49 000113        53 000152        54 000163
+     55 000167        58 000231        60 000233        61 000243        62 000254        63 000260        65 000265
+     67 000313        69 000315        71 000317        76 000323        81 000325        82 000327        83 000333
+     84 000341        85 000343        87 000346
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

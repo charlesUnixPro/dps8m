@@ -43,6 +43,8 @@
         value,          // somethong from the symbol table?
     } sMode = value;
     
+    char *currentNonLocalLabel = "???"; //NULL;
+    
     /*
      * let's rewrite the LEX I/O routines to work in our environment ...
      */
@@ -77,6 +79,7 @@ octaldigit      [0-7]
 hexdigit        ({digit}|[ABCDEFabcdef])
 
 symbol    		({alpha}|[_.])({alpha}|{digit}|[_.])*
+localsymbol     \${digit}+
 
 special         [-+,*/%&|^()$<>~:;'\[\]]
 
@@ -92,7 +95,9 @@ hex             0[Xx]{hexdigit}{1,9}
 
 nl				(\r?\n)|[;]
 ws      		[ \t\f]+
-comment			\".*$
+
+comment         \".*$
+linecomment     ^{ws}?\*.*$
 
 real1    		[-+]?{digit}+\.([dEeE][-+]?{digit}+)?
 real2    		[-+]?{digit}+\.{digit}+([dDeE][-+]?{digit}+)?
@@ -192,9 +197,54 @@ everythingelse	.
 
 <*>{ws}             { /* No action and no return */}
 
-{symbol}:           {   
+{localsymbol}:      {   // a local label
+                        char temp[1024];
+                        sprintf(temp, "%s%s", currentNonLocalLabel, yytext);  // concatenate current and local label
+                        *strchr(temp, ':') = '\0';   // remove :
+
+                        yylval.s = strdup(temp);
+                        
+                        // a label.
+                        symtab *s = getsym(yylval.s);
+                        
+                        switch (nPass)
+                        {
+                            case 1:
+                                if (s == NULL)
+                                {
+                                    s = addsym(yylval.s, addr);
+                                    if (debug) printf("Adding local label %s = %6o (%06llo) <%s>:%d\n", yylval.s, addr, s->value, s->defnFile, s->defnLine);
+                                } else
+                                    yyprintf("found duplicate local label <%s>", yylval.s);
+                            
+                                break;
+                            case 2:
+                                if (s == NULL)
+                                    yyprintf("undeclared local label <%s> in pass 2", yylval.s);
+                                    else
+                                    if (addr != s->value)
+                                        yyprintf("phase error for local symbol <%s> 1:%06o 2:%06o", yylval.s, s->value, addr);
+                                break;
+                        }
+                        
+                        lastLabel = s;
+                        return LABEL;
+                        
+                    }
+{localsymbol}       {
+                        char temp[1024];
+                        sprintf(temp, "%s%s", currentNonLocalLabel, yytext);  // concatenate current and local label
+                        yylval.s = strdup(temp);
+                        
+                        return SYMBOL;
+                    }
+
+
+{symbol}:           {
                         yylval.s = strdup(yytext);
-                        *strchr(yylval.s, ':') = '\0';   // remove :
+                        *strchr(yylval.s, ':') = '\0';      // remove :
+                        
+                        currentNonLocalLabel = yylval.s;    // record last/current "regular" label
                         
                         // a label.
                         symtab *s = getsym(yylval.s);
@@ -624,11 +674,9 @@ everythingelse	.
 
 ^.+ { litPosInLine = 0; REJECT; }
 
-^{ws}*\*[^\n]*  { BEGIN (Junk); }
-
-<Junk>[^\n]+     {}  /* try to ignore everything else on line */
-<*>{comment}     {}  /* keep at the end */
-{everythingelse} {}
+<*>{comment}       {}  /* keep at the end */
+<*>{linecomment}   {}  /* keep at the end */
+{everythingelse}   {}
 
 <<EOF>>     { if (debug) printf("yylex(EOF):addr=%06o\n", addr); return EOF; }
 

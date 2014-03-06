@@ -1,0 +1,627 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXjfJcFdk
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1005.9 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /* HISTORY COMMENTS:
+       16*  1) change(85-11-27,Herbst), approve(87-07-20,MCR7697),
+       17*     audit(87-07-20,GDixon), install(87-08-04,MR12.1-1055):
+       18*     Added system_message_ IPS signal.
+       19*                                                   END HISTORY COMMENTS */
+       20 
+       21 
+       22 /* SYS_INFO - This is the Wired All Rings Database. */
+       23 
+       24 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+       25 
+       26 sys_info:
+       27      procedure;
+       28 
+       29 /* This program creates the sys_info data base */
+       30 
+       31 /* Last modified (Date and reason):
+       32*   2/6/76	by S. Webber Initial coding
+       33*   July 77 by T. Casey to add new IPS signals "susp" and "term"
+       34*   Oct 77 by T. Casey to rename them to "sus_" and "trm_" to avoid conflicts with users' signal names.
+       35*   29 Jan 79 by D. Spector to add initialization_state variable
+       36*   11/28/80, W. Olin Sibert, to add reasonable times
+       37*   7/82 BIM merge in bootload multics variables with CAH changes.
+       38*   September 1982, J. Bongiovanni, for data_management_ringno
+       39*   December 1982, E. N. Kittlitz, for seg_size_256K, default_256K_enable, hfp_exponent_available.
+       40*   October 1983 through April 1984 for more bootload Multics variables by Keith Loepere.
+       41*   83-12-03 BIM for pgt_ IPS signal.
+       42*   11 Jun 1984 by Lee A. Newcomb:  added the new IPS' dm_shutdown_warning_
+       43*   and dm_user_shutdown_.
+       44*   08/22/84 by R. Michael Tague:  Removed dm_shutdown_warning_ and
+       45*   dm_user_shutdown_ IPS signals.  Added system_shutdown_scheduled_
+       46*   and dm_shutdown_scheduled_ IPS signals.
+       47*   84-11-09 by EJ Sharpe for access_class_floor, and the three audit thresholds
+       48*   84-11-20 by EJ Sharpe to change thresholds to system_high as a default and
+       49*   added the "security_audit_enable" bit
+       50*   84-11-27 by EJ Sharpe to replace "security_audit_enable" with per-threshold
+       51*   bits: "audit_covert_channel", "audit_successful_access", "audit_unsuccessful_access".
+       52*   84-12-11 by EJ Sharpe to rearrange new flags & thresholds for better alignment
+       53*   1985-01-28, BIM: AIM privilege masks.
+       54**/
+       55 
+       56 dcl  1 sys_info aligned automatic,
+       57        2 clock_ bit (3) aligned,			/* word used in reading the clock */
+       58        2 time_zone char (4) aligned,			/* time zone for current site */
+       59        2 time_correction_constant fixed bin,		/* first word of double-word correction factor */
+       60        2 time_delta fixed bin,			/* second word of double-word correction factor */
+       61        2 page_size fixed bin,				/* page size used by the system */
+       62        2 max_seg_size fixed bin (18),			/* maximum segment size (in words) */
+       63        2 bce_max_seg_size fixed bin (18),		/* max length in words of pagable segs in bce (also max file size therein) */
+       64        2 default_stack_length fixed bin (18),		/* default length of stack created by makestack */
+       65        2 default_max_length fixed bin (19),		/* default maximum length of segments */
+       66        2 default_dir_max_length fixed bin (19),		/* ditto for directories */
+       67        2 access_class_ceiling aligned like aim_template,	/* who cares */
+       68        2 access_class_floor aligned like aim_template,	/* these must be double-word aligned so ldaq may be used */
+       69        2 successful_access_threshold aligned like aim_template,
+       70        2 unsuccessful_access_threshold aligned like aim_template,
+       71        2 covert_channel_threshold aligned like aim_template,
+       72        2 audit_successful_access bit (1) aligned,
+       73        2 audit_unsuccessful_access bit (1) aligned,
+       74        2 audit_covert_channel bit (1) aligned,
+       75        2 system_control_dir character (168) varying,
+       76        2 time_of_bootload fixed bin (71),		/* time system was booted */
+       77        2 first_reasonable_time fixed bin (71),		/* Used to check "reasonableness" of times */
+       78        2 last_reasonable_time fixed bin (71),
+       79        2 system_type fixed bin,			/* ADP_SYSTEM or L68_SYSTEM */
+       80        2 initialization_state fixed bin,		/* current collection of initialization being run */
+       81        2 service_system bit (1) aligned,		/* initialization_state = 4 (service) */
+       82        2 collection_1_phase fixed bin,			/* phase of collection 1 initialization, has value SERVICE_INITIALIZATION after bce runs */
+       83        2 maxlinks fixed bin,				/* maximum number of links searched */
+       84        2 data_management_ringno fixed bin,		/* Ring where Data Management runs */
+       85        2 seg_size_256K fixed bin (19),			/* like max_seg_size, but the WHOLE thing (in words) */
+       86        2 default_256K_enable fixed bin,			/* non-zero if default is on */
+       87        2 hfp_exponent_available bit (1) aligned,		/* whether hex-floating point is available on this system. */
+       88        2 all_valid_ips_mask bit (35) aligned,		/* a mask containing a "1" for all valid ips bits; masked against intended ips words */
+       89        2 highest_ips_index bit (0) aligned,
+       90        2 ips_mask_data fixed bin,			/* start of IPS info -- first word is number */
+       91        2 quit_name char (32) aligned,
+       92        2 quit_mask bit (35) aligned,
+       93        2 cput_name char (32) aligned,
+       94        2 cput_mask bit (35) aligned,
+       95        2 alrm_name char (32) aligned,
+       96        2 alrm_mask bit (35) aligned,
+       97        2 neti_name char (32) aligned,
+       98        2 neti_mask bit (35) aligned,
+       99        2 susp_name char (32) aligned,
+      100        2 susp_mask bit (35) aligned,
+      101        2 term_name char (32) aligned,
+      102        2 term_mask bit (35) aligned,
+      103        2 wkp_name char (32) aligned,
+      104        2 wkp_mask bit (35) aligned,
+      105        2 pgt_name char (32) aligned,
+      106        2 pgt_mask bit (36) aligned,
+      107        2 system_shutdown_scheduled_name char (32) aligned,
+      108        2 system_shutdown_scheduled_mask bit (36) aligned,
+      109        2 dm_shutdown_scheduled_name char (32) aligned,
+      110        2 dm_shutdown_scheduled_mask bit (36) aligned,
+      111        2 system_message_name char (32) aligned,
+      112        2 system_message_mask bit (36) aligned,
+      113        2 ipc_privilege bit (36) aligned,
+      114        2 dir_privilege bit (36) aligned,
+      115        2 seg_privilege bit (36) aligned,
+      116        2 soos_privilege bit (36) aligned,
+      117        2 ring1_privilege bit (36) aligned,
+      118        2 rcp_privilege bit (36) aligned,
+      119        2 comm_privilege bit (36) aligned;
+      120 
+      121 dcl  i fixed bin;
+      122 dcl  1 cdsa aligned like cds_args;
+      123 dcl  code fixed bin (35);
+      124 
+      125 dcl  double_fixed fixed bin (71) based;
+      126 
+      127 dcl  sys_infoname char (8) static init ("sys_info") options (constant);
+      128 dcl  exclude_pad (1) char (32) aligned static options (constant) init ("pad*");
+      129 
+      130 dcl  (addr, bin, mod, null, rel, size, string, unspec) builtin;
+      131 
+      132 dcl  com_err_ entry options (variable);
+      133 dcl  convert_date_to_binary_ entry (char (*), fixed bin (71), fixed bin (35));
+      134 dcl  create_data_segment_ entry (pointer, fixed bin (35));
+      135 
+      136 /* Now begins the initialization */
+      137 
+      138 	unspec (sys_info) = ""b;			/* Fill it with zeros */
+      139 
+      140 	sys_info.time_zone = "none";			/* default time zone is invalid */
+      141 	addr (sys_info.time_correction_constant) -> double_fixed = 5 * 3600 * 1000000;
+      142 						/* NOTE KLUDGE: must be done to preserve time_delta segdef
+      143*						   _i_n _t_h_e _m_i_d_d_l_e of the variable time_correction_constant */
+      144 	sys_info.page_size = 1024;
+      145 	sys_info.max_seg_size = 255 * 1024;
+      146 	sys_info.default_max_length = 255 * 1024;
+      147 	sys_info.seg_size_256K = 256 * 1024;
+      148 	sys_info.default_256K_enable = 0;
+      149 	sys_info.default_dir_max_length = 205 * 1024;
+      150 	sys_info.default_stack_length = 64 * 1024;
+      151 	sys_info.maxlinks = 10;
+      152 	sys_info.data_management_ringno = 2;
+      153 	sys_info.access_class_ceiling.categories = (18)"1"b || (18)"0"b;
+      154 	sys_info.access_class_ceiling.level = 7;
+      155 	sys_info.successful_access_threshold = sys_info.access_class_ceiling;
+      156 	sys_info.unsuccessful_access_threshold = sys_info.access_class_ceiling;
+      157 	sys_info.covert_channel_threshold = sys_info.access_class_ceiling;
+      158 
+      159 	sys_info.system_control_dir = ">system_control_dir";
+      160 
+      161 	sys_info.initialization_state = 0;		/* Begins with bootloading */
+      162 
+      163 	sys_info.system_type = L68_SYSTEM;		/* A sensible default, for now. */
+      164 
+      165 	call set_time ("02/24/73 14:00 est Saturday", sys_info.first_reasonable_time);
+      166 						/* The invention of NSS, roughly */
+      167 	call set_time ("12/31/99 23:59:59", sys_info.last_reasonable_time);
+      168 
+      169 
+      170 	sys_info.hfp_exponent_available = "0"b;		/* we're all L68s on this bus */
+      171 	sys_info.ips_mask_data = 11;			/* number of known IPS events */
+      172 	sys_info.quit_name = "quit";
+      173 	sys_info.quit_mask = "1000"b;
+      174 	sys_info.cput_name = "cput";
+      175 	sys_info.cput_mask = "0100"b;
+      176 	sys_info.alrm_name = "alrm";
+      177 	sys_info.alrm_mask = "0010"b;
+      178 	sys_info.neti_name = "neti";
+      179 	sys_info.neti_mask = "0001"b;
+      180 	sys_info.susp_name = "sus_";
+      181 	sys_info.susp_mask = "00001"b;
+      182 	sys_info.term_name = "trm_";
+      183 	sys_info.term_mask = "000001"b;
+      184 	sys_info.wkp_name = "wkp_";
+      185 	sys_info.wkp_mask = "0000001"b;
+      186 	sys_info.pgt_name = "pgt_";
+      187 	sys_info.pgt_mask = "00000001"b;
+      188 	sys_info.system_shutdown_scheduled_name = "system_shutdown_scheduled_";
+      189 	sys_info.system_shutdown_scheduled_mask = "000000001"b;
+      190 	sys_info.dm_shutdown_scheduled_name = "dm_shutdown_scheduled_";
+      191 	sys_info.dm_shutdown_scheduled_mask = "0000000001"b;
+      192 	sys_info.system_message_name = "system_message_";
+      193 	sys_info.system_message_mask = "00000000001"b;
+      194 	sys_info.all_valid_ips_mask = "11111111111"b;	/* format: off */
+      195 	sys_info.ipc_privilege =     "1"b;
+      196 	sys_info.dir_privilege =     "01"b;
+      197 	sys_info.seg_privilege =     "001"b;
+      198 	sys_info.soos_privilege =    "0001"b;
+      199 	sys_info.ring1_privilege =   "00001"b;
+      200 	sys_info.rcp_privilege =     "000001"b;
+      201 	sys_info.comm_privilege =    "0000001"b;
+      202 /* format:  on */
+      203 
+      204 /* Now make some checks on alignment of certain variables */
+      205 
+      206 	call check (addr (sys_info.successful_access_threshold), "successful_access_threshold", 2);
+      207 	call check (addr (sys_info.time_correction_constant), "time_correction_constant", 2);
+      208 	call check (addr (sys_info.time_of_bootload), "time_of_bootload", 2);
+      209 	call check (addr (sys_info.first_reasonable_time), "first_reasonable_time", 2);
+      210 	call check (addr (sys_info.last_reasonable_time), "last_reasonable_time", 2);
+      211 
+      212 /* Now set up call to create data base */
+      213 
+      214 	cdsa.sections (1).p = addr (sys_info);
+      215 	cdsa.sections (1).len = size (sys_info);
+      216 	cdsa.sections (1).struct_name = sys_infoname;
+      217 
+      218 	cdsa.seg_name = sys_infoname;
+      219 	cdsa.num_exclude_names = 1;
+      220 	cdsa.exclude_array_ptr = addr (exclude_pad);
+      221 
+      222 	string (cdsa.switches) = "0"b;
+      223 	cdsa.switches.have_text = "1"b;
+      224 
+      225 	call create_data_segment_ (addr (cdsa), code);
+      226 
+      227 	if code ^= 0 then call com_err_ (code, sys_infoname);
+      228 
+      229 GIVE_IT_UP:
+      230 	return;
+      231 
+      232 check:
+      233      proc (where, message, modulo);
+      234 
+      235 dcl  where ptr;
+      236 dcl  message char (*);
+      237 dcl  modulo fixed bin;
+      238 
+      239 	if mod ((binary (rel (where), 18) - binary (rel (addr (sys_info)), 18)), modulo) ^= 0 then do;
+      240 	     call com_err_ (0, sys_infoname, "The variable ^a is not aligned on a ^d-word boundary.", message, modulo);
+      241 	     goto GIVE_IT_UP;
+      242 	     end;
+      243 
+      244      end check;
+      245 
+      246 
+      247 
+      248 set_time:
+      249      proc (P_string, P_time);
+      250 
+      251 dcl  (
+      252      P_string char (*),
+      253      P_time fixed bin (71)
+      254      ) parameter;
+      255 
+      256 	call convert_date_to_binary_ (P_string, P_time, code);
+      257 
+      258 	if code ^= 0 then do;
+      259 	     call com_err_ (code, sys_infoname, "Cannot convert ^a", P_string);
+      260 	     goto GIVE_IT_UP;
+      261 	     end;
+      262 
+      263 	return;
+      264      end set_time;
+      265 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+      266 
+      267 
+  2     1 /* BEGIN INCLUDE FILE aim_template.incl.pl1 */
+  2     2 
+  2     3 /* Created 740723 by PG */
+  2     4 /* Modified 06/28/78 by C. D. Tavares to add rcp privilege */
+  2     5 /* Modified 83-05-10 by E. N. Kitltitz to add communications privilege */
+  2     6 
+  2     7 /* This structure defines the components of both an access
+  2     8*   class and an access authorization as interpreted by the
+  2     9*   Access Isolation Mechanism. */
+  2    10 
+  2    11 
+  2    12 dcl  1 aim_template aligned based,			/* authorization/access class template */
+  2    13        2 categories bit (36),				/* access categories */
+  2    14        2 level fixed bin (17) unaligned,		/* sensitivity level */
+  2    15        2 privileges unaligned,			/* special access privileges (in authorization only) */
+  2    16         (3 ipc,					/* interprocess communication privilege */
+  2    17          3 dir,					/* directory privilege */
+  2    18          3 seg,					/* segment privilege */
+  2    19          3 soos,					/* security out-of-service privilege */
+  2    20          3 ring1,					/* ring 1 access privilege */
+  2    21          3 rcp,					/* RCP resource access privilege */
+  2    22          3 comm) bit (1),				/* communications cross-AIM privilege */
+  2    23          3 pad bit (11);
+  2    24 
+  2    25 
+  2    26 /* END INCLUDE FILE aim_template.incl.pl1 */
+      268 
+      269 
+  3     1 /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+  3     2 
+  3     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+  3     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+  3     5 
+  3     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+  3     7     ("Level68", "ADP");
+  3     8 
+  3     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      270 
+      271 
+      272      end sys_info;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0900.4  !BBBJZjXjfJcFdk.pl1               >spec>install>1115>sys_info.cds
+266          1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+268          2    09/07/83  1610.6  aim_template.incl.pl1             >ldd>include>aim_template.incl.pl1
+270          3    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+L68_SYSTEM                      001062 constant        fixed bin(17,0)          initial dcl 3-3 ref 163
+P_string                               parameter       char                     packed unaligned dcl 251 set ref 248 256* 259*
+P_time                                 parameter       fixed bin(71,0)          dcl 251 set ref 248 256*
+access_class_ceiling     12     000100 automatic       structure                level 2 dcl 56 set ref 155 156 157
+addr                                                   builtin function         dcl 130 ref 141 206 206 207 207 208 208 209 209 210
+                                                                                  210 214 220 225 225 239
+aim_template                           based           structure                level 1 dcl 2-12
+all_valid_ips_mask      121     000100 automatic       bit(35)                  level 2 dcl 56 set ref 194*
+alrm_mask               155     000100 automatic       bit(35)                  level 2 dcl 56 set ref 177*
+alrm_name               145     000100 automatic       char(32)                 level 2 dcl 56 set ref 176*
+categories               12     000100 automatic       bit(36)                  level 3 dcl 56 set ref 153*
+cds_args                               based           structure                level 1 dcl 1-3
+cdsa                            000376 automatic       structure                level 1 dcl 122 set ref 225 225
+code                            000443 automatic       fixed bin(35,0)          dcl 123 set ref 225* 227 227* 256* 258 259*
+com_err_                        000012 constant        entry                    external dcl 132 ref 227 240 259
+comm_privilege          274     000100 automatic       bit(36)                  level 2 dcl 56 set ref 201*
+convert_date_to_binary_         000014 constant        entry                    external dcl 133 ref 256
+covert_channel_threshold
+                         22     000100 automatic       structure                level 2 dcl 56 set ref 157*
+cput_mask               144     000100 automatic       bit(35)                  level 2 dcl 56 set ref 175*
+cput_name               134     000100 automatic       char(32)                 level 2 dcl 56 set ref 174*
+create_data_segment_            000016 constant        entry                    external dcl 134 ref 225
+data_management_ringno
+                        115     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 152*
+default_256K_enable     117     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 148*
+default_dir_max_length
+                         11     000100 automatic       fixed bin(19,0)          level 2 dcl 56 set ref 149*
+default_max_length       10     000100 automatic       fixed bin(19,0)          level 2 dcl 56 set ref 146*
+default_stack_length      7     000100 automatic       fixed bin(18,0)          level 2 dcl 56 set ref 150*
+dir_privilege           267     000100 automatic       bit(36)                  level 2 dcl 56 set ref 196*
+dm_shutdown_scheduled_mask
+                        254     000100 automatic       bit(36)                  level 2 dcl 56 set ref 191*
+dm_shutdown_scheduled_name
+                        244     000100 automatic       char(32)                 level 2 dcl 56 set ref 190*
+double_fixed                           based           fixed bin(71,0)          dcl 125 set ref 141*
+exclude_array_ptr        42     000376 automatic       pointer                  level 2 dcl 122 set ref 220*
+exclude_pad                     000000 constant        char(32)                 initial array dcl 128 set ref 220
+first_reasonable_time
+                        104     000100 automatic       fixed bin(71,0)          level 2 dcl 56 set ref 165* 209 209
+have_text                44(02) 000376 automatic       bit(1)                   level 3 packed packed unaligned dcl 122 set ref 223*
+hfp_exponent_available
+                        120     000100 automatic       bit(1)                   level 2 dcl 56 set ref 170*
+initialization_state    111     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 161*
+ipc_privilege           266     000100 automatic       bit(36)                  level 2 dcl 56 set ref 195*
+ips_mask_data           122     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 171*
+last_reasonable_time    106     000100 automatic       fixed bin(71,0)          level 2 dcl 56 set ref 167* 210 210
+len                       2     000376 automatic       fixed bin(18,0)          array level 3 dcl 122 set ref 215*
+level                    13     000100 automatic       fixed bin(17,0)          level 3 packed packed unaligned dcl 56 set ref 154*
+max_seg_size              5     000100 automatic       fixed bin(18,0)          level 2 dcl 56 set ref 145*
+maxlinks                114     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 151*
+message                                parameter       char                     packed unaligned dcl 236 set ref 232 240*
+mod                                                    builtin function         dcl 130 ref 239
+modulo                                 parameter       fixed bin(17,0)          dcl 237 set ref 232 239 240*
+neti_mask               166     000100 automatic       bit(35)                  level 2 dcl 56 set ref 179*
+neti_name               156     000100 automatic       char(32)                 level 2 dcl 56 set ref 178*
+num_exclude_names        40     000376 automatic       fixed bin(17,0)          level 2 dcl 122 set ref 219*
+p                               000376 automatic       pointer                  array level 3 dcl 122 set ref 214*
+page_size                 4     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 144*
+pgt_mask                232     000100 automatic       bit(36)                  level 2 dcl 56 set ref 187*
+pgt_name                222     000100 automatic       char(32)                 level 2 dcl 56 set ref 186*
+quit_mask               133     000100 automatic       bit(35)                  level 2 dcl 56 set ref 173*
+quit_name               123     000100 automatic       char(32)                 level 2 dcl 56 set ref 172*
+rcp_privilege           273     000100 automatic       bit(36)                  level 2 dcl 56 set ref 200*
+rel                                                    builtin function         dcl 130 ref 239 239
+ring1_privilege         272     000100 automatic       bit(36)                  level 2 dcl 56 set ref 199*
+sections                        000376 automatic       structure                array level 2 dcl 122
+seg_name                 30     000376 automatic       char(32)                 level 2 dcl 122 set ref 218*
+seg_privilege           270     000100 automatic       bit(36)                  level 2 dcl 56 set ref 197*
+seg_size_256K           116     000100 automatic       fixed bin(19,0)          level 2 dcl 56 set ref 147*
+size                                                   builtin function         dcl 130 ref 215
+soos_privilege          271     000100 automatic       bit(36)                  level 2 dcl 56 set ref 198*
+string                                                 builtin function         dcl 130 set ref 222*
+struct_name               3     000376 automatic       char(32)                 array level 3 dcl 122 set ref 216*
+successful_access_threshold
+                         16     000100 automatic       structure                level 2 dcl 56 set ref 155* 206 206
+susp_mask               177     000100 automatic       bit(35)                  level 2 dcl 56 set ref 181*
+susp_name               167     000100 automatic       char(32)                 level 2 dcl 56 set ref 180*
+switches                 44     000376 automatic       structure                level 2 dcl 122 set ref 222*
+sys_info                        000100 automatic       structure                level 1 dcl 56 set ref 138* 214 215 239
+sys_infoname                    000010 constant        char(8)                  initial packed unaligned dcl 127 set ref 216 218
+                                                                                  227* 240* 259*
+system_control_dir       27     000100 automatic       varying char(168)        level 2 dcl 56 set ref 159*
+system_message_mask     265     000100 automatic       bit(36)                  level 2 dcl 56 set ref 193*
+system_message_name     255     000100 automatic       char(32)                 level 2 dcl 56 set ref 192*
+system_shutdown_scheduled_mask
+                        243     000100 automatic       bit(36)                  level 2 dcl 56 set ref 189*
+system_shutdown_scheduled_name
+                        233     000100 automatic       char(32)                 level 2 dcl 56 set ref 188*
+system_type             110     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 163*
+term_mask               210     000100 automatic       bit(35)                  level 2 dcl 56 set ref 183*
+term_name               200     000100 automatic       char(32)                 level 2 dcl 56 set ref 182*
+time_correction_constant
+                          2     000100 automatic       fixed bin(17,0)          level 2 dcl 56 set ref 141 207 207
+time_of_bootload        102     000100 automatic       fixed bin(71,0)          level 2 dcl 56 set ref 208 208
+time_zone                 1     000100 automatic       char(4)                  level 2 dcl 56 set ref 140*
+unspec                                                 builtin function         dcl 130 set ref 138*
+unsuccessful_access_threshold
+                         20     000100 automatic       structure                level 2 dcl 56 set ref 156*
+where                                  parameter       pointer                  dcl 235 ref 232 239
+wkp_mask                221     000100 automatic       bit(35)                  level 2 dcl 56 set ref 185*
+wkp_name                211     000100 automatic       char(32)                 level 2 dcl 56 set ref 184*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ADP_SYSTEM                             constant        fixed bin(17,0)          initial dcl 3-4
+SYSTEM_TYPE_NAME                       constant        char(8)                  initial array packed unaligned dcl 3-6
+bin                                                    builtin function         dcl 130
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+i                               000375 automatic       fixed bin(17,0)          dcl 121
+null                                                   builtin function         dcl 130
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+GIVE_IT_UP                      000542 constant        label                    dcl 229 set ref 241 260
+check                           000543 constant        entry                    internal dcl 232 ref 206 207 208 209 210
+set_time                        000632 constant        entry                    internal dcl 248 ref 165 167
+sys_info                        000166 constant        entry                    external dcl 26
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+binary                                                 builtin function         ref 239 239
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1146        1166    1063        1156
+Length      4776    1063        20        3574      63           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sys_info                            398 external procedure  is an external procedure.  
+check                                   internal procedure  shares stack frame of external procedure sys_info.  
+set_time                                internal procedure  shares stack frame of external procedure sys_info.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sys_info                 000100 sys_info                    sys_info
+                         000375 i                           sys_info
+                         000376 cdsa                        sys_info
+                         000443 code                        sys_info
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      convert_date_to_binary_       create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000165       138 000173       140 000176       141 000200       144 000202       145 000204       146 000206
+    147 000210       148 000212       149 000213       150 000215       151 000217       152 000221       153 000223
+    154 000225       155 000227       156 000231       157 000233       159 000235       161 000242       163 000243
+    165 000245       167 000253       170 000264       171 000265       172 000267       173 000272       174 000274
+    175 000277       176 000301       177 000304       178 000306       179 000311       180 000313       181 000316
+    182 000320       183 000323       184 000325       185 000330       186 000332       187 000335       188 000337
+    189 000342       190 000344       191 000347       192 000351       193 000354       194 000356       195 000360
+    196 000362       197 000364       198 000366       199 000370       200 000372       201 000374       206 000376
+    207 000410       208 000425       209 000440       210 000455       214 000467       215 000471       216 000473
+    218 000476       219 000501       220 000503       222 000505       223 000506       225 000510       227 000523
+    229 000542       232 000543       239 000554       240 000571       241 000630       244 000631       248 000632
+    256 000643       258 000666       259 000670       260 000725       263 000726
+
+
+Object Segment >spec>install>1115>sys_info
+Created on 11/11/89  1006.0 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0     276    1256    1266    1266
+Length    1567     276     760      10     265       0
+
+
+65 Definitions:
+
+
+segname:    sys_info
+
+text|12         access_class_ceiling
+text|14         access_class_floor
+text|121        all_valid_ips_mask
+text|155        alrm_mask
+text|145        alrm_name
+text|26         audit_covert_channel
+text|24         audit_successful_access
+text|25         audit_unsuccessful_access
+text|6          bce_max_seg_size
+text|0          clock_
+text|113        collection_1_phase
+text|274        comm_privilege
+text|22         covert_channel_threshold
+text|144        cput_mask
+text|134        cput_name
+text|115        data_management_ringno
+text|117        default_256K_enable
+text|11         default_dir_max_length
+text|10         default_max_length
+text|7          default_stack_length
+text|267        dir_privilege
+text|254        dm_shutdown_scheduled_mask
+text|244        dm_shutdown_scheduled_name
+text|104        first_reasonable_time
+text|120        hfp_exponent_available
+text|122        highest_ips_index
+text|111        initialization_state
+text|266        ipc_privilege
+text|122        ips_mask_data
+text|106        last_reasonable_time
+text|5          max_seg_size
+text|114        maxlinks
+text|166        neti_mask
+text|156        neti_name
+text|4          page_size
+text|232        pgt_mask
+text|222        pgt_name
+text|133        quit_mask
+text|123        quit_name
+text|273        rcp_privilege
+text|272        ring1_privilege
+text|270        seg_privilege
+text|116        seg_size_256K
+text|112        service_system
+text|271        soos_privilege
+text|16         successful_access_threshold
+text|177        susp_mask
+text|167        susp_name
+symb|0          symbol_table
+text|27         system_control_dir
+text|265        system_message_mask
+text|255        system_message_name
+text|243        system_shutdown_scheduled_mask
+text|233        system_shutdown_scheduled_name
+text|110        system_type
+text|210        term_mask
+text|200        term_name
+text|2          time_correction_constant
+text|3          time_delta
+text|102        time_of_bootload
+text|1          time_zone
+text|20         unsuccessful_access_threshold
+text|221        wkp_mask
+text|211        wkp_name
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

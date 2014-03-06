@@ -1,0 +1,975 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>bootload_dseg.alm                                                                                                                      
+ASSEMBLED ON:	11/11/89  0937.7 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  "
+                                    10  "	BOOTLOAD_DSEG
+                                    11  "
+                                    12  "	This program is called periodically to set up SDWs for the
+                                    13  "	collection 1 segments as they are read in.
+                                    14  "
+                                    15  " Created  10/04/80, W. Olin Sibert, from bootstrap1
+                                    16  " Modified 12/16/80, WOS, to construct both ADP and L68 SDWs, and for
+                                    17  "   bootload_dseg$make_sdw
+                                    18  " Modified 01/16/81, WOS, to remove references to processor_utility_segment, and fix bugs
+                                    19  " Modified sometime in May, 1981, by Chris Jones to cause it to accept system type in x0
+                                    20  " Modified BIM 8/82 to run appended as soon as possible, by receiving a
+                                    21  " bbl0-relative return address. All ic-rel's removed from make_sdw.
+                                    22  " Modified October 1982 by C. Hornig for canned dseg.
+                                    23  " Modified September 1983 by K. Loepere for adp and for make_core_ptw.
+                                    24  
+    000000                          25  	name	bootload_dseg
+                                    26  
+                                    27  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                    28  
+                                    29  	include	adp_sdw
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE sdw.adp.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 04/05/81  1616.1 est Sun by convert_include_file,
+                                   2-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   2-8  
+                                   2-9  	"Made from >udd>Multics>hardcore_pool>new_pc>include>sdw.adp.incl.pl1,
+                                  2-10  	"   modified 03/20/81  2215.5 est Fri
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure adp_sdw
+                                  2-14  "
+                        000002    2-15  	equ	adp_sdw_size,2
+                                  2-16  
+                        000000    2-17  	equ	adp_sdw.add_word,0
+                        000012    2-18  	equ	adp_sdw.add_shift,10
+                        000000    2-19  	equ	adp_sdw.valid_word,0
+                        001000    2-20  	bool	adp_sdw.valid,001000	" DL
+                        000000    2-21  	equ	adp_sdw.rings_word,0
+                        000000    2-22  	equ	adp_sdw.rings_shift,0
+                        000777    2-23  	bool	adp_sdw.rings_mask,000777
+                        000000    2-24  	equ	adp_sdw.r1_word,0
+                        000006    2-25  	equ	adp_sdw.r1_shift,6
+                        000007    2-26  	bool	adp_sdw.r1_mask,000007
+                        000000    2-27  	equ	adp_sdw.r2_word,0
+                        000003    2-28  	equ	adp_sdw.r2_shift,3
+                        000007    2-29  	bool	adp_sdw.r2_mask,000007
+                        000000    2-30  	equ	adp_sdw.r3_word,0
+                        000000    2-31  	equ	adp_sdw.r3_shift,0
+                        000007    2-32  	bool	adp_sdw.r3_mask,000007
+                                  2-33  
+                        000001    2-34  	equ	adp_sdw.bound_word,1
+                        000026    2-35  	equ	adp_sdw.bound_shift,22
+                        037777    2-36  	bool	adp_sdw.bound_mask,037777
+                        000001    2-37  	equ	adp_sdw.entry_bound_word,1
+                        000006    2-38  	equ	adp_sdw.entry_bound_shift,6
+                        037777    2-39  	bool	adp_sdw.entry_bound_mask,037777
+                        000001    2-40  	equ	adp_sdw.access_word,1
+                        000002    2-41  	equ	adp_sdw.access_shift,2
+                        000017    2-42  	bool	adp_sdw.access_mask,000017
+                        000001    2-43  	equ	adp_sdw.read_word,1
+                        000040    2-44  	bool	adp_sdw.read,000040		" DL
+                        000001    2-45  	equ	adp_sdw.execute_word,1
+                        000020    2-46  	bool	adp_sdw.execute,000020	" DL
+                        000001    2-47  	equ	adp_sdw.write_word,1
+                        000010    2-48  	bool	adp_sdw.write,000010	" DL
+                        000001    2-49  	equ	adp_sdw.privileged_word,1
+                        000004    2-50  	bool	adp_sdw.privileged,000004	" DL
+                        000001    2-51  	equ	adp_sdw.unpaged_word,1
+                        000002    2-52  	bool	adp_sdw.unpaged,000002	" DL
+                        000001    2-53  	equ	adp_sdw.not_a_gate_word,1
+                        000001    2-54  	bool	adp_sdw.not_a_gate,000001	" DL
+                                  2-55  
+                                  2-56       "END INCLUDE FILE sdw.adp.incl.alm
+                                    30  	include	sdw_info
+                                   3-1  
+                                   3-2  
+                                   3-3       "BEGIN INCLUDE FILE sdw_info.incl.alm
+                                   3-4  
+                                   3-5  
+                                   3-6  	"Created 04/04/81  1404.3 est Sat by convert_include_file,
+                                   3-7  	"   Version of 02/27/81  0031.1 est Fri.
+                                   3-8  
+                                   3-9  	"Made from >udd>Multics>nss>new_pc>include>sdw_info.incl.pl1,
+                                  3-10  	"   modified 03/01/81  2328.0 est Sun
+                                  3-11  
+                                  3-12  "
+                                  3-13  "	Structure sdw_info
+                                  3-14  "
+                        000006    3-15  	equ	sdw_info_size,6
+                                  3-16  
+                                  3-17  
+                        000000    3-18  	equ	sdw_info.address,0
+                        000001    3-19  	equ	sdw_info.bound,1
+                        000002    3-20  	equ	sdw_info.access,2		" LEVEL 2
+                                  3-21  
+                        400000    3-22  	bool	sdw_info.read,400000	" DU
+                        200000    3-23  	bool	sdw_info.execute,200000	" DU
+                        100000    3-24  	bool	sdw_info.write,100000	" DU
+                        040000    3-25  	bool	sdw_info.privileged,040000	" DU
+                                  3-26  
+                        000003    3-27  	equ	sdw_info.rings,3		" LEVEL 2
+                                  3-28  
+                        000041    3-29  	equ	sdw_info.r1_shift,33
+                        000007    3-30  	bool	sdw_info.r1_mask,000007
+                        000036    3-31  	equ	sdw_info.r2_shift,30
+                        000007    3-32  	bool	sdw_info.r2_mask,000007
+                        000033    3-33  	equ	sdw_info.r3_shift,27
+                        000007    3-34  	bool	sdw_info.r3_mask,000007
+                                  3-35  
+                        000004    3-36  	equ	sdw_info.flags,4		" LEVEL 2
+                                  3-37  
+                        400000    3-38  	bool	sdw_info.paged,400000	" DU
+                        200000    3-39  	bool	sdw_info.faulted,200000	" DU
+                        100000    3-40  	bool	sdw_info.cache,100000	" DU
+                                  3-41  
+                        000005    3-42  	equ	sdw_info.gate_entry_bound,5
+                                  3-43  
+                                  3-44       "END INCLUDE FILE sdw_info.incl.alm
+                                    31  	include	l68_sdw
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE sdw.l68.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 04/05/81  1616.1 est Sun by convert_include_file,
+                                   4-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   4-8  
+                                   4-9  	"Made from >udd>Multics>hardcore_pool>new_pc>include>sdw.l68.incl.pl1,
+                                  4-10  	"   modified 03/20/81  2215.5 est Fri
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure l68_sdw
+                                  4-14  "
+                        000002    4-15  	equ	l68_sdw_size,2
+                                  4-16  
+                        000000    4-17  	equ	l68_sdw.add_word,0
+                        000014    4-18  	equ	l68_sdw.add_shift,12
+                        000000    4-19  	equ	l68_sdw.rings_word,0
+                        000003    4-20  	equ	l68_sdw.rings_shift,3
+                        000777    4-21  	bool	l68_sdw.rings_mask,000777
+                        000000    4-22  	equ	l68_sdw.r1_word,0
+                        000011    4-23  	equ	l68_sdw.r1_shift,9
+                        000007    4-24  	bool	l68_sdw.r1_mask,000007
+                        000000    4-25  	equ	l68_sdw.r2_word,0
+                        000006    4-26  	equ	l68_sdw.r2_shift,6
+                        000007    4-27  	bool	l68_sdw.r2_mask,000007
+                        000000    4-28  	equ	l68_sdw.r3_word,0
+                        000003    4-29  	equ	l68_sdw.r3_shift,3
+                        000007    4-30  	bool	l68_sdw.r3_mask,000007
+                        000000    4-31  	equ	l68_sdw.valid_word,0
+                        000004    4-32  	bool	l68_sdw.valid,000004	" DL
+                        000000    4-33  	equ	l68_sdw.df_no_word,0
+                        000000    4-34  	equ	l68_sdw.df_no_shift,0
+                        000003    4-35  	bool	l68_sdw.df_no_mask,000003
+                                  4-36  
+                        000001    4-37  	equ	l68_sdw.bound_word,1
+                        000025    4-38  	equ	l68_sdw.bound_shift,21
+                        037777    4-39  	bool	l68_sdw.bound_mask,037777
+                        000001    4-40  	equ	l68_sdw.access_word,1
+                        000021    4-41  	equ	l68_sdw.access_shift,17
+                        000017    4-42  	bool	l68_sdw.access_mask,000017
+                        000001    4-43  	equ	l68_sdw.read_word,1
+                        000004    4-44  	bool	l68_sdw.read,000004		" DU
+                        000001    4-45  	equ	l68_sdw.execute_word,1
+                        000002    4-46  	bool	l68_sdw.execute,000002	" DU
+                        000001    4-47  	equ	l68_sdw.write_word,1
+                        000001    4-48  	bool	l68_sdw.write,000001	" DU
+                        000001    4-49  	equ	l68_sdw.privileged_word,1
+                        400000    4-50  	bool	l68_sdw.privileged,400000	" DL
+                        000001    4-51  	equ	l68_sdw.unpaged_word,1
+                        200000    4-52  	bool	l68_sdw.unpaged,200000	" DL
+                        000001    4-53  	equ	l68_sdw.not_a_gate_word,1
+                        100000    4-54  	bool	l68_sdw.not_a_gate,100000	" DL
+                        000001    4-55  	equ	l68_sdw.cache_word,1
+                        040000    4-56  	bool	l68_sdw.cache,040000	" DL
+                        000001    4-57  	equ	l68_sdw.entry_bound_word,1
+                        000000    4-58  	equ	l68_sdw.entry_bound_shift,0
+                        037777    4-59  	bool	l68_sdw.entry_bound_mask,037777
+                                  4-60  
+                                  4-61       "END INCLUDE FILE sdw.l68.incl.alm
+                                    32  	include	system_types
+                                   5-1  
+                                   5-2  
+                                   5-3       "BEGIN INCLUDE FILE system_types.incl.alm
+                                   5-4  
+                                   5-5  
+                                   5-6  	"Created 04/05/81  2144.9 est Sun by convert_include_file,
+                                   5-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   5-8  
+                                   5-9  	"Made from >udd>Multics>nss>new_pc>include>system_types.incl.pl1,
+                                  5-10  	"   modified 03/21/81  2300.0 est Sat
+                                  5-11  
+                                  5-12  
+                        000001    5-13  	equ	L68_SYSTEM,1		" MANIFEST
+                        000002    5-14  	equ	ADP_SYSTEM,2		" MANIFEST
+                                  5-15  
+                                  5-16       "END INCLUDE FILE system_types.incl.alm
+                                    33  "
+                                    34  "	tsx2	bootload_dseg$make_sdw
+                                    35  "
+                                    36  "	This entry is called by bootload_loader to create SDWs for collection 1
+                                    37  "	segments. It is entered via tsx2, and expects PR6 to point to an sdw_info
+                                    38  "	block. It returns with the SDW in the AQ.
+                                    39  
+                                    40  
+    000000                          41  ret_sdw:	bss	,2
+                                    42  
+                        000002      43  	segdef	make_sdw
+                                    44  
+    000002  0a   000000 4500 00     45  make_sdw:	stz	ret_sdw		" Clear the SDW to be returned
+    000003  0a   000001 4500 00     46  	stz	ret_sdw+1
+                                    47  
+    000004  aa  6 00001 2351 00     48  	lda	pr6|sdw_info.bound	" Adjust the bound appropriately
+    000005  aa  6 00004 2361 00     49  	ldq	pr6|sdw_info.flags	" for paged or unpaged segment
+    000006  aa   400000 3160 03     50  	canq	sdw_info.paged,du
+    000007  0a   000014 6000 00     51  	tze	adjust_bound_unpaged
+    000010  aa   001777 0750 07     52  	ada	1023,dl			" Page boundary
+    000011  aa   000012 7710 00     53  	arl	10
+    000012  aa   000012 7350 00     54  	als	10
+    000013  0a   000017 7100 00     55  	tra	have_bound
+                                    56  
+    000014                          57  adjust_bound_unpaged:
+    000014  aa   000017 0750 07     58  	ada	15,dl
+    000015  aa   000004 7710 00     59  	arl	4
+    000016  aa   000004 7350 00     60  	als	4
+                                    61  
+    000017                          62  have_bound:
+    000017  aa   000004 7310 00     63  	ars	4			" Divide by 16
+    000020  0a   000024 6054 00     64  	tpnz	have_nonzero_bound	" Bound is positive
+    000021  aa   000001 2350 07     65  	lda	1,dl			" Pretend, instead
+    000022  aa   200000 2360 03     66  	ldq	sdw_info.faulted,du 	" but fault the SDW if bound was
+    000023  aa  6 00004 2561 00     67  	orsq	pr6|sdw_info.flags	" supposed to be zero
+                                    68  
+    000024                          69  have_nonzero_bound:
+    000024  aa   000001 1750 07     70  	sba	1,dl			" subtract to convert to offset
+    000025  4a  4 00010 2361 20     71  	ldq	bootload_info$system_type
+    000026  aa   000002 1160 07     72  	cmpq	ADP_SYSTEM,dl
+    000027  0a   000040 6010 00     73  	tnz	l68_bound
+                                    74  
+    000030  aa  6 00004 2361 00     75  	ldq	pr6|sdw_info.flags		" If it's paged, we should remove
+    000031  aa   400000 3160 03     76  	canq	sdw_info.paged,du		" the low order bits for the ADP
+    000032  aa   000002 6000 04     77  	tze	2,ic			" since bound is measured in pages.
+    000033  aa   777700 3750 07     78  	ana	=o777700,dl		" Bound was divided by 16 already.
+    000034  aa   037777 3750 07     79  	ana	adp_sdw.bound_mask,dl
+    000035  aa   000026 7350 00     80  	als	adp_sdw.bound_shift 	" Save it
+    000036  0a   000001 2550 00     81  	orsa	ret_sdw+adp_sdw.bound_word
+    000037  0a   000043 7100 00     82  	tra	bound_setup
+                                    83  
+    000040                          84  l68_bound:
+    000040  aa   037777 3750 07     85  	ana	l68_sdw.bound_mask,dl
+    000041  aa   000025 7350 00     86  	als	l68_sdw.bound_shift 	" Save it
+    000042  0a   000001 2550 00     87  	orsa	ret_sdw+l68_sdw.bound_word
+                                    88  " 
+    000043                          89  bound_setup:
+    000043  4a  4 00010 2351 20     90  	lda	bootload_info$system_type
+    000044  aa   000002 1150 07     91  	cmpa	ADP_SYSTEM,dl
+    000045  0a   000104 6010 00     92  	tnz	l68_address
+                                    93  
+    000046  aa  6 00000 2351 00     94  	lda	pr6|sdw_info.address	" Adjust and shift. Don't bother
+    000047  aa   000012 7350 00     95  	als	adp_sdw.add_shift		" masking this one because it's
+    000050  0a   000000 2550 00     96  	orsa	ret_sdw+adp_sdw.add_word " too large for a ,DL mask
+                                    97  
+    000051  aa  6 00002 2351 00     98  	lda	pr6|sdw_info.access	" Pick up four access bits
+    000052  aa   000040 7710 00     99  	arl	36-4			" Put in low end of word
+    000053  aa   000002 7350 00    100  	als	adp_sdw.access_shift	" Must be in the order: REWP
+    000054  0a   000001 2550 00    101  	orsa	ret_sdw+adp_sdw.access_word
+                                   102  
+    000055  aa  6 00003 2351 00    103  	lda	pr6|sdw_info.rings	" Pick up the ring brackets
+    000056  aa   000033 7710 00    104  	arl	36-3*3
+    000057  aa   000000 7350 00    105  	als	adp_sdw.rings_shift
+    000060  0a   000000 2550 00    106  	orsa	ret_sdw+adp_sdw.rings_word
+                                   107  
+    000061  aa  6 00005 2351 00    108  	lda	pr6|sdw_info.gate_entry_bound " Is it a gate?
+    000062  0a   000066 6010 00    109  	tnz	set_adp_entry_bound
+                                   110  
+    000063  aa   000001 2360 07    111  	ldq	adp_sdw.not_a_gate,dl	" Get the not-a-gate flag
+    000064  0a   000001 2560 00    112  	orsq	ret_sdw+adp_sdw.not_a_gate_word " and set it
+    000065  0a   000072 7100 00    113  	tra	set_adp_sdw_flags
+                                   114  
+    000066                         115  set_adp_entry_bound:
+    000066  aa   000001 1750 07    116  	sba	1,dl			" Convert into actual offset
+    000067  aa   037777 3750 07    117  	ana	adp_sdw.entry_bound_mask,dl	" for entry bound in SDW
+    000070  aa   000006 7350 00    118  	als	adp_sdw.entry_bound_shift
+    000071  0a   000001 2550 00    119  	orsa	ret_sdw+adp_sdw.entry_bound_word
+                                   120  
+    000072                         121  set_adp_sdw_flags:
+    000072  aa  6 00004 2361 00    122  	ldq	pr6|sdw_info.flags	" Get the flags (ignore cache for ADP)
+                                   123  
+    000073  aa   000002 2350 07    124  	lda	adp_sdw.unpaged,dl		" Get the unpaged flag
+    000074  aa   400000 3160 03    125  	canq	sdw_info.paged,du
+    000075  aa   000002 6010 04    126  	tnz	2,ic			" If not paged, don't seg unpaged
+    000076  0a   000001 2550 00    127  	orsa	ret_sdw+adp_sdw.unpaged_word
+                                   128  
+    000077  aa   001000 2350 07    129  	lda	adp_sdw.valid,dl		" Get the valid flag
+    000100  aa   200000 3160 03    130  	canq	sdw_info.faulted,du 	" See if it should NOT be set
+    000101  aa   000002 6010 04    131  	tnz	2,ic			" If faulted, don't set valid to 1.
+    000102  0a   000000 2550 00    132  	orsa	ret_sdw+adp_sdw.valid_word
+    000103  0a   000145 7100 00    133  	tra	address_setup
+                                   134  " 
+    000104                         135  l68_address:
+    000104  aa  6 00000 2351 00    136  	lda	pr6|sdw_info.address	" Adjust and shift. Don't bother
+    000105  aa   000014 7350 00    137  	als	l68_sdw.add_shift		" masking this one because it's
+    000106  0a   000000 2550 00    138  	orsa	ret_sdw+l68_sdw.add_word " too large for a ,DL mask
+                                   139  
+    000107  aa  6 00002 2351 00    140  	lda	pr6|sdw_info.access	" Pick up four access bits
+    000110  aa   000040 7710 00    141  	arl	36-4			" Put in low end of word
+    000111  aa   000021 7350 00    142  	als	l68_sdw.access_shift	" Must be in the order: REWP
+    000112  0a   000001 2550 00    143  	orsa	ret_sdw+l68_sdw.access_word
+                                   144  
+    000113  aa  6 00003 2351 00    145  	lda	pr6|sdw_info.rings	" Pick up the ring brackets
+    000114  aa   000033 7710 00    146  	arl	36-3*3
+    000115  aa   000003 7350 00    147  	als	l68_sdw.rings_shift
+    000116  0a   000000 2550 00    148  	orsa	ret_sdw+l68_sdw.rings_word
+                                   149  
+    000117  aa  6 00005 2351 00    150  	lda	pr6|sdw_info.gate_entry_bound " Is it a gate?
+    000120  0a   000124 6010 00    151  	tnz	set_l68_entry_bound	" Not unless this is nonzero
+                                   152  
+    000121  aa   100000 2360 07    153  	ldq	l68_sdw.not_a_gate,dl	" Get the not-a-gate flag
+    000122  0a   000001 2560 00    154  	orsq	ret_sdw+l68_sdw.not_a_gate_word " and set it
+    000123  0a   000130 7100 00    155  	tra	set_l68_sdw_flags
+                                   156  
+    000124                         157  set_l68_entry_bound:
+    000124  aa   000001 1750 07    158  	sba	1,dl			" Convert into actual offset
+    000125  aa   037777 3750 07    159  	ana	l68_sdw.entry_bound_mask,dl	" for entry bound in SDW
+    000126  aa   000000 7350 00    160  	als	l68_sdw.entry_bound_shift
+    000127  0a   000001 2550 00    161  	orsa	ret_sdw+l68_sdw.entry_bound_word
+                                   162  
+    000130                         163  set_l68_sdw_flags:
+    000130  aa  6 00004 2361 00    164  	ldq	pr6|sdw_info.flags	" Get the flags (ignore cache for ADP)
+                                   165  
+    000131  aa   200000 2350 07    166  	lda	l68_sdw.unpaged,dl		" Get the unpaged flag
+    000132  aa   400000 3160 03    167  	canq	sdw_info.paged,du
+    000133  aa   000002 6010 04    168  	tnz	2,ic			" If not paged, don't seg unpaged
+    000134  0a   000001 2550 00    169  	orsa	ret_sdw+l68_sdw.unpaged_word
+                                   170  
+    000135  aa   000004 2350 07    171  	lda	l68_sdw.valid,dl		" Since Level 68 segment fault is
+    000136  aa   200000 3160 03    172  	canq	sdw_info.faulted,du 	" DF0, there is no need to set df_no
+    000137  aa   000002 6010 04    173  	tnz	2,ic
+    000140  0a   000000 2550 00    174  	orsa	ret_sdw+l68_sdw.valid_word
+                                   175  
+    000141  aa   040000 2350 07    176  	lda	l68_sdw.cache,dl		" Get the encacheability flag
+    000142  aa   100000 3160 03    177  	canq	sdw_info.cache,du
+    000143  aa   000002 6000 04    178  	tze	2,ic			" If not paged, don't seg unpaged
+    000144  0a   000001 2550 00    179  	orsa	ret_sdw+l68_sdw.cache_word
+                                   180  
+    000145                         181  address_setup:
+    000145  0a   000000 2370 00    182  	ldaq	ret_sdw
+    000146  aa   000000 7100 12    183  	tra	0,x2
+                                   184  "
+                                   185  "	tsx2	bootload_dseg$make_core_ptw
+                                   186  "
+                                   187  " called with a memory address in a.  Returns a ptw for this in q.
+                                   188  
+                        000147     189  	segdef	make_core_ptw
+                                   190  
+    000147                         191  make_core_ptw:
+    000147  0a   000163 7550 00    192  	sta	core_addr
+    000150  4a  4 00010 2361 20    193  	ldq	bootload_info$system_type
+    000151  aa   000002 1160 07    194  	cmpq	ADP_SYSTEM,dl
+    000152  0a   000157 6010 00    195  	tnz	l68_ptw
+                                   196  
+    000153  0a   000163 2360 00    197  	ldq	core_addr
+    000154  aa   000010 7360 00    198  	qls	18-10
+    000155  aa   010064 2760 07    199  	orq	=o010064,dl
+    000156  aa   000000 7100 12    200  	tra	0,x2
+                                   201  
+    000157  0a   000163 2360 00    202  l68_ptw:	ldq	core_addr
+    000160  aa   000014 7360 00    203  	qls	18-6
+    000161  aa   420025 2760 07    204  	orq	=o420025,dl
+    000162  aa   000000 7100 12    205  	tra	0,x2
+                                   206  
+    000163                         207  core_addr:
+    000163  aa   000000 000000     208  	dec	0
+                                   209  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000164  5a   000003 000000 
+    000165  5a   000036 600000 
+    000166  aa   000000 000000 
+    000167  55   000012 000002 
+    000170  5a   000002 400003 
+    000171  55   000006 000012 
+    000172  aa  015 142 157 157
+    000173  aa  164 154 157 141
+    000174  aa  144 137 144 163
+    000175  aa  145 147 000 000
+    000176  55   000021 000003 
+    000177  0a   000147 400000 
+    000200  55   000015 000003 
+    000201  aa  015 155 141 153         make_core_ptw
+    000202  aa  145 137 143 157
+    000203  aa  162 145 137 160
+    000204  aa  164 167 000 000
+    000205  55   000027 000012 
+    000206  0a   000002 400000 
+    000207  55   000024 000003 
+    000210  aa  010 155 141 153         make_sdw
+    000211  aa  145 137 163 144
+    000212  aa  167 000 000 000
+    000213  55   000002 000021 
+    000214  6a   000000 400002 
+    000215  55   000032 000003 
+    000216  aa  014 163 171 155         symbol_table
+    000217  aa  142 157 154 137
+    000220  aa  164 141 142 154
+    000221  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000222  aa   000000 000015 
+    000223  aa   000000 000000 
+    000224  5a   000021 000000 
+    000225  5a   000012 000000 
+    000226  aa   000000 000000 
+    000227  aa   000000 000000 
+    000230  aa   000000 000000 
+    000231  5a   000027 000000 
+    000232  aa   000000 000000 
+    000233  aa   000000 000000 
+    000234  aa   000000 000000 
+    000235  aa   000000 000000 
+    000236  aa   000000 000000 
+    000237  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000240  aa  013 163 171 163         system_type
+    000241  aa  164 145 155 137
+    000242  aa  164 171 160 145
+    000243  aa  015 142 157 157         bootload_info
+    000244  aa  164 154 157 141
+    000245  aa  144 137 151 156
+    000246  aa  146 157 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000247  aa   000004 000000 
+    000250  55   000057 000054 
+    000251  aa   000001 000000 
+    000252  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000253  5a   000063 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000164 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000012 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_info|system_type
+    000011  5a   000067 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   250161 727433 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000251 
+    000020  aa   000000 000205 
+    000021  aa   000226 000222 
+    000022  aa   000237 000205 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000006 
+    000066  aa   000116 000062 
+    000067  aa   175453 021702 
+    000070  aa   000000 117547 
+    000071  aa   215104 000000 
+    000072  aa   000133 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000144 000035 
+    000077  aa   106701 740617 
+    000100  aa   000000 110670 
+    000101  aa   206433 400000 
+    000102  aa   000154 000036 
+    000103  aa   106701 740603 
+    000104  aa   000000 110670 
+    000105  aa   206426 200000 
+    000106  aa   000164 000035 
+    000107  aa   106701 740607 
+    000110  aa   000000 110670 
+    000111  aa   206427 200000 
+    000112  aa   000174 000042 
+    000113  aa   106701 740577 
+    000114  aa   000000 110670 
+    000115  aa   206425 600000 
+    000116  aa   076163 160145          >special_ldd>install>MR12.3-1114>bootload_dseg.alm
+    000117  aa   143151 141154 
+    000120  aa   137154 144144 
+    000121  aa   076151 156163 
+    000122  aa   164141 154154 
+    000123  aa   076115 122061 
+    000124  aa   062056 063055 
+    000125  aa   061061 061064 
+    000126  aa   076142 157157 
+    000127  aa   164154 157141 
+    000130  aa   144137 144163 
+    000131  aa   145147 056141 
+    000132  aa   154155 040040 
+    000133  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000134  aa   076151 156143 
+    000135  aa   154165 144145 
+    000136  aa   076142 157157 
+    000137  aa   164154 157141 
+    000140  aa   144137 145161 
+    000141  aa   165163 056151 
+    000142  aa   156143 154056 
+    000143  aa   141154 155040 
+    000144  aa   076154 144144          >ldd>include>adp_sdw.incl.alm
+    000145  aa   076151 156143 
+    000146  aa   154165 144145 
+    000147  aa   076141 144160 
+    000150  aa   137163 144167 
+    000151  aa   056151 156143 
+    000152  aa   154056 141154 
+    000153  aa   155040 040040 
+    000154  aa   076154 144144          >ldd>include>sdw_info.incl.alm
+    000155  aa   076151 156143 
+    000156  aa   154165 144145 
+    000157  aa   076163 144167 
+    000160  aa   137151 156146 
+    000161  aa   157056 151156 
+    000162  aa   143154 056141 
+    000163  aa   154155 040040 
+    000164  aa   076154 144144          >ldd>include>l68_sdw.incl.alm
+    000165  aa   076151 156143 
+    000166  aa   154165 144145 
+    000167  aa   076154 066070 
+    000170  aa   137163 144167 
+    000171  aa   056151 156143 
+    000172  aa   154056 141154 
+    000173  aa   155040 040040 
+    000174  aa   076154 144144          >ldd>include>system_types.incl.alm
+    000175  aa   076151 156143 
+    000176  aa   154165 144145 
+    000177  aa   076163 171163 
+    000200  aa   164145 155137 
+    000201  aa   164171 160145 
+    000202  aa   163056 151156 
+    000203  aa   143154 056141 
+    000204  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+         145    address_setup            bootload_dseg:      133,  181.
+          14    adjust_bound_unpaged     bootload_dseg:       51,   57.
+          17    adp_sdw.access_mask      adp_sdw:       42.
+           2    adp_sdw.access_shift     bootload_dseg:      100,
+                                         adp_sdw:       41.
+           1    adp_sdw.access_word      bootload_dseg:      101,
+                                         adp_sdw:       40.
+          12    adp_sdw.add_shift        bootload_dseg:       95,
+                                         adp_sdw:       18.
+           0    adp_sdw.add_word         bootload_dseg:       96,
+                                         adp_sdw:       17.
+       37777    adp_sdw.bound_mask       bootload_dseg:       79,
+                                         adp_sdw:       36.
+          26    adp_sdw.bound_shift      bootload_dseg:       80,
+                                         adp_sdw:       35.
+           1    adp_sdw.bound_word       bootload_dseg:       81,
+                                         adp_sdw:       34.
+       37777    adp_sdw.entry_bound_mask       bootload_dseg:      117,
+                                               adp_sdw:       39.
+           6    adp_sdw.entry_bound_shift      bootload_dseg:      118,
+                                               adp_sdw:       38.
+           1    adp_sdw.entry_bound_word       bootload_dseg:      119,
+                                               adp_sdw:       37.
+          20    adp_sdw.execute          adp_sdw:       46.
+           1    adp_sdw.execute_word     adp_sdw:       45.
+           1    adp_sdw.not_a_gate       bootload_dseg:      111,
+                                         adp_sdw:       54.
+           1    adp_sdw.not_a_gate_word  bootload_dseg:      112,
+                                         adp_sdw:       53.
+           4    adp_sdw.privileged       adp_sdw:       50.
+           1    adp_sdw.privileged_word  adp_sdw:       49.
+           7    adp_sdw.r1_mask          adp_sdw:       26.
+           6    adp_sdw.r1_shift         adp_sdw:       25.
+           0    adp_sdw.r1_word          adp_sdw:       24.
+           7    adp_sdw.r2_mask          adp_sdw:       29.
+           3    adp_sdw.r2_shift         adp_sdw:       28.
+           0    adp_sdw.r2_word          adp_sdw:       27.
+           7    adp_sdw.r3_mask          adp_sdw:       32.
+           0    adp_sdw.r3_shift         adp_sdw:       31.
+           0    adp_sdw.r3_word          adp_sdw:       30.
+          40    adp_sdw.read             adp_sdw:       44.
+           1    adp_sdw.read_word        adp_sdw:       43.
+         777    adp_sdw.rings_mask       adp_sdw:       23.
+           0    adp_sdw.rings_shift      bootload_dseg:      105,
+                                         adp_sdw:       22.
+           0    adp_sdw.rings_word       bootload_dseg:      106,
+                                         adp_sdw:       21.
+           2    adp_sdw.unpaged          bootload_dseg:      124,
+                                         adp_sdw:       52.
+           1    adp_sdw.unpaged_word     bootload_dseg:      127,
+                                         adp_sdw:       51.
+        1000    adp_sdw.valid            bootload_dseg:      129,
+                                         adp_sdw:       20.
+           0    adp_sdw.valid_word       bootload_dseg:      132,
+                                         adp_sdw:       19.
+          10    adp_sdw.write            adp_sdw:       48.
+           1    adp_sdw.write_word       adp_sdw:       47.
+           2    adp_sdw_size             adp_sdw:       15.
+           2    ADP_SYSTEM               bootload_dseg:       72,   91,  194,
+                                         system_types:        14.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+       56000    bkpt_absloc              bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_info            bootload_dseg:       71,   90,  193.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+          43    bound_setup              bootload_dseg:       82,   89.
+         163    core_addr                bootload_dseg:      192,  197,  202,  207.
+           0    ds                       bootload_equs:       12.
+       24000    fgbx_absloc              bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+           7    fv                       bootload_equs:       19.
+          17    have_bound               bootload_dseg:       55,   62.
+          24    have_nonzero_bound       bootload_dseg:       64,   69.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+         104    l68_address              bootload_dseg:       92,  135.
+          40    l68_bound                bootload_dseg:       73,   84.
+         157    l68_ptw                  bootload_dseg:      195,  202.
+          17    l68_sdw.access_mask      l68_sdw:       42.
+          21    l68_sdw.access_shift     bootload_dseg:      142,
+                                         l68_sdw:       41.
+           1    l68_sdw.access_word      bootload_dseg:      143,
+                                         l68_sdw:       40.
+          14    l68_sdw.add_shift        bootload_dseg:      137,
+                                         l68_sdw:       18.
+           0    l68_sdw.add_word         bootload_dseg:      138,
+                                         l68_sdw:       17.
+       37777    l68_sdw.bound_mask       bootload_dseg:       85,
+                                         l68_sdw:       39.
+          25    l68_sdw.bound_shift      bootload_dseg:       86,
+                                         l68_sdw:       38.
+           1    l68_sdw.bound_word       bootload_dseg:       87,
+                                         l68_sdw:       37.
+       40000    l68_sdw.cache            bootload_dseg:      176,
+                                         l68_sdw:       56.
+           1    l68_sdw.cache_word       bootload_dseg:      179,
+                                         l68_sdw:       55.
+           3    l68_sdw.df_no_mask       l68_sdw:       35.
+           0    l68_sdw.df_no_shift      l68_sdw:       34.
+           0    l68_sdw.df_no_word       l68_sdw:       33.
+       37777    l68_sdw.entry_bound_mask       bootload_dseg:      159,
+                                               l68_sdw:       59.
+           0    l68_sdw.entry_bound_shift      bootload_dseg:      160,
+                                               l68_sdw:       58.
+           1    l68_sdw.entry_bound_word       bootload_dseg:      161,
+                                               l68_sdw:       57.
+           2    l68_sdw.execute          l68_sdw:       46.
+           1    l68_sdw.execute_word     l68_sdw:       45.
+      100000    l68_sdw.not_a_gate       bootload_dseg:      153,
+                                         l68_sdw:       54.
+           1    l68_sdw.not_a_gate_word  bootload_dseg:      154,
+                                         l68_sdw:       53.
+      400000    l68_sdw.privileged       l68_sdw:       50.
+           1    l68_sdw.privileged_word  l68_sdw:       49.
+           7    l68_sdw.r1_mask          l68_sdw:       24.
+          11    l68_sdw.r1_shift         l68_sdw:       23.
+           0    l68_sdw.r1_word          l68_sdw:       22.
+           7    l68_sdw.r2_mask          l68_sdw:       27.
+           6    l68_sdw.r2_shift         l68_sdw:       26.
+           0    l68_sdw.r2_word          l68_sdw:       25.
+           7    l68_sdw.r3_mask          l68_sdw:       30.
+           3    l68_sdw.r3_shift         l68_sdw:       29.
+           0    l68_sdw.r3_word          l68_sdw:       28.
+           4    l68_sdw.read             l68_sdw:       44.
+           1    l68_sdw.read_word        l68_sdw:       43.
+         777    l68_sdw.rings_mask       l68_sdw:       21.
+           3    l68_sdw.rings_shift      bootload_dseg:      147,
+                                         l68_sdw:       20.
+           0    l68_sdw.rings_word       bootload_dseg:      148,
+                                         l68_sdw:       19.
+      200000    l68_sdw.unpaged          bootload_dseg:      166,
+                                         l68_sdw:       52.
+           1    l68_sdw.unpaged_word     bootload_dseg:      169,
+                                         l68_sdw:       51.
+           4    l68_sdw.valid            bootload_dseg:      171,
+                                         l68_sdw:       32.
+           0    l68_sdw.valid_word       bootload_dseg:      174,
+                                         l68_sdw:       31.
+           1    l68_sdw.write            l68_sdw:       48.
+           1    l68_sdw.write_word       l68_sdw:       47.
+           2    l68_sdw_size             l68_sdw:       15.
+           1    L68_SYSTEM               system_types:        13.
+         147    make_core_ptw            bootload_dseg:      189,  191.
+           2    make_sdw                 bootload_dseg:       43,   45.
+           2    mb                       bootload_equs:       14.
+           4    nt                       bootload_equs:       16.
+           5    prb                      bootload_equs:       17.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+           0    ret_sdw                  bootload_dseg:       41,   45,   46,   81,   87,   96,  101,  106,  112,  119,  127,
+                                                             132,  138,  143,  148,  154,  161,  169,  174,  179,  182.
+           2    sdw_info.access          bootload_dseg:       98,  140,
+                                         sdw_info:      20.
+           0    sdw_info.address         bootload_dseg:       94,  136,
+                                         sdw_info:      18.
+           1    sdw_info.bound           bootload_dseg:       48,
+                                         sdw_info:      19.
+      100000    sdw_info.cache           bootload_dseg:      177,
+                                         sdw_info:      40.
+      200000    sdw_info.execute         sdw_info:      23.
+      200000    sdw_info.faulted         bootload_dseg:       66,  130,  172,
+                                         sdw_info:      39.
+           4    sdw_info.flags           bootload_dseg:       49,   67,   75,  122,  164,
+                                         sdw_info:      36.
+           5    sdw_info.gate_entry_bound      bootload_dseg:      108,  150,
+                                               sdw_info:      42.
+      400000    sdw_info.paged           bootload_dseg:       50,   76,  125,  167,
+                                         sdw_info:      38.
+       40000    sdw_info.privileged      sdw_info:      25.
+           7    sdw_info.r1_mask         sdw_info:      30.
+          41    sdw_info.r1_shift        sdw_info:      29.
+           7    sdw_info.r2_mask         sdw_info:      32.
+          36    sdw_info.r2_shift        sdw_info:      31.
+           7    sdw_info.r3_mask         sdw_info:      34.
+          33    sdw_info.r3_shift        sdw_info:      33.
+      400000    sdw_info.read            sdw_info:      22.
+           3    sdw_info.rings           bootload_dseg:      103,  145,
+                                         sdw_info:      27.
+      100000    sdw_info.write           sdw_info:      24.
+           6    sdw_info_size            sdw_info:      15.
+           6    seg                      bootload_equs:       18.
+           1    seg2                     bootload_equs:       13.
+          66    set_adp_entry_bound      bootload_dseg:      109,  115.
+          72    set_adp_sdw_flags        bootload_dseg:      113,  121.
+         124    set_l68_entry_bound      bootload_dseg:      151,  157.
+         130    set_l68_sdw_flags        bootload_dseg:      155,  163.
+           3    slt                      bootload_equs:       15.
+                system_type              bootload_dseg:       71,   90,  193.
+       46000    toedata_absloc           bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+       24000    toe_absloc               bootload_equs:       81.
+        4000    toe_lth                  bootload_equs:       82.
+       52000    upt_absloc               bootload_equs:       93.
+        2000    upt_lth                  bootload_equs:       94.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

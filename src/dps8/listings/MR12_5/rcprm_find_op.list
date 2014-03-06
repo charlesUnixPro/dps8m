@@ -1,0 +1,567 @@
+	COMPILATION LISTING OF SEGMENT rcprm_find_op
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0940.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+        9 rcprm_find_op:
+       10      procedure (a_action, a_resource_desc_item_ptr, a_reconstruct_flag, a_priv_sw, a_operation, a_seek_attr_flag,
+       11 	a_error_code);
+       12 
+       13 /*    This program determines the operation needed by rcp_access_kernel_
+       14*   *    given the action and the given attributes.
+       15*   *    Created 850110 by Maria M. Pozzo
+       16*   *
+       17**/
+       18 
+       19 /*                    ARGUMENT DATA                           */
+       20 
+       21 dcl	a_action		   fixed bin;		/* (I) Action being performed */
+       22 dcl	a_resource_desc_item_ptr
+       23 			   ptr;			/* (I) Attributes that were selected by the user */
+       24 dcl	a_reconstruct_flag	   bit (1) aligned;		/* (I) True if this is a reconstruct operation. */
+       25 dcl	a_priv_sw		   bit (1) aligned;		/* (I) True if this is a privileged gate call. */
+       26 dcl	a_operation	   bit (36) aligned;	/* (O) Encoded RCP operation. */
+       27 dcl	a_seek_attr_flag	   bit (1) aligned;		/* (O) "1"b if seeking by attributes, "0"b if by name or uid */
+       28 dcl	a_error_code	   fixed bin (35);		/* (O) Error code */
+       29 
+       30 /*                    AUTOMATIC DATA                          */
+       31 
+       32 dcl	priv_sw		   bit (1) aligned;
+       33 dcl	reconstruct_flag	   bit (1) aligned;
+       34 dcl	seek_attr_flag	   bit (1) aligned;
+       35 
+       36 dcl	operation		   bit (36) aligned;
+       37 
+       38 dcl	action		   fixed bin;
+       39 dcl	error_code	   fixed bin (35);
+       40 
+       41 dcl	resource_desc_item_ptr ptr;
+       42 dcl	operation_ptr	   ptr;
+       43 
+       44 dcl	1 resource_desc_item   like resource_descriptions.item based (resource_desc_item_ptr) aligned;
+       45 dcl	1 en_access_op	   like encoded_access_op based (operation_ptr) aligned;
+       46 
+       47 /*                      EXTERNAL ENTRIES                  */
+       48 
+       49 dcl	error_table_$resource_spec_ambiguous
+       50 			   ext fixed bin (35) static;
+       51 dcl	error_table_$resource_not_free
+       52 			   ext fixed bin (35) static;
+       53 dcl	error_table_$resource_free
+       54 			   ext fixed bin (35) static;
+       55 dcl	error_table_$resource_not_modified
+       56 			   ext fixed bin (35) static;
+       57 dcl	access_operations_$rcp_register
+       58 			   bit (36) aligned external;
+       59 dcl	access_operations_$rcp_deregister
+       60 			   bit (36) aligned external;
+       61 dcl	access_operations_$rcp_register_acquire
+       62 			   bit (36) aligned external;
+       63 dcl	access_operations_$rcp_acquire
+       64 			   bit (36) aligned external;
+       65 dcl	access_operations_$rcp_release
+       66 			   bit (36) aligned external;
+       67 dcl	access_operations_$rcp_reserve
+       68 			   bit (36) aligned external;
+       69 dcl	access_operations_$rcp_cancel
+       70 			   bit (36) aligned external;
+       71 dcl	access_operations_$rcp_status
+       72 			   bit (36) aligned external;
+       73 dcl	access_operations_$rcp_set
+       74 			   bit (36) aligned external;
+       75 dcl	access_operations_$rcp_set_access
+       76 			   bit (36) aligned external;
+       77 dcl	access_operations_$rcp_clear
+       78 			   bit (36) aligned external;
+       79 dcl	access_operations_$rcp_reconstruct_registry
+       80 			   bit (36) aligned external;
+       81 
+       82 /*  Copy arguments */
+       83 
+       84 	action = a_action;
+       85 	resource_desc_item_ptr = a_resource_desc_item_ptr;
+       86 	reconstruct_flag = a_reconstruct_flag;
+       87 	priv_sw = a_priv_sw;
+       88 
+       89 /*  Initialize local variables */
+       90 
+       91 	operation = "0"b;
+       92 	operation_ptr = addr (operation);
+       93 	ops_ptr = addr (en_access_op.detailed_operation);
+       94 	seek_attr_flag = "1"b;
+       95 	error_code = 0;
+       96 
+       97 /*  Find out if we're seeking for the resource by name or uid, or just */
+       98 /*  by attributes */
+       99 
+      100 	if resource_desc_item.given.name | resource_desc_item.given.uid then
+      101 	     seek_attr_flag = "0"b;
+      102 
+      103 /*  Check for register and acquire operation first */
+      104 /*  The resource name must be given and the uid must NOT be given */
+      105 /*  unless this is a reconstruct operation. If owner, release_lock */
+      106 /*  or aim_range is given then this is an implicit acquire.   */
+      107 
+      108 	if action = Register then do;
+      109 	     if ^resource_desc_item.given.name then
+      110 		error_code = error_table_$resource_spec_ambiguous;
+      111 	     if resource_desc_item.given.uid & ^reconstruct_flag then
+      112 		error_code = error_table_$resource_spec_ambiguous;
+      113 	     if resource_desc_item.given.owner | resource_desc_item.given.release_lock
+      114 		| resource_desc_item.given.aim_range then
+      115 		operation = access_operations_$rcp_register_acquire;
+      116 	     else operation = access_operations_$rcp_register;
+      117 	end;
+      118 	else if action = Acquire then
+      119 	     operation = access_operations_$rcp_acquire;
+      120 
+      121 /*  Check for the Set operation next */
+      122 /*  Cannot Set by attributes. */
+      123 /*  Cannot Set the owner. */
+      124 /*  If the acs_path is given or the access_class, this is a set_access */
+      125 /*  operation. All other requests are a set operation. */
+      126 
+      127 	else if action = Set then do;
+      128 	     if seek_attr_flag then do;
+      129 		error_code = error_table_$resource_spec_ambiguous;
+      130 		goto MAIN_RETURN;
+      131 	     end;
+      132 	     if resource_desc_item.given.owner then do;
+      133 		error_code = error_table_$resource_not_modified;
+      134 		goto MAIN_RETURN;
+      135 	     end;
+      136 	     if (resource_desc_item.given.potential_aim_range | resource_desc_item.given.aim_range
+      137 		| resource_desc_item.given.acs_path) then
+      138 		operation = access_operations_$rcp_set_access;
+      139 	     else operation = access_operations_$rcp_set;
+      140 	end;
+      141 
+      142 /* Check Status operation next. */
+      143 /* Cannot Status by attributes. */
+      144 
+      145 	else if action = Status then do;
+      146 	     if seek_attr_flag then do;
+      147 		error_code = error_table_$resource_spec_ambiguous;
+      148 		goto MAIN_RETURN;
+      149 	     end;
+      150 	     operation = access_operations_$rcp_status;
+      151 	end;
+      152 
+      153 /*  Check release operation next. */
+      154 /*  Cannot release the resource by attributes. */
+      155 
+      156 	else if action = Release then do;
+      157 	     if seek_attr_flag then do;
+      158 		error_code = error_table_$resource_spec_ambiguous;
+      159 		goto MAIN_RETURN;
+      160 	     end;
+      161 	     operation = access_operations_$rcp_release;
+      162 	end;
+      163 
+      164 /*  Check reserve operation next. */
+      165 
+      166 	else if action = Reserve then
+      167 	     operation = access_operations_$rcp_reserve;
+      168 
+      169 /*  Check cancel operation next. */
+      170 /*  Cannot cancel a resource by attributes. */
+      171 
+      172 	else if action = Cancel then do;
+      173 	     if seek_attr_flag then do;
+      174 		error_code = error_table_$resource_spec_ambiguous;
+      175 		goto MAIN_RETURN;
+      176 	     end;
+      177 	     operation = access_operations_$rcp_cancel;
+      178 	end;
+      179 
+      180 /* Check Deregister next. */
+      181 /* Cannot deregister resource by attributes. */
+      182 
+      183 	else if action = Deregister then do;
+      184 	     if seek_attr_flag then do;
+      185 		error_code = error_table_$resource_spec_ambiguous;
+      186 		goto MAIN_RETURN;
+      187 	     end;
+      188 	     operation = access_operations_$rcp_deregister;
+      189 	end;
+      190 
+      191 /* Clear operation */
+      192 /* Cannot clear a resource by attributes. */
+      193 
+      194 	else if action = Clear then do;
+      195 	     if seek_attr_flag then do;
+      196 		error_code = error_table_$resource_spec_ambiguous;
+      197 		goto MAIN_RETURN;
+      198 	     end;
+      199 	     operation = access_operations_$rcp_clear;
+      200 	end;
+      201 
+      202 /* Now set the selected given arguments for this operation from the */
+      203 /* given flags. */
+      204 
+      205 	detailed_operation.given = resource_desc_item.given, by name;
+      206 	detailed_operation.priv_gate_call = priv_sw;
+      207 	detailed_operation.search = seek_attr_flag;
+      208 
+      209 MAIN_RETURN:
+      210 	a_operation = operation;
+      211 	a_seek_attr_flag = seek_attr_flag;
+      212 	a_error_code = error_code;
+      213 
+      214 	return;
+      215 
+      216 
+  1     1 /* begin include file - access_audit_encoded_op.incl.pl1 */
+  1     2 
+  1     3 dcl 1 encoded_access_op	aligned based,
+  1     4       2 audit_type	unal,
+  1     5         3 object_type	fixed bin (4) uns unal,
+  1     6         3 access_type	fixed bin (2) uns unal,
+  1     7       2 operation_index	fixed bin (12) uns unal,
+  1     8       2 detailed_operation	fixed bin (18) uns unal;
+  1     9 
+  1    10 /* object_type = Seg, Dir, Rcp, Admin, Special, Other
+  1    11*   access_type = None, Modify_Acl, Modify, Read
+  1    12*   operation_index is the index of this code in
+  1    13*     access_operations_$oper_codes and the index of
+  1    14*     the text descriptor in access_operations_$text_offest_table
+  1    15*     (see access_operations_.incl.pl1)
+  1    16*   detailed_operation is additional info inserted by the
+  1    17*     caller of the subsystem performing the operation
+  1    18**/
+  1    19 
+  1    20 /* end include file - access_audit_encoded_op.incl.pl1 */
+      217 
+      218 
+  2     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2     2 /*  BEGIN include rcp_ops.incl.pl1  */
+  2     3 
+  2     4 /* Written 02/27/85 by Chris Jones, Maria Pozzo */
+  2     5 
+  2     6 dcl	ops_ptr		   ptr;
+  2     7 
+  2     8 dcl	1 detailed_operation   unaligned based (ops_ptr),
+  2     9 	  2 given,
+  2    10 	    3 potential_attributes
+  2    11 			   bit (1),
+  2    12 	    3 desired_attributes
+  2    13 			   bit (1),
+  2    14 	    3 potential_aim_range
+  2    15 			   bit (1),
+  2    16 	    3 aim_range	   bit (1),
+  2    17 	    3 owner	   bit (1),
+  2    18 	    3 acs_path	   bit (1),
+  2    19 	    3 location	   bit (1),
+  2    20 	    3 comment	   bit (1),
+  2    21 	    3 charge_type	   bit (1),
+  2    22 	    3 usage_lock	   bit (1),
+  2    23 	    3 release_lock	   bit (1),
+  2    24 	    3 user_alloc	   bit (1),
+  2    25 	  2 priv_gate_call	   bit (1),
+  2    26 	  2 search	   bit (1),
+  2    27 	  2 force		   bit (1),
+  2    28 	  2 process	   bit (1),
+  2    29 	  2 owner		   bit (1),
+  2    30 	  2 pad		   bit (1);
+  2    31 
+      219 
+      220 
+  3     1 /* --------------- BEGIN include file rcprm_action_codes.incl.pl1 --------------- */
+  3     2 
+  3     3 dcl (Register initial (1),				/* Positive actions must be ODD */
+  3     4      Deregister initial (2),				/* Negative actions must be EVEN */
+  3     5      Acquire initial (3),
+  3     6      Release initial (4),
+  3     7      Clear initial (6),
+  3     8      Set initial (7),
+  3     9      Status initial (8),
+  3    10      Reserve initial (9),
+  3    11      Cancel initial (10)) fixed bin static options (constant);
+  3    12 
+  3    13 dcl  Action_noun (10) char (12) static options (constant) initial
+  3    14     ("register", "deregister", "acquire", "release", "ERROR", "clear", "set", "status", "reserve", "cancel");
+  3    15 
+  3    16 
+  3    17 /* ---------------- END include file rcprm_action_codes.incl.pl1 ---------------- */
+      221 
+      222 
+  4     1 /* --------------- BEGIN include file resource_control_desc.incl.pl1 --------------- */
+  4     2 
+  4     3 /* Written by R.J.C. Kissel 3/78. */
+  4     4 /* Modified 09/28/78 by C. D. Tavares */
+  4     5 
+  4     6 dcl 1 resource_descriptions based (resource_desc_ptr) aligned,
+  4     7     2 version_no fixed bin,				/* caller must set this to resource_desc_version_1 */
+  4     8     2 n_items fixed bin,				/* Number of resources described by this structure. */
+  4     9     2 item (Resource_count refer (resource_descriptions.n_items)) aligned,
+  4    10       3 type char (32),				/* e.g., "tape_drive" */
+  4    11       3 name char (32),				/* e.g., "tapa_03" */
+  4    12       3 uid bit (36),				/* The resource unique id. */
+  4    13       3 potential_attributes bit (72),			/* resource's permissible attributes */
+  4    14       3 attributes (2) bit (72),			/* RCP attribute description (output) */
+  4    15       3 desired_attributes (4) bit (72),		/* desired attributes (input) */
+  4    16       3 potential_aim_range (2) bit (72),		/* Lowest and highest possible AIM bounds for resource */
+  4    17       3 aim_range (2) bit (72),			/* Current AIM range */
+  4    18       3 owner char (32),				/* e.g., "Smith.Project" */
+  4    19       3 acs_path char (168),				/* Access control segment pathname. */
+  4    20       3 location char (168),				/* String describing location in unusual cases */
+  4    21       3 comment char (168),				/* User-settable comment string */
+  4    22       3 charge_type char (32),			/* accounting identifier for this resource */
+  4    23       3 rew bit (3) unaligned,			/* user's effective access to resource */
+  4    24       3 (usage_lock,				/* This resource may not be acquired or used. */
+  4    25          release_lock,				/* The owner is not allowed to release the resource. */
+  4    26          awaiting_clear,				/* Resource awaiting manual clear */
+  4    27          user_alloc) bit (1) unaligned,			/* User claims volume contains useful data */
+  4    28       3 pad2 bit (29) unaligned,			/* Ignored field. */
+  4    29       3 given aligned,				/* each of these bits says the corresponding */
+  4    30 						/* item is significant on input */
+  4    31        (4 (name,
+  4    32 	 uid,
+  4    33 	 potential_attributes,
+  4    34 	 desired_attributes,
+  4    35 	 potential_aim_range,
+  4    36 	 aim_range,
+  4    37 	 owner,
+  4    38 	 acs_path,
+  4    39 	 location,
+  4    40 	 comment,
+  4    41 	 charge_type,
+  4    42 	 usage_lock,
+  4    43 	 release_lock,
+  4    44 	 user_alloc) bit (1),
+  4    45         4 pad1 bit (22)) unaligned,
+  4    46       3 state bit (36) aligned,			/* For use of resource_control_ only */
+  4    47       3 status_code fixed bin (35);			/* Standard system status code for this resource. */
+  4    48 
+  4    49 
+  4    50 /* Note that the reservation description must always be used with a resource
+  4    51*   description structure.  When they are used together the two structures must
+  4    52*   have the same number of entries, i.e. Resource_count is the same for both. */
+  4    53 
+  4    54 
+  4    55 dcl 1 reservation_description based (resource_res_ptr) aligned,
+  4    56     2 version_no fixed bin,				/* The version number for this structure. */
+  4    57     2 reserved_for char (32),				/* Group id of reserved for process. */
+  4    58     2 reserved_by char (32),				/* Group id of reserved by process. */
+  4    59     2 reservation_id fixed bin (71),			/* Reservation id of this reservation group. */
+  4    60     2 group_starting_time fixed bin (71),		/* Starting time for this reservation group. */
+  4    61     2 asap_duration fixed bin (71),			/* Duration after which as soon as possible is no longer good. */
+  4    62     2 flags aligned,
+  4    63      (3 auto_expire bit (1),				/* Should reservation expire when this process terminates. */
+  4    64       3 asap bit (1),				/* Make this reservation group as soon as possible. */
+  4    65       3 rel bit (1),				/* Times are relative/absolute. */
+  4    66       3 sec bit (1)) unaligned,			/* Times are in sec/microsec. */
+  4    67     2 n_items fixed bin,				/* Number of resources reserved in this group. */
+  4    68     2 reservation_group (Resource_count refer (reservation_description.n_items)),
+  4    69       3 starting_time fixed bin (71),			/* When this resource res. starts in the group. */
+  4    70       3 duration fixed bin (71);			/* Duration of this resource res. in the group. */
+  4    71 
+  4    72 dcl (resource_desc_ptr,
+  4    73      resource_res_ptr) pointer;
+  4    74 
+  4    75 dcl (resource_desc_version_1 initial (1),
+  4    76      resource_res_version_1 initial (1)) internal static options (constant);
+  4    77 
+  4    78 dcl  Resource_count fixed bin;			/* The number of resources described in the structures. */
+  4    79 
+  4    80 /* ---------------- END include file resource_control_desc.incl.pl1 ---------------- */
+      223 
+      224 
+      225      end rcprm_find_op;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0808.5  rcprm_find_op.pl1                 >spec>install>1111>rcprm_find_op.pl1
+217          1    01/30/85  1523.9  access_audit_encoded_op.incl.pl1  >ldd>include>access_audit_encoded_op.incl.pl1
+219          2    03/15/85  0953.1  rcp_ops.incl.pl1                  >ldd>include>rcp_ops.incl.pl1
+221          3    02/11/80  1426.1  rcprm_action_codes.incl.pl1       >ldd>include>rcprm_action_codes.incl.pl1
+223          4    02/13/79  1715.0  resource_control_desc.incl.pl1    >ldd>include>resource_control_desc.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Acquire                                constant        fixed bin(17,0)          initial dcl 3-3 ref 118
+Cancel                                 constant        fixed bin(17,0)          initial dcl 3-3 ref 172
+Clear                                  constant        fixed bin(17,0)          initial dcl 3-3 ref 194
+Deregister                             constant        fixed bin(17,0)          initial dcl 3-3 ref 183
+Register                               constant        fixed bin(17,0)          initial dcl 3-3 ref 108
+Release                                constant        fixed bin(17,0)          initial dcl 3-3 ref 156
+Reserve                                constant        fixed bin(17,0)          initial dcl 3-3 ref 166
+Set                                    constant        fixed bin(17,0)          initial dcl 3-3 ref 127
+Status                                 constant        fixed bin(17,0)          initial dcl 3-3 ref 145
+a_action                               parameter       fixed bin(17,0)          dcl 21 ref 9 84
+a_error_code                           parameter       fixed bin(35,0)          dcl 28 set ref 9 212*
+a_operation                            parameter       bit(36)                  dcl 26 set ref 9 209*
+a_priv_sw                              parameter       bit(1)                   dcl 25 ref 9 87
+a_reconstruct_flag                     parameter       bit(1)                   dcl 24 ref 9 86
+a_resource_desc_item_ptr               parameter       pointer                  dcl 22 ref 9 85
+a_seek_attr_flag                       parameter       bit(1)                   dcl 27 set ref 9 211*
+access_operations_$rcp_acquire  000022 external static bit(36)                  dcl 63 ref 118
+access_operations_$rcp_cancel   000030 external static bit(36)                  dcl 69 ref 177
+access_operations_$rcp_clear    000040 external static bit(36)                  dcl 77 ref 199
+access_operations_$rcp_deregister
+                                000016 external static bit(36)                  dcl 59 ref 188
+access_operations_$rcp_register 000014 external static bit(36)                  dcl 57 ref 116
+access_operations_$rcp_register_acquire
+                                000020 external static bit(36)                  dcl 61 ref 113
+access_operations_$rcp_release  000024 external static bit(36)                  dcl 65 ref 161
+access_operations_$rcp_reserve  000026 external static bit(36)                  dcl 67 ref 166
+access_operations_$rcp_set      000034 external static bit(36)                  dcl 73 ref 139
+access_operations_$rcp_set_access
+                                000036 external static bit(36)                  dcl 75 ref 136
+access_operations_$rcp_status   000032 external static bit(36)                  dcl 71 ref 150
+acs_path                266(07)        based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 136
+action                          000104 automatic       fixed bin(17,0)          dcl 38 set ref 84* 108 118 127 145 156 166 172 183
+                                                                                  194
+aim_range               266(05)        based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 113 136
+detailed_operation                     based           structure                level 1 packed packed unaligned dcl 2-8 in procedure
+                                                                                  "rcprm_find_op"
+detailed_operation        0(18)        based           fixed bin(18,0)          level 2 in structure "en_access_op" packed packed
+                                                                                  unsigned unaligned dcl 45 in procedure
+                                                                                  "rcprm_find_op" set ref 93
+en_access_op                           based           structure                level 1 dcl 45
+encoded_access_op                      based           structure                level 1 dcl 1-3
+error_code                      000105 automatic       fixed bin(35,0)          dcl 39 set ref 95* 109* 111* 129* 133* 147* 158*
+                                                                                  174* 185* 196* 212
+error_table_$resource_not_modified
+                                000012 external static fixed bin(35,0)          dcl 55 ref 133
+error_table_$resource_spec_ambiguous
+                                000010 external static fixed bin(35,0)          dcl 49 ref 109 111 129 147 158 174 185 196
+given                   266            based           structure                level 2 in structure "resource_desc_item" dcl 44
+                                                                                  in procedure "rcprm_find_op" ref 205
+given                                  based           structure                level 2 in structure "detailed_operation" packed
+                                                                                  packed unaligned dcl 2-8 in procedure
+                                                                                  "rcprm_find_op" set ref 205*
+item                      2            based           structure                array level 2 dcl 4-6
+name                    266            based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 100 109
+operation                       000103 automatic       bit(36)                  dcl 36 set ref 91* 92 113* 116* 118* 136* 139* 150*
+                                                                                  161* 166* 177* 188* 199* 209
+operation_ptr                   000110 automatic       pointer                  dcl 42 set ref 92* 93
+ops_ptr                         000112 automatic       pointer                  dcl 2-6 set ref 93* 205 206 207
+owner                   266(06)        based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 113 132
+potential_aim_range     266(04)        based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 136
+priv_gate_call            0(12)        based           bit(1)                   level 2 packed packed unaligned dcl 2-8 set ref 206*
+priv_sw                         000100 automatic       bit(1)                   dcl 32 set ref 87* 206
+reconstruct_flag                000101 automatic       bit(1)                   dcl 33 set ref 86* 111
+release_lock            266(12)        based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 113
+resource_desc_item                     based           structure                level 1 dcl 44
+resource_desc_item_ptr          000106 automatic       pointer                  dcl 41 set ref 85* 100 100 109 111 113 113 113 132
+                                                                                  136 136 136 205
+resource_descriptions                  based           structure                level 1 dcl 4-6
+search                    0(13)        based           bit(1)                   level 2 packed packed unaligned dcl 2-8 set ref 207*
+seek_attr_flag                  000102 automatic       bit(1)                   dcl 34 set ref 94* 100* 128 146 157 173 184 195 207
+                                                                                  211
+uid                     266(01)        based           bit(1)                   level 3 packed packed unaligned dcl 44 ref 100 111
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Action_noun                            internal static char(12)                 initial array packed unaligned dcl 3-13
+Resource_count                         automatic       fixed bin(17,0)          dcl 4-78
+access_operations_$rcp_reconstruct_registry
+                                       external static bit(36)                  dcl 79
+error_table_$resource_free             external static fixed bin(35,0)          dcl 53
+error_table_$resource_not_free         external static fixed bin(35,0)          dcl 51
+reservation_description                based           structure                level 1 dcl 4-55
+resource_desc_ptr                      automatic       pointer                  dcl 4-72
+resource_desc_version_1                internal static fixed bin(17,0)          initial dcl 4-75
+resource_res_ptr                       automatic       pointer                  dcl 4-72
+resource_res_version_1                 internal static fixed bin(17,0)          initial dcl 4-75
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MAIN_RETURN                     000302 constant        label                    dcl 209 set ref 130 134 148 159 175 186 197
+rcprm_find_op                   000013 constant        entry                    external dcl 9
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 92 93
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       500         542     311         510
+Length      1022     311        42         243     167           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcprm_find_op                        78 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcprm_find_op            000100 priv_sw                     rcprm_find_op
+                         000101 reconstruct_flag            rcprm_find_op
+                         000102 seek_attr_flag              rcprm_find_op
+                         000103 operation                   rcprm_find_op
+                         000104 action                      rcprm_find_op
+                         000105 error_code                  rcprm_find_op
+                         000106 resource_desc_item_ptr      rcprm_find_op
+                         000110 operation_ptr               rcprm_find_op
+                         000112 ops_ptr                     rcprm_find_op
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$rcp_acquire                              access_operations_$rcp_cancel access_operations_$rcp_clear
+access_operations_$rcp_deregister                           access_operations_$rcp_register
+access_operations_$rcp_register_acquire                     access_operations_$rcp_release
+access_operations_$rcp_reserve                              access_operations_$rcp_set
+access_operations_$rcp_set_access                           access_operations_$rcp_status
+error_table_$resource_not_modified                          error_table_$resource_spec_ambiguous
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      9 000005        84 000020        85 000023        86 000026        87 000031        91 000034        92 000035
+     93 000037        94 000043        95 000045       100 000046       108 000061       109 000064       111 000070
+    113 000076       116 000104       117 000106       118 000107       127 000114       128 000116       129 000120
+    130 000122       132 000123       133 000126       134 000130       136 000131       139 000137       140 000141
+    145 000142       146 000144       147 000146       148 000150       150 000151       151 000153       156 000154
+    157 000156       158 000160       159 000162       161 000163       162 000165       166 000166       172 000173
+    173 000175       174 000177       175 000201       177 000202       178 000204       183 000205       184 000207
+    185 000211       186 000213       188 000214       189 000216       194 000217       195 000221       196 000223
+    197 000225       199 000226       205 000230       206 000274       207 000277       209 000302       211 000304
+    212 000306       214 000310
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

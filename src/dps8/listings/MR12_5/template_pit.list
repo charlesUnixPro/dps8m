@@ -1,0 +1,402 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1115>template_pit.alm                                                                                                                                     
+ASSEMBLED ON:	11/11/89  0919.1 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+    000000                          11  	name	template_pit
+                                    12  
+    000000                          13  version:
+    000000  aa   000000 000000      14  	dec	0
+                                    15  
+    000001                          16  process_type:
+    000001  aa   000000 000000      17  	dec	0
+                                    18  
+    000002                          19  login_responder:
+    000002  aa  163 171 163 164     20  	aci	"system_startup_$system_startup_ "	it's in >system_library_1
+    000003  aa  145 155 137 163
+    000004  aa  164 141 162 164
+    000005  aa  165 160 137 044
+    000006  aa  163 171 163 164
+    000007  aa  145 155 137 163
+    000010  aa  164 141 162 164
+    000011  aa  165 160 137 040
+    000012  aa  040 040 040 040     21  	aci	"                                "
+    000013  aa  040 040 040 040
+    000014  aa  040 040 040 040
+    000015  aa  040 040 040 040
+    000016  aa  040 040 040 040
+    000017  aa  040 040 040 040
+    000020  aa  040 040 040 040
+    000021  aa  040 040 040 040
+                                    22  
+    000022                          23  home_dir:
+    000022  aa  076 163 171 163     24  	aci	">system_control_1               "
+    000023  aa  164 145 155 137
+    000024  aa  143 157 156 164
+    000025  aa  162 157 154 137
+    000026  aa  061 040 040 040
+    000027  aa  040 040 040 040
+    000030  aa  040 040 040 040
+    000031  aa  040 040 040 040
+    000032  aa  040 040 040 040     25  	aci	"                                "
+    000033  aa  040 040 040 040
+    000034  aa  040 040 040 040
+    000035  aa  040 040 040 040
+    000036  aa  040 040 040 040
+    000037  aa  040 040 040 040
+    000040  aa  040 040 040 040
+    000041  aa  040 040 040 040
+                                    26  
+    000042                          27  project:
+    000042  aa  123 171 163 104     28  	aci	"SysDaemon                   "
+    000043  aa  141 145 155 157
+    000044  aa  156 040 040 040
+    000045  aa  040 040 040 040
+    000046  aa  040 040 040 040
+    000047  aa  040 040 040 040
+    000050  aa  040 040 040 040
+                                    29  
+    000051                          30  account:
+    000051  aa  040 040 040 040     31  	aci	"                                "
+    000052  aa  040 040 040 040
+    000053  aa  040 040 040 040
+    000054  aa  040 040 040 040
+    000055  aa  040 040 040 040
+    000056  aa  040 040 040 040
+    000057  aa  040 040 040 040
+    000060  aa  040 040 040 040
+                                    32  
+    000061                          33  n_process:
+    000061  aa   000000 000000      34  	dec	0
+                                    35  
+    000062                          36  login_time:
+    000062                          37  	bss	,2
+                                    38  
+    000064                          39  proc_creation_time:
+    000064                          40  	bss	,2
+    000066                          41  old_proc_cpu:
+    000066                          42  	bss	,2
+                                    43  
+    000070                          44  user_weight:
+    000070  aa   000000 000000      45  	dec	0
+                                    46  
+    000071                          47  anonymous:
+    000071  aa   000000 000000      48  	dec	0
+                                    49  
+    000072                          50  login_name:
+    000072  aa  111 156 151 164     51  	aci	"Initializer                 "
+    000073  aa  151 141 154 151
+    000074  aa  172 145 162 040
+    000075  aa  040 040 040 040
+    000076  aa  040 040 040 040
+    000077  aa  040 040 040 040
+    000100  aa  040 040 040 040
+                                    52  
+    000101                          53  logout_pid:
+    000101  aa   000000 000000      54  	oct	0
+                                    55  
+    000102                          56  logout_channel:
+    000102                          57  	bss	,2
+                                    58  
+    000104                          59  group:
+    000104  aa  123 171 163 164     60  	aci	"System  "
+    000105  aa  145 155 040 040
+                                    61  
+    000106                          62  ringpad:
+    000106                          63  	bss	,2
+                                    64  
+    000110                          65  attributes:
+    000110  aa   000000 000000      66  	oct	0
+                                    67  
+    000111                          68  whox:
+    000111  aa   000000 000000      69  	oct	0
+                                    70  
+    000112                          71  outer_module:
+    000112  aa  157 143 137 040     72  	aci	"oc_                             "
+    000113  aa  040 040 040 040
+    000114  aa  040 040 040 040
+    000115  aa  040 040 040 040
+    000116  aa  040 040 040 040
+    000117  aa  040 040 040 040
+    000120  aa  040 040 040 040
+    000121  aa  040 040 040 040
+                                    73  
+    000122                          74  pad:
+    000122                          75  	bss	,4
+                                    76  
+    000126                          77  security:
+    000126  aa   000000 000000      78  	oct	000000000000,000000000000
+    000127  aa   000000 000000 
+                                    79  
+    000130                          80  usage_information:
+    000130                          81  	bss	,163
+                                    82  
+    000373                          83  pad1:
+    000373                          84  	bss	,89
+                                    85  
+    000524                          86  line_type:
+    000524  aa   000000 000000      87            dec       0
+                                    88  
+    000525                          89  tty_type:
+    000525  aa   000000 000000      90            dec       0
+                                    91  
+    000526                          92  service_type:
+    000526  aa   000000 000000      93            dec       0
+                                    94  
+    000527                          95  tty_answerback:
+    000527  aa  156 157 156 145     96            aci       "none",4
+                                    97  
+    000530                          98  tty:
+    000530  aa  157 164 167 137     99  	aci	"otw_   ",8
+    000531  aa  040 040 040 040
+                                   100  
+    000532                         101  standby:
+    000532  aa   000000 000000     102  	dec	0
+                                   103  
+    000533                         104  login_line:
+    000533                         105  	bss	,30
+                                   106  
+    000571                         107  cant_bump_until:
+    000571  aa   000000 000000     108  	oct	0,0
+    000572  aa   000000 000000 
+                                   109  
+    000573                         110  input_seg:
+    000573                         111  	bss	,42
+                                   112  
+    000645                         113  output_seg:
+    000645                         114  	bss	,42
+                                   115  
+    000717                         116  max_cpu_time:
+    000717  aa   000000 000000     117  	dec	0
+                                   118  
+    000720                         119  abs_queue:
+    000720  aa   777777 777777     120  	dec	-1
+                                   121  
+    000721                         122  abs_attributes:
+    000721  aa   000000 000000     123  	oct	0
+                                   124  
+    000722                         125  args:
+    000722                         126  	bss	,32
+                                   127  
+                                   128  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000762  5a   000003 000000 
+    000763  5a   000021 600000 
+    000764  aa   000000 000000 
+    000765  55   000012 000002 
+    000766  5a   000002 400003 
+    000767  55   000006 000012 
+    000770  aa  014 164 145 155
+    000771  aa  160 154 141 164
+    000772  aa  145 137 160 151
+    000773  aa  164 000 000 000
+    000774  55   000002 000003 
+    000775  6a   000000 400002 
+    000776  55   000015 000003 
+    000777  aa  014 163 171 155         symbol_table
+    001000  aa  142 157 154 137
+    001001  aa  164 141 142 154
+    001002  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    001003  aa   000000 000015 
+    001004  aa   000000 000000 
+    001005  aa   000000 000000 
+    001006  aa   000000 000000 
+    001007  aa   000000 000000 
+    001010  aa   000000 000000 
+    001011  aa   000000 000000 
+    001012  5a   000012 000000 
+    001013  aa   000000 000000 
+    001014  aa   000000 000000 
+    001015  aa   000000 000000 
+    001016  aa   000000 000000 
+    001017  aa   000000 000000 
+    001020  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001021  aa   000001 000000 
+    001022  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001023  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000762 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   237712 300005 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000160 
+    000020  aa   000000 000103 
+    000021  aa   000144 000141 
+    000022  aa   000152 000103 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000043 
+    000067  aa   175453 030725 
+    000070  aa   000000 117547 
+    000071  aa   227521 400000 
+    000072  aa   076163 160145          >spec>install>1115>template_pit.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061065 076164 
+    000077  aa   145155 160154 
+    000100  aa   141164 145137 
+    000101  aa   160151 164056 
+    000102  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         721    abs_attributes           template_pit:       122.
+         720    abs_queue                template_pit:       119.
+          51    account                  template_pit:        30.
+          71    anonymous                template_pit:        47.
+         722    args                     template_pit:       125.
+         110    attributes               template_pit:        65.
+         571    cant_bump_until          template_pit:       107.
+         104    group                    template_pit:        59.
+          22    home_dir                 template_pit:        23.
+         573    input_seg                template_pit:       110.
+         524    line_type                template_pit:        86.
+         533    login_line               template_pit:       104.
+          72    login_name               template_pit:        50.
+           2    login_responder          template_pit:        19.
+          62    login_time               template_pit:        36.
+         102    logout_channel           template_pit:        56.
+         101    logout_pid               template_pit:        53.
+         717    max_cpu_time             template_pit:       116.
+          61    n_process                template_pit:        33.
+          66    old_proc_cpu             template_pit:        41.
+         112    outer_module             template_pit:        71.
+         645    output_seg               template_pit:       113.
+         122    pad                      template_pit:        74.
+         373    pad1                     template_pit:        83.
+           1    process_type             template_pit:        16.
+          64    proc_creation_time       template_pit:        39.
+          42    project                  template_pit:        27.
+         106    ringpad                  template_pit:        62.
+         126    security                 template_pit:        77.
+         526    service_type             template_pit:        92.
+         532    standby                  template_pit:       101.
+         530    tty                      template_pit:        98.
+         527    tty_answerback           template_pit:        95.
+         525    tty_type                 template_pit:        89.
+         130    usage_information        template_pit:        80.
+          70    user_weight              template_pit:        44.
+           0    version                  template_pit:        13.
+         111    whox                     template_pit:        68.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

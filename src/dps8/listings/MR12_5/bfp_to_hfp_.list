@@ -1,0 +1,230 @@
+ASSEMBLY LISTING OF SEGMENT >udd>sm>ds>w>ml>bfp_to_hfp_.alm                                                                                                                                         
+ASSEMBLED ON:	06/29/00  1717.7 mdt Thu
+OPTIONS USED:	list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1102.3 mdt Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1983 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+                                     6  
+                                     7  "	Function:	Convert a Binary Floating Point number to the
+                                     8  "		nearest Hexadecimal Floating Point number.
+                                     9  "
+                                    10  "	Entry:	EAQ = BFP number to convert.
+                                    11  "		PR2 = address of 2 word work area.
+                                    12  "		PR3 = return address.
+                                    13  "
+                                    14  "	Exit:	EAQ = HFP equivalent of original BFP number.
+                                    15  "		X1 = number of bits of precision lost (0 to 3).
+                                    16  
+                                    17  "	Written 20 Dec 83 by HH.
+                                    18  
+                        000000      19  	segdef	bfp_to_hfp_
+                                    20  
+                        000000      21  	equ	accum,0
+                        000001      22  	equ	exponent,1
+                                    23  
+    000000                          24  bfp_to_hfp_:
+    000000  aa  2 00000 7551 00     25  	sta	pr2|accum		save A
+    000001  aa  2 00001 4561 00     26  	ste	pr2|exponent	store exponent
+    000002  aa  2 00001 2351 00     27  	lda	pr2|exponent	A := 8/exponent,28/0
+    000003  aa   000002 7310 00     28  	ars	2		A := 10/exponent,26/0
+    000004  aa   001400 0750 03     29  	ada	=o001400,du	A := 10/exponent+3,26/0
+    000005  aa  2 00001 7551 00     30  	sta	pr2|exponent
+    000006  aa  2 00001 4111 00     31  	lde	pr2|exponent	E := floor((exponent+3)/4)
+    000007  aa   000032 7310 00     32  	ars	26		A := exponent+3
+    000010  aa   000003 3750 07     33  	ana	3,dl		A := mod(exponent+3, 4)
+    000011  aa   000000 5310 00     34  	neg	0		A := -mod(exponent+3, 4)
+    000012  aa   000003 6210 05     35  	eax1	3,al		X1 := 3 - mod(exponent+3, 4)
+    000013  aa  2 00000 2351 00     36  	lda	pr2|accum		restore A
+    000014  aa   000000 7330 11     37  	lrs	0,x1		normalize (discards 0 to 3 bits)
+    000015  0a   000017 6010 00     38  	tnz	return		done if mantissa is nonzero
+    000016  0a   000020 4310 00     39  	fld	=0.0		load "normalized" floating zero
+                                    40  
+    000017                          41  return:
+    000017  aa  3 00000 7101 00     42  	tra	pr3|0		return
+                                    43  
+                                    44  	end
+LITERALS
+     
+    000020  aa   400000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000021  5a   000003 000000 
+    000022  5a   000026 600000 
+    000023  aa   000000 000000 
+    000024  55   000011 000002 
+    000025  5a   000002 400003 
+    000026  55   000006 000011 
+    000027  aa  013 142 146 160
+    000030  aa  137 164 157 137
+    000031  aa  150 146 160 137
+    000032  55   000017 000003 
+    000033  0a   000000 400000 
+    000034  55   000014 000003 
+    000035  aa  013 142 146 160         bfp_to_hfp_
+    000036  aa  137 164 157 137
+    000037  aa  150 146 160 137
+    000040  55   000002 000011 
+    000041  6a   000000 400002 
+    000042  55   000022 000003 
+    000043  aa  014 163 171 155         symbol_table
+    000044  aa  142 157 154 137
+    000045  aa  164 141 142 154
+    000046  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000047  aa   000000 000015 
+    000050  aa   000000 000000 
+    000051  5a   000011 000000 
+    000052  aa   000000 000000 
+    000053  aa   000000 000000 
+    000054  aa   000000 000000 
+    000055  aa   000000 000000 
+    000056  5a   000017 000000 
+    000057  aa   000000 000000 
+    000060  aa   000000 000000 
+    000061  aa   000000 000000 
+    000062  aa   000000 000000 
+    000063  aa   000000 000000 
+    000064  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000065  aa   000001 000000 
+    000066  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000067  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000021 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 131171 
+    000007  aa   557171 654036 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000126 
+    000020  aa   000000 000102 
+    000021  aa   000111 000106 
+    000022  aa   000120 000102 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   123143 150162 
+    000035  aa   157164 150056 
+    000036  aa   123171 163115 
+    000037  aa   141151 156164 
+    000040  aa   056155 040040 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040163 171155 
+    000046  aa   142157 154163 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000037 
+    000067  aa   311454 032067 
+    000070  aa   000000 131171 
+    000071  aa   557171 600000 
+    000072  aa   076165 144144          >udd>sm>ds>w>ml>bfp_to_hfp_.alm
+    000073  aa   076163 155076 
+    000074  aa   144163 076167 
+    000075  aa   076155 154076 
+    000076  aa   142146 160137 
+    000077  aa   164157 137150 
+    000100  aa   146160 137056 
+    000101  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    accum                    bfp_to_hfp_:   21,   25,   36.
+           0    bfp_to_hfp_              bfp_to_hfp_:   19,   24.
+           1    exponent                 bfp_to_hfp_:   22,   26,   27,   30,   31.
+          17    return                   bfp_to_hfp_:   38,   41.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

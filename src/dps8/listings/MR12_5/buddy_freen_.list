@@ -1,0 +1,289 @@
+	COMPILATION LISTING OF SEGMENT buddy_freen_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0958.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* freen_ coded 9.25.72 by Alan Downing as part of the pl1 area managment package.
+       14*   freen_ is called with a pointer to an allocated block of storage and free's this block using the
+       15*   buddy system of allocations and free's.  freen_ must be used with the style of area created by the area_ procedure
+       16*   which is part of this package.
+       17*   */
+       18 /* modified August 1973 to do loop checking */
+       19 
+       20 /* Last modified (date and reason):
+       21*   11/6/75	by S.Webber to rename from freen_
+       22**/
+       23 
+       24 buddy_freen_: procedure (bptr);
+       25 
+       26 dcl  bptr ptr;
+       27 dcl  bad_area_format condition;
+       28 dcl  temp_ptr ptr,
+       29     (addrel, bin, null, addr, substr, bool, ptr, rel, divide) builtin,
+       30      1 s1 aligned based (addr (i)),			/* just to put a bit string on a fixed bin */
+       31      2 address (2) bit (18) unaligned,
+       32      tempstr bit (18) aligned,
+       33      1 s2 aligned based (addr (j)),
+       34      2 buddy_address (2) bit (18) unaligned,
+       35     (i, j, k, count, stop) fixed bin (26) init (0);
+  1     1 /* block_header_v2pl1.incl.pl1 */
+  1     2 dcl 1 block_header aligned based (block_ptr),		/* this structure appears at the front of every block */
+  1     3     2 size fixed bin (8) unaligned,			/* tells what stratum word a block of this size belongs */
+  1     4     2 forwardptr fixed bin (26) unaligned,		/* points to next free block of this size */
+  1     5    2 new_area bit (8) unaligned,			/* acts as pading as well as a flag */
+  1     6     2 busy_bit bit (1) unaligned,			/* if on the block is busy */
+  1     7     2 backptr fixed bin (26) unaligned;			/* relative pointer to the front of area */
+  1     8 
+  1     9 dcl  block_ptr ptr;
+  1    10 
+  1    11 
+  1    12 dcl 1 buddy_block_header like block_header based (buddy_block_ptr) aligned;
+  1    13 dcl  buddy_block_ptr ptr;
+       36 
+  2     1 /* area_header_v2pl1.incl.pl1 */
+  2     2 dcl  area_header (23) fixed bin (26) aligned based (area_ptr),
+  2     3 						/* the first two words are 0 so that the area can be identified as of the new style,
+  2     4*						   the third word contains the size of the area in words,
+  2     5*						   the fourth word is the high water mark,
+  2     6*						   the fifth word is the first usable word in the area,
+  2     7*						   the sixth word is the stratum word number corresponding to the largest possible block in this area,
+  2     8*						   words 7 through 23 are stratum words which point to blocks which are free
+  2     9*						   and whose size is 2**2 through 2**18 */
+  2    10      area_ptr ptr;					/* points to the area */
+  2    11 dcl  exp_tbl (0:18) fixed bin (26) int static init
+  2    12     (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144);
+  2    13 dcl  front fixed bin (26);
+       37 
+       38 
+       39 	block_ptr = addrel (bptr, -2);		/* point to actual beginning of this block */
+       40 	bptr = null ();
+       41 	area_ptr = addrel (block_ptr, - block_ptr -> block_header.backptr); /* set pointer to beginning of the area */
+       42 	front = bin (rel (area_ptr), 18);
+       43 	stop = 70000;				/* to eliminate infinite looping in a bad area */
+       44 	if area_ptr -> area_header (block_ptr -> block_header.size) = 0 then do; /* no others free of this size */
+       45 	     block_ptr -> block_header.busy_bit = "0"b;	/* no longer busy */
+       46 	     block_ptr -> block_header.new_area = "11111111"b;
+       47 	     block_ptr -> block_header.forwardptr = 0;	/* nothing to point to */
+       48 	     area_ptr -> area_header (block_ptr -> block_header.size) =
+       49 		bin (rel (block_ptr), 18)-front;	/* put this block in the proper stratum */
+       50 	     return;
+       51 	end;					/* nothing else to do if there were not others of this size */
+       52 	else
+       53 combine:	do;					/* must try to recombine */
+       54 	     count = count + 1;			/* keep a total of times through */
+       55 	     if count > stop then do;			/* looping */
+       56 bad_area:
+       57 		signal bad_area_format;
+       58 		return;
+       59 	     end;
+       60 	     address (2) = rel (block_ptr);		/* needed for address calculations */
+       61 	     i = i-24-front;			/* address arithmetic must be done with out the area header being regarded */
+       62 	     tempstr = "0"b;			/* reset the string */
+       63 	     k = 18 - (block_ptr -> block_header.size -5);
+       64 	     substr (tempstr, k, 1) = "1"b;		/* set the correct bit to 1 */
+       65 	     buddy_address (2) = bool (address (2), tempstr, "0110"b);
+       66 	     j = j+24+front;
+       67 	     buddy_block_ptr = ptr (block_ptr, j);	/* need a pointer to this buddy */
+       68 	     if buddy_block_ptr -> buddy_block_header.busy_bit |
+       69 	     buddy_block_ptr -> buddy_block_header.size ^=
+       70 	     block_ptr -> block_header.size then do;	/* can not recombine this buddy_block */
+       71 thats_it:
+       72 		block_ptr -> block_header.busy_bit = "0"b;
+       73 		block_ptr -> block_header.new_area = "11111111"b;
+       74 		block_ptr -> block_header.forwardptr =
+       75 		     area_ptr -> area_header (block_ptr -> block_header.size);
+       76 		area_ptr -> area_header (block_ptr -> block_header.size) =
+       77 		     bin (rel (block_ptr), 18)-front;	/* have relinked the chain */
+       78 		return;
+       79 	     end;
+       80 	     else do;				/* the buddy block is available for recombining */
+       81 		k = bin (rel (buddy_block_ptr), 18);
+       82 		temp_ptr = buddy_block_ptr;		/* save copy */
+       83 		buddy_block_ptr = addr (area_ptr -> area_header (buddy_block_ptr -> buddy_block_header.size));
+       84 		do while ("1"b);
+       85 		     if addrel (area_ptr, buddy_block_ptr -> buddy_block_header.forwardptr) =
+       86 		     temp_ptr then do;		/* found link and will remove it */
+       87 			buddy_block_ptr -> buddy_block_header.forwardptr =
+       88 			     temp_ptr -> buddy_block_header.forwardptr;
+       89 			go to found;
+       90 		     end;
+       91 		     else buddy_block_ptr = addrel (area_ptr, buddy_block_ptr -> buddy_block_header.forwardptr);
+       92 		     count = count + 1;
+       93 		     if count > stop then go to bad_area;
+       94 		end;
+       95 found:
+       96 		if j < i+24+front then block_ptr = temp_ptr; /* point to beginning of the new block */
+       97 		block_ptr -> block_header.size = block_ptr -> block_header.size + 1;
+       98 		if block_ptr -> block_header.size < area_ptr -> area_header (6) then go to combine;
+       99 		else do;
+      100 		     area_ptr -> area_header (4) = 25;	/* set high water mark down */
+      101 		     go to thats_it;
+      102 		end;
+      103 	     end;
+      104 	end;
+      105      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  buddy_freen_.pl1                  >spec>install>1110>buddy_freen_.pl1
+36           1    05/06/74  1740.9  block_header_v2pl1.incl.pl1       >ldd>include>block_header_v2pl1.incl.pl1
+37           2    05/06/74  1740.3  area_header_v2pl1.incl.pl1        >ldd>include>area_header_v2pl1.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 28 ref 60 65 65 83
+addrel                                                 builtin function         dcl 28 ref 39 41 85 91
+address                                based           bit(18)                  array level 2 packed packed unaligned dcl 28 set ref
+                                                                                  60* 65
+area_header                            based           fixed bin(26,0)          array dcl 2-2 set ref 44 48* 74 76* 83 98 100*
+area_ptr                        000122 automatic       pointer                  dcl 2-2 set ref 41* 42 44 48 74 76 83 85 91 98 100
+backptr                   1(09)        based           fixed bin(26,0)          level 2 packed packed unaligned dcl 1-2 ref 41
+bad_area_format                 000100 stack reference condition                dcl 27 ref 56
+bin                                                    builtin function         dcl 28 ref 42 48 76 81
+block_header                           based           structure                level 1 dcl 1-2
+block_ptr                       000116 automatic       pointer                  dcl 1-9 set ref 39* 41 41 44 45 46 47 48 48 60 63 67
+                                                                                  68 71 73 74 74 76 76 95* 97 97 98
+bool                                                   builtin function         dcl 28 ref 65
+bptr                                   parameter       pointer                  dcl 26 set ref 24 39 40*
+buddy_address                          based           bit(18)                  array level 2 packed packed unaligned dcl 28 set ref
+                                                                                  65*
+buddy_block_header                     based           structure                level 1 dcl 1-12
+buddy_block_ptr                 000120 automatic       pointer                  dcl 1-13 set ref 67* 68 68 81 82 83* 83 85 87 91* 91
+busy_bit                  1(08)        based           bit(1)                   level 2 in structure "block_header" packed packed
+                                                                                  unaligned dcl 1-2 in procedure "buddy_freen_" set
+                                                                                  ref 45* 71*
+busy_bit                  1(08)        based           bit(1)                   level 2 in structure "buddy_block_header" packed
+                                                                                  packed unaligned dcl 1-12 in procedure
+                                                                                  "buddy_freen_" ref 68
+count                           000114 automatic       fixed bin(26,0)          initial dcl 28 set ref 28* 54* 54 55 92* 92 93
+forwardptr                0(09)        based           fixed bin(26,0)          level 2 in structure "block_header" packed packed
+                                                                                  unaligned dcl 1-2 in procedure "buddy_freen_" set
+                                                                                  ref 47* 74*
+forwardptr                0(09)        based           fixed bin(26,0)          level 2 in structure "buddy_block_header" packed
+                                                                                  packed unaligned dcl 1-12 in procedure
+                                                                                  "buddy_freen_" set ref 85 87* 87 91
+front                           000124 automatic       fixed bin(26,0)          dcl 2-13 set ref 42* 48 61 66 76 95
+i                               000111 automatic       fixed bin(26,0)          initial dcl 28 set ref 28* 60 61* 61 65 95
+j                               000112 automatic       fixed bin(26,0)          initial dcl 28 set ref 28* 65 66* 66 67 95
+k                               000113 automatic       fixed bin(26,0)          initial dcl 28 set ref 28* 63* 64 81*
+new_area                  1            based           bit(8)                   level 2 packed packed unaligned dcl 1-2 set ref 46*
+                                                                                  73*
+null                                                   builtin function         dcl 28 ref 40
+ptr                                                    builtin function         dcl 28 ref 67
+rel                                                    builtin function         dcl 28 ref 42 48 60 76 81
+s1                                     based           structure                level 1 dcl 28
+s2                                     based           structure                level 1 dcl 28
+size                                   based           fixed bin(8,0)           level 2 in structure "block_header" packed packed
+                                                                                  unaligned dcl 1-2 in procedure "buddy_freen_" set
+                                                                                  ref 44 48 63 68 74 76 97* 97 98
+size                                   based           fixed bin(8,0)           level 2 in structure "buddy_block_header" packed
+                                                                                  packed unaligned dcl 1-12 in procedure
+                                                                                  "buddy_freen_" ref 68 83
+stop                            000115 automatic       fixed bin(26,0)          initial dcl 28 set ref 28* 43* 55 93
+substr                                                 builtin function         dcl 28 set ref 64*
+temp_ptr                        000106 automatic       pointer                  dcl 28 set ref 82* 85 87 95
+tempstr                         000110 automatic       bit(18)                  dcl 28 set ref 62* 64* 65
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+divide                                                 builtin function         dcl 28
+exp_tbl                                internal static fixed bin(26,0)          initial array dcl 2-11
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_area                        000076 constant        label                    dcl 56 ref 93
+buddy_freen_                    000013 constant        entry                    external dcl 24
+combine                         000072 constant        label                    dcl 52 ref 98
+found                           000234 constant        label                    dcl 95 ref 89
+thats_it                        000154 constant        label                    dcl 71 ref 101
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       310         320     262         320
+Length       514     262        10         157      25           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+buddy_freen_                         90 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+buddy_freen_             000106 temp_ptr                    buddy_freen_
+                         000110 tempstr                     buddy_freen_
+                         000111 i                           buddy_freen_
+                         000112 j                           buddy_freen_
+                         000113 k                           buddy_freen_
+                         000114 count                       buddy_freen_
+                         000115 stop                        buddy_freen_
+                         000116 block_ptr                   buddy_freen_
+                         000120 buddy_block_ptr             buddy_freen_
+                         000122 area_ptr                    buddy_freen_
+                         000124 front                       buddy_freen_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          signal_op           ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     24 000010        28 000020        39 000025        40 000032        41 000034        42 000044        43 000047
+     44 000051        45 000056        46 000060        47 000062        48 000064        50 000071        54 000072
+     55 000073        56 000076        58 000101        60 000102        61 000105        62 000111        63 000112
+     64 000122        65 000125        66 000135        67 000141        68 000144        71 000154        73 000157
+     74 000161        76 000167        78 000173        81 000174        82 000177        83 000200        85 000204
+     87 000217        89 000222        91 000223        92 000227        93 000230        94 000233        95 000234
+     97 000243        98 000251       100 000256       101 000260
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

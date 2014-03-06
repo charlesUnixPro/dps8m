@@ -1,0 +1,464 @@
+	COMPILATION LISTING OF SEGMENT bce_execute_command_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1014.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* bce_execute_command_ -- use map_over_requests_ to find the request desired.
+        9*Call it appropriately. */
+       10 
+       11 /* format: style2 */
+       12 
+       13 /* Written by Benson Margulies or someone who programs like him.
+       14*Modified the last possible day of 1983 to allow Multics requests within bce
+       15*by Keith Loepere. */
+       16 
+       17 bce_execute_command_:
+       18      procedure (Info_ptr, Request, Arg_list_ptr, Code);
+       19 
+       20 	declare Request		 char (*);
+       21 	declare Info_ptr		 pointer;	/* to ss_info */
+       22 	declare Arg_list_ptr	 pointer;	/* from command_processor_ */
+       23 	declare Code		 fixed bin (35);
+       24 	declare execute_entry	 entry (ptr) variable;
+       25 	declare 1 p_info		 aligned,	/* passed to CHECK_ONE */
+       26 		2 request_name	 char (32) unaligned,
+       27 		2 found		 entry (pointer);
+       28 
+       29 	declare arg_count		 fixed bin;
+       30 	declare 1 entry_variable	 aligned,	/* template thereof */
+       31 		2 code_ptr	 pointer,
+       32 		2 env_ptr		 pointer;
+       33 
+       34 	declare Global_RQ_data_ptr	 pointer;	/* global to FOUND */
+       35 	declare bce_map_over_requests_ entry (entry, ptr, ptr);
+       36 	declare cu_$af_arg_count_rel	 entry (fixed bin, fixed bin (35), ptr);
+       37 	declare cu_$generate_call	 entry (entry, ptr);
+       38 	declare error_table_$active_function
+       39 				 fixed bin (35) ext static;
+       40 	declare error_table_$bad_command_name
+       41 				 fixed bin (35) ext static;
+       42 	declare error_table_$not_act_fnc 
+       43 				 fixed bin (35) ext static;
+       44 
+       45 	declare 1 bce_flags		 aligned based (addr (rq_data.flags)),
+       46 		2 system_flags	 bit (15) unal,	/* our own interpretation of rq_data.flags for bce */
+       47 		2 valid_at_early	 bit (1) unal,
+       48 		2 valid_at_boot	 bit (1) unal,
+       49 		2 valid_at_crash	 bit (1) unal;
+       50 
+       51 	declare (addr, null, pointer, unspec)
+       52 				 builtin;
+       53 
+       54 	Code = 0;
+       55 	ss_info_ptr = Info_ptr;
+       56 	ss_info.arg_list_ptr = Arg_list_ptr;
+       57 	p_info.request_name = Request;
+       58 	p_info.found = FOUND;
+       59 
+       60 	call bce_map_over_requests_ (CHECK_ONE, addr (p_info), ss_info.request_table_ptr);
+       61 
+       62 /**** Get here if not found ****/
+       63 
+       64 	Code = error_table_$bad_command_name;
+       65 	return;
+       66 
+       67 CHECK_ONE:
+       68      procedure (Request_data_ptr, Info_ptr);
+       69 
+       70 	declare Request_data_ptr	 pointer;	/* to ssu_ request table */
+       71 	declare Info_ptr		 pointer;
+       72 
+       73 	declare 1 info		 based (Info_ptr) aligned like p_info; /* passed structure providing command name */
+       74 	declare nx		 fixed bin; /* name index */
+       75 
+       76 	rq_data_ptr = Request_data_ptr;
+       77 	if sys_info$collection_1_phase = BCE_CRASH_INITIALIZATION then
+       78 	     if ^ (bce_flags.valid_at_boot | bce_flags.valid_at_crash) then return;
+       79 	     else;
+       80 	else if sys_info$collection_1_phase = CRASH_INITIALIZATION then
+       81 	     if ^ bce_flags.valid_at_crash then return;
+       82 	     else;
+       83 	else if sys_info$collection_1_phase = EARLY_INITIALIZATION then
+       84 	     if ^ bce_flags.valid_at_early then return;
+       85 	     else;
+       86 	else if sys_info$collection_1_phase = BOOT_INITIALIZATION then
+       87 	     if ^ bce_flags.valid_at_boot then return;
+       88 	     else;
+       89 
+       90 	request_name_list_ptr = pointer (rq_data_ptr, rq_data.namelist_loc);
+       91 	do nx = 1 to request_name_list.n_names;
+       92 	     if request_name_list.name (nx) = info.request_name
+       93 	     then call info.found (rq_data_ptr);	/* never returns */
+       94 	end;
+       95 
+       96      end CHECK_ONE;
+       97 
+       98 FOUND:
+       99      procedure (Request_data_ptr);
+      100 	declare Request_data_ptr	 pointer;
+      101 
+      102 	Global_RQ_data_ptr = Request_data_ptr;
+      103 	go to FOUND_LABEL;				/* nonlocal up the wazzu */
+      104      end FOUND;
+      105 
+      106 FOUND_LABEL:
+      107 	rq_data_ptr = Global_RQ_data_ptr;
+      108 	call cu_$af_arg_count_rel (arg_count, Code, Arg_list_ptr);
+      109 	if Code = 0 then  /* active function usage */
+      110 	     if ^ rq_data.allow_af then do;
+      111 		Code = error_table_$not_act_fnc;
+      112 		return;
+      113 	     end;
+      114 	     else;
+      115 	else if ^ rq_data.allow_command then do;
+      116 		Code = error_table_$active_function;
+      117 		return;
+      118 	     end;
+      119 	Code = 0;
+      120 	entry_variable.code_ptr = pointer (rq_data_ptr, rq_data.code_loc);
+      121 	entry_variable.env_ptr = null ();
+      122 	unspec (execute_entry) = unspec (entry_variable);
+      123 
+      124 /* call routine with arg_list supplied depending on object type */
+      125 
+      126 	if rq_data.multics_request then call cu_$generate_call (execute_entry, ss_info.arg_list_ptr);
+      127 	else call execute_entry (ss_info_ptr);
+      128 	return;
+      129 
+  1     1 /* BEGIN INCLUDE FILE ... _ssu_request_table.incl.pl1 */
+  1     2 /* Created:  by W. Olin Sibert */
+  1     3 
+  1     4 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+  1     5 
+  1     6 
+  1     7 /* Definition of a subsystem request table */
+  1     8 
+  1     9 dcl  1 rqt aligned based (rqt_ptr),
+  1    10        2 version character (8),
+  1    11        2 name character (32),				/* name of this table */
+  1    12        2 flags,					/* this field is completely unused */
+  1    13          3 pad2 (6) bit (36) unaligned,
+  1    14        2 n_requests fixed binary,
+  1    15        2 requests (0 refer (rqt.n_requests)) like rq_data;
+  1    16 
+  1    17 dcl  rqt_ptr pointer;
+  1    18 
+  1    19 dcl  RQT_VERSION_4 character (8) static options (constant) initial ("srqt_4.0");
+  1    20 
+  1    21 
+  1    22 /* Definition of a single request's entry in the table */
+  1    23 
+  1    24 dcl  1 rq_data aligned based (rq_data_ptr),
+  1    25        2 code_loc bit (18) unaligned,			/* -> (RTBOS) code sequence to invoke request */
+  1    26        2 namelist_loc bit (18) unaligned,		/* -> (RTBOS) list of names for this request */
+  1    27        2 info_string,
+  1    28          3 loc bit (18) unaligned,			/* -> (RTBOS) short description of request */
+  1    29          3 lth fixed binary (17) unaligned,		/* length of description (0 if none) */
+  1    30        2 flags aligned like request_flags;		/* miscellaneous flags */
+  1    31 
+  1    32 dcl  rq_data_ptr pointer;
+  1    33 
+  1    34 /* END INCLUDE FILE ... _ssu_request_table.incl.pl1 */
+      130 
+  2     1 /* BEGIN INCLUDE FILE ... _ssu_request_data.incl.pl1 */
+  2     2 /* Created:  13 May 1980 by W. Olin Sibert */
+  2     3 /* Modified: 28 February 1982 by G. Palter to add dont_summarize and dont_list */
+  2     4 /* Modified: 2 August 1982 by Jay Pattin to add unknown flag */
+  2     5 
+  2     6 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+  2     7 
+  2     8 
+  2     9 /* Description of a subsystem request returned by ssu_$locate_request */
+  2    10 
+  2    11 dcl  1 request_data aligned based (request_data_ptr),
+  2    12        2 full_name character (32) unaligned,		/* its primary name */
+  2    13        2 entry entry (pointer, pointer) variable,		/* entry to call to implement the request */
+  2    14        2 call_info,					/* describes current invocation of the request ... */
+  2    15          3 arg_list_ptr pointer,			/* ... -> argument list */
+  2    16          3 arg_count fixed binary,
+  2    17          3 af_sw bit (1) aligned,			/* ... ON => invoked as an active request */
+  2    18          3 rv_ptr pointer,				/* ... -> active request's return string */
+  2    19          3 rv_lth fixed binary (21),			/* ... maxlength of the return string */
+  2    20        2 flags aligned like request_flags,		/* attributes of the request (from the request table) */
+  2    21        2 name_list_ptr pointer unaligned,		/* -> list of all valid names for the request */
+  2    22        2 info_string,				/* brief description of the request (if any) */
+  2    23          3 ptr pointer unaligned,
+  2    24          3 lth fixed binary (18),
+  2    25        2 pad (4) bit (36);
+  2    26 
+  2    27 dcl  request_data_ptr pointer;
+  2    28 
+  2    29 
+  2    30 /* Request attributes from the request table */
+  2    31 
+  2    32 dcl  1 request_flags aligned based,
+  2    33        2 system_flags unaligned,
+  2    34          3 allow_command bit (1) unaligned,		/* ON => request may be called as a command */
+  2    35          3 allow_af bit (1) unaligned,			/* ON => request may be called as an active function */
+  2    36          3 unimplemented bit (1) unaligned,		/* ON => request is not yet implemented */
+  2    37          3 multics_request bit (1) unaligned,		/* ON => this request is really just a Multics command */
+  2    38          3 dont_summarize bit (1) unaligned,		/* ON => summarize_requests doesn't list this request */
+  2    39          3 dont_list bit (1) unaligned,			/* ON => list_requests doesn't match this one without -all */
+  2    40          3 unknown bit (1) unaligned,			/* ON => return unknown_request, don't list or summarize ever */
+  2    41          3 pad bit (11) unaligned,
+  2    42        2 user_flags bit (18) unaligned;			/* no longer used */
+  2    43 
+  2    44 
+  2    45 /* List of all names for a given request */
+  2    46 
+  2    47 dcl  1 request_name_list aligned based (request_name_list_ptr),
+  2    48        2 n_names fixed binary,			/* structure describing name list */
+  2    49        2 name (request_name_list_n_names refer (request_name_list.n_names)) character (32) unaligned;
+  2    50 
+  2    51 dcl  request_name_list_ptr pointer;
+  2    52 dcl  request_name_list_n_names fixed binary;
+  2    53 
+  2    54 
+  2    55 /* Brief description of a request */
+  2    56 
+  2    57 dcl  request_info_string character (request_info_string_lth) based (request_info_string_ptr);
+  2    58 dcl  request_info_string_lth fixed binary (21);
+  2    59 dcl  request_info_string_ptr pointer;
+  2    60 
+  2    61 /* END INCLUDE FILE ... _ssu_request_data.incl.pl1 */
+      131 
+  3     1 /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  3     2 
+  3     3 /* format: style3 */
+  3     4 
+  3     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  3     6 
+  3     7 
+  3     8 /****^  HISTORY COMMENTS:
+  3     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  3    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  3    11*     Added request_handling_opr_aborts flag for save/restore.
+  3    12*                                                   END HISTORY COMMENTS */
+  3    13 
+  3    14 declare	ss_info_ptr	pointer;
+  3    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  3    16 	  2 request_table_ptr
+  3    17 			pointer,
+  3    18 	  2 abort_label	label,
+  3    19 	  2 name		char (32) unaligned,
+  3    20 	  2 arg_list_ptr	pointer,
+  3    21 	  2 info_ptr	pointer,
+  3    22 	  2 flags           aligned,
+  3    23 	    3 forbid_semicolons bit (1) unaligned,
+  3    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  3    25 
+  3    26 /* End include file bce_subsystem_info_ */
+      132 
+  4     1 /* BEGIN include file collection_1_phases.incl.pl1 */
+  4     2 
+  4     3 /* Symbolic names for the various collection1 phases.
+  4     4*Keith Loepere, October 1983. */
+  4     5 
+  4     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  4     7 
+  4     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  4     9 
+  4    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  4    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  4    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  4    13 
+  4    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  4    15*programs can simply tell apart the booting phases from all others (crash or
+  4    16*recovery type phases). */
+  4    17 
+  4    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  4    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  4    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  4    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  4    22 
+  4    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  4    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  4    25 
+  4    26 /* END include file collection_1_phases.incl.pl1 */
+      133 
+      134      end bce_execute_command_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.1  bce_execute_command_.pl1          >special_ldd>install>MR12.3-1114>bce_execute_command_.pl1
+130          1    04/13/82  1620.2  _ssu_request_table.incl.pl1       >ldd>include>_ssu_request_table.incl.pl1
+131          2    09/28/82  1437.6  _ssu_request_data.incl.pl1        >ldd>include>_ssu_request_data.incl.pl1
+132          3    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+133          4    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Arg_list_ptr                           parameter       pointer                  dcl 22 set ref 17 56 108*
+BCE_CRASH_INITIALIZATION               constant        fixed bin(17,0)          initial dcl 4-20 ref 77
+BOOT_INITIALIZATION                    constant        fixed bin(17,0)          initial dcl 4-11 ref 86
+CRASH_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 4-18 ref 80
+Code                                   parameter       fixed bin(35,0)          dcl 23 set ref 17 54* 64* 108* 109 111* 116* 119*
+EARLY_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 4-10 ref 83
+Global_RQ_data_ptr              000126 automatic       pointer                  dcl 34 set ref 102* 106
+Info_ptr                               parameter       pointer                  dcl 71 in procedure "CHECK_ONE" ref 67 92 92
+Info_ptr                               parameter       pointer                  dcl 21 in procedure "bce_execute_command_" ref 17 55
+Request                                parameter       char                     packed unaligned dcl 20 ref 17 57
+Request_data_ptr                       parameter       pointer                  dcl 70 in procedure "CHECK_ONE" ref 67 76
+Request_data_ptr                       parameter       pointer                  dcl 100 in procedure "FOUND" ref 98 102
+addr                                                   builtin function         dcl 51 ref 60 60 77 77 80 83 86
+allow_af                  2(01)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 109
+allow_command             2            based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 115
+arg_count                       000120 automatic       fixed bin(17,0)          dcl 29 set ref 108*
+arg_list_ptr             16            based           pointer                  level 2 dcl 3-15 set ref 56* 126*
+bce_flags                              based           structure                level 1 dcl 45
+bce_map_over_requests_          000010 constant        entry                    external dcl 35 ref 60
+code_loc                               based           bit(18)                  level 2 packed packed unaligned dcl 1-24 ref 120
+code_ptr                        000122 automatic       pointer                  level 2 dcl 30 set ref 120*
+cu_$af_arg_count_rel            000012 constant        entry                    external dcl 36 ref 108
+cu_$generate_call               000014 constant        entry                    external dcl 37 ref 126
+entry_variable                  000122 automatic       structure                level 1 dcl 30 set ref 122
+env_ptr                   2     000122 automatic       pointer                  level 2 dcl 30 set ref 121*
+error_table_$active_function    000016 external static fixed bin(35,0)          dcl 38 ref 116
+error_table_$bad_command_name   000020 external static fixed bin(35,0)          dcl 40 ref 64
+error_table_$not_act_fnc        000022 external static fixed bin(35,0)          dcl 42 ref 111
+execute_entry                   000100 automatic       entry variable           dcl 24 set ref 122* 126* 127
+flags                     2            based           structure                level 2 dcl 1-24 set ref 77 77 80 83 86
+found                    10     000104 automatic       entry variable           level 2 in structure "p_info" dcl 25 in procedure
+                                                                                  "bce_execute_command_" set ref 58*
+found                    10            based           entry variable           level 2 in structure "info" dcl 73 in procedure
+                                                                                  "CHECK_ONE" ref 92
+info                                   based           structure                level 1 dcl 73
+multics_request           2(03)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 126
+n_names                                based           fixed bin(17,0)          level 2 dcl 2-47 ref 91
+name                      1            based           char(32)                 array level 2 packed packed unaligned dcl 2-47 ref
+                                                                                  92
+namelist_loc              0(18)        based           bit(18)                  level 2 packed packed unaligned dcl 1-24 ref 90
+null                                                   builtin function         dcl 51 ref 121
+nx                              000100 automatic       fixed bin(17,0)          dcl 74 set ref 91* 92*
+p_info                          000104 automatic       structure                level 1 dcl 25 set ref 60 60
+pointer                                                builtin function         dcl 51 ref 90 120
+request_flags                          based           structure                level 1 dcl 2-32
+request_name                           based           char(32)                 level 2 in structure "info" packed packed unaligned
+                                                                                  dcl 73 in procedure "CHECK_ONE" ref 92
+request_name                    000104 automatic       char(32)                 level 2 in structure "p_info" packed packed
+                                                                                  unaligned dcl 25 in procedure
+                                                                                  "bce_execute_command_" set ref 57*
+request_name_list                      based           structure                level 1 dcl 2-47
+request_name_list_ptr           000132 automatic       pointer                  dcl 2-51 set ref 90* 91 92
+request_table_ptr                      based           pointer                  level 2 dcl 3-15 set ref 60*
+rq_data                                based           structure                level 1 dcl 1-24
+rq_data_ptr                     000130 automatic       pointer                  dcl 1-32 set ref 76* 77 77 80 83 86 90 90 92* 106*
+                                                                                  109 115 120 120 126
+ss_info                                based           structure                level 1 dcl 3-15
+ss_info_ptr                     000134 automatic       pointer                  dcl 3-14 set ref 55* 56 60 126 127*
+sys_info$collection_1_phase     000024 external static fixed bin(17,0)          dcl 4-8 ref 77 80 83 86
+system_flags              2            based           structure                level 3 packed packed unaligned dcl 1-24
+unspec                                                 builtin function         dcl 51 set ref 122* 122
+valid_at_boot             0(16)        based           bit(1)                   level 2 packed packed unaligned dcl 45 ref 77 86
+valid_at_crash            0(17)        based           bit(1)                   level 2 packed packed unaligned dcl 45 ref 77 80
+valid_at_early            0(15)        based           bit(1)                   level 2 packed packed unaligned dcl 45 ref 83
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 4-23
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 4-19
+RQT_VERSION_4                          internal static char(8)                  initial packed unaligned dcl 1-19
+SERVICE_INITIALIZATION                 internal static fixed bin(17,0)          initial dcl 4-12
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 4-21
+request_data                           based           structure                level 1 dcl 2-11
+request_data_ptr                       automatic       pointer                  dcl 2-27
+request_info_string                    based           char                     packed unaligned dcl 2-57
+request_info_string_lth                automatic       fixed bin(21,0)          dcl 2-58
+request_info_string_ptr                automatic       pointer                  dcl 2-59
+request_name_list_n_names              automatic       fixed bin(17,0)          dcl 2-52
+rqt                                    based           structure                level 1 dcl 1-9
+rqt_ptr                                automatic       pointer                  dcl 1-17
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CHECK_ONE                       000177 constant        entry                    internal dcl 67 ref 60 60
+FOUND                           000305 constant        entry                    internal dcl 98 ref 58
+FOUND_LABEL                     000071 constant        label                    dcl 106 ref 103
+bce_execute_command_            000013 constant        entry                    external dcl 17
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       462         510     322         472
+Length       770     322        26         244     137           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_execute_command_                110 external procedure  is an external procedure.  
+CHECK_ONE                            72 internal procedure  is assigned to an entry variable.  
+FOUND                                64 internal procedure  is assigned to an entry variable.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+CHECK_ONE                000100 nx                          CHECK_ONE
+bce_execute_command_     000100 execute_entry               bce_execute_command_
+                         000104 p_info                      bce_execute_command_
+                         000120 arg_count                   bce_execute_command_
+                         000122 entry_variable              bce_execute_command_
+                         000126 Global_RQ_data_ptr          bce_execute_command_
+                         000130 rq_data_ptr                 bce_execute_command_
+                         000132 request_name_list_ptr       bce_execute_command_
+                         000134 ss_info_ptr                 bce_execute_command_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var        call_ext_out        return_mac          tra_ext_1           ext_entry_desc      int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_map_over_requests_        cu_$af_arg_count_rel          cu_$generate_call
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$active_function  error_table_$bad_command_name error_table_$not_act_fnc      sys_info$collection_1_phase
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000006        54 000026        55 000030        56 000033        57 000036        58 000042        60 000045
+     64 000064        65 000070       106 000071       108 000073       109 000107       111 000116       112 000121
+    114 000122       115 000123       116 000127       117 000132       119 000133       120 000135       121 000142
+    122 000144       126 000150       127 000167       128 000175        67 000176        76 000204        77 000211
+     79 000220        80 000221        82 000226        83 000227        85 000234        86 000235        90 000242
+     91 000247        92 000257        94 000301        96 000303        98 000304       102 000312       103 000317
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

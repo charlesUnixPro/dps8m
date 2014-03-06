@@ -1,0 +1,723 @@
+	COMPILATION LISTING OF SEGMENT sub_err_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* Written by who knows who who knows when. */
+       14 /* Modified by Benson I. Margulies April 81 for new include file and q flag */
+       15 /* Modified by Benson I. Margulies November 81 for new calling sequence */
+       16 
+       17 /* format: style2 */
+       18 
+       19 sub_err_:
+       20      procedure (P_code, name, flags, info_ptr, retval) options (support);
+       21 
+       22 /* parameters */
+       23 
+       24 	dcl     P_code		 fixed bin (35),	/* (input) status code */
+       25 	        name		 char (*),	/* (input) subsystem name */
+       26 	        flags		 bit (*),		/* (input) how to restart. "c" to continue, "s" to die  "q" to restart silently */
+       27 	        info_ptr		 ptr,		/* (input) optional further information */
+       28 	        retval		 fixed bin (35);	/* (input/output) return value from environment */
+       29 
+       30 
+       31 /* automatic */
+       32 
+       33 
+       34 	dcl     arg_list_ptr	 ptr,		/* ptr to our argument list */
+       35 	        arg_ptr		 ptr,		/* ptr to arg */
+       36 	        arg_len		 fixed bin (21),
+       37 	        arg_count		 fixed bin,
+       38 	        code		 fixed bin (35),	/* convert copy of status code */
+       39 	        cs		 char (256),	/* Formatted string */
+       40 	        lt		 fixed bin,	/* length of it */
+       41 	        cant_restart	 bit (1),		/* t if cnnnot restart */
+       42 	        ndims		 fixed bin,	/* junk for decode_descriptor_ */
+       43 	        packed		 bit (1) aligned,	/* .. */
+       44 	        prec		 fixed bin,	/* .. */
+       45 	        scale		 fixed bin,	/* .. */
+       46 	        type		 fixed bin;	/* .. */
+       47 
+       48 
+       49 	declare 1 sub_err_info	 aligned like sub_error_info automatic;
+       50 
+       51 /* entries */
+       52 
+       53 	dcl     cu_$arg_list_ptr	 entry (ptr);
+       54 	dcl     cu_$arg_ptr		 entry (fixed bin, ptr, fixed bin (21), fixed bin (35));
+       55 	dcl     cu_$arg_count	 entry (fixed bin, fixed bin (35));
+       56 	dcl     decode_descriptor_	 entry (ptr, fixed bin, fixed bin, fixed bin, bit (1) aligned, fixed bin,
+       57 				 fixed bin);
+       58 	dcl     ioa_$general_rs	 entry (ptr, fixed bin, fixed bin, char (*), fixed bin, bit (1), bit (1));
+       59 	dcl     signal_		 entry (char (*), ptr, ptr, ptr);
+       60 
+       61 /* builtins */
+       62 
+       63 	dcl     (addr, bin, index, null, size, substr)
+       64 				 builtin;
+       65 
+       66 /* include files */
+       67 
+  1     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare condition_info_header_ptr
+  1     5 			      pointer;
+  1     6      declare 1 condition_info_header
+  1     7 			      aligned based (condition_info_header_ptr),
+  1     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  1     9 	     2 version	      fixed bin,		/* version number of this structure */
+  1    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  1    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  1    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  1    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  1    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  1    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  1    16 	       3 pad	      bit (32) unaligned,
+  1    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  1    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  1    19 
+  1    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+       68 
+  2     1 /* BEGIN INCLUDE FILE sub_error_info.incl.pl1 */
+  2     2 /* format: style2 */
+  2     3 
+  2     4 /* The include file condition_info_header must be used with this file */
+  2     5 
+  2     6      declare sub_error_info_ptr     pointer;
+  2     7      declare 1 sub_error_info	      aligned based (sub_error_info_ptr),
+  2     8 	     2 header	      aligned like condition_info_header,
+  2     9 	     2 retval	      fixed bin (35),	/* return value */
+  2    10 	     2 name	      char (32),		/* module name */
+  2    11 	     2 info_ptr	      ptr;
+  2    12 
+  2    13      declare sub_error_info_version_1
+  2    14 			      internal static options (constant) fixed bin init (1);
+  2    15 
+  2    16 /* END INCLUDE FILE sub_error_info.incl.pl1 */
+       69 
+  3     1 /* BEGIN INCLUDE FILE ... desc_dcls.incl.pl1 */
+  3     2 
+  3     3 /* This include segment contains declarations for use with assign_ */
+  3     4 
+  3     5 dcl	intype		fixed bin (17),
+  3     6 	outtype		fixed bin (17);
+  3     7 
+  3     8 dcl	inscale_prec	fixed bin (35),
+  3     9 	outscale_prec	fixed bin (35);
+  3    10 
+  3    11 dcl	1 info		based (addr (inscale_prec)) aligned,
+  3    12 	2 inscale		fixed bin (17) unal,
+  3    13 	2 inprec		fixed bin (17) unal;
+  3    14 
+  3    15 dcl	1 outfo		based (addr (outscale_prec)) aligned,
+  3    16 	2 outscale	fixed bin (17) unal,
+  3    17 	2 outprec		fixed bin (17) unal;
+  3    18 
+  3    19 dcl	inclength fixed bin(31) aligned based(addr(inscale_prec));
+  3    20 dcl	outclength fixed bin(31) aligned based(addr(outscale_prec));
+  3    21 
+  3    22 dcl	char_to_numeric_	entry (ptr, fixed bin (17), fixed bin (35), ptr, fixed bin (17)), 
+  3    23 	assign_		entry (ptr, fixed bin (17), fixed bin (35), ptr, fixed bin (17), fixed bin (35)), 
+  3    24 	assign_round_	entry (ptr, fixed bin (17), fixed bin (35), ptr, fixed bin (17), fixed bin (35)), 
+  3    25 	assign_truncate_	entry (ptr, fixed bin (17), fixed bin (35), ptr, fixed bin (17), fixed bin (35));
+  3    26 
+  3    27 /* END INCLUDE FILE ... desc_dcls.incl.pl1 */
+       70 
+  4     1 /* BEGIN INCLUDE FILE ... std_descriptor_types.incl.pl1 */
+  4     2 
+  4     3 
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(86-09-05,JMAthane), approve(86-09-05,MCR7525),
+  4     6*     audit(86-09-11,Martinson), install(86-11-12,MR12.0-1208):
+  4     7*     Added pascal_string_type_dtype descriptor type.  Its number is 87.
+  4     8*     Objects of this type are PASCAL string types.
+  4     9*  2) change(88-09-20,WAAnderson), approve(88-09-20,MCR7952),
+  4    10*     audit(88-09-30,JRGray), install(88-10-24,MR12.2-1184):
+  4    11*     Added the new C types.
+  4    12*                                                   END HISTORY COMMENTS */
+  4    13 
+  4    14 /* This include file defines mnemonic names for the Multics
+  4    15*   standard descriptor types, using both pl1 and cobol terminology.
+  4    16*   PG 780613
+  4    17*   JRD 790530
+  4    18*   JRD 791016
+  4    19*   MBW 810731
+  4    20*   TGO 830614 Add hex types.
+  4    21*   Modified June 83 JMAthane to add PASCAL data types
+  4    22*   TGO 840120 Add float dec extended and generic, float binary generic
+  4    23**/
+  4    24 
+  4    25      dcl	   (real_fix_bin_1_dtype  init (1),
+  4    26 	   real_fix_bin_2_dtype   init (2),
+  4    27 	   real_flt_bin_1_dtype   init (3),
+  4    28 	   real_flt_bin_2_dtype   init (4),
+  4    29 	   cplx_fix_bin_1_dtype   init (5),
+  4    30 	   cplx_fix_bin_2_dtype   init (6),
+  4    31 	   cplx_flt_bin_1_dtype   init (7),
+  4    32 	   cplx_flt_bin_2_dtype   init (8),
+  4    33 	   real_fix_dec_9bit_ls_dtype init (9),
+  4    34 	   real_flt_dec_9bit_dtype init (10),
+  4    35 	   cplx_fix_dec_9bit_ls_dtype init (11),
+  4    36 	   cplx_flt_dec_9bit_dtype init (12),
+  4    37 	   pointer_dtype	      init (13),
+  4    38 	   offset_dtype	      init (14),
+  4    39 	   label_dtype	      init (15),
+  4    40 	   entry_dtype	      init (16),
+  4    41 	   structure_dtype	      init (17),
+  4    42 	   area_dtype	      init (18),
+  4    43 	   bit_dtype	      init (19),
+  4    44 	   varying_bit_dtype      init (20),
+  4    45 	   char_dtype	      init (21),
+  4    46 	   varying_char_dtype     init (22),
+  4    47 	   file_dtype	      init (23),
+  4    48 	   real_fix_dec_9bit_ls_overp_dtype init (29),
+  4    49 	   real_fix_dec_9bit_ts_overp_dtype init (30),
+  4    50 	   real_fix_bin_1_uns_dtype init (33),
+  4    51 	   real_fix_bin_2_uns_dtype init (34),
+  4    52 	   real_fix_dec_9bit_uns_dtype init (35),
+  4    53 	   real_fix_dec_9bit_ts_dtype init (36),
+  4    54 	   real_fix_dec_4bit_uns_dtype init (38),	/* digit-aligned */
+  4    55 	   real_fix_dec_4bit_ts_dtype init (39),	/* byte-aligned */
+  4    56 	   real_fix_dec_4bit_bytealigned_uns_dtype init (40), /* COBOL */
+  4    57 	   real_fix_dec_4bit_ls_dtype init (41),	/* digit-aligned */
+  4    58 	   real_flt_dec_4bit_dtype init (42),		/* digit-aligned */
+  4    59 	   real_fix_dec_4bit_bytealigned_ls_dtype init (43),
+  4    60 	   real_flt_dec_4bit_bytealigned_dtype init (44),
+  4    61 	   cplx_fix_dec_4bit_bytealigned_ls_dtype init (45),
+  4    62 	   cplx_flt_dec_4bit_bytealigned_dtype init (46),
+  4    63 	   real_flt_hex_1_dtype   init (47),
+  4    64 	   real_flt_hex_2_dtype   init (48),
+  4    65 	   cplx_flt_hex_1_dtype   init (49),
+  4    66 	   cplx_flt_hex_2_dtype   init (50),
+  4    67 	   c_typeref_dtype        init (54),
+  4    68 	   c_enum_dtype           init (55),
+  4    69              c_enum_const_dtype     init (56),
+  4    70 	   c_union_dtype          init (57),
+  4    71 	   algol68_straight_dtype init (59),
+  4    72 	   algol68_format_dtype   init (60),
+  4    73 	   algol68_array_descriptor_dtype init (61),
+  4    74 	   algol68_union_dtype    init (62),
+  4    75 
+  4    76 	   cobol_comp_6_dtype     init (1),
+  4    77 	   cobol_comp_7_dtype     init (1),
+  4    78 	   cobol_display_ls_dtype init (9),
+  4    79 	   cobol_structure_dtype  init (17),
+  4    80 	   cobol_char_string_dtype init (21),
+  4    81 	   cobol_display_ls_overp_dtype init (29),
+  4    82 	   cobol_display_ts_overp_dtype init (30),
+  4    83 	   cobol_display_uns_dtype init (35),
+  4    84 	   cobol_display_ts_dtype init (36),
+  4    85 	   cobol_comp_8_uns_dtype init (38),		/* digit aligned */
+  4    86 	   cobol_comp_5_ts_dtype  init (39),		/* byte aligned */
+  4    87 	   cobol_comp_5_uns_dtype init (40),
+  4    88 	   cobol_comp_8_ls_dtype  init (41),		/* digit aligned */
+  4    89 	   real_flt_dec_extended_dtype init (81),	/* 9-bit exponent */
+  4    90 	   cplx_flt_dec_extended_dtype init (82),	/* 9-bit exponent */
+  4    91 	   real_flt_dec_generic_dtype init (83),	/* generic float decimal */
+  4    92 	   cplx_flt_dec_generic_dtype init (84),
+  4    93 	   real_flt_bin_generic_dtype init (85),	/* generic float binary */
+  4    94 	   cplx_flt_bin_generic_dtype init (86)) fixed bin internal static options (constant);
+  4    95 
+  4    96      dcl	   (ft_integer_dtype      init (1),
+  4    97 	   ft_real_dtype	      init (3),
+  4    98 	   ft_double_dtype	      init (4),
+  4    99 	   ft_complex_dtype	      init (7),
+  4   100 	   ft_complex_double_dtype init (8),
+  4   101 	   ft_external_dtype      init (16),
+  4   102 	   ft_logical_dtype	      init (19),
+  4   103 	   ft_char_dtype	      init (21),
+  4   104 	   ft_hex_real_dtype      init (47),
+  4   105 	   ft_hex_double_dtype    init (48),
+  4   106 	   ft_hex_complex_dtype   init (49),
+  4   107 	   ft_hex_complex_double_dtype init (50)
+  4   108 	   )		      fixed bin internal static options (constant);
+  4   109 
+  4   110      dcl	   (algol68_short_int_dtype init (1),
+  4   111 	   algol68_int_dtype      init (1),
+  4   112 	   algol68_long_int_dtype init (2),
+  4   113 	   algol68_real_dtype     init (3),
+  4   114 	   algol68_long_real_dtype init (4),
+  4   115 	   algol68_compl_dtype    init (7),
+  4   116 	   algol68_long_compl_dtype init (8),
+  4   117 	   algol68_bits_dtype     init (19),
+  4   118 	   algol68_bool_dtype     init (19),
+  4   119 	   algol68_char_dtype     init (21),
+  4   120 	   algol68_byte_dtype     init (21),
+  4   121 	   algol68_struct_struct_char_dtype init (22),
+  4   122 	   algol68_struct_struct_bool_dtype init (20)
+  4   123 	   )		      fixed bin internal static options (constant);
+  4   124 
+  4   125      dcl	   (label_constant_runtime_dtype init (24),
+  4   126 	   int_entry_runtime_dtype init (25),
+  4   127 	   ext_entry_runtime_dtype init (26),
+  4   128 	   ext_procedure_runtime_dtype init (27),
+  4   129 	   picture_runtime_dtype  init (63)
+  4   130 	   )		      fixed bin internal static options (constant);
+  4   131 
+  4   132      dcl	   (pascal_integer_dtype  init (1),
+  4   133 	   pascal_real_dtype      init (4),
+  4   134 	   pascal_label_dtype     init (24),
+  4   135 	   pascal_internal_procedure_dtype init (25),
+  4   136 	   pascal_exportable_procedure_dtype init (26),
+  4   137 	   pascal_imported_procedure_dtype init (27),
+  4   138 	   pascal_typed_pointer_type_dtype init (64),
+  4   139 	   pascal_char_dtype      init (65),
+  4   140 	   pascal_boolean_dtype   init (66),
+  4   141 	   pascal_record_file_type_dtype init (67),
+  4   142 	   pascal_record_type_dtype init (68),
+  4   143 	   pascal_set_dtype	      init (69),
+  4   144 	   pascal_enumerated_type_dtype init (70),
+  4   145 	   pascal_enumerated_type_element_dtype init (71),
+  4   146 	   pascal_enumerated_type_instance_dtype init (72),
+  4   147 	   pascal_user_defined_type_dtype init (73),
+  4   148 	   pascal_user_defined_type_instance_dtype init (74),
+  4   149 	   pascal_text_file_dtype init (75),
+  4   150 	   pascal_procedure_type_dtype init (76),
+  4   151 	   pascal_variable_formal_parameter_dtype init (77),
+  4   152 	   pascal_value_formal_parameter_dtype init (78),
+  4   153 	   pascal_entry_formal_parameter_dtype init (79),
+  4   154 	   pascal_parameter_procedure_dtype init (80),
+  4   155 	   pascal_string_type_dtype init (87)) fixed bin int static options (constant);
+  4   156 
+  4   157 
+  4   158 /* END INCLUDE FILE ... std_descriptor_types.incl.pl1 */
+       71 
+       72 
+       73 /* program */
+       74 
+       75 	call cu_$arg_list_ptr (arg_list_ptr);
+       76 	call cu_$arg_count (arg_count, (0));
+       77 	if arg_count < 1
+       78 	then call error_no_args;
+       79 
+       80 	call cu_$arg_ptr (1, arg_ptr, (0), code);
+       81 	call decode_descriptor_ (arg_list_ptr, 1, type, ndims, packed, prec, scale);
+       82 
+       83 	if (type = real_fix_bin_1_dtype) & (packed = "0"b)
+       84 	then code = P_code;
+       85 	else do;
+       86 		intype = 2 * type + bin (packed, 1);
+       87 		if (type >= bit_dtype) & (type <= varying_char_dtype)
+       88 		then inclength = prec;
+       89 		else do;
+       90 			info.inprec = prec;
+       91 			info.inscale = scale;
+       92 		     end;
+       93 		outtype = 2 * real_fix_bin_1_dtype;
+       94 		outfo.outprec = 35;
+       95 		outfo.outscale = 0;
+       96 		call assign_ (addr (code), outtype, outscale_prec, arg_ptr, intype, inscale_prec);
+       97 	     end;
+       98 
+       99 	sub_err_info.length = size (sub_err_info);	/* Fill in structure */
+      100 	sub_err_info.version = sub_error_info_version_1;
+      101 	cant_restart = "0"b;
+      102 	string (sub_err_info.action_flags) = ""b;
+      103 	sub_err_info.status_code = code;
+      104 	sub_err_info.retval = 0;
+      105 	sub_err_info.info_ptr = null ();
+      106 	sub_err_info.info_string = "";
+      107 	sub_err_info.name = "";
+      108 
+      109 	if arg_count < 2
+      110 	then goto SIGNAL;
+      111 
+      112 	sub_err_info.name = name;
+      113 
+      114 	if arg_count < 3
+      115 	then go to SIGNAL;
+      116 
+      117 	call cu_$arg_ptr (3, arg_ptr, arg_len, (0));
+      118 	call decode_descriptor_ (arg_list_ptr, 3, type, ndims, packed, prec, scale);
+      119 	if type = bit_dtype				/* new style call */
+      120 	then string (sub_err_info.action_flags) = string (flags);
+      121 
+      122 	else begin;				/* This depends on the fact that an aligned char string is just an unaligned
+      123*   bit string that has some restrictions on its storage layout. Thus calling an
+      124*   aligned string unaligned is a harmless thing. */
+      125 
+      126 		declare flags		 character (arg_len) based (arg_ptr) unaligned;
+      127 
+      128 		sub_err_info.action_flags.cant_restart = (index (flags, "s") ^= 0);
+      129 						/* Fatal? */
+      130 		sub_err_info.action_flags.default_restart = (index (flags, "c") ^= 0);
+      131 						/* Continue? */
+      132 		sub_err_info.action_flags.quiet_restart = (index (flags, "q") ^= 0);
+      133 
+      134 	     end;
+      135 
+      136 
+      137 	cant_restart = sub_err_info.action_flags.cant_restart;
+      138 
+      139 
+      140 	if arg_count < 4
+      141 	then go to SIGNAL;
+      142 	sub_err_info.retval = retval;
+      143 
+      144 	if arg_count < 5
+      145 	then go to SIGNAL;
+      146 
+      147 	sub_err_info.info_ptr = info_ptr;
+      148 
+      149 	if arg_count < 6
+      150 	then go to SIGNAL;
+      151 
+      152 	call ioa_$general_rs (arg_list_ptr, 6, 7, cs, lt, "0"b, "0"b);
+      153 	sub_err_info.info_string = substr (cs, 1, lt);
+      154 
+      155 SIGNAL:
+      156 	call signal_ ("sub_error_", null, addr (sub_err_info), null);
+      157 						/* Blap out message */
+      158 
+      159 	do while (cant_restart);			/* If user can't hack return */
+      160 	     call signal_ ("illegal_return", null, addr (sub_err_info), null);
+      161 	end;
+      162 
+      163 	if arg_count >= 4
+      164 	then retval = sub_err_info.retval;		/* Return's ok, what did environment do? */
+      165 RETURN:
+      166 	return;
+      167 
+      168 error_no_args:
+      169      procedure;
+      170 	declare error_table_$badcall	 fixed bin (35) ext static;
+      171 	declare sub_err_		 entry external options (variable);
+      172 						/* get descriptors onto this call */
+      173 
+      174 	call sub_err_ (error_table_$badcall, "sub_err_", ""b, (0), null (), "^a",
+      175 	     "No arguments supplied in a call to sub_err_.");
+      176 						/* and why not recurse */
+      177 	go to RETURN;
+      178      end error_no_args;
+      179 
+      180 
+      181      end sub_err_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.3  sub_err_.pl1                      >spec>install>1110>sub_err_.pl1
+68           1    03/24/82  1347.2  condition_info_header.incl.pl1    >ldd>include>condition_info_header.incl.pl1
+69           2    07/18/81  1100.0  sub_error_info.incl.pl1           >ldd>include>sub_error_info.incl.pl1
+70           3    11/30/78  1227.5  desc_dcls.incl.pl1                >ldd>include>desc_dcls.incl.pl1
+71           4    10/26/88  1255.5  std_descriptor_types.incl.pl1     >ldd>include>std_descriptor_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+P_code                                 parameter       fixed bin(35,0)          dcl 24 ref 19 83
+action_flags              2     000216 automatic       structure                level 3 dcl 49 set ref 102* 119*
+addr                                                   builtin function         dcl 63 ref 87 90 91 94 95 96 96 155 155 160 160
+arg_count                       000105 automatic       fixed bin(17,0)          dcl 34 set ref 76* 77 109 114 140 144 149 163
+arg_len                         000104 automatic       fixed bin(21,0)          dcl 34 set ref 117* 128 130 132
+arg_list_ptr                    000100 automatic       pointer                  dcl 34 set ref 75* 81* 118* 152*
+arg_ptr                         000102 automatic       pointer                  dcl 34 set ref 80* 96* 117* 128 130 132
+assign_                         000024 constant        entry                    external dcl 3-22 ref 96
+bin                                                    builtin function         dcl 63 ref 86
+bit_dtype                              constant        fixed bin(17,0)          initial dcl 4-25 ref 87 119
+cant_restart              2     000216 automatic       bit(1)                   level 4 in structure "sub_err_info" packed packed
+                                                                                  unaligned dcl 49 in procedure "sub_err_" set ref
+                                                                                  128* 137
+cant_restart                    000210 automatic       bit(1)                   packed unaligned dcl 34 in procedure "sub_err_" set
+                                                                                  ref 101* 137* 159
+code                            000106 automatic       fixed bin(35,0)          dcl 34 set ref 80* 83* 96 96 103
+condition_info_header                  based           structure                level 1 dcl 1-6
+cs                              000107 automatic       char(256)                packed unaligned dcl 34 set ref 152* 153
+cu_$arg_count                   000014 constant        entry                    external dcl 55 ref 76
+cu_$arg_list_ptr                000010 constant        entry                    external dcl 53 ref 75
+cu_$arg_ptr                     000012 constant        entry                    external dcl 54 ref 80 117
+decode_descriptor_              000016 constant        entry                    external dcl 56 ref 81 118
+default_restart           2(01) 000216 automatic       bit(1)                   level 4 packed packed unaligned dcl 49 set ref 130*
+error_table_$badcall            000026 external static fixed bin(35,0)          dcl 170 set ref 174*
+flags                                  based           char                     packed unaligned dcl 126 in begin block on line 122
+                                                                                  ref 128 130 132
+flags                                  parameter       bit                      packed unaligned dcl 24 in procedure "sub_err_" ref
+                                                                                  19 119
+header                          000216 automatic       structure                level 2 dcl 49
+inclength                              based           fixed bin(31,0)          dcl 3-19 set ref 87*
+index                                                  builtin function         dcl 63 ref 128 130 132
+info                                   based           structure                level 1 dcl 3-11
+info_ptr                               parameter       pointer                  dcl 24 in procedure "sub_err_" ref 19 147
+info_ptr                116     000216 automatic       pointer                  level 2 in structure "sub_err_info" dcl 49
+                                                                                  in procedure "sub_err_" set ref 105* 147*
+info_string               3     000216 automatic       varying char(256)        level 3 dcl 49 set ref 106* 153*
+inprec                    0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-11 set ref 90*
+inscale                                based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-11 set ref 91*
+inscale_prec                    000340 automatic       fixed bin(35,0)          dcl 3-8 set ref 87 90 91 96*
+intype                          000336 automatic       fixed bin(17,0)          dcl 3-5 set ref 86* 96*
+ioa_$general_rs                 000020 constant        entry                    external dcl 58 ref 152
+length                          000216 automatic       fixed bin(17,0)          level 3 dcl 49 set ref 99*
+lt                              000207 automatic       fixed bin(17,0)          dcl 34 set ref 152* 153
+name                                   parameter       char                     packed unaligned dcl 24 in procedure "sub_err_" ref
+                                                                                  19 112
+name                    106     000216 automatic       char(32)                 level 2 in structure "sub_err_info" dcl 49
+                                                                                  in procedure "sub_err_" set ref 107* 112*
+ndims                           000211 automatic       fixed bin(17,0)          dcl 34 set ref 81* 118*
+null                                                   builtin function         dcl 63 ref 105 155 155 155 155 160 160 160 160 174
+                                                                                  174
+outfo                                  based           structure                level 1 dcl 3-15
+outprec                   0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-15 set ref 94*
+outscale                               based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-15 set ref 95*
+outscale_prec                   000341 automatic       fixed bin(35,0)          dcl 3-8 set ref 94 95 96*
+outtype                         000337 automatic       fixed bin(17,0)          dcl 3-5 set ref 93* 96*
+packed                          000212 automatic       bit(1)                   dcl 34 set ref 81* 83 86 118*
+prec                            000213 automatic       fixed bin(17,0)          dcl 34 set ref 81* 87 90 118*
+quiet_restart             2(02) 000216 automatic       bit(1)                   level 4 packed packed unaligned dcl 49 set ref 132*
+real_fix_bin_1_dtype                   constant        fixed bin(17,0)          initial dcl 4-25 ref 83 93
+retval                  105     000216 automatic       fixed bin(35,0)          level 2 in structure "sub_err_info" dcl 49
+                                                                                  in procedure "sub_err_" set ref 104* 142* 163
+retval                                 parameter       fixed bin(35,0)          dcl 24 in procedure "sub_err_" set ref 19 142 163*
+scale                           000214 automatic       fixed bin(17,0)          dcl 34 set ref 81* 91 118*
+signal_                         000022 constant        entry                    external dcl 59 ref 155 160
+size                                                   builtin function         dcl 63 ref 99
+status_code             104     000216 automatic       fixed bin(35,0)          level 3 dcl 49 set ref 103*
+sub_err_                        000030 constant        entry                    external dcl 171 ref 174
+sub_err_info                    000216 automatic       structure                level 1 dcl 49 set ref 99 155 155 160 160
+sub_error_info                         based           structure                level 1 dcl 2-7
+sub_error_info_version_1               constant        fixed bin(17,0)          initial dcl 2-13 ref 100
+substr                                                 builtin function         dcl 63 ref 153
+type                            000215 automatic       fixed bin(17,0)          dcl 34 set ref 81* 83 86 87 87 118* 119
+varying_char_dtype                     constant        fixed bin(17,0)          initial dcl 4-25 ref 87
+version                   1     000216 automatic       fixed bin(17,0)          level 3 dcl 49 set ref 100*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+algol68_array_descriptor_dtype         internal static fixed bin(17,0)          initial dcl 4-25
+algol68_bits_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_bool_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_byte_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_char_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_compl_dtype                    internal static fixed bin(17,0)          initial dcl 4-110
+algol68_format_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+algol68_int_dtype                      internal static fixed bin(17,0)          initial dcl 4-110
+algol68_long_compl_dtype               internal static fixed bin(17,0)          initial dcl 4-110
+algol68_long_int_dtype                 internal static fixed bin(17,0)          initial dcl 4-110
+algol68_long_real_dtype                internal static fixed bin(17,0)          initial dcl 4-110
+algol68_real_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_short_int_dtype                internal static fixed bin(17,0)          initial dcl 4-110
+algol68_straight_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+algol68_struct_struct_bool_dtype       internal static fixed bin(17,0)          initial dcl 4-110
+algol68_struct_struct_char_dtype       internal static fixed bin(17,0)          initial dcl 4-110
+algol68_union_dtype                    internal static fixed bin(17,0)          initial dcl 4-25
+area_dtype                             internal static fixed bin(17,0)          initial dcl 4-25
+assign_round_                   000000 constant        entry                    external dcl 3-22
+assign_truncate_                000000 constant        entry                    external dcl 3-22
+c_enum_const_dtype                     internal static fixed bin(17,0)          initial dcl 4-25
+c_enum_dtype                           internal static fixed bin(17,0)          initial dcl 4-25
+c_typeref_dtype                        internal static fixed bin(17,0)          initial dcl 4-25
+c_union_dtype                          internal static fixed bin(17,0)          initial dcl 4-25
+char_dtype                             internal static fixed bin(17,0)          initial dcl 4-25
+char_to_numeric_                000000 constant        entry                    external dcl 3-22
+cobol_char_string_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_5_ts_dtype                  internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_5_uns_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_6_dtype                     internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_7_dtype                     internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_8_ls_dtype                  internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_8_uns_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ls_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ls_overp_dtype           internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ts_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ts_overp_dtype           internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_uns_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+cobol_structure_dtype                  internal static fixed bin(17,0)          initial dcl 4-25
+condition_info_header_ptr              automatic       pointer                  dcl 1-4
+cplx_fix_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_fix_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_fix_dec_4bit_bytealigned_ls_dtype internal static fixed bin(17,0)          initial dcl 4-25
+cplx_fix_dec_9bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_bin_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_4bit_bytealigned_dtype    internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_9bit_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_extended_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_hex_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_hex_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+entry_dtype                            internal static fixed bin(17,0)          initial dcl 4-25
+ext_entry_runtime_dtype                internal static fixed bin(17,0)          initial dcl 4-125
+ext_procedure_runtime_dtype            internal static fixed bin(17,0)          initial dcl 4-125
+file_dtype                             internal static fixed bin(17,0)          initial dcl 4-25
+ft_char_dtype                          internal static fixed bin(17,0)          initial dcl 4-96
+ft_complex_double_dtype                internal static fixed bin(17,0)          initial dcl 4-96
+ft_complex_dtype                       internal static fixed bin(17,0)          initial dcl 4-96
+ft_double_dtype                        internal static fixed bin(17,0)          initial dcl 4-96
+ft_external_dtype                      internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_complex_double_dtype            internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_complex_dtype                   internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_double_dtype                    internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_real_dtype                      internal static fixed bin(17,0)          initial dcl 4-96
+ft_integer_dtype                       internal static fixed bin(17,0)          initial dcl 4-96
+ft_logical_dtype                       internal static fixed bin(17,0)          initial dcl 4-96
+ft_real_dtype                          internal static fixed bin(17,0)          initial dcl 4-96
+int_entry_runtime_dtype                internal static fixed bin(17,0)          initial dcl 4-125
+label_constant_runtime_dtype           internal static fixed bin(17,0)          initial dcl 4-125
+label_dtype                            internal static fixed bin(17,0)          initial dcl 4-25
+offset_dtype                           internal static fixed bin(17,0)          initial dcl 4-25
+outclength                             based           fixed bin(31,0)          dcl 3-20
+pascal_boolean_dtype                   internal static fixed bin(17,0)          initial dcl 4-132
+pascal_char_dtype                      internal static fixed bin(17,0)          initial dcl 4-132
+pascal_entry_formal_parameter_dtype    internal static fixed bin(17,0)          initial dcl 4-132
+pascal_enumerated_type_dtype           internal static fixed bin(17,0)          initial dcl 4-132
+pascal_enumerated_type_element_dtype   internal static fixed bin(17,0)          initial dcl 4-132
+pascal_enumerated_type_instance_dtype  internal static fixed bin(17,0)          initial dcl 4-132
+pascal_exportable_procedure_dtype      internal static fixed bin(17,0)          initial dcl 4-132
+pascal_imported_procedure_dtype        internal static fixed bin(17,0)          initial dcl 4-132
+pascal_integer_dtype                   internal static fixed bin(17,0)          initial dcl 4-132
+pascal_internal_procedure_dtype        internal static fixed bin(17,0)          initial dcl 4-132
+pascal_label_dtype                     internal static fixed bin(17,0)          initial dcl 4-132
+pascal_parameter_procedure_dtype       internal static fixed bin(17,0)          initial dcl 4-132
+pascal_procedure_type_dtype            internal static fixed bin(17,0)          initial dcl 4-132
+pascal_real_dtype                      internal static fixed bin(17,0)          initial dcl 4-132
+pascal_record_file_type_dtype          internal static fixed bin(17,0)          initial dcl 4-132
+pascal_record_type_dtype               internal static fixed bin(17,0)          initial dcl 4-132
+pascal_set_dtype                       internal static fixed bin(17,0)          initial dcl 4-132
+pascal_string_type_dtype               internal static fixed bin(17,0)          initial dcl 4-132
+pascal_text_file_dtype                 internal static fixed bin(17,0)          initial dcl 4-132
+pascal_typed_pointer_type_dtype        internal static fixed bin(17,0)          initial dcl 4-132
+pascal_user_defined_type_dtype         internal static fixed bin(17,0)          initial dcl 4-132
+pascal_user_defined_type_instance_dtype
+                                       internal static fixed bin(17,0)          initial dcl 4-132
+pascal_value_formal_parameter_dtype    internal static fixed bin(17,0)          initial dcl 4-132
+pascal_variable_formal_parameter_dtype internal static fixed bin(17,0)          initial dcl 4-132
+picture_runtime_dtype                  internal static fixed bin(17,0)          initial dcl 4-125
+pointer_dtype                          internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_1_uns_dtype               internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_2_uns_dtype               internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_bytealigned_ls_dtype internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_bytealigned_uns_dtype
+                                       internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_ts_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_uns_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ls_overp_dtype       internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ts_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ts_overp_dtype       internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_uns_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_bin_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_4bit_bytealigned_dtype    internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_4bit_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_9bit_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_extended_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_hex_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_hex_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+structure_dtype                        internal static fixed bin(17,0)          initial dcl 4-25
+sub_error_info_ptr                     automatic       pointer                  dcl 2-6
+varying_bit_dtype                      internal static fixed bin(17,0)          initial dcl 4-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETURN                          000637 constant        label                    dcl 165 ref 177
+SIGNAL                          000533 constant        label                    dcl 155 ref 109 114 140 144 149
+error_no_args                   000640 constant        entry                    internal dcl 168 ref 77
+sub_err_                        000051 constant        entry                    external dcl 19
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+string                                                 builtin function         set ref 102 119* 119
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1032        1064     715        1042
+Length      1332     715        32         231     115           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sub_err_                            360 external procedure  is an external procedure.  
+begin block on line 122                 begin block         shares stack frame of external procedure sub_err_.  
+error_no_args                           internal procedure  shares stack frame of external procedure sub_err_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sub_err_                 000100 arg_list_ptr                sub_err_
+                         000102 arg_ptr                     sub_err_
+                         000104 arg_len                     sub_err_
+                         000105 arg_count                   sub_err_
+                         000106 code                        sub_err_
+                         000107 cs                          sub_err_
+                         000207 lt                          sub_err_
+                         000210 cant_restart                sub_err_
+                         000211 ndims                       sub_err_
+                         000212 packed                      sub_err_
+                         000213 prec                        sub_err_
+                         000214 scale                       sub_err_
+                         000215 type                        sub_err_
+                         000216 sub_err_info                sub_err_
+                         000336 intype                      sub_err_
+                         000337 outtype                     sub_err_
+                         000340 inscale_prec                sub_err_
+                         000341 outscale_prec               sub_err_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             call_ext_out_desc   call_ext_out        return_mac          ext_entry_desc      set_support
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+assign_                       cu_$arg_count                 cu_$arg_list_ptr              cu_$arg_ptr
+decode_descriptor_            ioa_$general_rs               signal_                       sub_err_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$badcall
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     19 000044        75 000072        76 000100        77 000112        80 000116        81 000136        83 000163
+     86 000175        87 000204        90 000214        91 000216        93 000221        94 000223        95 000225
+     96 000227        99 000252       100 000254       101 000256       102 000257       103 000260       104 000262
+    105 000263       106 000265       107 000266       109 000271       112 000274       114 000302       117 000304
+    118 000324       119 000351       128 000363       130 000401       132 000417       137 000435       140 000440
+    142 000443       144 000446       147 000451       149 000454       152 000456       153 000523       155 000533
+    159 000567       160 000572       161 000630       163 000631       165 000637       168 000640       174 000641
+    177 000714
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

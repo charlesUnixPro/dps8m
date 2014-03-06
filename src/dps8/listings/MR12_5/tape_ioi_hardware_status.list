@@ -1,0 +1,1188 @@
+	COMPILATION LISTING OF SEGMENT tape_ioi_hardware_status
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1007.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* Entry to interpret status information for last I/O operation. */
+        9 /* Written 29 June 1982 by Chris Jones. */
+       10 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+       11 
+       12 hardware_status:
+       13      proc (p_tioi_id, p_ths_ptr, p_code);
+       14 
+       15 /* Parameters */
+       16 
+       17 dcl	p_code		   fixed bin (35) parameter;	/* (O) system status code */
+       18 dcl	p_ths_ptr		   ptr parameter;		/* (I) pointer to the ths structure */
+       19 dcl	p_tioi_id		   bit (36) aligned parameter;/* (I) tape_ioi_ activation ID */
+       20 
+       21 /* Automatic storage */
+       22 
+       23 dcl	1 auto_istat	   like istat;
+       24 
+       25 /* Based storage */
+       26 
+       27 dcl	fault_word	   bit (36) aligned based (statp);
+       28 						/* system fault word */
+       29 
+       30 /* Externals */
+       31 
+       32 dcl	analyze_ioi_istat_	   entry (ptr, ptr, char (*) var);
+       33 dcl	analyze_system_fault_$rsnnl
+       34 			   entry (char (*) var, bit (36) aligned);
+       35 dcl	tape_ioi_utils$get_workspace_ptr
+       36 			   entry (bit (36) aligned, ptr);
+       37 dcl	tape_ioi_utils$last_status_entry_offset
+       38 			   entry (ptr) returns (fixed bin (18) unsigned);
+       39 
+       40 dcl	error_table_$bad_arg   fixed bin (35) ext static;
+       41 dcl	error_table_$unimplemented_version
+       42 			   fixed bin (35) ext static;
+       43 
+       44 dcl	tape_status_table_$tape_status_table_
+       45 			   external;
+       46 
+       47 /* Conditions */
+       48 
+       49 dcl	any_other		   condition;
+       50 
+       51 /* Builtins */
+       52 
+       53 dcl	(addr, bin, null, ptr) builtin;
+       54 
+       55 	call tape_ioi_utils$get_workspace_ptr (p_tioi_id, wksp);
+       56 	if wksp = null () then do;
+       57 	     p_code = error_table_$bad_arg;
+       58 	     return;
+       59 	end;
+       60 	ths_ptr = p_ths_ptr;
+       61 	if ths.version ^= THS_VERSION then do;
+       62 	     p_code = error_table_$unimplemented_version;
+       63 	     return;
+       64 	end;
+       65 
+       66 	isp = ptr (wksp, tape_ioi_utils$last_status_entry_offset (wksp));
+       67 						/* point to the previous istat entry */
+       68 	auto_istat = istat;				/* copy it for analysis */
+       69 	auto_istat.st = "1"b;			/* turn the validity bit back on */
+       70 	statp = addr (auto_istat.iom_stat);
+       71 
+       72 /* First, get the description of the status. */
+       73 
+       74 	on any_other
+       75 	     begin;
+       76 		ths.description = "**** NO DESCRIPTION AVAILABLE ****";
+       77 		goto DESCRIPTION_DONE;
+       78 	     end;
+       79 
+       80 	if auto_istat.level = IO_SYSTEM_FAULT_INTERRUPT_LEVEL then
+       81 	     call analyze_system_fault_$rsnnl (ths.description, fault_word);
+       82 	else call analyze_ioi_istat_ (addr (auto_istat), addr (tape_status_table_$tape_status_table_), ths.description);
+       83 
+       84 /* Now, decode and reformat the status in a device independent way. */
+       85 
+       86 DESCRIPTION_DONE:
+       87 	if auto_istat.time_out then
+       88 	     ths.major = TIME_OUT;
+       89 	else if auto_istat.level = IO_SYSTEM_FAULT_INTERRUPT_LEVEL then
+       90 	     ths.major = SYSTEM_FAULT;
+       91 	else if status.power then
+       92 	     ths.major = POWER_OFF;
+       93 	else if status.channel_stat then
+       94 	     ths.major = IOM_CHANNEL;
+       95 	else if status.central_stat then
+       96 	     ths.major = IOM_CENTRAL;
+       97 	else ths.major = bin (status.major);
+       98 
+       99 	ths.minor = ""b;				/* initialize to no minor status */
+      100 	if ths.major = SUBSYSTEM_READY then
+      101 	     call fill_subsystem_ready_status;
+      102 	else if ths.major = DEVICE_BUSY then
+      103 	     call fill_device_busy_status;
+      104 	else if ths.major = DEVICE_ATTENTION then
+      105 	     call fill_device_attention_status;
+      106 	else if ths.major = DEVICE_DATA_ALERT then
+      107 	     call fill_device_data_alert_status;
+      108 	else if ths.major = END_OF_FILE then
+      109 	     call fill_end_of_file_status;
+      110 	else if ths.major = COMMAND_REJECT then
+      111 	     call fill_command_reject_status;
+      112 	else if ths.major = MPC_DEVICE_ATTENTION then
+      113 	     call fill_mpc_device_attention_status;
+      114 	else if ths.major = MPC_DEVICE_DATA_ALERT then
+      115 	     call fill_mpc_device_data_alert_status;
+      116 	else if ths.major = MPC_COMMAND_REJECT then
+      117 	     call fill_mpc_command_reject_status;
+      118 	else if ths.major = POWER_OFF then
+      119 	     call fill_power_off_status;
+      120 	else if ths.major = SYSTEM_FAULT then
+      121 	     call fill_system_fault_status;
+      122 	else if ths.major = IOM_CENTRAL then
+      123 	     call fill_iom_central_status;
+      124 	else if ths.major = IOM_CHANNEL then
+      125 	     call fill_iom_channel_status;
+      126 	else if ths.major = TIME_OUT then
+      127 	     call fill_time_out_status;
+      128 
+      129 /* Lastly, pass back the IOM status and LPW */
+      130 
+      131 	ths.iom = auto_istat.iom_stat;
+      132 	ths.lpw = auto_istat.lpw;
+      133 	p_code = 0;
+      134 	return;
+      135 
+      136 /* Routines to fill in the various substatuses we keep track of. */
+      137 
+      138 fill_subsystem_ready_status:
+      139      proc;
+      140 
+      141 	if (status.sub & "001001"b) = "000001"b then
+      142 	     ths.minor = ths.minor | WRITE_PROTECTED;
+      143 	if (status.sub & "111010"b) = "000010"b then
+      144 	     ths.minor = ths.minor | AT_BOT;
+      145 	if (status.sub & "111010"b) = "010000"b then
+      146 	     ths.minor = ths.minor | TWO_BIT_FILL;
+      147 	if (status.sub & "111010"b) = "100000"b then
+      148 	     ths.minor = ths.minor | FOUR_BIT_FILL;
+      149 	if (status.sub & "111010"b) = "110000"b then
+      150 	     ths.minor = ths.minor | SIX_BIT_FILL;
+      151 	if status.sub = "001100"b then
+      152 	     ths.minor = ths.minor | ASCII_ALERT;
+      153 
+      154      end fill_subsystem_ready_status;
+      155 
+      156 fill_device_busy_status:
+      157      proc;
+      158 
+      159 	if status.sub = "000001"b then
+      160 	     ths.minor = ths.minor | REWINDING;
+      161 	if status.sub = "100000"b then
+      162 	     ths.minor = ths.minor | RESERVED;
+      163 	if status.sub = "000010"b then
+      164 	     ths.minor = ths.minor | ALTERNATE_CHANNEL;
+      165 	if status.sub = "000100"b then
+      166 	     ths.minor = ths.minor | LOADING;
+      167 
+      168      end fill_device_busy_status;
+      169 
+      170 fill_device_attention_status:
+      171      proc;
+      172 
+      173 	if (status.sub & "110011"b) = "000001"b then
+      174 	     ths.minor = ths.minor | WRITE_PROTECTED;
+      175 	if status.sub = "000010"b then
+      176 	     ths.minor = ths.minor | NO_SUCH_HANDLER;
+      177 	if (status.sub & "100110"b) = "000100"b then
+      178 	     ths.minor = ths.minor | HANDLER_IN_STANDBY;
+      179 	if (status.sub & "101010"b) = "001000"b then
+      180 	     ths.minor = ths.minor | HANDLER_CHECK;
+      181 	if (status.sub & "110011"b) = "010000"b then
+      182 	     ths.minor = ths.minor | BLANK_TAPE_ON_WRITE;
+      183 
+      184      end fill_device_attention_status;
+      185 
+      186 fill_device_data_alert_status:
+      187      proc;
+      188 
+      189 	if status.sub = "000001"b then
+      190 	     ths.minor = ths.minor | TRANSFER_TIMING_ALERT;
+      191 	if status.sub = "000010"b then
+      192 	     ths.minor = ths.minor | BLANK_TAPE_ON_READ;
+      193 	if (status.sub & "000011"b) = "000011"b then
+      194 	     ths.minor = ths.minor | BIT_DURING_ERASE;
+      195 	if status.sub & "000100"b then
+      196 	     ths.minor = ths.minor | TRANSMISSION_PARITY_ALERT;
+      197 	if status.sub & "001000"b then
+      198 	     ths.minor = ths.minor | LATERAL_PARITY_ALERT;
+      199 	if status.sub & "010000"b then
+      200 	     ths.minor = ths.minor | LONGITUDINAL_PARITY_ALERT;
+      201 	if status.sub & "100000"b then
+      202 	     ths.minor = ths.minor | END_OF_TAPE;
+      203 
+      204      end fill_device_data_alert_status;
+      205 
+      206 fill_end_of_file_status:
+      207      proc;
+      208 
+      209 	if status.sub = "111111"b then
+      210 	     ths.minor = ths.minor | DATA_ALERT_CONDITION;
+      211 
+      212      end fill_end_of_file_status;
+      213 
+      214 fill_command_reject_status:
+      215      proc;
+      216 
+      217 	if status.sub = "010000"b then
+      218 	     ths.minor = ths.minor | READ_AFTER_WRITE;
+      219 	if status.sub = "001000"b then
+      220 	     ths.minor = ths.minor | AT_BOT;
+      221 	if (status.sub & "111100"b) = "000100"b then
+      222 	     ths.minor = ths.minor | BAD_IDCW_PARITY;
+      223 	if (status.sub & "111010"b) = "000010"b then
+      224 	     ths.minor = ths.minor | BAD_DEVICE_CODE;
+      225 	if (status.sub & "111001"b) = "000001"b then
+      226 	     ths.minor = ths.minor | BAD_OP_CODE;
+      227 	if status.sub = "000000"b then
+      228 	     ths.minor = ths.minor | BAD_DENSITY;
+      229 	if status.sub = "100000"b then
+      230 	     ths.minor = ths.minor | NINE_TRACK_ERROR;
+      231 
+      232      end fill_command_reject_status;
+      233 
+      234 fill_mpc_device_attention_status:
+      235      proc;
+      236 
+      237 	if status.sub = "000001"b then
+      238 	     ths.minor = ths.minor | CONFIG_SWITCH_ERROR;
+      239 	if status.sub = "000010"b then
+      240 	     ths.minor = ths.minor | MULTIPLE_DEVICES;
+      241 	if status.sub = "000011"b then
+      242 	     ths.minor = ths.minor | ILLEGAL_DEVICE_ID;
+      243 	if status.sub = "001000"b then
+      244 	     ths.minor = ths.minor | INCOMPATIBLE_MODE;
+      245 	if (status.sub & "111100"b) = "001100"b then
+      246 	     ths.minor = ths.minor | TCA_MALFUNCTION;
+      247 	if status.sub = "010000"b then
+      248 	     ths.minor = ths.minor | MTH_MALFUNCTION;
+      249 	if status.sub = "010001"b then
+      250 	     ths.minor = ths.minor | MULTIPLE_BOT;
+      251 
+      252      end fill_mpc_device_attention_status;
+      253 
+      254 fill_mpc_device_data_alert_status:
+      255      proc;
+      256 
+      257 	if status.sub = "000001"b then
+      258 	     ths.minor = ths.minor | TRANSMISSION_PARITY_ALERT;
+      259 	if status.sub = "000010"b then
+      260 	     ths.minor = ths.minor | INCONSISTENT_COMMAND;
+      261 	if status.sub = "000011"b then
+      262 	     ths.minor = ths.minor | SUM_CHECK_ERROR;
+      263 	if status.sub = "000100"b then
+      264 	     ths.minor = ths.minor | BYTE_LOCKED_OUT;
+      265 	if status.sub = "001000"b then
+      266 	     ths.minor = ths.minor | ID_BURST_WRITE_ERROR;
+      267 	if status.sub = "001001"b then
+      268 	     ths.minor = ths.minor | PREAMBLE_ERROR;
+      269 	if status.sub = "100000"b then
+      270 	     ths.minor = ths.minor | MARGINAL_CONDITION;
+      271 	if status.sub = "010000"b then
+      272 	     ths.minor = ths.minor | MULTI_TRACK_ERROR;
+      273 	if status.sub = "010001"b then
+      274 	     ths.minor = ths.minor | SKEW_ERROR;
+      275 	if status.sub = "010010"b then
+      276 	     ths.minor = ths.minor | POSTAMBLE_ERROR;
+      277 	if status.sub = "010011"b then
+      278 	     ths.minor = ths.minor | NRZI_CCC_ERROR;
+      279 	if status.sub = "010100"b then
+      280 	     ths.minor = ths.minor | CODE_ALERT;
+      281 
+      282      end fill_mpc_device_data_alert_status;
+      283 
+      284 fill_mpc_command_reject_status:
+      285      proc;
+      286 
+      287 	if status.sub = "000001"b then
+      288 	     ths.minor = ths.minor | ILLEGAL_PROCEDURE;
+      289 	if status.sub = "000010"b then
+      290 	     ths.minor = ths.minor | ILLEGAL_LC_NUMBER;
+      291 	if status.sub = "000011"b then
+      292 	     ths.minor = ths.minor | ILLEGAL_SUSPENDED_LC_NUMBER;
+      293 	if status.sub = "000100"b then
+      294 	     ths.minor = ths.minor | CONTINUE_BIT_NOT_SET;
+      295 
+      296      end fill_mpc_command_reject_status;
+      297 
+      298 fill_iom_central_status:
+      299      proc;
+      300 
+      301 dcl	iom_central_statuses   (7) bit (36) aligned
+      302 			   init (LPW_TRO, CONSECUTIVE_TDCWS, BOUNDARY_ERROR, EXT_CHANGE_WHILE_RESTRICTED,
+      303 			   IDCW_WHILE_RESTRICTED, CP_SIZE_DISCREPANCY, BUS_PARITY_FROM_CHANNEL);
+      304 
+      305 	ths.minor = ths.minor | iom_central_statuses (bin (status.central_stat));
+      306 
+      307      end fill_iom_central_status;
+      308 
+      309 fill_iom_channel_status:
+      310      proc;
+      311 
+      312 dcl	iom_channel_statuses   (7) bit (36) aligned
+      313 			   init (CONNECT_WHILE_BUSY, BAD_PCW_CHANNEL_INST, INCORRECT_DCW,
+      314 			   INCOMPLETE_COMMAND_SEQUENCE, ""b, PARITY_ERROR_AT_PRPH_INTERFACE, BUS_PARITY_TO_CHANNEL);
+      315 
+      316 	ths.minor = ths.minor | iom_channel_statuses (bin (status.channel_stat));
+      317 
+      318      end fill_iom_channel_status;
+      319 
+      320 /* The following statuses don't have any minor statuses associated with them. */
+      321 
+      322 fill_power_off_status:
+      323 fill_system_fault_status:
+      324 fill_time_out_status:
+      325      proc;
+      326 
+      327      end fill_power_off_status;
+      328 
+  1     1 /*  START OF:	tape_ioi_workspace.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(87-07-06,Hartogs), approve(87-07-06,MCR7726),
+  1     7*     audit(87-08-27,GWMay), install(87-08-27,MR12.1-1094):
+  1     8*     A) Added variable at_bot to structure tai.
+  1     9*     B) Added density_command to tai structure for use by error_retry.
+  1    10*                                                   END HISTORY COMMENTS */
+  1    11 
+  1    12 
+  1    13 /*
+  1    14*   *	     This include file describes the workspace maintained by tape_ioi_.
+  1    15*   *	No programs other than tape_ioi_ programs should need to use this include file.
+  1    16*   *
+  1    17*   *	This workspace is the ioi_ workspace.
+  1    18**/
+  1    19 /* Written 8/78 by R.J.C. Kissel. */
+  1    20 /* Modified April-May 1982 by Chris Jones for installation. */
+  1    21 /* Modified 2/4/83 by Chris Jones to add last_terminate_time */
+  1    22 
+  1    23 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  1    24 
+  1    25 dcl	wksp		   ptr;
+  1    26 
+  1    27 dcl	1 tai		   based (wksp) aligned,	/* Activation info and order buffer. */
+  1    28 	  2 ioi_index	   fixed bin,		/* For communication with ioi. */
+  1    29 	  2 tioi_id	   unal,			/* 36 bit activation identifier. */
+  1    30 	    3 segno	   bit (18),		/* Segment number of the workspace. */
+  1    31 	    3 actid	   fixed bin (18) unsigned,	/* Per process, per activation number. */
+  1    32 	  2 event_id	   fixed bin (71),		/* All ipc done on this channel. */
+  1    33 	  2 max_timeout	   fixed bin (71),		/* maximum timeout value */
+  1    34 	  2 cur_timeout	   fixed bin (71),		/* current timeout value */
+  1    35 	  2 last_terminate_time
+  1    36 			   fixed bin (71),		/* when the last terminate interrupt was received */
+  1    37 	  (
+  1    38 	  2 workspace_max	   fixed bin (18) unsigned,	/* max_len-1 to fit in 18 bits. */
+  1    39 	  2 workspace_len	   fixed bin (18) unsigned,	/* len-1 to fit in 18 bits. */
+  1    40 	  2 buffer_list_offset fixed bin (18) unsigned,	/* to list of all buffers */
+  1    41 	  2 free_list_offset   fixed bin (18) unsigned,	/* to list of free buffers */
+  1    42 	  2 queue_list_offset  fixed bin (18) unsigned,	/* to list of buffers which are queued */
+  1    43 	  2 susp_list_offset   fixed bin (18) unsigned,	/* to list of suspended buffers */
+  1    44 	  2 retry_count	   fixed bin (9) unsigned,	/* number of times we've retried this operation */
+  1    45 	  2 buffer_count	   fixed bin (9) unsigned,	/* Number of I/O buffers allocated. */
+  1    46 	  2 status_entry_count fixed bin (9) unsigned,	/* Number of status queue entries. */
+  1    47 	  2 status_entry_idx   fixed bin (9) unsigned,	/* index of next status entry to be used */
+  1    48 	  2 status_queue_offset
+  1    49 			   fixed bin (18) unsigned,	/* Status queue offset. */
+  1    50 	  2 pad1               bit (12),
+  1    51 	  2 density_command    bit (6),                   /* density of data on storage */
+  1    52 	  2 workarea_len	   fixed bin (18) unsigned,	/* len-1 to fit in 18 bits. */
+  1    53 	  2 workarea_offset	   fixed bin (18) unsigned	/* Workarea offset. */
+  1    54 	  )		   unal,
+  1    55 	  2 modes		   unal,			/* tape_ioi_ modes settings. */
+  1    56 	    3 data_code	   bit (6),		/* Encoded representation of data mode. */
+  1    57 	    3 cif_code	   bit (6),		/* CIF field for channel instructions. */
+  1    58 	    3 align	   bit (1),		/* "0"b--left aligned, "1"b--right aligned. */
+  1    59 	    3 length	   bit (1),		/* "0"b--normal, "1"b--special. */
+  1    60 	    3 recovery	   bit (1),		/* "0"b--no error recovery, "1"b--error recovery. */
+  1    61 	    3 wait	   bit (1),		/* "0"b--simplex, "1"b--multiplex. */
+  1    62 	    3 req_len	   bit (1),		/* "0"b--don't need to know record length, "1"b--do need it */
+  1    63 	  2 flags		   unal,			/* Used internally by tape_ioi_. */
+  1    64 	    3 order_queued	   bit (1),		/* "0"b--no order queued, "1"b--order queued. */
+  1    65 	    3 read_queued	   bit (1),		/* "0"b--no read queued, "1"b--read queued. */
+  1    66 	    3 write_queued	   bit (1),		/* "0"b--no write queued, "1"b--write queued. */
+  1    67 	    3 order_done	   bit (1),		/* "1"b--the queue_order entry finished the order */
+  1    68 	    3 workarea_last	   bit (1),		/* "1"b--user workarea at end of workspace */
+  1    69 	    3 special_status_expected
+  1    70 			   bit (1),		/* set if we're waiting for a special interrupt */
+  1    71 	    3 retry_in_progress
+  1    72 			   bit (1),
+  1    73 	    3 suspect_short_record bit (1),		/* "1"b--got invalid DCW on list service last */
+  1    74 	    3 at_bot	   bit (1),		/* "1"b-- tape is positioned to BOT. */
+  1    75 	  2 pad2		   bit (1) unal,
+  1    76 	  2 order_idx	   fixed bin (9) unsigned unaligned,
+  1    77 						/* encoding of last order queued */
+  1    78 	  2 counts	   aligned,		/* error and operation counts */
+  1    79 	    3 total_reads	   fixed bin (35),
+  1    80 	    3 read_errors	   fixed bin (35),
+  1    81 	    3 total_writes	   fixed bin (35),
+  1    82 	    3 write_errors	   fixed bin (35),
+  1    83 	    3 total_orders	   fixed bin (35),
+  1    84 	    3 order_errors	   fixed bin (35),
+  1    85 	    3 times_status_lost
+  1    86 			   fixed bin (35),
+  1    87 	    3 extra_statuses   fixed bin (35),
+  1    88 	    3 times_tape_stopped
+  1    89 			   fixed bin (35),
+  1    90 	    3 recovery_succeeded
+  1    91 			   (7) fixed bin (35),	/* meters which kind of recovery worked */
+  1    92 	  2 order_count_requested
+  1    93 			   fixed bin (18) unsigned unaligned,
+  1    94 	  2 order_count_done   fixed bin (18) unsigned unaligned,
+  1    95 	  2 saved_special_status
+  1    96 			   bit (36),
+  1    97 	  2 order_data_ptr	   ptr,
+  1    98 	  2 order_idcw	   bit (36) aligned,
+  1    99 	  2 order_dcw	   bit (36) aligned,
+  1   100 	  2 order_data	   (1:8) bit (36) aligned;
+  1   101 /**** The buffers go here, followed by the status queue entries.  There are min (1, tai.nbufs) status queue entries. */
+  1   102 /**** It is considered a good idea to have the length of the previous structure b an even number of words long.  This
+  1   103*      is accomplished by the aligned pointer "order_data_ptr" being followed by an even number of words. */
+  1   104 
+  1   105 /* Tape buffer overlay.  Each tape buffer consists of a variable length header followed by the data area.
+  1   106*   Whenever a buffer pointer is returned to a caller of tape_ioi_, it points to the data area. */
+  1   107 
+  1   108 dcl	1 tbi		   based aligned,		/* I/O buffer overlay. */
+  1   109 	( 2 data_offset	   fixed bin (18) unsigned,	/* to the data portion of the buffer */
+  1   110 	  2 next_buf_offset	   fixed bin (18) unsigned,	/* to the next buffer in list of all buffers */
+  1   111 	  2 next_state_offset  fixed bin (18) unsigned,	/* to the next buffer in the same state */
+  1   112 	  2 state		   fixed bin (9) unsigned,	/* buffer state */
+  1   113 	  2 ndcws		   fixed bin (9) unsigned	/* number of DCWs necessary to fill buffer */
+  1   114 	  )		   unal,
+  1   115 	  2 modes		   unal like tai.modes,	/* mode settings when buffer was queued */
+  1   116 	  2 reserved	   bit (1) unal,		/* "1"b=>won't be used for reads unless explicitly asked */
+  1   117 	  2 buffer_len	   fixed bin (21),		/* length of buffer in 9-bit bytes */
+  1   118 	  2 data_len	   fixed bin (21),		/* length of data in buffer in 9-bit bytes */
+  1   119 	  2 bit_len	   fixed bin (24),		/* length of data in buffer in bits */
+  1   120 	  2 idcw_word	   bit (36),		/* holds IDCW */
+  1   121 	  2 dcw_words	   (1 refer (tbi.ndcws)) bit (36),
+  1   122 						/* data DCWs */
+  1   123 	  2 tdcw_word	   bit (36);		/* transfer to the next buffer */
+  1   124 						/* This header is followed by the actual buffer area. */
+  1   125 
+  1   126 /*
+  1   127*   *	N__o_t_e_s
+  1   128*   *
+  1   129*   *	     Both structures are carefully packed into words, so care should be
+  1   130*   *	taken when modifying them.
+  1   131*   *
+  1   132*   *	     The workspace_max, workspace_len, and workarea_len must be at least one long.
+  1   133*   *	This allows us to store the value-1 and thus fit into 18 bits.
+  1   134*   *
+  1   135*   *	     None of the offsets (first_buf_off, statq_off, etc.) can be zero since the first
+  1   136*   *	word in the workspace contains the ioi_index.  This allows a zero offset
+  1   137*   *	to be used as a null offset indication.
+  1   138*   *
+  1   139*   *	     The data_code, cif_code, and tbi.state are encoded as follows:
+  1   140*   *
+  1   141*   *	data mode |                                                     buffer |
+  1   142*   *	setting   | data_code     cif_code |    Meaning		    state  | Meaning
+  1   143*   *	__________|__________     _________|_______________________     _______|________
+  1   144*   *	  bin     |   05            20     | no retry, high                1   | ready
+  1   145*   *	  bcd     |   04            21     | no retry, low                 2   | busy
+  1   146*   *	  tap9    |   03            22     | no retry, high, deskew        3   | suspended
+  1   147*   *	  asc     |   27            23     | no retry, low, deskew
+  1   148*   *	  ebc     |   24            30     | retry, high
+  1   149*   *	  a/e     |   25            31     | retry, low
+  1   150*   *			        32     | retry, high, deskew
+  1   151*   *			        33     | retry, low, deskew
+  1   152*   *
+  1   153*   *
+  1   154*   *	     Before data_code can be used for the command field in the IDCW the fourth
+  1   155*   *	bit (from the right) must be set to "0"b for read commands and to "1"b for write commands.
+  1   156*   *
+  1   157*   *	     The general layout of the workspace maintained by tape_ioi_ is as follows:
+  1   158*   *
+  1   159*   *			_________________________
+  1   160*   *			|                       |
+  1   161*   *			|  General Information  |
+  1   162*   *			|       (see tai)       |
+  1   163*   *			|_______________________|
+  1   164*   *			|______O____r__d__e__r_I_D_C_W________|
+  1   165*   *			|______O____r__d__e__r_D_C_W_________|
+  1   166*   *			|                       |
+  1   167*   *			|   Order data buffer   |
+  1   168*   *			|       (8 words)       |
+  1   169*   *			|_______________________|
+  1   170*   *			|                       |
+  1   171*   *			|   Optional workarea   |
+  1   172*   *			|      (unlimited)      |
+  1   173*   *			|_______________________|
+  1   174*   *			|________I__O___I_D_C_W_________|
+  1   175*   *			|                       |
+  1   176*   *			|      IO DCW list      |
+  1   177*   *			|_______________________|
+  1   178*   *			|________I__O___T_D_C_W_________|
+  1   179*   *			|                       |
+  1   180*   *			|       IO buffer       |
+  1   181*   *			|   (user specified)    |
+  1   182*   *			|_______________________|
+  1   183*   *			            .
+  1   184*   *			            .
+  1   185*   *			            .
+  1   186*   *			_________________________
+  1   187*   *			|________I__O___I_D_C_W_________|
+  1   188*   *			|                       |
+  1   189*   *			|      IO DCW list      |
+  1   190*   *			|_______________________|
+  1   191*   *			|__________z_e_r_o_s_________|
+  1   192*   *			|                       |
+  1   193*   *			|       IO buffer       |
+  1   194*   *			|    (user specified)   |
+  1   195*   *			|_______________________|
+  1   196*   *			|                       |
+  1   197*   *			|     Status queue      |
+  1   198*   *			| (at least one entry)  |
+  1   199*   *			|_______________________|
+  1   200*   *			|                       |
+  1   201*   *			|   Optional workarea   |
+  1   202*   *			|       (limited)       |
+  1   203*   *			|_______________________|
+  1   204**/
+  1   205 
+  1   206 /*  END OF:	tape_ioi_workspace.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      329 
+      330 
+  2     1 /* Begin include file ..... tape_ioi_hw_status.incl.pl1 */
+  2     2 
+  2     3 /* This structure defines the data returned by tape_ioi_$hardware_status */
+  2     4 
+  2     5 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  2     6 /* Written May 1982 by Chris Jones */
+  2     7 /* Modified 15 June 1982 by Chris Jones to add reformatted status constants */
+  2     8 
+  2     9 dcl	ths_ptr		   ptr;
+  2    10 
+  2    11 dcl	1 ths		   aligned based (ths_ptr),
+  2    12 	  2 version	   fixed bin,
+  2    13 	  2 description	   char (256) varying,
+  2    14 	  2 major		   fixed bin,
+  2    15 	  2 minor		   bit (36),
+  2    16 	  2 iom		   bit (72),
+  2    17 	  2 lpw		   bit (72);
+  2    18 
+  2    19 dcl	THS_VERSION_1	   fixed bin static options (constant) init (1);
+  2    20 dcl	THS_VERSION	   fixed bin static options (constant) init (1);
+  2    21 
+  2    22 /* The following are used to describe the status in a non-hardware specific way. */
+  2    23 
+  2    24 /* Major Status */
+  2    25 
+  2    26 dcl	SUBSYSTEM_READY	   fixed bin static options (constant) init (0);
+  2    27 dcl	DEVICE_BUSY	   fixed bin static options (constant) init (1);
+  2    28 dcl	DEVICE_ATTENTION	   fixed bin static options (constant) init (2);
+  2    29 dcl	DEVICE_DATA_ALERT	   fixed bin static options (constant) init (3);
+  2    30 dcl	END_OF_FILE	   fixed bin static options (constant) init (4);
+  2    31 dcl	COMMAND_REJECT	   fixed bin static options (constant) init (5);
+  2    32 dcl	MPC_DEVICE_ATTENTION   fixed bin static options (constant) init (10);
+  2    33 dcl	MPC_DEVICE_DATA_ALERT  fixed bin static options (constant) init (11);
+  2    34 dcl	MPC_COMMAND_REJECT	   fixed bin static options (constant) init (13);
+  2    35 dcl	POWER_OFF		   fixed bin static options (constant) init (16);
+  2    36 dcl	SYSTEM_FAULT	   fixed bin static options (constant) init (17);
+  2    37 dcl	IOM_CENTRAL	   fixed bin static options (constant) init (18);
+  2    38 dcl	IOM_CHANNEL	   fixed bin static options (constant) init (19);
+  2    39 dcl	TIME_OUT		   fixed bin static options (constant) init (20);
+  2    40 
+  2    41 /* Minor Status */
+  2    42 
+  2    43 /* Minor status for SUBSYSTEM_READY */
+  2    44 
+  2    45 dcl	WRITE_PROTECTED	   bit (36) aligned static options (constant)
+  2    46 			   init ("100000000000000000000000000000000000"b);
+  2    47 dcl	AT_BOT		   bit (36) aligned static options (constant)
+  2    48 			   init ("010000000000000000000000000000000000"b);
+  2    49 dcl	TWO_BIT_FILL	   bit (36) aligned static options (constant)
+  2    50 			   init ("001000000000000000000000000000000000"b);
+  2    51 dcl	FOUR_BIT_FILL	   bit (36) aligned static options (constant)
+  2    52 			   init ("000100000000000000000000000000000000"b);
+  2    53 dcl	SIX_BIT_FILL	   bit (36) aligned static options (constant)
+  2    54 			   init ("000010000000000000000000000000000000"b);
+  2    55 dcl	ASCII_ALERT	   bit (36) aligned static options (constant)
+  2    56 			   init ("000001000000000000000000000000000000"b);
+  2    57 
+  2    58 /* Minor status for DEVICE_BUSY */
+  2    59 
+  2    60 dcl	REWINDING		   bit (36) aligned static options (constant)
+  2    61 			   init ("100000000000000000000000000000000000"b);
+  2    62 dcl	RESERVED		   bit (36) aligned static options (constant)
+  2    63 			   init ("010000000000000000000000000000000000"b);
+  2    64 dcl	ALTERNATE_CHANNEL	   bit (36) aligned static options (constant)
+  2    65 			   init ("001000000000000000000000000000000000"b);
+  2    66 dcl	LOADING		   bit (36) aligned static options (constant)
+  2    67 			   init ("000100000000000000000000000000000000"b);
+  2    68 
+  2    69 /* Minor status for DEVICE_ATTENTION */
+  2    70 
+  2    71 /* WRITE_PROTECTED declared above with SUBSYSTEM_READY status */
+  2    72 
+  2    73 dcl	NO_SUCH_HANDLER	   bit (36) aligned static options (constant)
+  2    74 			   init ("010000000000000000000000000000000000"b);
+  2    75 dcl	HANDLER_IN_STANDBY	   bit (36) aligned static options (constant)
+  2    76 			   init ("001000000000000000000000000000000000"b);
+  2    77 dcl	HANDLER_CHECK	   bit (36) aligned static options (constant)
+  2    78 			   init ("000100000000000000000000000000000000"b);
+  2    79 dcl	BLANK_TAPE_ON_WRITE	   bit (36) aligned static options (constant)
+  2    80 			   init ("000010000000000000000000000000000000"b);
+  2    81 
+  2    82 /* Minor status for DEVICE_DATA_ALERT */
+  2    83 
+  2    84 dcl	TRANSFER_TIMING_ALERT  bit (36) aligned static options (constant)
+  2    85 			   init ("100000000000000000000000000000000000"b);
+  2    86 dcl	BLANK_TAPE_ON_READ	   bit (36) aligned static options (constant)
+  2    87 			   init ("010000000000000000000000000000000000"b);
+  2    88 dcl	BIT_DURING_ERASE	   bit (36) aligned static options (constant)
+  2    89 			   init ("001000000000000000000000000000000000"b);
+  2    90 dcl	TRANSMISSION_PARITY_ALERT
+  2    91 			   bit (36) aligned static options (constant)
+  2    92 			   init ("000100000000000000000000000000000000"b);
+  2    93 dcl	LATERAL_PARITY_ALERT   bit (36) aligned static options (constant)
+  2    94 			   init ("000010000000000000000000000000000000"b);
+  2    95 dcl	LONGITUDINAL_PARITY_ALERT
+  2    96 			   bit (36) aligned static options (constant)
+  2    97 			   init ("000001000000000000000000000000000000"b);
+  2    98 dcl	END_OF_TAPE	   bit (36) aligned static options (constant)
+  2    99 			   init ("000000100000000000000000000000000000"b);
+  2   100 
+  2   101 /* Minor status for END_OF_FILE */
+  2   102 
+  2   103 dcl	DATA_ALERT_CONDITION   bit (36) aligned static options (constant)
+  2   104 			   init ("100000000000000000000000000000000000"b);
+  2   105 
+  2   106 /* Minor status for COMMAND_REJECT */
+  2   107 
+  2   108 dcl	READ_AFTER_WRITE	   bit (36) aligned static options (constant)
+  2   109 			   init ("100000000000000000000000000000000000"b);
+  2   110 /**** AT_BOT declared above with SUBSYSTEM_READY status */
+  2   111 dcl	BAD_IDCW_PARITY	   bit (36) aligned static options (constant)
+  2   112 			   init ("001000000000000000000000000000000000"b);
+  2   113 dcl	BAD_DEVICE_CODE	   bit (36) aligned static options (constant)
+  2   114 			   init ("000100000000000000000000000000000000"b);
+  2   115 dcl	BAD_OP_CODE	   bit (36) aligned static options (constant)
+  2   116 			   init ("000010000000000000000000000000000000"b);
+  2   117 dcl	BAD_DENSITY	   bit (36) aligned static options (constant)
+  2   118 			   init ("000001000000000000000000000000000000"b);
+  2   119 dcl	NINE_TRACK_ERROR	   bit (36) aligned static options (constant)
+  2   120 			   init ("000000100000000000000000000000000000"b);
+  2   121 
+  2   122 /* Minor status for MPC_DEVICE_ATTENTION */
+  2   123 
+  2   124 dcl	CONFIG_SWITCH_ERROR	   bit (36) aligned static options (constant)
+  2   125 			   init ("100000000000000000000000000000000000"b);
+  2   126 dcl	MULTIPLE_DEVICES	   bit (36) aligned static options (constant)
+  2   127 			   init ("010000000000000000000000000000000000"b);
+  2   128 dcl	ILLEGAL_DEVICE_ID	   bit (36) aligned static options (constant)
+  2   129 			   init ("001000000000000000000000000000000000"b);
+  2   130 dcl	INCOMPATIBLE_MODE	   bit (36) aligned static options (constant)
+  2   131 			   init ("000100000000000000000000000000000000"b);
+  2   132 dcl	TCA_MALFUNCTION	   bit (36) aligned static options (constant)
+  2   133 			   init ("000010000000000000000000000000000000"b);
+  2   134 dcl	MTH_MALFUNCTION	   bit (36) aligned static options (constant)
+  2   135 			   init ("000001000000000000000000000000000000"b);
+  2   136 dcl	MULTIPLE_BOT	   bit (36) aligned static options (constant)
+  2   137 			   init ("000000100000000000000000000000000000"b);
+  2   138 
+  2   139 /* Minor status for MPC_DEVICE_DATA_ALERT */
+  2   140 
+  2   141 dcl	BYTE_LOCKED_OUT	   bit (36) aligned static options (constant)
+  2   142 			   init ("100000000000000000000000000000000000"b);
+  2   143 dcl	INCONSISTENT_COMMAND   bit (36) aligned static options (constant)
+  2   144 			   init ("010000000000000000000000000000000000"b);
+  2   145 dcl	SUM_CHECK_ERROR	   bit (36) aligned static options (constant)
+  2   146 			   init ("001000000000000000000000000000000000"b);
+  2   147 /**** TRANSMISSION_PARITY_ALERT declared above with DEVICE_DATA_ALERT */
+  2   148 dcl	ID_BURST_WRITE_ERROR   bit (36) aligned static options (constant)
+  2   149 			   init ("000010000000000000000000000000000000"b);
+  2   150 dcl	PREAMBLE_ERROR	   bit (36) aligned static options (constant)
+  2   151 			   init ("000001000000000000000000000000000000"b);
+  2   152 dcl	MARGINAL_CONDITION	   bit (36) aligned static options (constant)
+  2   153 			   init ("000000100000000000000000000000000000"b);
+  2   154 dcl	MULTI_TRACK_ERROR	   bit (36) aligned static options (constant)
+  2   155 			   init ("000000010000000000000000000000000000"b);
+  2   156 dcl	SKEW_ERROR	   bit (36) aligned static options (constant)
+  2   157 			   init ("000000001000000000000000000000000000"b);
+  2   158 dcl	POSTAMBLE_ERROR	   bit (36) aligned static options (constant)
+  2   159 			   init ("000000000100000000000000000000000000"b);
+  2   160 dcl	NRZI_CCC_ERROR	   bit (36) aligned static options (constant)
+  2   161 			   init ("000000000010000000000000000000000000"b);
+  2   162 dcl	CODE_ALERT	   bit (36) aligned static options (constant)
+  2   163 			   init ("000000000001000000000000000000000000"b);
+  2   164 
+  2   165 /* Minor status for MPC_COMMAND_REJECT */
+  2   166 
+  2   167 dcl	ILLEGAL_PROCEDURE	   bit (36) aligned static options (constant)
+  2   168 			   init ("100000000000000000000000000000000000"b);
+  2   169 dcl	ILLEGAL_LC_NUMBER	   bit (36) aligned static options (constant)
+  2   170 			   init ("010000000000000000000000000000000000"b);
+  2   171 dcl	ILLEGAL_SUSPENDED_LC_NUMBER
+  2   172 			   bit (36) aligned static options (constant)
+  2   173 			   init ("001000000000000000000000000000000000"b);
+  2   174 dcl	CONTINUE_BIT_NOT_SET   bit (36) aligned static options (constant)
+  2   175 			   init ("000100000000000000000000000000000000"b);
+  2   176 
+  2   177 /* Minor status for POWER_OFF */
+  2   178 
+  2   179 /* There are no minor statuses defined for POWER_OFF. */
+  2   180 
+  2   181 /* Minor status for SYSTEM_FAULT */
+  2   182 
+  2   183 /* Minor status for IOM_CENTRAL */
+  2   184 
+  2   185 dcl	LPW_TRO		   bit (36) aligned static options (constant)
+  2   186 			   init ("100000000000000000000000000000000000"b);
+  2   187 dcl	CONSECUTIVE_TDCWS	   bit (36) aligned static options (constant)
+  2   188 			   init ("010000000000000000000000000000000000"b);
+  2   189 dcl	BOUNDARY_ERROR	   bit (36) aligned static options (constant)
+  2   190 			   init ("001000000000000000000000000000000000"b);
+  2   191 dcl	EXT_CHANGE_WHILE_RESTRICTED
+  2   192 			   bit (36) aligned static options (constant)
+  2   193 			   init ("000100000000000000000000000000000000"b);
+  2   194 dcl	IDCW_WHILE_RESTRICTED  bit (36) aligned static options (constant)
+  2   195 			   init ("000010000000000000000000000000000000"b);
+  2   196 dcl	CP_SIZE_DISCREPANCY	   bit (36) aligned static options (constant)
+  2   197 			   init ("000001000000000000000000000000000000"b);
+  2   198 dcl	BUS_PARITY_FROM_CHANNEL
+  2   199 			   bit (36) aligned static options (constant)
+  2   200 			   init ("000000100000000000000000000000000000"b);
+  2   201 
+  2   202 /* Minor status for IOM_CHANNEL */
+  2   203 
+  2   204 dcl	CONNECT_WHILE_BUSY	   bit (36) aligned static options (constant)
+  2   205 			   init ("100000000000000000000000000000000000"b);
+  2   206 dcl	BAD_PCW_CHANNEL_INST   bit (36) aligned static options (constant)
+  2   207 			   init ("010000000000000000000000000000000000"b);
+  2   208 dcl	INCORRECT_DCW	   bit (36) aligned static options (constant)
+  2   209 			   init ("001000000000000000000000000000000000"b);
+  2   210 dcl	INCOMPLETE_COMMAND_SEQUENCE
+  2   211 			   bit (36) aligned static options (constant)
+  2   212 			   init ("000100000000000000000000000000000000"b);
+  2   213 dcl	PARITY_ERROR_AT_PRPH_INTERFACE
+  2   214 			   bit (36) aligned static options (constant)
+  2   215 			   init ("000010000000000000000000000000000000"b);
+  2   216 dcl	BUS_PARITY_TO_CHANNEL  bit (36) aligned static options (constant)
+  2   217 			   init ("000001000000000000000000000000000000"b);
+  2   218 
+  2   219 /* Minor status for TIME_OUT */
+  2   220 
+  2   221 /* There are no minor statuses defined for TIME_OUT. */
+  2   222 
+  2   223 /* End include file ..... tape_ioi_hw_status.incl.pl1 */
+      331 
+      332 
+  3     1 /*  START OF:	interrupt_levels.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 /* Written 14 June 1982 by Chris Jones */
+  3     4 
+  3     5 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  3     6 dcl	IO_SYSTEM_FAULT_INTERRUPT_LEVEL
+  3     7 			   fixed bin internal static options (constant) init (1);
+  3     8 dcl	IO_TERMINATE_INTERRUPT_LEVEL
+  3     9 			   fixed bin internal static options (constant) init (3);
+  3    10 dcl	IO_MARKER_INTERRUPT_LEVEL
+  3    11 			   fixed bin internal static options (constant) init (5);
+  3    12 dcl	IO_SPECIAL_INTERRUPT_LEVEL
+  3    13 			   fixed bin internal static options (constant) init (7);
+  3    14 
+  3    15 /*  END OF:	interrupt_levels.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      333 
+      334 
+  4     1 
+  4     2 /* Begin include file ...... ioi_stat.incl.pl1 */
+  4     3 /* Last modified 3/24/75 by Noel I. Morris */
+  4     4 
+  4     5 dcl  isp ptr;					/* pointer to status structure */
+  4     6 
+  4     7 dcl 1 istat based (isp) aligned,			/* I/O Interfacer status structure */
+  4     8     2 completion,					/* completion flags */
+  4     9      (3 st bit (1),					/* "1"b if status returned */
+  4    10       3 er bit (1),					/* "1"b if status indicates error condition */
+  4    11       3 run bit (1),				/* "1"b if channel still running */
+  4    12       3 time_out bit (1)) unal,			/* "1"b if time-out occurred */
+  4    13     2 level fixed bin (3),				/* IOM interrupt level */
+  4    14     2 offset fixed bin (18),				/* DCW list offset */
+  4    15     2 absaddr fixed bin (24),				/* absolute address of workspace */
+  4    16     2 iom_stat bit (72),				/* IOM status */
+  4    17     2 lpw bit (72);					/* LPW residue */
+  4    18 
+  4    19 dcl  imp ptr;					/* pointer to message structure */
+  4    20 
+  4    21 dcl 1 imess based (imp) aligned,			/* I/O Interfacer event message structure */
+  4    22    (2 completion like istat.completion,			/* completion flags */
+  4    23     2 pad bit (11),
+  4    24     2 level bit (3),				/* interrupt level */
+  4    25     2 offset bit (18),				/* DCW list offset */
+  4    26     2 status bit (36)) unal;				/* first 36 bits of status */
+  4    27 
+  4    28 /* End of include file ...... ioi_stat.incl.pl1 */
+  4    29 
+      335 
+      336 
+  5     1 
+  5     2 /* Begin include file ...... iom_stat.incl.pl1 */
+  5     3 /* Last modified on 10/31/74 by Noel I. Morris */
+  5     4 
+  5     5 dcl  statp ptr;					/* pointer to status */
+  5     6 
+  5     7 dcl 1 status based (statp) aligned,			/* IOM status information */
+  5     8      (2 t bit (1),					/* set to "1"b by IOM */
+  5     9       2 power bit (1),				/* non-zero if peripheral absent or power off */
+  5    10       2 major bit (4),				/* major status */
+  5    11       2 sub bit (6),				/* substatus */
+  5    12       2 eo bit (1),					/* even/odd bit */
+  5    13       2 marker bit (1),				/* non-zero if marker status */
+  5    14       2 soft bit (2),				/* software status */
+  5    15       2 initiate bit (1),				/* initiate bit */
+  5    16       2 abort bit (1),				/* software abort bit */
+  5    17       2 channel_stat bit (3),				/* IOM channel status */
+  5    18       2 central_stat bit (3),				/* IOM central status */
+  5    19       2 mbz bit (6),
+  5    20       2 rcount bit (6),				/* record count residue */
+  5    21       2 address bit (18),				/* DCW address residue */
+  5    22       2 char_pos bit (3),				/* character position residue */
+  5    23       2 r bit (1),					/* non-zero if reading */
+  5    24       2 type bit (2),				/* type of last DCW */
+  5    25       2 tally bit (12)) unal;				/* DCW tally residue */
+  5    26 
+  5    27 dcl 1 faultword based (statp) aligned,			/* system fault word */
+  5    28      (2 mbz1 bit (9),
+  5    29       2 channel bit (9),				/* channel number */
+  5    30       2 serv_req bit (5),				/* service request */
+  5    31       2 mbz2 bit (3),
+  5    32       2 controller_fault bit (4),			/* system controller fault code */
+  5    33       2 io_fault bit (6)) unal;			/* I/O fault code */
+  5    34 
+  5    35 dcl 1 special_status based (statp) aligned,		/* special status from PSIA */
+  5    36    (2 t bit (1),					/* entry present bit */
+  5    37     2 channel bit (8),				/* channel number */
+  5    38     2 pad1 bit (3),
+  5    39     2 device bit (6),				/* device address */
+  5    40     2 pad2 bit (1),
+  5    41     2 byte2 bit (8),				/* device dependent information */
+  5    42     2 pad3 bit (1),
+  5    43     2 byte3 bit (8)) unal;				/* device dependent information */
+  5    44 
+  5    45 /* End of include file iom_stat.incl.pl1 */
+  5    46 
+      337 
+      338 
+      339      end hardware_status;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.4  tape_ioi_hardware_status.pl1      >spec>install>1112>tape_ioi_hardware_status.pl1
+329          1    08/27/87  1445.9  tape_ioi_workspace.incl.pl1       >ldd>include>tape_ioi_workspace.incl.pl1
+331          2    12/01/82  1039.8  tape_ioi_hw_status.incl.pl1       >ldd>include>tape_ioi_hw_status.incl.pl1
+333          3    12/01/82  1039.8  interrupt_levels.incl.pl1         >ldd>include>interrupt_levels.incl.pl1
+335          4    08/17/79  2215.0  ioi_stat.incl.pl1                 >ldd>include>ioi_stat.incl.pl1
+337          5    01/10/75  1343.6  iom_stat.incl.pl1                 >ldd>include>iom_stat.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALTERNATE_CHANNEL                      constant        bit(36)                  initial dcl 2-64 ref 163
+ASCII_ALERT                            constant        bit(36)                  initial dcl 2-55 ref 151
+AT_BOT                                 constant        bit(36)                  initial dcl 2-47 ref 143 219
+BAD_DENSITY                            constant        bit(36)                  initial dcl 2-117 ref 227
+BAD_DEVICE_CODE                        constant        bit(36)                  initial dcl 2-113 ref 223
+BAD_IDCW_PARITY                        constant        bit(36)                  initial dcl 2-111 ref 221
+BAD_OP_CODE                            constant        bit(36)                  initial dcl 2-115 ref 225
+BAD_PCW_CHANNEL_INST                   constant        bit(36)                  initial dcl 2-206 ref 312
+BIT_DURING_ERASE                       constant        bit(36)                  initial dcl 2-88 ref 193
+BLANK_TAPE_ON_READ                     constant        bit(36)                  initial dcl 2-86 ref 191
+BLANK_TAPE_ON_WRITE                    constant        bit(36)                  initial dcl 2-79 ref 181
+BOUNDARY_ERROR                         constant        bit(36)                  initial dcl 2-189 ref 301
+BUS_PARITY_FROM_CHANNEL                constant        bit(36)                  initial dcl 2-198 ref 301
+BUS_PARITY_TO_CHANNEL                  constant        bit(36)                  initial dcl 2-216 ref 312
+BYTE_LOCKED_OUT                        constant        bit(36)                  initial dcl 2-141 ref 263
+CODE_ALERT                             constant        bit(36)                  initial dcl 2-162 ref 279
+COMMAND_REJECT                         constant        fixed bin(17,0)          initial dcl 2-31 ref 110
+CONFIG_SWITCH_ERROR                    constant        bit(36)                  initial dcl 2-124 ref 237
+CONNECT_WHILE_BUSY                     constant        bit(36)                  initial dcl 2-204 ref 312
+CONSECUTIVE_TDCWS                      constant        bit(36)                  initial dcl 2-187 ref 301
+CONTINUE_BIT_NOT_SET                   constant        bit(36)                  initial dcl 2-174 ref 293
+CP_SIZE_DISCREPANCY                    constant        bit(36)                  initial dcl 2-196 ref 301
+DATA_ALERT_CONDITION                   constant        bit(36)                  initial dcl 2-103 ref 209
+DEVICE_ATTENTION                       constant        fixed bin(17,0)          initial dcl 2-28 ref 104
+DEVICE_BUSY                            constant        fixed bin(17,0)          initial dcl 2-27 ref 102
+DEVICE_DATA_ALERT                      constant        fixed bin(17,0)          initial dcl 2-29 ref 106
+END_OF_FILE                            constant        fixed bin(17,0)          initial dcl 2-30 ref 108
+END_OF_TAPE                            constant        bit(36)                  initial dcl 2-98 ref 201
+EXT_CHANGE_WHILE_RESTRICTED            constant        bit(36)                  initial dcl 2-191 ref 301
+FOUR_BIT_FILL                          constant        bit(36)                  initial dcl 2-51 ref 147
+HANDLER_CHECK                          constant        bit(36)                  initial dcl 2-77 ref 179
+HANDLER_IN_STANDBY                     constant        bit(36)                  initial dcl 2-75 ref 177
+IDCW_WHILE_RESTRICTED                  constant        bit(36)                  initial dcl 2-194 ref 301
+ID_BURST_WRITE_ERROR                   constant        bit(36)                  initial dcl 2-148 ref 265
+ILLEGAL_DEVICE_ID                      constant        bit(36)                  initial dcl 2-128 ref 241
+ILLEGAL_LC_NUMBER                      constant        bit(36)                  initial dcl 2-169 ref 289
+ILLEGAL_PROCEDURE                      constant        bit(36)                  initial dcl 2-167 ref 287
+ILLEGAL_SUSPENDED_LC_NUMBER            constant        bit(36)                  initial dcl 2-171 ref 291
+INCOMPATIBLE_MODE                      constant        bit(36)                  initial dcl 2-130 ref 243
+INCOMPLETE_COMMAND_SEQUENCE            constant        bit(36)                  initial dcl 2-210 ref 312
+INCONSISTENT_COMMAND                   constant        bit(36)                  initial dcl 2-143 ref 259
+INCORRECT_DCW                          constant        bit(36)                  initial dcl 2-208 ref 312
+IOM_CENTRAL                            constant        fixed bin(17,0)          initial dcl 2-37 ref 95 122
+IOM_CHANNEL                            constant        fixed bin(17,0)          initial dcl 2-38 ref 93 124
+IO_SYSTEM_FAULT_INTERRUPT_LEVEL        constant        fixed bin(17,0)          initial dcl 3-6 ref 80 89
+LATERAL_PARITY_ALERT                   constant        bit(36)                  initial dcl 2-93 ref 197
+LOADING                                constant        bit(36)                  initial dcl 2-66 ref 165
+LONGITUDINAL_PARITY_ALERT              constant        bit(36)                  initial dcl 2-95 ref 199
+LPW_TRO                                constant        bit(36)                  initial dcl 2-185 ref 301
+MARGINAL_CONDITION                     constant        bit(36)                  initial dcl 2-152 ref 269
+MPC_COMMAND_REJECT                     constant        fixed bin(17,0)          initial dcl 2-34 ref 116
+MPC_DEVICE_ATTENTION                   constant        fixed bin(17,0)          initial dcl 2-32 ref 112
+MPC_DEVICE_DATA_ALERT                  constant        fixed bin(17,0)          initial dcl 2-33 ref 114
+MTH_MALFUNCTION                        constant        bit(36)                  initial dcl 2-134 ref 247
+MULTIPLE_BOT                           constant        bit(36)                  initial dcl 2-136 ref 249
+MULTIPLE_DEVICES                       constant        bit(36)                  initial dcl 2-126 ref 239
+MULTI_TRACK_ERROR                      constant        bit(36)                  initial dcl 2-154 ref 271
+NINE_TRACK_ERROR                       constant        bit(36)                  initial dcl 2-119 ref 229
+NO_SUCH_HANDLER                        constant        bit(36)                  initial dcl 2-73 ref 175
+NRZI_CCC_ERROR                         constant        bit(36)                  initial dcl 2-160 ref 277
+PARITY_ERROR_AT_PRPH_INTERFACE         constant        bit(36)                  initial dcl 2-213 ref 312
+POSTAMBLE_ERROR                        constant        bit(36)                  initial dcl 2-158 ref 275
+POWER_OFF                              constant        fixed bin(17,0)          initial dcl 2-35 ref 91 118
+PREAMBLE_ERROR                         constant        bit(36)                  initial dcl 2-150 ref 267
+READ_AFTER_WRITE                       constant        bit(36)                  initial dcl 2-108 ref 217
+RESERVED                               constant        bit(36)                  initial dcl 2-62 ref 161
+REWINDING                              constant        bit(36)                  initial dcl 2-60 ref 159
+SIX_BIT_FILL                           constant        bit(36)                  initial dcl 2-53 ref 149
+SKEW_ERROR                             constant        bit(36)                  initial dcl 2-156 ref 273
+SUBSYSTEM_READY                        constant        fixed bin(17,0)          initial dcl 2-26 ref 100
+SUM_CHECK_ERROR                        constant        bit(36)                  initial dcl 2-145 ref 261
+SYSTEM_FAULT                           constant        fixed bin(17,0)          initial dcl 2-36 ref 89 120
+TCA_MALFUNCTION                        constant        bit(36)                  initial dcl 2-132 ref 245
+THS_VERSION                            constant        fixed bin(17,0)          initial dcl 2-20 ref 61
+TIME_OUT                               constant        fixed bin(17,0)          initial dcl 2-39 ref 86 126
+TRANSFER_TIMING_ALERT                  constant        bit(36)                  initial dcl 2-84 ref 189
+TRANSMISSION_PARITY_ALERT              constant        bit(36)                  initial dcl 2-90 ref 195 257
+TWO_BIT_FILL                           constant        bit(36)                  initial dcl 2-49 ref 145
+WRITE_PROTECTED                        constant        bit(36)                  initial dcl 2-45 ref 141 173
+addr                                                   builtin function         dcl 53 ref 70 82 82 82 82
+analyze_ioi_istat_              000010 constant        entry                    external dcl 32 ref 82
+analyze_system_fault_$rsnnl     000012 constant        entry                    external dcl 33 ref 80
+any_other                       000110 stack reference condition                dcl 49 ref 74
+auto_istat                      000100 automatic       structure                level 1 unaligned dcl 23 set ref 68* 82 82
+bin                                                    builtin function         dcl 53 ref 97 305 316
+central_stat              0(21)        based           bit(3)                   level 2 packed packed unaligned dcl 5-7 ref 95 305
+channel_stat              0(18)        based           bit(3)                   level 2 packed packed unaligned dcl 5-7 ref 93 316
+completion                      000100 automatic       structure                level 2 in structure "auto_istat" packed packed
+                                                                                  unaligned dcl 23 in procedure "hardware_status"
+completion                             based           structure                level 2 in structure "istat" dcl 4-7 in procedure
+                                                                                  "hardware_status"
+description               1            based           varying char(256)        level 2 dcl 2-11 set ref 76* 80* 82*
+error_table_$bad_arg            000020 external static fixed bin(35,0)          dcl 40 ref 57
+error_table_$unimplemented_version
+                                000022 external static fixed bin(35,0)          dcl 41 ref 62
+fault_word                             based           bit(36)                  dcl 27 set ref 80*
+iom                     104            based           bit(72)                  level 2 dcl 2-11 set ref 131*
+iom_central_statuses            000222 automatic       bit(36)                  initial array dcl 301 set ref 301* 301* 301* 301*
+                                                                                  301* 301* 301* 305
+iom_channel_statuses            000240 automatic       bit(36)                  initial array dcl 312 set ref 312* 312* 312* 312*
+                                                                                  312* 312* 312* 316
+iom_stat                  4     000100 automatic       bit(72)                  level 2 packed packed unaligned dcl 23 set ref 70
+                                                                                  131
+isp                             000122 automatic       pointer                  dcl 4-5 set ref 66* 68
+istat                                  based           structure                level 1 dcl 4-7 ref 68
+level                     1     000100 automatic       fixed bin(3,0)           level 2 dcl 23 set ref 80 89
+lpw                       6     000100 automatic       bit(72)                  level 2 in structure "auto_istat" packed packed
+                                                                                  unaligned dcl 23 in procedure "hardware_status"
+                                                                                  set ref 132
+lpw                     106            based           bit(72)                  level 2 in structure "ths" dcl 2-11 in procedure
+                                                                                  "hardware_status" set ref 132*
+major                     0(02)        based           bit(4)                   level 2 in structure "status" packed packed
+                                                                                  unaligned dcl 5-7 in procedure "hardware_status"
+                                                                                  ref 97
+major                   102            based           fixed bin(17,0)          level 2 in structure "ths" dcl 2-11 in procedure
+                                                                                  "hardware_status" set ref 86* 89* 91* 93* 95* 97*
+                                                                                  100 102 104 106 108 110 112 114 116 118 120 122
+                                                                                  124 126
+minor                   103            based           bit(36)                  level 2 dcl 2-11 set ref 99* 141* 141 143* 143 145*
+                                                                                  145 147* 147 149* 149 151* 151 159* 159 161* 161
+                                                                                  163* 163 165* 165 173* 173 175* 175 177* 177 179*
+                                                                                  179 181* 181 189* 189 191* 191 193* 193 195* 195
+                                                                                  197* 197 199* 199 201* 201 209* 209 217* 217 219*
+                                                                                  219 221* 221 223* 223 225* 225 227* 227 229* 229
+                                                                                  237* 237 239* 239 241* 241 243* 243 245* 245 247*
+                                                                                  247 249* 249 257* 257 259* 259 261* 261 263* 263
+                                                                                  265* 265 267* 267 269* 269 271* 271 273* 273 275*
+                                                                                  275 277* 277 279* 279 287* 287 289* 289 291* 291
+                                                                                  293* 293 305* 305 316* 316
+modes                    20            based           structure                level 2 packed packed unaligned dcl 1-27
+null                                                   builtin function         dcl 53 ref 56
+p_code                                 parameter       fixed bin(35,0)          dcl 17 set ref 12 57* 62* 133*
+p_ths_ptr                              parameter       pointer                  dcl 18 ref 12 60
+p_tioi_id                              parameter       bit(36)                  dcl 19 set ref 12 55*
+power                     0(01)        based           bit(1)                   level 2 packed packed unaligned dcl 5-7 ref 91
+ptr                                                    builtin function         dcl 53 ref 66
+st                              000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 23 set ref 69*
+statp                           000124 automatic       pointer                  dcl 5-5 set ref 70* 80 91 93 95 97 141 143 145 147
+                                                                                  149 151 159 161 163 165 173 175 177 179 181 189
+                                                                                  191 193 195 197 199 201 209 217 219 221 223 225
+                                                                                  227 229 237 239 241 243 245 247 249 257 259 261
+                                                                                  263 265 267 269 271 273 275 277 279 287 289 291
+                                                                                  293 305 316
+status                                 based           structure                level 1 dcl 5-7
+sub                       0(06)        based           bit(6)                   level 2 packed packed unaligned dcl 5-7 ref 141 143
+                                                                                  145 147 149 151 159 161 163 165 173 175 177 179
+                                                                                  181 189 191 193 195 197 199 201 209 217 219 221
+                                                                                  223 225 227 229 237 239 241 243 245 247 249 257
+                                                                                  259 261 263 265 267 269 271 273 275 277 279 287
+                                                                                  289 291 293
+tai                                    based           structure                level 1 dcl 1-27
+tape_ioi_utils$get_workspace_ptr
+                                000014 constant        entry                    external dcl 35 ref 55
+tape_ioi_utils$last_status_entry_offset
+                                000016 constant        entry                    external dcl 37 ref 66
+tape_status_table_$tape_status_table_
+                                000024 external static fixed bin(17,0)          dcl 44 set ref 82 82
+ths                                    based           structure                level 1 dcl 2-11
+ths_ptr                         000120 automatic       pointer                  dcl 2-9 set ref 60* 61 76 80 82 86 89 91 93 95 97 99
+                                                                                  100 102 104 106 108 110 112 114 116 118 120 122
+                                                                                  124 126 131 132 141 141 143 143 145 145 147 147
+                                                                                  149 149 151 151 159 159 161 161 163 163 165 165
+                                                                                  173 173 175 175 177 177 179 179 181 181 189 189
+                                                                                  191 191 193 193 195 195 197 197 199 199 201 201
+                                                                                  209 209 217 217 219 219 221 221 223 223 225 225
+                                                                                  227 227 229 229 237 237 239 239 241 241 243 243
+                                                                                  245 245 247 247 249 249 257 257 259 259 261 261
+                                                                                  263 263 265 265 267 267 269 269 271 271 273 273
+                                                                                  275 275 277 277 279 279 287 287 289 289 291 291
+                                                                                  293 293 305 305 316 316
+time_out                  0(03) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 23 set ref 86
+version                                based           fixed bin(17,0)          level 2 dcl 2-11 ref 61
+wksp                            000116 automatic       pointer                  dcl 1-25 set ref 55* 56 66 66*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+IO_MARKER_INTERRUPT_LEVEL              internal static fixed bin(17,0)          initial dcl 3-10
+IO_SPECIAL_INTERRUPT_LEVEL             internal static fixed bin(17,0)          initial dcl 3-12
+IO_TERMINATE_INTERRUPT_LEVEL           internal static fixed bin(17,0)          initial dcl 3-8
+THS_VERSION_1                          internal static fixed bin(17,0)          initial dcl 2-19
+faultword                              based           structure                level 1 dcl 5-27
+imess                                  based           structure                level 1 dcl 4-21
+imp                                    automatic       pointer                  dcl 4-19
+special_status                         based           structure                level 1 dcl 5-35
+tbi                                    based           structure                level 1 dcl 1-108
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+DESCRIPTION_DONE                000244 constant        label                    dcl 86 ref 77
+fill_command_reject_status      000670 constant        entry                    internal dcl 214 ref 110
+fill_device_attention_status    000527 constant        entry                    internal dcl 170 ref 104
+fill_device_busy_status         000472 constant        entry                    internal dcl 156 ref 102
+fill_device_data_alert_status   000576 constant        entry                    internal dcl 186 ref 106
+fill_end_of_file_status         000656 constant        entry                    internal dcl 206 ref 108
+fill_iom_central_status         001203 constant        entry                    internal dcl 298 ref 122
+fill_iom_channel_status         001250 constant        entry                    internal dcl 309 ref 124
+fill_mpc_command_reject_status  001146 constant        entry                    internal dcl 284 ref 116
+fill_mpc_device_attention_status
+                                000751 constant        entry                    internal dcl 234 ref 112
+fill_mpc_device_data_alert_status
+                                001031 constant        entry                    internal dcl 254 ref 114
+fill_power_off_status           001320 constant        entry                    internal dcl 322 ref 118
+fill_subsystem_ready_status     000416 constant        entry                    internal dcl 138 ref 100
+fill_system_fault_status        001316 constant        entry                    internal dcl 322 ref 120
+fill_time_out_status            001314 constant        entry                    internal dcl 322 ref 126
+hardware_status                 000030 constant        entry                    external dcl 12
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1470        1516    1322        1500
+Length      2004    1322        26         251     145           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+hardware_status                     224 external procedure  is an external procedure.  
+on unit on line 74                   64 on unit               
+fill_subsystem_ready_status             internal procedure  shares stack frame of external procedure hardware_status.  
+fill_device_busy_status                 internal procedure  shares stack frame of external procedure hardware_status.  
+fill_device_attention_status            internal procedure  shares stack frame of external procedure hardware_status.  
+fill_device_data_alert_status           internal procedure  shares stack frame of external procedure hardware_status.  
+fill_end_of_file_status                 internal procedure  shares stack frame of external procedure hardware_status.  
+fill_command_reject_status              internal procedure  shares stack frame of external procedure hardware_status.  
+fill_mpc_device_attention_status
+                                        internal procedure  shares stack frame of external procedure hardware_status.  
+fill_mpc_device_data_alert_status
+                                        internal procedure  shares stack frame of external procedure hardware_status.  
+fill_mpc_command_reject_status
+                                        internal procedure  shares stack frame of external procedure hardware_status.  
+fill_iom_central_status                 internal procedure  shares stack frame of external procedure hardware_status.  
+fill_iom_channel_status                 internal procedure  shares stack frame of external procedure hardware_status.  
+fill_time_out_status                    internal procedure  shares stack frame of external procedure hardware_status.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+hardware_status          000100 auto_istat                  hardware_status
+                         000116 wksp                        hardware_status
+                         000120 ths_ptr                     hardware_status
+                         000122 isp                         hardware_status
+                         000124 statp                       hardware_status
+                         000222 iom_central_statuses        fill_iom_central_status
+                         000240 iom_channel_statuses        fill_iom_channel_status
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           enable_op           ext_entry
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+analyze_ioi_istat_            analyze_system_fault_$rsnnl   tape_ioi_utils$get_workspace_ptr
+tape_ioi_utils$last_status_entry_offset
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_arg          error_table_$unimplemented_version
+tape_status_table_$tape_status_table_
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     12 000024        55 000035        56 000046        57 000052        58 000056        60 000057        61 000063
+     62 000066        63 000071        66 000072        68 000107        69 000143        70 000145        74 000147
+     76 000163        77 000172        80 000175        82 000217        86 000244        89 000253        91 000262
+     93 000271        95 000300        97 000307        99 000314       100 000315       102 000321       104 000325
+    106 000331       108 000335       110 000341       112 000345       114 000351       116 000355       118 000361
+    120 000365       122 000371       124 000375       126 000401       131 000404       132 000410       133 000413
+    134 000415       138 000416       141 000417       143 000431       145 000441       147 000447       149 000455
+    151 000463       154 000471       156 000472       159 000473       161 000504       163 000512       165 000520
+    168 000526       170 000527       173 000530       175 000543       177 000551       179 000560       181 000567
+    184 000575       186 000576       189 000577       191 000610       193 000616       195 000625       197 000633
+    199 000641       201 000647       204 000655       206 000656       209 000657       212 000667       214 000670
+    217 000671       219 000702       221 000710       223 000717       225 000726       227 000735       229 000742
+    232 000750       234 000751       237 000752       239 000763       241 000771       243 000777       245 001005
+    247 001014       249 001022       252 001030       254 001031       257 001032       259 001043       261 001051
+    263 001057       265 001065       267 001073       269 001101       271 001107       273 001115       275 001123
+    277 001131       279 001137       282 001145       284 001146       287 001147       289 001160       291 001166
+    293 001174       296 001202       298 001203       301 001204       305 001241       307 001247       309 001250
+    312 001251       316 001305       318 001313       322 001314       327 001321
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

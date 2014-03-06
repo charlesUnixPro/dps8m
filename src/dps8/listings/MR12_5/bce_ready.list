@@ -1,0 +1,191 @@
+	COMPILATION LISTING OF SEGMENT bce_ready
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bce_ready: proc (prompt);
+        9 
+       10 /* print ready message for bootload Multics.
+       11*Written June 1983 by Keith Loepere. */
+       12 
+       13 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       14 
+       15 dcl  addr			        builtin;
+       16 dcl  bce_data$error_put_chars	        entry (ptr, ptr, fixed bin, fixed bin (35)) ext variable;
+       17 dcl  buffer		        char (40);
+       18 dcl  buffer_len		        fixed bin;
+       19 dcl  clock		        builtin;
+       20 dcl  code			        fixed bin (35);
+       21 dcl  date_time_		        entry (fixed bin (71), char (*));
+       22 dcl  ioa_$rsnnl		        entry() options(variable);
+       23 dcl  length		        builtin;
+       24 dcl  new_line		        bit (1) aligned;
+       25 dcl  output_buffer		        char (buffer_len) based (addr (buffer));
+       26 dcl  prompt		        char (*) parameter;
+       27 dcl  substr		        builtin;
+       28 dcl  time_string		        char (24);
+       29 
+       30 	new_line = "1"b;
+       31 	go to join;
+       32 
+       33 nnl: entry (prompt);
+       34 
+       35 	new_line = "0"b;
+       36 
+       37 join:
+       38 	call date_time_ (clock (), time_string);
+       39 	call ioa_$rsnnl ("^a (^a) ^a: ", buffer, buffer_len, prompt, 
+       40 	     COLLECTION_1_PHASE_NAMES (sys_info$collection_1_phase), 
+       41 	     substr (time_string, 11, 6));
+       42 	if new_line then do;
+       43 	     buffer_len = buffer_len + 1;
+       44 	     substr (output_buffer, buffer_len, 1) = "
+       45 ";
+       46 	end;
+       47 	call bce_data$error_put_chars (addr (bce_data$error_put_chars), addr (output_buffer), length (output_buffer), code);
+       48 	return;
+       49  /* BEGIN include file collection_1_phases.incl.pl1 */
+  1     2 
+  1     3 /* Symbolic names for the various collection1 phases.
+  1     4*Keith Loepere, October 1983. */
+  1     5 
+  1     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  1     7 
+  1     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  1     9 
+  1    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  1    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  1    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  1    13 
+  1    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  1    15*programs can simply tell apart the booting phases from all others (crash or
+  1    16*recovery type phases). */
+  1    17 
+  1    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  1    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  1    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  1    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  1    22 
+  1    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  1    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  1    25 
+  1    26 /* END include file collection_1_phases.incl.pl1 */
+       49 
+       50      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.3  bce_ready.pl1                     >special_ldd>install>MR12.3-1114>bce_ready.pl1
+49           1    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+COLLECTION_1_PHASE_NAMES        000000 constant        char(16)                 initial array packed unaligned dcl 1-23 set ref 39*
+addr                                                   builtin function         dcl 15 ref 44 47 47 47 47 47 47 47 47
+bce_data$error_put_chars        000010 external static entry variable           dcl 16 set ref 47 47 47
+buffer                          000100 automatic       char(40)                 packed unaligned dcl 17 set ref 39* 44 47 47 47 47
+buffer_len                      000112 automatic       fixed bin(17,0)          dcl 18 set ref 39* 43* 43 44 44 47 47 47 47
+clock                                                  builtin function         dcl 19 ref 37 37
+code                            000113 automatic       fixed bin(35,0)          dcl 20 set ref 47*
+date_time_                      000012 constant        entry                    external dcl 21 ref 37
+ioa_$rsnnl                      000014 constant        entry                    external dcl 22 ref 39
+length                                                 builtin function         dcl 23 ref 47 47
+new_line                        000114 automatic       bit(1)                   dcl 24 set ref 30* 35* 42
+output_buffer                          based           char                     packed unaligned dcl 25 set ref 44* 47 47 47 47
+prompt                                 parameter       char                     packed unaligned dcl 26 set ref 8 33 39*
+substr                                                 builtin function         dcl 27 set ref 39 39 44*
+sys_info$collection_1_phase     000016 external static fixed bin(17,0)          dcl 1-8 ref 39
+time_string                     000115 automatic       char(24)                 packed unaligned dcl 28 set ref 37* 39 39
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BCE_CRASH_INITIALIZATION               internal static fixed bin(17,0)          initial dcl 1-20
+BOOT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 1-11
+CRASH_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 1-18
+EARLY_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 1-10
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 1-19
+SERVICE_INITIALIZATION                 internal static fixed bin(17,0)          initial dcl 1-12
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 1-21
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bce_ready                       000052 constant        entry                    external dcl 8
+join                            000106 constant        label                    dcl 37 ref 31
+nnl                             000072 constant        entry                    external dcl 33
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       324         344     232         334
+Length       536     232        20         155      72           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_ready                           126 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_ready                000100 buffer                      bce_ready
+                         000112 buffer_len                  bce_ready
+                         000113 code                        bce_ready
+                         000114 new_line                    bce_ready
+                         000115 time_string                 bce_ready
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var        call_ext_out_desc   return_mac          ext_entry_desc      clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+date_time_                    ioa_$rsnnl
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$error_put_chars      sys_info$collection_1_phase
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000047        30 000065        31 000067        33 000070        35 000105        37 000106        39 000125
+     42 000177        43 000201        44 000202        47 000206        48 000231
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

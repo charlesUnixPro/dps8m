@@ -1,0 +1,1107 @@
+	COMPILATION LISTING OF SEGMENT iox_find_iocb
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0959.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2 */
+       14 iox_find_iocb: proc();
+       15 
+       16           return;					/* Not a legal entry. */
+       17 
+       18 /* Modified Benson I. Margulies 1981 03 07 for hashing. No previous journalization?! */
+       19 /* Modified 11/82 by S. Krupp to initialize new variables in version 2 iocb. */
+       20 /* Modified C. Spitzer not to fault when passed a null pointer.	       */
+       21 /* Parameters. */
+       22 
+       23 	declare (
+       24 	        P_iocb_name		 char (*),	/* Name of sought I/O control block. */
+       25 	        P_iocb_ptr		 pointer,		/* Returned location of I/O control block. */
+       26 	        P_code		 fixed bin (35),
+       27 	        (P_iocb_ptr1, P_iocb_ptr2)
+       28 				 pointer,		/* From and to locations for move_attach. */
+       29 	        P_iocb_n		 fixed bin
+       30 	        ) /* Number of sought I/O control block. */
+       31 				 parameter;	/* Automatic. */
+       32 
+       33 	declare critical_op_in_progress
+       34 				 bit (1);
+       35 	declare hash_chain_anchor	 pointer based (ptr_to_hash_tbl_ptr);
+       36 	declare ptr_to_hash_tbl_ptr	 pointer;
+       37 	declare hash_ptr		 pointer;
+       38 	declare hash_table_ptr	 pointer;
+       39 	declare iocb_ptr		 pointer;
+       40 	declare iocb_ptr1		 pointer;
+       41 	declare iocb_ptr2		 pointer;
+       42 	declare iocb_ptr3		 ptr;		/* Father IOCB ptr used by move_attach. */
+       43 	declare just_looking	 bit (1);		/* "1"b if called "look_iocb" rather than "find_iocb". */
+       44 	declare move_switch		 bit (1);		/* initialize_iocb works different for move_attach. */
+       45 	declare name		 char (32) aligned; /* Local copy of sought name. */
+       46 	declare syn_son		 ptr;		/* Place to save iocb.syn_son. */
+       47 	declare (i, j)		 fixed;
+       48 	declare mask		 bit (36) aligned;	/* Save existing IPS mask while inhibited. */
+       49 
+       50 /* External static. */
+       51 
+       52 	declare iox_$hash_table	 external static;
+       53 	declare iox_$hash_table_ptr	 ptr external static;
+       54 	declare iox_$hash_table_size	 fixed bin (35) aligned external static;
+       55 	declare iox_$hash_hit_count	 fixed bin (35) external static;
+       56 						/* meter hash hits when we make a new one in a chain */
+       57 	declare iox_$n_standard_iocbs	 fixed bin external static;
+       58 	declare iox_$standard_iocb_ptrs
+       59 				 bit (36) aligned external static;
+       60 
+       61 /* external entries */
+       62 
+       63 	declare iox_$propagate	 external entry (pointer);
+       64 	declare hash_index_		 entry (pointer, fixed bin (35) aligned, fixed bin (35) aligned,
+       65 				 fixed bin (35) aligned) returns (fixed bin (35) aligned) reducible;
+       66 
+       67 	declare hcs_$set_ips_mask	 ext entry (bit (36) aligned, bit (36) aligned);
+       68 	declare hcs_$reset_ips_mask	 ext entry (bit (36) aligned, bit (36) aligned);
+       69 	declare iox_$err_no_operation  entry() options(variable);
+       70 	declare iox_$err_not_attached	 ext entry options (variable);
+       71 	declare iox_$err_not_open	 ext entry options (variable);
+       72 	declare sub_err_		 ext entry options (variable);
+       73 	declare terminate_process_	 ext entry (char (*), ptr);
+       74 
+       75 
+       76 /* Error Table Codes */
+       77 
+       78 	declare (
+       79 	        error_table_$unable_to_do_io,
+       80 	        error_table_$not_a_valid_iocb,
+       81 	        error_table_$no_iocb,
+       82 	        error_table_$not_attached,
+       83 	        error_table_$not_detached,
+       84 	        error_table_$name_not_found
+       85 	        )			 external static fixed bin (35);
+       86 
+       87 /* Based. */
+       88 
+       89 	declare hash_table		 dimension (iox_$hash_table_size) pointer based (hash_table_ptr);
+       90 	declare system_free_area	 area based (stackbaseptr () -> stack_header.system_free_ptr);
+       91 						/* get_system_free_area_ is not cheap */
+       92 
+       93 	declare any_other		 condition;
+       94 
+       95 /* Built-in. */
+       96 
+       97 	declare (addr, length, null, rank, rtrim, substr, stackbaseptr)
+       98 				 builtin;
+       99 
+  1     1 /* BEGIN INCLUDE FILE iocbx.incl.pl1 */
+  1     2 /* written 27 Dec 1973, M. G. Smith */
+  1     3 /* returns attributes removed, hashing support BIM Spring 1981 */
+  1     4 /* version made character string June 1981 BIM */
+  1     5 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+  1     6*      version number to IOX2. */
+  1     7 /* format: style2 */
+  1     8 
+  1     9      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  1    10 	     2 version	      character (4) aligned,	/* IOX2 */
+  1    11 	     2 name	      char (32),		/* I/O name of this block. */
+  1    12 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  1    13 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  1    14 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  1    15 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  1    16 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  1    17 	     2 event_channel      bit (72),		/* Event channel for asynchronous I/O. */
+  1    18 	     2 detach_iocb	      entry (ptr, fixed bin (35)),
+  1    19 						/* detach_iocb(p) */
+  1    20 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed bin (35)),
+  1    21 						/* open(p,mode,not_used) */
+  1    22 	     2 close	      entry (ptr, fixed bin (35)),
+  1    23 						/* close(p) */
+  1    24 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    25 						/* get_line(p,bufptr,buflen,actlen) */
+  1    26 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    27 						/* get_chars(p,bufptr,buflen,actlen) */
+  1    28 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    29 						/* put_chars(p,bufptr,buflen) */
+  1    30 	     2 modes	      entry (ptr, char (*), char (*), fixed bin (35)),
+  1    31 						/* modes(p,newmode,oldmode) */
+  1    32 	     2 position	      entry (ptr, fixed, fixed (21), fixed bin (35)),
+  1    33 						/* position(p,u1,u2) */
+  1    34 	     2 control	      entry (ptr, char (*), ptr, fixed bin (35)),
+  1    35 						/* control(p,order,infptr) */
+  1    36 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    37 						/* read_record(p,bufptr,buflen,actlen) */
+  1    38 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    39 						/* write_record(p,bufptr,buflen) */
+  1    40 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    41 						/* rewrite_record(p,bufptr,buflen) */
+  1    42 	     2 delete_record      entry (ptr, fixed bin (35)),
+  1    43 						/* delete_record(p) */
+  1    44 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+  1    45 						/* seek_key(p,key,len) */
+  1    46 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+  1    47 						/* read_key(p,key,len) */
+  1    48 	     2 read_length	      entry (ptr, fixed (21), fixed bin (35)),
+  1    49 						/* read_length(p,len) */
+  1    50 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+  1    51 						/* open_file(p,mode,desc,not_used,s) */
+  1    52 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+  1    53 						/* close_file(p,desc,s) */
+  1    54 	     2 detach	      entry (ptr, char (*), fixed bin (35)),
+  1    55 						/* detach(p,desc,s) */
+  1    56 						/* Hidden information, to support SYN attachments. */
+  1    57 	     2 ios_compatibility  ptr,		/* Ptr to old DIM's IOS transfer vector. */
+  1    58 	     2 syn_inhibits	      bit (36),		/* Operations inhibited by SYN. */
+  1    59 	     2 syn_father	      ptr,		/* IOCB immediately SYNed to. */
+  1    60 	     2 syn_brother	      ptr,		/* Next IOCB SYNed as this one is. */
+  1    61 	     2 syn_son	      ptr,		/* First IOCB SYNed to this one. */
+  1    62 	     2 hash_chain_ptr     ptr;		/* Next IOCB in hash bucket */
+  1    63 
+  1    64      declare iox_$iocb_version_sentinel
+  1    65 			      character (4) aligned external static;
+  1    66 
+  1    67 /* END INCLUDE FILE iocbx.incl.pl1 */
+      100 
+  2     1 /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  2     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  2     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  2     4 /*	Modified April 1983 by C. Hornig for tasking */
+  2     5 
+  2     6 /****^  HISTORY COMMENTS:
+  2     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  2     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  2     9*     added the heap_header_ptr definition.
+  2    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  2    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  2    12*     Modified to support control point management.  These changes were actually
+  2    13*     made in February 1985 by G. Palter.
+  2    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  2    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  2    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  2    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  2    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  2    19*     (ITS pair).
+  2    20*                                                   END HISTORY COMMENTS */
+  2    21 
+  2    22 /* format: style2 */
+  2    23 
+  2    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  2    25 
+  2    26      dcl	   1 stack_header	      based (sb) aligned,
+  2    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  2    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  2    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  2    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  2    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  2    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  2    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  2    34 	     2 pad4	      bit (2) unal,
+  2    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  2    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  2    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  2    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  2    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  2    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  2    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  2    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  2    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  2    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  2    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  2    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  2    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  2    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  2    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  2    50 	     2 return_no_pop_op_ptr
+  2    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  2    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  2    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  2    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  2    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  2    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  2    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  2    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  2    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  2    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  2    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  2    62 	     2 trace,
+  2    63 	       3 frames,
+  2    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  2    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  2    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  2    67 	     2 pad2	      bit (36),		/*  (61) */
+  2    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  2    69 
+  2    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  2    71 
+  2    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  2    73 						/* (551) octal */
+  2    74 
+  2    75 
+  2    76 /*	The following constants are offsets within this transfer vector table.  */
+  2    77 
+  2    78      dcl	   (
+  2    79 	   call_offset	      fixed bin init (271),
+  2    80 	   push_offset	      fixed bin init (272),
+  2    81 	   return_offset	      fixed bin init (273),
+  2    82 	   return_no_pop_offset   fixed bin init (274),
+  2    83 	   entry_offset	      fixed bin init (275)
+  2    84 	   )		      internal static;
+  2    85 
+  2    86 
+  2    87 
+  2    88 
+  2    89 
+  2    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  2    91*	move the whole stack header should use this overlay.
+  2    92**/
+  2    93 
+  2    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  2    95 
+  2    96 
+  2    97 
+  2    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      101 
+      102 
+      103 /* iox_$find_iocb */
+      104 
+      105 find_iocb: entry (P_iocb_name, P_iocb_ptr, P_code);
+      106 
+      107 	just_looking = "0"b;			/* Remember "find", not "look", was called. */
+      108 	go to join;				/* Go join common table search. */
+      109 
+      110 /* iox_$look_iocb */
+      111 
+      112 look_iocb:
+      113      entry (P_iocb_name, P_iocb_ptr, P_code);
+      114 
+      115 	just_looking = "1"b;			/* Remember "look", not "find", was called. */
+      116 
+      117 join:
+      118 	call setup;
+      119 	move_switch = "0"b;				/* this is not move_iocb */
+      120 	name = P_iocb_name;				/* Copy name so no one changes it under us. */
+      121 	P_iocb_ptr = null ();
+      122 	iocb_ptr = null ();				/* Prepare to search IOCB table. */
+      123 	on any_other call handler;
+      124 
+      125 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      126 /*									*/
+      127 /* the original strategy of this program was as follows: All iocbs were allocated in	*/
+      128 /* blocks of five. The blocks were chained, but the iocbs themselves were not. Destroyed	*/
+      129 /* iocb's were not deallocated, but were left in place. Free or used iocbs were found by	*/
+      130 /* a linear search down the blocks. Since no operation ever changed the threading of	*/
+      131 /* blocks except to add a new one, this search could be made without masking off ips	*/
+      132 /* signals. It had to be, because it could be long. A pseudo-clock, changed_at, was used	*/
+      133 /* to detect modification during the search, which caused the search to be retried.	*/
+      134 /*									*/
+      135 /* The new scheme assumes that the area package is at least as good as managing iocb	*/
+      136 /* sized blocks of stuff as hand code that chases a chain. Iocbs are individually	*/
+      137 /* allocated with allocate statements, and freed when destroyed. Iocbs are found by way	*/
+      138 /* of a hash table, with chains for the buckets. Because these chains can be changed by a */
+      139 /* freed iocb, the search down one must take place with ips signals masked. It is not	*/
+      140 /* expected that these chains will ever get long enough to make masking impractical. If	*/
+      141 /* they do, the hash table can be enlarged, or the hash function improved.                */
+      142 /******************************************************************************************/
+      143 
+      144 	call set_ips_mask;
+      145 
+      146 /* use based variable to avoid lots of subscripting */
+      147 /* hash_chain_anchor is based on this pointer */
+      148 	ptr_to_hash_tbl_ptr = addr (hash_table (hash_search (name)));
+      149 
+      150 	iocb_ptr = chase_chain (hash_chain_anchor, name);
+      151 
+      152 	if iocb_ptr = null ()			/* not in the chain */
+      153 	then do;
+      154 		if just_looking			/* do not create if not found */
+      155 		then P_code = error_table_$no_iocb;
+      156 		else do;
+      157 			allocate iocb in (system_free_area) set (iocb_ptr);
+      158 
+      159 			call initialize_iocb_values (iocb_ptr, name);
+      160 			call link_in_iocb (hash_chain_anchor, iocb_ptr, name);
+      161 		     end;
+      162 	     end;
+      163 	call reset_ips_mask;
+      164 	P_iocb_ptr = iocb_ptr;
+      165 	return;
+      166 
+      167 destroy_iocb:
+      168      entry (P_iocb_ptr, P_code);
+      169 
+      170 	iocb_ptr = P_iocb_ptr;
+      171 	if iocb_ptr = null () then do;
+      172 	     P_code = 0;				/* already gone */
+      173 	     return;				/* nothing to do anymore */
+      174 	     end;
+      175 	call check_sentinel (iocb_ptr);
+      176 	call setup;
+      177 	on any_other call handler;
+      178 	call set_ips_mask;
+      179 
+      180 	if iocb_ptr -> iocb.name = ""			/* freed but had another ptr */
+      181 	then do;
+      182 		P_code = 0;
+      183 		P_iocb_ptr = null ();
+      184 	     end;
+      185 
+      186 	else if iocb_ptr -> iocb.attach_descrip_ptr ^= null ()
+      187 	then P_code = error_table_$not_detached;
+      188 
+      189 	else if iocb_ptr -> iocb.syn_son ^= null ()
+      190 	then P_code = error_table_$not_detached;
+      191 
+      192 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      193 /*									*/
+      194 /* There is a special case here for the iox_ variables. To prevent inconsistencies, we	*/
+      195 /* must check if the iocb being destroyed is one of the standard iocbs. It so, we	*/
+      196 /* must insure that the iox_ pointers are nulled as well.				*/
+      197 /*									*/
+      198 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      199 
+      200 	else do;					/* OK to destroy it. */
+      201 		call check_standard_iocbs (iocb_ptr);
+      202 		call flush_iocb (iocb_ptr);
+      203 		P_iocb_ptr = null ();		/* Reset caller's IOCB pointer. */
+      204 		P_code = 0;			/* No errors. */
+      205 	     end;
+      206 
+      207 	call reset_ips_mask;
+      208 	return;
+      209 
+      210 find_iocb_n:
+      211      entry (P_iocb_n, P_iocb_ptr, P_code);
+      212 	j = 0;					/* Count the non-null IOCBxs. */
+      213 	call setup;
+      214 	on any_other call handler;
+      215 
+      216 	do i = 1 to iox_$hash_table_size;		/* look at each hash bucket */
+      217 	     if hash_table (i) ^= null ()
+      218 	     then do;
+      219 		     call set_ips_mask;
+      220 		     do iocb_ptr = hash_table (i)
+      221 			repeat iocb_ptr -> iocb.hash_chain_ptr /* and consider each in the chain */
+      222 			while (iocb_ptr ^= null ());
+      223 			j = j + 1;
+      224 			if j = P_iocb_n
+      225 			then do;
+      226 				P_iocb_ptr = iocb_ptr;
+      227 				call reset_ips_mask;
+      228 				return;
+      229 			     end;
+      230 		     end;
+      231 		     call reset_ips_mask;
+      232 		end;
+      233 	end;
+      234 	P_iocb_ptr = null ();			/* Didn't find it. */
+      235 	P_code = error_table_$no_iocb;
+      236 	return;
+      237 
+      238 move_attach:
+      239      entry (P_iocb_ptr1, P_iocb_ptr2, P_code);
+      240 
+      241 	move_switch = "1"b;
+      242 	iocb_ptr1 = P_iocb_ptr1;
+      243 	iocb_ptr2 = P_iocb_ptr2;
+      244 	if iocb_ptr1 = null () | iocb_ptr2 = null ()
+      245 	then do;
+      246 		P_code = error_table_$no_iocb;
+      247 		return;
+      248 	     end;
+      249 
+      250 	call check_sentinel (iocb_ptr1);
+      251 	call check_sentinel (iocb_ptr2);
+      252 
+      253 	if iocb_ptr1 = iocb_ptr2
+      254 	then P_code = 0;
+      255 
+      256 	else if iocb_ptr1 -> iocb.attach_descrip_ptr = null ()
+      257 	then /* Original block must be attached. */
+      258 	     P_code = error_table_$not_attached;
+      259 
+      260 	else if iocb_ptr2 -> iocb.attach_descrip_ptr ^= null ()
+      261 	then /* Target block must be detached. */
+      262 	     P_code = error_table_$not_detached;
+      263 
+      264 	else do;
+      265 		call setup;
+      266 		on any_other call handler;
+      267 		call set_ips_mask;
+      268 
+      269 /* Copy the IOCB. */
+      270 
+      271 		name = iocb_ptr2 -> iocb.name;	/* Save target's name. */
+      272 		syn_son = iocb_ptr2 -> iocb.syn_son;	/* Save target's syn son. */
+      273 		hash_ptr = iocb_ptr2 -> iocb.hash_chain_ptr;
+      274 						/* Save hash chain ptr */
+      275 
+      276 		iocb_ptr2 -> iocb = iocb_ptr1 -> iocb;	/* Copy contents of block. */
+      277 		iocb_ptr2 -> iocb.name = name;	/* Restore target's name. */
+      278 		iocb_ptr2 -> iocb.syn_son = syn_son;	/* Restore target's syn son. */
+      279 		iocb_ptr2 -> iocb.hash_chain_ptr = hash_ptr;
+      280 						/* Restore hash chain */
+      281 		if iocb_ptr1 -> iocb.actual_iocb_ptr = iocb_ptr1
+      282 		then iocb_ptr2 -> iocb.actual_iocb_ptr = iocb_ptr2;
+      283 						/* Reset actual_iocb_ptr. */
+      284 
+      285 /* Thread target block in place of the original block if syn'd. */
+      286 
+      287 		else do;
+      288 			call set_critical;
+      289 			iocb_ptr3 = iocb_ptr1 -> iocb.syn_father;
+      290 			if iocb_ptr3 -> iocb.syn_son = iocb_ptr1
+      291 			then iocb_ptr3 -> iocb.syn_son = iocb_ptr2;
+      292 			else do;
+      293 				do iocb_ptr3 = iocb_ptr3 -> iocb.syn_son
+      294 				     repeat iocb_ptr3 -> iocb.syn_brother
+      295 				     while (iocb_ptr3 -> iocb.syn_brother ^= iocb_ptr1);
+      296 				end;
+      297 				iocb_ptr3 -> iocb.syn_brother = iocb_ptr2;
+      298 			     end;
+      299 			call reset_critical;
+      300 		     end;
+      301 
+      302 		call initialize_iocb_values (iocb_ptr1, iocb_ptr1 -> iocb.name);
+      303 						/* Initialize original block to detached state, leaving hash chain alone. */
+      304 		call iox_$propagate (iocb_ptr1);	/* Propagate detached state. */
+      305 		call iox_$propagate (iocb_ptr2);	/* Propagate changes. */
+      306 
+      307 		call reset_ips_mask;
+      308 		P_code = 0;
+      309 	     end;
+      310 	return;
+      311 
+      312 /* Internal procedure to initialize an IOCB to the detached state. */
+      313 
+      314 initialize_iocb_values:
+      315      proc (iocb_ptr, iocb_name);
+      316 	declare iocb_ptr		 ptr;
+      317 	declare iocb_name		 char (32) aligned;
+      318 
+      319 	iocb_ptr -> iocb.version = iox_$iocb_version_sentinel;
+      320 	iocb_ptr -> iocb.name = iocb_name;
+      321 	iocb_ptr -> iocb.actual_iocb_ptr = iocb_ptr;
+      322 	iocb_ptr -> iocb.attach_descrip_ptr, iocb_ptr -> iocb.attach_data_ptr, iocb_ptr -> iocb.open_descrip_ptr,
+      323 	     iocb_ptr -> iocb.open_data_ptr = null ();
+      324 	iocb_ptr -> iocb.event_channel = ""b;
+      325 	iocb_ptr -> iocb.detach_iocb = iox_$err_not_attached;
+      326 	iocb_ptr -> iocb.open = iox_$err_not_attached;
+      327 	iocb_ptr -> iocb.close = iox_$err_not_open;
+      328 	iocb_ptr -> iocb.get_line = iox_$err_not_open;
+      329 	iocb_ptr -> iocb.get_chars = iox_$err_not_open;
+      330 	iocb_ptr -> iocb.put_chars = iox_$err_not_open;
+      331 	iocb_ptr -> iocb.modes = iox_$err_not_attached;
+      332 	iocb_ptr -> iocb.position = iox_$err_not_open;
+      333 	iocb_ptr -> iocb.control = iox_$err_not_attached;
+      334 	iocb_ptr -> iocb.read_record = iox_$err_not_open;
+      335 	iocb_ptr -> iocb.write_record = iox_$err_not_open;
+      336 	iocb_ptr -> iocb.rewrite_record = iox_$err_not_open;
+      337 	iocb_ptr -> iocb.delete_record = iox_$err_not_open;
+      338 	iocb_ptr -> iocb.seek_key = iox_$err_not_open;
+      339 	iocb_ptr -> iocb.read_key = iox_$err_not_open;
+      340 	iocb_ptr -> iocb.read_length = iox_$err_not_open;
+      341 	iocb_ptr -> iocb.open_file = iox_$err_no_operation;
+      342 						/* New, version 2. */
+      343 	iocb_ptr -> iocb.close_file = iox_$err_no_operation;   /* Version 2. */
+      344 	iocb_ptr -> iocb.detach = iox_$err_no_operation;	/* Version 2. */
+      345 	iocb_ptr -> iocb.ios_compatibility = null ();
+      346 	iocb_ptr -> iocb.syn_inhibits = ""b;
+      347 	iocb_ptr -> iocb.syn_father, iocb_ptr -> iocb.syn_brother = null;
+      348 	if ^move_switch
+      349 	then iocb_ptr -> iocb.syn_son = null;
+      350 	/*** do not set hash ptr. It is set by link_in_iocb */
+      351 
+      352      end initialize_iocb_values;
+      353 
+      354 link_in_iocb:
+      355      procedure (hash_chain_anchor, iocb_ptr, iocb_name);
+      356 
+      357 	declare hash_chain_anchor	 pointer;
+      358 	declare iocb_ptr		 pointer;
+      359 	declare iocb_name		 character (32) aligned;
+      360 
+      361 
+      362 	if hash_chain_anchor = null ()
+      363 	then do;					/* easy case */
+      364 		iocb_ptr -> iocb.hash_chain_ptr = null ();
+      365 		hash_chain_anchor = iocb_ptr;
+      366 	     end;
+      367 	else do;	/*** Thread into beginning. We are most likely to reference the one we just created. */
+      368 		/*** Meter this as a hit, as well. */
+      369 		call set_critical;
+      370 		iocb_ptr -> iocb.hash_chain_ptr = hash_chain_anchor;
+      371 		hash_chain_anchor = iocb_ptr;
+      372 		call reset_critical;
+      373 		iox_$hash_hit_count = iox_$hash_hit_count + 1;
+      374 	     end;
+      375      end link_in_iocb;
+      376 
+      377 flush_iocb:
+      378      procedure (iocb_ptr);
+      379 
+      380 	declare iocb_ptr		 pointer;
+      381 	declare hi		 fixed bin;
+      382 	declare cp		 pointer;
+      383 
+      384 	hi = hash_search (iocb_ptr -> iocb.name);
+      385 
+      386 	if hash_table (hi) = null ()
+      387 	then call iocb_missing_from_chain (iocb_ptr, hi, hash_table (hi));
+      388 	if hash_table (hi) = iocb_ptr
+      389 	then hash_table (hi) = hash_table (hi) -> iocb.hash_chain_ptr;
+      390 	else do;					/* nontrivial, find the one to link out */
+      391 		do cp = hash_table (hi) repeat cp -> iocb.hash_chain_ptr while (cp -> iocb.hash_chain_ptr ^= null ());
+      392 		     if cp -> iocb.hash_chain_ptr = iocb_ptr
+      393 		     then do;
+      394 			     cp -> iocb.hash_chain_ptr = cp -> iocb.hash_chain_ptr -> iocb.hash_chain_ptr;
+      395 			     goto linked_out;
+      396 			end;			/* Copy chain pointer from defunkt IOCB to previous in chain */
+      397 		end;
+      398 
+      399 		/*** if we got here, it was not in the right chain.
+      400*		this is a really bad scene */
+      401 
+      402 		call iocb_missing_from_chain (iocb_ptr, hi, hash_table (hi));
+      403 						/* this signals an error */
+      404 linked_out:
+      405 	     end;
+      406 	iocb_ptr -> iocb.name = "";			/* sentinel to avoid freeing twice */
+      407 	free iocb_ptr -> iocb;
+      408 	return;
+      409      end flush_iocb;
+      410 
+      411 /* Internal procedure to handle faults while IPS interrupts
+      412*   are masked.  While not masked, any signals are simply
+      413*   passed on up the stack to their normal handlers.  
+      414*   If we are restarted then the mask will stay reset.
+      415**/
+      416 
+      417 handler:
+      418      procedure;
+      419 
+      420 	declare continue_to_signal_	 entry (fixed bin (35));
+      421 
+      422 	if mask ^= ""b
+      423 	then do;
+      424 		if critical_op_in_progress
+      425 		then call terminate_this_process;
+      426 		call reset_ips_mask;
+      427 		call continue_to_signal_ (0);
+      428 		return;
+      429 	     end;
+      430 	else call continue_to_signal_ (0);
+      431 
+      432      end handler;
+      433 
+      434 chase_chain:
+      435      procedure (start_ptr, name) returns (pointer);
+      436 
+      437 	declare start_ptr		 pointer;
+      438 	declare name		 character (32) aligned;
+      439 	declare iocb_ptr		 pointer;
+      440 	declare 1 IOCB		 aligned like iocb based (iocb_ptr);
+      441 
+      442 	do iocb_ptr = start_ptr repeat IOCB.hash_chain_ptr while (iocb_ptr ^= null ());
+      443 
+      444 	     if IOCB.name = name
+      445 	     then return (iocb_ptr);
+      446 	end;
+      447 	return (null ());
+      448      end chase_chain;
+      449 
+      450 hash_search:
+      451      procedure (name) returns (fixed bin) reducible;
+      452 
+      453 	declare name		 character (32) aligned;
+      454 	declare trimmed_length	 fixed bin (35);
+      455 
+      456 
+      457 
+      458 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      459 /*									*/
+      460 /* The exact hashing function to use here is a bother. Since IOCB names in use at the	*/
+      461 /* same time tend to be the same length, and are often 15 or more characters, the	*/
+      462 /* variation amongst the characters has an unfortunate habit of averaging out.		*/
+      463 /* Especially because many start with something like MUMBLE!BBB. To counteract this	*/
+      464 /* problem we use the "ring-number" argument of hash_index_, and give it the rank value	*/
+      465 /* of the last character of the name. This is pretty independent of the other		*/
+      466 /* characteristics of the string.						*/
+      467 /*									*/
+      468 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      469 
+      470 
+      471 	trimmed_length = length (rtrim (name));
+      472 
+      473 	return (1
+      474 	     + hash_index_ (addr (name), trimmed_length, rank (substr (name, trimmed_length, 1)), iox_$hash_table_size))
+      475 	     ;
+      476      end hash_search;
+      477 
+      478 is_standard_iocb_ptr:
+      479      procedure (iocb_ptr) returns (bit (1) aligned) reducible;
+      480 
+      481 	declare iocb_ptr		 pointer parameter;
+      482 	declare px		 fixed bin;
+      483 	declare standard_ptrs_ptr	 pointer;
+      484 	declare standard_ptrs	 (iox_$n_standard_iocbs) pointer based (standard_ptrs_ptr);
+      485 	declare kill_switch		 bit (1);
+      486 
+      487 	kill_switch = "0"b;
+      488 	go to common;
+      489 
+      490 check_standard_iocbs:
+      491      entry (iocb_ptr);
+      492 
+      493 	kill_switch = "1"b;
+      494 
+      495 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      496 /*									*/
+      497 /* The standard attachment iocb_ptrs stored in an array, so this code can properly find	*/
+      498 /* them even if more are added later.						*/
+      499 /*									*/
+      500 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+      501 
+      502 common:
+      503 	standard_ptrs_ptr = addr (iox_$standard_iocb_ptrs);
+      504 	do px = 1 to iox_$n_standard_iocbs;
+      505 	     if iocb_ptr = standard_ptrs (px)
+      506 	     then if kill_switch
+      507 		then standard_ptrs (px) = null ();
+      508 		else return ("1"b);
+      509 	     else ;
+      510 	end;
+      511 
+      512 	if ^kill_switch
+      513 	then return ("0"b);
+      514 	else return;
+      515      end is_standard_iocb_ptr;
+      516 
+      517 set_ips_mask:
+      518      procedure;
+      519 	call hcs_$set_ips_mask (""b, mask);
+      520      end set_ips_mask;
+      521 
+      522 reset_ips_mask:
+      523      procedure;
+      524 
+      525 	if mask ^= ""b
+      526 	then call hcs_$reset_ips_mask (mask, mask);
+      527      end reset_ips_mask;
+      528 
+      529 set_critical:
+      530      procedure;
+      531 
+      532 	critical_op_in_progress = "1"b;
+      533 	return;
+      534 
+      535 reset_critical:
+      536      entry;
+      537 
+      538 	critical_op_in_progress = "0"b;
+      539      end set_critical;
+      540 
+      541 iocb_missing_from_chain:
+      542      procedure (iocb_ptr, hash_index, hash_chain_anchor) options (non_quick);
+      543 
+      544 	declare iocb_ptr		 pointer;
+      545 	declare hash_index		 fixed bin;
+      546 	declare hash_chain_anchor	 pointer;
+      547 
+      548 	call sub_err_ (error_table_$name_not_found, "iox_", "s", null (), (0),
+      549 	     "IOCB ^a (^p) missing from hash chain ^d (^p).", iocb_ptr -> iocb.name, iocb_ptr, hash_index,
+      550 	     hash_chain_anchor);
+      551      end iocb_missing_from_chain;
+      552 
+      553 terminate_this_process:
+      554      procedure options (non_quick);
+      555 
+      556 	declare 1 ti		 aligned,
+      557 		2 version		 fixed,
+      558 		2 code		 fixed (35);
+      559 
+      560 	ti.version = 0;
+      561 	ti.code = error_table_$unable_to_do_io;
+      562 	call terminate_process_ ("fatal_error", addr (ti));
+      563 
+      564      end terminate_this_process;
+      565 
+      566 setup:
+      567      procedure;
+      568 
+      569 	mask = ""b;
+      570 	critical_op_in_progress = "0"b;
+      571 	P_code = 0;
+      572 	if iox_$hash_table_ptr = null ()
+      573 	then iox_$hash_table_ptr = addr (iox_$hash_table);
+      574 	hash_table_ptr = iox_$hash_table_ptr;
+      575      end setup;
+      576 
+      577 check_sentinel:
+      578      procedure (iocb_ptr);
+      579 	declare iocb_ptr		 pointer;
+      580 
+      581 	if iocb_ptr -> iocb.version ^= iox_$iocb_version_sentinel
+      582 	then do;
+      583 		P_code = error_table_$not_a_valid_iocb;
+      584 		go to main_block_return;
+      585 	     end;
+      586      end check_sentinel;
+      587 
+      588 main_block_return:
+      589 	return;
+      590 
+      591      end iox_find_iocb;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  iox_find_iocb.pl1                 >spec>install>1111>iox_find_iocb.pl1
+100          1    06/03/83  1008.5  iocbx.incl.pl1                    >ldd>include>iocbx.incl.pl1
+101          2    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+IOCB                                   based           structure                level 1 dcl 440
+P_code                                 parameter       fixed bin(35,0)          dcl 23 set ref 105 112 154* 167 172* 182* 186* 189*
+                                                                                  204* 210 235* 238 246* 253* 256* 260* 308* 571*
+                                                                                  583*
+P_iocb_n                               parameter       fixed bin(17,0)          dcl 23 ref 210 224
+P_iocb_name                            parameter       char                     packed unaligned dcl 23 ref 105 112 120
+P_iocb_ptr                             parameter       pointer                  dcl 23 set ref 105 112 121* 164* 167 170 183* 203*
+                                                                                  210 226* 234*
+P_iocb_ptr1                            parameter       pointer                  dcl 23 ref 238 242
+P_iocb_ptr2                            parameter       pointer                  dcl 23 ref 238 243
+actual_iocb_ptr          12            based           pointer                  level 2 dcl 1-9 set ref 281 281* 321*
+addr                                                   builtin function         dcl 97 ref 148 473 473 502 562 562 572
+any_other                       000140 stack reference condition                dcl 93 ref 123 177 214 266
+attach_data_ptr          16            based           pointer                  level 2 dcl 1-9 set ref 322*
+attach_descrip_ptr       14            based           pointer                  level 2 dcl 1-9 set ref 186 256 260 322*
+close                    36            based           entry variable           level 2 dcl 1-9 set ref 327*
+close_file              132            based           entry variable           level 2 dcl 1-9 set ref 343*
+code                      1     000100 automatic       fixed bin(35,0)          level 2 dcl 556 set ref 561*
+continue_to_signal_             000064 constant        entry                    external dcl 420 ref 427 430
+control                  66            based           entry variable           level 2 dcl 1-9 set ref 333*
+cp                              000200 automatic       pointer                  dcl 382 set ref 391* 391* 392 394 394* 397
+critical_op_in_progress         000100 automatic       bit(1)                   packed unaligned dcl 33 set ref 424 532* 538* 570*
+delete_record           106            based           entry variable           level 2 dcl 1-9 set ref 337*
+detach                  136            based           entry variable           level 2 dcl 1-9 set ref 344*
+detach_iocb              26            based           entry variable           level 2 dcl 1-9 set ref 325*
+error_table_$name_not_found     000060 external static fixed bin(35,0)          dcl 78 set ref 548*
+error_table_$no_iocb            000052 external static fixed bin(35,0)          dcl 78 ref 154 235 246
+error_table_$not_a_valid_iocb   000050 external static fixed bin(35,0)          dcl 78 ref 583
+error_table_$not_attached       000054 external static fixed bin(35,0)          dcl 78 ref 256
+error_table_$not_detached       000056 external static fixed bin(35,0)          dcl 78 ref 186 189 260
+error_table_$unable_to_do_io    000046 external static fixed bin(35,0)          dcl 78 ref 561
+event_channel            24            based           bit(72)                  level 2 dcl 1-9 set ref 324*
+get_chars                46            based           entry variable           level 2 dcl 1-9 set ref 329*
+get_line                 42            based           entry variable           level 2 dcl 1-9 set ref 328*
+hash_chain_anchor                      based           pointer                  dcl 35 in procedure "iox_find_iocb" set ref 150*
+                                                                                  160*
+hash_chain_anchor                      parameter       pointer                  dcl 357 in procedure "link_in_iocb" set ref 354 362
+                                                                                  365* 370 371*
+hash_chain_anchor                      parameter       pointer                  dcl 546 in procedure "iocb_missing_from_chain" set
+                                                                                  ref 541 548*
+hash_chain_ptr          154            based           pointer                  level 2 in structure "IOCB" dcl 440 in procedure
+                                                                                  "chase_chain" ref 446
+hash_chain_ptr          154            based           pointer                  level 2 in structure "iocb" dcl 1-9 in procedure
+                                                                                  "iox_find_iocb" set ref 230 273 279* 364* 370* 388
+                                                                                  391 392 394* 394 394 397
+hash_index                             parameter       fixed bin(17,0)          dcl 545 set ref 541 548*
+hash_index_                     000026 constant        entry                    external dcl 64 ref 473
+hash_ptr                        000104 automatic       pointer                  dcl 37 set ref 273* 279
+hash_table                             based           pointer                  array dcl 89 set ref 148 217 220 386 386* 388 388*
+                                                                                  388 391 402*
+hash_table_ptr                  000106 automatic       pointer                  dcl 38 set ref 148 217 220 386 386 388 388 388 391
+                                                                                  402 574*
+hcs_$reset_ips_mask             000032 constant        entry                    external dcl 68 ref 525
+hcs_$set_ips_mask               000030 constant        entry                    external dcl 67 ref 519
+hi                              000176 automatic       fixed bin(17,0)          dcl 381 set ref 384* 386 386* 386 388 388 388 391
+                                                                                  402* 402
+i                               000134 automatic       fixed bin(17,0)          dcl 47 set ref 216* 217 220*
+iocb                                   based           structure                level 1 dcl 1-9 set ref 157 276* 276 407
+iocb_name                              parameter       char(32)                 dcl 317 in procedure "initialize_iocb_values" ref
+                                                                                  314 320
+iocb_name                              parameter       char(32)                 dcl 359 in procedure "link_in_iocb" ref 354
+iocb_ptr                               parameter       pointer                  dcl 579 in procedure "check_sentinel" ref 577 581
+iocb_ptr                        000110 automatic       pointer                  dcl 39 in procedure "iox_find_iocb" set ref 122*
+                                                                                  150* 152 157* 159* 160* 164 170* 171 175* 180 186
+                                                                                  189 201* 202* 220* 220* 226* 230
+iocb_ptr                               parameter       pointer                  dcl 358 in procedure "link_in_iocb" ref 354 364 365
+                                                                                  370 371
+iocb_ptr                        000210 automatic       pointer                  dcl 439 in procedure "chase_chain" set ref 442* 442*
+                                                                                  444 444* 446
+iocb_ptr                               parameter       pointer                  dcl 316 in procedure "initialize_iocb_values" ref
+                                                                                  314 319 320 321 321 322 322 322 322 324 325 326
+                                                                                  327 328 329 330 331 332 333 334 335 336 337 338
+                                                                                  339 340 341 343 344 345 346 347 347 348
+iocb_ptr                               parameter       pointer                  dcl 481 in procedure "is_standard_iocb_ptr" ref 478
+                                                                                  490 505
+iocb_ptr                               parameter       pointer                  dcl 380 in procedure "flush_iocb" set ref 377 384
+                                                                                  386* 388 392 402* 406 407
+iocb_ptr                               parameter       pointer                  dcl 544 in procedure "iocb_missing_from_chain" set
+                                                                                  ref 541 548 548*
+iocb_ptr1                       000112 automatic       pointer                  dcl 40 set ref 242* 244 250* 253 256 276 281 281 289
+                                                                                  290 293 302* 302 304*
+iocb_ptr2                       000114 automatic       pointer                  dcl 41 set ref 243* 244 251* 253 260 271 272 273 276
+                                                                                  277 278 279 281 281 290 297 305*
+iocb_ptr3                       000116 automatic       pointer                  dcl 42 set ref 289* 290 290 293* 293 293* 296 297
+ios_compatibility       142            based           pointer                  level 2 dcl 1-9 set ref 345*
+iox_$err_no_operation           000034 constant        entry                    external dcl 69 ref 341 343 344
+iox_$err_not_attached           000036 constant        entry                    external dcl 70 ref 325 326 331 333
+iox_$err_not_open               000040 constant        entry                    external dcl 71 ref 327 328 329 330 332 334 335 336
+                                                                                  337 338 339 340
+iox_$hash_hit_count             000016 external static fixed bin(35,0)          dcl 55 set ref 373* 373
+iox_$hash_table                 000010 external static fixed bin(17,0)          dcl 52 set ref 572
+iox_$hash_table_ptr             000012 external static pointer                  dcl 53 set ref 572 572* 574
+iox_$hash_table_size            000014 external static fixed bin(35,0)          dcl 54 set ref 216 473*
+iox_$iocb_version_sentinel      000062 external static char(4)                  dcl 1-64 ref 319 581
+iox_$n_standard_iocbs           000020 external static fixed bin(17,0)          dcl 57 ref 504
+iox_$propagate                  000024 constant        entry                    external dcl 63 ref 304 305
+iox_$standard_iocb_ptrs         000022 external static bit(36)                  dcl 58 set ref 502
+j                               000135 automatic       fixed bin(17,0)          dcl 47 set ref 212* 223* 223 224
+just_looking                    000120 automatic       bit(1)                   packed unaligned dcl 43 set ref 107* 115* 154
+kill_switch                     000234 automatic       bit(1)                   packed unaligned dcl 485 set ref 487* 493* 505 512
+length                                                 builtin function         dcl 97 ref 471
+mask                            000136 automatic       bit(36)                  dcl 48 set ref 422 519* 525 525* 525* 569*
+modes                    56            based           entry variable           level 2 dcl 1-9 set ref 331*
+move_switch                     000121 automatic       bit(1)                   packed unaligned dcl 44 set ref 119* 241* 348
+name                            000122 automatic       char(32)                 dcl 45 in procedure "iox_find_iocb" set ref 120*
+                                                                                  148* 150* 159* 160* 271* 277
+name                                   parameter       char(32)                 dcl 453 in procedure "hash_search" set ref 450 471
+                                                                                  473 473 473 473
+name                      1            based           char(32)                 level 2 in structure "iocb" dcl 1-9 in procedure
+                                                                                  "iox_find_iocb" set ref 180 271 277* 302* 320*
+                                                                                  384* 406* 548*
+name                                   parameter       char(32)                 dcl 438 in procedure "chase_chain" ref 434 444
+name                      1            based           char(32)                 level 2 in structure "IOCB" dcl 440 in procedure
+                                                                                  "chase_chain" ref 444
+null                                                   builtin function         dcl 97 ref 121 122 152 171 183 186 189 203 217 220
+                                                                                  234 244 244 256 260 322 345 347 348 362 364 386
+                                                                                  391 442 447 505 548 548 572
+open                     32            based           entry variable           level 2 dcl 1-9 set ref 326*
+open_data_ptr            22            based           pointer                  level 2 dcl 1-9 set ref 322*
+open_descrip_ptr         20            based           pointer                  level 2 dcl 1-9 set ref 322*
+open_file               126            based           entry variable           level 2 dcl 1-9 set ref 341*
+position                 62            based           entry variable           level 2 dcl 1-9 set ref 332*
+ptr_to_hash_tbl_ptr             000102 automatic       pointer                  dcl 36 set ref 148* 150 160
+put_chars                52            based           entry variable           level 2 dcl 1-9 set ref 330*
+px                              000230 automatic       fixed bin(17,0)          dcl 482 set ref 504* 505 505*
+rank                                                   builtin function         dcl 97 ref 473 473
+read_key                116            based           entry variable           level 2 dcl 1-9 set ref 339*
+read_length             122            based           entry variable           level 2 dcl 1-9 set ref 340*
+read_record              72            based           entry variable           level 2 dcl 1-9 set ref 334*
+rewrite_record          102            based           entry variable           level 2 dcl 1-9 set ref 336*
+rtrim                                                  builtin function         dcl 97 ref 471
+seek_key                112            based           entry variable           level 2 dcl 1-9 set ref 338*
+stack_header                           based           structure                level 1 dcl 2-26
+stackbaseptr                                           builtin function         dcl 97 ref 157
+standard_ptrs                          based           pointer                  array dcl 484 set ref 505 505*
+standard_ptrs_ptr               000232 automatic       pointer                  dcl 483 set ref 502* 505 505
+start_ptr                              parameter       pointer                  dcl 437 ref 434 442
+sub_err_                        000042 constant        entry                    external dcl 72 ref 548
+substr                                                 builtin function         dcl 97 ref 473 473
+syn_brother             150            based           pointer                  level 2 dcl 1-9 set ref 293 296 297* 347*
+syn_father              146            based           pointer                  level 2 dcl 1-9 set ref 289 347*
+syn_inhibits            144            based           bit(36)                  level 2 dcl 1-9 set ref 346*
+syn_son                         000132 automatic       pointer                  dcl 46 in procedure "iox_find_iocb" set ref 272* 278
+syn_son                 152            based           pointer                  level 2 in structure "iocb" dcl 1-9 in procedure
+                                                                                  "iox_find_iocb" set ref 189 272 278* 290 290* 293
+                                                                                  348*
+system_free_area                       based           area(1024)               dcl 90 ref 157
+system_free_ptr          14            based           pointer                  level 2 dcl 2-26 ref 157
+terminate_process_              000044 constant        entry                    external dcl 73 ref 562
+ti                              000100 automatic       structure                level 1 dcl 556 set ref 562 562
+trimmed_length                  000220 automatic       fixed bin(35,0)          dcl 454 set ref 471* 473* 473 473
+version                                based           char(4)                  level 2 in structure "iocb" dcl 1-9 in procedure
+                                                                                  "iox_find_iocb" set ref 319* 581
+version                         000100 automatic       fixed bin(17,0)          level 2 in structure "ti" dcl 556 in procedure
+                                                                                  "terminate_this_process" set ref 560*
+write_record             76            based           entry variable           level 2 dcl 1-9 set ref 335*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+call_offset                            internal static fixed bin(17,0)          initial dcl 2-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 2-78
+push_offset                            internal static fixed bin(17,0)          initial dcl 2-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 2-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 2-78
+sb                                     automatic       pointer                  dcl 2-24
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 2-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 2-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+chase_chain                     001362 constant        entry                    internal dcl 434 ref 150
+check_sentinel                  002004 constant        entry                    internal dcl 577 ref 175 250 251
+check_standard_iocbs            001473 constant        entry                    internal dcl 490 ref 201
+common                          001500 constant        label                    dcl 502 ref 488
+destroy_iocb                    000260 constant        entry                    external dcl 167
+find_iocb                       000063 constant        entry                    external dcl 105
+find_iocb_n                     000402 constant        entry                    external dcl 210
+flush_iocb                      001162 constant        entry                    internal dcl 377 ref 202
+handler                         001315 constant        entry                    internal dcl 417 ref 123 177 214 266
+hash_search                     001414 constant        entry                    internal dcl 450 ref 148 384
+initialize_iocb_values          000765 constant        entry                    internal dcl 314 ref 159 302
+iocb_missing_from_chain         001634 constant        entry                    internal dcl 541 ref 386 402
+iox_find_iocb                   000051 constant        entry                    external dcl 14
+is_standard_iocb_ptr            001465 constant        entry                    internal dcl 478
+join                            000131 constant        label                    dcl 117 ref 108
+link_in_iocb                    001123 constant        entry                    internal dcl 354 ref 160
+linked_out                      001303 constant        label                    dcl 404 ref 395
+look_iocb                       000107 constant        entry                    external dcl 112
+main_block_return               000764 constant        label                    dcl 588 ref 584
+move_attach                     000532 constant        entry                    external dcl 238
+reset_critical                  001630 constant        entry                    internal dcl 535 ref 299 372
+reset_ips_mask                  001604 constant        entry                    internal dcl 522 ref 163 207 227 231 307 426
+set_critical                    001624 constant        entry                    internal dcl 529 ref 288 369
+set_ips_mask                    001566 constant        entry                    internal dcl 517 ref 144 178 219 267
+setup                           001765 constant        entry                    internal dcl 566 ref 117 176 213 265
+terminate_this_process          001732 constant        entry                    internal dcl 553 ref 424
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2474        2562    2052        2504
+Length      3052    2052        66         253     422           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+iox_find_iocb                       244 external procedure  is an external procedure.  
+on unit on line 123                  64 on unit               
+on unit on line 177                  64 on unit               
+on unit on line 214                  64 on unit               
+on unit on line 266                  64 on unit               
+initialize_iocb_values                  internal procedure  shares stack frame of external procedure iox_find_iocb.  
+link_in_iocb                            internal procedure  shares stack frame of external procedure iox_find_iocb.  
+flush_iocb                              internal procedure  shares stack frame of external procedure iox_find_iocb.  
+handler                              70 internal procedure  is called by several nonquick procedures.  
+chase_chain                             internal procedure  shares stack frame of external procedure iox_find_iocb.  
+hash_search                             internal procedure  shares stack frame of external procedure iox_find_iocb.  
+is_standard_iocb_ptr                    internal procedure  shares stack frame of external procedure iox_find_iocb.  
+set_ips_mask                            internal procedure  shares stack frame of external procedure iox_find_iocb.  
+reset_ips_mask                       70 internal procedure  is called by several nonquick procedures.  
+set_critical                            internal procedure  shares stack frame of external procedure iox_find_iocb.  
+iocb_missing_from_chain             124 internal procedure  is declared options(non_quick).  
+terminate_this_process               82 internal procedure  is declared options(non_quick).  
+setup                                   internal procedure  shares stack frame of external procedure iox_find_iocb.  
+check_sentinel                          internal procedure  shares stack frame of external procedure iox_find_iocb.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+iox_find_iocb            000100 critical_op_in_progress     iox_find_iocb
+                         000102 ptr_to_hash_tbl_ptr         iox_find_iocb
+                         000104 hash_ptr                    iox_find_iocb
+                         000106 hash_table_ptr              iox_find_iocb
+                         000110 iocb_ptr                    iox_find_iocb
+                         000112 iocb_ptr1                   iox_find_iocb
+                         000114 iocb_ptr2                   iox_find_iocb
+                         000116 iocb_ptr3                   iox_find_iocb
+                         000120 just_looking                iox_find_iocb
+                         000121 move_switch                 iox_find_iocb
+                         000122 name                        iox_find_iocb
+                         000132 syn_son                     iox_find_iocb
+                         000134 i                           iox_find_iocb
+                         000135 j                           iox_find_iocb
+                         000136 mask                        iox_find_iocb
+                         000176 hi                          flush_iocb
+                         000200 cp                          flush_iocb
+                         000210 iocb_ptr                    chase_chain
+                         000220 trimmed_length              hash_search
+                         000230 px                          is_standard_iocb_ptr
+                         000232 standard_ptrs_ptr           is_standard_iocb_ptr
+                         000234 kill_switch                 is_standard_iocb_ptr
+terminate_this_process   000100 ti                          terminate_this_process
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac          signal_op
+enable_op           ext_entry           ext_entry_desc      int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+continue_to_signal_           hash_index_                   hcs_$reset_ips_mask           hcs_$set_ips_mask
+iox_$err_no_operation         iox_$err_not_attached         iox_$err_not_open             iox_$propagate
+sub_err_                      terminate_process_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$name_not_found   error_table_$no_iocb          error_table_$not_a_valid_iocb error_table_$not_attached
+error_table_$not_detached     error_table_$unable_to_do_io  iox_$hash_hit_count           iox_$hash_table
+iox_$hash_table_ptr           iox_$hash_table_size          iox_$iocb_version_sentinel    iox_$n_standard_iocbs
+iox_$standard_iocb_ptrs
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000050        16 000056       105 000057       107 000103       108 000104       112 000105       115 000127
+    117 000131       119 000132       120 000133       121 000141       122 000143       123 000144       144 000166
+    148 000167       150 000176       152 000210       154 000214       157 000222       159 000231       160 000233
+    163 000245       164 000251       165 000253       167 000254       170 000272       171 000275       172 000301
+    173 000302       175 000303       176 000305       177 000306       178 000330       180 000331       182 000336
+    183 000337       184 000341       186 000342       189 000352       201 000362       202 000364       203 000366
+    204 000370       207 000371       208 000375       210 000376       212 000414       213 000415       214 000416
+    216 000440       217 000451       219 000457       220 000460       223 000472       224 000473       226 000477
+    227 000501       228 000505       230 000506       231 000512       233 000516       234 000520       235 000522
+    236 000525       238 000526       241 000542       242 000544       243 000550       244 000553       246 000563
+    247 000566       250 000567       251 000571       253 000573       256 000601       260 000612       265 000623
+    266 000624       267 000646       271 000647       272 000653       273 000655       276 000657       277 000663
+    278 000666       279 000667       281 000670       288 000676       289 000677       290 000702       293 000711
+    296 000721       297 000724       299 000726       302 000727       304 000740       305 000747       307 000756
+    308 000762       310 000763       588 000764       314 000765       319 000767       320 000773       321 001000
+    322 001001       324 001016       325 001023       326 001027       327 001031       328 001034       329 001036
+    330 001040       331 001042       332 001045       333 001050       334 001053       335 001056       336 001060
+    337 001062       338 001064       339 001066       340 001070       341 001072       343 001075       344 001077
+    345 001101       346 001103       347 001107       348 001114       352 001122       354 001123       362 001125
+    364 001131       365 001135       366 001140       369 001141       370 001142       371 001150       372 001153
+    373 001154       375 001161       377 001162       384 001164       386 001176       388 001222       391 001240
+    392 001251       394 001256       395 001261       397 001262       402 001265       406 001303       407 001311
+    408 001313       417 001314       422 001322       424 001325       426 001334       427 001341       428 001351
+    430 001352       432 001361       434 001362       442 001364       444 001374       446 001405       447 001410
+    450 001414       471 001416       473 001431       478 001465       487 001471       488 001472       490 001473
+    493 001476       502 001500       504 001503       505 001513       508 001531       510 001542       512 001544
+    514 001557       517 001566       519 001567       520 001602       522 001603       525 001611       527 001623
+    529 001624       532 001625       533 001627       535 001630       538 001631       539 001632       541 001633
+    548 001641       551 001730       553 001731       560 001737       561 001740       562 001742       564 001764
+    566 001765       569 001766       570 001767       571 001770       572 001771       574 002000       575 002003
+    577 002004       581 002006       583 002013       584 002015       586 002016
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

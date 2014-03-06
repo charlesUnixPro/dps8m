@@ -1,0 +1,1205 @@
+	COMPILATION LISTING OF SEGMENT picture_info_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1001.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2 */
+       14 
+       15 /* Modified 831010 BIM to initialize strings */
+       16 
+       17 picture_info_:
+       18      proc (string, info_pt, error_code);
+       19 
+       20 	dcl     string		 char (*),
+       21 	        info_pt		 ptr,
+       22 	        error_code		 fixed bin;
+       23 
+       24 	dcl     (i, j, n, count, indx, number, value)
+       25 				 fixed bin,
+       26 	        state		 fixed bin init (1),
+       27 	        (switch, minus_bit)	 bit (1) aligned init ("0"b),
+       28 	        char		 char (1) aligned,
+       29 	        sign3		 char (3) aligned init ("s+-") int static options (constant),
+       30 	        test_string		 char (64) var init (""),
+       31 	        normalized_string	 char (64) var init ("");
+       32 
+       33 	dcl     picture_char	 char (32) aligned init ("axek9yvz*$+-scrdb.,/") int static options (constant);
+       34 	dcl     digit		 char (10) aligned init ("1234567890") int static options (constant);
+       35 
+       36 	dcl     (divide, index, length, mod, substr)
+       37 				 builtin;
+       38 
+       39 	dcl     1 picture_constant	 aligned based (info_pt) like picture_image;
+       40 
+       41 	picture_constant.type, picture_constant.scalefactor, picture_constant.explength, error_code, number, n, value =
+       42 	     0;
+       43 
+       44 	do i = 1 to length (string);
+       45 
+       46 	     char = substr (string, i, 1);
+       47 	     goto pl (state);
+       48 
+       49 
+       50 pl (1):
+       51 	     if char = "("
+       52 	     then do;
+       53 		     state = 2;
+       54 		     goto next;
+       55 		end;
+       56 
+       57 	     if char = "f"
+       58 	     then do;
+       59 		     state = 5;
+       60 		     goto next;
+       61 		end;
+       62 
+       63 	     value = 1;
+       64 
+       65 pl (4):
+       66 	     indx = index (picture_char, char);
+       67 	     if indx = 0
+       68 	     then goto err440;
+       69 
+       70 	     if indx = 4 | indx = 7			/* k and v does not count in the picture */
+       71 	     then number = number + 1;
+       72 
+       73 	     if indx < 3
+       74 	     then picture_constant.type = char_picture;
+       75 	     else if indx < 5
+       76 	     then picture_constant.type = real_float_picture;
+       77 
+       78 	     switch = "1"b;				/* we have at least one picture character */
+       79 	     do j = 1 to value;
+       80 		normalized_string = normalized_string || char;
+       81 	     end;
+       82 
+       83 	     if indx < 17
+       84 	     then do j = 1 to value;
+       85 		     test_string = test_string || char;
+       86 		end;
+       87 
+       88 	     n = n + value;
+       89 	     state = 1;
+       90 	     value = 0;
+       91 
+       92 	     goto next;
+       93 
+       94 pl (2):
+       95 	     indx = index (digit, char);
+       96 	     if indx = 0
+       97 	     then goto err440;
+       98 
+       99 	     value = value * 10 + mod (indx, 10);
+      100 
+      101 	     state = 3;
+      102 	     goto next;
+      103 
+      104 pl (3):
+      105 	     if char = ")"
+      106 	     then do;
+      107 		     state = 4;
+      108 		     goto next;
+      109 		end;
+      110 
+      111 	     goto pl (2);
+      112 
+      113 pl (5):
+      114 	     if char = "("
+      115 	     then do;
+      116 		     state = 6;
+      117 		     goto next;
+      118 		end;
+      119 
+      120 	     goto err440;
+      121 
+      122 pl (6):
+      123 	     if char = "+"
+      124 	     then do;
+      125 		     state = 7;
+      126 		     goto next;
+      127 		end;
+      128 
+      129 	     if char = "-"
+      130 	     then do;
+      131 		     state = 7;
+      132 		     minus_bit = "1"b;
+      133 		     goto next;
+      134 		end;
+      135 
+      136 pl (7):
+      137 	     indx = index (digit, char);
+      138 	     if indx = 0
+      139 	     then goto err440;
+      140 
+      141 	     value = value * 10 + mod (indx, 10);
+      142 
+      143 	     state = 8;
+      144 	     goto next;
+      145 
+      146 pl (8):
+      147 	     if char = ")"
+      148 	     then do;
+      149 		     if i ^= length (string)
+      150 		     then goto err440;
+      151 
+      152 		     if value > 255 | value > 256 & ^minus_bit
+      153 		     then goto err434;
+      154 
+      155 		     if minus_bit
+      156 		     then value = -value;
+      157 
+      158 		     picture_constant.scalefactor = value;
+      159 
+      160 		     goto next;
+      161 		end;
+      162 
+      163 	     goto pl (7);
+      164 
+      165 next:
+      166 	end;
+      167 
+      168 	if ^switch
+      169 	then goto err440;
+      170 
+      171 	if n - number > 63
+      172 	then goto err414;
+      173 
+      174 	if picture_constant.type = 0
+      175 	then picture_constant.type = real_fixed_picture;
+      176 
+      177 	picture_constant.prec, picture_constant.scale = 0;
+      178 
+      179 	picture_constant.varlength = n - number;
+      180 
+      181 	picture_constant.piclength = n;
+      182 
+      183 	picture_constant.drift_character = " ";
+      184 
+      185 	picture_constant.chars = normalized_string;
+      186 
+      187 	if picture_constant.type = char_picture
+      188 	then do;
+      189 		if verify (substr (normalized_string, 1, n), "9ax") ^= 0
+      190 		then goto err457;
+      191 
+      192 		picture_constant.prec = n;
+      193 
+      194 		return;
+      195 	     end;
+      196 
+      197 	if picture_constant.type = real_float_picture
+      198 	then do;
+      199 		i = 0;
+      200 		state = 1;
+      201 		n = length (test_string);
+      202 		switch = "0"b;
+      203 
+      204 fl:
+      205 		i = i + 1;
+      206 		if i > n
+      207 		then do;
+      208 			picture_constant.explength = count;
+      209 			return;
+      210 		     end;
+      211 
+      212 		char = substr (test_string, i, 1);
+      213 
+      214 		goto ll (state);
+      215 
+      216 ll (1):
+      217 		indx = index (sign3, char);
+      218 		if indx ^= 0
+      219 		then do;
+      220 			state = 2;
+      221 			goto fl;
+      222 		     end;
+      223 
+      224 ll (2):
+      225 		if ^digit_positions (i)
+      226 		then do;
+      227 			i = 1;
+      228 			goto ll (3);
+      229 		     end;
+      230 
+      231 		state = 4;
+      232 		goto fl;
+      233 
+      234 ll (3):
+      235 		if ^drifting_sign (i)
+      236 		then goto err458;
+      237 
+      238 		state = 4;
+      239 		goto fl;
+      240 
+      241 ll (4):
+      242 		if char ^= "e" & char ^= "k"
+      243 		then goto err458;
+      244 
+      245 		count = 0;
+      246 		state = 5;
+      247 		goto fl;
+      248 
+      249 ll (5):
+      250 		state = 6;
+      251 
+      252 		indx = index (sign3, char);
+      253 		if indx ^= 0
+      254 		then goto fl;
+      255 
+      256 ll (6):
+      257 		count = count + 1;
+      258 		if count > 3
+      259 		then goto err458;
+      260 
+      261 		if char = "9"
+      262 		then do;
+      263 			switch = "1"b;
+      264 			goto fl;
+      265 		     end;
+      266 
+      267 		if char = "z"
+      268 		then if switch
+      269 		     then goto err458;
+      270 		     else goto fl;
+      271 
+      272 		goto err458;
+      273 	     end;
+      274 
+      275 	if picture_constant.type = real_fixed_picture
+      276 	then do;
+      277 		n = length (test_string);
+      278 
+      279 		if fixed_field ()
+      280 		then return;
+      281 
+      282 		if drifting_field ()
+      283 		then return;
+      284 
+      285 		goto err459;
+      286 	     end;
+      287 
+      288 	return;
+      289 
+      290 fixed_field:
+      291      proc () returns (bit (1) aligned);
+      292 
+      293 	dcl     (digit_position, dollar, sign)
+      294 				 bit (1) aligned init ("0"b);
+      295 
+      296 	i = 0;
+      297 
+      298 fx:
+      299 	i = i + 1;
+      300 
+      301 	if i > n
+      302 	then if ^digit_position
+      303 	     then goto fx_ret0;
+      304 	     else goto fx_ret1;
+      305 
+      306 	char = substr (test_string, i, 1);
+      307 
+      308 	if char = "$"
+      309 	then do;
+      310 		if dollar
+      311 		then goto fx_ret0;
+      312 		dollar = "1"b;
+      313 		goto fx;
+      314 	     end;
+      315 
+      316 	if index (sign3, char) ^= 0
+      317 	then do;
+      318 		if sign
+      319 		then goto fx_ret0;
+      320 		sign = "1"b;
+      321 		goto fx;
+      322 	     end;
+      323 
+      324 	if digit_positions (i)
+      325 	then do;
+      326 		if digit_position
+      327 		then goto fx_ret0;
+      328 		digit_position = "1"b;
+      329 		goto fx;
+      330 	     end;
+      331 
+      332 	if char = "c" & substr (test_string, i + 1, 1) = "r"
+      333 	     | char = "d" & substr (normalized_string, picture_constant.piclength, 1) = "b"
+      334 	then do;
+      335 		if sign
+      336 		then goto fx_ret0;
+      337 		if char = "d" & i = n
+      338 		then goto fx_ret1;
+      339 		if i + 1 ^= n
+      340 		then goto fx_ret0;
+      341 		goto fx_ret1;
+      342 	     end;
+      343 
+      344 fx_ret0:
+      345 	return ("0"b);
+      346 
+      347 fx_ret1:
+      348 	return ("1"b);
+      349 
+      350      end;
+      351 
+      352 digit_positions:
+      353      proc (i) returns (bit (1) aligned);
+      354 
+      355 	dcl     c			 char (1) aligned init ("");
+      356 	dcl     (i, k)		 fixed bin;
+      357 
+      358 	do k = i to n while (index ("z*", substr (test_string, k, 1)) = 0);
+      359 	end;
+      360 
+      361 	if k <= n
+      362 	then c = substr (test_string, k, 1);
+      363 
+      364 	if digit_v_digit (i)
+      365 	then if number >= 1000 | mod (number, 100) ^= 0
+      366 	     then goto dp_ret1;
+      367 
+      368 	if c = ""
+      369 	then goto dp_ret0;
+      370 
+      371 	if sandwich (c, i)
+      372 	then if mod (number, 100) ^= 0
+      373 	     then goto dp_ret1;
+      374 	     else do;
+      375 		     picture_constant.prec = divide (number, 1000, 15, 0);
+      376 		     if substr (test_string, i, 1) = c
+      377 		     then ;
+      378 		     else i = i - 1;
+      379 		end;
+      380 	else goto dp_ret0;
+      381 
+      382 	i = i + 1;
+      383 
+      384 	if ^digit_v_digit (i)
+      385 	then i = i - 1;
+      386 
+      387 	goto dp_ret1;
+      388 
+      389 dp_ret0:
+      390 	return ("0"b);
+      391 
+      392 dp_ret1:
+      393 	picture_constant.scale = mod (number, 100);
+      394 
+      395 	picture_constant.prec = picture_constant.prec + divide (number, 1000, 15, 0) + picture_constant.scale;
+      396 						/* i = k-1; purposely deleted */
+      397 	return ("1"b);
+      398 
+      399      end;
+      400 
+      401 drifting_field:
+      402      proc () returns (bit (1) aligned);
+      403 
+      404 	dcl     (dr_dollar, dr_sign, dollar, sign)
+      405 				 bit (1) aligned init ("0"b);
+      406 
+      407 	i = 0;
+      408 	state = 1;
+      409 
+      410 df:
+      411 	i = i + 1;
+      412 
+      413 	if i > n
+      414 	then if dr_sign | dr_dollar
+      415 	     then goto df1;
+      416 	     else goto df0;
+      417 
+      418 	char = substr (test_string, i, 1);
+      419 
+      420 	goto dfl (state);
+      421 
+      422 dfl (1):
+      423 	if char = "$"
+      424 	then do;
+      425 		if dollar
+      426 		then goto df0;
+      427 		dollar = "1"b;
+      428 
+      429 		state = 2;
+      430 		goto df;
+      431 	     end;
+      432 
+      433 dfl (2):
+      434 	if drifting_sign (i)
+      435 	then do;
+      436 		if dr_sign
+      437 		then goto df0;
+      438 		dr_sign = "1"b;
+      439 
+      440 		state = 1;
+      441 		goto df;
+      442 	     end;
+      443 
+      444 	i = 1;
+      445 	state = 3;
+      446 
+      447 dfl (3):
+      448 	if index (sign3, char) ^= 0
+      449 	then do;
+      450 		if sign
+      451 		then goto df0;
+      452 		sign = "1"b;
+      453 
+      454 		state = 4;
+      455 		goto df;
+      456 	     end;
+      457 
+      458 dfl (4):
+      459 	if drifting_dollar (i)
+      460 	then do;
+      461 		if dr_dollar
+      462 		then goto df0;
+      463 		dr_dollar = "1"b;
+      464 
+      465 		state = 3;
+      466 		goto df;
+      467 	     end;
+      468 
+      469 dfl (5):
+      470 	if char = "c" & substr (test_string, i + 1, 1) = "r"
+      471 	     | char = "d" & substr (normalized_string, picture_constant.piclength, 1) = "b"
+      472 	then do;
+      473 		if sign
+      474 		then goto df0;
+      475 		if char = "d" & i = n
+      476 		then goto df1;
+      477 		if i + 1 ^= n
+      478 		then goto df0;
+      479 		goto df1;
+      480 	     end;
+      481 
+      482 df0:
+      483 	return ("0"b);
+      484 
+      485 df1:
+      486 	return ("1"b);
+      487 
+      488      end;
+      489 
+      490 drifting_sign:
+      491      proc (i) returns (bit (1) aligned);
+      492 
+      493 	dcl     c			 char (1) aligned;
+      494 	dcl     (i, k)		 fixed bin;
+      495 
+      496 	do k = i to n while (index (sign3, substr (test_string, k, 1)) ^= 0);
+      497 	end;
+      498 
+      499 	if k >= 3
+      500 	then c = substr (test_string, 1, 1);
+      501 	else goto ds0;
+      502 
+      503 	if sandwich (c, i)
+      504 	then if number >= 1000
+      505 	     then if mod (number, 100) ^= 0
+      506 		then goto ds1;
+      507 		else if substr (test_string, i, 1) = c
+      508 		then i = i - divide (number, 1000, 15, 0) + 1;
+      509 		else i = i - divide (number, 1000, 15, 0);
+      510 	     else i = i - mod (number, 100);
+      511 
+      512 	if ^signs (i)
+      513 	then goto ds0;
+      514 
+      515 	picture_constant.prec = count;
+      516 
+      517 	i = i + 1;
+      518 
+      519 	if ^digit_v_digit (i)
+      520 	then i = i - 1;
+      521 
+      522 	goto ds1;
+      523 
+      524 ds0:
+      525 	return ("0"b);
+      526 
+      527 ds1:						/* i = k-1; purposely deleted */
+      528 	picture_constant.scale = mod (number, 100);
+      529 
+      530 	picture_constant.prec = picture_constant.prec + divide (number, 1000, 15, 0) + picture_constant.scale - 1;
+      531 
+      532 	picture_constant.drift_character = c;
+      533 
+      534 	return ("1"b);
+      535 
+      536      end;
+      537 
+      538 drifting_dollar:
+      539      proc (i) returns (bit (1) aligned);
+      540 
+      541 	dcl     (i, k, count)	 fixed bin;
+      542 
+      543 	number, count = 0;
+      544 	state = 1;
+      545 	k = i - 1;
+      546 
+      547 dd_next:
+      548 	k = k + 1;
+      549 	if k > n
+      550 	then goto ddl1;
+      551 
+      552 	char = substr (test_string, k, 1);
+      553 
+      554 	goto ddl (state);
+      555 
+      556 ddl (1):
+      557 	if char = "$"
+      558 	then do;
+      559 		state = 2;
+      560 		goto dd_next;
+      561 	     end;
+      562 
+      563 	goto ddl0;
+      564 
+      565 ddl (2):
+      566 	if char = "$"
+      567 	then do;
+      568 		count = count + 1;
+      569 		state = 3;
+      570 		goto dd_next;
+      571 	     end;
+      572 
+      573 	if char = "v"
+      574 	then do;
+      575 		state = 5;
+      576 		goto dd_next;
+      577 	     end;
+      578 
+      579 	goto ddl0;
+      580 
+      581 ddl (3):
+      582 	if char = "$"
+      583 	then do;
+      584 		count = count + 1;
+      585 		goto dd_next;
+      586 	     end;
+      587 
+      588 	if digit_v_digit (k)
+      589 	then do;
+      590 		if number = 100
+      591 		then state = 5;
+      592 		else state = 4;
+      593 
+      594 		goto dd_next;
+      595 	     end;
+      596 
+      597 ddl (4):
+      598 	goto ddl1;
+      599 
+      600 ddl (5):
+      601 	if char = "$"
+      602 	then do;
+      603 		state = 6;
+      604 		picture_constant.scale = picture_constant.scale + 1;
+      605 		goto dd_next;
+      606 	     end;
+      607 
+      608 	goto ddl0;
+      609 
+      610 ddl (6):
+      611 	if char = "$"
+      612 	then do;
+      613 		picture_constant.scale = picture_constant.scale + 1;
+      614 		goto dd_next;
+      615 	     end;
+      616 
+      617 	goto ddl1;
+      618 
+      619 ddl0:
+      620 	return ("0"b);
+      621 
+      622 ddl1:
+      623 	i = k - 1;
+      624 	picture_constant.scale = picture_constant.scale + mod (number, 100);
+      625 
+      626 	picture_constant.prec = divide (number, 1000, 15, 0) + count + picture_constant.scale;
+      627 
+      628 	picture_constant.drift_character = "$";
+      629 
+      630 	return ("1"b);
+      631 
+      632      end;
+      633 
+      634 digits:
+      635      proc (i) returns (bit (1) aligned);
+      636 
+      637 	dcl     (i, k)		 fixed bin;
+      638 
+      639 	count = 0;
+      640 
+      641 	do k = i to n;
+      642 	     char = substr (test_string, k, 1);
+      643 
+      644 	     if char = "9" | char = "y"
+      645 	     then count = count + 1;
+      646 	     else goto digits_return;
+      647 	end;
+      648 
+      649 digits_return:
+      650 	if count = 0
+      651 	then return ("0"b);
+      652 
+      653 	i = k - 1;
+      654 	return ("1"b);
+      655 
+      656      end;
+      657 
+      658 signs:
+      659      proc (i) returns (bit (1) aligned);
+      660 
+      661 	dcl     (i, k)		 fixed bin;
+      662 	dcl     c			 char (1) aligned;
+      663 
+      664 	count = 0;
+      665 
+      666 	do k = i to n;
+      667 	     char = substr (test_string, k, 1);
+      668 
+      669 	     indx = index (sign3, char);
+      670 	     if indx ^= 0
+      671 	     then if count = 0
+      672 		then do;
+      673 			count = 1;
+      674 			c = char;
+      675 		     end;
+      676 		else if c ^= char
+      677 		then goto signs_return;
+      678 		else count = count + 1;
+      679 	     else goto signs_return;
+      680 	end;
+      681 
+      682 signs_return:
+      683 	if count < 2
+      684 	then return ("0"b);
+      685 
+      686 	i = k - 1;
+      687 	return ("1"b);
+      688 
+      689      end;
+      690 
+      691 digit_v_digit:
+      692      proc (i) returns (bit (1) aligned);
+      693 
+      694 	dcl     (i, k)		 fixed bin;
+      695 
+      696 	number = 0;
+      697 	state = 1;
+      698 
+      699 	k = i - 1;
+      700 
+      701 dvd:
+      702 	k = k + 1;
+      703 	if k > n
+      704 	then goto dvd_ret1;
+      705 
+      706 	char = substr (test_string, k, 1);
+      707 
+      708 	goto dvdl (state);
+      709 
+      710 dvdl (1):
+      711 	if digits (k)
+      712 	then do;
+      713 		number = 1000 * count;
+      714 		state = 2;
+      715 		goto dvd;
+      716 	     end;
+      717 
+      718 dvdl (2):
+      719 	if char = "v"
+      720 	then do;
+      721 		number = number + 100;
+      722 		state = 3;
+      723 		goto dvd;
+      724 	     end;
+      725 
+      726 	if state ^= 1
+      727 	then goto dvd_ret1;
+      728 
+      729 	return ("0"b);
+      730 
+      731 dvdl (3):
+      732 	if digits (k)
+      733 	then do;
+      734 		number = number + count;
+      735 		state = 4;
+      736 		goto dvd;
+      737 	     end;
+      738 
+      739 dvdl (4):
+      740 	goto dvd_ret1;
+      741 
+      742 dvd_ret1:
+      743 	i = k - 1;
+      744 	return ("1"b);
+      745 
+      746      end;
+      747 
+      748 sandwich:
+      749      proc (c, i) returns (bit (1) aligned);
+      750 
+      751 	dcl     c			 char (1) aligned;
+      752 	dcl     (i, k)		 fixed bin;
+      753 
+      754 	number = 0;
+      755 	state = 1;
+      756 
+      757 	k = i - 1;
+      758 
+      759 sand:
+      760 	k = k + 1;
+      761 	if k > n
+      762 	then goto sand_ret1;
+      763 
+      764 	char = substr (test_string, k, 1);
+      765 
+      766 	goto sandl (state);
+      767 
+      768 sandl (1):
+      769 	if char = c
+      770 	then do;
+      771 		number = number + 1000;
+      772 		goto sand;
+      773 	     end;
+      774 
+      775 	if char = "v"
+      776 	then do;
+      777 		state = 2;
+      778 		number = number + 100;
+      779 		goto sand;
+      780 	     end;
+      781 
+      782 	if number ^= 0
+      783 	then goto sand_ret1;
+      784 
+      785 	return ("0"b);
+      786 
+      787 sandl (2):
+      788 	if char = c
+      789 	then do;
+      790 		number = number + 1;
+      791 		goto sand;
+      792 	     end;
+      793 
+      794 	goto sand_ret1;
+      795 
+      796 sand_ret1:
+      797 	i = k - 1;
+      798 	return ("1"b);
+      799 	;
+      800 
+      801      end;
+      802 
+      803 err414:
+      804 	error_code = 414;
+      805 	return;
+      806 
+      807 err434:
+      808 	error_code = 434;
+      809 	return;
+      810 
+      811 err440:
+      812 	error_code = 440;
+      813 	return;
+      814 
+      815 err457:
+      816 	error_code = 457;
+      817 	return;
+      818 
+      819 err458:
+      820 	error_code = 458;
+      821 	return;
+      822 
+      823 err459:
+      824 	error_code = 459;
+      825 	return;
+      826 
+  1     1 /* BEGIN INCLUDE FILE ... picture_image.incl.pl1
+  1     2*
+  1     3*   James R. Davis  12 Mar 79
+  1     4**/
+  1     5 
+  1     6      dcl	   1 picture_image	      aligned based,
+  1     7 	     2 type	      fixed bin (8) unal,
+  1     8 	     2 prec	      fixed bin (8) unal,	/* precision or length of associated value */
+  1     9 	     2 scale	      fixed bin (8) unal,	/* for both fixed and float pictures,
+  1    10*							=ndigits after "v" - scale_factor */
+  1    11 	     2 piclength	      fixed bin (8) unal,	/* length of picture_constant.chars, <64
+  1    12*							=length of normalized-picture-string */
+  1    13 	     2 varlength	      fixed bin (8) unal,	/* length of pictured variable in chars, <64
+  1    14*							=length of normalized_picture_string - "k" and "v" */
+  1    15 	     2 scalefactor	      fixed bin (8) unal,	/* value of pict-sc-f, -256<=x<256  */
+  1    16 	     2 explength	      fixed bin (8) unal,	/* length of exp field for float */
+  1    17 	     2 drift_character    char (1) unal,
+  1    18 	     2 chars	      char (0 refer (picture_image.piclength)) aligned;
+  1    19 
+  1    20      dcl	   (
+  1    21 	   picture_char_type      init (24),
+  1    22 	   picture_realfix_type   init (25),
+  1    23 	   picture_complexfix_type
+  1    24 			      init (26),
+  1    25 	   picture_realflo_type   init (27),
+  1    26 	   picture_complexflo_type
+  1    27 			      init (28)
+  1    28 	   )		      fixed bin (8) unal static internal options (constant);
+  1    29 
+  1    30 /* END INCLUDE FILE  ... picture_image.incl.pl1  */
+      827 
+  2     1 dcl (	char_picture	init(24),
+  2     2 	real_fixed_picture	init(25),
+  2     3 	cplx_fixed_picture	init(26),
+  2     4 	real_float_picture	init(27),
+  2     5 	cplx_float_picture	init(28))	fixed bin int static options(constant);
+      828 
+      829 
+      830      end picture_info_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  picture_info_.pl1                 >spec>install>1110>picture_info_.pl1
+827          1    06/28/79  1204.8  picture_image.incl.pl1            >ldd>include>picture_image.incl.pl1
+828          2    05/03/76  1320.4  picture_types.incl.pl1            >ldd>include>picture_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+c                               000200 automatic       char(1)                  initial dcl 355 in procedure "digit_positions" set
+                                                                                  ref 355* 361* 368 371* 376
+c                               000257 automatic       char(1)                  dcl 662 in procedure "signs" set ref 674* 676
+c                               000224 automatic       char(1)                  dcl 493 in procedure "drifting_sign" set ref 499*
+                                                                                  503* 507 532
+c                                      parameter       char(1)                  dcl 751 in procedure "sandwich" ref 748 768 787
+char                            000112 automatic       char(1)                  dcl 24 set ref 46* 50 57 65 80 85 94 104 113 122 129
+                                                                                  136 146 212* 216 241 241 252 261 267 306* 308 316
+                                                                                  332 332 337 418* 422 447 469 469 475 552* 556 565
+                                                                                  573 581 600 610 642* 644 644 667* 669 674 676 706*
+                                                                                  718 764* 768 775 787
+char_picture                           constant        fixed bin(17,0)          initial dcl 2-1 ref 73 187
+chars                     2            based           char                     level 2 dcl 39 set ref 185*
+count                           000103 automatic       fixed bin(17,0)          dcl 24 in procedure "picture_info_" set ref 208 245*
+                                                                                  256* 256 258 515 639* 644* 644 649 664* 670 673*
+                                                                                  678* 678 682 713 734
+count                           000237 automatic       fixed bin(17,0)          dcl 541 in procedure "drifting_dollar" set ref 543*
+                                                                                  568* 568 584* 584 626
+digit                           000037 constant        char(10)                 initial dcl 34 ref 94 136
+digit_position                  000166 automatic       bit(1)                   initial dcl 293 set ref 293* 301 326 328*
+divide                                                 builtin function         dcl 36 ref 375 395 507 509 530 626
+dollar                          000214 automatic       bit(1)                   initial dcl 404 in procedure "drifting_field" set
+                                                                                  ref 404* 425 427*
+dollar                          000167 automatic       bit(1)                   initial dcl 293 in procedure "fixed_field" set ref
+                                                                                  293* 310 312*
+dr_dollar                       000212 automatic       bit(1)                   initial dcl 404 set ref 404* 413 461 463*
+dr_sign                         000213 automatic       bit(1)                   initial dcl 404 set ref 404* 413 436 438*
+drift_character           1(27)        based           char(1)                  level 2 packed packed unaligned dcl 39 set ref 183*
+                                                                                  532* 628*
+error_code                             parameter       fixed bin(17,0)          dcl 20 set ref 17 41* 803* 807* 811* 815* 819* 823*
+explength                 1(18)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 39 set ref 41*
+                                                                                  208*
+i                                      parameter       fixed bin(17,0)          dcl 752 in procedure "sandwich" set ref 748 757 796*
+i                               000100 automatic       fixed bin(17,0)          dcl 24 in procedure "picture_info_" set ref 44* 46
+                                                                                  149* 199* 204* 204 206 212 224* 227* 234* 296*
+                                                                                  298* 298 301 306 324* 332 337 339 407* 410* 410
+                                                                                  413 418 433* 444* 458* 469 475 477
+i                                      parameter       fixed bin(17,0)          dcl 661 in procedure "signs" set ref 658 666 686*
+i                                      parameter       fixed bin(17,0)          dcl 541 in procedure "drifting_dollar" set ref 538
+                                                                                  545 622*
+i                                      parameter       fixed bin(17,0)          dcl 694 in procedure "digit_v_digit" set ref 691 699
+                                                                                  742*
+i                                      parameter       fixed bin(17,0)          dcl 637 in procedure "digits" set ref 634 641 653*
+i                                      parameter       fixed bin(17,0)          dcl 494 in procedure "drifting_sign" set ref 490 496
+                                                                                  503* 507 507* 507 509* 509 510* 510 512* 517* 517
+                                                                                  519* 519* 519
+i                                      parameter       fixed bin(17,0)          dcl 356 in procedure "digit_positions" set ref 352
+                                                                                  358 364* 371* 376 378* 378 382* 382 384* 384* 384
+index                                                  builtin function         dcl 36 ref 65 94 136 216 252 316 358 447 496 669
+indx                            000104 automatic       fixed bin(17,0)          dcl 24 set ref 65* 67 70 70 73 75 83 94* 96 99 136*
+                                                                                  138 141 216* 218 252* 253 669* 670
+info_pt                                parameter       pointer                  dcl 20 ref 17 41 41 41 73 75 158 174 174 177 177 179
+                                                                                  181 183 185 187 192 197 208 275 332 375 392 395
+                                                                                  395 395 469 515 527 530 530 530 532 604 604 613
+                                                                                  613 624 624 626 626 628
+j                               000101 automatic       fixed bin(17,0)          dcl 24 set ref 79* 83*
+k                               000225 automatic       fixed bin(17,0)          dcl 494 in procedure "drifting_sign" set ref 496*
+                                                                                  496* 499
+k                               000236 automatic       fixed bin(17,0)          dcl 541 in procedure "drifting_dollar" set ref 545*
+                                                                                  547* 547 549 552 588* 622
+k                               000246 automatic       fixed bin(17,0)          dcl 637 in procedure "digits" set ref 641* 642* 653
+k                               000256 automatic       fixed bin(17,0)          dcl 661 in procedure "signs" set ref 666* 667* 686
+k                               000270 automatic       fixed bin(17,0)          dcl 694 in procedure "digit_v_digit" set ref 699*
+                                                                                  701* 701 703 706 710* 731* 742
+k                               000201 automatic       fixed bin(17,0)          dcl 356 in procedure "digit_positions" set ref 358*
+                                                                                  358* 361 361
+k                               000300 automatic       fixed bin(17,0)          dcl 752 in procedure "sandwich" set ref 757* 759*
+                                                                                  759 761 764 796
+length                                                 builtin function         dcl 36 ref 44 149 201 277
+minus_bit                       000111 automatic       bit(1)                   initial dcl 24 set ref 24* 132* 152 155
+mod                                                    builtin function         dcl 36 ref 99 141 364 371 392 503 510 527 624
+n                               000102 automatic       fixed bin(17,0)          dcl 24 set ref 41* 88* 88 171 179 181 189 192 201*
+                                                                                  206 277* 301 337 339 358 361 413 475 477 496 549
+                                                                                  641 666 703 761
+normalized_string               000134 automatic       varying char(64)         initial dcl 24 set ref 24* 80* 80 185 189 332 469
+number                          000105 automatic       fixed bin(17,0)          dcl 24 set ref 41* 70* 70 171 179 364 364 371 375
+                                                                                  392 395 503 503 507 509 510 527 530 543* 590 624
+                                                                                  626 696* 713* 721* 721 734* 734 754* 771* 771 778*
+                                                                                  778 782 790* 790
+piclength                 0(27)        based           fixed bin(8,0)           level 2 in structure "picture_constant" packed
+                                                                                  packed unaligned dcl 39 in procedure
+                                                                                  "picture_info_" set ref 181* 332 469
+piclength                 0(27)        based           fixed bin(8,0)           level 2 in structure "picture_image" packed packed
+                                                                                  unaligned dcl 1-6 in procedure "picture_info_" ref
+                                                                                  185
+picture_char                    000042 constant        char(32)                 initial dcl 33 ref 65
+picture_constant                       based           structure                level 1 dcl 39
+picture_image                          based           structure                level 1 dcl 1-6
+prec                      0(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 39 set ref 177*
+                                                                                  192* 375* 395* 395 515* 530* 530 626*
+real_fixed_picture                     constant        fixed bin(17,0)          initial dcl 2-1 ref 174 275
+real_float_picture                     constant        fixed bin(17,0)          initial dcl 2-1 ref 75 197
+scale                     0(18)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 39 set ref 177*
+                                                                                  392* 395 527* 530 604* 604 613* 613 624* 624 626
+scalefactor               1(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 39 set ref 41*
+                                                                                  158*
+sign                            000170 automatic       bit(1)                   initial dcl 293 in procedure "fixed_field" set ref
+                                                                                  293* 318 320* 335
+sign                            000215 automatic       bit(1)                   initial dcl 404 in procedure "drifting_field" set
+                                                                                  ref 404* 450 452* 473
+sign3                           000052 constant        char(3)                  initial dcl 24 ref 216 252 316 447 496 669
+state                           000107 automatic       fixed bin(17,0)          initial dcl 24 set ref 24* 47 53* 59* 89* 101* 107*
+                                                                                  116* 125* 131* 143* 200* 214 220* 231* 238* 246*
+                                                                                  249* 408* 420 429* 440* 445* 454* 465* 544* 554
+                                                                                  559* 569* 575* 590* 592* 603* 697* 708 714* 722*
+                                                                                  726 735* 755* 766 777*
+string                                 parameter       char                     packed unaligned dcl 20 ref 17 44 46 149
+substr                                                 builtin function         dcl 36 ref 46 189 212 306 332 332 358 361 376 418
+                                                                                  469 469 496 499 507 552 642 667 706 764
+switch                          000110 automatic       bit(1)                   initial dcl 24 set ref 24* 78* 168 202* 263* 267
+test_string                     000113 automatic       varying char(64)         initial dcl 24 set ref 24* 85* 85 201 212 277 306
+                                                                                  332 358 361 376 418 469 496 499 507 552 642 667
+                                                                                  706 764
+type                                   based           fixed bin(8,0)           level 2 packed packed unaligned dcl 39 set ref 41*
+                                                                                  73* 75* 174 174* 187 197 275
+value                           000106 automatic       fixed bin(17,0)          dcl 24 set ref 41* 63* 79 83 88 90* 99* 99 141* 141
+                                                                                  152 152 155* 155 158
+varlength                 1            based           fixed bin(8,0)           level 2 packed packed unaligned dcl 39 set ref 179*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+cplx_fixed_picture                     internal static fixed bin(17,0)          initial dcl 2-1
+cplx_float_picture                     internal static fixed bin(17,0)          initial dcl 2-1
+picture_char_type                      internal static fixed bin(8,0)           initial packed unaligned dcl 1-20
+picture_complexfix_type                internal static fixed bin(8,0)           initial packed unaligned dcl 1-20
+picture_complexflo_type                internal static fixed bin(8,0)           initial packed unaligned dcl 1-20
+picture_realfix_type                   internal static fixed bin(8,0)           initial packed unaligned dcl 1-20
+picture_realflo_type                   internal static fixed bin(8,0)           initial packed unaligned dcl 1-20
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+dd_next                         001715 constant        label                    dcl 547 ref 560 570 576 585 594 605 614
+ddl                             000023 constant        label                    array(6) dcl 556 ref 554
+ddl0                            002035 constant        label                    dcl 619 ref 563 579 608
+ddl1                            002040 constant        label                    dcl 622 ref 549 597 617
+df                              001306 constant        label                    dcl 410 ref 430 441 455 466
+df0                             001457 constant        label                    dcl 482 ref 416 425 436 450 461 473 477
+df1                             001462 constant        label                    dcl 485 ref 413 475 479
+dfl                             000016 constant        label                    array(5) dcl 422 ref 420
+digit_positions                 001066 constant        entry                    internal dcl 352 ref 224 324
+digit_v_digit                   002227 constant        entry                    internal dcl 691 ref 364 384 519 588
+digits                          002102 constant        entry                    internal dcl 634 ref 710 731
+digits_return                   002131 constant        label                    dcl 649 ref 644
+dp_ret0                         001237 constant        label                    dcl 389 ref 368 371
+dp_ret1                         001242 constant        label                    dcl 392 ref 364 371 387
+drifting_dollar                 001704 constant        entry                    internal dcl 538 ref 458
+drifting_field                  001275 constant        entry                    internal dcl 401 ref 282
+drifting_sign                   001466 constant        entry                    internal dcl 490 ref 234 433
+ds0                             001641 constant        label                    dcl 524 ref 499 512
+ds1                             001644 constant        label                    dcl 527 ref 503 522
+dvd                             002237 constant        label                    dcl 701 ref 715 723 736
+dvd_ret1                        002315 constant        label                    dcl 742 ref 703 726 739
+dvdl                            000031 constant        label                    array(4) dcl 710 ref 708
+err414                          000704 constant        label                    dcl 803 ref 171
+err434                          000710 constant        label                    dcl 807 ref 152
+err440                          000713 constant        label                    dcl 811 ref 67 96 120 138 149 168
+err457                          000717 constant        label                    dcl 815 ref 189
+err458                          000722 constant        label                    dcl 819 ref 234 241 258 267 272
+err459                          000726 constant        label                    dcl 823 ref 285
+fixed_field                     000732 constant        entry                    internal dcl 290 ref 279
+fl                              000536 constant        label                    dcl 204 ref 221 232 239 247 253 264 270
+fx                              000740 constant        label                    dcl 298 ref 313 321 329
+fx_ret0                         001057 constant        label                    dcl 344 ref 301 310 318 326 335 339
+fx_ret1                         001062 constant        label                    dcl 347 ref 304 337 341
+ll                              000010 constant        label                    array(6) dcl 216 ref 214 228
+next                            000433 constant        label                    dcl 165 ref 54 60 92 102 108 117 126 133 144 160
+picture_info_                   000073 constant        entry                    external dcl 17
+pl                              000000 constant        label                    array(8) dcl 50 ref 47 111 163
+sand                            002334 constant        label                    dcl 759 ref 772 779 791
+sand_ret1                       002402 constant        label                    dcl 796 ref 761 782 794
+sandl                           000035 constant        label                    array(2) dcl 768 ref 766
+sandwich                        002324 constant        entry                    internal dcl 748 ref 371 503
+signs                           002145 constant        entry                    internal dcl 658 ref 512
+signs_return                    002212 constant        label                    dcl 682 ref 670 676
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+verify                                                 builtin function         ref 189
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2706        2716    2661        2716
+Length      3114    2661        10         161      25           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+picture_info_                       234 external procedure  is an external procedure.  
+fixed_field                             internal procedure  shares stack frame of external procedure picture_info_.  
+digit_positions                         internal procedure  shares stack frame of external procedure picture_info_.  
+drifting_field                          internal procedure  shares stack frame of external procedure picture_info_.  
+drifting_sign                           internal procedure  shares stack frame of external procedure picture_info_.  
+drifting_dollar                         internal procedure  shares stack frame of external procedure picture_info_.  
+digits                                  internal procedure  shares stack frame of external procedure picture_info_.  
+signs                                   internal procedure  shares stack frame of external procedure picture_info_.  
+digit_v_digit                           internal procedure  shares stack frame of external procedure picture_info_.  
+sandwich                                internal procedure  shares stack frame of external procedure picture_info_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+picture_info_            000100 i                           picture_info_
+                         000101 j                           picture_info_
+                         000102 n                           picture_info_
+                         000103 count                       picture_info_
+                         000104 indx                        picture_info_
+                         000105 number                      picture_info_
+                         000106 value                       picture_info_
+                         000107 state                       picture_info_
+                         000110 switch                      picture_info_
+                         000111 minus_bit                   picture_info_
+                         000112 char                        picture_info_
+                         000113 test_string                 picture_info_
+                         000134 normalized_string           picture_info_
+                         000166 digit_position              fixed_field
+                         000167 dollar                      fixed_field
+                         000170 sign                        fixed_field
+                         000200 c                           digit_positions
+                         000201 k                           digit_positions
+                         000212 dr_dollar                   drifting_field
+                         000213 dr_sign                     drifting_field
+                         000214 dollar                      drifting_field
+                         000215 sign                        drifting_field
+                         000224 c                           drifting_sign
+                         000225 k                           drifting_sign
+                         000236 k                           drifting_dollar
+                         000237 count                       drifting_dollar
+                         000246 k                           digits
+                         000256 k                           signs
+                         000257 c                           signs
+                         000270 k                           digit_v_digit
+                         000300 k                           sandwich
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              return_mac          mdfx1               ext_entry_desc
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000067        24 000106        41 000114        44 000133        46 000145        47 000153        50 000155
+     53 000160        54 000162        57 000163        59 000165        60 000167        63 000170        65 000172
+     67 000203        70 000204        73 000211        75 000220        78 000226        79 000230        80 000237
+     81 000246        83 000250        85 000263        86 000272        88 000274        89 000276        90 000300
+     92 000301        94 000302        96 000313        99 000314       101 000323       102 000325       104 000326
+    107 000331       108 000333       111 000334       113 000335       116 000340       117 000342       120 000343
+    122 000344       125 000347       126 000351       129 000352       131 000354       132 000356       133 000360
+    136 000361       138 000372       141 000373       143 000402       144 000404       146 000405       149 000410
+    152 000412       155 000421       158 000425       160 000431       163 000432       165 000433       168 000435
+    171 000437       174 000443       177 000453       179 000462       181 000467       183 000471       185 000473
+    187 000502       189 000507       192 000522       194 000525       197 000526       199 000530       200 000531
+    201 000533       202 000535       204 000536       206 000537       208 000542       209 000550       212 000551
+    214 000555       216 000557       218 000570       220 000571       221 000573       224 000574       227 000601
+    228 000603       231 000604       232 000606       234 000607       238 000614       239 000616       241 000617
+    245 000624       246 000625       247 000627       249 000630       252 000632       253 000643       256 000644
+    258 000645       261 000650       263 000653       264 000655       267 000656       270 000662       272 000663
+    275 000664       277 000666       279 000670       282 000675       285 000702       288 000703       803 000704
+    805 000707       807 000710       809 000712       811 000713       813 000716       815 000717       817 000721
+    819 000722       821 000725       823 000726       825 000731       290 000732       293 000734       296 000737
+    298 000740       301 000741       304 000746       306 000747       308 000753       310 000756       312 000760
+    313 000762       316 000763       318 000774       320 000776       321 001000       324 001001       326 001006
+    328 001010       329 001012       332 001013       335 001043       337 001045       339 001052       341 001056
+    344 001057       347 001062       352 001066       355 001070       358 001072       359 001112       361 001114
+    364 001123       368 001145       371 001155       375 001177       376 001206       378 001215       382 001217
+    384 001220       387 001236       389 001237       392 001242       395 001252       397 001271       401 001275
+    404 001277       407 001303       408 001304       410 001306       413 001307       416 001316       418 001317
+    420 001323       422 001325       425 001330       427 001332       429 001334       430 001336       433 001337
+    436 001344       438 001346       440 001350       441 001352       444 001353       445 001355       447 001357
+    450 001370       452 001372       454 001374       455 001376       458 001377       461 001404       463 001406
+    465 001410       466 001412       469 001413       473 001443       475 001445       477 001452       479 001456
+    482 001457       485 001462       490 001466       496 001470       497 001510       499 001512       503 001520
+    507 001544       509 001562       510 001570       512 001576       515 001612       517 001620       519 001622
+    522 001640       524 001641       527 001644       530 001654       532 001674       534 001700       538 001704
+    543 001706       544 001710       545 001712       547 001715       549 001716       552 001721       554 001725
+    556 001727       559 001732       560 001734       563 001735       565 001736       568 001741       569 001742
+    570 001744       573 001745       575 001747       576 001751       579 001752       581 001753       584 001756
+    585 001757       588 001760       590 001765       592 001773       594 001775       597 001776       600 001777
+    603 002002       604 002004       605 002015       608 002016       610 002017       613 002022       614 002033
+    617 002034       619 002035       622 002040       624 002044       626 002061       628 002074       630 002077
+    634 002102       639 002104       641 002105       642 002115       644 002121       647 002127       649 002131
+    653 002136       654 002142       658 002145       664 002147       666 002150       667 002157       669 002163
+    670 002174       673 002177       674 002201       675 002203       676 002204       678 002207       680 002210
+    682 002212       686 002220       687 002224       691 002227       696 002231       697 002232       699 002234
+    701 002237       703 002240       706 002243       708 002247       710 002251       713 002256       714 002261
+    715 002263       718 002264       721 002267       722 002271       723 002273       726 002274       729 002277
+    731 002302       734 002307       735 002311       736 002313       739 002314       742 002315       744 002321
+    748 002324       754 002326       755 002327       757 002331       759 002334       761 002335       764 002340
+    766 002344       768 002346       771 002353       772 002355       775 002356       777 002361       778 002363
+    779 002365       782 002366       785 002370       787 002372       790 002377       791 002400       794 002401
+    796 002402       798 002406
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,476 @@
+	COMPILATION LISTING OF SEGMENT rcp_find_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0949.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 rcp_find_: procedure;
+       14 
+       15 /*	This program is an internal interface of RCP.
+       16*   *	Created on 12/04/74 by Bill Silver.
+       17*   *	Modified 6/79 by Michael R. Jordan for MR7.0R.
+       18*   *
+       19*   *	This program is called to find a device that is already assigned
+       20*   *	or attached to the calling process.  If successful we will return
+       21*   *	the offset of the RCS entry that corresponds to this device.
+       22*   *	This program has the following entry points:
+       23*   *	     1.	attached   -  Find a device or volume that is attached.
+       24*   *	     2.	device	 -  Find a device that is assigned given its name.
+       25*   *	     3.	unattached -  Find a device that is assigned and not attached.
+       26**/
+       27 
+       28 /*		ARGUMENT  DATA		*/
+       29 
+       30 dcl  arg_device_name char (*);			/* (I) name of device to find. */
+       31 dcl  arg_rcse_ptr ptr;				/* (I) Pointer to RCS entry to match. */
+       32 dcl  arg_trcse_off bit (18);				/* (O) Offset of RCS entry that matched. */
+       33 
+       34 
+       35 /*		AUTOMATIC  DATA		*/
+       36 
+       37 dcl  match_list (16) ptr;				/* List of devices that match. */
+       38 
+       39 dcl  assign_off bit (18);				/* Offset of first assignment RCS entry. */
+       40 dcl  attach_off bit (18);				/* Offset of first attachment RCS entry. */
+       41 dcl  device_name char (32);				/* Name of device we are looking for. */
+       42 dcl  match_flag bit (1);				/* ON => matching attach RCS entries. */
+       43 dcl  num_assign fixed bin;				/* Number of devices assigned to process. */
+       44 dcl  num_attach fixed bin;				/* Number of devices attached to process. */
+       45 dcl  num_match fixed bin;				/* Number of devices that match. */
+       46 dcl  trcse_off bit (18);				/* Offset  of a test RCS entry. */
+       47 dcl  trcse_ptr ptr;					/* Pointer to a test RCS entry. */
+       48 
+       49 
+       50 /*		BASED  DATA		*/
+       51 
+       52 dcl 1 trcse based (trcse_ptr) like rcse aligned;		/* Used to reference a test RCS entry. */
+       53 
+       54 
+       55 /*		EXTERNAL ENTRIES CALLED	*/
+       56 
+       57 dcl (addr, ptr, rel) builtin;
+       58 
+       59 dcl  rcp_match_$match entry (ptr, ptr) returns (bit (1));
+       60 dcl  rcp_match_$select entry (ptr, fixed bin, char (*) aligned, ptr);
+       61 dcl  rcp_pointers_$com_seg entry returns (ptr);
+       62 dcl  rcp_rcse_$info entry (bit (18), fixed bin, bit (18), fixed bin);
+       63 
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+       64 
+       65 
+       66 attached:	entry (arg_rcse_ptr, arg_trcse_off);
+       67 
+       68 /*	This entry point will look for an attachment RCS entry that matches
+       69*   *	the specified RCS entry.  If we are looking for a volume or a
+       70*   *	specific device and we find either of them then we will have
+       71*   *	found a matching entry.
+       72**/
+       73 	rcse_ptr = arg_rcse_ptr;			/* Get pointer to RCS entry to match. */
+       74 	rcs_ptr = rcp_pointers_$com_seg ();
+       75 
+       76 /* Get list of devices attached to process. */
+       77 	call rcp_rcse_$info (attach_off, num_attach, assign_off, num_assign);
+       78 
+       79 	match_flag = "0"b;				/* Assume no matching attach entry. */
+       80 	trcse_off = attach_off;			/* Start with first attachment RCS entry. */
+       81 
+       82 	do while (trcse_off ^= "0"b);			/* Test all attachment RCS entries. */
+       83 	     trcse_ptr = ptr (rcs_ptr, trcse_off);
+       84 	     call MATCH_ATTACH;			/* See if this RCS entry matches. */
+       85 	     if match_flag				/* Did it match? */
+       86 	     then do;				/* Yes, return offset of entry that matched. */
+       87 		arg_trcse_off = trcse_off;
+       88 		return;
+       89 	     end;
+       90 	     trcse_off = trcse.user_off;		/* Get next attachment RCS entry. */
+       91 	end;
+       92 
+       93 	arg_trcse_off = "0"b;			/* No matching attachment. */
+       94 	return;
+       95 
+       96 device:	entry (arg_device_name, arg_trcse_off);
+       97 
+       98 /*	This entry is called to find a device that is assigned.  We are
+       99*   *	looking for a specific device name and will not bother matching any
+      100*   *	other device characteristics.  We do not care if the device is also
+      101*   *	attached.
+      102**/
+      103 	device_name = arg_device_name;		/* Initialize. */
+      104 	rcs_ptr = rcp_pointers_$com_seg ();
+      105 
+      106 /* Get list of devices assigned to process. */
+      107 	call rcp_rcse_$info (attach_off, num_attach, assign_off, num_assign);
+      108 
+      109 	trcse_off = assign_off;			/* Start with first device in the list. */
+      110 	do while (trcse_off ^= "0"b);			/* Test each device in assignment list. */
+      111 	     trcse_ptr = ptr (rcs_ptr, trcse_off);	/* Get pointer to device to test. */
+      112 	     if device_name = trcse.device_name		/* Is this the device we are looking for? */
+      113 	     then do;				/* Yes, return its RCS entry. */
+      114 		arg_trcse_off = trcse_off;
+      115 		return;
+      116 	     end;
+      117 	     trcse_off = trcse.user_off;		/* Get next device in assignment list. */
+      118 	end;
+      119 
+      120 	arg_trcse_off = "0"b;			/* We did not find the specified device. */
+      121 	return;
+      122 
+      123 unattached: entry (arg_rcse_ptr, arg_trcse_off);
+      124 
+      125 /*	This entry is called to find a device that is assigned to the calling
+      126*   *	process but is not attached.  The input RCS entry is used to specify
+      127*   *	the characteristics of the device that we are looking for.  We will
+      128*   *	generate a list of all assigned but unattached devices that match
+      129*   *	these characteristics.  From that list we will choose the best device.
+      130**/
+      131 	rcse_ptr = arg_rcse_ptr;			/* Initialize. */
+      132 	rcs_ptr = rcp_pointers_$com_seg ();
+      133 
+      134 /* Get list of devices assigned to process. */
+      135 	call rcp_rcse_$info (attach_off, num_attach, assign_off, num_assign);
+      136 
+      137 	num_match = 0;				/* No devices match yet. */
+      138 	trcse_off = assign_off;			/* Start with first device on the list. */
+      139 
+      140 	do while (trcse_off ^= "0"b);			/* Test all devices in assignment list. */
+      141 	     trcse_ptr = ptr (rcs_ptr, trcse_off);
+      142 	     call MATCH_ASSIGN;			/* See if this device matches. */
+      143 	     trcse_off = trcse.user_off;		/* Get next device in the assignment list. */
+      144 	end;
+      145 
+      146 	if num_match = 0				/* Did any devices match? */
+      147 	then do;					/* No. */
+      148 	     arg_trcse_off = "0"b;
+      149 	     return;
+      150 	end;
+      151 
+      152 /* Yes, select the best one. */
+      153 	call rcp_match_$select (addr (match_list), num_match, rcse.volume_name, trcse_ptr);
+      154 	arg_trcse_off = rel (trcse_ptr);		/* Return offset of selected device. */
+      155 	return;
+      156 
+      157 MATCH_ATTACH: procedure;
+      158 
+      159 /*	This procedure is called to see if the current attached device matches
+      160*   *	the device name or volume name of the device that is being attached.
+      161**/
+      162 	     if (rcse.flags.device) &			/* Are we looking for a specific device? */
+      163 	     (rcse.device_name = trcse.device_name)
+      164 	     then do;				/* Yes, and this is it. */
+      165 		match_flag = "1"b;			/* Tell caller that we found a match. */
+      166 		return;
+      167 	     end;
+      168 
+      169 	     if rcse.flags.volume			/* Are we looking for a volume? */
+      170 	     then if (rcse.volume_name ^= "scratch") &
+      171 		(rcse.volume_name = trcse.volume_name)
+      172 		then match_flag = "1"b;		/* Yes, a non scratch volume that matches. */
+      173 
+      174 	end MATCH_ATTACH;
+      175 
+      176 MATCH_ASSIGN: procedure;
+      177 
+      178 /*	This procedure is called to see if the current assigned device matches
+      179*   *	the requirements of the specified device.  Only devices that are not
+      180*   *	attached can match.
+      181**/
+      182 	     if rcse.dtypex ^= trcse.dtypex		/* No match if not same device type. */
+      183 	     then return;
+      184 
+      185 	     if trcse.state ^= 5			/* Is assignment complete? */
+      186 	     then return;				/* No, then no match. */
+      187 
+      188 	     if trcse.rcse_off ^= "0"b		/* Is device attached? */
+      189 	     then return;				/* Yes, no match. */
+      190 
+      191 /* See if device characteristics match. */
+      192 	     match_flag = rcp_match_$match (rcse_ptr, trcse_ptr);
+      193 	     if match_flag				/* Do they match? */
+      194 	     then do;				/* Yes. */
+      195 		num_match = num_match + 1;		/* Up count of devices that have matched. */
+      196 		match_list (num_match) = trcse_ptr;	/* Save pointer to this device in our list. */
+      197 	     end;
+      198 
+      199 	end MATCH_ASSIGN;
+      200 
+      201      end rcp_find_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.9  rcp_find_.pl1                     >spec>install>1111>rcp_find_.pl1
+64           1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 57 ref 153 153
+arg_device_name                        parameter       char                     packed unaligned dcl 30 ref 96 103
+arg_rcse_ptr                           parameter       pointer                  dcl 31 ref 66 73 123 131
+arg_trcse_off                          parameter       bit(18)                  packed unaligned dcl 32 set ref 66 87* 93* 96 114*
+                                                                                  120* 123 148* 154*
+assign_off                      000140 automatic       bit(18)                  packed unaligned dcl 39 set ref 77* 107* 109 135*
+                                                                                  138
+attach_off                      000141 automatic       bit(18)                  packed unaligned dcl 40 set ref 77* 80 107* 135*
+device                   35            based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 162
+device_name                            based           char(8)                  level 2 in structure "trcse" dcl 52 in procedure
+                                                                                  "rcp_find_" ref 112 162
+device_name                     000142 automatic       char(32)                 packed unaligned dcl 41 in procedure "rcp_find_" set
+                                                                                  ref 103* 112
+device_name                            based           char(8)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_find_" ref 162
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_find_" ref 182
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "trcse" dcl 52 in procedure
+                                                                                  "rcp_find_" ref 182
+flags                    35            based           structure                level 2 dcl 1-55
+lock_info                              based           structure                level 1 dcl 1-46
+match_flag                      000152 automatic       bit(1)                   packed unaligned dcl 42 set ref 79* 85 165* 169*
+                                                                                  192* 193
+match_list                      000100 automatic       pointer                  array dcl 37 set ref 153 153 196*
+num_assign                      000153 automatic       fixed bin(17,0)          dcl 43 set ref 77* 107* 135*
+num_attach                      000154 automatic       fixed bin(17,0)          dcl 44 set ref 77* 107* 135*
+num_match                       000155 automatic       fixed bin(17,0)          dcl 45 set ref 137* 146 153* 195* 195 196
+ptr                                                    builtin function         dcl 57 ref 83 111 141
+rcp_match_$match                000010 constant        entry                    external dcl 59 ref 192
+rcp_match_$select               000012 constant        entry                    external dcl 60 ref 153
+rcp_pointers_$com_seg           000014 constant        entry                    external dcl 61 ref 74 104 132
+rcp_rcse_$info                  000016 constant        entry                    external dcl 62 ref 77 107 135
+rcs_ptr                         000162 automatic       pointer                  dcl 1-23 set ref 74* 83 104* 111 132* 141
+rcse                                   based           structure                level 1 dcl 1-55
+rcse_off                 32            based           bit(18)                  level 2 dcl 52 ref 188
+rcse_ptr                        000164 automatic       pointer                  dcl 1-24 set ref 73* 131* 153 162 162 169 169 169
+                                                                                  182 192*
+rel                                                    builtin function         dcl 57 ref 154
+state                    24            based           fixed bin(17,0)          level 2 dcl 52 ref 185
+trcse                                  based           structure                level 1 dcl 52
+trcse_off                       000156 automatic       bit(18)                  packed unaligned dcl 46 set ref 80* 82 83 87 90*
+                                                                                  109* 110 111 114 117* 138* 140 141 143*
+trcse_ptr                       000160 automatic       pointer                  dcl 47 set ref 83* 90 111* 112 117 141* 143 153* 154
+                                                                                  162 169 182 185 188 192* 196
+user_off                 27            based           bit(18)                  level 2 dcl 52 ref 90 117 143
+volume                   35(04)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 169
+volume_name               2            based           char(32)                 level 2 in structure "trcse" dcl 52 in procedure
+                                                                                  "rcp_find_" ref 169
+volume_name               2            based           char(32)                 level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_find_" set ref 153* 169 169
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+based_rcp_id                           based           structure                level 1 dcl 1-26
+lock_info_ptr                          automatic       pointer                  dcl 1-22
+rcs                                    based           structure                level 1 dcl 1-30
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MATCH_ASSIGN                    000405 constant        entry                    internal dcl 176 ref 142
+MATCH_ATTACH                    000347 constant        entry                    internal dcl 157 ref 84
+attached                        000023 constant        entry                    external dcl 66
+device                          000121 constant        entry                    external dcl 96
+rcp_find_                       000011 constant        entry                    external dcl 13
+unattached                      000224 constant        entry                    external dcl 123
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       552         572     447         562
+Length       764     447        20         155     103           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_find_                           174 external procedure  is an external procedure.  
+MATCH_ATTACH                            internal procedure  shares stack frame of external procedure rcp_find_.  
+MATCH_ASSIGN                            internal procedure  shares stack frame of external procedure rcp_find_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_find_                000100 match_list                  rcp_find_
+                         000140 assign_off                  rcp_find_
+                         000141 attach_off                  rcp_find_
+                         000142 device_name                 rcp_find_
+                         000152 match_flag                  rcp_find_
+                         000153 num_assign                  rcp_find_
+                         000154 num_attach                  rcp_find_
+                         000155 num_match                   rcp_find_
+                         000156 trcse_off                   rcp_find_
+                         000160 trcse_ptr                   rcp_find_
+                         000162 rcs_ptr                     rcp_find_
+                         000164 rcse_ptr                    rcp_find_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+rcp_match_$match              rcp_match_$select             rcp_pointers_$com_seg         rcp_rcse_$info
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000010        66 000016        73 000030        74 000034        77 000042        79 000057        80 000060
+     82 000063        83 000066        84 000071        85 000072        87 000075        88 000102        90 000103
+     91 000106        93 000107        94 000114        96 000115       103 000134       104 000142       107 000151
+    109 000166       110 000171       111 000174       112 000177       114 000203       115 000210       117 000211
+    118 000213       120 000214       121 000221       123 000222       131 000231       132 000235       135 000244
+    137 000261       138 000262       140 000265       141 000270       142 000273       143 000274       144 000277
+    146 000300       148 000302       149 000307       153 000310       154 000337       155 000346       157 000347
+    162 000350       165 000363       166 000365       169 000366       174 000404       176 000405       182 000406
+    185 000414       188 000420       192 000423       193 000436       195 000441       196 000442       199 000446
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

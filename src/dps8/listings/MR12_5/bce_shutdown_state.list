@@ -1,0 +1,299 @@
+	COMPILATION LISTING OF SEGMENT bce_shutdown_state
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bce_shutdown_state: proc (P_ss_info_ptr);
+        9 
+       10 /* Fetch the shutdown state from the rpv. Keith Loepere, January 1984. */
+       11 
+       12 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       13 
+       14 dcl  P_ss_info_ptr		        ptr parameter;
+       15 dcl  active_fnc_err_	        entry options (variable);
+       16 dcl  active_function	        bit (1) aligned;	/* as opposed to command usage */
+       17 dcl  addr			        builtin;
+       18 dcl  af_return		        char (af_return_len) based (af_return_ptr) var; /* return for active function */
+       19 dcl  af_return_len		        fixed bin (21);
+       20 dcl  af_return_ptr		        ptr;
+       21 dcl  arg_count		        fixed bin;
+       22 dcl  character		        builtin;
+       23 dcl  code			        fixed bin (35);
+       24 dcl  com_err_		        entry options (variable);
+       25 dcl  cu_$af_return_arg_rel	        entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       26 dcl  error		        variable entry options (variable);
+       27 dcl  ioa_			        entry options (variable);
+       28 dcl  ltrim		        builtin;
+       29 dcl  me			        char (14) init ("shutdown_state") static options (constant); /* program name */
+       30 dcl  pvt$root_pvtx		        fixed bin external;
+       31 dcl  1 my_label		        aligned like label;
+       32 dcl  read_disk		        entry (fixed bin, fixed bin, ptr, fixed bin (35));
+       33 
+       34 	ss_info_ptr = P_ss_info_ptr;
+       35 	arg_list_ptr = ss_info.arg_list_ptr;
+       36 	call cu_$af_return_arg_rel (arg_count, af_return_ptr, af_return_len, code, arg_list_ptr);
+       37 	active_function = (code = 0);
+       38 	if active_function then error = active_fnc_err_;
+       39 	else error = com_err_;
+       40 	if arg_count ^= 0 then do;
+       41 	     call error (0, me, "Usage is: ^a", me);
+       42 	     return;
+       43 	end;
+       44 
+       45 	labelp = addr (my_label);
+       46 	call read_disk (pvt$root_pvtx, 0, labelp, code);
+       47 	if code ^= 0 then call error (code, me);
+       48 
+       49 	if active_function then af_return = ltrim (character (label.shutdown_state));
+       50 	else call ioa_ ("^d", label.shutdown_state);
+       51 	return;
+       52  /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+       52 
+       53  /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  2     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  2     6*     Add the subvolume info.
+  2     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  2    10*     dumper bit maps.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 
+  2    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  2    14 /* Note: fsout_vol clears pad fields before writing the label */
+  2    15 
+  2    16 dcl  labelp ptr;
+  2    17 
+  2    18 dcl 1 label based (labelp) aligned,
+  2    19 
+  2    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  2    21 
+  2    22     2 gcos (5*64) fixed bin,
+  2    23 
+  2    24 /* Now we have the Multics label */
+  2    25 
+  2    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  2    27     2 version fixed bin,				/* Version 1 */
+  2    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  2    29     2 pv_name char (32),				/* Physical volume name. */
+  2    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  2    31     2 pvid bit (36),				/* Unique ID of this pack */
+  2    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  2    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  2    34     2 time_registered fixed bin (71),			/* time imported to system */
+  2    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  2    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  2    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  2    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  2    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  2    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  2    41     2 flagpad bit (33) unal,
+  2    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  2    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  2    44     2 password bit (72),				/* not yet used */
+  2    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  2    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  2    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  2    48     2 pad1 (13) fixed bin,
+  2    49     2 time_mounted fixed bin (71),			/* time mounted */
+  2    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  2    51 
+  2    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  2    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  2    54* */
+  2    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  2    56     2 pad6 fixed bin,				
+  2    57 
+  2    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  2    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  2    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  2    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  2    62     2 pad1a (2) fixed bin,
+  2    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  2    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  2    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  2    66     2 pad2 (40) fixed bin,
+  2    67     2 root,
+  2    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  2    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  2    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  2    71       3 pad7 bit (1) aligned,				
+  2    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  2    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  2    74       3 esd_state fixed bin,				/* State of esd */
+  2    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  2    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  2    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  2    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  2    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  2    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  2    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  2    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  2    83     2 pad3 (52) fixed bin,
+  2    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  2    85     2 parts (47),
+  2    86       3 part char (4),				/* Name of partition */
+  2    87       3 frec fixed bin,				/* First record */
+  2    88       3 nrec fixed bin,				/* Number of records */
+  2    89       3 pad5 fixed bin,
+  2    90     2 pad4 (5*64) fixed bin;
+  2    91 
+  2    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  2    93 
+  2    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+       53 
+       54      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.3  bce_shutdown_state.pl1            >special_ldd>install>MR12.3-1114>bce_shutdown_state.pl1
+52           1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+53           2    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Multics                 500     000112 automatic       char(32)                 initial level 2 dcl 31 set ref 31*
+P_ss_info_ptr                          parameter       pointer                  dcl 14 ref 8 34
+active_fnc_err_                 000010 constant        entry                    external dcl 15 ref 38
+active_function                 000100 automatic       bit(1)                   dcl 16 set ref 37* 38 49
+addr                                                   builtin function         dcl 17 ref 45
+af_return                              based           varying char             dcl 18 set ref 49*
+af_return_len                   000101 automatic       fixed bin(21,0)          dcl 19 set ref 36* 49
+af_return_ptr                   000102 automatic       pointer                  dcl 20 set ref 36* 49
+arg_count                       000104 automatic       fixed bin(17,0)          dcl 21 set ref 36* 40
+arg_list_ptr             16            based           pointer                  level 2 dcl 1-15 set ref 35* 35 36*
+character                                              builtin function         dcl 22 ref 49
+code                            000105 automatic       fixed bin(35,0)          dcl 23 set ref 36* 37 46* 47 47*
+com_err_                        000012 constant        entry                    external dcl 24 ref 39
+cu_$af_return_arg_rel           000014 constant        entry                    external dcl 25 ref 36
+error                           000106 automatic       entry variable           dcl 26 set ref 38* 39* 41 47
+ioa_                            000016 constant        entry                    external dcl 27 ref 50
+label                                  based           structure                level 1 dcl 2-18
+labelp                          002114 automatic       pointer                  dcl 2-16 set ref 45* 46* 49 50
+ltrim                                                  builtin function         dcl 28 ref 49
+me                              000000 constant        char(14)                 initial packed unaligned dcl 29 set ref 41* 41* 47*
+my_label                        000112 automatic       structure                level 1 dcl 31 set ref 45
+pvt$root_pvtx                   000020 external static fixed bin(17,0)          dcl 30 set ref 46*
+read_disk                       000022 constant        entry                    external dcl 32 ref 46
+root                    700            based           structure                level 2 dcl 2-18
+shutdown_state          702            based           fixed bin(17,0)          level 3 dcl 2-18 set ref 49 50*
+ss_info                                based           structure                level 1 dcl 1-15
+ss_info_ptr                     002112 automatic       pointer                  dcl 1-14 set ref 34* 35 35 36
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 2-92
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+bce_shutdown_state              000031 constant        entry                    external dcl 8
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       356         402     260         366
+Length       616     260        24         200      76           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_shutdown_state                 1138 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_shutdown_state       000100 active_function             bce_shutdown_state
+                         000101 af_return_len               bce_shutdown_state
+                         000102 af_return_ptr               bce_shutdown_state
+                         000104 arg_count                   bce_shutdown_state
+                         000105 code                        bce_shutdown_state
+                         000106 error                       bce_shutdown_state
+                         000112 my_label                    bce_shutdown_state
+                         002112 ss_info_ptr                 bce_shutdown_state
+                         002114 labelp                      bce_shutdown_state
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ent_var_desc   call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+active_fnc_err_               com_err_                      cu_$af_return_arg_rel         ioa_
+read_disk
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$root_pvtx
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000026        31 000036        34 000041        35 000045        36 000047        37 000065        38 000070
+     39 000077        40 000104        41 000106        42 000137        45 000140        46 000142        47 000157
+     49 000175        50 000232        51 000252
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

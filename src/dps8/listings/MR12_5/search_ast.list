@@ -1,0 +1,996 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1112>search_ast.alm                                                                                                                                       
+ASSEMBLED ON:	11/11/89  0928.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************************
+                                     2  " *                                                    *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987           *
+                                     4  " *                                                    *
+                                     5  " * Copyright (c) 1986 by Massachusetts Institute of   *
+                                     6  " * Technology and Honeywell Information Systems, Inc. *
+                                     7  " *                                                    *
+                                     8  " * Copyright (c) 1972 by Massachusetts Institute of   *
+                                     9  " * Technology and Honeywell Information Systems, Inc. *
+                                    10  " *                                                    *
+                                    11  " ******************************************************
+                                    12  
+                                    13  "
+                                    14  "	search_ast.alm	-fast AST searcher
+                                    15  "	Jan. 19, 1976 by Bernard Greenberg
+                                    16  "	Modified December 1981 by J. Bongiovanni for new hash table
+                                    17  "	Modified May 1983 by E. N. Kittlitz for check entry.
+                                    18  "
+                                    19  """	search_ast entry
+                                    20  "	astep = search_ast (uid);
+                                    21  "
+                                    22  "	astep = null if UID not active.
+                                    23  "
+                                    24  "
+                                    25  """	check entry
+                                    26  "	astep = search_ast$check (uid, pvid, vtocx, code);
+                                    27  "
+                                    28  "	if astep ^= null, code is 0
+                                    29  "	if astep = null then
+                                    30  "		if code = 0, segment is just not active
+                                    31  "		else uid was matched by search, but pvid or vtocx of aste
+                                    32  "			did not match supplied pvid/vtocx.
+                                    33  
+    000000                          34  	name	search_ast
+                        000050      35  	entry	search_ast,check,hash_in,hash_out
+                                    36  
+    000000                          37  search_ast:			"astep = search_ast (uid);
+    000000  aa   000004 6210 00     38  	eax1	4
+    000001  0a   000004 7100 00     39  	tra	search_ast_join
+                                    40  
+    000002                          41  check:				"astep = search_ast (uid, pvid, vtocx, code);
+    000002  aa   000012 6210 00     42  	eax1	10
+    000003  aa  0 00010 4501 20     43  	stz	ap|8,*		zero code
+                                    44  
+    000004                          45  search_ast_join:
+    000004  aa  0 00002 2351 20     46  	lda	ap|2,*		get uid
+    000005  0a   000067 7000 00     47  	tsx0	search		look it up
+    000006  0a   000026 7100 00     48  	tra	search_ast_fails	not there
+    000007  aa   000004 1010 03     49  	cmpx1	=4,du		search_ast entry?
+    000010  0a   000024 6000 00     50  	tze	search_ast_succeeds sure enough
+    000011  aa  2 00004 2351 00     51  	lda	bp|aste.vtocx	double-check the aste
+    000012  aa   777777 3750 07     52  	ana	=o777777,dl	just vtocx...
+    000013  aa  0 00006 1151 20     53  	cmpa	ap|6,*		compare with desired vtocx
+    000014  0a   000031 6010 00     54  	tnz	search_ast_fails_check oh dear, fooled by scrambled uid
+    000015  aa  2 00004 2361 00     55  	ldq	bp|aste.pvtx_word	and now triple-check
+    000016  aa   000022 7720 00     56  	qrl	aste.pvtx_shift	ASTE PVTX in QL
+    000017  aa   000777 3760 07     57  	anq	aste.pvtx_mask,dl	nice and tidy
+    000020  aa   000034 4020 07     58  	mpy	pvte_size,dl	index into array
+    000021  4a  4 00012 2351 20     59  	lda	pvt$array+pvte.pvid-pvte_size,ql pvt is (1:n). get pvid
+    000022  aa  0 00004 1151 20     60  	cmpa	ap|4,*		compare with pvid supplied
+    000023  0a   000031 6010 00     61  	tnz	search_ast_fails_check tricky fellow
+                                    62  
+    000024                          63  search_ast_succeeds:
+    000024  aa  0 00000 2521 31     64  	spribp	ap|0,x1*		found astep
+    000025  aa  7 00044 7101 20     65  	short_return
+                                    66  
+    000026                          67  search_ast_fails:
+    000026  0a   000122 3520 20     68  	eppbp	null,*		not found
+    000027  aa  0 00000 2521 31     69  	spribp	ap|0,x1*		
+    000030  aa  7 00044 7101 20     70  	short_return
+                                    71  
+    000031                          72  search_ast_fails_check:
+    000031  4a  4 00014 2351 20     73  	lda	error_table_$vtoce_connection_fail
+    000032  aa  0 00010 7551 20     74  	sta	ap|8,*		return code
+    000033  0a   000122 3520 20     75  	eppbp	null,*		null return value
+    000034  aa  0 00000 2521 31     76  	spribp	ap|0,x1*
+    000035  4a  4 00016 7101 20     77  	tra	alm_syserr_caller$search_ast_double_uid " returns to our caller
+                                    78  
+                                    79  
+    000036                          80  hash_in:		"call search_ast$hash_in (astep), uid having been set.
+                                    81  
+    000036  aa  0 00002 3521 20     82  	eppbp	ap|2,*
+    000037  aa  2 00000 3521 20     83  	eppbp	bp|0,*		arg is ptr
+    000040  aa  2 00003 2351 00     84  	lda	bp|aste.uid
+    000041  0a   000067 7000 00     85  	tsx0	search		look it up
+    000042  0a   000044 7100 00     86  	tra	*+2		not found
+    000043  0a   000111 7100 00     87  	tra	err		found, this is wrong
+    000044  aa  5 00000 2221 13     88  	ldx2	lb|0,3		get current list head
+    000045  aa  5 00000 7425 13     89  	sarbp	lb|0,3		set new guy
+    000046  aa  2 00013 7421 00     90  	stx2	bp|aste.ht_fp	splice in
+    000047  aa  7 00044 7101 20     91  	short_return
+                                    92  
+                                    93  
+    000050                          94  hash_out:		"call search_ast$hash_out (astep), uid having been set
+                                    95  
+    000050  aa  0 00002 3521 20     96  	eppbp	ap|2,*
+    000051  aa  2 00000 3521 20     97  	eppbp	bp|0,*
+    000052  aa  2 00003 2351 00     98  	lda	bp|aste.uid
+    000053  0a   000067 7000 00     99  	tsx0	search
+    000054  0a   000111 7100 00    100  	tra	err		must be found
+    000055  aa  2 00013 2221 00    101  	ldx2	bp|aste.ht_fp	save next ptr
+    000056  aa   000000 6240 14    102  	eax4	0,4		were we first?
+    000057  0a   000064 6000 00    103  	tze	were_first
+    000060  aa  3 00013 7421 14    104  	stx2	bb|aste.ht_fp,4	thread last to next, not first
+    000061  aa   000000 6240 00    105  	eax4	0
+    000062  aa  2 00013 7441 00    106  	stx4	bp|aste.ht_fp	clear thread
+    000063  aa  7 00044 7101 20    107  	short_return
+                                   108  
+    000064                         109  were_first:
+    000064  aa  2 00013 7441 00    110  	stx4	bp|aste.ht_fp	clear thread
+    000065  aa  5 00000 7421 13    111  	stx2	lb|0,3		thread out
+    000066  aa  7 00044 7101 20    112  	short_return
+                                   113  
+                                   114  
+                                   115  "
+                                   116  "	search -internal procedure to do actual search
+                                   117  "	Called with uid in A, returns to call + 1 if not found
+                                   118  "	Returns to call + 2 if found, bp and x6 point to ASTE,
+                                   119  "	x4 is 0 if first, otherwise x4 -> previous. bb -> sst
+                                   120  "	lb -> AST hash table, x3 -> slot in table
+                                   121  
+    000067  4a  4 00020 3535 20    122  search:	eppbb	sst$
+    000070  4a  4 00022 3715 20    123  	epplb	sst$ast_ht_ptr
+    000071  aa  5 00000 3715 20    124  	epplb	lb|0,*		lb -> AST hash table
+    000072  aa   000000 6360 05    125  	eaq	0,al
+    000073  aa   000022 7720 00    126  	qrl	18
+    000074  4a  4 00024 3761 20    127  	anq	sst$ast_ht_uid_mask
+    000075  aa   000000 6230 06    128  	eax3	0,ql		get hash index in x3
+    000076  aa   000000 6240 00    129  	eax4	0		set first time sw
+                                   130  
+    000077  aa  5 00000 2261 13    131  	ldx6	lb|0,3		start at head
+    000100  aa   000000 6000 10    132  	tze	0,0		if 0, nothing in list
+    000101  aa  3 00003 1151 16    133  lp:	cmpa	bb|aste.uid,6	is this the one?
+    000102  0a   000107 6000 00    134  	tze	found		yes
+    000103  aa   000000 6240 16    135  	eax4	0,6		save prev ptr
+    000104  aa  3 00013 2261 16    136  	ldx6	bb|aste.ht_fp,6	move up
+    000105  0a   000101 6010 00    137  	tnz	lp		if stuff, loop
+    000106  aa   000000 7100 10    138  	tra	0,0		no stuff, not found
+    000107  aa  3 00000 3521 16    139  found:	eppbp	bb|0,6
+    000110  aa   000001 7100 10    140  	tra	1,0
+                                   141  
+    000111  aa  6 00000 2541 00    142  err:	call	alm_syserr_caller$search_ast_hash_error,(null_argl)
+    000112  0a   000124 3500 00
+    000113  4a  4 00010 3521 20
+    000114  aa  6 00040 7531 00
+    000115  aa  7 00036 6701 20
+    000116  aa  6 00000 1731 00
+    000117  aa  6 00040 0731 00
+    000120  0a   000111 7100 00    143  	tra	err
+                                   144  
+    000121  aa   000000 0110 03    145  	even
+    000122  aa   077777 000043     146  null:	its	-1,1
+    000123  aa   000001 000000 
+    000124  aa   000000 000000     147  null_argl:zero	0,0
+    000125  aa   000000 000000     148  	zero	0,0
+                                   149  
+                                   150  	include	aste
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE aste.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 01/14/85  1523.3 est Mon by convert_include_file,
+                                   1-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   1-8  
+                                   1-9  	"Made from >Pool>m>loe>incl>aste.incl.pl1,
+                                  1-10  	"   modified 01/08/85  1115.0 est Tue
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure aste
+                                  1-14  "
+                        000014    1-15  	equ	aste_size,12
+                                  1-16  
+                        000000    1-17  	equ	aste.fp,0			" UPPER
+                        000000    1-18  	equ	aste.bp,0			" LOWER
+                                  1-19  
+                        000001    1-20  	equ	aste.infl,1		" UPPER
+                        000001    1-21  	equ	aste.infp,1		" LOWER
+                                  1-22  
+                        000002    1-23  	equ	aste.strp,2		" UPPER
+                        000002    1-24  	equ	aste.par_astep,2		" LOWER
+                                  1-25  
+                        000003    1-26  	equ	aste.uid,3
+                                  1-27  
+                        000004    1-28  	equ	aste.msl_word,4
+                        000033    1-29  	equ	aste.msl_shift,27
+                        000777    1-30  	bool	aste.msl_mask,000777
+                        000004    1-31  	equ	aste.pvtx_word,4
+                        000022    1-32  	equ	aste.pvtx_shift,18
+                        000777    1-33  	bool	aste.pvtx_mask,000777
+                        000004    1-34  	equ	aste.vtocx,4		" LOWER
+                                  1-35  
+                        000005    1-36  	equ	aste.usedf_word,5
+                        400000    1-37  	bool	aste.usedf,400000		" DU
+                        000005    1-38  	equ	aste.init_word,5
+                        200000    1-39  	bool	aste.init,200000		" DU
+                        000005    1-40  	equ	aste.gtus_word,5
+                        100000    1-41  	bool	aste.gtus,100000		" DU
+                        000005    1-42  	equ	aste.gtms_word,5
+                        040000    1-43  	bool	aste.gtms,040000		" DU
+                        000005    1-44  	equ	aste.hc_word,5
+                        020000    1-45  	bool	aste.hc,020000		" DU
+                        000005    1-46  	equ	aste.hc_sdw_word,5
+                        010000    1-47  	bool	aste.hc_sdw,010000		" DU
+                        000005    1-48  	equ	aste.any_access_on_word,5
+                        004000    1-49  	bool	aste.any_access_on,004000	" DU
+                        000005    1-50  	equ	aste.write_access_on_word,5
+                        002000    1-51  	bool	aste.write_access_on,002000	" DU
+                        000005    1-52  	equ	aste.inhibit_cache_word,5
+                        001000    1-53  	bool	aste.inhibit_cache,001000	" DU
+                        000005    1-54  	equ	aste.explicit_deact_ok_word,5
+                        000400    1-55  	bool	aste.explicit_deact_ok,000400	" DU
+                        000005    1-56  	equ	aste.deact_error_word,5
+                        000200    1-57  	bool	aste.deact_error,000200	" DU
+                        000005    1-58  	equ	aste.hc_part_word,5
+                        000100    1-59  	bool	aste.hc_part,000100		" DU
+                        000005    1-60  	equ	aste.fm_damaged_word,5
+                        000040    1-61  	bool	aste.fm_damaged,000040	" DU
+                        000005    1-62  	equ	aste.multi_class_word,5
+                        000020    1-63  	bool	aste.multi_class,000020	" DU
+                        000005    1-64  	equ	aste.dius_word,5
+                        000002    1-65  	bool	aste.dius,000002		" DU
+                        000005    1-66  	equ	aste.nid_word,5
+                        000001    1-67  	bool	aste.nid,000001		" DU
+                        000005    1-68  	equ	aste.dmpr_pad_word,5
+                        400000    1-69  	bool	aste.dmpr_pad,400000	" DL
+                        000005    1-70  	equ	aste.ehs_word,5
+                        200000    1-71  	bool	aste.ehs,200000		" DL
+                        000005    1-72  	equ	aste.nqsw_word,5
+                        100000    1-73  	bool	aste.nqsw,100000		" DL
+                        000005    1-74  	equ	aste.dirsw_word,5
+                        040000    1-75  	bool	aste.dirsw,040000		" DL
+                        000005    1-76  	equ	aste.master_dir_word,5
+                        020000    1-77  	bool	aste.master_dir,020000	" DL
+                        000005    1-78  	equ	aste.volmap_seg_word,5
+                        010000    1-79  	bool	aste.volmap_seg,010000	" DL
+                        000005    1-80  	equ	aste.tqsw_word,5
+                        004000    1-81  	bool	aste.tqsw,004000		" DL
+                                  1-82  
+                        000006    1-83  	equ	aste.dtu,6
+                        000007    1-84  	equ	aste.dtm,7
+                                  1-85  
+                        000010    1-86  	equ	aste.quota,8		" UPPER
+                                  1-87  
+                        000011    1-88  	equ	aste.used,9		" UPPER
+                                  1-89  
+                        000012    1-90  	equ	aste.csl_word,10
+                        000033    1-91  	equ	aste.csl_shift,27
+                        000777    1-92  	bool	aste.csl_mask,000777
+                        000012    1-93  	equ	aste.fmchanged_word,10
+                        000400    1-94  	bool	aste.fmchanged,000400	" DU
+                        000012    1-95  	equ	aste.fms_word,10
+                        000200    1-96  	bool	aste.fms,000200		" DU
+                        000012    1-97  	equ	aste.npfs_word,10
+                        000100    1-98  	bool	aste.npfs,000100		" DU
+                        000012    1-99  	equ	aste.gtpd_word,10
+                        000040   1-100  	bool	aste.gtpd,000040		" DU
+                        000012   1-101  	equ	aste.dnzp_word,10
+                        000020   1-102  	bool	aste.dnzp,000020		" DU
+                        000012   1-103  	equ	aste.per_process_word,10
+                        000010   1-104  	bool	aste.per_process,000010	" DU
+                        000012   1-105  	equ	aste.ddnp_word,10
+                        000004   1-106  	bool	aste.ddnp,000004		" DU
+                        000012   1-107  	equ	aste.records_word,10
+                        000011   1-108  	equ	aste.records_shift,9
+                        000777   1-109  	bool	aste.records_mask,000777
+                        000012   1-110  	equ	aste.np_word,10
+                        000000   1-111  	equ	aste.np_shift,0
+                        000777   1-112  	bool	aste.np_mask,000777
+                                 1-113  
+                        000013   1-114  	equ	aste.ht_fp,11		" UPPER
+                        000013   1-115  	equ	aste.fmchanged1_word,11
+                        400000   1-116  	bool	aste.fmchanged1,400000	" DL
+                        000013   1-117  	equ	aste.damaged_word,11
+                        200000   1-118  	bool	aste.damaged,200000		" DL
+                        000013   1-119  	equ	aste.pack_ovfl_word,11
+                        100000   1-120  	bool	aste.pack_ovfl,100000	" DL
+                        000013   1-121  	equ	aste.synchronized_word,11
+                        040000   1-122  	bool	aste.synchronized,040000	" DL
+                        000013   1-123  	equ	aste.ptsi_word,11
+                        000006   1-124  	equ	aste.ptsi_shift,6
+                        000003   1-125  	bool	aste.ptsi_mask,000003
+                        000013   1-126  	equ	aste.marker_word,11
+                        000000   1-127  	equ	aste.marker_shift,0
+                        000077   1-128  	bool	aste.marker_mask,000077
+                                 1-129  
+                                 1-130  "
+                                 1-131  "	Structure aste_part
+                                 1-132  "
+                        000014   1-133  	equ	aste_part_size,12
+                                 1-134  
+                                 1-135  
+                        000000   1-136  	equ	aste_part.one,0
+                        000001   1-137  	equ	aste_part.two,1		" DOUBLE
+                                 1-138  
+                        000013   1-139  	equ	aste_part.three_word,11
+                        000000   1-140  	equ	aste_part.three_shift,0
+                        000377   1-141  	bool	aste_part.three_mask,000377
+                                 1-142  
+                                 1-143  "
+                                 1-144  "	Structure seg_aste
+                                 1-145  "
+                        000014   1-146  	equ	seg_aste_size,12
+                                 1-147  
+                                 1-148  
+                        000010   1-149  	equ	seg_aste.usage,8
+                                 1-150  
+                                 1-151       "END INCLUDE FILE aste.incl.alm
+                                   151  
+                                   152  	include	pvte
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE pvte.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 05/29/86  1617.9 mst Thu by convert_include_file,
+                                   2-7  	"   Version of 04/10/86  1622.3 mst Thu.
+                                   2-8  
+                                   2-9  	"Made from >dumps>old>dipper>svs5>incl>pvte.incl.pl1,
+                                  2-10  	"   modified 05/29/86  1617.8 mst Thu
+                                  2-11  
+                                  2-12  
+                                  2-13  " HISTORY COMMENTS:
+                                  2-14  "  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+                                  2-15  "     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+                                  2-16  "        Add the support for subvolumes
+                                  2-17  "  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+                                  2-18  "     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+                                  2-19  "        Add root_lv flag to mount RLVs that do not have hardcore partitions.
+                                  2-20  "  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+                                  2-21  "     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+                                  2-22  "        Added inconsistent_dbm bit for determining the status of volume
+                                  2-23  "        dumper bit maps.
+                                  2-24  "                                                      END HISTORY COMMENTS
+                                  2-25  
+                                  2-26  
+                                  2-27  "
+                                  2-28  "	Structure pvt_array
+                                  2-29  "
+                                  2-30  
+                                  2-31  "
+                                  2-32  "	Structure pvte
+                                  2-33  "
+                        000034    2-34  	equ	pvte_size,28
+                                  2-35  
+                                  2-36  
+                        000000    2-37  	equ	pvte.pvid,0
+                        000001    2-38  	equ	pvte.lvid,1
+                                  2-39  
+                        000002    2-40  	equ	pvte.dmpr_in_use_word,2
+                        400000    2-41  	bool	pvte.dmpr_in_use,400000	" DU
+                        000002    2-42  	equ	pvte.is_sv_word,2
+                        040000    2-43  	bool	pvte.is_sv,040000		" DU
+                        000002    2-44  	equ	pvte.root_lv_word,2
+                        020000    2-45  	bool	pvte.root_lv,020000		" DU
+                        000002    2-46  	equ	pvte.removable_pack_word,2
+                        010000    2-47  	bool	pvte.removable_pack,010000	" DU
+                        000002    2-48  	equ	pvte.inconsistent_dbm_word,2
+                        004000    2-49  	bool	pvte.inconsistent_dbm,004000	" DU
+                        000002    2-50  	equ	pvte.brother_pvtx_word,2
+                        000022    2-51  	equ	pvte.brother_pvtx_shift,18
+                        000777    2-52  	bool	pvte.brother_pvtx_mask,000777
+                        000002    2-53  	equ	pvte.skip_queue_count,2	" LOWER
+                                  2-54  
+                        000003    2-55  	equ	pvte.devname,3
+                                  2-56  
+                        000004    2-57  	equ	pvte.device_type_word,4
+                        000033    2-58  	equ	pvte.device_type_shift,27
+                        000777    2-59  	bool	pvte.device_type_mask,000777
+                        000004    2-60  	equ	pvte.logical_area_number_word,4
+                        000022    2-61  	equ	pvte.logical_area_number_shift,18
+                        000777    2-62  	bool	pvte.logical_area_number_mask,000777
+                        000004    2-63  	equ	pvte.used_word,4
+                        400000    2-64  	bool	pvte.used,400000		" DL
+                        000004    2-65  	equ	pvte.storage_system_word,4
+                        200000    2-66  	bool	pvte.storage_system,200000	" DL
+                        000004    2-67  	equ	pvte.permanent_word,4
+                        100000    2-68  	bool	pvte.permanent,100000	" DL
+                        000004    2-69  	equ	pvte.testing_word,4
+                        040000    2-70  	bool	pvte.testing,040000		" DL
+                        000004    2-71  	equ	pvte.being_mounted_word,4
+                        020000    2-72  	bool	pvte.being_mounted,020000	" DL
+                        000004    2-73  	equ	pvte.being_demounted_word,4
+                        010000    2-74  	bool	pvte.being_demounted,010000	" DL
+                        000004    2-75  	equ	pvte.check_read_incomplete_word,4
+                        004000    2-76  	bool	pvte.check_read_incomplete,004000 " DL
+                        000004    2-77  	equ	pvte.device_inoperative_word,4
+                        002000    2-78  	bool	pvte.device_inoperative,002000 " DL
+                        000004    2-79  	equ	pvte.rpv_word,4
+                        001000    2-80  	bool	pvte.rpv,001000		" DL
+                        000004    2-81  	equ	pvte.scav_check_address_word,4
+                        000400    2-82  	bool	pvte.scav_check_address,000400 " DL
+                        000004    2-83  	equ	pvte.deposit_to_volmap_word,4
+                        000200    2-84  	bool	pvte.deposit_to_volmap,000200	" DL
+                        000004    2-85  	equ	pvte.being_demounted2_word,4
+                        000100    2-86  	bool	pvte.being_demounted2,000100	" DL
+                        000004    2-87  	equ	pvte.pc_vacating_word,4
+                        000040    2-88  	bool	pvte.pc_vacating,000040	" DL
+                        000004    2-89  	equ	pvte.vacating_word,4
+                        000020    2-90  	bool	pvte.vacating,000020	" DL
+                        000004    2-91  	equ	pvte.hc_part_used_word,4
+                        000010    2-92  	bool	pvte.hc_part_used,000010	" DL
+                        000004    2-93  	equ	pvte.volmap_lock_notify_word,4
+                        000004    2-94  	bool	pvte.volmap_lock_notify,000004 " DL
+                        000004    2-95  	equ	pvte.volmap_idle_notify_word,4
+                        000002    2-96  	bool	pvte.volmap_idle_notify,000002 " DL
+                        000004    2-97  	equ	pvte.vtoc_map_lock_notify_word,4
+                        000001    2-98  	bool	pvte.vtoc_map_lock_notify,000001 " DL
+                                  2-99  
+                        000005   2-100  	equ	pvte.n_free_vtoce,5		" UPPER
+                        000005   2-101  	equ	pvte.vtoc_size,5		" LOWER
+                                 2-102  
+                        000006   2-103  	equ	pvte.dbmrp,6		" UPPER
+                                 2-104  
+                        000007   2-105  	equ	pvte.nleft,7		" UPPER
+                        000007   2-106  	equ	pvte.totrec,7		" LOWER
+                                 2-107  
+                        000010   2-108  	equ	pvte.dim_info,8
+                        000011   2-109  	equ	pvte.sv_num,9
+                        000012   2-110  	equ	pvte.num_of_svs,10
+                        000013   2-111  	equ	pvte.records_per_cyl,11
+                        000014   2-112  	equ	pvte.record_factor,12
+                        000015   2-113  	equ	pvte.sv_name,13
+                                 2-114  
+                        000016   2-115  	equ	pvte.curn_dmpr_vtocx,14	" UPPER
+                                 2-116  
+                        000017   2-117  	equ	pvte.n_vtoce,15		" LOWER
+                                 2-118  
+                        000020   2-119  	equ	pvte.baseadd,16		" UPPER
+                                 2-120  
+                        000022   2-121  	equ	pvte.volmap_seg_sdw,18	" DOUBLE
+                        000024   2-122  	equ	pvte.volmap_astep,20
+                                 2-123  
+                        000025   2-124  	equ	pvte.volmap_offset,21	" UPPER
+                        000025   2-125  	equ	pvte.vtoc_map_offset,21	" LOWER
+                                 2-126  
+                        000026   2-127  	equ	pvte.volmap_lock,22
+                        000027   2-128  	equ	pvte.vtoc_map_lock,23
+                        000030   2-129  	equ	pvte.volmap_stock_ptr,24
+                        000031   2-130  	equ	pvte.vtoc_map_stock_ptr,25
+                                 2-131  
+                        000032   2-132  	equ	pvte.volmap_async_state,26	" UPPER
+                        000032   2-133  	equ	pvte.volmap_async_page,26	" LOWER
+                                 2-134  
+                        000033   2-135  	equ	pvte.vol_trouble_count,27	" UPPER
+                        000033   2-136  	equ	pvte.scavenger_block_rel,27	" LOWER
+                                 2-137  
+                        000000   2-138  	equ	VOLMAP_ASYNC_IDLE,0		" MANIFEST
+                        000001   2-139  	equ	VOLMAP_ASYNC_READ,1		" MANIFEST
+                        000002   2-140  	equ	VOLMAP_ASYNC_WRITE,2	" MANIFEST
+                                 2-141  
+                                 2-142       "END INCLUDE FILE pvte.incl.alm
+                                   153  
+                                   154  	end
+ENTRY SEQUENCES
+     
+    000126  5a   000031 0000 00
+    000127  aa  7 00046 2721 20
+    000130  0a   000000 7100 00
+    000131  5a   000024 0000 00
+    000132  aa  7 00046 2721 20
+    000133  0a   000002 7100 00
+    000134  5a   000017 0000 00
+    000135  aa  7 00046 2721 20
+    000136  0a   000036 7100 00
+    000137  5a   000011 0000 00
+    000140  aa  7 00046 2721 20
+    000141  0a   000050 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000142  5a   000003 000000 
+    000143  5a   000046 600000 
+    000144  aa   000000 000000 
+    000145  55   000011 000002 
+    000146  5a   000002 400003 
+    000147  55   000006 000011 
+    000150  aa  012 163 145 141
+    000151  aa  162 143 150 137
+    000152  aa  141 163 164 000
+    000153  55   000017 000003 
+    000154  0a   000140 500000 
+    000155  55   000014 000003 
+    000156  aa  010 150 141 163         hash_out
+    000157  aa  150 137 157 165
+    000160  aa  164 000 000 000
+    000161  55   000024 000011 
+    000162  0a   000135 500000 
+    000163  55   000022 000003 
+    000164  aa  007 150 141 163         hash_in
+    000165  aa  150 137 151 156
+    000166  55   000031 000017 
+    000167  0a   000132 500000 
+    000170  55   000027 000003 
+    000171  aa  005 143 150 145         check
+    000172  aa  143 153 000 000
+    000173  55   000037 000024 
+    000174  0a   000127 500000 
+    000175  55   000034 000003 
+    000176  aa  012 163 145 141         search_ast
+    000177  aa  162 143 150 137
+    000200  aa  141 163 164 000
+    000201  55   000002 000031 
+    000202  6a   000000 400002 
+    000203  55   000042 000003 
+    000204  aa  014 163 171 155         symbol_table
+    000205  aa  142 157 154 137
+    000206  aa  164 141 142 154
+    000207  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000210  aa   000000 000015 
+    000211  aa   000000 000000 
+    000212  5a   000011 000000 
+    000213  aa   000000 000000 
+    000214  5a   000024 000000 
+    000215  aa   000000 000000 
+    000216  aa   000000 000000 
+    000217  5a   000017 000000 
+    000220  5a   000037 000000 
+    000221  5a   000031 000000 
+    000222  aa   000000 000000 
+    000223  aa   000000 000000 
+    000224  aa   000000 000000 
+    000225  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000226  aa  017 141 163 164         ast_ht_uid_mask
+    000227  aa  137 150 164 137
+    000230  aa  165 151 144 137
+    000231  aa  155 141 163 153
+    000232  aa  012 141 163 164         ast_ht_ptr
+    000233  aa  137 150 164 137
+    000234  aa  160 164 162 000
+    000235  aa  003 163 163 164         sst
+    000236  aa  025 163 145 141         search_ast_double_uid
+    000237  aa  162 143 150 137
+    000240  aa  141 163 164 137
+    000241  aa  144 157 165 142
+    000242  aa  154 145 137 165
+    000243  aa  151 144 000 000
+    000244  aa  025 166 164 157         vtoce_connection_fail
+    000245  aa  143 145 137 143
+    000246  aa  157 156 156 145
+    000247  aa  143 164 151 157
+    000250  aa  156 137 146 141
+    000251  aa  151 154 000 000
+    000252  aa  014 145 162 162         error_table_
+    000253  aa  157 162 137 164
+    000254  aa  141 142 154 145
+    000255  aa  137 000 000 000
+    000256  aa  005 141 162 162         array
+    000257  aa  141 171 000 000
+    000260  aa  003 160 166 164         pvt
+    000261  aa  025 163 145 141         search_ast_hash_error
+    000262  aa  162 143 150 137
+    000263  aa  141 163 164 137
+    000264  aa  150 141 163 150
+    000265  aa  137 145 162 162
+    000266  aa  157 162 000 000
+    000267  aa  021 141 154 155         alm_syserr_caller
+    000270  aa  137 163 171 163
+    000271  aa  145 162 162 137
+    000272  aa  143 141 154 154
+    000273  aa  145 162 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000274  aa   000004 000000 
+    000275  55   000073 000064 
+    000276  aa   000004 000000 
+    000277  55   000073 000070 
+    000300  aa   000003 000000 
+    000301  5a   000073 000000 
+    000302  aa   000004 000000 
+    000303  55   000125 000074 
+    000304  aa   000004 000000 
+    000305  55   000110 000102 
+    000306  aa   000004 000000 
+    000307  55   000116 000114 
+    000310  aa   000004 000000 
+    000311  55   000125 000117 
+    000312  aa   000001 000000 
+    000313  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000314  5a   000132 000000 
+    000315  5a   000134 000000 
+    000316  5a   000136 000000 
+    000317  5a   000140 000000 
+    000320  5a   000142 000000 
+    000321  5a   000144 777744 
+    000322  5a   000146 000000 
+    000323  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000142 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000026 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         alm_syserr_caller|search_ast_hash_error
+    000011  5a   000160 0000 00
+    000012  9a   777766 0000 46         pvt|array
+    000013  5a   000157 0000 06
+    000014  9a   777764 0000 46         error_table_|vtoce_connection_fail
+    000015  5a   000156 0000 00
+    000016  9a   777762 0000 46         alm_syserr_caller|search_ast_double_uid
+    000017  5a   000155 0000 00
+    000020  9a   777760 0000 46         sst|       
+    000021  5a   000154 0000 00
+    000022  9a   777756 0000 46         sst|ast_ht_ptr
+    000023  5a   000153 0000 00
+    000024  9a   777754 0000 46         sst|ast_ht_uid_mask
+    000025  5a   000152 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   244175 067534 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000201 
+    000020  aa   000000 000131 
+    000021  aa   000153 000145 
+    000022  aa   000172 000131 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000041 
+    000067  aa   175453 020270 
+    000070  aa   000000 117547 
+    000071  aa   177657 600000 
+    000072  aa   000113 000032 
+    000073  aa   133234 136212 
+    000074  aa   000000 113324 
+    000075  aa   322064 200000 
+    000076  aa   000122 000032 
+    000077  aa   164131 272662 
+    000100  aa   000000 116416 
+    000101  aa   727372 600000 
+    000102  aa   076163 160145          >spec>install>1112>search_ast.alm
+    000103  aa   143076 151156 
+    000104  aa   163164 141154 
+    000105  aa   154076 061061 
+    000106  aa   061062 076163 
+    000107  aa   145141 162143 
+    000110  aa   150137 141163 
+    000111  aa   164056 141154 
+    000112  aa   155040 040040 
+    000113  aa   076154 144144          >ldd>include>aste.incl.alm
+    000114  aa   076151 156143 
+    000115  aa   154165 144145 
+    000116  aa   076141 163164 
+    000117  aa   145056 151156 
+    000120  aa   143154 056141 
+    000121  aa   154155 040040 
+    000122  aa   076154 144144          >ldd>include>pvte.incl.alm
+    000123  aa   076151 156143 
+    000124  aa   154165 144145 
+    000125  aa   076160 166164 
+    000126  aa   145056 151156 
+    000127  aa   143154 056141 
+    000130  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                alm_syserr_caller        search_ast:    77,  142.
+                array                    search_ast:    59.
+        4000    aste.any_access_on       aste:          49.
+           5    aste.any_access_on_word  aste:          48.
+           0    aste.bp                  aste:          18.
+         777    aste.csl_mask            aste:          92.
+          33    aste.csl_shift           aste:          91.
+          12    aste.csl_word            aste:          90.
+      200000    aste.damaged             aste:         118.
+          13    aste.damaged_word        aste:         117.
+           4    aste.ddnp                aste:         106.
+          12    aste.ddnp_word           aste:         105.
+         200    aste.deact_error         aste:          57.
+           5    aste.deact_error_word    aste:          56.
+       40000    aste.dirsw               aste:          75.
+           5    aste.dirsw_word          aste:          74.
+           2    aste.dius                aste:          65.
+           5    aste.dius_word           aste:          64.
+      400000    aste.dmpr_pad            aste:          69.
+           5    aste.dmpr_pad_word       aste:          68.
+          20    aste.dnzp                aste:         102.
+          12    aste.dnzp_word           aste:         101.
+           7    aste.dtm                 aste:          84.
+           6    aste.dtu                 aste:          83.
+      200000    aste.ehs                 aste:          71.
+           5    aste.ehs_word            aste:          70.
+         400    aste.explicit_deact_ok   aste:          55.
+           5    aste.explicit_deact_ok_word    aste:          54.
+         400    aste.fmchanged           aste:          94.
+      400000    aste.fmchanged1          aste:         116.
+          13    aste.fmchanged1_word     aste:         115.
+          12    aste.fmchanged_word      aste:          93.
+         200    aste.fms                 aste:          96.
+          12    aste.fms_word            aste:          95.
+          40    aste.fm_damaged          aste:          61.
+           5    aste.fm_damaged_word     aste:          60.
+           0    aste.fp                  aste:          17.
+       40000    aste.gtms                aste:          43.
+           5    aste.gtms_word           aste:          42.
+          40    aste.gtpd                aste:         100.
+          12    aste.gtpd_word           aste:          99.
+      100000    aste.gtus                aste:          41.
+           5    aste.gtus_word           aste:          40.
+       20000    aste.hc                  aste:          45.
+         100    aste.hc_part             aste:          59.
+           5    aste.hc_part_word        aste:          58.
+       10000    aste.hc_sdw              aste:          47.
+           5    aste.hc_sdw_word         aste:          46.
+           5    aste.hc_word             aste:          44.
+          13    aste.ht_fp               search_ast:    90,  101,  104,  106,  110,  136,
+                                         aste:         114.
+           1    aste.infl                aste:          20.
+           1    aste.infp                aste:          21.
+        1000    aste.inhibit_cache       aste:          53.
+           5    aste.inhibit_cache_word  aste:          52.
+      200000    aste.init                aste:          39.
+           5    aste.init_word           aste:          38.
+          77    aste.marker_mask         aste:         128.
+           0    aste.marker_shift        aste:         127.
+          13    aste.marker_word         aste:         126.
+       20000    aste.master_dir          aste:          77.
+           5    aste.master_dir_word     aste:          76.
+         777    aste.msl_mask            aste:          30.
+          33    aste.msl_shift           aste:          29.
+           4    aste.msl_word            aste:          28.
+          20    aste.multi_class         aste:          63.
+           5    aste.multi_class_word    aste:          62.
+           1    aste.nid                 aste:          67.
+           5    aste.nid_word            aste:          66.
+         100    aste.npfs                aste:          98.
+          12    aste.npfs_word           aste:          97.
+         777    aste.np_mask             aste:         112.
+           0    aste.np_shift            aste:         111.
+          12    aste.np_word             aste:         110.
+      100000    aste.nqsw                aste:          73.
+           5    aste.nqsw_word           aste:          72.
+      100000    aste.pack_ovfl           aste:         120.
+          13    aste.pack_ovfl_word      aste:         119.
+           2    aste.par_astep           aste:          24.
+          10    aste.per_process         aste:         104.
+          12    aste.per_process_word    aste:         103.
+           3    aste.ptsi_mask           aste:         125.
+           6    aste.ptsi_shift          aste:         124.
+          13    aste.ptsi_word           aste:         123.
+         777    aste.pvtx_mask           search_ast:    57,
+                                         aste:          33.
+          22    aste.pvtx_shift          search_ast:    56,
+                                         aste:          32.
+           4    aste.pvtx_word           search_ast:    55,
+                                         aste:          31.
+          10    aste.quota               aste:          86.
+         777    aste.records_mask        aste:         109.
+          11    aste.records_shift       aste:         108.
+          12    aste.records_word        aste:         107.
+           2    aste.strp                aste:          23.
+       40000    aste.synchronized        aste:         122.
+          13    aste.synchronized_word   aste:         121.
+        4000    aste.tqsw                aste:          81.
+           5    aste.tqsw_word           aste:          80.
+           3    aste.uid                 search_ast:    84,   98,  133,
+                                         aste:          26.
+          11    aste.used                aste:          88.
+      400000    aste.usedf               aste:          37.
+           5    aste.usedf_word          aste:          36.
+       10000    aste.volmap_seg          aste:          79.
+           5    aste.volmap_seg_word     aste:          78.
+           4    aste.vtocx               search_ast:    51,
+                                         aste:          34.
+        2000    aste.write_access_on     aste:          51.
+           5    aste.write_access_on_word      aste:          50.
+           0    aste_part.one            aste:         136.
+         377    aste_part.three_mask     aste:         141.
+           0    aste_part.three_shift    aste:         140.
+          13    aste_part.three_word     aste:         139.
+           1    aste_part.two            aste:         137.
+          14    aste_part_size           aste:         133.
+          14    aste_size                aste:          15.
+                ast_ht_ptr               search_ast:   123.
+                ast_ht_uid_mask          search_ast:   127.
+           2    check                    search_ast:    35,   41.
+         111    err                      search_ast:    87,  100,  142,  143.
+                error_table_             search_ast:    73.
+         107    found                    search_ast:   134,  139.
+          36    hash_in                  search_ast:    35,   80.
+          50    hash_out                 search_ast:    35,   94.
+         101    lp                       search_ast:   133,  137.
+         122    null                     search_ast:    68,   75,  146.
+         124    null_argl                search_ast:   142,  147.
+                pvt                      search_ast:    59.
+          20    pvte.baseadd             pvte:         119.
+       10000    pvte.being_demounted     pvte:          74.
+         100    pvte.being_demounted2    pvte:          86.
+           4    pvte.being_demounted2_word     pvte:          85.
+           4    pvte.being_demounted_word      pvte:          73.
+       20000    pvte.being_mounted       pvte:          72.
+           4    pvte.being_mounted_word  pvte:          71.
+         777    pvte.brother_pvtx_mask   pvte:          52.
+          22    pvte.brother_pvtx_shift  pvte:          51.
+           2    pvte.brother_pvtx_word   pvte:          50.
+        4000    pvte.check_read_incomplete     pvte:          76.
+           4    pvte.check_read_incomplete_word      pvte:          75.
+          16    pvte.curn_dmpr_vtocx     pvte:         115.
+           6    pvte.dbmrp               pvte:         103.
+         200    pvte.deposit_to_volmap   pvte:          84.
+           4    pvte.deposit_to_volmap_word    pvte:          83.
+        2000    pvte.device_inoperative  pvte:          78.
+           4    pvte.device_inoperative_word   pvte:          77.
+         777    pvte.device_type_mask    pvte:          59.
+          33    pvte.device_type_shift   pvte:          58.
+           4    pvte.device_type_word    pvte:          57.
+           3    pvte.devname             pvte:          55.
+          10    pvte.dim_info            pvte:         108.
+      400000    pvte.dmpr_in_use         pvte:          41.
+           2    pvte.dmpr_in_use_word    pvte:          40.
+          10    pvte.hc_part_used        pvte:          92.
+           4    pvte.hc_part_used_word   pvte:          91.
+        4000    pvte.inconsistent_dbm    pvte:          49.
+           2    pvte.inconsistent_dbm_word     pvte:          48.
+       40000    pvte.is_sv               pvte:          43.
+           2    pvte.is_sv_word          pvte:          42.
+         777    pvte.logical_area_number_mask  pvte:          62.
+          22    pvte.logical_area_number_shift       pvte:          61.
+           4    pvte.logical_area_number_word  pvte:          60.
+           1    pvte.lvid                pvte:          38.
+           7    pvte.nleft               pvte:         105.
+          12    pvte.num_of_svs          pvte:         110.
+           5    pvte.n_free_vtoce        pvte:         100.
+          17    pvte.n_vtoce             pvte:         117.
+          40    pvte.pc_vacating         pvte:          88.
+           4    pvte.pc_vacating_word    pvte:          87.
+      100000    pvte.permanent           pvte:          68.
+           4    pvte.permanent_word      pvte:          67.
+           0    pvte.pvid                search_ast:    59,
+                                         pvte:          37.
+          13    pvte.records_per_cyl     pvte:         111.
+          14    pvte.record_factor       pvte:         112.
+       10000    pvte.removable_pack      pvte:          47.
+           2    pvte.removable_pack_word       pvte:          46.
+       20000    pvte.root_lv             pvte:          45.
+           2    pvte.root_lv_word        pvte:          44.
+        1000    pvte.rpv                 pvte:          80.
+           4    pvte.rpv_word            pvte:          79.
+          33    pvte.scavenger_block_rel       pvte:         136.
+         400    pvte.scav_check_address  pvte:          82.
+           4    pvte.scav_check_address_word   pvte:          81.
+           2    pvte.skip_queue_count    pvte:          53.
+      200000    pvte.storage_system      pvte:          66.
+           4    pvte.storage_system_word       pvte:          65.
+          15    pvte.sv_name             pvte:         113.
+          11    pvte.sv_num              pvte:         109.
+       40000    pvte.testing             pvte:          70.
+           4    pvte.testing_word        pvte:          69.
+           7    pvte.totrec              pvte:         106.
+      400000    pvte.used                pvte:          64.
+           4    pvte.used_word           pvte:          63.
+          20    pvte.vacating            pvte:          90.
+           4    pvte.vacating_word       pvte:          89.
+          24    pvte.volmap_astep        pvte:         122.
+          32    pvte.volmap_async_page   pvte:         133.
+          32    pvte.volmap_async_state  pvte:         132.
+           2    pvte.volmap_idle_notify  pvte:          96.
+           4    pvte.volmap_idle_notify_word   pvte:          95.
+          26    pvte.volmap_lock         pvte:         127.
+           4    pvte.volmap_lock_notify  pvte:          94.
+           4    pvte.volmap_lock_notify_word   pvte:          93.
+          25    pvte.volmap_offset       pvte:         124.
+          22    pvte.volmap_seg_sdw      pvte:         121.
+          30    pvte.volmap_stock_ptr    pvte:         129.
+          33    pvte.vol_trouble_count   pvte:         135.
+          27    pvte.vtoc_map_lock       pvte:         128.
+           1    pvte.vtoc_map_lock_notify      pvte:          98.
+           4    pvte.vtoc_map_lock_notify_word       pvte:          97.
+          25    pvte.vtoc_map_offset     pvte:         125.
+          31    pvte.vtoc_map_stock_ptr  pvte:         130.
+           5    pvte.vtoc_size           pvte:         101.
+          34    pvte_size                search_ast:    58,   59,
+                                         pvte:          34.
+          67    search                   search_ast:    47,   85,   99,  122.
+           0    search_ast               search_ast:    35,   37.
+                search_ast_double_uid    search_ast:    77.
+          26    search_ast_fails         search_ast:    48,   67.
+          31    search_ast_fails_check   search_ast:    54,   61,   72.
+                search_ast_hash_error    search_ast:   142.
+           4    search_ast_join          search_ast:    39,   45.
+          24    search_ast_succeeds      search_ast:    50,   63.
+          10    seg_aste.usage           aste:         149.
+          14    seg_aste_size            aste:         146.
+                sst                      search_ast:   122,  123,  127.
+           0    VOLMAP_ASYNC_IDLE        pvte:         138.
+           1    VOLMAP_ASYNC_READ        pvte:         139.
+           2    VOLMAP_ASYNC_WRITE       pvte:         140.
+                vtoce_connection_fail    search_ast:    73.
+          64    were_first               search_ast:   103,  109.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

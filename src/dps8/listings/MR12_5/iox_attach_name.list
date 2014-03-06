@@ -1,0 +1,353 @@
+	COMPILATION LISTING OF SEGMENT iox_attach_name
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ******************************************************
+        2*        *                                                    *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987           *
+        4*        *                                                    *
+        5*        * Copyright (c) 1987 by Massachusetts Institute of   *
+        6*        * Technology and Honeywell Information Systems, Inc. *
+        7*        *                                                    *
+        8*        * Copyright (c) 1972 by Massachusetts Institute of   *
+        9*        * Technology and Honeywell Information Systems, Inc. *
+       10*        *                                                    *
+       11*        ****************************************************** */
+       12 
+       13 /* This is the attachment module for iox_.
+       14*
+       15*   Last Modified: (Date and Reason)
+       16*   Aug 9, 1977 by S. Webber for quote processing
+       17*   Modified 11/82 by S. Krupp to do the following:  move code that
+       18*     parses attach descriptions to an external subroutine, to make
+       19*     way for the new iox_$attach_loud entry, and to move code that
+       20*     handles entry point names in attach module names from the
+       21*     io_call command to here.
+       22**/
+       23 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       24 iox_attach_name:
+       25      proc();
+       26 
+       27           return;					/* Not a legal entry. */
+       28 
+       29 /* Parameters. */
+       30 
+       31 dcl  input_descrip char (*);
+       32 dcl  iocb_ptr ptr;
+       33 dcl  ref_ptr ptr;
+       34 dcl  ioname char (*);
+       35 dcl  ret_code fixed bin (35);
+       36 
+       37 
+       38 /* Automatic. */
+       39 
+       40 dcl  attach_ent char(32);
+       41 dcl  caller_ptr ptr;
+       42 dcl  code fixed bin (35);
+       43 dcl  descrip char (length (input_descrip));
+       44 dcl  dir char (168);
+       45 dcl  ent char (32);
+       46 dcl  entry_var entry (ptr, (*) char (*) var, bit (1) aligned, fixed bin (35)) variable;
+       47 dcl  i fixed bin;
+       48 dcl  loud_sw bit(1) aligned;
+       49 dcl  max_option_len fixed bin;
+       50 dcl  n_options fixed bin;
+       51 dcl  p ptr;
+       52 dcl  pname char(length(input_descrip));
+       53 dcl  rem_descrip char (length (input_descrip)) var;
+       54 
+       55 /* Procedures. */
+       56 
+       57 dcl  expand_pathname_ entry (char (*), char (*), char (*), fixed bin (35));
+       58 dcl  iox_find_iocb$find_iocb ext entry (char (*), ptr, fixed bin(35));
+       59 dcl  iox_get_options entry (char (*), (*) char (*) var, fixed bin (35));
+       60 dcl  hcs_$initiate_count ext entry (char (*), char (*), char (*), fixed bin, fixed bin, ptr) returns (fixed bin (35));
+       61 dcl  hcs_$make_entry ext entry (ptr, char (*), char (*), entry, fixed bin (35));
+       62 dcl  iox_measure_options entry (char (*), fixed bin, fixed bin, fixed bin (35));
+       63 dcl  term_$single_refname ext entry (char (*) aligned) returns (fixed bin (35));
+       64 
+       65 /* Static */
+       66 
+       67 dcl  error_table_$noarg fixed bin (35) ext;
+       68 
+       69 /* Built-ins. */
+       70 
+       71 dcl  (index, length, null, reverse, rtrim, search, substr) builtin;
+       72 
+       73 /* End of declarations. */
+       74 
+       75 /* Beginning of entry point ..... iox_$attach_name(ioname,iocb_ptr,descrip,ref_ptr) ..... */
+       76 
+       77 attach_name:
+       78      entry (ioname, iocb_ptr, input_descrip, ref_ptr, ret_code);
+       79 
+       80 	caller_ptr = ref_ptr;
+       81 	loud_sw = "0"b;
+       82 	go to FIND_IO;
+       83 
+       84 /* Beginning of entry point ..... iox_$attach_ioname(ioname,iocb_ptr,descrip) ..... */
+       85 
+       86 attach_ioname:
+       87      entry (ioname, iocb_ptr, input_descrip, ret_code);
+       88 
+       89 	caller_ptr = null ();
+       90 	loud_sw = "0"b;
+       91 
+       92 FIND_IO:
+       93 	call iox_find_iocb$find_iocb (ioname, iocb_ptr, code);
+       94 	if code ^= 0 then goto ATTACH_RETURN;
+       95 	go to ATTACH;
+       96 
+       97 /* Beginning of entry point ..... iox_$attach_ptr(iocb_ptr,descrip,ref_ptr) ..... */
+       98 
+       99 attach_ptr:
+      100      entry (iocb_ptr, input_descrip, ref_ptr, ret_code);
+      101 
+      102 	caller_ptr = ref_ptr;
+      103 	loud_sw = "0"b;
+      104 	go to ATTACH;
+      105 
+      106 /* Beginning of entry point ..... iox_$attach_iocb(iocb_ptr,descrip) ..... */
+      107 
+      108 attach_iocb:
+      109      entry (iocb_ptr, input_descrip, ret_code);
+      110 
+      111 	caller_ptr = null ();
+      112 	loud_sw = "0"b;
+      113 	go to ATTACH;
+      114 
+      115 /* Beginning of entry point ..... iox_$attach_loud(iocb_ptr, descrip, ref_ptr, code) ..... */
+      116 
+      117 attach_loud:
+      118      entry (iocb_ptr, input_descrip, ref_ptr, ret_code);
+      119 
+      120           caller_ptr = ref_ptr;
+      121 	loud_sw = "1"b;
+      122 
+      123 /* Extract the first token in the description string, which is the Module name. */
+      124 
+      125 ATTACH:
+      126           descrip = input_descrip;
+      127 
+      128 	i = index (descrip, " ") - 1;
+      129 	if i < 0 then i = length (descrip);
+      130 	if i = 0 then do;
+      131 	     code = error_table_$noarg;
+      132 	     goto ATTACH_RETURN;
+      133 	     end;
+      134 
+      135 /* If a pathname is given, initiate the specified DIM. */
+      136 
+      137           pname = substr(descrip, 1, i);
+      138 	rem_descrip = substr(descrip, i + 1);
+      139 
+      140 	attach_ent, dir, ent = "";
+      141 
+      142 	i = search(reverse(pname), "<>$");		/* Look for special chars. */
+      143 
+      144 	if i = 0
+      145 	then ent = pname;				/* The simplist case. */
+      146 	else do;					/* Must break description into components. */
+      147 	     i = length(pname) - i + 1;
+      148 	     if substr(pname, i, 1) = "$"		/* An entry was specified, use it. */
+      149 	     then do;				/* Save entry name for later. */
+      150 	          if i < length(pname)
+      151 		then attach_ent = substr(pname, i + 1);
+      152 		i = i - 1;
+      153 	     end;
+      154 	     else i = length(pname);			/* No entry specified by user. */
+      155 	     pname = substr(pname, 1, i);
+      156 	     if search (substr (descrip, 1, i), "<>") ^= 0
+      157                then do;				/* must be pathname */
+      158 	          call expand_pathname_ (pname, dir, ent, code);
+      159 	          if code ^= 0 then goto ATTACH_RETURN;
+      160 	          code = term_$single_refname ((ent));	/* To avoid refname problems. */
+      161 	          code = hcs_$initiate_count (dir, ent, ent, 0, 1, p);
+      162 	          if p = null () then goto ATTACH_RETURN;
+      163 	          caller_ptr = null ();
+      164 	     end;
+      165 	     else ent = pname;
+      166 	end;
+      167 
+      168 	if attach_ent = ""
+      169 	then attach_ent = rtrim(ent) || "attach";
+      170 
+      171 	call hcs_$make_entry (caller_ptr, ent, attach_ent, entry_var, code);
+      172 	if code ^= 0 then goto ATTACH_RETURN;
+      173 
+      174 /* Now scan the remainder of the description string, counting tokens (tn) and
+      175*   remembering the longest length (m). */
+      176 
+      177 	call iox_measure_options ((rem_descrip), n_options, max_option_len, code);
+      178 	if code ^= 0 then goto ATTACH_RETURN;
+      179 
+      180 	begin;
+      181 
+      182 dcl  option_array (n_options) char (max_option_len) var;
+      183 
+      184 	     call iox_get_options ((rem_descrip), option_array, code);
+      185 	     if code ^= 0 then goto ATTACH_RETURN;
+      186 
+      187 /* Finally, call the Module to actually perform the attach. */
+      188 
+      189 	     call entry_var (iocb_ptr, option_array, loud_sw, code);
+      190 	end;
+      191 
+      192 ATTACH_RETURN:
+      193 	ret_code = code;
+      194 
+      195      end iox_attach_name;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.9  iox_attach_name.pl1               >spec>install>1111>iox_attach_name.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+attach_ent                      000100 automatic       char(32)                 packed unaligned dcl 40 set ref 140* 150* 168 168*
+                                                                                  171*
+caller_ptr                      000110 automatic       pointer                  dcl 41 set ref 80* 89* 102* 111* 120* 163* 171*
+code                            000112 automatic       fixed bin(35,0)          dcl 42 set ref 92* 94 131* 158* 159 160* 161* 171*
+                                                                                  172 177* 178 184* 185 189* 192
+descrip                         000113 automatic       char                     packed unaligned dcl 43 set ref 125* 128 129 137 138
+                                                                                  156
+dir                             000113 automatic       char(168)                packed unaligned dcl 44 set ref 140* 158* 161*
+ent                             000165 automatic       char(32)                 packed unaligned dcl 45 set ref 140* 144* 158* 160
+                                                                                  161* 161* 165* 168 171*
+entry_var                       000176 automatic       entry variable           dcl 46 set ref 171* 189
+error_table_$noarg              000026 external static fixed bin(35,0)          dcl 67 ref 131
+expand_pathname_                000010 constant        entry                    external dcl 57 ref 158
+hcs_$initiate_count             000016 constant        entry                    external dcl 60 ref 161
+hcs_$make_entry                 000020 constant        entry                    external dcl 61 ref 171
+i                               000202 automatic       fixed bin(17,0)          dcl 47 set ref 128* 129 129* 130 137 138 142* 144
+                                                                                  147* 147 148 150 150 152* 152 154* 155 156
+index                                                  builtin function         dcl 71 ref 128
+input_descrip                          parameter       char                     packed unaligned dcl 31 ref 43 52 53 77 86 99 108
+                                                                                  117 125
+iocb_ptr                               parameter       pointer                  dcl 32 set ref 77 86 92* 99 108 117 189*
+ioname                                 parameter       char                     packed unaligned dcl 34 set ref 77 86 92*
+iox_find_iocb$find_iocb         000012 constant        entry                    external dcl 58 ref 92
+iox_get_options                 000014 constant        entry                    external dcl 59 ref 184
+iox_measure_options             000022 constant        entry                    external dcl 62 ref 177
+length                                                 builtin function         dcl 71 ref 43 52 53 129 147 150 154
+loud_sw                         000203 automatic       bit(1)                   dcl 48 set ref 81* 90* 103* 112* 121* 189*
+max_option_len                  000204 automatic       fixed bin(17,0)          dcl 49 set ref 177* 182
+n_options                       000205 automatic       fixed bin(17,0)          dcl 50 set ref 177* 182
+null                                                   builtin function         dcl 71 ref 89 111 162 163
+option_array                    000100 automatic       varying char             array dcl 182 set ref 184* 189*
+p                               000206 automatic       pointer                  dcl 51 set ref 161* 162
+pname                           000210 automatic       char                     packed unaligned dcl 52 set ref 137* 142 144 147 148
+                                                                                  150 150 154 155* 155 158* 165
+ref_ptr                                parameter       pointer                  dcl 33 ref 77 80 99 102 117 120
+rem_descrip                     000210 automatic       varying char             dcl 53 set ref 138* 177 184
+ret_code                               parameter       fixed bin(35,0)          dcl 35 set ref 77 86 99 108 117 192*
+reverse                                                builtin function         dcl 71 ref 142
+rtrim                                                  builtin function         dcl 71 ref 168
+search                                                 builtin function         dcl 71 ref 142 156
+substr                                                 builtin function         dcl 71 ref 137 138 148 150 155 156
+term_$single_refname            000024 constant        entry                    external dcl 63 ref 160
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ATTACH                          000340 constant        label                    dcl 125 ref 95 104 113
+ATTACH_RETURN                   001113 constant        label                    dcl 192 ref 94 132 159 162 172 178 185
+FIND_IO                         000175 constant        label                    dcl 92 ref 82
+attach_iocb                     000263 constant        entry                    external dcl 108
+attach_ioname                   000145 constant        entry                    external dcl 86
+attach_loud                     000311 constant        entry                    external dcl 117
+attach_name                     000104 constant        entry                    external dcl 77
+attach_ptr                      000230 constant        entry                    external dcl 99
+iox_attach_name                 000070 constant        entry                    external dcl 24
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1706        1736    1517        1716
+Length      2130    1517        30         155     166           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+iox_attach_name                     228 external procedure  is an external procedure.  
+begin block on line 180             116 begin block         uses auto adjustable storage.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 180  000100 option_array                begin block on line 180
+iox_attach_name          000100 attach_ent                  iox_attach_name
+                         000110 caller_ptr                  iox_attach_name
+                         000112 code                        iox_attach_name
+                         000113 descrip                     iox_attach_name
+                         000113 dir                         iox_attach_name
+                         000165 ent                         iox_attach_name
+                         000176 entry_var                   iox_attach_name
+                         000202 i                           iox_attach_name
+                         000203 loud_sw                     iox_attach_name
+                         000204 max_option_len              iox_attach_name
+                         000205 n_options                   iox_attach_name
+                         000206 p                           iox_attach_name
+                         000210 pname                       iox_attach_name
+                         000210 rem_descrip                 iox_attach_name
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     enter_begin_block   leave_begin_block   call_ent_var_desc   call_ext_out_desc   return_mac
+tra_ext_1           alloc_auto_adj      shorten_stack       ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+expand_pathname_              hcs_$initiate_count           hcs_$make_entry               iox_find_iocb$find_iocb
+iox_get_options               iox_measure_options           term_$single_refname
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$noarg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     43 000023        52 000035        53 000047       158 000062        24 000067        27 000076        77 000077
+     80 000133        81 000136        82 000137        86 000140        89 000172        90 000174        92 000175
+     94 000220        95 000222        99 000223       102 000252       103 000255       104 000256       108 000257
+    111 000303       112 000305       113 000306       117 000307       120 000333       121 000336       125 000340
+    128 000352       129 000362       130 000365       131 000366       132 000371       137 000372       138 000377
+    140 000412       142 000423       144 000435       147 000442       148 000446       150 000452       152 000462
+    153 000464       154 000465       155 000467       156 000473       158 000505       159 000532       160 000534
+    161 000554       162 000615       163 000621       164 000623       165 000624       168 000627       171 000661
+    172 000712       177 000714       178 000751       180 000754       182 000757       184 000776       189 001010
+    184 001022       185 001055       189 001064       190 001112       192 001113       195 001115
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

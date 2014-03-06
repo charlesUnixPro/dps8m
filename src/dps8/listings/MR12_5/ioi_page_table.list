@@ -1,0 +1,937 @@
+	COMPILATION LISTING OF SEGMENT ioi_page_table
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1014.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       10 
+       11 ioi_page_table:
+       12      proc;
+       13 
+       14 /* I/O page table manipulation */
+       15 /* Written April 1983 by Chris Jones for IOI rewrite */
+       16 /* Modified 1984-10 by Chris Jones to correctly handle big page tables */
+       17 /* Modified 1984-10-25 BIM to wire additional pages. */
+       18 
+       19 
+       20 /****^  HISTORY COMMENTS:
+       21*  1) change(86-09-05,Farley), approve(86-07-18,MCR7439),
+       22*     audit(86-09-24,Fawcett), install(86-10-20,MR12.0-1189):
+       23*     Changed to execute in the BCE environment.
+       24*  2) change(88-04-28,GDixon), approve(88-08-08,MCR7964),
+       25*     audit(88-08-01,Lippard), install(88-08-16,MR12.2-1085):
+       26*      A) Correct error in function $ptx_to_ptp which caused a return
+       27*         statement with no argument to be executed. (hardcore 856, phx19472)
+       28*                                                   END HISTORY COMMENTS */
+       29 
+       30 
+       31 /* This program manages the io_page_table_seg.  Said segment consists of a 256 word header followed by 252 page tables of
+       32*   64 words each (i.e. each such page table can describe a segment which is up to 64 pages long).  Page tables are
+       33*   constrained by hardware to start on a 0 mod 64 word boundary.  If it is necessary to describe a segment larger than 64
+       34*   pages, four consecutive page tables are combined to become a 256 word page table (enough for any conceivable
+       35*   application).  Although hardware will allow such a page table to reside on a 0 mod 64 word boundary, we enforce a 0
+       36*   mod 256 word boundary to free us from complications of page tables crossing page boundaries.  The page table segment
+       37*   is constrained to be no larger than 16 pages, it is abs_wired, and is initialized to be one page long (It grows as
+       38*   necessary). Except at BCE it is only 1 fixed page.
+       39*
+       40*   Entries are provided to get a page table of a certain size, to put it back when done, and to fill it in to describe a
+       41*   given segment.  Getting and putting are done under a lock, filling is not. */
+       42 
+       43 dcl	p_astep		   ptr parameter;		/* (I) pointer to the ASTE of a seg for which we fill a pt */
+       44 dcl	p_code		   fixed bin (35) parameter;	/* (O) status code */
+       45 dcl	p_ptx		   fixed bin parameter;	/* (I/O) pointer to a page table */
+       46 dcl	p_size		   fixed bin (19) parameter;	/* (I) size of segment page table is to describe */
+       47 
+       48 dcl	code		   fixed bin (35);
+       49 dcl	locked		   bit (1) aligned;
+       50 dcl	not_at_BCE	   bit (1) aligned;
+       51 dcl	page		   fixed bin;
+       52 dcl	ptp		   ptr;
+       53 dcl	ptx		   fixed bin;
+       54 dcl	size		   fixed bin (19);
+       55 
+       56 dcl	list_head		   fixed bin (9) unsigned unaligned based (free_listp);
+       57 dcl	free_listp	   ptr;
+       58 
+       59 dcl	get_ptrs_$given_segno  entry (fixed bin (15), ptr);
+       60 dcl	lock$lock_fast	   entry (ptr);
+       61 dcl	lock$unlock_fast	   entry (ptr);
+       62 dcl	pc_abs$wire_abs	   entry (ptr, fixed bin (9), fixed bin (9), fixed bin (35));
+       63 dcl	syserr		   entry options (variable);
+       64 
+       65 dcl	error_table_$bad_index fixed bin (35) ext static;
+       66 dcl	error_table_$no_io_page_tables
+       67 			   fixed bin (35) ext static;
+       68 dcl	sst$astsize	   fixed bin external static;
+       69 dcl	sys_info$initialization_state
+       70 			   fixed bin external static;
+       71 
+       72 dcl	(addr, addrel, bin, hbound, lbound, min, mod, null, ptr, segno, unspec)
+       73 			   builtin;
+       74 
+       75 dcl	ME		   char (32) static init ("ioi_page_table");
+       76 
+       77 get:
+       78      entry (p_size, p_ptx, p_code);
+       79 
+       80 	size = p_size;
+       81 	p_code = 0;
+       82 	call setup;
+       83 	call lock_pts;				/* lock the I/O page table segment to us */
+       84 RETRY_GET:
+       85 	if size > SMALL_PT_SIZE then
+       86 	     ptx = io_page_tables.free_256_ptx;
+       87 	else ptx = io_page_tables.free_64_ptx;
+       88 	if ptx = 0 then do;
+       89 	     call grow_seg (code);
+       90 	     call quit_if_error;
+       91 	     goto RETRY_GET;
+       92 	end;
+       93 
+       94 	call remove_pt (ptx);
+       95 	call unlock_pts;
+       96 	p_ptx = ptx;
+       97 	return;
+       98 
+       99 put:
+      100      entry (p_ptx, p_code);
+      101 
+      102 	ptx = p_ptx;
+      103 	p_code = 0;
+      104 	call setup;
+      105 	if ^verify_ptx() then
+      106 	     call quit (error_table_$bad_index);
+      107 	call lock_pts;
+      108 	call return_pt (ptx);
+      109 	call unlock_pts;
+      110 	return;
+      111 
+      112 /**** Entry to return a pointer to a page table given its ptx ****/
+      113 
+      114 ptx_to_ptp:
+      115      entry (p_ptx) returns (ptr);
+      116 
+      117 	ptx = p_ptx;
+      118 	call setup;
+      119 	if ^verify_ptx() then
+      120 	     return (null);
+      121 	else return (ptr (io_page_table_seg_ptr, 64 * (ptx - 1)));
+      122 
+      123 /**** Entry to fill in a page table given an astep   We fill in the smaller of the max size of the page table or
+      124*      the segment.  It is possible for a workspace to be larger than the amount which is wired, but IOI will restrict
+      125*      references to the workspace to the wired portion at connect time.  Obviously this entry should be called with the
+      126*      segment already wired or the page table we fill in will be useless in a short while. ****/
+      127 
+      128 fill:
+      129      entry (p_ptx, p_astep, p_code);
+      130 
+      131 	ptx = p_ptx;
+      132 	astep = p_astep;
+      133 	p_code = 0;
+      134 	call setup;
+      135 	if ^verify_ptx() then
+      136 	     call quit (error_table_$bad_index);
+      137 	ioptp = addrel (io_page_table_seg_ptr, (ptx - 1) * 64);
+      138 	if io_page_tables.pt_info (ptx).size = PT_64_SIZE then
+      139 	     io_page_table_size = 64;
+      140 	else io_page_table_size = 256;
+      141 	unspec (page_table) = ""b;			/* turns off all valid bits */
+      142 	ptp = addrel (astep, sst$astsize);		/* point to the page table just past the ASTE */
+      143 	do page = 0 to min (io_page_table_size, bin (aste.csl)) - 1;
+      144 	     if addrel (ptp, page) -> l68_core_ptw.wired then do;
+      145 		page_table (page).address = addrel (ptp, page) -> l68_core_ptw.frame;
+      146 		page_table (page).write, page_table (page).valid = "1"b;
+      147 	     end;
+      148 	end;
+      149 	return;
+      150 
+      151 /* Entry to initialize the data base. */
+      152 
+      153 init:
+      154      entry;
+      155 
+      156 	call setup;
+      157 	if not_at_BCE then do;
+      158 	     call get_ptrs_$given_segno (segno (io_page_table_seg_ptr), astep);
+      159 	     call pc_abs$wire_abs (astep, 0, 1, code);	/* wire the first page. */
+      160 	     if code ^= 0 then
+      161 		call syserr (CRASH, "^a: Unable to wire first page of io_page_table_seg.", ME);
+      162 	end;
+      163 
+      164 	unspec (io_page_tables) = ""b;		/* start with a clean slate */
+      165 	io_page_tables.lock.event = unspec (IO_PAGE_TABLE_LOCK_EVENT);
+      166 	io_page_tables.n_pages_wired = 1;		/* the header says we have only one page (we hope!) */
+      167 	do ptx = lbound (io_page_tables.pt_info, 1) to PTS_PER_PAGE;
+      168 	     io_page_tables.pt_info (ptx).size = PT_64_SIZE;
+      169 	     io_page_tables.pt_info (ptx).in_use = "1"b;	/* so we can free it */
+      170 	     call return_pt (ptx);
+      171 	end;
+      172 	return;
+      173 
+      174 remove_pt:
+      175      proc (ptx);
+      176 
+      177 dcl	ptx		   fixed bin parameter;
+      178 
+      179 	if io_page_tables.pt_info (ptx).in_use then
+      180 	     call syserr (CRASH, "^a: I/O page table on free list marked as in use.", ME);
+      181 	if io_page_tables.pt_info (ptx).size = PT_64_SIZE then
+      182 	     free_listp = addr (io_page_tables.free_64_ptx);
+      183 	else free_listp = addr (io_page_tables.free_256_ptx);
+      184 	io_page_tables.pt_info (ptx).in_use = "1"b;
+      185 	list_head = io_page_tables.pt_info (ptx).next_pt;
+      186 
+      187      end remove_pt;
+      188 
+      189 return_pt:
+      190      proc (ptx);
+      191 
+      192 dcl	ptx		   fixed bin parameter;
+      193 
+      194 	if ^io_page_tables.pt_info (ptx).in_use then
+      195 	     call syserr (CRASH, "^a: I/O page table to be freed marked as not in use.", ME);
+      196 	if io_page_tables.pt_info (ptx).size = PT_64_SIZE then
+      197 	     free_listp = addr (io_page_tables.free_64_ptx);
+      198 	else free_listp = addr (io_page_tables.free_256_ptx);
+      199 	io_page_tables.pt_info (ptx).in_use = "0"b;
+      200 	io_page_tables.pt_info (ptx).next_pt = list_head;
+      201 	list_head = ptx;
+      202 
+      203      end return_pt;
+      204 
+      205 /* Routine to grow the segment if needed.  If the maximum number of pages are not wired, another one is wired.  Then the
+      206*   new page is carved into identical page tables.  If there are no 64 word page tables left, the new page becomes 64 word
+      207*   page tables.  If there are 64 word page tables available, the new page becomes 256 word page tables.  If there are
+      208*   neither, 64 word page tables are created.  If this was the wrong thing to do, we will be called again, and at that
+      209*   time we'll create 256 word page tables.
+      210*
+      211*   If the segment is at its max size and there are no 64 word page tables available, a 256 word page table is divided
+      212*   into 4 64 word page tables.  If there are 64 word page tables available but no 256 word page tables, we try to combine
+      213*   a group of 4 64 word page tables into one 256 word page table.  If all of this fails, we give up and return an error,
+      214*   which is passed back to our caller.  Processes which are sufficiently annoyed at this behavior on our part, and which
+      215*   are sufficiently privileged, may crash the system at that time. */
+      216 
+      217 grow_seg:
+      218      proc (code);
+      219 
+      220 dcl	code		   fixed bin (35) parameter;
+      221 
+      222 dcl	astep		   ptr;
+      223 dcl	ptx		   fixed bin;
+      224 
+      225 	code = 0;
+      226 	if io_page_tables.n_pages_wired < MAX_IO_PAGE_TABLE_SEG_PAGES & not_at_BCE then do;
+      227 	     call get_ptrs_$given_segno (segno (io_page_table_seg_ptr), astep);
+      228 	     call pc_abs$wire_abs (astep, (io_page_tables.n_pages_wired), 1, code);
+      229 	     if code ^= 0 then
+      230 		return;
+      231 
+      232 	     if io_page_tables.free_64_ptx = 0 then do;
+      233 		do ptx = PTS_PER_PAGE * io_page_tables.n_pages_wired + 1
+      234 		     to PTS_PER_PAGE * io_page_tables.n_pages_wired + PTS_PER_PAGE;
+      235 		     io_page_tables.pt_info (ptx).size = PT_64_SIZE;
+      236 		     io_page_tables.pt_info (ptx).in_use = "1"b;
+      237 						/* so return will work */
+      238 		     call return_pt (ptx);
+      239 		end;
+      240 	     end;
+      241 	     else do;
+      242 		do ptx = PTS_PER_PAGE * io_page_tables.n_pages_wired + 1
+      243 		     to PTS_PER_PAGE * io_page_tables.n_pages_wired + PTS_PER_PAGE;
+      244 		     io_page_tables.pt_info (ptx).size = PT_256_SIZE;
+      245 		     io_page_tables.pt_info (ptx).in_use = "1"b;
+      246 		     if mod (ptx, 4) = 1 then		/* only return every 4th pt */
+      247 			call return_pt (ptx);
+      248 		end;
+      249 	     end;
+      250 
+      251 	     io_page_tables.n_pages_wired = io_page_tables.n_pages_wired + 1;
+      252 	end;
+      253 	else do;					/* hard part, must shuffle pt's */
+      254 	     if (io_page_tables.free_64_ptx = 0) & (io_page_tables.free_256_ptx = 0) then do;
+      255 		call syserr (LOG, "^a: Out of I/O page table memory.", ME);
+      256 		code = error_table_$no_io_page_tables;
+      257 		return;
+      258 	     end;
+      259 	     if io_page_tables.free_64_ptx = 0 then do;	/* not too hard, split a 256 page table */
+      260 		ptx = io_page_tables.free_256_ptx;
+      261 		call remove_pt (ptx);
+      262 		do ptx = ptx to ptx + 3;
+      263 		     io_page_tables.pt_info (ptx).size = PT_64_SIZE;
+      264 		     call return_pt (ptx);
+      265 		end;
+      266 	     end;
+      267 	     else do;				/* harder, must find four consecutive free pt's */
+      268 		do ptx = io_page_tables.free_64_ptx repeat io_page_tables.pt_info (ptx).next_pt while (ptx ^= 0);
+      269 		     if mod (ptx, 4) = 1 then do;	/* could be a candidate */
+      270 			if ^io_page_tables.pt_info (ptx).in_use & ^io_page_tables.pt_info (ptx + 1).in_use
+      271 			     & ^io_page_tables.pt_info (ptx + 2).in_use & ^io_page_tables.pt_info (ptx + 3).in_use
+      272 			then do;			/* found a group, make it into a 256 word table */
+      273 			     io_page_tables.pt_info.size (ptx), io_page_tables.pt_info.size (ptx + 1),
+      274 				io_page_tables.pt_info.size (ptx + 2), io_page_tables.pt_info.size (ptx + 3) =
+      275 				PT_256_SIZE;
+      276 			     io_page_tables.pt_info (ptx).in_use, io_page_tables.pt_info.in_use (ptx + 1),
+      277 				io_page_tables.pt_info.in_use (ptx + 2), io_page_tables.pt_info.in_use (ptx + 3) =
+      278 				"1"b;
+      279 			     call return_pt (ptx);	/* put it on the 256 word list */
+      280 			     io_page_tables.free_64_ptx = 0;
+      281 						/* we're going to put them all back in now */
+      282 			     do ptx = lbound (io_page_tables.pt_info, 1)
+      283 				to io_page_tables.n_pages_wired * PTS_PER_PAGE;
+      284 				if (io_page_tables.pt_info (ptx).size = PT_64_SIZE)
+      285 				     & ^io_page_tables.pt_info (ptx).in_use then do;
+      286 				     io_page_tables.pt_info (ptx).in_use = "1"b;
+      287 				     call return_pt (ptx);
+      288 				end;
+      289 			     end;
+      290 			     return;
+      291 			end;
+      292 		     end;
+      293 		end;
+      294 		code = error_table_$no_io_page_tables;
+      295 	     end;
+      296 	end;
+      297 
+      298      end grow_seg;
+      299 
+      300 lock_pts:
+      301      proc;
+      302 
+      303 	if not_at_BCE then
+      304 	     call lock$lock_fast (addr (io_page_tables.lock));
+      305 	locked = "1"b;
+      306 
+      307      end lock_pts;
+      308 
+      309 unlock_pts:
+      310      proc;
+      311 
+      312 	if not_at_BCE then
+      313 	     call lock$unlock_fast (addr (io_page_tables.lock));
+      314 	locked = "0"b;
+      315 
+      316      end unlock_pts;
+      317 
+      318 setup:
+      319      proc;
+      320 dcl	bce_io_page_table$	   external;
+      321 
+      322 	locked = "0"b;				/* initialize */
+      323 	if sys_info$initialization_state > 1 then do;	/* out of collection 1 processing */
+      324 	     io_page_table_seg_ptr = addr (io_page_table_seg$);
+      325 	     not_at_BCE = "1"b;
+      326 	end;
+      327 	else do;					/* at BCE */
+      328 	     io_page_table_seg_ptr = addr (bce_io_page_table$);
+      329 	     not_at_BCE = "0"b;
+      330 	end;
+      331 
+      332      end setup;
+      333 
+      334 verify_ptx:
+      335      proc returns (bit(1) aligned);
+      336 
+      337 	if (ptx < lbound (io_page_tables.pt_info, 1)) | (ptx > hbound (io_page_tables.pt_info, 1)) then
+      338 	     return ("0"b);
+      339 	else return ("1"b);
+      340 
+      341      end verify_ptx;
+      342 
+      343 quit_if_error:
+      344      proc;
+      345 
+      346 	if code ^= 0 then
+      347 	     call quit (code);
+      348 
+      349      end quit_if_error;
+      350 
+      351 quit:
+      352      proc (code);
+      353 
+      354 dcl	code		   fixed bin (35) parameter;
+      355 
+      356 	if locked then
+      357 	     call unlock_pts;
+      358 	p_code = code;
+      359 	goto RETURN;
+      360 
+      361      end quit;
+      362 
+      363 RETURN:
+      364 	return;
+      365 
+  1     1 /* BEGIN INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  1     2 
+  1     3 /* Created November 1984 by Robert Coren to replace hc_lock.incl.pl1 */
+  1     4 
+  1     5 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  1     6 
+  1     7 /* format: style3 */
+  1     8 
+  1     9 declare	lock_ptr		pointer;
+  1    10 declare	1 hc_fast_lock	aligned based (lock_ptr),
+  1    11 	  2 pid		bit (36) aligned,		/* holder of lock */
+  1    12 	  2 event		bit (36) aligned,		/* event associated with lock */
+  1    13 	  2 flags		aligned,
+  1    14 	    3 notify_sw	bit (1) unaligned,
+  1    15 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  1    16 
+  1    17 /* END INCLUDE FILE...hc_fast_lock.incl.pl1 */
+      366 
+  2     1 /*  START OF:	io_page_tables.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3 /* Definition of the I/O page table segment.  For details of how this is manipulated, see io_page_table.pl1. */
+  2     4 /* Written April 1983 by Chris Jones */
+  2     5 /* Modified 1985-01-02, BIM: removed include of hc_lock. */
+  2     6 
+  2     7 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2     8 dcl	io_page_table_seg$	   external;
+  2     9 
+  2    10 dcl	io_page_table_seg_ptr  ptr;
+  2    11 
+  2    12 dcl	1 io_page_tables	   aligned based (io_page_table_seg_ptr),
+  2    13 	  2 lock		   like hc_fast_lock,	/* (0) standard fast lock */
+  2    14 	  2 free_64_ptx	   fixed bin (9) unsigned unaligned,
+  2    15 						/* (3) index of first free 64 word pt */
+  2    16 	  2 free_256_ptx	   fixed bin (9) unsigned unaligned,
+  2    17 						/* (3) pointer to first free 256 word pt */
+  2    18 	  2 n_pages_wired	   fixed bin (9) unsigned unaligned,
+  2    19 						/* (3) how many pages are in use now */
+  2    20 	  2 pad1		   bit (9) unaligned,
+  2    21 	  2 pt_info	   (5:256),		/* (4) one for each page table */
+  2    22 	    3 size	   bit (1) unaligned,
+  2    23 	    3 in_use	   bit (1) unaligned,
+  2    24 	    3 pad1	   bit (25) unaligned,
+  2    25 	    3 next_pt	   fixed bin (9) unsigned unaligned;
+  2    26 
+  2    27 /* This include file requires hc_fast_lock.incl.pl1 */
+  2    28 
+  2    29 dcl	ioptp		   ptr;
+  2    30 dcl	io_page_table_size	   fixed bin;
+  2    31 
+  2    32 dcl	1 page_table	   (0:io_page_table_size - 1) aligned based (ioptp),
+  2    33 	  2 ptw		   like io_ptw;
+  2    34 
+  3     1 /* Begin include file io_ptw.incl.pl1 */
+  3     2 
+  3     3 dcl  io_ptwp ptr;
+  3     4 dcl  1 io_ptw aligned based (io_ptwp),
+  3     5        2 pad1 bit (2) unaligned,
+  3     6        2 address uns fixed bin (16) unaligned,
+  3     7        2 pad2 bit (13) unaligned,
+  3     8        2 write bit (1) unaligned,
+  3     9        2 housekeeping bit (1) unaligned,
+  3    10        2 valid bit (1) unaligned,
+  3    11        2 pad3 bit (2) unaligned;
+  3    12 
+  3    13 /* End include file io_ptw.incl.pl1 */
+  2    35 
+  2    36 
+  2    37 dcl	IO_PAGE_TABLE_LOCK_EVENT
+  2    38 			   char (4) static options (constant) init ("iopt");
+  2    39 dcl	MAX_IO_PAGE_TABLE_SEG_PAGES
+  2    40 			   fixed bin (9) static options (constant) init (16);
+  2    41 dcl	PT_64_SIZE	   bit (1) static options (constant) init ("0"b);
+  2    42 dcl	PT_256_SIZE	   bit (1) static options (constant) init ("1"b);
+  2    43 dcl	PTS_PER_PAGE	   fixed bin static options (constant) init (16);
+  2    44 dcl	SMALL_PT_SIZE	   fixed bin (19) static options (constant) init (65536);
+  2    45 
+  2    46 /*  END OF:	io_page_tables.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      367 
+      368 
+  4     1 /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  4     2 
+  4     3 /* Template for an AST entry. Length = 12 words. */
+  4     4 
+  4     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  4     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  4     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  4     8 
+  4     9 dcl  astep ptr;
+  4    10 
+  4    11 dcl 1 aste based (astep) aligned,
+  4    12 
+  4    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  4    14     2 bp bit (18),					/* backward used list rel pointer */
+  4    15 
+  4    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  4    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  4    18 
+  4    19     2 strp bit (18),				/* rel pointer to process trailer */
+  4    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  4    21 
+  4    22     2 uid bit (36),					/* segment unique id */
+  4    23 
+  4    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  4    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  4    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  4    27 
+  4    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  4    29     2 init bit (1),					/* used bit - insure 1 lap */
+  4    30     2 gtus bit (1),					/* global transparent usage switch */
+  4    31     2 gtms bit (1),					/* global transparent modified switch */
+  4    32     2 hc bit (1),					/* hard core segment */
+  4    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  4    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  4    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  4    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  4    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  4    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  4    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  4    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  4    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  4    42     2 pad1 bit (2),					/* OO */
+  4    43     2 dius bit (1),					/* dumper in use switch */
+  4    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  4    45     2 dmpr_pad bit (1),
+  4    46     2 ehs bit (1),					/* entry hold switch */
+  4    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  4    48     2 dirsw bit (1),				/* directory switch */
+  4    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  4    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  4    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  4    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  4    53 
+  4    54     2 dtu bit (36),					/* date and time segment last used */
+  4    55 
+  4    56     2 dtm bit (36),					/* date and time segment last modified */
+  4    57 
+  4    58 
+  4    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  4    60 
+  4    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  4    62 
+  4    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  4    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  4    65     2 fms bit (1),					/* file modified switch */
+  4    66     2 npfs bit (1),					/* no page fault switch */
+  4    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  4    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  4    69     2 per_process bit (1),				/* use master quota for this entry */
+  4    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  4    71     2 pad2 bit (2),
+  4    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  4    73     2 np bit (9),					/* number of pages in core */
+  4    74 
+  4    75 
+  4    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  4    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  4    78     2 damaged bit (1),				/* PC declared segment unusable */
+  4    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  4    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  4    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  4    82     2 ptsi bit (2),					/* page table size index */
+  4    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  4    84 
+  4    85 
+  4    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  4    87 
+  4    88 
+  4    89 dcl 1 aste_part aligned based (astep),
+  4    90 
+  4    91     2 one bit (36) unaligned,				/* fp and bp */
+  4    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  4    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  4    94 
+  4    95 
+  4    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  4    97     2 pad1 bit (8*36),
+  4    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  4    99     2 pad2 bit (3*36);
+  4   100 
+  4   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      369 
+      370 
+  5     1 /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+  5     2 
+  5     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+  5     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+  5     5 
+  5     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+  5     7     ("Level68", "ADP");
+  5     8 
+  5     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      371 
+      372 /* so cref will point us here for DPS88M */
+      373 
+  6     1 /* BEGIN INCLUDE FILE ... ptw.l68.incl.pl1 ... 02/26/81, for ADP conversion */
+  6     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  6     3 
+  6     4 dcl 1 l68_core_ptw aligned based (ptp), 		/* In-core page descriptor */
+  6     5     2 frame fixed bin (14) unsigned unaligned,		/* Core frame number */
+  6     6     2 pad1 bit (4) unaligned,
+  6     7     2 flags unaligned like l68_ptw_flags;
+  6     8 
+  6     9 dcl 1 l68_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  6    10     2 add bit (18) unaligned,
+  6    11     2 flags like l68_ptw_flags unaligned;
+  6    12 
+  6    13 dcl 1 l68_special_ptw aligned based (ptp) like l68_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  6    14 dcl 1 l68_real_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  6    15 dcl 1 l68_null_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  6    16 
+  6    17 dcl 1 l68_ptw_flags unaligned based,			/* Various software/hardware flags */
+  6    18    (2 add_type bit (4),				/* 0000=null, 1000=core, 0100=disk, 0010=pd, 0001=swap */
+  6    19     2 first bit (1),				/* the page has not yet been written out */
+  6    20     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  6    21 
+  6    22     2 pad1 bit (1),
+  6    23     2 unusable1 bit (1),				/* can't be used because hardware resets this bit */
+  6    24     2 phu bit (1),					/* page has been used bit */
+  6    25 
+  6    26     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  6    27     2 nypd bit (1), 				/* must be moved to paging device */
+  6    28     2 phm bit (1),					/* page has been modified bit */
+  6    29 
+  6    30     2 phu1 bit (1), 				/* page has been used in the quantum */
+  6    31     2 wired bit (1),				/* page is to remain in core */
+  6    32     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  6    33     2 valid bit (1),				/* directed fault if this is 0 (page not in core) */
+  6    34     2 df_no bit (2)) unaligned;			/* directed fault number for page faults */
+  6    35 
+  6    36 /* END INCLUDE FILE ... ptw.l68.incl.pl1 */
+      374 
+      375 /**** %page;
+      376*      %include "ptw.adp"; ****/
+      377 
+  7     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  7     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  7     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  7     4 
+  7     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  7     6 
+  7     7 dcl (
+  7     8 
+  7     9 /* The following constants define the message action codes.  This indicates
+  7    10*how a message is to be handled.  */
+  7    11 
+  7    12      SYSERR_CRASH_SYSTEM	init (1),			
+  7    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  7    14 
+  7    15      SYSERR_TERMINATE_PROCESS	init (2),
+  7    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  7    17 
+  7    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  7    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  7    20 
+  7    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  7    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  7    23 
+  7    24      SYSERR_LOG_OR_PRINT	init (4),
+  7    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  7    26 
+  7    27      SYSERR_LOG_OR_DISCARD	init (5),
+  7    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  7    29 
+  7    30 
+  7    31 /* The following constants are added to the normal severities to indicate
+  7    32*different sorting classes of messages.  */
+  7    33 
+  7    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  7    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  7    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  7    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  7    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  7    39 	) fixed bin internal static options (constant);
+  7    40 
+  7    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      378 
+      379 
+      380      end ioi_page_table;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.5  ioi_page_table.pl1                >spec>install>1110>ioi_page_table.pl1
+366          1    01/06/85  1422.1  hc_fast_lock.incl.pl1             >ldd>include>hc_fast_lock.incl.pl1
+367          2    01/06/85  1422.5  io_page_tables.incl.pl1           >ldd>include>io_page_tables.incl.pl1
+2-35         3    05/13/82  1421.2  io_ptw.incl.pl1                   >ldd>include>io_ptw.incl.pl1
+369          4    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+371          5    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+374          6    03/27/82  0430.2  ptw.l68.incl.pl1                  >ldd>include>ptw.l68.incl.pl1
+378          7    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000010 constant        fixed bin(17,0)          initial dcl 7-7 set ref 160* 179* 194*
+IO_PAGE_TABLE_LOCK_EVENT        000000 constant        char(4)                  initial packed unaligned dcl 2-37 ref 165
+LOG                             000002 constant        fixed bin(17,0)          initial dcl 7-7 set ref 255*
+MAX_IO_PAGE_TABLE_SEG_PAGES            constant        fixed bin(9,0)           initial dcl 2-39 ref 226
+ME                              000010 internal static char(32)                 initial packed unaligned dcl 75 set ref 160* 179*
+                                                                                  194* 255*
+PTS_PER_PAGE                           constant        fixed bin(17,0)          initial dcl 2-43 ref 167 233 233 233 242 242 242 282
+PT_256_SIZE                            constant        bit(1)                   initial packed unaligned dcl 2-42 ref 244 273
+PT_64_SIZE                             constant        bit(1)                   initial packed unaligned dcl 2-41 ref 138 168 181
+                                                                                  196 235 263 284
+SMALL_PT_SIZE                          constant        fixed bin(19,0)          initial dcl 2-44 ref 84
+addr                                                   builtin function         dcl 72 ref 181 183 196 198 303 303 312 312 324 328
+addrel                                                 builtin function         dcl 72 ref 137 142 144 145
+address                   0(02)        based           fixed bin(16,0)          array level 3 packed packed unsigned unaligned
+                                                                                  dcl 2-32 set ref 145*
+aste                                   based           structure                level 1 dcl 4-11
+astep                           000156 automatic       pointer                  dcl 222 in procedure "grow_seg" set ref 227* 228*
+astep                           000120 automatic       pointer                  dcl 4-9 in procedure "ioi_page_table" set ref 132*
+                                                                                  142 143 158* 159*
+bce_io_page_table$              000044 external static fixed bin(17,0)          dcl 320 set ref 328
+bin                                                    builtin function         dcl 72 ref 143
+code                            000100 automatic       fixed bin(35,0)          dcl 48 in procedure "ioi_page_table" set ref 89*
+                                                                                  159* 160 346 346*
+code                                   parameter       fixed bin(35,0)          dcl 354 in procedure "quit" ref 351 358
+code                                   parameter       fixed bin(35,0)          dcl 220 in procedure "grow_seg" set ref 217 225*
+                                                                                  228* 229 256* 294*
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 4-11 ref 143
+error_table_$bad_index          000032 external static fixed bin(35,0)          dcl 65 set ref 105* 135*
+error_table_$no_io_page_tables  000034 external static fixed bin(35,0)          dcl 66 ref 256 294
+event                     1            based           bit(36)                  level 3 dcl 2-12 set ref 165*
+flags                     0(18)        based           structure                level 2 packed packed unaligned dcl 6-4
+frame                                  based           fixed bin(14,0)          level 2 packed packed unsigned unaligned dcl 6-4 ref
+                                                                                  145
+free_256_ptx              3(09)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 2-12
+                                                                                  set ref 84 183 198 254 260
+free_64_ptx               3            based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 2-12
+                                                                                  set ref 87 181 196 232 254 259 268 280*
+free_listp                      000110 automatic       pointer                  dcl 57 set ref 181* 183* 185 196* 198* 200 201
+get_ptrs_$given_segno           000020 constant        entry                    external dcl 59 ref 158 227
+hbound                                                 builtin function         dcl 72 ref 337
+hc_fast_lock                           based           structure                level 1 dcl 1-10
+in_use                    4(01)        based           bit(1)                   array level 3 packed packed unaligned dcl 2-12 set
+                                                                                  ref 169* 179 184* 194 199* 236* 245* 270 270 270
+                                                                                  270 276* 276* 276* 276* 284 286*
+io_page_table_seg$              000042 external static fixed bin(17,0)          dcl 2-8 set ref 324
+io_page_table_seg_ptr           000112 automatic       pointer                  dcl 2-10 set ref 84 87 121 137 138 158 158 164 165
+                                                                                  166 167 168 169 179 181 181 183 184 185 194 196
+                                                                                  196 198 199 200 226 227 227 228 232 233 233 235
+                                                                                  236 242 242 244 245 251 251 254 254 259 260 263
+                                                                                  268 270 270 270 270 273 273 273 273 276 276 276
+                                                                                  276 280 282 282 284 284 286 293 303 303 312 312
+                                                                                  324* 328* 337 337
+io_page_table_size              000116 automatic       fixed bin(17,0)          dcl 2-30 set ref 138* 140* 141 143
+io_page_tables                         based           structure                level 1 dcl 2-12 set ref 164*
+io_ptw                                 based           structure                level 1 dcl 3-4
+ioptp                           000114 automatic       pointer                  dcl 2-29 set ref 137* 141 145 146 146
+l68_core_ptw                           based           structure                level 1 dcl 6-4
+l68_ptw                                based           structure                level 1 dcl 6-9
+l68_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 6-17
+lbound                                                 builtin function         dcl 72 ref 167 282 337
+list_head                              based           fixed bin(9,0)           packed unsigned unaligned dcl 56 set ref 185* 200
+                                                                                  201*
+lock                                   based           structure                level 2 dcl 2-12 set ref 303 303 312 312
+lock$lock_fast                  000022 constant        entry                    external dcl 60 ref 303
+lock$unlock_fast                000024 constant        entry                    external dcl 61 ref 312
+locked                          000101 automatic       bit(1)                   dcl 49 set ref 305* 314* 322* 356
+min                                                    builtin function         dcl 72 ref 143
+mod                                                    builtin function         dcl 72 ref 246 269
+n_pages_wired             3(18)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 2-12
+                                                                                  set ref 166* 226 228 233 233 242 242 251* 251 282
+next_pt                   4(27)        based           fixed bin(9,0)           array level 3 packed packed unsigned unaligned
+                                                                                  dcl 2-12 set ref 185 200* 293
+not_at_BCE                      000102 automatic       bit(1)                   dcl 50 set ref 157 226 303 312 325* 329*
+null                                                   builtin function         dcl 72 ref 119
+p_astep                                parameter       pointer                  dcl 43 ref 128 132
+p_code                                 parameter       fixed bin(35,0)          dcl 44 set ref 77 81* 99 103* 128 133* 358*
+p_ptx                                  parameter       fixed bin(17,0)          dcl 45 set ref 77 96* 99 102 114 117 128 131
+p_size                                 parameter       fixed bin(19,0)          dcl 46 ref 77 80
+page                            000103 automatic       fixed bin(17,0)          dcl 51 set ref 143* 144 145 145 146 146*
+page_table                             based           structure                array level 1 dcl 2-32 set ref 141*
+pc_abs$wire_abs                 000026 constant        entry                    external dcl 62 ref 159 228
+pt_info                   4            based           structure                array level 2 dcl 2-12 set ref 167 282 337 337
+ptp                             000104 automatic       pointer                  dcl 52 set ref 142* 144 145
+ptr                                                    builtin function         dcl 72 ref 121
+ptw                                    based           structure                array level 2 dcl 2-32
+ptx                             000106 automatic       fixed bin(17,0)          dcl 53 in procedure "ioi_page_table" set ref 84* 87*
+                                                                                  88 94* 96 102* 108* 117* 121 131* 137 138 167* 168
+                                                                                  169 170* 337 337
+ptx                                    parameter       fixed bin(17,0)          dcl 177 in procedure "remove_pt" ref 174 179 181 184
+                                                                                  185
+ptx                                    parameter       fixed bin(17,0)          dcl 192 in procedure "return_pt" ref 189 194 196 199
+                                                                                  200 201
+ptx                             000160 automatic       fixed bin(17,0)          dcl 223 in procedure "grow_seg" set ref 233* 235 236
+                                                                                  238* 242* 244 245 246 246* 260* 261* 262* 262 262*
+                                                                                  263 264* 268* 268* 269 270 270 270 270 273 273 273
+                                                                                  273 276 276 276 276 279* 282* 284 284 286 287* 293
+segno                                                  builtin function         dcl 72 ref 158 158 227 227
+size                            000107 automatic       fixed bin(19,0)          dcl 54 in procedure "ioi_page_table" set ref 80* 84
+size                      4            based           bit(1)                   array level 3 in structure "io_page_tables" packed
+                                                                                  packed unaligned dcl 2-12 in procedure
+                                                                                  "ioi_page_table" set ref 138 168* 181 196 235*
+                                                                                  244* 263* 273* 273* 273* 273* 284
+sst$astsize                     000036 external static fixed bin(17,0)          dcl 68 ref 142
+sys_info$initialization_state   000040 external static fixed bin(17,0)          dcl 69 ref 323
+syserr                          000030 constant        entry                    external dcl 63 ref 160 179 194 255
+unspec                                                 builtin function         dcl 72 set ref 141* 164* 165
+valid                     0(33)        based           bit(1)                   array level 3 packed packed unaligned dcl 2-32 set
+                                                                                  ref 146*
+wired                     0(31)        based           bit(1)                   level 3 packed packed unaligned dcl 6-4 ref 144
+write                     0(31)        based           bit(1)                   array level 3 packed packed unaligned dcl 2-32 set
+                                                                                  ref 146*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ADP_SYSTEM                             internal static fixed bin(17,0)          initial dcl 5-4
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 7-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 7-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 7-7
+L68_SYSTEM                             internal static fixed bin(17,0)          initial dcl 5-3
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 7-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 7-7
+SYSTEM_TYPE_NAME                       internal static char(8)                  initial array packed unaligned dcl 5-6
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 7-7
+asta                                   based           bit(432)                 array dcl 4-86
+aste_part                              based           structure                level 1 dcl 4-89
+io_ptwp                                automatic       pointer                  dcl 3-3
+l68_null_disk_ptw                      based           structure                level 1 dcl 6-15
+l68_real_disk_ptw                      based           structure                level 1 dcl 6-14
+l68_special_ptw                        based           structure                level 1 dcl 6-13
+lock_ptr                               automatic       pointer                  dcl 1-9
+seg_aste                               based           structure                level 1 dcl 4-96
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETRY_GET                       000145 constant        label                    dcl 84 ref 91
+RETURN                          000647 constant        label                    dcl 363 ref 359
+fill                            000340 constant        entry                    external dcl 128
+get                             000123 constant        entry                    external dcl 77
+grow_seg                        001030 constant        entry                    internal dcl 217 ref 89
+init                            000512 constant        entry                    external dcl 153
+ioi_page_table                  000107 constant        entry                    external dcl 11
+lock_pts                        001444 constant        entry                    internal dcl 300 ref 83 107
+ptx_to_ptp                      000262 constant        entry                    external dcl 114
+put                             000207 constant        entry                    external dcl 99
+quit                            001542 constant        entry                    internal dcl 351 ref 105 135 346
+quit_if_error                   001534 constant        entry                    internal dcl 343 ref 90
+remove_pt                       000656 constant        entry                    internal dcl 174 ref 94 261
+return_pt                       000740 constant        entry                    internal dcl 189 ref 108 170 238 246 264 279 287
+setup                           001501 constant        entry                    internal dcl 318 ref 82 104 118 134 156
+unlock_pts                      001463 constant        entry                    internal dcl 309 ref 95 109 356
+verify_ptx                      001520 constant        entry                    internal dcl 334 ref 105 119 135
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2010        2056    1602        2020
+Length      2410    1602        46         315     205          10
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ioi_page_table                      304 external procedure  is an external procedure.  
+remove_pt                               internal procedure  shares stack frame of external procedure ioi_page_table.  
+return_pt                               internal procedure  shares stack frame of external procedure ioi_page_table.  
+grow_seg                                internal procedure  shares stack frame of external procedure ioi_page_table.  
+lock_pts                                internal procedure  shares stack frame of external procedure ioi_page_table.  
+unlock_pts                              internal procedure  shares stack frame of external procedure ioi_page_table.  
+setup                                   internal procedure  shares stack frame of external procedure ioi_page_table.  
+verify_ptx                              internal procedure  shares stack frame of external procedure ioi_page_table.  
+quit_if_error                           internal procedure  shares stack frame of external procedure ioi_page_table.  
+quit                                    internal procedure  shares stack frame of external procedure ioi_page_table.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 ME                          ioi_page_table
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ioi_page_table           000100 code                        ioi_page_table
+                         000101 locked                      ioi_page_table
+                         000102 not_at_BCE                  ioi_page_table
+                         000103 page                        ioi_page_table
+                         000104 ptp                         ioi_page_table
+                         000106 ptx                         ioi_page_table
+                         000107 size                        ioi_page_table
+                         000110 free_listp                  ioi_page_table
+                         000112 io_page_table_seg_ptr       ioi_page_table
+                         000114 ioptp                       ioi_page_table
+                         000116 io_page_table_size          ioi_page_table
+                         000120 astep                       ioi_page_table
+                         000156 astep                       grow_seg
+                         000160 ptx                         grow_seg
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               signal_op           ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_ptrs_$given_segno         lock$lock_fast                lock$unlock_fast              pc_abs$wire_abs
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_io_page_table$            error_table_$bad_index        error_table_$no_io_page_tables
+io_page_table_seg$            sst$astsize                   sys_info$initialization_state
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000106        77 000116        80 000137        81 000142        82 000143        83 000144        84 000145
+     87 000156        88 000162        89 000163        90 000165        91 000166        94 000167        95 000171
+     96 000172        97 000174        99 000203       102 000223       103 000225       104 000226       105 000227
+    107 000243       108 000244       109 000246       110 000247       114 000256       117 000273       118 000275
+    119 000276       121 000315       128 000334       131 000354       132 000356       133 000362       134 000363
+    135 000364       137 000400       138 000406       140 000416       141 000420       142 000426       143 000433
+    144 000456       145 000465       146 000474       148 000500       149 000502       153 000511       156 000521
+    157 000522       158 000524       159 000541       160 000561       164 000607       165 000613       166 000615
+    167 000617       168 000627       169 000632       170 000634       171 000636       172 000640       363 000647
+    174 000656       179 000660       181 000711       183 000722       184 000726       185 000730       187 000737
+    189 000740       194 000742       196 000773       198 001004       199 001010       200 001012       201 001021
+    203 001027       217 001030       225 001032       226 001033       227 001043       228 001060       229 001105
+    232 001111       233 001115       235 001133       236 001136       238 001140       239 001142       240 001144
+    242 001145       244 001163       245 001166       246 001170       248 001176       251 001200       252 001207
+    254 001210       255 001223       256 001247       257 001253       259 001254       260 001256       261 001260
+    262 001262       263 001273       264 001276       265 001300       266 001302       268 001303       269 001306
+    270 001312       273 001343       276 001364       279 001374       280 001376       282 001401       284 001413
+    286 001422       287 001424       289 001426       290 001430       293 001431       294 001437       298 001443
+    300 001444       303 001445       305 001460       307 001462       309 001463       312 001464       314 001477
+    316 001500       318 001501       322 001502       323 001503       324 001507       325 001511       326 001513
+    328 001514       329 001516       332 001517       334 001520       337 001522       339 001531       343 001534
+    346 001535       349 001541       351 001542       356 001544       358 001547       359 001552
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

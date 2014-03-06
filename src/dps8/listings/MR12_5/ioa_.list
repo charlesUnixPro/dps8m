@@ -1,0 +1,1072 @@
+	COMPILATION LISTING OF SEGMENT ioa_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0954.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* Initially coded in May 1972 by V. Voydock */
+       14 /* Modified June 1974 by B. Wolman to not pad buffer */
+       15 /* Last modified:
+       16*   07/28/77 by S. Webber to merge with rest_of_ioa_
+       17*   10/28/77 by M. R. Jordan to correct call to ios_signal_ ,signalling of ioa_error,
+       18*   and padding of varying return strings.
+       19*   Modified August 1979 by Larry Johnson for unlimited ioa output.
+       20*   Modified November 1981 by Benson I. Margulies for better error message
+       21*		         and correct entrypoint declarations.
+       22*   Modified September 1982 by BIM for Bootload Multics.
+       23*   Modified August 1983 by Keith Loepere for new bce switches.
+       24*   Modified 840309 to call arg_list_ptr_ instead of cu_$arg_list_ptr... -E. A. Ranzenbach
+       25**/
+       26 
+       27 
+       28 /****^  HISTORY COMMENTS:
+       29*  1) change(85-09-19,Coren), approve(85-09-19,MCR7266),
+       30*     audit(85-09-24,Margolin), install(86-02-20,MR12.0-1023):
+       31*     Add general_rs_control_string entry.
+       32*                                                   END HISTORY COMMENTS */
+       33 
+       34 
+       35 
+       36 /* format: style2 */
+       37 ioa_:
+       38      procedure options (variable);
+       39 
+       40 /* This procedure is the PL/I portion of the standard Multics output string formatting
+       41*   routine; it provides varous interfaces to formline_, which is the ALM portion. */
+       42 
+       43 /* Parameters */
+       44 
+       45 	dcl     arg		 char (*);
+       46 	dcl     aiocbp		 ptr;
+       47 	dcl     a_arglist_ptr	 ptr;
+       48 	dcl     a_cs_argno		 fixed bin;
+       49 	dcl     a_ff_argno		 fixed bin;
+       50 	dcl     a_control_string	 char (*);
+       51 	dcl     retstring		 char (*);
+       52 	dcl     rlen		 fixed bin (21);
+       53 	dcl     padsw		 bit (1) aligned;
+       54 	dcl     nlsw		 bit (1) aligned;
+       55 
+       56 /* Automatic */
+       57 
+       58 	dcl     buffer_ptr		 ptr;
+       59 	dcl     buffer_length	 fixed bin (21);
+       60 	dcl     pad		 fixed bin;
+       61 	dcl     cs_argno		 fixed bin;
+       62 	dcl     ff_argno		 fixed bin;
+       63 	dcl     switch_name		 char (32);
+       64 	dcl     iocbp		 ptr;
+       65 	dcl     code		 fixed bin (35);
+       66 	dcl     number_of_args	 fixed bin;
+       67 	dcl     arg_list_arg_count	 fixed bin;
+       68 	dcl     orig_arg_list_ptr	 pointer;
+       69 	dcl     orig_ff_argno	 fixed bin;
+       70 	dcl     system_areap	 ptr;
+       71 	dcl     orig_arg		 fixed bin;
+       72 	dcl     this_arg		 fixed bin;
+       73 	dcl     cs_entry		 bit (1);
+       74 	dcl     output_length	 fixed bin (21);
+       75 	dcl     rs_type		 fixed bin;
+       76 	dcl     arg_list_ptr	 ptr;
+       77           dcl     my_arg_list_ptr        ptr;
+       78 	dcl     add_nl		 bit (1) aligned;
+       79 
+       80 /* Builtins */
+       81 
+       82 	dcl     (addr, addrel, bin, currentsize, length, min, null, string, substr)
+       83 				 builtin;
+       84 
+       85 	dcl     cleanup		 condition;
+       86 
+       87 /* Static */
+       88 
+       89 	dcl     nl		 char (1) internal static options (constant) initial ("
+       90 ");						/* New line char */
+       91 
+       92 /* Based */
+       93 
+       94 	dcl     system_area		 area (1024) based (system_areap);
+       95 
+       96 	dcl     1 rs_arg_list	 based (arg_list_ptr),
+       97 		2 header		 fixed bin (71),
+       98 		2 control_string_ptr ptr,
+       99 		2 return_string_ptr	 ptr,
+      100 		2 return_len_ptr	 ptr;
+      101 
+      102 	dcl     return_string	 char (131071) based (buffer_ptr);
+      103 	dcl     return_string_length	 fixed bin based (rs_arg_list.return_len_ptr);
+      104 	dcl     varying_string_length	 fixed bin based (addrel (buffer_ptr, -1));
+      105 
+      106 
+      107 /* External */
+      108 
+      109 	dcl     iox_$user_output	 ext static ptr;
+      110 
+      111 /* Entries */
+      112 
+      113 	dcl     get_system_free_area_	 entry () returns (ptr);
+      114 	dcl     iox_signal_		 entry (ptr, fixed bin (35));
+      115 	dcl     iox_$find_iocb	 entry (char (*), ptr, fixed bin (35));
+      116 	dcl     arg_list_ptr_	 entry returns (ptr);
+      117 
+      118 	dcl     formline_		 entry (fixed bin, fixed bin, ptr, fixed bin (21), fixed bin, ptr);
+      119 	dcl     formline_$switch	 entry (fixed bin, fixed bin, ptr, fixed bin, fixed bin (35));
+      120 	dcl     signal_		 entry () options (variable);
+      121 
+      122 	dcl     sys_info$service_system
+      123 				 bit (1) aligned external;
+      124 	dcl     bce_data$put_chars	 external entry (ptr, ptr, fixed bin, fixed bin (35)) variable;
+      125 
+      126 
+      127 	add_nl = "1"b;
+      128 	go to COMMON;
+      129 
+      130 nnl:
+      131      entry options (variable);
+      132 
+      133 	add_nl = "0"b;
+      134 
+      135 
+      136 COMMON:
+      137 	if sys_info$service_system
+      138 	then iocbp = iox_$user_output;
+      139 	else iocbp = addr (bce_data$put_chars);
+      140 	call formline_$switch (1, 2, iocbp, bin (add_nl), code);
+      141 	if code ^= 0
+      142 	then do;
+      143 		if ^sys_info$service_system
+      144 		then return;
+      145 		call iox_signal_ (iocbp, code);
+      146 		go to COMMON;
+      147 	     end;
+      148 
+      149 	return;
+      150 
+      151 
+      152 
+      153 /* The following entries return a formatted string */
+      154 
+      155 rs:
+      156      entry options (variable);
+      157 	add_nl = "1"b;
+      158 	pad = 1;
+      159 	goto COMMON_RS;
+      160 rsnnl:
+      161      entry options (variable);
+      162 	add_nl = "0"b;
+      163 	pad = 1;
+      164 	goto COMMON_RS;
+      165 rsnp:
+      166      entry options (variable);
+      167 	add_nl = "1"b;
+      168 	pad = 0;
+      169 	goto COMMON_RS;
+      170 rsnpnnl:
+      171      entry options (variable);
+      172 	add_nl = "0"b;
+      173 	pad = 0;
+      174 	goto COMMON_RS;
+      175 
+      176 COMMON_RS:
+      177 	arg_list_ptr = arg_list_ptr_ ();
+      178 	buffer_ptr = rs_arg_list.return_string_ptr;
+      179 
+      180 	rs_type = GET_RETURN_TYPE ();
+      181 
+      182 	if rs_type = varying_char_dtype
+      183 	then pad = 0;
+      184 	else if rs_type ^= char_dtype
+      185 	then call signal_error;
+      186 
+      187 	call work_in_buffer (1, 4, pad, arg_list_ptr);
+      188 
+      189 	return_string_length = output_length;
+      190 	if rs_type = varying_char_dtype
+      191 	then varying_string_length = output_length;
+      192 	return;
+      193 
+      194 /* The following entry is the generalized entry for returning formatted strings */
+      195 
+      196 
+      197 general_rs:
+      198      entry (a_arglist_ptr, a_cs_argno, a_ff_argno, retstring, rlen, padsw, nlsw);
+      199 
+      200 	arg_list_ptr = a_arglist_ptr;
+      201 	cs_argno = a_cs_argno;
+      202 	ff_argno = a_ff_argno;
+      203 	cs_entry = "0"b;
+      204 	go to GENERAL_RS_JOIN;
+      205 
+      206 /* The following entry is like general_rs except that the control string is passed
+      207*   explicitly, rather than being in the referenced argument list */
+      208 
+      209 general_rs_control_string:
+      210      entry (a_arglist_ptr, a_control_string, a_ff_argno, retstring, rlen, padsw, nlsw);
+      211 
+      212 	orig_arg_list_ptr = a_arglist_ptr;
+      213 	orig_ff_argno = a_ff_argno;
+      214 	cs_argno = -1;
+      215 	cs_entry = "1"b;
+      216 
+      217 GENERAL_RS_JOIN:
+      218 	buffer_ptr = addr (retstring);
+      219 	buffer_length = length (retstring);
+      220 	add_nl = nlsw;
+      221 
+      222 	if cs_entry				/* control string supplied */
+      223 	then do;
+      224 
+      225 /* We have to build a copy of the argument list (for passing to formline_) that contains
+      226*   the control string and the data args. */
+      227 
+      228 		number_of_args = orig_arg_list_ptr -> arg_list.arg_count;
+      229 		system_areap = get_system_free_area_ ();
+      230 		arg_list_ptr = null ();
+      231 		on cleanup
+      232 		     begin;
+      233 			if arg_list_ptr ^= null ()
+      234 			then free arg_list_ptr -> arg_list;
+      235 		     end;
+      236 
+      237 		arg_list_arg_count = number_of_args - orig_ff_argno + 2;
+      238 						/* the original data args, + 1 for the control string */
+      239 		allocate arg_list in (system_area) set (arg_list_ptr);
+      240 
+      241 		arg_list_ptr -> arg_list.arg_count = arg_list_arg_count;
+      242 		arg_list_ptr -> arg_list.pad1 = "0"b;
+      243 		arg_list_ptr -> arg_list.call_type = Interseg_call_type;
+      244 		arg_list_ptr -> arg_list.desc_count = arg_list_arg_count;
+      245 		arg_list_ptr -> arg_list.pad2 = "0"b;
+      246 
+      247 		arg_list_ptr -> arg_list.arg_ptrs (1) = addr (a_control_string);
+      248 
+      249 		orig_arg = orig_ff_argno;
+      250 		do this_arg = 2 to arg_list_arg_count;	/* copy the other arg pointers */
+      251 		     arg_list_ptr -> arg_list.arg_ptrs (this_arg) = orig_arg_list_ptr -> arg_list.arg_ptrs (orig_arg);
+      252 		     orig_arg = orig_arg + 1;
+      253 		end;
+      254 
+      255 /* Now copy the descriptor for the control string from *this entry's* argument list */
+      256 
+      257 		my_arg_list_ptr = arg_list_ptr_ ();
+      258 		arg_list_ptr -> arg_list.desc_ptrs (1) = my_arg_list_ptr -> arg_list.desc_ptrs (2);
+      259 
+      260 /* Now copy in the other descriptor pointers */
+      261 
+      262 		orig_arg = orig_ff_argno;
+      263 
+      264 		if orig_arg_list_ptr -> arg_list.call_type = Envptr_supplied_call_type
+      265 		then do this_arg = 2 to arg_list_arg_count;
+      266 			arg_list_ptr -> arg_list.desc_ptrs (this_arg) =
+      267 			     orig_arg_list_ptr -> arg_list_with_envptr.desc_ptrs (orig_arg);
+      268 			orig_arg = orig_arg + 1;
+      269 		     end;
+      270 
+      271 		else do this_arg = 2 to arg_list_arg_count;
+      272 			arg_list_ptr -> arg_list.desc_ptrs (this_arg) =
+      273 			     orig_arg_list_ptr -> arg_list.desc_ptrs (orig_arg);
+      274 			orig_arg = orig_arg + 1;
+      275 		     end;
+      276 
+      277 		cs_argno = 1;
+      278 		ff_argno = 2;
+      279 	     end;
+      280 
+      281 	call work_in_buffer (cs_argno, ff_argno, bin (padsw, 1), arg_list_ptr);
+      282 
+      283 	rlen = output_length;
+      284 	if cs_entry
+      285 	then free arg_list_ptr -> arg_list;
+      286 	return;
+      287 
+      288 /* The following entries use an I/O switch or switch name as target */
+      289 
+      290 ioa_switch:
+      291      entry (aiocbp);
+      292 	add_nl = "1"b;
+      293 	iocbp = aiocbp;
+      294 	goto FOUND_SWITCH_PTR;
+      295 ioa_switch_nnl:
+      296      entry (aiocbp);
+      297 	add_nl = "0"b;
+      298 	iocbp = aiocbp;
+      299 	goto FOUND_SWITCH_PTR;
+      300 ioa_stream:
+      301      entry (arg);
+      302 	add_nl = "1"b;
+      303 	goto FIND_SWITCH_PTR;
+      304 ioa_stream_nnl:
+      305      entry (arg);
+      306 	add_nl = "0"b;
+      307 	goto FIND_SWITCH_PTR;
+      308 
+      309 FIND_SWITCH_PTR:
+      310 	switch_name = arg;
+      311 	if sys_info$service_system
+      312 	then call iox_$find_iocb (switch_name, iocbp, (0));
+      313 	else iocbp = addr (bce_data$put_chars);
+      314 
+      315 FOUND_SWITCH_PTR:
+      316 	call formline_$switch (2, 3, iocbp, bin (add_nl), code);
+      317 	if code ^= 0
+      318 	then do;
+      319 		if ^sys_info$service_system
+      320 		then return;
+      321 		call iox_signal_ (iocbp, code);
+      322 		go to FOUND_SWITCH_PTR;
+      323 	     end;
+      324 	return;
+      325 
+      326 /* Subroutine to do the actual work when the data is returned to the callers buffer */
+      327 
+      328 work_in_buffer:
+      329      proc (cs_arg_no, ff_arg_no, pad, ap);
+      330 
+      331 	dcl     (cs_arg_no, ff_arg_no, pad)
+      332 				 fixed bin;
+      333 	dcl     ap		 ptr;
+      334 
+      335 
+      336 	output_length = buffer_length;
+      337 	call formline_ (cs_arg_no, ff_arg_no, buffer_ptr, output_length, pad, ap);
+      338 
+      339 	if add_nl
+      340 	then do;
+      341 		output_length = min (output_length + 1, buffer_length);
+      342 		substr (return_string, output_length, 1) = nl;
+      343 	     end;
+      344 
+      345 	return;
+      346 
+      347      end work_in_buffer;
+      348 
+      349 signal_error:
+      350      procedure;
+      351 
+  1     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare condition_info_header_ptr
+  1     5 			      pointer;
+  1     6      declare 1 condition_info_header
+  1     7 			      aligned based (condition_info_header_ptr),
+  1     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  1     9 	     2 version	      fixed bin,		/* version number of this structure */
+  1    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  1    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  1    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  1    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  1    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  1    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  1    16 	       3 pad	      bit (32) unaligned,
+  1    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  1    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  1    19 
+  1    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+      352 
+      353 	declare 1 CI		 aligned like condition_info_header;
+      354 	declare error_table_$bad_arg	 external static fixed bin (35);
+      355 
+      356 	CI.length = currentsize (CI);
+      357 	CI.version = 1;
+      358 	string (CI.action_flags) = ""b;
+      359 	CI.cant_restart = "1"b;
+      360 	CI.info_string =
+      361 	     "A return string argument to an ioa_$rs* entrypoint was not a character or varying character string.";
+      362 	CI.status_code = error_table_$bad_arg;
+      363 	call signal_ ("ioa_error", null (), addr (CI));
+      364 	return;
+      365      end signal_error;
+      366 
+      367 /* This procedure sets buffer_length as a side effect */
+      368 
+      369 GET_RETURN_TYPE:
+      370      procedure returns (fixed bin);
+      371 
+      372 	if arg_list_ptr -> arg_list.desc_count = 0
+      373 	then return (-1);
+      374 	if arg_list_ptr -> arg_list.call_type = Interseg_call_type
+      375 	then arg_descriptor_ptr = arg_list_ptr -> arg_list.desc_ptrs (2);
+      376 	else arg_descriptor_ptr = arg_list_ptr -> arg_list_with_envptr.desc_ptrs (2);
+      377 	buffer_length = arg_descriptor.size;
+      378 	return (arg_descriptor.type);
+      379      end GET_RETURN_TYPE;
+      380 
+      381 
+      382 
+  2     1 /* BEGIN INCLUDE FILE ... arg_descriptor.incl.pl1
+  2     2*
+  2     3*   James R. Davis 1 Mar 79 */
+  2     4 /* Modified June 83 JMAthane for extended arg descriptor format */
+  2     5 
+  2     6      dcl	   1 arg_descriptor	      based (arg_descriptor_ptr) aligned,
+  2     7 	     2 flag	      bit (1) unal,
+  2     8 	     2 type	      fixed bin (6) unsigned unal,
+  2     9 	     2 packed	      bit (1) unal,
+  2    10 	     2 number_dims	      fixed bin (4) unsigned unal,
+  2    11 	     2 size	      fixed bin (24) unsigned unal;
+  2    12 
+  2    13      dcl	   1 fixed_arg_descriptor based (arg_descriptor_ptr) aligned,
+  2    14 	     2 flag	      bit (1) unal,
+  2    15 	     2 type	      fixed bin (6) unsigned unal,
+  2    16 	     2 packed	      bit (1) unal,
+  2    17 	     2 number_dims	      fixed bin (4) unsigned unal,
+  2    18 	     2 scale	      fixed bin (11) unal,
+  2    19 	     2 precision	      fixed bin (12) unsigned unal;
+  2    20 
+  2    21      dcl	   1 extended_arg_descriptor based (arg_descriptor_ptr) aligned,
+  2    22 	     2 flag	      bit (1) unal,		/* = "1"b */
+  2    23 	     2 type	      fixed bin (6) unsigned unal, /* = 58 */
+  2    24 	     2 packed	      bit (1) unal,		/* significant if number_dims ^= 0 */
+  2    25 	     2 number_dims	      fixed (4) unsigned unal,/* number of variable dimensions */
+  2    26 	     2 size	      bit (24) unal,
+  2    27 	     2 dims	      (0 refer (extended_arg_descriptor.number_dims)), /* part referenced by called generated code */
+  2    28 	       3 low	      fixed bin (35),
+  2    29 	       3 high	      fixed bin (35),
+  2    30 	       3 multiplier	      fixed bin (35),	/* in bits if packed, in words if not */
+  2    31 	     2 real_type	      fixed bin (18) unsigned unal,
+  2    32 	     2 type_offset	      fixed bin (18) unsigned unal; /* offset rel to symbol tree to symbol node for type, if any */
+  2    33 
+  2    34      dcl	   arg_descriptor_ptr     ptr;
+  2    35 
+  2    36      dcl	   extended_arg_type      fixed bin init (58);
+  2    37 
+  2    38 /* END INCLUDE file .... arg_descriptor.incl.pl1  */
+      383 
+      384 
+  3     1 /* BEGIN INCLUDE FILE ... arg_list.incl.pl1
+  3     2*
+  3     3*   James R. Davis 10 May 79 */
+  3     4 
+  3     5 
+  3     6      
+  3     7 /****^  HISTORY COMMENTS:
+  3     8*  1) change(86-05-15,DGHowe), approve(86-05-15,MCR7375),
+  3     9*     audit(86-07-15,Schroth):
+  3    10*     added command_name_arglist declaration to allow the storage of the
+  3    11*     command name given to the command processor
+  3    12*                                                   END HISTORY COMMENTS */
+  3    13 
+  3    14      dcl	   1 arg_list	      aligned based,
+  3    15 	     2 header,
+  3    16 	       3 arg_count	      fixed bin (17) unsigned unal,
+  3    17 	       3 pad1	      bit (1) unal,
+  3    18 	       3 call_type	      fixed bin (18) unsigned unal,
+  3    19 	       3 desc_count	      fixed bin (17) unsigned unal,
+  3    20 	       3 pad2	      bit (19) unal,
+  3    21 	     2 arg_ptrs	      (arg_list_arg_count refer (arg_list.arg_count)) ptr,
+  3    22 	     2 desc_ptrs	      (arg_list_arg_count refer (arg_list.arg_count)) ptr;
+  3    23 
+  3    24 
+  3    25      dcl	   1 command_name_arglist	      aligned based,
+  3    26 	     2 header,
+  3    27 	       3 arg_count	      fixed bin (17) unsigned unal,
+  3    28 	       3 pad1	      bit (1) unal,
+  3    29 	       3 call_type	      fixed bin (18) unsigned unal,
+  3    30 	       3 desc_count	      fixed bin (17) unsigned unal,
+  3    31 	       3 mbz              bit(1) unal,
+  3    32                  3 has_command_name bit(1) unal,
+  3    33 	       3 pad2	      bit (17) unal,
+  3    34 	     2 arg_ptrs	      (arg_list_arg_count refer (command_name_arglist.arg_count)) ptr,
+  3    35 	     2 desc_ptrs	      (arg_list_arg_count refer (command_name_arglist.arg_count)) ptr,
+  3    36 	     2 name,
+  3    37                  3 command_name_ptr         pointer,
+  3    38                  3 command_name_length      fixed bin (21);
+  3    39 	
+  3    40 
+  3    41 
+  3    42      dcl	   1 arg_list_with_envptr aligned based,	/* used with non-quick int and entry-var calls */
+  3    43 	     2 header,
+  3    44 	       3 arg_count	      fixed bin (17) unsigned unal,
+  3    45 	       3 pad1	      bit (1) unal,
+  3    46 	       3 call_type	      fixed bin (18) unsigned unal,
+  3    47 	       3 desc_count	      fixed bin (17) unsigned unal,
+  3    48 	       3 pad2	      bit (19) unal,
+  3    49 	     2 arg_ptrs	      (arg_list_arg_count refer (arg_list_with_envptr.arg_count)) ptr,
+  3    50 	     2 envptr	      ptr,
+  3    51 	     2 desc_ptrs	      (arg_list_arg_count refer (arg_list_with_envptr.arg_count)) ptr;
+  3    52 
+  3    53 
+  3    54      dcl	   (
+  3    55 	   Quick_call_type	      init (0),
+  3    56 	   Interseg_call_type     init (4),
+  3    57 	   Envptr_supplied_call_type
+  3    58 			      init (8)
+  3    59 	   )		      fixed bin (18) unsigned unal int static options (constant);
+  3    60 
+  3    61 /* The user must declare arg_list_arg_count - if an adjustable automatic structure
+  3    62*   is being "liked" then arg_list_arg_count may be a parameter, in order to allocate
+  3    63*   an argument list of the proper size in the user's stack
+  3    64*
+  3    65**/
+  3    66 /* END INCLUDE FILE ... arg_list.incl.pl1 */
+      385 
+      386 
+  4     1 /* BEGIN INCLUDE FILE ... std_descriptor_types.incl.pl1 */
+  4     2 
+  4     3 
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(86-09-05,JMAthane), approve(86-09-05,MCR7525),
+  4     6*     audit(86-09-11,Martinson), install(86-11-12,MR12.0-1208):
+  4     7*     Added pascal_string_type_dtype descriptor type.  Its number is 87.
+  4     8*     Objects of this type are PASCAL string types.
+  4     9*  2) change(88-09-20,WAAnderson), approve(88-09-20,MCR7952),
+  4    10*     audit(88-09-30,JRGray), install(88-10-24,MR12.2-1184):
+  4    11*     Added the new C types.
+  4    12*                                                   END HISTORY COMMENTS */
+  4    13 
+  4    14 /* This include file defines mnemonic names for the Multics
+  4    15*   standard descriptor types, using both pl1 and cobol terminology.
+  4    16*   PG 780613
+  4    17*   JRD 790530
+  4    18*   JRD 791016
+  4    19*   MBW 810731
+  4    20*   TGO 830614 Add hex types.
+  4    21*   Modified June 83 JMAthane to add PASCAL data types
+  4    22*   TGO 840120 Add float dec extended and generic, float binary generic
+  4    23**/
+  4    24 
+  4    25      dcl	   (real_fix_bin_1_dtype  init (1),
+  4    26 	   real_fix_bin_2_dtype   init (2),
+  4    27 	   real_flt_bin_1_dtype   init (3),
+  4    28 	   real_flt_bin_2_dtype   init (4),
+  4    29 	   cplx_fix_bin_1_dtype   init (5),
+  4    30 	   cplx_fix_bin_2_dtype   init (6),
+  4    31 	   cplx_flt_bin_1_dtype   init (7),
+  4    32 	   cplx_flt_bin_2_dtype   init (8),
+  4    33 	   real_fix_dec_9bit_ls_dtype init (9),
+  4    34 	   real_flt_dec_9bit_dtype init (10),
+  4    35 	   cplx_fix_dec_9bit_ls_dtype init (11),
+  4    36 	   cplx_flt_dec_9bit_dtype init (12),
+  4    37 	   pointer_dtype	      init (13),
+  4    38 	   offset_dtype	      init (14),
+  4    39 	   label_dtype	      init (15),
+  4    40 	   entry_dtype	      init (16),
+  4    41 	   structure_dtype	      init (17),
+  4    42 	   area_dtype	      init (18),
+  4    43 	   bit_dtype	      init (19),
+  4    44 	   varying_bit_dtype      init (20),
+  4    45 	   char_dtype	      init (21),
+  4    46 	   varying_char_dtype     init (22),
+  4    47 	   file_dtype	      init (23),
+  4    48 	   real_fix_dec_9bit_ls_overp_dtype init (29),
+  4    49 	   real_fix_dec_9bit_ts_overp_dtype init (30),
+  4    50 	   real_fix_bin_1_uns_dtype init (33),
+  4    51 	   real_fix_bin_2_uns_dtype init (34),
+  4    52 	   real_fix_dec_9bit_uns_dtype init (35),
+  4    53 	   real_fix_dec_9bit_ts_dtype init (36),
+  4    54 	   real_fix_dec_4bit_uns_dtype init (38),	/* digit-aligned */
+  4    55 	   real_fix_dec_4bit_ts_dtype init (39),	/* byte-aligned */
+  4    56 	   real_fix_dec_4bit_bytealigned_uns_dtype init (40), /* COBOL */
+  4    57 	   real_fix_dec_4bit_ls_dtype init (41),	/* digit-aligned */
+  4    58 	   real_flt_dec_4bit_dtype init (42),		/* digit-aligned */
+  4    59 	   real_fix_dec_4bit_bytealigned_ls_dtype init (43),
+  4    60 	   real_flt_dec_4bit_bytealigned_dtype init (44),
+  4    61 	   cplx_fix_dec_4bit_bytealigned_ls_dtype init (45),
+  4    62 	   cplx_flt_dec_4bit_bytealigned_dtype init (46),
+  4    63 	   real_flt_hex_1_dtype   init (47),
+  4    64 	   real_flt_hex_2_dtype   init (48),
+  4    65 	   cplx_flt_hex_1_dtype   init (49),
+  4    66 	   cplx_flt_hex_2_dtype   init (50),
+  4    67 	   c_typeref_dtype        init (54),
+  4    68 	   c_enum_dtype           init (55),
+  4    69              c_enum_const_dtype     init (56),
+  4    70 	   c_union_dtype          init (57),
+  4    71 	   algol68_straight_dtype init (59),
+  4    72 	   algol68_format_dtype   init (60),
+  4    73 	   algol68_array_descriptor_dtype init (61),
+  4    74 	   algol68_union_dtype    init (62),
+  4    75 
+  4    76 	   cobol_comp_6_dtype     init (1),
+  4    77 	   cobol_comp_7_dtype     init (1),
+  4    78 	   cobol_display_ls_dtype init (9),
+  4    79 	   cobol_structure_dtype  init (17),
+  4    80 	   cobol_char_string_dtype init (21),
+  4    81 	   cobol_display_ls_overp_dtype init (29),
+  4    82 	   cobol_display_ts_overp_dtype init (30),
+  4    83 	   cobol_display_uns_dtype init (35),
+  4    84 	   cobol_display_ts_dtype init (36),
+  4    85 	   cobol_comp_8_uns_dtype init (38),		/* digit aligned */
+  4    86 	   cobol_comp_5_ts_dtype  init (39),		/* byte aligned */
+  4    87 	   cobol_comp_5_uns_dtype init (40),
+  4    88 	   cobol_comp_8_ls_dtype  init (41),		/* digit aligned */
+  4    89 	   real_flt_dec_extended_dtype init (81),	/* 9-bit exponent */
+  4    90 	   cplx_flt_dec_extended_dtype init (82),	/* 9-bit exponent */
+  4    91 	   real_flt_dec_generic_dtype init (83),	/* generic float decimal */
+  4    92 	   cplx_flt_dec_generic_dtype init (84),
+  4    93 	   real_flt_bin_generic_dtype init (85),	/* generic float binary */
+  4    94 	   cplx_flt_bin_generic_dtype init (86)) fixed bin internal static options (constant);
+  4    95 
+  4    96      dcl	   (ft_integer_dtype      init (1),
+  4    97 	   ft_real_dtype	      init (3),
+  4    98 	   ft_double_dtype	      init (4),
+  4    99 	   ft_complex_dtype	      init (7),
+  4   100 	   ft_complex_double_dtype init (8),
+  4   101 	   ft_external_dtype      init (16),
+  4   102 	   ft_logical_dtype	      init (19),
+  4   103 	   ft_char_dtype	      init (21),
+  4   104 	   ft_hex_real_dtype      init (47),
+  4   105 	   ft_hex_double_dtype    init (48),
+  4   106 	   ft_hex_complex_dtype   init (49),
+  4   107 	   ft_hex_complex_double_dtype init (50)
+  4   108 	   )		      fixed bin internal static options (constant);
+  4   109 
+  4   110      dcl	   (algol68_short_int_dtype init (1),
+  4   111 	   algol68_int_dtype      init (1),
+  4   112 	   algol68_long_int_dtype init (2),
+  4   113 	   algol68_real_dtype     init (3),
+  4   114 	   algol68_long_real_dtype init (4),
+  4   115 	   algol68_compl_dtype    init (7),
+  4   116 	   algol68_long_compl_dtype init (8),
+  4   117 	   algol68_bits_dtype     init (19),
+  4   118 	   algol68_bool_dtype     init (19),
+  4   119 	   algol68_char_dtype     init (21),
+  4   120 	   algol68_byte_dtype     init (21),
+  4   121 	   algol68_struct_struct_char_dtype init (22),
+  4   122 	   algol68_struct_struct_bool_dtype init (20)
+  4   123 	   )		      fixed bin internal static options (constant);
+  4   124 
+  4   125      dcl	   (label_constant_runtime_dtype init (24),
+  4   126 	   int_entry_runtime_dtype init (25),
+  4   127 	   ext_entry_runtime_dtype init (26),
+  4   128 	   ext_procedure_runtime_dtype init (27),
+  4   129 	   picture_runtime_dtype  init (63)
+  4   130 	   )		      fixed bin internal static options (constant);
+  4   131 
+  4   132      dcl	   (pascal_integer_dtype  init (1),
+  4   133 	   pascal_real_dtype      init (4),
+  4   134 	   pascal_label_dtype     init (24),
+  4   135 	   pascal_internal_procedure_dtype init (25),
+  4   136 	   pascal_exportable_procedure_dtype init (26),
+  4   137 	   pascal_imported_procedure_dtype init (27),
+  4   138 	   pascal_typed_pointer_type_dtype init (64),
+  4   139 	   pascal_char_dtype      init (65),
+  4   140 	   pascal_boolean_dtype   init (66),
+  4   141 	   pascal_record_file_type_dtype init (67),
+  4   142 	   pascal_record_type_dtype init (68),
+  4   143 	   pascal_set_dtype	      init (69),
+  4   144 	   pascal_enumerated_type_dtype init (70),
+  4   145 	   pascal_enumerated_type_element_dtype init (71),
+  4   146 	   pascal_enumerated_type_instance_dtype init (72),
+  4   147 	   pascal_user_defined_type_dtype init (73),
+  4   148 	   pascal_user_defined_type_instance_dtype init (74),
+  4   149 	   pascal_text_file_dtype init (75),
+  4   150 	   pascal_procedure_type_dtype init (76),
+  4   151 	   pascal_variable_formal_parameter_dtype init (77),
+  4   152 	   pascal_value_formal_parameter_dtype init (78),
+  4   153 	   pascal_entry_formal_parameter_dtype init (79),
+  4   154 	   pascal_parameter_procedure_dtype init (80),
+  4   155 	   pascal_string_type_dtype init (87)) fixed bin int static options (constant);
+  4   156 
+  4   157 
+  4   158 /* END INCLUDE FILE ... std_descriptor_types.incl.pl1 */
+      387 
+      388      end ioa_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.5  ioa_.pl1                          >spec>install>1110>ioa_.pl1
+352          1    03/24/82  1347.2  condition_info_header.incl.pl1    >ldd>include>condition_info_header.incl.pl1
+383          2    11/02/83  1845.0  arg_descriptor.incl.pl1           >ldd>include>arg_descriptor.incl.pl1
+385          3    08/05/86  0856.8  arg_list.incl.pl1                 >ldd>include>arg_list.incl.pl1
+387          4    10/26/88  1255.5  std_descriptor_types.incl.pl1     >ldd>include>std_descriptor_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CI                              000176 automatic       structure                level 1 dcl 353 set ref 356 363 363
+Envptr_supplied_call_type              constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 3-54 ref 264
+Interseg_call_type                     constant        fixed bin(18,0)          initial packed unsigned unaligned dcl 3-54 ref 243
+                                                                                  374
+a_arglist_ptr                          parameter       pointer                  dcl 47 ref 197 200 209 212
+a_control_string                       parameter       char                     packed unaligned dcl 50 set ref 209 247
+a_cs_argno                             parameter       fixed bin(17,0)          dcl 48 ref 197 201
+a_ff_argno                             parameter       fixed bin(17,0)          dcl 49 ref 197 202 209 213
+action_flags              2     000176 automatic       structure                level 2 dcl 353 set ref 358*
+add_nl                          000144 automatic       bit(1)                   dcl 78 set ref 127* 133* 140 140 157* 162* 167* 172*
+                                                                                  220* 292* 297* 302* 306* 315 315 339
+addr                                                   builtin function         dcl 82 ref 139 217 247 313 363 363
+addrel                                                 builtin function         dcl 82 ref 190
+aiocbp                                 parameter       pointer                  dcl 46 ref 290 293 295 298
+ap                                     parameter       pointer                  dcl 333 set ref 328 337*
+arg                                    parameter       char                     packed unaligned dcl 45 ref 300 304 309
+arg_count                              based           fixed bin(17,0)          level 3 in structure "arg_list" packed packed
+                                                                                  unsigned unaligned dcl 3-14 in procedure "ioa_"
+                                                                                  set ref 228 233 233 239* 241* 258 258 266 272 272
+                                                                                  284 284 374
+arg_count                              based           fixed bin(17,0)          level 3 in structure "arg_list_with_envptr" packed
+                                                                                  packed unsigned unaligned dcl 3-42 in procedure
+                                                                                  "ioa_" ref 266 376
+arg_descriptor                         based           structure                level 1 dcl 2-6
+arg_descriptor_ptr              000154 automatic       pointer                  dcl 2-34 set ref 374* 376* 377 378
+arg_list                               based           structure                level 1 dcl 3-14 set ref 233 239 284
+arg_list_arg_count              000122 automatic       fixed bin(17,0)          dcl 67 set ref 237* 239 239 239 241 244 250 264 271
+arg_list_ptr                    000140 automatic       pointer                  dcl 76 set ref 176* 178 187* 189 200* 230* 233 233
+                                                                                  239* 241 242 243 244 245 247 251 258 266 272 281*
+                                                                                  284 372 374 374 376
+arg_list_ptr_                   000020 constant        entry                    external dcl 116 ref 176 257
+arg_list_with_envptr                   based           structure                level 1 dcl 3-42
+arg_ptrs                  2            based           pointer                  array level 2 dcl 3-14 set ref 247* 251* 251
+bce_data$put_chars              000032 external static entry variable           dcl 124 set ref 139 313
+bin                                                    builtin function         dcl 82 ref 140 140 281 281 315 315
+buffer_length                   000102 automatic       fixed bin(21,0)          dcl 59 set ref 219* 336 341 377*
+buffer_ptr                      000100 automatic       pointer                  dcl 58 set ref 178* 190 217* 337* 342
+call_type                 0(18)        based           fixed bin(18,0)          level 3 packed packed unsigned unaligned dcl 3-14
+                                                                                  set ref 243* 264 374
+cant_restart              2     000176 automatic       bit(1)                   level 3 packed packed unaligned dcl 353 set ref 359*
+char_dtype                             constant        fixed bin(17,0)          initial dcl 4-25 ref 184
+cleanup                         000146 stack reference condition                dcl 85 ref 231
+code                            000120 automatic       fixed bin(35,0)          dcl 65 set ref 140* 141 145* 315* 317 321*
+condition_info_header                  based           structure                level 1 dcl 1-6
+cs_arg_no                              parameter       fixed bin(17,0)          dcl 331 set ref 328 337*
+cs_argno                        000104 automatic       fixed bin(17,0)          dcl 61 set ref 201* 214* 277* 281*
+cs_entry                        000134 automatic       bit(1)                   packed unaligned dcl 73 set ref 203* 215* 222 284
+currentsize                                            builtin function         dcl 82 ref 356
+desc_count                1            based           fixed bin(17,0)          level 3 packed packed unsigned unaligned dcl 3-14
+                                                                                  set ref 244* 372
+desc_ptrs                              based           pointer                  array level 2 in structure "arg_list" dcl 3-14
+                                                                                  in procedure "ioa_" set ref 258* 258 266* 272* 272
+                                                                                  374
+desc_ptrs                              based           pointer                  array level 2 in structure "arg_list_with_envptr"
+                                                                                  dcl 3-42 in procedure "ioa_" ref 266 376
+error_table_$bad_arg            000034 external static fixed bin(35,0)          dcl 354 ref 362
+extended_arg_type               000156 automatic       fixed bin(17,0)          initial dcl 2-36 set ref 2-36*
+ff_arg_no                              parameter       fixed bin(17,0)          dcl 331 set ref 328 337*
+ff_argno                        000105 automatic       fixed bin(17,0)          dcl 62 set ref 202* 278* 281*
+formline_                       000022 constant        entry                    external dcl 118 ref 337
+formline_$switch                000024 constant        entry                    external dcl 119 ref 140 315
+get_system_free_area_           000012 constant        entry                    external dcl 113 ref 229
+header                                 based           structure                level 2 in structure "arg_list_with_envptr" dcl 3-42
+                                                                                  in procedure "ioa_"
+header                                 based           structure                level 2 in structure "arg_list" dcl 3-14
+                                                                                  in procedure "ioa_"
+info_string               3     000176 automatic       varying char(256)        level 2 dcl 353 set ref 360*
+iocbp                           000116 automatic       pointer                  dcl 64 set ref 136* 139* 140* 145* 293* 298* 311*
+                                                                                  313* 315* 321*
+iox_$find_iocb                  000016 constant        entry                    external dcl 115 ref 311
+iox_$user_output                000010 external static pointer                  dcl 109 ref 136
+iox_signal_                     000014 constant        entry                    external dcl 114 ref 145 321
+length                                                 builtin function         dcl 82 in procedure "ioa_" ref 219
+length                          000176 automatic       fixed bin(17,0)          level 2 in structure "CI" dcl 353 in procedure
+                                                                                  "signal_error" set ref 356*
+min                                                    builtin function         dcl 82 ref 341
+my_arg_list_ptr                 000142 automatic       pointer                  dcl 77 set ref 257* 258
+nl                                     constant        char(1)                  initial packed unaligned dcl 89 ref 342
+nlsw                                   parameter       bit(1)                   dcl 54 ref 197 209 220
+null                                                   builtin function         dcl 82 ref 230 233 363 363
+number_of_args                  000121 automatic       fixed bin(17,0)          dcl 66 set ref 228* 237
+orig_arg                        000132 automatic       fixed bin(17,0)          dcl 71 set ref 249* 251 252* 252 262* 266 268* 268
+                                                                                  272 274* 274
+orig_arg_list_ptr               000124 automatic       pointer                  dcl 68 set ref 212* 228 251 264 266 272
+orig_ff_argno                   000126 automatic       fixed bin(17,0)          dcl 69 set ref 213* 237 249 262
+output_length                   000135 automatic       fixed bin(21,0)          dcl 74 set ref 189 190 283 336* 337* 341* 341 342
+pad                                    parameter       fixed bin(17,0)          dcl 331 in procedure "work_in_buffer" set ref 328
+                                                                                  337*
+pad                             000103 automatic       fixed bin(17,0)          dcl 60 in procedure "ioa_" set ref 158* 163* 168*
+                                                                                  173* 182* 187*
+pad1                      0(17)        based           bit(1)                   level 3 packed packed unaligned dcl 3-14 set ref
+                                                                                  242*
+pad2                      1(17)        based           bit(19)                  level 3 packed packed unaligned dcl 3-14 set ref
+                                                                                  245*
+padsw                                  parameter       bit(1)                   dcl 53 ref 197 209 281 281
+retstring                              parameter       char                     packed unaligned dcl 51 set ref 197 209 217 219
+return_len_ptr            6            based           pointer                  level 2 dcl 96 ref 189
+return_string                          based           char(131071)             packed unaligned dcl 102 set ref 342*
+return_string_length                   based           fixed bin(17,0)          dcl 103 set ref 189*
+return_string_ptr         4            based           pointer                  level 2 dcl 96 ref 178
+rlen                                   parameter       fixed bin(21,0)          dcl 52 set ref 197 209 283*
+rs_arg_list                            based           structure                level 1 unaligned dcl 96
+rs_type                         000136 automatic       fixed bin(17,0)          dcl 75 set ref 180* 182 184 190
+signal_                         000026 constant        entry                    external dcl 120 ref 363
+size                      0(12)        based           fixed bin(24,0)          level 2 packed packed unsigned unaligned dcl 2-6 ref
+                                                                                  377
+status_code             104     000176 automatic       fixed bin(35,0)          level 2 dcl 353 set ref 362*
+string                                                 builtin function         dcl 82 set ref 358*
+substr                                                 builtin function         dcl 82 set ref 342*
+switch_name                     000106 automatic       char(32)                 packed unaligned dcl 63 set ref 309* 311*
+sys_info$service_system         000030 external static bit(1)                   dcl 122 ref 136 143 311 319
+system_area                            based           area(1024)               dcl 94 ref 239
+system_areap                    000130 automatic       pointer                  dcl 70 set ref 229* 239
+this_arg                        000133 automatic       fixed bin(17,0)          dcl 72 set ref 250* 251* 264* 266* 271* 272*
+type                      0(01)        based           fixed bin(6,0)           level 2 packed packed unsigned unaligned dcl 2-6 ref
+                                                                                  378
+varying_char_dtype                     constant        fixed bin(17,0)          initial dcl 4-25 ref 182 190
+varying_string_length                  based           fixed bin(17,0)          dcl 104 set ref 190*
+version                   1     000176 automatic       fixed bin(17,0)          level 2 dcl 353 set ref 357*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Quick_call_type                        internal static fixed bin(18,0)          initial packed unsigned unaligned dcl 3-54
+algol68_array_descriptor_dtype         internal static fixed bin(17,0)          initial dcl 4-25
+algol68_bits_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_bool_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_byte_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_char_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_compl_dtype                    internal static fixed bin(17,0)          initial dcl 4-110
+algol68_format_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+algol68_int_dtype                      internal static fixed bin(17,0)          initial dcl 4-110
+algol68_long_compl_dtype               internal static fixed bin(17,0)          initial dcl 4-110
+algol68_long_int_dtype                 internal static fixed bin(17,0)          initial dcl 4-110
+algol68_long_real_dtype                internal static fixed bin(17,0)          initial dcl 4-110
+algol68_real_dtype                     internal static fixed bin(17,0)          initial dcl 4-110
+algol68_short_int_dtype                internal static fixed bin(17,0)          initial dcl 4-110
+algol68_straight_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+algol68_struct_struct_bool_dtype       internal static fixed bin(17,0)          initial dcl 4-110
+algol68_struct_struct_char_dtype       internal static fixed bin(17,0)          initial dcl 4-110
+algol68_union_dtype                    internal static fixed bin(17,0)          initial dcl 4-25
+area_dtype                             internal static fixed bin(17,0)          initial dcl 4-25
+bit_dtype                              internal static fixed bin(17,0)          initial dcl 4-25
+c_enum_const_dtype                     internal static fixed bin(17,0)          initial dcl 4-25
+c_enum_dtype                           internal static fixed bin(17,0)          initial dcl 4-25
+c_typeref_dtype                        internal static fixed bin(17,0)          initial dcl 4-25
+c_union_dtype                          internal static fixed bin(17,0)          initial dcl 4-25
+cobol_char_string_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_5_ts_dtype                  internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_5_uns_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_6_dtype                     internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_7_dtype                     internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_8_ls_dtype                  internal static fixed bin(17,0)          initial dcl 4-25
+cobol_comp_8_uns_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ls_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ls_overp_dtype           internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ts_dtype                 internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_ts_overp_dtype           internal static fixed bin(17,0)          initial dcl 4-25
+cobol_display_uns_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+cobol_structure_dtype                  internal static fixed bin(17,0)          initial dcl 4-25
+command_name_arglist                   based           structure                level 1 dcl 3-25
+condition_info_header_ptr              automatic       pointer                  dcl 1-4
+cplx_fix_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_fix_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_fix_dec_4bit_bytealigned_ls_dtype internal static fixed bin(17,0)          initial dcl 4-25
+cplx_fix_dec_9bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_bin_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_4bit_bytealigned_dtype    internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_9bit_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_extended_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_dec_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_hex_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+cplx_flt_hex_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+entry_dtype                            internal static fixed bin(17,0)          initial dcl 4-25
+ext_entry_runtime_dtype                internal static fixed bin(17,0)          initial dcl 4-125
+ext_procedure_runtime_dtype            internal static fixed bin(17,0)          initial dcl 4-125
+extended_arg_descriptor                based           structure                level 1 dcl 2-21
+file_dtype                             internal static fixed bin(17,0)          initial dcl 4-25
+fixed_arg_descriptor                   based           structure                level 1 dcl 2-13
+ft_char_dtype                          internal static fixed bin(17,0)          initial dcl 4-96
+ft_complex_double_dtype                internal static fixed bin(17,0)          initial dcl 4-96
+ft_complex_dtype                       internal static fixed bin(17,0)          initial dcl 4-96
+ft_double_dtype                        internal static fixed bin(17,0)          initial dcl 4-96
+ft_external_dtype                      internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_complex_double_dtype            internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_complex_dtype                   internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_double_dtype                    internal static fixed bin(17,0)          initial dcl 4-96
+ft_hex_real_dtype                      internal static fixed bin(17,0)          initial dcl 4-96
+ft_integer_dtype                       internal static fixed bin(17,0)          initial dcl 4-96
+ft_logical_dtype                       internal static fixed bin(17,0)          initial dcl 4-96
+ft_real_dtype                          internal static fixed bin(17,0)          initial dcl 4-96
+int_entry_runtime_dtype                internal static fixed bin(17,0)          initial dcl 4-125
+label_constant_runtime_dtype           internal static fixed bin(17,0)          initial dcl 4-125
+label_dtype                            internal static fixed bin(17,0)          initial dcl 4-25
+offset_dtype                           internal static fixed bin(17,0)          initial dcl 4-25
+pascal_boolean_dtype                   internal static fixed bin(17,0)          initial dcl 4-132
+pascal_char_dtype                      internal static fixed bin(17,0)          initial dcl 4-132
+pascal_entry_formal_parameter_dtype    internal static fixed bin(17,0)          initial dcl 4-132
+pascal_enumerated_type_dtype           internal static fixed bin(17,0)          initial dcl 4-132
+pascal_enumerated_type_element_dtype   internal static fixed bin(17,0)          initial dcl 4-132
+pascal_enumerated_type_instance_dtype  internal static fixed bin(17,0)          initial dcl 4-132
+pascal_exportable_procedure_dtype      internal static fixed bin(17,0)          initial dcl 4-132
+pascal_imported_procedure_dtype        internal static fixed bin(17,0)          initial dcl 4-132
+pascal_integer_dtype                   internal static fixed bin(17,0)          initial dcl 4-132
+pascal_internal_procedure_dtype        internal static fixed bin(17,0)          initial dcl 4-132
+pascal_label_dtype                     internal static fixed bin(17,0)          initial dcl 4-132
+pascal_parameter_procedure_dtype       internal static fixed bin(17,0)          initial dcl 4-132
+pascal_procedure_type_dtype            internal static fixed bin(17,0)          initial dcl 4-132
+pascal_real_dtype                      internal static fixed bin(17,0)          initial dcl 4-132
+pascal_record_file_type_dtype          internal static fixed bin(17,0)          initial dcl 4-132
+pascal_record_type_dtype               internal static fixed bin(17,0)          initial dcl 4-132
+pascal_set_dtype                       internal static fixed bin(17,0)          initial dcl 4-132
+pascal_string_type_dtype               internal static fixed bin(17,0)          initial dcl 4-132
+pascal_text_file_dtype                 internal static fixed bin(17,0)          initial dcl 4-132
+pascal_typed_pointer_type_dtype        internal static fixed bin(17,0)          initial dcl 4-132
+pascal_user_defined_type_dtype         internal static fixed bin(17,0)          initial dcl 4-132
+pascal_user_defined_type_instance_dtype
+                                       internal static fixed bin(17,0)          initial dcl 4-132
+pascal_value_formal_parameter_dtype    internal static fixed bin(17,0)          initial dcl 4-132
+pascal_variable_formal_parameter_dtype internal static fixed bin(17,0)          initial dcl 4-132
+picture_runtime_dtype                  internal static fixed bin(17,0)          initial dcl 4-125
+pointer_dtype                          internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_1_uns_dtype               internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_bin_2_uns_dtype               internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_bytealigned_ls_dtype internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_bytealigned_uns_dtype
+                                       internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_ts_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_4bit_uns_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ls_overp_dtype       internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ts_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_ts_overp_dtype       internal static fixed bin(17,0)          initial dcl 4-25
+real_fix_dec_9bit_uns_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_bin_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_4bit_bytealigned_dtype    internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_4bit_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_9bit_dtype                internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_extended_dtype            internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_dec_generic_dtype             internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_hex_1_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+real_flt_hex_2_dtype                   internal static fixed bin(17,0)          initial dcl 4-25
+structure_dtype                        internal static fixed bin(17,0)          initial dcl 4-25
+varying_bit_dtype                      internal static fixed bin(17,0)          initial dcl 4-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+COMMON                          000077 constant        label                    dcl 136 ref 128 146
+COMMON_RS                       000230 constant        label                    dcl 176 ref 159 164 169 174
+FIND_SWITCH_PTR                 001020 constant        label                    dcl 309 ref 303 307
+FOUND_SWITCH_PTR                001055 constant        label                    dcl 315 ref 294 299 322
+GENERAL_RS_JOIN                 000372 constant        label                    dcl 217 ref 204
+GET_RETURN_TYPE                 001235 constant        entry                    internal dcl 369 ref 180
+general_rs                      000303 constant        entry                    external dcl 197
+general_rs_control_string       000337 constant        entry                    external dcl 209
+ioa_                            000056 constant        entry                    external dcl 37
+ioa_stream                      000761 constant        entry                    external dcl 300
+ioa_stream_nnl                  001002 constant        entry                    external dcl 304
+ioa_switch                      000723 constant        entry                    external dcl 290
+ioa_switch_nnl                  000742 constant        entry                    external dcl 295
+nnl                             000070 constant        entry                    external dcl 130
+rs                              000155 constant        entry                    external dcl 155
+rsnnl                           000171 constant        entry                    external dcl 160
+rsnp                            000204 constant        entry                    external dcl 165
+rsnpnnl                         000217 constant        entry                    external dcl 170
+signal_error                    001165 constant        entry                    internal dcl 349 ref 184
+work_in_buffer                  001122 constant        entry                    internal dcl 328 ref 187 281
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1604        1642    1332        1614
+Length      2136    1332        36         257     252           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ioa_                                273 external procedure  is an external procedure.  
+on unit on line 231                  65 on unit               
+work_in_buffer                          internal procedure  shares stack frame of external procedure ioa_.  
+signal_error                            internal procedure  shares stack frame of external procedure ioa_.  
+GET_RETURN_TYPE                         internal procedure  shares stack frame of external procedure ioa_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ioa_                     000100 buffer_ptr                  ioa_
+                         000102 buffer_length               ioa_
+                         000103 pad                         ioa_
+                         000104 cs_argno                    ioa_
+                         000105 ff_argno                    ioa_
+                         000106 switch_name                 ioa_
+                         000116 iocbp                       ioa_
+                         000120 code                        ioa_
+                         000121 number_of_args              ioa_
+                         000122 arg_list_arg_count          ioa_
+                         000124 orig_arg_list_ptr           ioa_
+                         000126 orig_ff_argno               ioa_
+                         000130 system_areap                ioa_
+                         000132 orig_arg                    ioa_
+                         000133 this_arg                    ioa_
+                         000134 cs_entry                    ioa_
+                         000135 output_length               ioa_
+                         000136 rs_type                     ioa_
+                         000140 arg_list_ptr                ioa_
+                         000142 my_arg_list_ptr             ioa_
+                         000144 add_nl                      ioa_
+                         000154 arg_descriptor_ptr          ioa_
+                         000156 extended_arg_type           ioa_
+                         000176 CI                          signal_error
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          enable_op           ext_entry           ext_entry_desc
+int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+arg_list_ptr_                 formline_                     formline_$switch              get_system_free_area_
+iox_$find_iocb                iox_signal_                   signal_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$put_chars            error_table_$bad_arg          iox_$user_output              sys_info$service_system
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+ 2   36 000051        37 000055       127 000064       128 000066       130 000067       133 000076       136 000077
+    139 000106       140 000110       141 000135       143 000137       145 000142       146 000152       149 000153
+    155 000154       157 000163       158 000165       159 000167       160 000170       162 000177       163 000200
+    164 000202       165 000203       167 000212       168 000214       169 000215       170 000216       172 000225
+    173 000226       174 000227       176 000230       178 000237       180 000242       182 000244       184 000251
+    187 000254       189 000262       190 000265       192 000274       197 000275       200 000317       201 000323
+    202 000325       203 000327       204 000330       209 000331       212 000360       213 000364       214 000366
+    215 000370       217 000372       219 000374       220 000376       222 000401       228 000403       229 000406
+    230 000415       231 000417       233 000433       235 000450       237 000451       239 000455       242 000473
+    243 000475       244 000477       245 000504       247 000506       249 000512       250 000514       251 000523
+    252 000532       253 000533       257 000535       258 000544       262 000560       264 000562       266 000601
+    268 000625       269 000626       271 000631       272 000641       274 000665       275 000666       277 000670
+    278 000672       281 000674       283 000702       284 000705       286 000717       290 000720       292 000731
+    293 000733       294 000737       295 000740       297 000750       298 000751       299 000755       300 000756
+    302 000775       303 000777       304 001000       306 001016       307 001017       309 001020       311 001026
+    313 001053       315 001055       317 001103       319 001105       321 001110       322 001120       324 001121
+    328 001122       336 001124       337 001126       339 001150       341 001152       342 001160       345 001164
+    349 001165       356 001166       357 001170       358 001172       359 001173       360 001175       362 001202
+    363 001205       364 001234       369 001235       372 001237       374 001246       376 001263       377 001270
+    378 001273
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

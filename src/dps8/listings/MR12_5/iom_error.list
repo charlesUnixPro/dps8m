@@ -1,0 +1,414 @@
+	COMPILATION LISTING OF SEGMENT iom_error
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1014.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: off */
+       13 
+       14 /* Written 1st quarter 1981 by Charles Hornig */
+       15 
+       16 
+       17 /****^  HISTORY COMMENTS:
+       18*  1) change(87-11-13,Farley), approve(88-03-01,MCR7814),
+       19*     audit(88-03-01,Parisek), install(88-03-08,MR12.2-1032):
+       20*     Changed invalid_overhead entry point to recognize the data word passed to
+       21*     it and to change the syserr message to contain this word when non-zero.
+       22*                                                   END HISTORY COMMENTS */
+       23 
+       24 
+       25 iom_error$invalid_interrupt:
+       26      procedure (Channel, Level, Dummy);
+       27 
+       28 dcl  Iom fixed bin (3) parameter;
+       29 dcl  Channel fixed bin (35) parameter;
+       30 dcl  Level fixed bin (3) parameter;
+       31 dcl  Data_word bit (36) aligned parameter;
+       32 dcl  Dummy bit (36) aligned parameter;
+       33 
+       34 dcl  syserr entry options (variable);
+       35 
+       36 dcl  data_word bit (36) aligned;
+       37 dcl  iom_no fixed bin (3);
+       38 dcl  chan_no fixed bin (7);
+       39 dcl  chan_id char (8) aligned;
+       40 dcl  code fixed bin (35);
+       41 
+       42 dcl (divide, mod, size) builtin;
+       43 
+       44 dcl  Max_Channel fixed bin (17) internal static options (constant) init (64);
+       45 dcl  Max_Iom fixed bin (17) internal static options (constant) init (4);
+       46 
+       47 /* * * * * * * * * * INVALID_INTERRUPT * * * * * * * * * */
+       48 
+       49 	iom_no = 1 + divide (Channel, Max_Iom * size (per_iom), 3, 0);
+       50 	chan_no = mod (Channel, Max_Channel);
+       51 	data_word = "0"b;
+       52 	goto common;
+       53 
+       54 /* * * * * * * * * * INVALID_OVERHEAD * * * * * * * * * */
+       55 
+       56 invalid_overhead:
+       57 	entry (Iom, Channel, Level, Data_word);
+       58 
+       59 	iom_no = Iom;
+       60 	chan_no = Channel;
+       61 	data_word = Data_word;
+       62 
+       63 common:
+       64 	call io_chnl_util$iom_to_name (iom_no, chan_no, chan_id, code);
+       65 	if code ^= 0 then chan_id = "?";
+       66 	call syserr (JUST_LOG, "iom_error: Unexpected level ^d interrupt from channel ^a^[ (iom ^d, chan ^d)^;^2s^].^[^/^- Status word - ^12.3b^;^s^]", Level, chan_id, (chan_id = "?"), iom_no, chan_no, (data_word ^= "0"b), data_word);
+       67 	return;
+       68 
+  1     1 /* Begin include file ...... iom_data.incl.pl1
+  1     2*   First written in August 1971 by R F Mabee.
+  1     3*   Modified for paged IOM November 1980 by C. Hornig.
+  1     4*   More IIOC changes by C. Hornig, June 1982.
+  1     5*   Modified for channel reconfiguration by Chris Jones, January 1984.
+  1     6*   Modified to remove support of non-paged IOMs by Chris Jones, August 1984.
+  1     7*   Modified to add IMW read protocol flags by M. Pandolf, January 1985.
+  1     8**/
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	iom_data$		   external;
+  1    12 dcl	iom_mailbox$	   external;
+  1    13 
+  1    14 dcl	n_devices		   fixed bin;
+  1    15 dcl	iom_data_ptr	   ptr;
+  1    16 
+  1    17 dcl	1 iom_data	   based (iom_data_ptr) aligned,
+  1    18 	  2 n_devices	   fixed bin,		/* (0) Maximum number of channels. */
+  1    19 	  2 stop_lpw	   bit (36),		/* (1) LPW pointing to stop_dcw. */
+  1    20 	  2 stop_dcw	   bit (36),		/* (2) DCW to stop channel, probably storing bad status. */
+  1    21 	  2 stop_scw	   bit (36),		/* (3) SCW for same */
+  1    22 	  2 imw_lock	   fixed bin (35),		/* (4) Essentially a lock for iom switch checking: */
+  1    23 						/* 1  : OK to poll IMW */
+  1    24 						/* 0  : lock in transition */
+  1    25 						/* -1 : DONT poll IMW */
+  1    26 	  2 n_intr_procs fixed bin (35),		/* (5) Number of processors in interrupt handler */
+  1    27 	  2 pad1		   (2) bit (36),
+  1    28 	  2 stop_status	   bit (72),		/* (10) All unused channels store status here. */
+  1    29 	  2 rfh1		   (6) bit (36),		/* can't use this */
+  1    30 	  2 stop_ext_status	   bit (8 * 36),		/* (20) Unused channels' extended status */
+  1    31 	  2 pad3		   (5) bit (36),
+  1    32 	  2 invalid_interrupts fixed bin (35),		/* (35) interrupts on unused channels */
+  1    33 	  2 null_interrupts	   fixed bin (35),		/* (36) spurious interrupts */
+  1    34 	  2 multiple_interrupts
+  1    35 			   fixed bin (35),		/* (37) several interrupts at a time */
+  1    36 	  2 per_iom	   (4) like per_iom,	/* (40) for each IOM */
+  1    37 	  2 per_device	   (n_devices refer (iom_data.n_devices)) like per_device;
+  1    38 						/* (240) Data for assigned channels. */
+  1    39 
+  1    40 dcl	1 per_iom		   aligned based,
+  1    41 	  2 lock		   bit (36),		/* (40) connect mailbox lock */
+  1    42 	  2 flags,				/* (41) */
+  1    43 	    3 configured	   bit (1) unal,		/* is configured */
+  1    44 	    3 on_line	   bit (1) unal,		/* is ON */
+  1    45 	    3 pad1	   bit (34) unal,
+  1    46 	  2 model		   char (4),		/* (42) what kind of IOM */
+  1    47 	  2 port		   fixed bin (3),		/* (43) SC port */
+  1    48 	  2 connect_time	   fixed bin (71),		/* (44) time of last connect */
+  1    49 	  2 connect_lpw	   bit (36),		/* (46) LPW for connect channel */
+  1    50 	  2 cow		   bit (36),		/* (47) Connect Operand Word */
+  1    51 	  2 special_chx	   fixed bin (35),		/* (50) chx of special status channel */
+  1    52 	  2 fault_chx	   fixed bin (35),		/* (51) chx of system fault channel */
+  1    53 	  2 pad2		   (4) bit (36),
+  1    54 	  2 abandoned_connects fixed bin (35),		/* (56) times we couldn't get IOM to listen at all */
+  1    55 	  2 reconnects	   fixed bin (35),		/* (57) times a connect was lost */
+  1    56 	  2 chantab	   (0:63) uns fixed bin (9) unal;
+  1    57 						/* (60) packed devtab indices */
+  1    58 
+  1    59 dcl	1 per_device	   aligned based,
+  1    60 	  2 status	   bit (72),		/* (0) Status for channel is stored here. */
+  1    61 	  2 rfh1		   (6) bit (36),
+  1    62 	  2 ext_status	   bit (8 * 36),		/* (10) extended status stored by IIOC */
+  1    63 	  2 iom		   uns fixed bin (3),	/* (20) IOM# (1-4) */
+  1    64 	  2 channel	   uns fixed bin (6),	/* (21) channel # */
+  1    65 	  2 handler	   entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+  1    66 						/* (22) Interrupt handler for device. */
+  1    67 	  2 flags,				/* (26) */
+  1    68 	    3 in_use	   bit (1) unal,		/* assigned */
+  1    69 	    3 queue_status	   bit (1) unal,		/* maintain status queue */
+  1    70 	    3 on_line	   bit (1) unal,		/* can be assigned */
+  1    71 	  2 index		   fixed bin (35),		/* (27) Channel identification index. */
+  1    72 	  2 pcw		   bit (72),		/* (30) Peripheral Control Word */
+  1    73 	  2 lpw		   bit (72),		/* (32) List Pointer Word */
+  1    74 	  2 scw		   bit (36),		/* (34) Status Control Word */
+  1    75 	  2 pad1		   fixed bin (35),
+  1    76 	  2 status_queue_ptr   ptr,			/* (36) Status queue */
+  1    77 	  2 connect_time	   fixed bin (71),		/* (40) time of last connect */
+  1    78 	  2 connects	   fixed bin (71),		/* (42) Total connects */
+  1    79 	  2 interrupts	   fixed bin (71),		/* (44) Total number of interrupts for this channel. */
+  1    80 	  2 interrupt_time	   fixed bin (71);		/* (46) Total interrupt time for this channel. */
+  1    81 
+  1    82 dcl	iom_mailbox_seg_ptr	   ptr;
+  1    83 dcl	1 iom_mailbox_seg	   aligned based (iom_mailbox_seg_ptr),
+  1    84 	  2 imw_array	   (0:31) bit (32),		/* Indexed by interrupt cell number. One bit for each channel. */
+  1    85 	  2 system_fault	   (4) aligned like status_queue,
+  1    86 						/* system faults store here (12 words/IOM) */
+  1    87 	  2 special_status	   (4) aligned like status_queue,
+  1    88 						/* special status words here (12 words/IOM) */
+  1    89 	  2 iom_mailbox	   (4) like iom_mailbox;	/* Used to communicate with the IOM. */
+  1    90 
+  1    91 dcl	status_queue_ptr	   ptr;
+  1    92 dcl	1 status_queue	   aligned based (status_queue_ptr),
+  1    93 	  2 status	   (12) bit (36);
+  1    94 
+  1    95 dcl	1 iom_mailbox	   aligned based,
+  1    96 	  2 channel_mailbox	   (0:63) like channel_mailbox;
+  1    97 
+  1    98 dcl	1 channel_mailbox	   aligned based,
+  1    99 	  2 lpw		   bit (72),		/* List pointer word. Points to DCW list. */
+  1   100 	  2 scw		   bit (36),		/* Status control word. Points to channel_table.status. */
+  1   101 	  2 dcw		   bit (36);		/* Data control word. Primarily scratch space for IOM. */
+  1   102 
+  1   103 /* Defined channel numbers. */
+  1   104 
+  1   105 dcl	(
+  1   106 	system_fault_channel   init (1),		/* Stores system fault words using LPW and DCW. */
+  1   107 	connect_channel	   init (2),		/* Starts other channels using LPW pointing to PCW. */
+  1   108 	special_status_channel init (6)		/* Stores special status using LPW and DCW. */
+  1   109 	)		   fixed bin (6) static options (constant);
+  1   110 
+  1   111 /* End of include file ..... iom_data.incl.pl1 */
+       69 
+  2     1 /*  START OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3 /* Written by Charles Hornig, 1st quarter 1981 */
+  2     4 /* Canonicalization entry added by Chris Jones, January 1984 */
+  2     5 
+  2     6 /* chanid = canonicalize_chanid (chanid); */
+  2     7 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2     8 dcl	io_chnl_util$canonicalize_chanid
+  2     9 			   entry (char (8) aligned) returns (char (8) aligned);
+  2    10 
+  2    11 /* call iom_to_name (iomno, channo, name, code); */
+  2    12 dcl	io_chnl_util$iom_to_name
+  2    13 			   entry (fixed bin (3), fixed bin (7), char (8) aligned, fixed bin (35));
+  2    14 
+  2    15 /* call name_to_iom (name, iomno, channo, code); */
+  2    16 dcl	io_chnl_util$name_to_iom
+  2    17 			   entry (char (8) aligned, fixed bin (3), fixed bin (7), fixed bin (35));
+  2    18 
+  2    19 /*  END OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+       70 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       71 
+       72 
+       73 /* BEGIN MESSAGE DOCUMENTATION
+       74*
+       75*
+       76*   Message:
+       77*   iom_error: Unexpected level LEVEL_NUM interrupt from channel CHNL
+       78*   [Status word - OOOOOOOOOOOO]
+       79*
+       80*   S: $info
+       81*
+       82*   T: $run
+       83*
+       84*   M: The specified level interrupt has occured on channel CHNL, either no
+       85*   channel assignment was found for the specified channel or there was no
+       86*   handler specified for the channel.  If CHNL is a "?", this indicates an
+       87*   error occured converting the iom and channel numbers, which are displayed
+       88*   in parenthesis "(iom N, chan_no N)" after the question mark.  The status
+       89*   word associated with the interrupt will be displayed when non-zero.
+       90*
+       91*   A: $notify
+       92*
+       93*   END MESSAGE DOCUMENTATION */
+       94 
+       95      end iom_error$invalid_interrupt;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.6  iom_error.pl1                     >spec>install>1110>iom_error.pl1
+69           1    04/11/85  1452.4  iom_data.incl.pl1                 >ldd>include>iom_data.incl.pl1
+70           2    07/11/84  0937.3  io_chnl_util_dcls.incl.pl1        >ldd>include>io_chnl_util_dcls.incl.pl1
+71           3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Channel                                parameter       fixed bin(35,0)          dcl 29 ref 25 49 50 56 60
+Data_word                              parameter       bit(36)                  dcl 31 ref 56 61
+Dummy                                  parameter       bit(36)                  dcl 32 ref 25
+Iom                                    parameter       fixed bin(3,0)           dcl 28 ref 56 59
+JUST_LOG                        000000 constant        fixed bin(17,0)          initial dcl 3-7 set ref 66*
+Level                                  parameter       fixed bin(3,0)           dcl 30 set ref 25 56 66*
+Max_Channel                     000242 constant        fixed bin(17,0)          initial dcl 44 ref 50
+Max_Iom                                constant        fixed bin(17,0)          initial dcl 45 ref 49
+chan_id                         000104 automatic       char(8)                  dcl 39 set ref 63* 65* 66* 66
+chan_no                         000102 automatic       fixed bin(7,0)           dcl 38 set ref 50* 60* 63* 66*
+channel_mailbox                        based           structure                level 1 dcl 1-98
+code                            000106 automatic       fixed bin(35,0)          dcl 40 set ref 63* 65
+data_word                       000100 automatic       bit(36)                  dcl 36 set ref 51* 61* 66 66*
+divide                                                 builtin function         dcl 42 ref 49
+io_chnl_util$iom_to_name        000012 constant        entry                    external dcl 2-12 ref 63
+iom_mailbox                            based           structure                level 1 dcl 1-95
+iom_no                          000101 automatic       fixed bin(3,0)           dcl 37 set ref 49* 59* 63* 66*
+mod                                                    builtin function         dcl 42 ref 50
+per_device                             based           structure                level 1 dcl 1-59
+per_iom                                based           structure                level 1 dcl 1-40 ref 49
+size                                                   builtin function         dcl 42 ref 49
+status_queue                           based           structure                level 1 dcl 1-92
+syserr                          000010 constant        entry                    external dcl 34 ref 66
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+connect_channel                        internal static fixed bin(6,0)           initial dcl 1-105
+io_chnl_util$canonicalize_chanid
+                                000000 constant        entry                    external dcl 2-8
+io_chnl_util$name_to_iom        000000 constant        entry                    external dcl 2-16
+iom_data                               based           structure                level 1 dcl 1-17
+iom_data$                              external static fixed bin(17,0)          dcl 1-11
+iom_data_ptr                           automatic       pointer                  dcl 1-15
+iom_mailbox$                           external static fixed bin(17,0)          dcl 1-12
+iom_mailbox_seg                        based           structure                level 1 dcl 1-83
+iom_mailbox_seg_ptr                    automatic       pointer                  dcl 1-82
+n_devices                              automatic       fixed bin(17,0)          dcl 1-14
+special_status_channel                 internal static fixed bin(6,0)           initial dcl 1-105
+status_queue_ptr                       automatic       pointer                  dcl 1-91
+system_fault_channel                   internal static fixed bin(6,0)           initial dcl 1-105
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+common                          000135 constant        label                    dcl 63 ref 52
+invalid_overhead                000114 constant        entry                    external dcl 56
+iom_error$invalid_interrupt     000056 constant        entry                    external dcl 25
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       336         352     243         346
+Length       570     243        14         201      72           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+iom_error$invalid_interrupt         158 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+iom_error$invalid_interrupt
+                         000100 data_word                   iom_error$invalid_interrupt
+                         000101 iom_no                      iom_error$invalid_interrupt
+                         000102 chan_no                     iom_error$invalid_interrupt
+                         000104 chan_id                     iom_error$invalid_interrupt
+                         000106 code                        iom_error$invalid_interrupt
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             call_ext_out_desc   call_ext_out        return_mac          mdfx1
+ext_entry           divide_fx2
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+io_chnl_util$iom_to_name      syserr
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000052        49 000070        50 000101        51 000105        52 000106        56 000107        59 000126
+     60 000131        61 000133        63 000135        65 000152        66 000156        67 000241
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1614 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>volmap.alm                                                                                                                                           
+ASSEMBLED ON:	11/11/89  0923.6 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  
+                                    10  " HISTORY COMMENTS:
+                                    11  "  1) change(87-02-18,Lippard), approve(87-03-16,MCR7640),
+                                    12  "     audit(87-06-17,Farley), install(87-07-17,MR12.1-1043):
+                                    13  "     Added volmap word validity check (fix by Swenson).
+                                    14  "                                                      END HISTORY COMMENTS
+                                    15  
+                                    16  
+                                    17  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    18  "
+                                    19  "	volmap
+                                    20  "
+                                    21  "	Routines for manipulating the volume map, migrating record addresses
+                                    22  "	between the volume map and the stock. 
+                                    23  "
+                                    24  "	Entries:
+                                    25  "		withdraw_from_volmap - volmap into stock
+                                    26  "		deposit_to_volmap    - stock into volmap
+                                    27  "		drain_stock	 - empty stock into volmap
+                                    28  "		reset_pvte	 - reset lock, state for ESD
+                                    29  "
+                                    30  "	These routines are controlled by threshold values in the stock.
+                                    31  "
+                                    32  "	This version has some quick kludges for the old volmap format.
+                                    33  "	It will be changed for the new format.
+                                    34  "
+                                    35  "	Written February 1982 by J. Bongiovanni
+                                    36  "	Modified December 1982 by J. Bongiovanni to reset ovfl before fno
+                                    37  "	
+                                    38  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    39  
+    000000                          40  	name	volmap
+                                    41  
+                        000000      42  	segdef	withdraw_from_volmap
+                        000125      43  	segdef	deposit_to_volmap
+                        000225      44  	segdef	drain_stock
+                        000266      45  	segdef	reset_pvte
+                                    46  
+                        000005      47  	equ	word_to_record.ls,5
+                        002000      48  	equ	volmap_page_high,1024
+                        000100      49  	equ	volmap_first_page,64
+                        377777      50  	bool	high_record_address,377777
+                        400000      51  	bool	os_address,400000
+                 400000 000007      52  	bool	volmap_word_mask,400000000007
+                                    53  
+                        000010      54  	link	volmap_abs_seg_link,volmap_abs_seg$
+                                    55  
+                                    56  "
+                                    57  	include	page_info
+                                   1-1  "	BEGIN INCLUDE FILE page_info.incl.alm  --  6/72
+                                   1-2  "
+                                   1-3  " Modified 02/22/81, W. Olin Sibert, for ADP conversion
+                                   1-4  " Modified 06/23/82, E. N. Kittlitz, to move core map.
+                                   1-5  "
+                        000012     1-6  	equ	page_power,10		" 2**10 = size of page
+                        000001     1-7  	bool	df1,000001		" directed fault 1 on page fault
+                                   1-8  
+                 777777 740000     1-9  	bool	address_mask,777777740000	" Mask for PTW add, add_type compares
+                                  1-10  					" Use as =v36/address_mask
+                                  1-11  
+                        400000    1-12  	bool	ptw.nulled,400000		" flag for testing addresses
+                                  1-13  
+                        100000    1-14  	bool	int,100000		" Disk dim flags
+                        000020    1-15  	bool	pri,000020
+                        000004    1-16  	bool	no_post,000004
+                                  1-17  
+                        000003    1-18  	equ	sst,3			" Standard pointer and index
+                        000003    1-19  	equ	pdm,sst			" register usage
+                        000003    1-20  	equ	ast,sst
+                        000002    1-21  	equ	ptw,2
+                                  1-22  
+                                  1-23  "	Various AST masks which are not
+                                  1-24  "	expressible in standard notation
+                                  1-25  "
+                        777000    1-26  	bool	aste.csl_mask_inner,777000
+                        777000    1-27  	bool	aste.records_mask_inner,777000
+                                  1-28  
+                        000000    1-29  	equ	fault_entry,0		" Flags indicating how we
+                        000001    1-30  	equ	read_entry,1		" were entered
+                        000002    1-31  	equ	write_entry,2
+                        000003    1-32  	equ	pre_page_entry,3
+                        000004    1-33  	equ	post_purge_entry,4
+                        000005    1-34  	equ	pd_flush_entry,5
+                        000006    1-35  	equ	evict_entry,6
+                        000007    1-36  	equ	abs_wire_entry,7
+                        000010    1-37  	equ	cleanup_entry,8
+                                  1-38  
+                                  1-39  " Constants for manipulating core addresses and PTWs. The core address
+                                  1-40  " is a fixed bin (35) aligned, and must be moved to/from the appropriate
+                                  1-41  " field in the SDW or PTW.
+                                  1-42  "
+                                  1-43  	iftarget	l68
+                        777760          	   bool	ptw_add_mask,777760 " Page number
+                        777760          	   bool	sdw_add_mask,777760 " Page number
+                 000077 777777          	   bool	coreadd_mask,000077777777 " Mask for coreadd in AL
+                                        
+                        000014          	   equ	coreadd_to_ptw.ls,12
+                        000014          	   equ	coreadd_to_sdw.ls,12
+                        000014          	   equ	ptw_to_coreadd.rl,12
+                        000014          	   equ	sdw_to_coreadd.rl,12
+                        000002          	   equ	cmep_to_ptw.ls,2
+                        000002          	   equ	cmep_to_sdw.ls,2
+                        000002          	   equ	ptw_to_cmep.rl,2
+                        000024          	   equ	ptw_to_cmep_lower.rl,20
+                        000002          	   equ	sdw_to_cmep.rl,2
+                                        "	ifend
+                                  1-58  
+                                  1-59  	iftarget	adp
+                                        "	   bool	ptw_add_mask,177777 " Page number
+                                        "	   bool	sdw_add_mask,777774 " Page number
+                                        "	   bool	coreadd_mask,000377777777 " Mask for coreadd in AL
+                                        "
+                                        "	   equ	coreadd_to_ptw.ls,8
+                                        "	   equ	coreadd_to_sdw.ls,10
+                                        "	   equ	ptw_to_coreadd.rl,8
+                                        "	   equ	sdw_to_coreadd.rl,10
+                                        "	   equ	cmep_to_ptw.rl,2	" Must shift backwards
+                                        "	   equ	cmep_to_sdw.ls,0
+                                        "	   equ	ptw_to_cmep.ls,2	" Must shift backwards
+                                        "	   equ	ptw_to_cmep_lower.rl,16
+                                        "	   equ	sdw_to_cmep.rl,0
+                                        "	ifend
+                                  1-74  
+                        000012    1-75  	equ	cmep_to_coreadd.rl,10	.cmep to coreadd
+                        000012    1-76  	equ	coreadd_to_cmep.ls,10	coreadd to .cmep
+                                  1-77  
+                                  1-78  " 
+                                  1-79  "
+                                  1-80  " Assorted general purpose macros used in PC. These will be changed
+                                  1-81  " when address types are changed for 20 bit addresses. Additionally,
+                                  1-82  " for more accurate metering on the ADP, the metering macros should
+                                  1-83  " modified to update the metering cells uninterruptably.
+                                  1-84  "
+                                  1-85  
+                                  1-86  	macro	missing
+                              1   1-87  	ife	&2,()
+                              2   1-88  	  warn	(&1: Argument missing.)
+                              3   1-89  	ifend
+                              4   1-90  	&end
+                                  1-91  "
+                                  1-92  " staddra and staddrq store the address portion (upper 22 bits) of the A or Q
+                                  1-93  " into the specified location.
+                                  1-94  "
+                                  1-95  	macro	staddra
+                              1   1-96  	missing	staddra,&1
+                              2   1-97  	era	&F1
+                              3   1-98  	ana	=v36/address_mask
+                              4   1-99  	ersa	&F1
+                              5  1-100  	&end
+                                 1-101  
+                                 1-102  	macro	staddrq
+                              1  1-103  	missing	staddrq,&1
+                              2  1-104  	erq	&F1
+                              3  1-105  	anq	=v36/address_mask
+                              4  1-106  	ersq	&F1
+                              5  1-107  	&end
+                                 1-108  
+                                 1-109  "	Macros for metering 6/23/80
+                                 1-110  
+                                 1-111  	macro	read_clock
+                              1  1-112  	iftarget	l68
+                              2  1-113  	  rccl	sys_info$clock_,*
+                              3  1-114  	ifend
+                              4  1-115  	iftarget adp
+                              5  1-116  	  rccl	0
+                              6  1-117  	ifend
+                              7  1-118  	&end
+                                 1-119  
+                                 1-120  	macro	increment
+                              1  1-121  	missing	increment,&1
+                              2  1-122  	aos	&1
+                              3  1-123  	&end
+                                 1-124  
+                                 1-125  	macro	store_clock
+                              1  1-126  	missing	store_clock,&1
+                              2  1-127  	read_clock
+                              3  1-128  	staq	&1
+                              4  1-129  	&end
+                                 1-130  
+                                 1-131  	macro	meter_time
+                              1  1-132  	missing	meter_time,&3
+                              2  1-133  	increment &3
+                              3  1-134  	read_clock
+                              4  1-135  	sbaq	&1
+                              5  1-136  	adaq	&2
+                              6  1-137  	staq	&2
+                              7  1-138  	&end
+                                 1-139  
+                                 1-140  "	END INCLUDE FILE  page_info.incl.alm
+                                    58  "
+                                    59  	include	pvte
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE pvte.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 05/29/86  1617.9 mst Thu by convert_include_file,
+                                   2-7  	"   Version of 04/10/86  1622.3 mst Thu.
+                                   2-8  
+                                   2-9  	"Made from >dumps>old>dipper>svs5>incl>pvte.incl.pl1,
+                                  2-10  	"   modified 05/29/86  1617.8 mst Thu
+                                  2-11  
+                                  2-12  
+                                  2-13  " HISTORY COMMENTS:
+                                  2-14  "  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+                                  2-15  "     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+                                  2-16  "        Add the support for subvolumes
+                                  2-17  "  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+                                  2-18  "     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+                                  2-19  "        Add root_lv flag to mount RLVs that do not have hardcore partitions.
+                                  2-20  "  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+                                  2-21  "     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+                                  2-22  "        Added inconsistent_dbm bit for determining the status of volume
+                                  2-23  "        dumper bit maps.
+                                  2-24  "                                                      END HISTORY COMMENTS
+                                  2-25  
+                                  2-26  
+                                  2-27  "
+                                  2-28  "	Structure pvt_array
+                                  2-29  "
+                                  2-30  
+                                  2-31  "
+                                  2-32  "	Structure pvte
+                                  2-33  "
+                        000034    2-34  	equ	pvte_size,28
+                                  2-35  
+                                  2-36  
+                        000000    2-37  	equ	pvte.pvid,0
+                        000001    2-38  	equ	pvte.lvid,1
+                                  2-39  
+                        000002    2-40  	equ	pvte.dmpr_in_use_word,2
+                        400000    2-41  	bool	pvte.dmpr_in_use,400000	" DU
+                        000002    2-42  	equ	pvte.is_sv_word,2
+                        040000    2-43  	bool	pvte.is_sv,040000		" DU
+                        000002    2-44  	equ	pvte.root_lv_word,2
+                        020000    2-45  	bool	pvte.root_lv,020000		" DU
+                        000002    2-46  	equ	pvte.removable_pack_word,2
+                        010000    2-47  	bool	pvte.removable_pack,010000	" DU
+                        000002    2-48  	equ	pvte.inconsistent_dbm_word,2
+                        004000    2-49  	bool	pvte.inconsistent_dbm,004000	" DU
+                        000002    2-50  	equ	pvte.brother_pvtx_word,2
+                        000022    2-51  	equ	pvte.brother_pvtx_shift,18
+                        000777    2-52  	bool	pvte.brother_pvtx_mask,000777
+                        000002    2-53  	equ	pvte.skip_queue_count,2	" LOWER
+                                  2-54  
+                        000003    2-55  	equ	pvte.devname,3
+                                  2-56  
+                        000004    2-57  	equ	pvte.device_type_word,4
+                        000033    2-58  	equ	pvte.device_type_shift,27
+                        000777    2-59  	bool	pvte.device_type_mask,000777
+                        000004    2-60  	equ	pvte.logical_area_number_word,4
+                        000022    2-61  	equ	pvte.logical_area_number_shift,18
+                        000777    2-62  	bool	pvte.logical_area_number_mask,000777
+                        000004    2-63  	equ	pvte.used_word,4
+                        400000    2-64  	bool	pvte.used,400000		" DL
+                        000004    2-65  	equ	pvte.storage_system_word,4
+                        200000    2-66  	bool	pvte.storage_system,200000	" DL
+                        000004    2-67  	equ	pvte.permanent_word,4
+                        100000    2-68  	bool	pvte.permanent,100000	" DL
+                        000004    2-69  	equ	pvte.testing_word,4
+                        040000    2-70  	bool	pvte.testing,040000		" DL
+                        000004    2-71  	equ	pvte.being_mounted_word,4
+                        020000    2-72  	bool	pvte.being_mounted,020000	" DL
+                        000004    2-73  	equ	pvte.being_demounted_word,4
+                        010000    2-74  	bool	pvte.being_demounted,010000	" DL
+                        000004    2-75  	equ	pvte.check_read_incomplete_word,4
+                        004000    2-76  	bool	pvte.check_read_incomplete,004000 " DL
+                        000004    2-77  	equ	pvte.device_inoperative_word,4
+                        002000    2-78  	bool	pvte.device_inoperative,002000 " DL
+                        000004    2-79  	equ	pvte.rpv_word,4
+                        001000    2-80  	bool	pvte.rpv,001000		" DL
+                        000004    2-81  	equ	pvte.scav_check_address_word,4
+                        000400    2-82  	bool	pvte.scav_check_address,000400 " DL
+                        000004    2-83  	equ	pvte.deposit_to_volmap_word,4
+                        000200    2-84  	bool	pvte.deposit_to_volmap,000200	" DL
+                        000004    2-85  	equ	pvte.being_demounted2_word,4
+                        000100    2-86  	bool	pvte.being_demounted2,000100	" DL
+                        000004    2-87  	equ	pvte.pc_vacating_word,4
+                        000040    2-88  	bool	pvte.pc_vacating,000040	" DL
+                        000004    2-89  	equ	pvte.vacating_word,4
+                        000020    2-90  	bool	pvte.vacating,000020	" DL
+                        000004    2-91  	equ	pvte.hc_part_used_word,4
+                        000010    2-92  	bool	pvte.hc_part_used,000010	" DL
+                        000004    2-93  	equ	pvte.volmap_lock_notify_word,4
+                        000004    2-94  	bool	pvte.volmap_lock_notify,000004 " DL
+                        000004    2-95  	equ	pvte.volmap_idle_notify_word,4
+                        000002    2-96  	bool	pvte.volmap_idle_notify,000002 " DL
+                        000004    2-97  	equ	pvte.vtoc_map_lock_notify_word,4
+                        000001    2-98  	bool	pvte.vtoc_map_lock_notify,000001 " DL
+                                  2-99  
+                        000005   2-100  	equ	pvte.n_free_vtoce,5		" UPPER
+                        000005   2-101  	equ	pvte.vtoc_size,5		" LOWER
+                                 2-102  
+                        000006   2-103  	equ	pvte.dbmrp,6		" UPPER
+                                 2-104  
+                        000007   2-105  	equ	pvte.nleft,7		" UPPER
+                        000007   2-106  	equ	pvte.totrec,7		" LOWER
+                                 2-107  
+                        000010   2-108  	equ	pvte.dim_info,8
+                        000011   2-109  	equ	pvte.sv_num,9
+                        000012   2-110  	equ	pvte.num_of_svs,10
+                        000013   2-111  	equ	pvte.records_per_cyl,11
+                        000014   2-112  	equ	pvte.record_factor,12
+                        000015   2-113  	equ	pvte.sv_name,13
+                                 2-114  
+                        000016   2-115  	equ	pvte.curn_dmpr_vtocx,14	" UPPER
+                                 2-116  
+                        000017   2-117  	equ	pvte.n_vtoce,15		" LOWER
+                                 2-118  
+                        000020   2-119  	equ	pvte.baseadd,16		" UPPER
+                                 2-120  
+                        000022   2-121  	equ	pvte.volmap_seg_sdw,18	" DOUBLE
+                        000024   2-122  	equ	pvte.volmap_astep,20
+                                 2-123  
+                        000025   2-124  	equ	pvte.volmap_offset,21	" UPPER
+                        000025   2-125  	equ	pvte.vtoc_map_offset,21	" LOWER
+                                 2-126  
+                        000026   2-127  	equ	pvte.volmap_lock,22
+                        000027   2-128  	equ	pvte.vtoc_map_lock,23
+                        000030   2-129  	equ	pvte.volmap_stock_ptr,24
+                        000031   2-130  	equ	pvte.vtoc_map_stock_ptr,25
+                                 2-131  
+                        000032   2-132  	equ	pvte.volmap_async_state,26	" UPPER
+                        000032   2-133  	equ	pvte.volmap_async_page,26	" LOWER
+                                 2-134  
+                        000033   2-135  	equ	pvte.vol_trouble_count,27	" UPPER
+                        000033   2-136  	equ	pvte.scavenger_block_rel,27	" LOWER
+                                 2-137  
+                        000000   2-138  	equ	VOLMAP_ASYNC_IDLE,0		" MANIFEST
+                        000001   2-139  	equ	VOLMAP_ASYNC_READ,1		" MANIFEST
+                        000002   2-140  	equ	VOLMAP_ASYNC_WRITE,2	" MANIFEST
+                                 2-141  
+                                 2-142       "END INCLUDE FILE pvte.incl.alm
+                                    60  "
+                                    61  	include	pxss_page_stack
+                                   3-1  "
+                                   3-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   3-3  "
+                                   3-4  
+                        000006     3-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     3-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   3-7  
+                                   3-8  	temp8	notify_regs
+                                   3-9  	temp	save_stack(stack_size),stackp
+                                  3-10  	tempd	pre_time,pre_temp(3)
+                                  3-11  	tempd	arg(11),temp
+                                  3-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  3-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  3-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  3-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  3-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  3-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  3-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  3-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  3-20  	temp	lock_volmap_temp
+                                  3-21  	temp	volmap_page_temp
+                                  3-22  	tempd	free_store_start_time,post_io_start_time
+                                  3-23  
+                                  3-24  	temp	done_astep,volmap_page_temp_1
+                                  3-25  	temp	vtocx,pageno
+                                  3-26  
+                                  3-27  	tempd	page_synch_temp,page_synch_time
+                                  3-28  	temp	page_synch_index
+                                  3-29  
+                                  3-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  3-31  	tempd	pf_sdw
+                                  3-32  
+                                  3-33  	temp	pad(22)		" to grow compatibly
+                                  3-34  "
+                                  3-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  3-36  "
+                                    62  "
+                                    63  	include	stock_seg
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE stock_seg.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 08/09/82  2006.2 edt Mon by convert_include_file,
+                                   4-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   4-8  
+                                   4-9  	"Made from >udd>Multics>Bongiovanni>hardcore_test_dir>scavenger_dir>stock_seg.incl.pl1,
+                                  4-10  	"   modified 08/09/82  2006.2 edt Mon
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure stock_seg
+                                  4-14  "
+                        000100    4-15  	equ	stock_seg_size,64
+                                  4-16  
+                                  4-17  
+                        000000    4-18  	equ	stock_seg.meters,0		" LEVEL 2
+                                  4-19  
+                        000066    4-20  	equ	stock_seg.record_stock_entries,54
+                        000067    4-21  	equ	stock_seg.vtoce_stock_entries,55
+                        000070    4-22  	equ	stock_seg.record_stock_size,56
+                        000071    4-23  	equ	stock_seg.vtoce_stock_size,57
+                        000072    4-24  	equ	stock_seg.n_stock_entries,58
+                        000074    4-25  	equ	stock_seg.record_stock_arrayp,60
+                        000076    4-26  	equ	stock_seg.vtoce_stock_arrayp,62
+                                  4-27  
+                                  4-28  "
+                                  4-29  "	Structure record_stock
+                                  4-30  "
+                        000000    4-31  	equ	record_stock.pvtep,0
+                                  4-32  
+                        000001    4-33  	equ	record_stock.n_in_stock,1	" UPPER
+                        000001    4-34  	equ	record_stock.n_volmap_pages,1	" LOWER
+                                  4-35  
+                        000002    4-36  	equ	record_stock.n_free_in_stock,2 " UPPER
+                        000002    4-37  	equ	record_stock.n_os_in_stock,2	" LOWER
+                                  4-38  
+                        000003    4-39  	equ	record_stock.low_threshold,3	" UPPER
+                        000003    4-40  	equ	record_stock.high_threshold,3	" LOWER
+                                  4-41  
+                        000004    4-42  	equ	record_stock.target,4	" UPPER
+                        000004    4-43  	equ	record_stock.stock_offset,4	" LOWER
+                                  4-44  
+                        000005    4-45  	equ	record_stock.n_words_in_stock,5 " UPPER
+                        000005    4-46  	equ	record_stock.search_index,5	" LOWER
+                                  4-47  
+                        000006    4-48  	equ	record_stock.old_volmap_page,6 " LEVEL 2
+                                  4-49  
+                        000006    4-50  	equ	record_stock.last,6		" UPPER
+                                  4-51  
+                        000011    4-52  	equ	record_stock.volmap_page,9	" LEVEL 2
+                                  4-53  
+                        000011    4-54  	equ	record_stock.n_free,9	" UPPER
+                        000011    4-55  	equ	record_stock.baseadd,9	" LOWER
+                                  4-56  
+                        000000    4-57  	equ	record_stock.stock,0	" UPPER
+                                  4-58  
+                                  4-59  "
+                                  4-60  "	Structure vtoce_stock
+                                  4-61  "
+                                  4-62  
+                        000000    4-63  	equ	vtoce_stock.pvtep,0
+                                  4-64  
+                        000001    4-65  	equ	vtoce_stock.n_in_stock,1	" UPPER
+                        000001    4-66  	equ	vtoce_stock.n_free_in_stock,1	" LOWER
+                                  4-67  
+                        000002    4-68  	equ	vtoce_stock.target,2	" UPPER
+                        000002    4-69  	equ	vtoce_stock.search_index,2	" LOWER
+                                  4-70  
+                        000003    4-71  	equ	vtoce_stock.stock,3		" UPPER
+                                  4-72  
+                                  4-73  "
+                                  4-74  "	Structure rsmeters
+                                  4-75  "
+                        000066    4-76  	equ	rsmeters_size,54
+                                  4-77  
+                                  4-78  
+                        000000    4-79  	equ	rsmeters.async_read_calls,0
+                        000001    4-80  	equ	rsmeters.async_page_reads,1
+                        000002    4-81  	equ	rsmeters.async_post_io_calls,2
+                        000003    4-82  	equ	rsmeters.deposit_calls,3
+                        000004    4-83  	equ	rsmeters.async_post_io_time,4	" DOUBLE
+                        000006    4-84  	equ	rsmeters.deposit_time,6	" DOUBLE
+                        000010    4-85  	equ	rsmeters.low_thresh_detected,8
+                        000011    4-86  	equ	rsmeters.high_thresh_detected,9
+                        000012    4-87  	equ	rsmeters.low_thresh_fails,10
+                        000013    4-88  	equ	rsmeters.withdraw_stock_steps,11
+                        000014    4-89  	equ	rsmeters.withdraw_stock_losses,12
+                        000015    4-90  	equ	rsmeters.n_withdraw_attempt,13
+                        000016    4-91  	equ	rsmeters.n_withdraw_range,14
+                        000017    4-92  	equ	rsmeters.n_pages_withdraw_stock,15
+                        000020    4-93  	equ	rsmeters.n_pages_withdraw_async,16
+                        000021    4-94  	equ	rsmeters.n_v_withdraw_attempts,17
+                        000022    4-95  	equ	rsmeters.withdraw_volmap_steps,18
+                        000023    4-96  	equ	rsmeters.deposit_stock_steps,19
+                        000024    4-97  	equ	rsmeters.deposit_stock_losses,20
+                        000025    4-98  	equ	rsmeters.n_deposit_attempt,21
+                        000026    4-99  	equ	rsmeters.n_pages_deposit_stock,22
+                        000027   4-100  	equ	rsmeters.n_pages_deposit_volmap,23
+                        000030   4-101  	equ	rsmeters.n_v_deposit_attempts,24
+                        000031   4-102  	equ	rsmeters.reset_os_calls,25
+                        000032   4-103  	equ	rsmeters.reset_os_losses,26
+                        000033   4-104  	equ	rsmeters.withdraw_calls,27
+                        000034   4-105  	equ	rsmeters.withdraw_time,28	" DOUBLE
+                        000036   4-106  	equ	rsmeters.pc_deposit_time,30	" DOUBLE
+                        000040   4-107  	equ	rsmeters.pc_deposit_calls,32
+                        000041   4-108  	equ	rsmeters.pc_deposit_pages,33
+                        000042   4-109  	equ	rsmeters.get_free_vtoce_calls,34
+                        000043   4-110  	equ	rsmeters.return_free_vtoce_call,35
+                        000044   4-111  	equ	rsmeters.deposit_vstock_calls,36
+                        000045   4-112  	equ	rsmeters.deposit_vstock_fails,37
+                        000046   4-113  	equ	rsmeters.withdraw_vstock_calls,38
+                        000047   4-114  	equ	rsmeters.withdraw_vstock_fails,39
+                        000050   4-115  	equ	rsmeters.deposit_vtoc_map,40
+                        000051   4-116  	equ	rsmeters.withdraw_check_scav,41
+                        000052   4-117  	equ	rsmeters.withdraw_conflict,42
+                                 4-118  
+                        000003   4-119  	equ	N_OLD_VOLMAP_PAGES,3	" MANIFEST
+                        000150   4-120  	equ	DEFAULT_N_IN_RECORD_STOCK,104	" MANIFEST
+                        000012   4-121  	equ	DEFAULT_N_IN_VTOCE_STOCK,10	" MANIFEST
+                                 4-122  
+                                 4-123       "END INCLUDE FILE stock_seg.incl.alm
+                                    64  "
+                                    65  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    66  "
+                                    67  "	withdraw_from_volmap
+                                    68  "
+                                    69  "	tsx7	volmap$withdraw_from_volmap
+                                    70  "
+                                    71  "	On entry,
+                                    72  "	    bp -> pvte
+                                    73  "	    ab -> stock_seg$meters
+                                    74  "	    bb -> record_stock
+                                    75  "	    Areg contains page number in volmap_seg
+                                    76  "
+                                    77  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    78  
+    000000                          79  withdraw_from_volmap:
+                                    80  	increment	ab|rsmeters.n_v_withdraw_attempts
+                                        	missing	increment,ab|rsmeters.n_v_withdraw_attempts
+    000000  aa  1 00021 0541 00         	aos	ab|rsmeters.n_v_withdraw_attempts
+                                    81  
+    000001  aa  3 00011 2201 05     82  	ldx0	bb|record_stock.volmap_page,al " Number free records this page
+    000002  aa   000000 6000 17     83  	tze	0,x7			" None to be had
+                                    84  
+    000003  aa  3 00004 2201 00     85  	ldx0	bb|record_stock.target	" Is volume shut down
+    000004  aa   000000 6000 17     86  	tze	0,x7			" Yes
+                                    87  
+    000005  4a  4 00014 7061 20     88  	tsx6	page_fault$savex
+    000006  aa  6 00140 7551 00     89  	sta	volmap_temp
+    000007  0a   000310 7060 00     90  	tsx6	setup_abs_seg		" To read volmap_seg
+                                    91  
+    000010  aa  6 00140 2351 00     92  	lda	volmap_temp		" Page number in volmap_seg
+    000011  aa   000012 7350 00     93  	als	page_power		" Offset within segment
+    000012  4a  4 00010 3501 20     94  	eppap	volmap_abs_seg$		" ap -> base of volmap_seg
+    000013  aa  0 00000 3501 05     95  	eppap	ap|0,al			" ap -> page of volmap
+    000014  aa  6 00142 2501 00     96  	spriap	volmap_save_ptr
+                                    97  
+    000015                          98  withdraw_loop:
+    000015  aa   000001 3350 07     99  	lca	1,dl			" Bail-out counter
+    000016  aa  6 00141 7551 00    100  	sta	volmap_temp+1
+                                   101  
+    000017  aa  6 00140 7201 00    102  	lxl0	volmap_temp		" Page number
+    000020  aa  3 00011 2211 10    103  	ldx1	bb|record_stock.volmap_page,x0 " Records left this page
+    000021  0a   000123 6044 00    104  	tmoz	withdraw_returns		" None
+    000022  aa  3 00006 2211 10    105  	ldx1	bb|record_stock.old_volmap_page,x0 " Roving pointer
+    000023  aa  6 00142 3501 20    106  	eppap	volmap_save_ptr,*
+                                   107  
+    000024  aa   000000 6200 10    108  	eax0	0,x0			" Page number
+    000025  0a   000031 6010 00    109  	tnz	withdraw_inner_loop		" Not first page
+    000026  aa   000100 1010 03    110  	cmpx1	volmap_first_page,du	" Kludge for old volmap
+    000027  0a   000031 6050 00    111  	tpl	withdraw_inner_loop		" Above bound
+    000030  aa   000100 2210 03    112  	ldx1	volmap_first_page,du	" Set to minimum value
+                                   113  
+    000031                         114  withdraw_inner_loop:
+                                   115  	increment	ab|rsmeters.withdraw_volmap_steps
+                                        	missing	increment,ab|rsmeters.withdraw_volmap_steps
+    000031  aa  1 00022 0541 00         	aos	ab|rsmeters.withdraw_volmap_steps
+    000032  aa  0 00000 2351 11    116  	lda	ap|0,x1			" Any free this word
+    000033  0a   000046 6010 00    117  	tnz	withdraw_got		" Yes
+    000034  aa   000001 6210 11    118  	eax1	1,x1			" Bump to next word
+    000035  aa   002000 1010 03    119  	cmpx1	volmap_page_high,du		" End of page
+    000036  0a   000031 6040 00    120  	tmi	withdraw_inner_loop		" No
+    000037  aa  6 00141 0541 00    121  	aos	volmap_temp+1		" Bump bail-out counter
+    000040  4a  4 00016 6055 20    122  	tpnz	page_error$volmap_inconsistent
+    000041  aa   000000 2210 03    123  	ldx1	0,du			" Start at the beginning
+    000042  aa   000000 6200 10    124  	eax0	0,x0			" Unless its page 0
+    000043  0a   000031 6010 00    125  	tnz	withdraw_inner_loop
+    000044  aa   000100 2210 03    126  	ldx1	volmap_first_page,du	
+    000045  0a   000031 7100 00    127  	tra	withdraw_inner_loop
+                                   128  
+    000046                         129  withdraw_got:
+    000046  0a   000330 3150 00    130  	cana	=v36/volmap_word_mask	" Check validity of word
+    000047  4a  4 00020 6011 20    131  	tnz	page_error$invalid_volmap_word " mbz bits are not
+    000050  aa   000000 6340 07    132  	ldi	0,dl			" Let fno work as expected, not as advertised
+    000051  aa   000000 4110 03    133  	lde	0,du			" Find first bit on
+    000052  aa   000000 5730 00    134  	fno
+    000053  aa  6 00170 4501 00    135  	stz	volmap_temp_1
+    000054  aa  6 00170 4561 00    136  	ste	volmap_temp_1
+    000055  aa  6 00170 2351 00    137  	lda	volmap_temp_1
+    000056  aa   000000 5310 00    138  	neg
+    000057  aa   000012 7710 00    139  	arl	17-7			" Record within word
+    000060  aa  6 00170 7551 00    140  	sta	volmap_temp_1
+                                   141  
+    000061  aa   000022 7710 00    142  	arl	18			" AL = Record within word
+    000062  aa   000000 6360 11    143  	eaq	0,x1			" QU = Word offset within volmap page
+    000063  aa   000022 7730 00    144  	lrl	18			" QU = Record within word
+                                   145  					" QL = Word offset within  volmap page
+                                   146  
+    000064  aa   000000 6350 11    147  	eaa	0,x1			" Word offset within volmap page
+    000065  aa   000005 7350 00    148  	als	word_to_record.ls		" Record offset of begin of word
+    000066  aa  6 00170 0551 00    149  	asa	volmap_temp_1		" Record offset within volmap page
+    000067  aa  3 00011 7221 10    150  	lxl2	bb|record_stock.volmap_page,x0 " Base address of page
+    000070  aa  6 00170 0221 00    151  	adlx2	volmap_temp_1		" True address
+    000071  aa   000000 6350 12    152  	eaa	0,x2
+    000072  aa   000022 7710 00    153  	arl	18
+    000073  aa   400000 2750 07    154  	ora	os_address,dl		" Out-of-service until write completes
+    000074  aa  3 00006 7411 10    155  	stx1	bb|record_stock.old_volmap_page,x0 " Roving pointer
+    000075  aa  6 00170 7561 00    156  	stq	volmap_temp_1		" QU = Record within word
+                                   157  					" QL = Word offset within volmap page
+    000076  4a  4 00022 7071 20    158  	tsx7	stock$deposit
+    000077  0a   000123 7100 00    159  	tra	withdraw_returns		" Stock is full
+                                   160  
+    000100  aa  6 00142 3501 20    161  	eppap	volmap_save_ptr,*		" ap -> page of volmap
+    000101  aa  6 00170 2351 00    162  	lda	volmap_temp_1		" AU = Record within word
+                                   163  					" AL = Word offset within volmap page
+    000102  aa   200000 2360 03    164  	ldq	=o200000,du		" Reset bit in volmap
+    000103  aa   000000 7720 01    165  	qrl	0,au
+    000104  aa  0 00000 6561 05    166  	ersq	ap|0,al
+                                   167  
+                                   168  	increment	ab|rsmeters.n_pages_withdraw_async
+                                        	missing	increment,ab|rsmeters.n_pages_withdraw_async
+    000105  aa  1 00020 0541 00         	aos	ab|rsmeters.n_pages_withdraw_async
+    000106  aa  2 00007 2201 00    169  	ldx0	bp|pvte.nleft
+    000107  aa   000001 1200 03    170  	sblx0	1,du
+    000110  4a  4 00016 6041 20    171  	tmi	page_error$volmap_inconsistent
+    000111  aa  2 00007 7401 00    172  	stx0	bp|pvte.nleft
+    000112  aa  6 00140 7211 00    173  	lxl1	volmap_temp
+    000113  aa  3 00011 2201 11    174  	ldx0	bb|record_stock.volmap_page,x1
+    000114  aa   000001 1200 03    175  	sblx0	1,du
+    000115  4a  4 00016 6041 20    176  	tmi	page_error$volmap_inconsistent
+    000116  aa  3 00011 7401 11    177  	stx0	bb|record_stock.volmap_page,x1
+    000117  aa  3 00002 7201 00    178  	lxl0	bb|record_stock.n_os_in_stock
+    000120  aa  3 00002 0201 00    179  	adlx0	bb|record_stock.n_free_in_stock
+    000121  aa  3 00004 1001 00    180  	cmpx0	bb|record_stock.target	" Are we there yet
+    000122  0a   000015 6040 00    181  	tmi	withdraw_loop		" No
+                                   182  
+    000123                         183  withdraw_returns:
+    000123  0a   000321 7060 00    184  	tsx6	restore_abs_seg
+    000124  4a  4 00024 7061 20    185  	tsx6	page_fault$unsavex
+                                   186  "
+                                   187  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   188  "
+                                   189  "	deposit_to_volmap
+                                   190  "
+                                   191  "	tsx7	volmap$deposit_to_volmap
+                                   192  "
+                                   193  "	On entry,
+                                   194  "	    bp -> pvte
+                                   195  "	    ab -> stock_seg$meters
+                                   196  "	    bb -> record_stock
+                                   197  "	    Areg contains page number in volmap_seg
+                                   198  "
+                                   199  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   200  
+    000125                         201  deposit_to_volmap:
+                                   202  	increment	ab|rsmeters.n_v_deposit_attempts
+                                        	missing	increment,ab|rsmeters.n_v_deposit_attempts
+    000125  aa  1 00030 0541 00         	aos	ab|rsmeters.n_v_deposit_attempts
+                                   203  
+    000126  4a  4 00014 7061 20    204  	tsx6	page_fault$savex
+                                   205  
+    000127  aa   000000 6200 05    206  	eax0	0,al			" Page number
+    000130  aa  6 00140 7401 00    207  	stx0	volmap_temp
+    000131  0a   000310 7060 00    208  	tsx6	setup_abs_seg
+                                   209  
+    000132  aa  6 00140 2351 00    210  	lda	volmap_temp		" Page number
+    000133  aa   777777 3750 03    211  	ana	-1,du			"   in AU
+    000134  aa   000010 7710 00    212  	arl	18-page_power		" Offset in AL
+    000135  4a  4 00010 3501 20    213  	eppap	volmap_abs_seg$
+    000136  aa  0 00000 3501 05    214  	eppap	ap|0,al			" ap -> base of page
+                                   215  
+    000137  aa  6 00140 2201 00    216  	ldx0	volmap_temp		" Page number
+    000140  aa  3 00011 2351 10    217  	lda	bb|record_stock.volmap_page,x0
+    000141  aa   777777 3750 07    218  	ana	-1,dl			" AL = base address
+    000142  aa  6 00141 7551 00    219  	sta	volmap_temp+1
+                                   220  
+    000143  aa   377777 2210 03    221  	ldx1	high_record_address,du	" Set for last page
+    000144  aa  3 00001 7221 00    222  	lxl2	bb|record_stock.n_volmap_pages " Number of pages in volmap
+    000145  aa   000001 1220 03    223  	sblx2	1,du			" Index of last page
+    000146  aa  6 00140 1021 00    224  	cmpx2	volmap_temp		" Is this page the last
+    000147  0a   000151 6000 00    225  	tze	deposit_last		" Yes
+    000150  aa  3 00012 7211 10    226  	lxl1	bb|record_stock.volmap_page+1,x0 " Pick up base address of next
+    000151                         227  deposit_last:
+    000151  aa  6 00141 7411 00    228  	stx1	volmap_temp+1		" Low address in lower/high address is upper
+    000152  aa  6 00142 2501 00    229  	spriap	volmap_save_ptr
+                                   230  
+    000153                         231  deposit_loop:
+    000153  aa  3 00002 7201 00    232  	lxl0	bb|record_stock.n_os_in_stock
+    000154  aa  3 00002 0201 00    233  	adlx0	bb|record_stock.n_free_in_stock
+    000155  aa  3 00004 1001 00    234  	cmpx0	bb|record_stock.target	" Are we done
+    000156  0a   000223 6044 00    235  	tmoz	deposit_returns		" Yes
+                                   236  	
+    000157  aa  6 00141 2351 00    237  	lda	volmap_temp+1		" Range of addresses this page
+    000160  4a  4 00026 7071 20    238  	tsx7	stock$withdraw_range	" Get an address within the rage
+    000161  0a   000223 7100 00    239  	tra	deposit_returns		" None left
+                                   240  
+    000162  aa  6 00142 3501 20    241  	eppap	volmap_save_ptr,*
+    000163  aa  6 00140 2201 00    242  	ldx0	volmap_temp		" Page number
+    000164  aa  3 00011 7211 10    243  	lxl1	bb|record_stock.volmap_page,x0 " Base address of page
+    000165  aa  6 00170 4501 00    244  	stz	volmap_temp_1
+    000166  aa  6 00170 7411 00    245  	stx1	volmap_temp_1
+    000167  aa  6 00200 7551 00    246  	sta	devadd			" Save address for page_error
+    000170  aa   000022 7350 00    247  	als	18			" Address in AU
+    000171  aa  6 00170 1351 00    248  	sbla	volmap_temp_1		" Relative address within page
+    000172  4a  4 00030 6041 20    249  	tmi	page_error$bad_volmap_address	" Bogus
+    000173  aa   000022 7710 00    250  	arl	18			" Address in AL
+    000174  aa   000000 2360 07    251  	ldq	0,dl
+    000175  aa   000005 7730 00    252  	lrl	word_to_record.ls		" Word offset in AL
+    000176  aa   000015 7720 00    253  	qrl	18-word_to_record.ls	" Bit within word in QU
+    000177  aa   000000 6210 02    254  	eax1	0,qu			" Bit within word in x1
+    000200  aa   200000 2360 03    255  	ldq	=o200000,du		" Mask to set bit
+    000201  aa   000000 7720 11    256  	qrl	0,x1			" Shift to the right bit
+    000202  aa   002000 1150 07    257  	cmpa	1024,dl			" Within a page
+    000203  4a  4 00030 6051 20    258  	tpl	page_error$bad_volmap_address	" No
+    000204  aa  0 00000 3161 05    259  	canq	ap|0,al			" Already marked as free
+    000205  0a   000214 6000 00    260  	tze	deposit_valid		" No
+    000206  4a  4 00032 2341 20    261  	szn	pvt$shutdown_state		" In ESD?
+    000207  0a   000153 6010 00    262  	tnz	deposit_loop		" Yes, this can happen normally
+    000210  aa   000001 2210 03    263  	ldx1	1,du
+    000211  aa  2 00033 0411 00    264  	asx1	bp|pvte.vol_trouble_count	" Add to inconsistency count
+    000212  4a  4 00034 7071 20    265  	tsx7	page_error$deposit_inuse_address " And tell the world
+    000213  0a   000153 7100 00    266  	tra	deposit_loop
+                                   267  
+    000214                         268  deposit_valid:
+    000214  aa  0 00000 2561 05    269  	orsq	ap|0,al			" Mark address as free
+                                   270  	increment	ab|rsmeters.n_pages_deposit_volmap
+                                        	missing	increment,ab|rsmeters.n_pages_deposit_volmap
+    000215  aa  1 00027 0541 00         	aos	ab|rsmeters.n_pages_deposit_volmap
+    000216  aa   000001 2200 03    271  	ldx0	1,du
+    000217  aa  2 00007 0401 00    272  	asx0	bp|pvte.nleft
+    000220  aa  6 00140 2211 00    273  	ldx1	volmap_temp
+    000221  aa  3 00011 0401 11    274  	asx0	bb|record_stock.volmap_page,x1
+    000222  0a   000153 7100 00    275  	tra	deposit_loop
+                                   276  
+    000223                         277  deposit_returns:
+    000223  0a   000321 7060 00    278  	tsx6	restore_abs_seg
+    000224  4a  4 00024 7061 20    279  	tsx6	page_fault$unsavex
+                                   280  "
+                                   281  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   282  "
+                                   283  "	drain_stock
+                                   284  "
+                                   285  "	call page$drain_record_stock (pvtep)
+                                   286  "
+                                   287  "	Where
+                                   288  "	    pvtep -> PVTE
+                                   289  "
+                                   290  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   291  
+    000225                         292  drain_stock:
+    000225  aa   000300 6270 00    293  	push
+    000226  aa  7 00040 2721 20
+    000227  4a  4 00036 7061 20    294  	tsx6	page_fault$init_savex
+                                   295  
+    000230  aa  0 00002 3521 20    296  	eppbp	ap|2,*			" bp -> ptr -> PVTE
+    000231  aa  2 00000 3521 20    297  	eppbp	bp|0,*			" bp -> PVTE
+    000232  aa  2 00030 7631 00    298  	lprpbb	bp|pvte.volmap_stock_ptr	" bb -> record stock
+    000233  aa  3 00000 3511 00    299  	epbpab	bb|0			" ab -> base of stock_seg
+    000234  aa  1 00000 3515 00    300  	eppab	ab|stock_seg.meters		" ab -> meters
+                                   301  
+    000235                         302  drain_retry:
+    000235  4a  4 00040 7071 20    303  	tsx7	lock_volmap$lock_wired_wait	" Get lock, async idle
+    000236  0a   000256 7100 00    304  	tra	drain_waits		" Failed, wait event in APTE
+                                   305  
+    000237  aa   000000 2200 03    306  	ldx0	0,du			" Succeeded
+    000240  aa  3 00003 7401 00    307  	stx0	bb|record_stock.low_threshold	" Clear thresholds
+    000241  aa  3 00003 4401 00    308  	sxl0	bb|record_stock.high_threshold " And deposit will do the rest
+    000242  aa  3 00004 7401 00    309  	stx0	bb|record_stock.target
+    000243  aa  3 00001 2351 00    310  	lda	bb|record_stock.n_volmap_pages
+    000244  aa   777777 3750 07    311  	ana	-1,dl			" Areg = number of pages in volmap
+    000245  aa  6 00171 7551 00    312  	sta	volmap_temp_2
+                                   313  
+    000246                         314  drain_loop:
+    000246  aa  6 00171 2351 00    315  	lda	volmap_temp_2
+    000247  aa   000001 1750 07    316  	sba	1,dl			" Next page to drain
+    000250  aa  6 00171 7551 00    317  	sta	volmap_temp_2
+    000251  0a   000254 6040 00    318  	tmi	drain_returns		" Done
+    000252  0a   000125 7070 00    319  	tsx7	deposit_to_volmap		" Clear this page
+    000253  0a   000246 7100 00    320  	tra	drain_loop
+                                   321  
+    000254                         322  drain_returns:
+    000254  4a  4 00042 7071 20    323  	tsx7	lock_volmap$unlock_wired	" Unlock
+    000255  aa  7 00042 7101 20    324  	return
+                                   325  
+    000256                         326  drain_waits:
+    000256  aa  6 00000 2541 00    327  	call	pxss$wait			" APTE already has event
+    000257  0a   000332 3500 00
+    000260  4a  4 00012 3521 20
+    000261  aa  6 00040 7531 00
+    000262  aa  7 00036 6701 20
+    000263  aa  6 00000 1731 00
+    000264  aa  6 00040 0731 00
+    000265  0a   000235 7100 00    328  	tra	drain_retry
+                                   329  
+                                   330  "
+                                   331  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   332  "
+                                   333  "	reset_pvte
+                                   334  "
+                                   335  "	call page$reset_pvte (pvtep)
+                                   336  "
+                                   337  "	Where
+                                   338  "	     pvtep -> PVTE
+                                   339  "
+                                   340  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   341  
+    000266                         342  reset_pvte:
+    000266  aa   000300 6270 00    343  	push
+    000267  aa  7 00040 2721 20
+                                   344  
+    000270  aa  0 00002 3521 20    345  	eppbp	ap|2,*			" bp -> ptr -> PVTE
+    000271  aa  2 00000 3521 20    346  	eppbp	bp|0,*			" bp -> PVTE
+                                   347  
+    000272  aa  2 00026 4501 00    348  	stz	bp|pvte.volmap_lock		" Clear lock
+    000273  aa  2 00032 4501 00    349  	stz	bp|pvte.volmap_async_state	" Set state to Idle, page to 0
+    000274  aa  2 00027 4501 00    350  	stz	bp|pvte.vtoc_map_lock	" Clear lock
+                                   351  
+    000275  aa  2 00030 2351 00    352  	lda	bp|pvte.volmap_stock_ptr	" See whether stock exists
+    000276  0a   000307 6000 00    353  	tze	reset_pvte_returns		" No
+    000277  aa   007777 3750 03    354  	ana	=o007777,du		" Check for null pointer
+    000300  aa   007777 1150 03    355  	cmpa	=o007777,du
+    000301  0a   000307 6000 00    356  	tze	reset_pvte_returns		" Is null - no stock
+                                   357  
+    000302  aa  2 00030 7631 00    358  	lprpbb	bp|pvte.volmap_stock_ptr	" bb -> record stock
+    000303  aa  3 00000 3511 00    359  	epbpab	bb|0			" ab -> base of stock seg
+    000304  aa  0 00000 3501 00    360  	eppap	ap|stock_seg.meters		" ab -> meter area
+                                   361  
+    000305  4a  4 00044 7071 20    362  	tsx7	stock$recover		" Attempt to fix any damage
+    000306  4a  4 00046 7071 20    363  	tsx7	stock$reset_os		" Reset any out-of-service
+                                   364  					" Safe since ESD doesn't withdraw
+                                   365  
+    000307                         366  reset_pvte_returns:
+    000307  aa  7 00042 7101 20    367  	return
+                                   368  
+                                   369  "
+                                   370  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   371  "
+                                   372  "	Internal procedure to set up and restore the volmap_abs_seg
+                                   373  "
+                                   374  "	tsx6	setup_abs_seg
+                                   375  "		bp -> PVTE
+                                   376  "
+                                   377  "	tsx6	restore_abs_seg
+                                   378  "
+                                   379  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   380  
+    000310                         381  setup_abs_seg:
+                                   382  
+    000310  4a  4 00010 2201 00    383  	ldx0	lp|volmap_abs_seg_link	" Segment number in x0
+    000311  4a  4 00010 0201 00    384  	adlx0	lp|volmap_abs_seg_link	" Offset in dseg
+    000312  4a  4 00050 2371 20    385  	ldaq	dseg$0,x0			" Previous SDW
+    000313  aa  6 00162 7571 00    386  	staq	volmap_save_sdw		" Save into stack
+    000314  aa  2 00022 2371 00    387  	ldaq	bp|pvte.volmap_seg_sdw	" Volmap seg of interest
+    000315  4a  4 00050 7571 20    388  	staq	dseg$0,x0			" Set the SDW
+    000316  aa   000000 5320 00    389  	cams				" And the SDWAM
+    000317  aa   000000 5324 00    390  	camp				" And the PTWAM
+    000320  aa   000000 7100 16    391  	tra	0,x6
+                                   392  
+    000321                         393  restore_abs_seg:
+                                   394  
+    000321  4a  4 00010 2201 00    395  	ldx0	lp|volmap_abs_seg_link	" Segment number in x0
+    000322  4a  4 00010 0201 00    396  	adlx0	lp|volmap_abs_seg_link	" Offset in dseg
+    000323  aa  6 00162 2371 00    397  	ldaq	volmap_save_sdw		" Previous value
+    000324  4a  4 00050 7571 20    398  	staq	dseg$0,x0			" Set the SDW
+    000325  aa   000000 5320 00    399  	cams				" And the SDWAM
+    000326  aa   000000 7100 16    400  	tra	0,x6
+                                   401  
+                                   402  	end
+LITERALS
+     
+    000330  aa   400000 000007 
+    000332  aa   000000 000000 
+    000333  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000334  5a   000003 000000 
+    000335  5a   000054 600000 
+    000336  aa   000000 000000 
+    000337  55   000010 000002 
+    000340  5a   000002 400003 
+    000341  55   000006 000010 
+    000342  aa  006 166 157 154
+    000343  aa  155 141 160 000
+    000344  55   000016 000003 
+    000345  0a   000266 400000 
+    000346  55   000013 000003 
+    000347  aa  012 162 145 163         reset_pvte
+    000350  aa  145 164 137 160
+    000351  aa  166 164 145 000
+    000352  55   000024 000010 
+    000353  0a   000225 400000 
+    000354  55   000021 000003 
+    000355  aa  013 144 162 141         drain_stock
+    000356  aa  151 156 137 163
+    000357  aa  164 157 143 153
+    000360  55   000034 000016 
+    000361  0a   000125 400000 
+    000362  55   000027 000003 
+    000363  aa  021 144 145 160         deposit_to_volmap
+    000364  aa  157 163 151 164
+    000365  aa  137 164 157 137
+    000366  aa  166 157 154 155
+    000367  aa  141 160 000 000
+    000370  55   000045 000024 
+    000371  0a   000000 400000 
+    000372  55   000037 000003 
+    000373  aa  024 167 151 164         withdraw_from_volmap
+    000374  aa  150 144 162 141
+    000375  aa  167 137 146 162
+    000376  aa  157 155 137 166
+    000377  aa  157 154 155 141
+    000400  aa  160 000 000 000
+    000401  55   000002 000034 
+    000402  6a   000000 400002 
+    000403  55   000050 000003 
+    000404  aa  014 163 171 155         symbol_table
+    000405  aa  142 157 154 137
+    000406  aa  164 141 142 154
+    000407  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000410  aa   000000 000015 
+    000411  aa   000000 000000 
+    000412  5a   000010 000000 
+    000413  aa   000000 000000 
+    000414  5a   000024 000000 
+    000415  aa   000000 000000 
+    000416  5a   000016 000000 
+    000417  5a   000034 000000 
+    000420  5a   000045 000000 
+    000421  aa   000000 000000 
+    000422  aa   000000 000000 
+    000423  aa   000000 000000 
+    000424  aa   000000 000000 
+    000425  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000426  aa  004 144 163 145         dseg
+    000427  aa  147 000 000 000
+    000430  aa  010 162 145 163         reset_os
+    000431  aa  145 164 137 157
+    000432  aa  163 000 000 000
+    000433  aa  007 162 145 143         recover
+    000434  aa  157 166 145 162
+    000435  aa  014 165 156 154         unlock_wired
+    000436  aa  157 143 153 137
+    000437  aa  167 151 162 145
+    000440  aa  144 000 000 000
+    000441  aa  017 154 157 143         lock_wired_wait
+    000442  aa  153 137 167 151
+    000443  aa  162 145 144 137
+    000444  aa  167 141 151 164
+    000445  aa  013 154 157 143         lock_volmap
+    000446  aa  153 137 166 157
+    000447  aa  154 155 141 160
+    000450  aa  012 151 156 151         init_savex
+    000451  aa  164 137 163 141
+    000452  aa  166 145 170 000
+    000453  aa  025 144 145 160         deposit_inuse_address
+    000454  aa  157 163 151 164
+    000455  aa  137 151 156 165
+    000456  aa  163 145 137 141
+    000457  aa  144 144 162 145
+    000460  aa  163 163 000 000
+    000461  aa  016 163 150 165         shutdown_state
+    000462  aa  164 144 157 167
+    000463  aa  156 137 163 164
+    000464  aa  141 164 145 000
+    000465  aa  003 160 166 164         pvt
+    000466  aa  022 142 141 144         bad_volmap_address
+    000467  aa  137 166 157 154
+    000470  aa  155 141 160 137
+    000471  aa  141 144 144 162
+    000472  aa  145 163 163 000
+    000473  aa  016 167 151 164         withdraw_range
+    000474  aa  150 144 162 141
+    000475  aa  167 137 162 141
+    000476  aa  156 147 145 000
+    000477  aa  007 165 156 163         unsavex
+    000500  aa  141 166 145 170
+    000501  aa  007 144 145 160         deposit
+    000502  aa  157 163 151 164
+    000503  aa  005 163 164 157         stock
+    000504  aa  143 153 000 000
+    000505  aa  023 151 156 166         invalid_volmap_word
+    000506  aa  141 154 151 144
+    000507  aa  137 166 157 154
+    000510  aa  155 141 160 137
+    000511  aa  167 157 162 144
+    000512  aa  023 166 157 154         volmap_inconsistent
+    000513  aa  155 141 160 137
+    000514  aa  151 156 143 157
+    000515  aa  156 163 151 163
+    000516  aa  164 145 156 164
+    000517  aa  012 160 141 147         page_error
+    000520  aa  145 137 145 162
+    000521  aa  162 157 162 000
+    000522  aa  005 163 141 166         savex
+    000523  aa  145 170 000 000
+    000524  aa  012 160 141 147         page_fault
+    000525  aa  145 137 146 141
+    000526  aa  165 154 164 000
+    000527  aa  004 167 141 151         wait
+    000530  aa  164 000 000 000
+    000531  aa  004 160 170 163         pxss
+    000532  aa  163 000 000 000
+    000533  aa  016 166 157 154         volmap_abs_seg
+    000534  aa  155 141 160 137
+    000535  aa  141 142 163 137
+    000536  aa  163 145 147 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000537  aa   000003 000000 
+    000540  5a   000072 000000 
+    000541  aa   000004 000000 
+    000542  55   000147 000074 
+    000543  aa   000004 000000 
+    000544  55   000147 000077 
+    000545  aa   000004 000000 
+    000546  55   000111 000101 
+    000547  aa   000004 000000 
+    000550  55   000111 000105 
+    000551  aa   000004 000000 
+    000552  55   000170 000114 
+    000553  aa   000004 000000 
+    000554  55   000163 000117 
+    000555  aa   000004 000000 
+    000556  55   000131 000125 
+    000557  aa   000004 000000 
+    000560  55   000163 000132 
+    000561  aa   000004 000000 
+    000562  55   000147 000137 
+    000563  aa   000004 000000 
+    000564  55   000170 000143 
+    000565  aa   000004 000000 
+    000566  55   000147 000145 
+    000567  aa   000004 000000 
+    000570  55   000163 000151 
+    000571  aa   000004 000000 
+    000572  55   000163 000156 
+    000573  aa   000004 000000 
+    000574  55   000170 000166 
+    000575  aa   000004 000000 
+    000576  55   000175 000173 
+    000577  aa   000003 000000 
+    000600  5a   000177 000000 
+    000601  aa   000001 000000 
+    000602  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000603  5a   000203 000000 
+    000604  5a   000205 000000 
+    000605  5a   000207 000000 
+    000606  5a   000211 000000 
+    000607  5a   000213 000000 
+    000610  5a   000215 000000 
+    000611  5a   000217 000000 
+    000612  5a   000221 000000 
+    000613  5a   000223 000000 
+    000614  5a   000225 000000 
+    000615  5a   000227 000000 
+    000616  5a   000231 000000 
+    000617  5a   000233 000000 
+    000620  5a   000235 000000 
+    000621  5a   000237 000000 
+    000622  5a   000241 000000 
+    000623  5a   000243 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000334 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000052 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         volmap_abs_seg|       
+    000011  5a   000267 0000 00
+    000012  9a   777766 0000 46         pxss|wait
+    000013  5a   000266 0000 00
+    000014  9a   777764 0000 46         page_fault|savex
+    000015  5a   000265 0000 00
+    000016  9a   777762 0000 46         page_error|volmap_inconsistent
+    000017  5a   000264 0000 00
+    000020  9a   777760 0000 46         page_error|invalid_volmap_word
+    000021  5a   000263 0000 00
+    000022  9a   777756 0000 46         stock|deposit
+    000023  5a   000262 0000 00
+    000024  9a   777754 0000 46         page_fault|unsavex
+    000025  5a   000261 0000 00
+    000026  9a   777752 0000 46         stock|withdraw_range
+    000027  5a   000260 0000 00
+    000030  9a   777750 0000 46         page_error|bad_volmap_address
+    000031  5a   000257 0000 00
+    000032  9a   777746 0000 46         pvt|shutdown_state
+    000033  5a   000256 0000 00
+    000034  9a   777744 0000 46         page_error|deposit_inuse_address
+    000035  5a   000255 0000 00
+    000036  9a   777742 0000 46         page_fault|init_savex
+    000037  5a   000254 0000 00
+    000040  9a   777740 0000 46         lock_volmap|lock_wired_wait
+    000041  5a   000253 0000 00
+    000042  9a   777736 0000 46         lock_volmap|unlock_wired
+    000043  5a   000252 0000 00
+    000044  9a   777734 0000 46         stock|recover
+    000045  5a   000251 0000 00
+    000046  9a   777732 0000 46         stock|reset_os
+    000047  5a   000250 0000 00
+    000050  9a   777730 0000 46         dseg|       
+    000051  5a   000247 0000 10
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   241713 232001 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000260 
+    000020  aa   000000 000163 
+    000021  aa   000221 000210 
+    000022  aa   000247 000163 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000005 
+    000066  aa   000112 000035 
+    000067  aa   175453 017635 
+    000070  aa   000000 117547 
+    000071  aa   176450 200000 
+    000072  aa   000122 000037 
+    000073  aa   112456 132235 
+    000074  aa   000000 111250 
+    000075  aa   530556 400000 
+    000076  aa   000132 000032 
+    000077  aa   164131 272662 
+    000100  aa   000000 116416 
+    000101  aa   727372 600000 
+    000102  aa   000141 000045 
+    000103  aa   133234 136230 
+    000104  aa   000000 113324 
+    000105  aa   322064 400000 
+    000106  aa   000153 000037 
+    000107  aa   113021 605126 
+    000110  aa   000000 111303 
+    000111  aa   067554 000000 
+    000112  aa   076163 160145          >spec>install>1111>volmap.alm
+    000113  aa   143076 151156 
+    000114  aa   163164 141154 
+    000115  aa   154076 061061 
+    000116  aa   061061 076166 
+    000117  aa   157154 155141 
+    000120  aa   160056 141154 
+    000121  aa   155040 040040 
+    000122  aa   076154 144144          >ldd>include>page_info.incl.alm
+    000123  aa   076151 156143 
+    000124  aa   154165 144145 
+    000125  aa   076160 141147 
+    000126  aa   145137 151156 
+    000127  aa   146157 056151 
+    000130  aa   156143 154056 
+    000131  aa   141154 155040 
+    000132  aa   076154 144144          >ldd>include>pvte.incl.alm
+    000133  aa   076151 156143 
+    000134  aa   154165 144145 
+    000135  aa   076160 166164 
+    000136  aa   145056 151156 
+    000137  aa   143154 056141 
+    000140  aa   154155 040040 
+    000141  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000142  aa   076151 156143 
+    000143  aa   154165 144145 
+    000144  aa   076160 170163 
+    000145  aa   163137 160141 
+    000146  aa   147145 137163 
+    000147  aa   164141 143153 
+    000150  aa   056151 156143 
+    000151  aa   154056 141154 
+    000152  aa   155040 040040 
+    000153  aa   076154 144144          >ldd>include>stock_seg.incl.alm
+    000154  aa   076151 156143 
+    000155  aa   154165 144145 
+    000156  aa   076163 164157 
+    000157  aa   143153 137163 
+    000160  aa   145147 056151 
+    000161  aa   156143 154056 
+    000162  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           7    abs_wire_entry           page_info:     36.
+      740000    address_mask             page_info:      9.
+         150    apt_ptr                  pxss_page_stack:     13.
+         106    arg                      pxss_page_stack:     11.
+           3    ast                      page_info:     20.
+      777000    aste.csl_mask_inner      page_info:     26.
+      777000    aste.records_mask_inner  page_info:     27.
+                bad_volmap_address       volmap:       249,  258.
+         204    before                   pxss_page_stack:     17.
+          10    cleanup_entry            page_info:     37.
+         164    cmep                     pxss_page_stack:     15.
+          12    cmep_to_coreadd.rl       page_info:     75.
+           2    cmep_to_ptw.ls           page_info:     57.
+           2    cmep_to_sdw.ls           page_info:     57.
+      777777    coreadd_mask             page_info:     57.
+          12    coreadd_to_cmep.ls       page_info:     76.
+          14    coreadd_to_ptw.ls        page_info:     57.
+          14    coreadd_to_sdw.ls        page_info:     57.
+         173    core_add                 pxss_page_stack:     16.
+         174    count                    pxss_page_stack:     16.
+         150    DEFAULT_N_IN_RECORD_STOCK      stock_seg:    120.
+          12    DEFAULT_N_IN_VTOCE_STOCK       stock_seg:    121.
+         154    delta_t                  pxss_page_stack:     13.
+                deposit                  volmap:       158.
+                deposit_inuse_address    volmap:       265.
+         151    deposit_last             volmap:       225,  227.
+         153    deposit_loop             volmap:       231,  262,  266,  275.
+         223    deposit_returns          volmap:       235,  239,  277.
+         125    deposit_to_volmap        volmap:        43,  201,  319.
+         214    deposit_valid            volmap:       260,  268.
+         205    depth                    pxss_page_stack:     17.
+         200    devadd                   volmap:       246,
+                                         pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+           1    df1                      page_info:      7.
+         232    done_astep               pxss_page_stack:     24.
+         246    drain_loop               volmap:       314,  320.
+         235    drain_retry              volmap:       302,  328.
+         254    drain_returns            volmap:       318,  322.
+         225    drain_stock              volmap:        44,  292.
+         256    drain_waits              volmap:       304,  326.
+                dseg                     volmap:       385,  388,  398.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+           6    evict_entry              page_info:     35.
+           0    fault_entry              page_info:     29.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         152    getwork_temp             pxss_page_stack:     13.
+      377777    high_record_address      volmap:        50,  221.
+                init_savex               volmap:       294.
+      100000    int                      page_info:     14.
+         177    inter                    pxss_page_stack:     16.
+                invalid_volmap_word      volmap:       131.
+                lock_volmap              volmap:       303,  323.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+                lock_wired_wait          volmap:       303.
+          50    notify_regs              pxss_page_stack:      8.
+           4    no_post                  page_info:     16.
+           3    N_OLD_VOLMAP_PAGES       stock_seg:    119.
+      400000    os_address               volmap:        51,  154.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+                page_error               volmap:       122,  131,  171,  176,  249,  258,  265.
+                page_fault               volmap:        88,  185,  204,  279,  294.
+          12    page_power               volmap:        93,  212,
+                                         page_info:      6.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+           3    pdm                      page_info:     19.
+           5    pd_flush_entry           page_info:     34.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+           4    post_purge_entry         page_info:     33.
+           3    pre_page_entry           page_info:     32.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+          20    pri                      page_info:     15.
+         176    ptp_astep                pxss_page_stack:     16.
+           2    ptw                      page_info:     21.
+      400000    ptw.nulled               page_info:     12.
+      777760    ptw_add_mask             page_info:     57.
+           2    ptw_to_cmep.rl           page_info:     57.
+          24    ptw_to_cmep_lower.rl     page_info:     57.
+          14    ptw_to_coreadd.rl        page_info:     57.
+                pvt                      volmap:       261.
+          20    pvte.baseadd             pvte:         119.
+       10000    pvte.being_demounted     pvte:          74.
+         100    pvte.being_demounted2    pvte:          86.
+           4    pvte.being_demounted2_word     pvte:          85.
+           4    pvte.being_demounted_word      pvte:          73.
+       20000    pvte.being_mounted       pvte:          72.
+           4    pvte.being_mounted_word  pvte:          71.
+         777    pvte.brother_pvtx_mask   pvte:          52.
+          22    pvte.brother_pvtx_shift  pvte:          51.
+           2    pvte.brother_pvtx_word   pvte:          50.
+        4000    pvte.check_read_incomplete     pvte:          76.
+           4    pvte.check_read_incomplete_word      pvte:          75.
+          16    pvte.curn_dmpr_vtocx     pvte:         115.
+           6    pvte.dbmrp               pvte:         103.
+         200    pvte.deposit_to_volmap   pvte:          84.
+           4    pvte.deposit_to_volmap_word    pvte:          83.
+        2000    pvte.device_inoperative  pvte:          78.
+           4    pvte.device_inoperative_word   pvte:          77.
+         777    pvte.device_type_mask    pvte:          59.
+          33    pvte.device_type_shift   pvte:          58.
+           4    pvte.device_type_word    pvte:          57.
+           3    pvte.devname             pvte:          55.
+          10    pvte.dim_info            pvte:         108.
+      400000    pvte.dmpr_in_use         pvte:          41.
+           2    pvte.dmpr_in_use_word    pvte:          40.
+          10    pvte.hc_part_used        pvte:          92.
+           4    pvte.hc_part_used_word   pvte:          91.
+        4000    pvte.inconsistent_dbm    pvte:          49.
+           2    pvte.inconsistent_dbm_word     pvte:          48.
+       40000    pvte.is_sv               pvte:          43.
+           2    pvte.is_sv_word          pvte:          42.
+         777    pvte.logical_area_number_mask  pvte:          62.
+          22    pvte.logical_area_number_shift       pvte:          61.
+           4    pvte.logical_area_number_word  pvte:          60.
+           1    pvte.lvid                pvte:          38.
+           7    pvte.nleft               volmap:       169,  172,  272,
+                                         pvte:         105.
+          12    pvte.num_of_svs          pvte:         110.
+           5    pvte.n_free_vtoce        pvte:         100.
+          17    pvte.n_vtoce             pvte:         117.
+          40    pvte.pc_vacating         pvte:          88.
+           4    pvte.pc_vacating_word    pvte:          87.
+      100000    pvte.permanent           pvte:          68.
+           4    pvte.permanent_word      pvte:          67.
+           0    pvte.pvid                pvte:          37.
+          13    pvte.records_per_cyl     pvte:         111.
+          14    pvte.record_factor       pvte:         112.
+       10000    pvte.removable_pack      pvte:          47.
+           2    pvte.removable_pack_word       pvte:          46.
+       20000    pvte.root_lv             pvte:          45.
+           2    pvte.root_lv_word        pvte:          44.
+        1000    pvte.rpv                 pvte:          80.
+           4    pvte.rpv_word            pvte:          79.
+          33    pvte.scavenger_block_rel       pvte:         136.
+         400    pvte.scav_check_address  pvte:          82.
+           4    pvte.scav_check_address_word   pvte:          81.
+           2    pvte.skip_queue_count    pvte:          53.
+      200000    pvte.storage_system      pvte:          66.
+           4    pvte.storage_system_word       pvte:          65.
+          15    pvte.sv_name             pvte:         113.
+          11    pvte.sv_num              pvte:         109.
+       40000    pvte.testing             pvte:          70.
+           4    pvte.testing_word        pvte:          69.
+           7    pvte.totrec              pvte:         106.
+      400000    pvte.used                pvte:          64.
+           4    pvte.used_word           pvte:          63.
+          20    pvte.vacating            pvte:          90.
+           4    pvte.vacating_word       pvte:          89.
+          24    pvte.volmap_astep        pvte:         122.
+          32    pvte.volmap_async_page   pvte:         133.
+          32    pvte.volmap_async_state  volmap:       349,
+                                         pvte:         132.
+           2    pvte.volmap_idle_notify  pvte:          96.
+           4    pvte.volmap_idle_notify_word   pvte:          95.
+          26    pvte.volmap_lock         volmap:       348,
+                                         pvte:         127.
+           4    pvte.volmap_lock_notify  pvte:          94.
+           4    pvte.volmap_lock_notify_word   pvte:          93.
+          25    pvte.volmap_offset       pvte:         124.
+          22    pvte.volmap_seg_sdw      volmap:       387,
+                                         pvte:         121.
+          30    pvte.volmap_stock_ptr    volmap:       298,  352,  358,
+                                         pvte:         129.
+          33    pvte.vol_trouble_count   volmap:       264,
+                                         pvte:         135.
+          27    pvte.vtoc_map_lock       volmap:       350,
+                                         pvte:         128.
+           1    pvte.vtoc_map_lock_notify      pvte:          98.
+           4    pvte.vtoc_map_lock_notify_word       pvte:          97.
+          25    pvte.vtoc_map_offset     pvte:         125.
+          31    pvte.vtoc_map_stock_ptr  pvte:         130.
+           5    pvte.vtoc_size           pvte:         101.
+          34    pvte_size                pvte:          34.
+         172    pvtx                     pxss_page_stack:     16.
+                pxss                     volmap:       327.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+           1    read_entry               page_info:     30.
+          11    record_stock.baseadd     stock_seg:     55.
+           3    record_stock.high_threshold    volmap:       308,
+                                               stock_seg:     40.
+           6    record_stock.last        stock_seg:     50.
+           3    record_stock.low_threshold     volmap:       307,
+                                               stock_seg:     39.
+          11    record_stock.n_free      stock_seg:     54.
+           2    record_stock.n_free_in_stock   volmap:       179,  233,
+                                               stock_seg:     36.
+           1    record_stock.n_in_stock  stock_seg:     33.
+           2    record_stock.n_os_in_stock     volmap:       178,  232,
+                                               stock_seg:     37.
+           1    record_stock.n_volmap_pages    volmap:       222,  310,
+                                               stock_seg:     34.
+           5    record_stock.n_words_in_stock  stock_seg:     45.
+           6    record_stock.old_volmap_page   volmap:       105,  155,
+                                               stock_seg:     48.
+           0    record_stock.pvtep       stock_seg:     31.
+           5    record_stock.search_index      stock_seg:     46.
+           0    record_stock.stock       stock_seg:     57.
+           4    record_stock.stock_offset      stock_seg:     43.
+           4    record_stock.target      volmap:        85,  180,  234,  309,
+                                         stock_seg:     42.
+          11    record_stock.volmap_page       volmap:        82,  103,  150,  174,  177,  217,  226,  243,  274,
+                                               stock_seg:     52.
+                recover                  volmap:       362.
+                reset_os                 volmap:       363.
+         266    reset_pvte               volmap:        45,  342.
+         307    reset_pvte_returns       volmap:       353,  356,  366.
+         321    restore_abs_seg          volmap:       184,  278,  393.
+           1    rsmeters.async_page_reads      stock_seg:     80.
+           2    rsmeters.async_post_io_calls   stock_seg:     81.
+           4    rsmeters.async_post_io_time    stock_seg:     83.
+           0    rsmeters.async_read_calls      stock_seg:     79.
+           3    rsmeters.deposit_calls   stock_seg:     82.
+          24    rsmeters.deposit_stock_losses  stock_seg:     97.
+          23    rsmeters.deposit_stock_steps   stock_seg:     96.
+           6    rsmeters.deposit_time    stock_seg:     84.
+          44    rsmeters.deposit_vstock_calls  stock_seg:    111.
+          45    rsmeters.deposit_vstock_fails  stock_seg:    112.
+          50    rsmeters.deposit_vtoc_map      stock_seg:    115.
+          42    rsmeters.get_free_vtoce_calls  stock_seg:    109.
+          11    rsmeters.high_thresh_detected  stock_seg:     86.
+          10    rsmeters.low_thresh_detected   stock_seg:     85.
+          12    rsmeters.low_thresh_fails      stock_seg:     87.
+          25    rsmeters.n_deposit_attempt     stock_seg:     98.
+          26    rsmeters.n_pages_deposit_stock       stock_seg:     99.
+          27    rsmeters.n_pages_deposit_volmap      volmap:       270,
+                                                     stock_seg:    100.
+          20    rsmeters.n_pages_withdraw_async      volmap:       168,
+                                                     stock_seg:     93.
+          17    rsmeters.n_pages_withdraw_stock      stock_seg:     92.
+          30    rsmeters.n_v_deposit_attempts  volmap:       202,
+                                               stock_seg:    101.
+          21    rsmeters.n_v_withdraw_attempts       volmap:        80,
+                                                     stock_seg:     94.
+          15    rsmeters.n_withdraw_attempt    stock_seg:     90.
+          16    rsmeters.n_withdraw_range      stock_seg:     91.
+          40    rsmeters.pc_deposit_calls      stock_seg:    107.
+          41    rsmeters.pc_deposit_pages      stock_seg:    108.
+          36    rsmeters.pc_deposit_time       stock_seg:    106.
+          31    rsmeters.reset_os_calls  stock_seg:    102.
+          32    rsmeters.reset_os_losses       stock_seg:    103.
+          43    rsmeters.return_free_vtoce_call      stock_seg:    110.
+          33    rsmeters.withdraw_calls  stock_seg:    104.
+          51    rsmeters.withdraw_check_scav   stock_seg:    116.
+          52    rsmeters.withdraw_conflict     stock_seg:    117.
+          14    rsmeters.withdraw_stock_losses       stock_seg:     89.
+          13    rsmeters.withdraw_stock_steps  stock_seg:     88.
+          34    rsmeters.withdraw_time   stock_seg:    105.
+          22    rsmeters.withdraw_volmap_steps       volmap:       115,
+                                                     stock_seg:     95.
+          46    rsmeters.withdraw_vstock_calls       stock_seg:    113.
+          47    rsmeters.withdraw_vstock_fails       stock_seg:    114.
+          66    rsmeters_size            stock_seg:     76.
+                savex                    volmap:        88,  204.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+      777760    sdw_add_mask             page_info:     57.
+           2    sdw_to_cmep.rl           page_info:     57.
+          14    sdw_to_coreadd.rl        page_info:     57.
+         310    setup_abs_seg            volmap:        90,  208,  381.
+                shutdown_state           volmap:       261.
+           3    sst                      page_info:     18,   19,   20.
+          75    stackp                   pxss_page_stack:      9.
+          15    stack_size               pxss_page_stack:      6,    9.
+                stock                    volmap:       158,  238,  362,  363.
+           0    stock_seg.meters         volmap:       300,  360,
+                                         stock_seg:     18.
+          72    stock_seg.n_stock_entries      stock_seg:     24.
+          74    stock_seg.record_stock_arrayp  stock_seg:     25.
+          66    stock_seg.record_stock_entries       stock_seg:     20.
+          70    stock_seg.record_stock_size    stock_seg:     22.
+          76    stock_seg.vtoce_stock_arrayp   stock_seg:     26.
+          67    stock_seg.vtoce_stock_entries  stock_seg:     21.
+          71    stock_seg.vtoce_stock_size     stock_seg:     23.
+         100    stock_seg_size           stock_seg:     15.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+         134    temp                     pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+                unlock_wired             volmap:       323.
+                unsavex                  volmap:       185,  279.
+                volmap_abs_seg           volmap:        54,   94,  213.
+          10    volmap_abs_seg_link      volmap:        54,  383,  384,  395,  396.
+           0    VOLMAP_ASYNC_IDLE        pvte:         138.
+           1    VOLMAP_ASYNC_READ        pvte:         139.
+           2    VOLMAP_ASYNC_WRITE       pvte:         140.
+         100    volmap_first_page        volmap:        49,  110,  112,  126.
+                volmap_inconsistent      volmap:       122,  171,  176.
+        2000    volmap_page_high         volmap:        48,  119.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          volmap:        96,  106,  161,  229,  241,
+                                         pxss_page_stack:     12.
+         162    volmap_save_sdw          volmap:       386,  397,
+                                         pxss_page_stack:     14.
+         140    volmap_temp              volmap:        89,   92,  100,  102,  121,  173,  207,  210,  216,  219,  224,  228,
+                                                       237,  242,  273,
+                                         pxss_page_stack:     12.
+         170    volmap_temp_1            volmap:       135,  136,  137,  140,  149,  151,  156,  162,  244,  245,  248,
+                                         pxss_page_stack:     15.
+         171    volmap_temp_2            volmap:       312,  315,  317,
+                                         pxss_page_stack:     15.
+           7    volmap_word_mask         volmap:        52,  130.
+           1    vtoce_stock.n_free_in_stock    stock_seg:     66.
+           1    vtoce_stock.n_in_stock   stock_seg:     65.
+           0    vtoce_stock.pvtep        stock_seg:     63.
+           2    vtoce_stock.search_index       stock_seg:     69.
+           3    vtoce_stock.stock        stock_seg:     71.
+           2    vtoce_stock.target       stock_seg:     68.
+         234    vtocx                    pxss_page_stack:     25.
+                wait                     volmap:       327.
+           0    withdraw_from_volmap     volmap:        42,   79.
+          46    withdraw_got             volmap:       117,  129.
+          31    withdraw_inner_loop      volmap:       109,  111,  114,  120,  125,  127.
+          15    withdraw_loop            volmap:        98,  181.
+                withdraw_range           volmap:       238.
+         123    withdraw_returns         volmap:       104,  159,  183.
+           5    word_to_record.ls        volmap:        47,  148,  252,  253.
+           2    write_entry              page_info:     31.
+         206    x5                       pxss_page_stack:     17.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

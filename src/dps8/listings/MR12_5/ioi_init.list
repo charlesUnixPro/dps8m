@@ -1,0 +1,2457 @@
+	COMPILATION LISTING OF SEGMENT ioi_init
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0951.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+       12*     audit(86-01-16,CLJones), install(86-03-21,MR12.0-1033):
+       13*     Support FIPS and IMU.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 /* IOI_INIT - Initialization for the I/O Interfacer. */
+       17 /* Rewritten March 1983 by Chris Jones. */
+       18 /* Modified January 1984 by Chris Jones for io reconfiguration. */
+       19 /* Modified May 1984 by Paul Farley for IPC cards (e.g. FIPS) */
+       20 /* Modified April 1984 by Tom Oke for dynamic channel table. */
+       21 /* Modified September 1984 by Chris Jones to init device_type for chnl cards */
+       22 /* Modified 1984-08-10 BIM for direct channels (sort of) */
+       23 /* Modified Nov 1984 by Paul Farley to be able to set the
+       24*   gte.detailed_status_cmd to "00"b3 when the IOM is a "imu" or "iioc".. */
+       25 /* Modified Jan 1985 by Paul Farley to add MCA (found in IMUs) entries. */
+       26 /* Modified Jan 1985 by Paul Farley to change IPC cards to FIPS cards. */
+       27 /* Modified June 1985 by Paul Farley to make sure a dte is created for device
+       28*   "00" of a FIPS string, when no device "00" is configured. */
+       29 /* Modified Sept 1985 by Paul Farley to add setting of a new dte.controller flag. */
+       30 
+       31 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       32 ioi_init:
+       33      procedure;
+       34 
+       35 dcl	adding_controller_dte  bit (1);
+       36 dcl	chanid		   char (8) aligned;	/* the converted name of a channel */
+       37 dcl	code		   fixed bin (35);		/* error code */
+       38 dcl	ctx		   fixed bin;		/* used to index thru ctes */
+       39 dcl	device_number	   fixed bin;
+       40 dcl	device_type	   char (4);		/* e.g. "dsk", "tap", or "rdr" */
+       41 dcl	gtx		   fixed bin;		/* used to index thru gtes */
+       42 dcl	itx		   fixed bin;		/* used to index thru ites */
+       43 dcl	high_ctx		   fixed bin;		/* index of the highest cte in use */
+       44 dcl	high_dtx		   fixed bin;		/* index of the highest dte in use */
+       45 dcl	high_gtx		   fixed bin;		/* index of the highest gte in use */
+       46 dcl	high_itx		   fixed bin;		/* index of the highest ite in use */
+       47 dcl	statusp		   ptr;			/* pointer to where io_manager stores status */
+       48 dcl	iom_model_array	   (8) char (4) aligned;	/* array of model numbers by TAG. */
+       49 
+       50 
+       51 dcl	config_$find	   entry (char (4) aligned, ptr);
+       52 dcl	ioi_config$find_base_channel
+       53 			   entry (char (8) aligned) returns (char (8) aligned);
+       54 dcl	ioi_config$find_controller_card
+       55 			   entry (char (8) aligned) returns (ptr);
+       56 dcl	ioi_masked$interrupt   entry (fixed bin (35), fixed bin (3), bit (36) aligned);
+       57 dcl	ioi_page_table$init	   entry;
+       58 dcl	syserr		   entry options (variable);
+       59 dcl	syserr$error_code	   entry options (variable);
+       60 
+       61 dcl	ME		   char (32) static options (constant) init ("ioi_init");
+       62 
+       63 dcl	(addr, bin, bit, divide, hbound, lbound, max, min, null, ptr, rel, string, substr, unspec)
+       64 			   builtin;
+       65 
+       66 	idp = addr (ioi_data$);			/* get pointer to data base */
+       67 	io_config_data_ptr = addr (io_config_data$);
+       68 	io_config_iom_table_ptr = ptr (io_config_data_ptr, io_config_data.iom_table_offset);
+       69 	io_config_controller_table_ptr = ptr (io_config_data_ptr, io_config_data.controller_table_offset);
+       70 	io_config_channel_table_ptr = ptr (io_config_data_ptr, io_config_data.channel_table_offset);
+       71 	io_config_device_table_ptr = ptr (io_config_data_ptr, io_config_data.device_table_offset);
+       72 	disksp = addr (disk_seg$);
+       73 
+       74 	high_ctx, high_dtx, high_gtx, high_itx = 0;
+       75 
+       76 	iom_model_array (*) = "";
+       77 	iom_cardp = null ();
+       78 	call config_$find (IOM_CARD_WORD, iom_cardp);	/* start looking for all IOMs */
+       79 	do while (iom_cardp ^= null ());
+       80 	     high_itx = high_itx + 1;
+       81 	     itep = addr (ioi_data.it (high_itx));
+       82 	     unspec (ite) = ""b;
+       83 	     ite.tag = iom_card.tag;
+       84 	     ite.model = iom_card.model;
+       85 	     iom_model_array (ite.tag) = iom_card.model;
+       86 	     ite.deleted = (iom_card.state = "off");
+       87 	     ite.iom_table_idx = iom_table_idx_from_tag (ite.tag);
+       88 	     call config_$find (IOM_CARD_WORD, iom_cardp);/* on to the next one */
+       89 	end;
+       90 
+       91 	prph_cardp = null ();
+       92 	call config_$find (PRPH_CARD_WORD, prph_cardp);	/* start looking for all devices */
+       93 	do while (prph_cardp ^= null ());
+       94 	     device_type = substr (prph_card.name, 1, 3);
+       95 	     prph_dsk_cardp, prph_tap_cardp = prph_cardp; /* base the special structures */
+       96 	     call allocate_gte (prph_card.name);	/* set up a group entry */
+       97 /**** At this point, all the constant information (that requiring none or little calculation) is set in the gte ****/
+       98 	     if (device_type = "dsk") | (device_type = "tap") then
+       99 		gte.mplex = "1"b;
+      100 	     call io_chnl_util$iom_to_name (prph_card.iom, (prph_card.chan), chanid, code);
+      101 	     if code ^= 0 then
+      102 		call syserr$error_code (CRASH, code, "^a: Unable to get the name of iom ^d channel ^d.", ME,
+      103 		     prph_card.iom, prph_card.chan);
+      104 	     gte.ipc = IS_ON_IMU (prph_card.iom);
+      105 	     mpc_cardp = ioi_config$find_controller_card (chanid);
+      106 	     if mpc_cardp ^= null () then do;		/* found the channel on a controller */
+      107 		gte.psia = "1"b;			/* the only interface we currently know */
+      108 		ipc_cardp = mpc_cardp;
+      109 		gte.fips = (ipc_card.word = IPC_CARD_WORD) & (ipc_card.type = IPC_FIPS);
+      110 	     end;
+      111 	     gte.detailed_status_cmd = extended_status_command ();
+      112 	     gte.ascii_dtst = ascii_detailed_status ();
+      113 	     call setup_log_status_info;
+      114 	     call allocate_dtes_from_prph_card;
+      115 	     call allocate_ctes_from_prph_card;
+      116 	     call config_$find (PRPH_CARD_WORD, prph_cardp);
+      117 						/* get next card */
+      118 	end;
+      119 
+      120 /**** Now pick up all the channels described via chnl cards ****/
+      121 
+      122 	chnl_cardp = null ();
+      123 	call config_$find (CHNL_CARD_WORD, chnl_cardp);
+      124 	do while (chnl_cardp ^= null ());
+      125 	     device_type = substr (chnl_card.name, 1, 3);
+      126 	     if find_gte () then
+      127 		call allocate_ctes_from_chnl_card;
+      128 	     call config_$find (CHNL_CARD_WORD, chnl_cardp);
+      129 	end;
+      130 
+      131 /**** Next, find the base logical channel for every channel (we had to wait until they're all allocated). ****/
+      132 
+      133 	do ctx = lbound (ioi_data.ct, 1) to hbound (ioi_data.ct, 1);
+      134 	     ctep = addr (ioi_data.ct (ctx));
+      135 	     chanid = ioi_config$find_base_channel (cte.chanid);
+      136 	     cte.base_ctep = cte_offset (chanid);
+      137 	     if cte.base_ctep = ""b then
+      138 		cte.base_ctep = rel (ctep);
+      139 	end;
+      140 
+      141 /**** Now find all the storage system channels, devices, and groups and mark them as such ****/
+      142 
+      143 	do gtx = lbound (ioi_data.gt, 1) to hbound (ioi_data.gt, 1);
+      144 	     gtep = addr (ioi_data.gt (gtx));
+      145 	     device_type = substr (gte.name, 1, 3);
+      146 	     if device_type = "dsk" then		/* found one */
+      147 		call setup_disk_sharing;
+      148 	end;
+      149 
+      150 /**** Now assign all non-storage system channels which are multiplexed. ****/
+      151 
+      152 	do gtx = lbound (ioi_data.gt, 1) to hbound (ioi_data.gt, 1);
+      153 	     gtep = addr (ioi_data.gt (gtx));
+      154 	     if gte.mplex & (gte.disk_data_subsystem_idx = 0) then do;
+      155 		do ctep = ptr (idp, gte.ctep) repeat ptr (idp, cte.next_ctep) while (rel (ctep));
+      156 		     if ^cte.deleted then do;
+      157 			call io_manager$assign (cte.chx, cte.chanid, ioi_masked$interrupt, bin (rel (ctep)),
+      158 			     statusp, code);
+      159 			if code ^= 0 then
+      160 			     call syserr$error_code (CRASH, code, "^a: Unable to assign channel ^a.", ME,
+      161 				cte.chanid);
+      162 			cte.statusp = statusp;
+      163 			cte.ioi_use = "1"b;
+      164 		     end;
+      165 		end;
+      166 	     end;
+      167 	end;
+      168 
+      169 /**** Now create entries for all configured MCAs (in the IMUs). ****/
+      170 
+      171 	do itx = lbound (ioi_data.it, 1) to hbound (ioi_data.it, 1);
+      172 	     itep = addr (ioi_data.it (itx));
+      173 	     if ite.model = "imu" | ite.model = "iioc" then do;
+      174 		call allocate_gte ("mca" || substr ("abcd", ite.tag, 1));
+      175 		gte.psia = "1"b;			/* works like psia */
+      176 		gte.n_devices = 1;
+      177 		call allocate_ctes (ite.tag, 3, 1);
+      178 		device_number = 1;
+      179 		adding_controller_dte = "0"b;
+      180 		call allocate_next_dte;
+      181 	     end;
+      182 	end;
+      183 
+      184 /**** Set up the I/O page tables. ****/
+      185 
+      186 	call ioi_page_table$init;
+      187 
+      188 /* Set up the reset status IDCW */
+      189 
+      190 	idcwp = addr (ioi_data.rss_idcw);
+      191 	string (idcw) = ""b;
+      192 	idcw.command = "40"b3;			/* reset status command */
+      193 	idcw.code = "7"b3;				/* identify this as an IDCW */
+      194 	idcw.chan_cmd = "02"b3;			/* non-data transfer type command */
+      195 	idcw.count = "01"b3;			/* only do this once at a time */
+      196 
+      197 	ioi_data.setup = "1"b;			/* OK for polling to run now. */
+      198 	return;
+      199 
+      200 
+      201 /* Routine to allocate a group table entry.  It checks for the existence for the gte first, and complains
+      202*   if it already exists.  If not, it allocates one and fills in the easy stuff, returning with gtep
+      203*   pointing to the relevant gte. */
+      204 
+      205 allocate_gte:
+      206      proc (prph_name);
+      207 
+      208 
+      209 dcl	current_gtx	   fixed bin;
+      210 dcl	prph_name		   char (4) aligned;
+      211 
+      212 	do current_gtx = 1 to high_gtx;
+      213 	     gtep = addr (ioi_data.gt (current_gtx));
+      214 	     if gte.name = prph_name then
+      215 		call syserr (CRASH, "^a: Duplicate ""prph ^a"" card found.", ME, gte.name);
+      216 	end;
+      217 	high_gtx = high_gtx + 1;
+      218 	gtep = addr (ioi_data.gt (high_gtx));
+      219 	gte.lock = ""b;				/* not locked */
+      220 	gte.name = prph_name;			/* get name from prph card */
+      221 	gte.dtep, gte.ctep = ""b;			/* no devices or channels yet */
+      222 	string (gte.flags) = ""b;			/* default all flags to off */
+      223 	gte.n_devices = 0;
+      224 	gte.pending_connects = 0;			/* no work to do yet */
+      225 	gte.disk_data_subsystem_idx = 0;		/* not necessarily a disk subsystem */
+      226 
+      227      end allocate_gte;
+      228 
+      229 /* Routine to find an already allocated gte (it uses the name from a chnl card, which are processed after all
+      230*   prph cards).  Crashes if the gte not found.  In case we want to to something different, it pretends to carry on. */
+      231 
+      232 find_gte:
+      233      proc () returns (bit (1) aligned);
+      234 
+      235 dcl	current_gtx	   fixed bin;
+      236 
+      237 	do current_gtx = 1 to ioi_data.ngt;
+      238 	     gtep = addr (ioi_data.gt (current_gtx));
+      239 	     if chnl_card.name = gte.name then
+      240 		return ("1"b);			/* found it */
+      241 	end;
+      242 	call syserr (CRASH, "^a: No matching ""prph ^a"" found for ""chnl ^a"".", ME, chnl_card.name, chnl_card.name);
+      243 	return ("0"b);
+      244 
+      245      end find_gte;
+      246 
+      247 /* Routine to return the extended status command to use for a given device type, if it knows it. */
+      248 
+      249 extended_status_command:
+      250      proc () returns (bit (6));
+      251 
+      252 	if gte.fips then
+      253 	     return ("00"b3);
+      254 	else if device_type = "dsk" then
+      255 	     return ("22"b3);
+      256 	else if device_type = "tap" then
+      257 	     return ("50"b3);
+      258 	else if (device_type = "prt") | (device_type = "rdr") | (device_type = "pun") | (device_type = "ccu") then
+      259 	     return ("03"b3);
+      260 	else return ("00"b3);
+      261 
+      262      end extended_status_command;
+      263 
+      264 /* Routine to return true if the device in question returns its extended status with the channel in ASCII
+      265*   mode.  If so, we re-pack it at interrupt side to resemble normal IOM channels.  Currently, EURCs
+      266*   are the only controllers which behave this way. */
+      267 
+      268 ascii_detailed_status:
+      269      proc () returns (bit (1) aligned);
+      270 
+      271 dcl	i		   fixed bin;
+      272 
+      273 	if mpc_cardp ^= null () then
+      274 	     if substr (mpc_card.name, 1, 3) = "urp" then /* a unit record mpc */
+      275 		do i = 1 to hbound (eurc_model_numbers, 1);
+      276 		if mpc_card.model = eurc_model_numbers (i) then
+      277 		     return ("1"b);
+      278 	     end;
+      279 	return ("0"b);
+      280 
+      281      end ascii_detailed_status;
+      282 
+      283 /* Routine to setup the index to the log_status_info structure.  There is one of these per device type,
+      284*   telling whether or not a particular status is to be logged in the syserr log.  If, for some reason,
+      285*   there is no structure for this device type, the index is left at 0 and the interrupt side uses
+      286*   a heuristic to decide whether or not to log. */
+      287 
+      288 setup_log_status_info:
+      289      proc;
+      290 
+      291 dcl	log_status_info_idx	   fixed bin;
+      292 
+      293 	io_log_infop = addr (io_log_status_info$io_log_status_info);
+      294 	do log_status_info_idx = 1 to io_log_info.ndev;
+      295 	     logp = addr (io_log_info.log_entry (log_status_info_idx));
+      296 	     if log.dev_name = device_type then do;
+      297 		gte.io_log_info_index = log_status_info_idx;
+      298 		return;
+      299 	     end;
+      300 	end;
+      301 	gte.io_log_info_index = 0;
+      302 
+      303      end setup_log_status_info;
+      304 
+      305 /* Routine which allocates the device table entries given a prph card and an already setup gte. */
+      306 
+      307 allocate_dtes_from_prph_card:
+      308      proc;
+      309 
+      310 dcl	group_idx		   fixed bin;
+      311 
+      312 	adding_controller_dte = "0"b;
+      313 	if gte.fips then
+      314 	     device_number = 0;			/* devices start at zero */
+      315 	else device_number = 1;			/* devices start at 1, controller at 0 */
+      316 	if (device_type = "tap") | (device_type = "dsk") then do;
+      317 						/* NOTE THE ASSUMPTION THAT THE CARDS LOOK ALIKE */
+      318 	     do group_idx = lbound (prph_tap_card_array.group, 1) to hbound (prph_tap_card_array.group, 1);
+      319 		if prph_tap_card_array.group (group_idx).model ^= 0 then do;
+      320 		     do device_number = device_number
+      321 			to device_number + prph_tap_card_array.group (group_idx).ndrives - 1;
+      322 			call allocate_next_dte;
+      323 		     end;
+      324 		end;
+      325 		else device_number = device_number + prph_tap_card_array.group (group_idx).ndrives;
+      326 	     end;
+      327 	     adding_controller_dte = "1"b;
+      328 	     device_number = 0;			/* make one for the controller */
+      329 	     call allocate_next_dte;
+      330 	end;
+      331 	else call allocate_next_dte;
+      332 	return;
+      333 
+      334      end allocate_dtes_from_prph_card;
+      335 
+      336 allocate_next_dte:
+      337      proc;
+      338 
+      339 dcl	device_name	   char (32);
+      340 dcl	device_number_string   pic "99";
+      341 
+      342 	if gte.mplex & ^(gte.fips & adding_controller_dte) then do;
+      343 	     device_number_string = device_number;
+      344 	     device_name = gte.name || "_" || device_number_string;
+      345 	end;
+      346 	else device_name = gte.name;
+      347 	high_dtx = high_dtx + 1;
+      348 	dtep = addr (ioi_data.dt (high_dtx));
+      349 /**** now fill in all of the info ****/
+      350 	unspec (dte) = ""b;				/* wipe it clean */
+      351 	if gte.dtep = ""b then do;			/* if this is the first device we've seen in this group */
+      352 	     gte.dtep = rel (dtep);			/* nowhere else it could point */
+      353 	     dte.next_dtep = rel (dtep);		/* circular list */
+      354 	end;
+      355 	else do;					/* link it into the circular list */
+      356 	     dte.next_dtep = ptr (dtep, gte.dtep) -> dte.next_dtep;
+      357 						/* thread it into the linked list */
+      358 	     ptr (dtep, gte.dtep) -> dte.next_dtep = rel (dtep);
+      359 	     gte.dtep = rel (dtep);			/* this is the new head */
+      360 	end;
+      361 	dte.gtep = rel (gtep);			/* remember our group */
+      362 	dte.channel_required = "";			/* no channel requirement by default */
+      363 	dte.workspace_ptr = null ();
+      364 	dte.workspace_astep = null ();
+      365 	dte.ptp = null ();
+      366 	dte.in_use = "1"b;				/* assume it's available for IOI */
+      367 	dte.device = bit (bin (device_number, 6), 6);	/* remember which device we are */
+      368 	dte.lock.event = unspec (IOI_DEVICE_LOCK_EVENT_TEMPLATE) || rel (dtep);
+      369 						/* set event for locking and unlocking */
+      370 	dte.device_table_idx = device_table_idx_from_name (device_name);
+      371 	if dte.device_table_idx = 0 then
+      372 	     call syserr (CRASH, "^a: Couldn't find device_table_idx for device ""^a"".", ME, device_name);
+      373 
+      374 	dte.deleted = ^device_table.device_entry (dte.device_table_idx).configured;
+      375 	if device_type = "fnp" | device_type = "dia" then
+      376 	     dte.direct = "1"b;
+      377 	dte.controller = adding_controller_dte;
+      378 
+      379 /**** Check for duplicate devices ****/
+      380 	do dtep = ptr (idp, dte.next_dtep) repeat ptr (idp, dte.next_dtep) while (rel (dtep) ^= gte.dtep);
+      381 	     if bit (bin (device_number, 6), 6) = dte.device & ^adding_controller_dte then
+      382 		call syserr (CRASH, "^a: Multiple definitions of device ^a found.", ME, device_name);
+      383 	end;
+      384 
+      385      end allocate_next_dte;
+      386 
+      387 /* Routine to allocate the channel table entries described on a prph card */
+      388 
+      389 allocate_ctes_from_prph_card:
+      390      proc;
+      391 
+      392 	if device_type = "tap" | device_type = "dsk" then /* NOTE THAT WE ASSUME THE CARDS ARE THE SAME FORMAT */
+      393 	     call allocate_ctes (prph_dsk_card.iom, prph_dsk_card.chan, prph_dsk_card.nchan);
+      394 	else call allocate_ctes (prph_card.iom, prph_card.chan, 1);
+      395 
+      396      end allocate_ctes_from_prph_card;
+      397 
+      398 /* Routine to allocate the channel table entries described on a chnl card */
+      399 
+      400 allocate_ctes_from_chnl_card:
+      401      proc;
+      402 
+      403 dcl	group_idx		   fixed bin;
+      404 
+      405 	do group_idx = lbound (chnl_card_array.group, 1) to hbound (chnl_card_array.group, 1);
+      406 	     call allocate_ctes (chnl_card_array.group (group_idx).iom, chnl_card_array.group (group_idx).chan,
+      407 		chnl_card_array.group (group_idx).nchan);
+      408 	end;
+      409 
+      410      end allocate_ctes_from_chnl_card;
+      411 
+      412 /* Routine which allocates the ctes.  gtep must be pointing at the group table entry for these channels. */
+      413 
+      414 allocate_ctes:
+      415      proc (iomno, channo, nchans);
+      416 
+      417 dcl	channo		   fixed bin (8) parameter;
+      418 dcl	iomno		   fixed bin (3) parameter;
+      419 dcl	nchans		   fixed bin parameter;
+      420 
+      421 dcl	ch_idx		   fixed bin;
+      422 dcl	iterp		   bit (18);
+      423 dcl	itx		   fixed bin;
+      424 dcl	this_channel	   fixed bin (7);
+      425 
+      426 /**** Find the ite for this IOM. ****/
+      427 
+      428 	do itx = 1 to high_itx while (ioi_data.it (itx).tag ^= iomno);
+      429 	end;
+      430 	if itx > high_itx then do;
+      431 	     call syserr (CRASH, "^a:  No iom card found for the ^a subsystem.", ME, gte.name);
+      432 	     iterp = ""b;				/* really won't help, but... */
+      433 	end;
+      434 	else iterp = rel (addr (ioi_data.it (itx)));
+      435 
+      436 /**** We loop through the channels in descending order.  This is so the channels will end up
+      437*      on the queue in ascending order (we push them on one at a time).  This is necessary so
+      438*      that we will use the base channel of a physical channel first.  We must do THAT to
+      439*      ensure that it is unmasked when there is a possibility of a special interrupt happening. ****/
+      440 
+      441 	do ch_idx = nchans - 1 to 0 by -1;
+      442 	     high_ctx = high_ctx + 1;			/* use next cte */
+      443 	     ctep = addr (ioi_data.ct (high_ctx));
+      444 	     unspec (cte) = ""b;			/* scrub it before using */
+      445 	     cte.next_ctep = gte.ctep;		/* link this cte onto the gte's list */
+      446 	     cte.itep = iterp;
+      447 	     gte.ctep = rel (ctep);
+      448 	     cte.gtep = rel (gtep);			/* remember our group */
+      449 	     this_channel = channo + ch_idx;
+      450 	     call io_chnl_util$iom_to_name (iomno, this_channel, cte.chanid, code);
+      451 	     if code ^= 0 then
+      452 		call syserr$error_code (CRASH, code, "^a: Unable to get the name of IOM ^d channel ^d.", ME, iomno,
+      453 		     this_channel);
+      454 	     cte.channel_table_idx = channel_table_idx_from_name (cte.chanid);
+      455 	     cte.deleted = ^channel_table.channel_entry (cte.channel_table_idx).configured;
+      456 	     cte.direct = (device_type = "fnp") | (device_type = "dia");
+      457 
+      458 /**** Check for duplicate channels ****/
+      459 	     do ctep = ptr (idp, cte.next_ctep) repeat ptr (idp, cte.next_ctep) while (rel (ctep));
+      460 		if cte.chanid = ptr (idp, gte.ctep) -> cte.chanid then
+      461 		     call syserr (CRASH, "^a: Multiple definitions of channel ^a found for subsystem ^a.", ME,
+      462 			cte.chanid, gte.name);
+      463 	     end;
+      464 	end;
+      465 
+      466      end allocate_ctes;
+      467 
+      468 cte_offset:
+      469      proc (chanid) returns (bit (18));
+      470 
+      471 dcl	chanid		   char (8) aligned parameter;
+      472 
+      473 dcl	ctx		   fixed bin;
+      474 
+      475 	do ctx = lbound (ioi_data.ct, 1) to hbound (ioi_data.ct, 1);
+      476 	     if (addr (ioi_data.ct (ctx)) -> cte.chanid) = chanid then
+      477 		return (rel (addr (ioi_data.ct (ctx))));
+      478 	end;
+      479 	return (""b);
+      480 
+      481      end cte_offset;
+      482 
+      483 iom_table_idx_from_tag:
+      484      proc (tag) returns (fixed bin);
+      485 
+      486 dcl	tag		   fixed bin (3) parameter;
+      487 
+      488 dcl	name		   char (1);
+      489 dcl	i		   fixed bin;
+      490 
+      491 	name = substr ("ABCD", tag, 1);
+      492 	do i = lbound (iom_table.iom_entry, 1) to hbound (iom_table.iom_entry, 1);
+      493 	     if iom_table.iom_entry (i).name = name then
+      494 		return (i);
+      495 	end;
+      496 	return (lbound (iom_table.iom_entry, 1) - 1);
+      497 
+      498      end iom_table_idx_from_tag;
+      499 
+      500 device_table_idx_from_name:
+      501      proc (name) returns (fixed bin);
+      502 
+      503 dcl	name		   char (*) parameter;
+      504 
+      505 dcl	i		   fixed bin;
+      506 
+      507 	do i = lbound (device_table.device_entry, 1) to hbound (device_table.device_entry, 1);
+      508 	     if device_table.device_entry (i).name = name then
+      509 		return (i);
+      510 	end;
+      511 	return (lbound (device_table.device_entry, 1) - 1);
+      512 
+      513      end device_table_idx_from_name;
+      514 
+      515 channel_table_idx_from_name:
+      516      proc (name) returns (fixed bin);
+      517 
+      518 dcl	name		   char (8) aligned parameter;
+      519 
+      520 dcl	i		   fixed bin;
+      521 
+      522 	do i = lbound (channel_table.channel_entry, 1) to hbound (channel_table.channel_entry, 1);
+      523 	     if channel_table.channel_entry (i).name = name then
+      524 		return (i);
+      525 	end;
+      526 	return (lbound (channel_table.channel_entry, 1) - 1);
+      527 
+      528      end channel_table_idx_from_name;
+      529 
+      530 /* Routine which returns TRUE if the PRPH is on an IMU */
+      531 
+      532 IS_ON_IMU:
+      533      proc (iomno) returns (bit (1));
+      534 
+      535 dcl	iomno		   fixed bin (3) parameter;
+      536 dcl	itx		   fixed bin;
+      537 
+      538 /**** Find the ite for this IOM. ****/
+      539 
+      540 	do itx = 1 to high_itx while (ioi_data.it (itx).tag ^= iomno);
+      541 	end;
+      542 	if itx > high_itx then
+      543 	     return ("0"b);
+      544 	if ioi_data.it (itx).model = "imu" | ioi_data.it (itx).model = "iioc" then
+      545 	     return ("1"b);
+      546 	else return ("0"b);
+      547      end IS_ON_IMU;
+      548 
+      549 /* Routine which initializes the disk databases in ioi_data.  It assumes that disk_seg is already setup, and
+      550*   that disk_control has assigned to itself all channels for all disks.  It sets up so that later we can usurp
+      551*   any channels we need for udsk activity. gtep is assumed to be pointing to the gte for the disk subsystem */
+      552 
+      553 setup_disk_sharing:
+      554      proc;
+      555 
+      556 dcl	ctx		   fixed bin;
+      557 
+      558 	call find_disktab;				/* locate the disktab for this subsystem */
+      559 	mpc_cardp = null ();
+      560 	do ctx = lbound (null () -> disk_channel_table, 1) + disktab.nchan - 1
+      561 	     to lbound (null () -> disk_channel_table, 1) by -1;
+      562 						/* iterate in order of increasing priority */
+      563 	     cp = addr (ptr (diskp, disktab.channels) -> disk_channel_table (ctx));
+      564 	     if chantab.chanid ^= "" then do;		/* if the channel is known to disk_control */
+      565 		call find_matching_cte;		/* get ctep pointing to the right place */
+      566 		cte.statusp = chantab.statusp;	/* copy this info */
+      567 		cte.chx = chantab.chx;
+      568 		cte.disktab_ctx = ctx;		/* so we can find this later */
+      569 		chantab.ioi_ctx = bin (rel (ctep));	/* so disk_control can find us later */
+      570 		if mpc_cardp = null () then
+      571 		     mpc_cardp = ioi_config$find_controller_card (cte.chanid);
+      572 		else if mpc_cardp ^= ioi_config$find_controller_card (cte.chanid) then
+      573 		     gte.dual_controller = "1"b;
+      574 	     end;
+      575 	end;
+      576 
+      577 find_disktab:
+      578 	proc;
+      579 
+      580 dcl	dtx		   fixed bin;
+      581 
+      582 	     do dtx = lbound (disk_data.array, 1) to hbound (disk_data.array, 1);
+      583 		if disk_data.array (dtx).name = gte.name then do;
+      584 		     gte.disk_data_subsystem_idx = dtx; /* so we can find this entry later */
+      585 		     diskp = ptr (disksp, disk_data.array (dtx).offset);
+      586 		     return;
+      587 		end;
+      588 	     end;
+      589 	     call syserr (CRASH, "^a: No entry for ^a found in disk_data.", ME, gte.name);
+      590 
+      591 	end find_disktab;
+      592 
+      593 find_matching_cte:
+      594 	proc;
+      595 
+      596 	     do ctep = ptr (idp, gte.ctep) repeat ptr (idp, cte.next_ctep) while (rel (ctep));
+      597 		if cte.chanid = chantab.chanid then
+      598 		     return;
+      599 	     end;
+      600 	     call syserr (CRASH, "^a: No cte found for channel ^a.", ME, chantab.chanid);
+      601 
+      602 	end find_matching_cte;
+      603 
+      604      end setup_disk_sharing;
+      605 
+  1     1 /* Begin include file ...... ioi_data.incl.pl1 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1     6*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1     7*     Support for FIPS and
+  1     8*     IMU.
+  1     9*  2) change(86-05-16,Kissel), approve(86-07-30,MCR7461), audit(86-07-31,Coren),
+  1    10*     install(86-08-19,MR12.0-1120):
+  1    11*     Changed the value of IOI_DEFAULT_MAX_BOUND from 4096 to 1024.  This
+  1    12*     corrects a problem when RCP tries to set the maximum workspace size if it
+  1    13*     is less than 4096.  Since ioi_ (actually grab_aste) touched all the pages
+  1    14*     at assignment time, the current length is 4, and trying to set the max
+  1    15*     length to less than 4 (e.g. because the max unprivileged workspace size in
+  1    16*     RCP for a special device is 1) returns an error.
+  1    17*                                                   END HISTORY COMMENTS */
+  1    18 
+  1    19 /* Rewritten May 1982 by C. Hornig for new ioi_ */
+  1    20 /* Rewrite finished March 1983 by Chris Jones */
+  1    21 /* Extended for reconfiguration April 1983 by Chris Jones. */
+  1    22 /* Modified November 1983 by Chris Jones to separate items in the dte protected by different locks. */
+  1    23 /* Modified January 1984 by Chris Jones to add ite's. */
+  1    24 /* Modified Feb 1984 by Rich Fawcett to add ipc and fips */
+  1    25 /* Modified Sept 1985 by Paul Farley to add controller flag to dte. */
+  1    26 
+  1    27 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    28 
+  1    29 dcl	idp		   ptr;			/* pointer to IOI data structure */
+  1    30 dcl	gtep		   ptr;			/* pointer to channel/device group entry */
+  1    31 dcl	ctep		   ptr;			/* pointer to channel table entry */
+  1    32 dcl	dtep		   ptr;			/* pointer to wired device table entry */
+  1    33 dcl	itep		   ptr;			/* pointer to I/O multiplexer entry */
+  1    34 
+  1    35 dcl	(ioi_subsystems, ioi_devices, ioi_channels, ioi_multiplexers)
+  1    36 			   fixed bin;
+  1    37 dcl	ioi_data$		   external;		/* IOI data segment */
+  1    38 
+  1    39 
+  1    40 dcl	1 ioi_data	   based (idp) aligned,	/* I/O Interfacer data structure */
+  1    41 	  2 ngt		   fixed bin,		/* number of groups */
+  1    42 	  2 nct		   fixed bin,		/* number of channels */
+  1    43 	  2 ndt		   fixed bin,		/* number of devices */
+  1    44 	  2 nit		   fixed bin,		/* number of IOMs */
+  1    45 	  2 spurious_interrupts
+  1    46 			   fixed bin (35),		/* interrupts with no status */
+  1    47 	  2 reconfig_lock	   like lock,		/* lock for reconfiguring devices, channels, etc. */
+  1    48 	  2 flags,
+  1    49 	    3 setup	   bit (1) unal,		/* "1"b => ioi_init has run */
+  1    50 	    3 pad1	   bit (35) unal,
+  1    51 	  2 rss_idcw	   bit (36),		/* reset status IDCW */
+  1    52 	  2 pad2		   (6) fixed bin (35),	/* pad to 16 words */
+  1    53 	  2 dt		   (ioi_devices refer (ioi_data.ndt)) like dte aligned,
+  1    54 						/* device table */
+  1    55 	  2 gt		   (ioi_subsystems refer (ioi_data.ngt)) like gte aligned,
+  1    56 						/* channel/device group table */
+  1    57 	  2 ct		   (ioi_channels refer (ioi_data.nct)) like cte aligned,
+  1    58 						/* channel table */
+  1    59 	  2 it		   (ioi_multiplexers refer (ioi_data.nit)) like ite aligned;
+  1    60 						/* multiplexer table */
+  2     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  2     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  2     3*   encourages name conflicts.
+  2     4*   USE HC_FAST_LOCK INSTEAD!
+  2     5**/
+  2     6 
+  2     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  2     8 
+  2     9 /* format: style3 */
+  2    10 
+  2    11 declare	lock_ptr		pointer;
+  2    12 declare	1 lock		aligned based (lock_ptr),
+  2    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  2    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  2    15 	  2 flags		aligned,
+  2    16 	    3 notify_sw	bit (1) unaligned,
+  2    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  2    18 
+  2    19 /* End include file hc_lock.incl.pl1 */
+  1    61 
+  1    62 
+  1    63 dcl	1 ite		   based (itep) aligned,	/* I/O multiplexer table entry */
+  1    64 	  2 model		   char (4),		/* which flavor we are */
+  1    65 	  2 flags,
+  1    66 	  ( 3 deleting	   bit (1),
+  1    67 	    3 deleted	   bit (1)
+  1    68 	    )		   unaligned,
+  1    69 	  2 pad1		   bit (16) unaligned,
+  1    70 	  2 iom_table_idx	   fixed bin (17) unaligned,
+  1    71 	  2 tag		   fixed bin (3),
+  1    72 	  2 pad2		   (5) bit (36);
+  1    73 
+  1    74 dcl	1 gte		   based (gtep) aligned,	/* channel/device group table entry */
+  1    75 	  2 lock		   bit (36),		/* (0) loop lock */
+  1    76 	  2 name		   char (4),		/* (1) subsystem name */
+  1    77 	  2 dtep		   bit (18) unaligned,	/* (2) rel ptr to device just serviced */
+  1    78 	  2 ctep		   bit (18) unaligned,	/* (2) rel ptr to thread of channel table entries */
+  1    79 	  2 detailed_status_cmd
+  1    80 			   bit (6) unal,		/* (3) idcw command to read detailed status */
+  1    81 	  2 flags		   unaligned,		/* (3) */
+  1    82 	    3 psia	   bit (1),		/* "1"b if channel is PSIA */
+  1    83 	    3 suspend_devices  bit (1),		/* "1"b if device I/O suspended */
+  1    84 	    3 dual_controller  bit (1),		/* "1"b if dual controller subsystem (disk only) */
+  1    85 	    3 ascii_dtst	   bit (1),		/* "1"b if detailed status sent in ASCII mode */
+  1    86 	    3 mplex	   bit (1),		/* "1"b if channels are multiplexed among devices */
+  1    87 	    3 ipc		   bit (1),		/* "1"b if devices are on an IMU */
+  1    88 	    3 fips	   bit (1),		/* "1"b if devices start at zero */
+  1    89 	    3 pad		   bit (23),
+  1    90 	  2 n_devices	   fixed bin,		/* (4) number of devices in device table thread */
+  1    91 	  2 pending_connects   fixed bin,		/* (5) count of pending connect requests */
+  1    92 	  2 io_log_info_index  fixed bin,		/* (6) index into io_log_status_info table */
+  1    93 	  2 disk_data_subsystem_idx
+  1    94 			   fixed bin;		/* (7) index into disk_data.array for disks */
+  1    95 
+  1    96 dcl	1 cte		   based (ctep) aligned,	/* channel table entry */
+  1    97 	  2 next_ctep	   bit (18) unaligned,	/* (0) rel ptr to next channel table entry */
+  1    98 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  1    99 	  2 flags1	   unaligned,		/* (1) */
+  1   100 	    3 ioi_use	   bit (1),		/* "1"b if channel currently being used */
+  1   101 	    3 connected	   bit (1),		/* "1"b if channel is connected */
+  1   102 	    3 toss_status	   bit (1),		/* "1"b if status is to be ignored */
+  1   103 	    3 quiescing	   bit (1),		/* "1"b if the channel is just finishing what it's doing */
+  1   104 	    3 direct	   bit (1),		/* "1"b if this is a direct channel */
+  1   105 	    3 pad1	   bit (4),
+  1   106 	  2 disktab_ctx	   fixed bin (9) uns unal,	/* (1) index into disktab.chantab for this channel */
+  1   107 	  2 cur_dtep	   bit (18) unaligned,	/* (1) current device table entry */
+  1   108 	  2 chanid	   char (8),		/* (2) io_manager's name for channel */
+  1   109 	  2 statusp	   ptr unal,		/* (4) pointer to first word of status */
+  1   110 	  2 chx		   fixed bin (35),		/* (5) channel index for io_manager */
+  1   111 	  2 time_limit	   fixed bin (71),		/* (6) connect time limit */
+  1   112 	  2 saved_status	   unaligned,		/* (8) status repository while reading detailed status */
+  1   113 	    3 word1	   bit (36),
+  1   114 	    3 word2	   bit (36),
+  1   115 	    3 word4	   bit (36),
+  1   116 	    3 next_lpw_offset  bit (18),
+  1   117 	    3 command	   bit (6),
+  1   118 	  2 pad3		   bit (12) unaligned,	/* (11) */
+  1   119 	  2 base_ctep	   bit (18) unaligned,	/* (12) rel ptr to base logical chan. of physical chan. */
+  1   120 	  2 itep		   bit (18) unaligned,	/* (12) rel ptr to itep */
+  1   121 	  2 flags2	   unaligned,		/* (13) */
+  1   122 	    3 deleting	   bit (1),		/* "1"b if attempting to delete this channel */
+  1   123 	    3 deleted	   bit (1),		/* "1"b if channel deleted */
+  1   124 	  2 pad4		   bit (16) unaligned,	/* (13) */
+  1   125 	  2 channel_table_idx  fixed bin (17) unaligned,
+  1   126 	  2 pad5		   (2) bit (36);		/* (14) pad to 8 word boundary */
+  1   127 
+  1   128 dcl	1 dte		   based (dtep) aligned,	/* wired device table entry */
+  1   129 	  2 next_dtep	   bit (18) unaligned,	/* (0) rel ptr to next entry in thread */
+  1   130 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  1   131 	  2 cur_ctep	   bit (18) unaligned,	/* (1) rel ptr to channel in use */
+  1   132 	  2 flags1	   unaligned,		/* (1) flags protected by gte lock */
+  1   133 	    3 connected	   bit (1),		/* "1"b if device has a channel */
+  1   134 	    3 log_status_cnt   bit (1),		/* "1"b if count in log_status is valid */
+  1   135 	    3 reading_detailed_status
+  1   136 			   bit (1),		/* "1"b if read of detailed device status in progress */
+  1   137 	    3 pad1	   bit (15),
+  1   138 	  2 channel_required   char (8),		/* (2) channel name of required channel */
+  1   139 	  2 ev_chn	   fixed bin (71),		/* (4) event ID for status wakeups */
+  1   140 	  2 workspace_ptr	   ptr,			/* (6) workspace pointer */
+  1   141 	  2 workspace_astep	   ptr,			/* (8) workspace ASTE ptr */
+  1   142 	  2 workspace_sdw	   fixed bin (71),		/* (10) SDW of workspace segment */
+  1   143 	  2 ptp		   ptr,			/* (12) device page table */
+  1   144 	  2 max_bound	   fixed bin (19),		/* (14) largest allowable bound of workspace segment */
+  1   145 	  2 bound		   fixed bin (19),		/* (15) bound of workspace */
+  1   146 	  2 process_id	   bit (36),		/* (16) ID of process owning device */
+  1   147 	  2 ring		   fixed bin (3),		/* (17) highest ring allowed to access device */
+  1   148 	  2 device	   bit (6) unal,		/* (18) device code */
+  1   149 	  2 flags2	   unal,			/* (18) constant or protected by dte lock */
+  1   150 	    3 priv	   bit (1),		/* "1"b if privileged user */
+  1   151 	    3 in_use	   bit (1),		/* "1"b if device is to be used */
+  1   152 	    3 deleting	   bit (1),		/* "1"b if trying to delete this device */
+  1   153 	    3 deleted	   bit (1),		/* "1"b if this device is deleted */
+  1   154 	    3 suspended	   bit (1),		/* "1"b if device isn't to be used temporarily */
+  1   155 	    3 workspace_wired  bit (1),		/* "1"b if workspace is wired */
+  1   156               3 direct           bit (1),                   /* "1"b if device is connected to a direct channel */
+  1   157 	    3 controller	   bit (1),		/* "1"b if dte for the devices controller */
+  1   158 	    3 pad2	   bit (4),
+  1   159 	  2 device_table_idx   fixed bin (17) unaligned,
+  1   160 	  2 listx		   uns fixed bin (18) unal,	/* (19) DCW list index for connect */
+  1   161 	  2 idcw_listx	   uns fixed bin (18) unal,	/* (19) DCW list index of IDCW */
+  1   162 	  2 timeout	   fixed bin (35),		/* (20) time limit for I/O completion (usec) */
+  1   163 	  2 max_timeout	   fixed bin (35),		/* (21) maximum allowable timeout grace time (usec) */
+  1   164 	  2 unwire_time	   fixed bin (71),		/* (22) when to unwire the workspace */
+  1   165 	  2 pcw		   bit (36),		/* (24) peripheral control word (PCW) */
+  1   166 	  2 status_control,				/* (25) */
+  1   167 	    3 status_offset	   fixed bin (18) unsigned unaligned,
+  1   168 						/* offset of status queue in user workspace */
+  1   169 	    3 status_entries   fixed bin (9) unsigned unaligned,
+  1   170 						/* number of entries in status queue */
+  1   171 	    3 status_entry_idx fixed bin (9) unsigned unaligned,
+  1   172 						/* next entry to be used */
+  1   173 	  2 idcw		   bit (36),		/* (26) instruction DCW (KEEP ON EVEN WORD BOUNDARY) */
+  1   174 	  2 tdcw		   bit (36),		/* (27) transfer DCW to remainder of list */
+  1   175 	  2 special_status	   bit (36),		/* (28) special interrupt status */
+  1   176 	  2 lock		   like lock,		/* (29) wait lock */
+  1   177 	  2 log_status,				/* (32) */
+  1   178 	  ( 3 level	   fixed bin (3) unsigned,
+  1   179 	    3 time_out	   bit (1),
+  1   180 	    3 type	   bit (2),
+  1   181 	    3 command	   bit (6),
+  1   182 	    3 count	   fixed bin (6) unsigned,
+  1   183 	    3 channel	   bit (18),
+  1   184 	    3 status	   bit (36)
+  1   185 	    )		   unaligned,
+  1   186 	  2 ptx		   fixed bin,		/* (34) index of page table */
+  1   187 	  2 active	   bit (1),		/* (35) "1"b if device running or to run */
+  1   188 	  2 special_interrupt  bit (1),		/* (36) "1"b if special interrupt received */
+  1   189 	  2 detailed_status_valid
+  1   190 			   bit (1),		/* (37) "1"b if detailed status read sucessfully */
+  1   191 	  2 last_log_time	   fixed bin (71),		/* (38) when status was last logged */
+  1   192 	  2 detailed_status	   (8) bit (36),		/* (40) (buffer for reading most recent detailed status */
+  1   193 	  2 log_detailed_status
+  1   194 			   (8) bit (36);		/* (48) copy of last detailed status logged */
+  1   195 
+  1   196 /**** Defaults for various I/O parameters */
+  1   197 
+  1   198 dcl	IOI_DEFAULT_MAX_BOUND  fixed bin (19) static options (constant) init (1024);
+  1   199 dcl	IOI_DEFAULT_MAX_TIMEOUT
+  1   200 			   fixed bin (35) static options (constant) init (30000000);
+  1   201 dcl	IOI_DEFAULT_TIMEOUT	   fixed bin (35) static options (constant) init (30000000);
+  1   202 
+  1   203 dcl	IO_STATUS_ERROR_MASK   bit (36) static options (constant) init ("370000770000"b3);
+  1   204 
+  1   205 dcl	IO_CHANNEL_LOCK_TEMPLATE
+  1   206 			   char (2) int static options (constant) init ("ch");
+  1   207 dcl	IOI_DEVICE_LOCK_EVENT_TEMPLATE
+  1   208 			   char (2) static options (constant) init ("dv");
+  1   209 
+  1   210 /* End of include file ...... ioi_data.incl.pl1 */
+      606 
+      607 
+  3     1 /*  START OF:	io_config.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 /* Structures for overlaying the io_config data segment. */
+  3     4 /* Written February 1984 by Chris Jones as part of IOM reconfiguration project. */
+  3     5 
+  3     6 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3     7 
+  3     8 dcl	io_config_data$	   external;
+  3     9 
+  3    10 dcl	io_config_data_ptr	   ptr;
+  3    11 dcl	io_config_device_table_ptr
+  3    12 			   ptr;
+  3    13 dcl	io_config_channel_table_ptr
+  3    14 			   ptr;
+  3    15 dcl	io_config_controller_table_ptr
+  3    16 			   ptr;
+  3    17 dcl	io_config_iom_table_ptr
+  3    18 			   ptr;
+  3    19 
+  3    20 dcl	tables_length	   fixed bin (19);
+  3    21 
+  3    22 dcl	1 io_config_data	   aligned based (io_config_data_ptr),
+  3    23 	  2 version	   char (8),
+  3    24 	  2 tables_length	   fixed bin (19) unsigned,
+  3    25 	  2 device_table_offset
+  3    26 			   fixed bin (18) uns unal,
+  3    27 	  2 channel_table_offset
+  3    28 			   fixed bin (18) uns unal,
+  3    29 	  2 controller_table_offset
+  3    30 			   fixed bin (18) uns unal,
+  3    31 	  2 iom_table_offset   fixed bin (18) uns unal,
+  3    32 	  2 p_clock	   fixed bin (35),
+  3    33 	  2 pad		   (2) bit (36),		/* pad to 0 mod 8 boundary */
+  3    34 	  2 tables	   (0 refer (io_config_data.tables_length)) bit (36);
+  3    35 
+  3    36 dcl	1 device_table	   aligned based (io_config_device_table_ptr),
+  3    37 	  2 version	   char (8),
+  3    38 	  2 n_devices	   fixed bin,
+  3    39 	  2 pad		   bit (36),		/* pad to even word boundary */
+  3    40 	  2 device_entry	   (0 refer (device_table.n_devices)) like device_entry_template;
+  3    41 
+  3    42 dcl	1 device_entry_template
+  3    43 			   aligned based,
+  3    44 	  2 name		   char (32) unaligned,
+  3    45 	  2 comment	   char (32) unaligned,
+  3    46 	  2 flags,
+  3    47 	  ( 3 configured,				/* set => not deleted */
+  3    48 	    3 assigned				/* set => in use (by a user or ring 0) */
+  3    49 	    )		   bit (1) unaligned,
+  3    50 	  2 pad		   bit (36),		/* pad to even word boundary */
+  3    51 	  2 pchan_idx	   (8) fixed bin;		/* indexes into channel_table */
+  3    52 
+  3    53 dcl	1 channel_table	   aligned based (io_config_channel_table_ptr),
+  3    54 	  2 version	   char (8),
+  3    55 	  2 n_channels	   fixed bin,
+  3    56 	  2 pad		   bit (36),		/* pad to even word boundary */
+  3    57 	  2 channel_entry	   (0 refer (channel_table.n_channels)) aligned like channel_entry_template;
+  3    58 
+  3    59 dcl	1 channel_entry_template
+  3    60 			   aligned based,
+  3    61 	  2 name		   char (8),		/* e.g. "A31" */
+  3    62 	  2 comment	   char (32) unaligned,
+  3    63 	  2 flags,
+  3    64 	  ( 3 configured,				/* set => available for assignment */
+  3    65 	    3 assigned				/* set => currently assigned */
+  3    66 	    )		   bit (1) unaligned,
+  3    67 	  2 controller_idx	   fixed bin,		/* index into controller table (if on MPC) */
+  3    68 	  2 iom_idx	   fixed bin,		/* index into iom_table */
+  3    69 	  2 base_channel_idx   fixed bin;		/* index into channel table */
+  3    70 
+  3    71 dcl	1 controller_table	   aligned based (io_config_controller_table_ptr),
+  3    72 	  2 version	   char (8) aligned,
+  3    73 	  2 n_controllers	   fixed bin,
+  3    74 	  2 pad		   bit (36),		/* pad to even word boundary */
+  3    75 	  2 controller_entry   (0 refer (controller_table.n_controllers)) like controller_entry_template;
+  3    76 
+  3    77 dcl	1 controller_entry_template
+  3    78 			   aligned based,
+  3    79 	  2 name		   char (8),		/* e.g. "mspa" */
+  3    80 	  2 comment	   char (32) unaligned,
+  3    81 	  2 flags,
+  3    82 	  ( 3 configured,				/* set => not deleted */
+  3    83 	    3 assigned				/* set => one process has whole controller */
+  3    84 	    )		   bit (1) unaligned,
+  3    85 	  2 pad		   bit (36);		/* pad to even word boundary */
+  3    86 
+  3    87 dcl	1 iom_table	   aligned based (io_config_iom_table_ptr),
+  3    88 	  2 version	   char (8),
+  3    89 	  2 n_ioms	   fixed bin,
+  3    90 	  2 pad		   bit (36),		/* pad to even word boundary */
+  3    91 	  2 iom_entry	   (0 refer (iom_table.n_ioms)) like iom_entry_template;
+  3    92 
+  3    93 dcl	1 iom_entry_template   aligned based,
+  3    94 	  2 name		   char (8),
+  3    95 	  2 comment	   char (32) unaligned,
+  3    96 	  2 flags,
+  3    97 	  ( 3 configured				/* set => not deleted */
+  3    98 	    )		   bit (1) unaligned,
+  3    99 	  2 n_configured_channels
+  3   100 			   fixed bin;
+  3   101 
+  3   102 dcl	IO_CONFIG_DATA_VERSION_1
+  3   103 			   char (8) aligned static options (constant) init ("IOCD_01");
+  3   104 dcl	IO_CONFIG_DEVICE_TABLE_VERSION_1
+  3   105 			   char (8) aligned static options (constant) init ("DEVT_01");
+  3   106 dcl	IO_CONFIG_CHANNEL_TABLE_VERSION_1
+  3   107 			   char (8) aligned static options (constant) init ("CHANT_01");
+  3   108 dcl	IO_CONFIG_CONTROLLER_TABLE_VERSION_1
+  3   109 			   char (8) aligned static options (constant) init ("CTLRT_01");
+  3   110 dcl	IO_CONFIG_IOM_TABLE_VERSION_1
+  3   111 			   char (8) aligned static options (constant) init ("IOMT_01");
+  3   112 
+  3   113 /*  END OF:	io_config.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      608 
+      609 
+  4     1 /* BEGIN INCLUDE FILE ... config_iom_card.incl.pl1 ... 11/37/80 W. Olin Sibert */
+  4     2 
+  4     3 dcl  iom_cardp pointer;				/* pointer to IOM card */
+  4     4 
+  4     5 dcl 1 iom_card aligned based (iom_cardp),		/* IOM card declaration */
+  4     6     2 word char (4),				/* "iom" */
+  4     7     2 tag fixed bin (3),				/* One more than IOM tag set in maintenance panel switches */
+  4     8     2 port fixed bin (3),				/* Controller port to which IOM is connected */
+  4     9     2 model char (4),				/* IOM model number: "iomb", "nsa", "iioc" */
+  4    10     2 state char (4),				/* State: "on" or "off" */
+  4    11 
+  4    12     2 pad (10) bit (36) aligned,			/* Pad to 15 fields */
+  4    13 
+  4    14     2 type_word aligned,
+  4    15       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  4    16       3 pad1 bit (4) unaligned,
+  4    17       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  4    18 
+  4    19 dcl  IOM_CARD_WORD char (4) aligned internal static options (constant) init ("iom");
+  4    20 
+  4    21 /* END INCLUDE FILE ... config_iom_card.incl.pl1 */
+      610 
+      611 
+  5     1 /* BEGIN INCLUDE FILE ... config_mpc_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  5     2 
+  5     3 dcl  mpc_cardp ptr;					/* Pointer to an MPC card. */
+  5     4 
+  5     5 dcl 1 mpc_card aligned based (mpc_cardp),
+  5     6     2 word char (4),				/* "mpc" */
+  5     7     2 name char (4),				/* Name of this MPC - e.g., "mspa" */
+  5     8     2 model fixed bin,				/* Model of this MPC - e.g., 601. */
+  5     9     2 port (4),					/* Per port information. 12 fields total */
+  5    10       3 iom fixed bin (3),				/* IOM number */
+  5    11       3 chan fixed bin (8),				/* Channel number. */
+  5    12       3 nchan fixed bin,				/* Number of logical channels on this channel. */
+  5    13 
+  5    14     2 type_word aligned,
+  5    15       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  5    16       3 pad1 bit (4) unaligned,
+  5    17       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  5    18 
+  5    19 dcl 1 mpc_card_array aligned based (mpc_cardp),		/* Overlay for MPC port array */
+  5    20     2 pad1 (3) bit (36) aligned,
+  5    21     2 port (divide (max (0, (mpc_card.n_fields - 2)), 3, 17, 0)),
+  5    22       3 iom fixed bin (3),				/* IOM number */
+  5    23       3 chan fixed bin (8),				/* Channel number. */
+  5    24       3 nchan fixed bin;				/* Number of logical channels on this channel. */
+  5    25 
+  5    26 dcl  MPC_CARD_WORD char (4) aligned internal static options (constant) init ("mpc");
+  5    27 
+  5    28 /* END INCLUDE FILE ... config_mpc_card.incl.pl1 */
+      612 
+      613 
+  6     1 /* BEGIN INCLUDE FILE ... config_ipc_card.incl.pl1 ... */
+  6     2 /****^  HISTORY COMMENTS:
+  6     3*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  6     4*     audit(86-03-08,CLJones), install(86-03-21,MR12.0-1033):
+  6     5*     Create IPC card.
+  6     6*                                                   END HISTORY COMMENTS */
+  6     7 
+  6     8 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  6     9 
+  6    10 dcl	ipc_cardp		   ptr;                      /* card pointer */
+  6    11 
+  6    12 dcl	1 ipc_card	   aligned based (ipc_cardp),
+  6    13 	  2 word		   char (4),		/* "ipc" */
+  6    14 	  2 type		   char (4),		/* Type of this IPC - e.g., "fips" */
+  6    15 	  2 iom		   fixed bin (3),		/* IOM number */
+  6    16 	  2 chan		   fixed bin (8),		/* Channel number. */
+  6    17 	  2 nchan		   fixed bin,		/* Number of logical channels on this channel. */
+  6    18 	  2 pad (10) bit (36) aligned,			/* Pad to 15 fields */
+  6    19 	  2 type_word	   aligned,
+  6    20 	    3 field_type	   (14) bit (2) unaligned,	/* type of each field; see config_deck.incl.pl1 */
+  6    21 	    3 pad1	   bit (4) unaligned,
+  6    22 	    3 n_fields	   fixed bin (4) unsigned unaligned;
+  6    23 						/* number of fields used on card */
+  6    24 
+  6    25 dcl	IPC_CARD_WORD	   char (4) aligned internal static options (constant) init ("ipc");
+  6    26 dcl	IPC_FIPS		   char (4) aligned internal static options (constant) init ("fips");
+  6    27 
+  6    28 /* END INCLUDE FILE ... config_ipc_card.incl.pl1 */
+      614 
+      615 
+  7     1 /* BEGIN INCLUDE FILE ... config_prph_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  7     2 
+  7     3 dcl  prph_cardp ptr;				/* Pointer to a PRPH card. */
+  7     4 
+  7     5 dcl 1 prph_card based (prph_cardp) aligned,		/* PRPH card declaration */
+  7     6     2 word char (4),				/* "prph" */
+  7     7     2 name char (4),				/* subsystem name */
+  7     8     2 iom fixed bin (3),				/* IOM number */
+  7     9     2 chan fixed bin (8),				/* channel number */
+  7    10     2 model fixed bin,				/* model number */
+  7    11     2 state char (4),                                       /* ON/OFF state */
+  7    12     2 pad (9) bit (36) aligned,			/* pad to 15 fields */
+  7    13 
+  7    14     2 type_word aligned,
+  7    15       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  7    16       3 pad1 bit (4) unaligned,
+  7    17       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  7    18 
+  7    19 dcl  PRPH_CARD_WORD char (4) aligned internal static options (constant) init ("prph");
+  7    20 
+  7    21 /* END INCLUDE FILE ... config_prph_card.incl.pl1 */
+      616 
+      617 
+  8     1 /* BEGIN INCLUDE FILE ... config_prph_tap_card.incl.pl1 */
+  8     2 
+  8     3 dcl  prph_tap_cardp ptr;				/* Pointer to a PRPH TAPx card. */
+  8     4 
+  8     5 dcl 1 prph_tap_card based (prph_tap_cardp) aligned,	/* PRPH TAPx card declaration */
+  8     6     2 word char (4),				/* "prph" */
+  8     7     2 name char (4),				/* "tapX" */
+  8     8     2 iom fixed bin (3),				/* IOM number */
+  8     9     2 chan fixed bin (8),				/* channel number */
+  8    10     2 nchan fixed bin,				/* number of channels */
+  8    11 
+  8    12     2 group (5),
+  8    13       3 model fixed bin,				/* model number */
+  8    14       3 ndrives fixed bin,				/* number of drives */
+  8    15 
+  8    16     2 type_word aligned,
+  8    17       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  8    18       3 pad1 bit (4) unaligned,
+  8    19       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  8    20 
+  8    21 dcl 1 prph_tap_card_array aligned based (prph_tap_cardp),	/* Overlay for drive group array */
+  8    22     2 pad1 (5) bit (36) aligned,
+  8    23     2 group (divide (max (0, (prph_tap_card.n_fields - 4)), 2, 17, 0)),
+  8    24       3 model fixed bin,				/* model number */
+  8    25       3 ndrives fixed bin;				/* number of drives */
+  8    26 
+  8    27 /* END INCLUDE FILE ... config_prph_tap_card.incl.pl1 */
+      618 
+      619 
+  9     1 /* BEGIN INCLUDE FILE ... config_prph_dsk_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  9     2 
+  9     3 dcl  prph_dsk_cardp ptr;				/* Pointer to a PRPH DSKx card. */
+  9     4 
+  9     5 dcl 1 prph_dsk_card based (prph_dsk_cardp) aligned,	/* PRPH DSKx card declaration */
+  9     6     2 word char (4),				/* "prph" */
+  9     7     2 name char (4),				/* "dskX" */
+  9     8     2 iom fixed bin (3),				/* IOM number */
+  9     9     2 chan fixed bin (8),				/* channel number */
+  9    10     2 nchan fixed bin,				/* number of channels */
+  9    11 
+  9    12     2 group (5),
+  9    13       3 model fixed bin,				/* model number */
+  9    14       3 ndrives fixed bin,				/* number of drives */
+  9    15 
+  9    16     2 type_word aligned,
+  9    17       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  9    18       3 pad1 bit (4) unaligned,
+  9    19       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  9    20 
+  9    21 dcl 1 prph_dsk_card_array aligned based (prph_dsk_cardp),	/* Overlay for drive group array */
+  9    22     2 pad1 (5) bit (36) aligned,
+  9    23     2 group (divide (max (0, (prph_dsk_card.n_fields - 4)), 2, 17, 0)),
+  9    24       3 model fixed bin,				/* model number */
+  9    25       3 ndrives fixed bin;				/* number of drives */
+  9    26 
+  9    27 /* END INCLUDE FILE ... config_prph_dsk_card.incl.pl1 */
+      620 
+      621 
+ 10     1 /* BEGIN INCLUDE FILE ... config_chnl_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+ 10     2 
+ 10     3 dcl  chnl_cardp ptr;				/* Pointer to a CHNL card. */
+ 10     4 
+ 10     5 dcl 1 chnl_card based (chnl_cardp) aligned,		/* CHNL card declaration */
+ 10     6     2 word char (4),				/* "chnl" */
+ 10     7     2 name char (4),				/* subsystem name */
+ 10     8     2 group (3),					/* Channel groups for this subsystem -- 9 fields total */
+ 10     9       3 iom fixed bin (3),				/* IOM number */
+ 10    10       3 chan fixed bin (8),				/* channel number */
+ 10    11       3 nchan fixed bin,				/* number of channels */
+ 10    12 
+ 10    13     2 pad (4) bit (36) aligned,			/* pad to 15 fields */
+ 10    14 
+ 10    15     2 type_word aligned,
+ 10    16       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+ 10    17       3 pad1 bit (4) unaligned,
+ 10    18       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+ 10    19 
+ 10    20 dcl 1 chnl_card_array aligned based (chnl_cardp),		/* Overlay for channel group array */
+ 10    21     2 pad1 (2) bit (36) aligned,
+ 10    22     2 group (min (3, divide (max (0, (chnl_card.n_fields - 1)), 3, 17, 0))),
+ 10    23       3 iom fixed bin (3),				/* IOM number */
+ 10    24       3 chan fixed bin (8),				/* Channel number. */
+ 10    25       3 nchan fixed bin;				/* Number of logical channels on this channel. */
+ 10    26 
+ 10    27 dcl  CHNL_CARD_WORD char (4) aligned internal static options (constant) init ("chnl");
+ 10    28 
+ 10    29 /* END INCLUDE FILE ... config_chnl_card.incl.pl1 */
+      622 
+      623 
+ 11     1 /* Begin include file ...... dskdcl.incl.pl1 */
+ 11     2 
+ 11     3 /****^  HISTORY COMMENTS:
+ 11     4*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+ 11     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+ 11     6*     Support for FIPS dev 0.
+ 11     7*  2) change(88-05-10,Farley), approve(88-06-03,MCR7906),
+ 11     8*     audit(88-08-03,Fawcett), install(88-08-08,MR12.2-1080):
+ 11     9*     Added reconnect_announce_time to chantab to allow announcement of
+ 11    10*     reconnects at a throttled rate.  Otherwise only report them in the syserr
+ 11    11*     log.  Also added IO_TYPE constant array for displaying I/O type.
+ 11    12*                                                   END HISTORY COMMENTS */
+ 11    13 
+ 11    14 /* Structures used by the Disk DIM */
+ 11    15 
+ 11    16 /* Modified 84-03-21 by T. Oke for system wide free queue. */
+ 11    17 /* Modified 84-04-24 by T. Oke for dynamic channel table. */
+ 11    18 /* Modified 84-05-03 by T. Oke to hold sx for azm analysis. */
+ 11    19 /* Modified 84-05-14 by T. Oke for larger quentry and adaptive optimization. */
+ 11    20 /* Modifies 84-11-26 by R. A. Fawcett for device 0 (fips) */
+ 11    21 
+ 11    22 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+ 11    23 
+ 11    24 dcl  disk_seg$ ext;					/* disk data segment */
+ 11    25 
+ 11    26 dcl  disksp ptr,					/* pointer to disk subsystem info */
+ 11    27      diskp ptr,					/* pointer to disk DIM info structure */
+ 11    28      optp ptr,					/* pointer to opt_info */
+ 11    29      sysp ptr;					/* pointer to sys_info */
+ 11    30 
+ 11    31 dcl  1 disk_data based (disksp) aligned,		/* disk subsystem information */
+ 11    32        2 subsystems fixed bin,			/* number of subsystems */
+ 11    33        2 free_offset bit (18),			/* offset of first unused location in segment */
+ 11    34        2 status_mask bit (36),			/* mask for checking for disk error */
+ 11    35        2 lock bit (36) unal,				/* disk_data lock */
+ 11    36        2 free_q like qht,				/* head/tail offsets */
+ 11    37        2 free_q_size fixed bin,			/* length of queue */
+ 11    38        2 array (32),				/* per subsystem info */
+ 11    39          (
+ 11    40          3 offset bit (18),				/* location of data for this subsystem */
+ 11    41          3 mbz bit (18),				/* low 18 of old  style indirect word */
+ 11    42          3 name char (4)
+ 11    43          ) unal,					/* name of subsystem */
+ 11    44        2 stagnate_time fixed bin (35),			/* stagnatation period */
+ 11    45        2 bail_outs fixed bin (35),			/* times ALM called PL1 */
+ 11    46        2 pad bit (36),				/* double word align */
+ 11    47        2 max_depth_reset_time fixed bin (71),		/* time max_reset done */
+ 11    48 						/* Upper bound is MAX_IO_TYPE, hard coded to avoid dynamic calculation */
+ 11    49        2 sys_info (0:6) like sys_info,			/* MUST BE DOUBLE WORD ALIGNED */
+ 11    50        2 free_q_entries (2 refer (disk_data.free_q_size)) like quentry;
+ 11    51 
+ 11    52 
+ 11    53 /* The following system table is used to hold the maximum queue loading
+ 11    54*   permitted system-wide for each IO type.  From the current loading and
+ 11    55*   the maximum loading a multiplier fraction is calculated.  These combine
+ 11    56*   to produce the final optimization multiplier to derive a Logcial Seek
+ 11    57*   from a Physical Seek. */
+ 11    58 
+ 11    59 dcl  1 sys_info aligned based (sysp),
+ 11    60        3 depth float bin (27),			/* current load */
+ 11    61        3 max_depth float bin (27),			/* max permissible */
+ 11    62        3 fraction float bin (27),			/* load fraction */
+ 11    63        3 depth_map bit (18) unaligned,			/* which depth counter */
+ 11    64        3 pad bit (18) unaligned;
+ 11    65 
+ 11    66 /* Maximum number of channels per sub-system.  Must be a power of two.  It must
+ 11    67*   be at or below the size of disk_init's chan_array size.  Shift factor is for
+ 11    68*   dctl's use. */
+ 11    69 
+ 11    70 dcl  dskdcl_chans_per_subsys fixed bin static options (constant) initial (32);
+ 11    71 dcl  dskdcl_chans_per_subsys_shift fixed bin static options (constant) initial (5);
+ 11    72 
+ 11    73 
+ 11    74 dcl  1 disktab based (diskp) aligned,			/* control structure for DIM's */
+ 11    75        2 lock bit (36) unal,				/* data base lock */
+ 11    76        2 nchan fixed bin,				/* number of disk channels */
+ 11    77        2 first_dev fixed bin unal,			/* frist device number  0 or 1 */
+ 11    78        2 last_dev fixed bin unal,			/* highest disk drive number */
+ 11    79        2 channels_online fixed bin,			/* number of disk channels actually in use */
+ 11    80        2 dev_busy bit (72),				/* busy bit for each device (only 0-63 used) */
+ 11    81        2 dev_queued bit (72),				/* requests queued bit for each device (only 0-63 used) */
+ 11    82        2 abs_mem_addr fixed bin (26) unsigned,		/* absolute memory address of this structure */
+ 11    83        2 channels bit (18) unal,			/* location of chantab for this subsystem */
+ 11    84        2 dev_index fixed bin (17) unal,			/* current device to check */
+ 11    85        2 errors fixed bin,				/* error count */
+ 11    86        2 ferrors fixed bin,				/* fatal error count */
+ 11    87        2 edac_errors fixed bin,			/* count of EDAC correctable errors */
+ 11    88        2 call_lock_meters like disk_lock_meters,		/* lock meters for call side of DIM */
+ 11    89        2 int_lock_meters like disk_lock_meters,		/* lock meters for interrupt side of DIM */
+ 11    90        2 alloc_wait_meters like disk_lock_meters,		/* meters for queue entry allocations */
+ 11    91        2 run_lock_meters like disk_lock_meters,		/* lock meters for run calls */
+ 11    92        2 devtab (0:0 refer (disktab.last_dev)) like devtab; /* device information table */
+ 11    93 
+ 11    94 dcl  1 disk_channel_table (1 refer (disktab.nchan)) like chantab based aligned;
+ 11    95 
+ 11    96 
+ 11    97 dcl  qp ptr,					/* pointer to queue entry */
+ 11    98      cp ptr;					/* pointer to channel information table */
+ 11    99 
+ 11   100 
+ 11   101 /* Queue entry, 6 words.  Cylinder and sector variables are over-size for
+ 11   102*   expansion space.  They will always be positive and upper bits can be
+ 11   103*   stolen for other fields.
+ 11   104*
+ 11   105*   Entries are forward and back linked to permit easy chasing and removal. */
+ 11   106 
+ 11   107 dcl  1 quentry based (qp) aligned,			/* queue entry */
+ 11   108 						/* WORD 1 */
+ 11   109        2 next bit (18) unaligned,			/* forward link */
+ 11   110        2 prev bit (18) unaligned,			/* back link */
+ 11   111 						/* WORD 2 */
+ 11   112        2 intrpt bit (1) unaligned,			/* completion interrupt desired */
+ 11   113        2 used bit (1) unaligned,			/* entry in use */
+ 11   114        2 type fixed bin (4) unsigned unaligned,		/* IO type */
+ 11   115        2 pad bit (6) unaligned,			/* future expansion */
+ 11   116        2 coreadd bit (24) unaligned,			/* main memory address */
+ 11   117 						/* WORD 3 */
+ 11   118        2 pvtx fixed bin (8) unsigned unaligned,		/* for AZM/ol_dump */
+ 11   119        2 pdi fixed bin (6) unsigned unaligned,		/* physical device */
+ 11   120        2 dev fixed bin (6) unsigned unaligned,		/* device in sub-sys */
+ 11   121        2 pad2 bit (5) unaligned,
+ 11   122        2 cylinder fixed bin (11) unsigned unaligned,	/* cylinder of request */
+ 11   123 						/* WORD 4 */
+ 11   124        2 n_sectors fixed bin (6) unsigned unaligned,	/* # sectors of IO */
+ 11   125        2 pad3 bit (9) unaligned,
+ 11   126        2 sector bit (21) unaligned,			/* device sector desired */
+ 11   127 						/* WORDS 5&6 */
+ 11   128        2 time fixed bin (71);				/* clock at queue */
+ 11   129 
+ 11   130 
+ 11   131 
+ 11   132 dcl  1 chantab based (cp) aligned,			/* channel information table */
+ 11   133        2 chx fixed bin (35),				/* io_manager channel index */
+ 11   134        2 ioi_ctx fixed bin (35),			/* ioi channel table index */
+ 11   135        2 statusp ptr,				/* pointer to hardware status word */
+ 11   136        2 chanid char (8),				/* channel name */
+ 11   137        (
+ 11   138        2 pad0 bit (18),
+ 11   139        2 in_use bit (1),				/* non-zero if channel being used */
+ 11   140        2 active bit (1),				/* non-zero if channel active */
+ 11   141        2 rsr bit (1),				/* non-zero if RSR in progress */
+ 11   142        2 ioi_use bit (1),				/* non-zero if channel usurped by IOI */
+ 11   143        2 inop bit (1),				/* non-zero if channel inoperative */
+ 11   144        2 broken bit (1),				/* non-zero if channel broken */
+ 11   145        2 action_code bit (2),				/* saved from status */
+ 11   146        2 pad1 bit (10)
+ 11   147        ) unal,
+ 11   148        (
+ 11   149        2 qrp bit (18),				/* rel ptr to queue entry */
+ 11   150        2 pad2 bit (3),
+ 11   151        2 command bit (6),				/* peripheral command */
+ 11   152        2 erct fixed bin (8)
+ 11   153        ) unal,					/* error retry count */
+ 11   154        2 select_data,				/* data passed to IOM on select */
+ 11   155          (
+ 11   156          3 limit bit (12),				/* limit on number of sectors */
+ 11   157          3 mbz bit (3),
+ 11   158          3 sector bit (21)
+ 11   159          ) unaligned,				/* sector address */
+ 11   160        2 reconnect_announce_time fixed bin (52),		/* reconnect announcement throttle */
+ 11   161        2 connect_time fixed bin (52),			/* time of last connect */
+ 11   162        2 connects fixed bin,				/* count of connects performed */
+ 11   163        2 detailed_status (0:17) bit (8) unal,		/* detailed status bytes */
+ 11   164        2 rstdcw bit (36),				/* restore command */
+ 11   165        2 scdcw bit (36),				/* select command */
+ 11   166        2 sddcw bit (36),				/* select data xfer */
+ 11   167        2 dcdcw bit (36),				/* command to read or write */
+ 11   168        2 dddcw bit (36),				/* data xfer DCW */
+ 11   169        2 dscdcw bit (36),				/* RSR command */
+ 11   170        2 dsddcw bit (36),				/* RSR data xfer */
+ 11   171        2 rssdcw bit (36),				/* RSS command */
+ 11   172        2 status bit (36) aligned,			/* saved status */
+ 11   173 						/* Lossage counters for interrupt loss. */
+ 11   174        2 no_io_terminate fixed bin (35),		/* no t bit from io_manager$get_status */
+ 11   175        2 terminate_not_active fixed bin (35),		/* terminate, but not active */
+ 11   176        2 no_status_terminate fixed bin (35),		/* interrupt with no terminate */
+ 11   177        2 status_from_run fixed bin (35);		/* status missed til run called */
+ 11   178 
+ 11   179 dcl  1 qht aligned based,				/* queue head/tail structure */
+ 11   180        2 sum fixed bin (35),				/* sum of depths */
+ 11   181        2 count fixed bin (35),			/* allocs */
+ 11   182        2 max_depth fixed bin (17) unaligned,		/* high water mark */
+ 11   183        2 depth fixed bin (17) unaligned,		/* current depth */
+ 11   184        2 head bit (18) unaligned,			/* queue head */
+ 11   185        2 tail bit (18) unaligned;			/* queue tail */
+ 11   186 
+ 11   187 dcl  dp ptr,					/* pointer to device information table */
+ 11   188      pvtdip ptr;					/* pointer to dim_info in PVT entry */
+ 11   189 
+ 11   190 dcl  1 devtab based (dp) aligned,			/* device information table */
+ 11   191        (
+ 11   192        2 pvtx fixed bin (8),				/* index of PVT entry for device */
+ 11   193        2 inop bit (1),				/* device inoperative */
+ 11   194        2 was_broken bit (1),				/* device previously broken */
+ 11   195        2 broken bit (1),				/* device down */
+ 11   196        2 abandoned bit (1),				/* device lost and gone forever */
+ 11   197        2 forward bit (1),				/* moving low->high */
+ 11   198        2 pad bit (10),
+ 11   199        2 buddy unsigned fixed bin (6),			/* other device on this spindle or 0 */
+ 11   200        2 pdi unsigned fixed bin (6)
+ 11   201        ) unal,					/* primary device index */
+ 11   202        2 cylinder fixed bin (35),			/* current cylinder position */
+ 11   203        2 comb fixed bin (35),				/* number of combs */
+ 11   204        2 pad1 fixed bin (35),
+ 11   205        2 time_inop fixed bin (52),			/* time drive became inoperative */
+ 11   206        2 wq like qht,				/* work queue */
+ 11   207 						/* Upper bound must be MAX_IO_TYPE, constant to avoid dynamic calculation. */
+ 11   208        2 opt_info (0:6) like opt_info;			/* optimizer */
+ 11   209 
+ 11   210 
+ 11   211 /* Optimizing table for device. Must be even multiple words long. */
+ 11   212 /* Slope and intercept define a straight line of y = intercept - slope*x
+ 11   213*   Multiplier is calculated from this and current system loading.
+ 11   214*
+ 11   215*   sys_info is the offset to the relevant system queue loading fraction. */
+ 11   216 
+ 11   217 dcl  1 opt_info aligned based (optp),
+ 11   218        3 multiplier float bin (27),			/* depth mult */
+ 11   219        3 slope float bin (27),			/* slope of line */
+ 11   220        3 intercept float bin (27),			/* Y intercept */
+ 11   221        3 sys_info bit (18) unaligned,			/* offset to sys_info */
+ 11   222        3 depth fixed bin (17) unaligned,		/* elements in queue */
+ 11   223        3 channel_wait fixed bin (52),			/* total channel time waiting */
+ 11   224        3 queue_wait fixed bin (52),			/* total queue time waiting */
+ 11   225        3 seek_sum fixed bin (35) unaligned,		/* sum of seeks */
+ 11   226        3 seek_count fixed bin (35) unaligned;		/* number of seeks */
+ 11   227 
+ 11   228 
+ 11   229 dcl  1 pvtdi based (pvtdip) aligned,			/* disk DIM info in PVT entry */
+ 11   230        (
+ 11   231        2 sx fixed bin (11),				/* structure index */
+ 11   232        2 usable_sect_per_cyl fixed bin (11),		/* # of usable sectors on disk cylinder */
+ 11   233        2 unused_sect_per_cyl fixed bin (11)
+ 11   234        ) unal;					/* # of unused sectors at end of cylinder */
+ 11   235 
+ 11   236 dcl  1 disk_lock_meters based aligned,			/* lock meters for disk DIM */
+ 11   237        2 count fixed bin,				/* total number of attempts */
+ 11   238        2 waits fixed bin,				/* number of attempts which required waiting */
+ 11   239        2 wait_time fixed bin (52);			/* total time spent waiting */
+ 11   240 
+ 11   241 dcl  (
+ 11   242      RST_LISTX init (1),				/* listx for restore */
+ 11   243      SC_LISTX init (2),				/* listx for select */
+ 11   244      DSC_LISTX init (6),				/* listx for RSR */
+ 11   245      RSS_LISTX init (8)
+ 11   246      ) fixed bin (12) static options (constant);		/* listx for RSS */
+ 11   247 
+ 11   248 /* IO types defined.  Value is also index of write_map to determine if
+ 11   249*   the IO type is a read or a write. */
+ 11   250 
+ 11   251 dcl  (
+ 11   252      PAGE_READ init (0),
+ 11   253      PAGE_WRITE init (1),
+ 11   254      VTOC_READ init (2),
+ 11   255      VTOC_WRITE init (3),
+ 11   256      TEST init (4),
+ 11   257      BOOTLOAD_READ init (5),
+ 11   258      BOOTLOAD_WRITE init (6),
+ 11   259      MAX_IO_TYPE init (6)
+ 11   260      ) fixed bin (4) static options (constant);
+ 11   261 
+ 11   262 dcl  IO_TYPE (0:6) char (16)
+ 11   263 	initial ("Page Read", "Page Write", "VTOC Read", "VTOC Write", "Test", "Bootload Read", "Bootload Write")
+ 11   264 	static options (constant);
+ 11   265 
+ 11   266 /* Map indexed by IO type to determine if operation is a read or write. */
+ 11   267 
+ 11   268 dcl  write_mapping bit (7) initial ("0101001"b) static options (constant);
+ 11   269 dcl  write_map (0:6) bit (1) defined (write_mapping);
+ 11   270 
+ 11   271 /* Map indexed by IO type to determine if operation is a sector IO. */
+ 11   272 
+ 11   273 dcl  sector_mapping bit (7) initial ("0011111"b) static options (constant);
+ 11   274 dcl  sector_map (0:6) bit (1) defined (sector_mapping);
+ 11   275 
+ 11   276 /* Map indexed by IO type to determine if operation is done on behalf of bce */
+ 11   277 
+ 11   278 dcl  bootload_mapping bit (7) initial ("0000011"b) static options (constant);
+ 11   279 dcl  bootload_map (0:6) bit (1) defined (bootload_mapping);
+ 11   280 
+ 11   281 /* End of include file ...... dskdcl.incl.pl1 */
+      624 
+      625 
+ 12     1 /*  START OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+ 12     2 
+ 12     3 /* Written by Charles Hornig, 1st quarter 1981 */
+ 12     4 /* Canonicalization entry added by Chris Jones, January 1984 */
+ 12     5 
+ 12     6 /* chanid = canonicalize_chanid (chanid); */
+ 12     7 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+ 12     8 dcl	io_chnl_util$canonicalize_chanid
+ 12     9 			   entry (char (8) aligned) returns (char (8) aligned);
+ 12    10 
+ 12    11 /* call iom_to_name (iomno, channo, name, code); */
+ 12    12 dcl	io_chnl_util$iom_to_name
+ 12    13 			   entry (fixed bin (3), fixed bin (7), char (8) aligned, fixed bin (35));
+ 12    14 
+ 12    15 /* call name_to_iom (name, iomno, channo, code); */
+ 12    16 dcl	io_chnl_util$name_to_iom
+ 12    17 			   entry (char (8) aligned, fixed bin (3), fixed bin (7), fixed bin (35));
+ 12    18 
+ 12    19 /*  END OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      626 
+      627 
+ 13     1 /* Begin include file io_manager_dcls.incl.pl1 */
+ 13     2 
+ 13     3 /* Written by Charles Hornig, late 1980 and early 1981 */
+ 13     4 /* Modified for MR10 interface, February 1982 */
+ 13     5 /* Channel reconfiguration entries added by Chris Jones, January 1984 */
+ 13     6 
+ 13     7 /* These entries are callable on unwired stacks. */
+ 13     8 
+ 13     9 /* call io_manager$assign (Chx, Channel, Handler, Index, Statusp, Code); */
+ 13    10 dcl  io_manager$assign
+ 13    11 	entry (fixed bin (35), char (8) aligned, entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+ 13    12 	fixed bin (35), ptr, fixed bin (35));
+ 13    13 
+ 13    14 /* call io_manager$assign_add (Chx, Channel, Handler, Index, Statusp, Code); */
+ 13    15 dcl  io_manager$assign_add
+ 13    16 	entry (fixed bin (35), char (8) aligned, entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+ 13    17 	fixed bin (35), ptr, fixed bin (35));
+ 13    18 
+ 13    19 /* call io_manager$unassign (Chx, Code); */
+ 13    20 dcl  io_manager$unassign entry (fixed bin (35), fixed bin (35));
+ 13    21 
+ 13    22 /* call io_manager$unassign_delete (Chx, Code); */
+ 13    23 dcl  io_manager$unassign_delete entry (fixed bin (35), fixed bin (35));
+ 13    24 
+ 13    25 /* call io_manager$connect (Io_manager_arg); */
+ 13    26 dcl  io_manager$connect entry (1 aligned like io_manager_arg);
+ 13    27 
+ 13    28 /* call io_manager$connect_abs (Io_manager_arg); */
+ 13    29 dcl  io_manager$connect_abs entry (1 aligned like io_manager_arg);
+ 13    30 
+ 13    31 /* call io_manager$connect_direct (Io_manager_arg); */
+ 13    32 dcl  io_manager$connect_direct entry (1 aligned like io_manager_arg);
+ 13    33 
+ 13    34 /* call io_manager$get_status (Chx, Io_status_entry_ptr); */
+ 13    35 dcl  io_manager$get_status entry (fixed bin (35), ptr);
+ 13    36 
+ 13    37 /* call io_manager$mask (Chx); */
+ 13    38 dcl  io_manager$mask entry (fixed bin (35));
+ 13    39 
+ 13    40 /* call io_manager$ignore_interrupt (); */
+ 13    41 dcl  io_manager$ignore_interrupt entry (fixed bin (35), fixed bin (3), bit (36) aligned);
+ 13    42 
+ 13    43 /* call io_manager$data_tdcw (Io_manager_arg);
+ 13    44*   dcl  io_manager$data_tdcw entry (1 aligned like io_manager_arg);
+ 13    45*
+ 13    46*   /* call io_manager$workspace_tdcw (Io_manager_arg); */
+ 13    47 dcl  io_manager$workspace_tdcw entry (1 aligned like io_manager_arg);
+ 13    48 
+ 13    49 dcl  io_manager_arg_ptr ptr;
+ 13    50 dcl  1 io_manager_arg aligned based (io_manager_arg_ptr),
+ 13    51        2 chx fixed bin (35),				/* channel index from io_manager$assign */
+ 13    52        2 bound fixed bin (19),			/* workspace size */
+ 13    53        2 pcw bit (36) aligned,			/* or IDCW */
+ 13    54        2 listx fixed bin (18),			/* DCW list offset */
+ 13    55        2 ptp ptr,					/* page table pointer */
+ 13    56        2 listp ptr,					/* DCW list pointer */
+ 13    57        2 dcw_pair_ptr ptr;				/* DCW pair pointer */
+ 13    58 
+ 13    59 /* End include file io_manager_dcls.incl.pl1 */
+      628 
+      629 
+ 14     1 /* Begin include file ..... io_log_status_info.incl.pl1 */
+ 14     2 
+ 14     3 /* This include file defines a data base used to determine whether or not a
+ 14     4*   particular I/O error should be logged, and whether or not detailed device
+ 14     5*   status should be logged with it. */
+ 14     6 /* Prepared December 1979 by Larry Johnson */
+ 14     7 
+ 14     8 dcl  io_log_status_info$io_log_status_info ext;
+ 14     9 
+ 14    10 dcl  io_log_infop ptr;
+ 14    11 
+ 14    12 dcl 1 io_log_info aligned based (io_log_infop),
+ 14    13     2 ndev fixed bin,				/* Number of devices in table */
+ 14    14     2 log_entry (0 refer (io_log_info.ndev)) like log;
+ 14    15 
+ 14    16 dcl  logp ptr;
+ 14    17 
+ 14    18 dcl 1 log aligned based (logp),
+ 14    19     2 dev_name char (3) unal,				/* Tap, dsk, prt, etc. */
+ 14    20     2 status (0:15, 0:63) bit (1) unal,			/* For loggin status */
+ 14    21     2 detail (0:15, 0:63) bit (1) unal;			/* For logging detaied status */
+ 14    22 
+ 14    23 /* End include file io_log_status_info.incl.pl1 */
+ 14    24 
+      630 
+      631 
+ 15     1 
+ 15     2 /* Begin include file ...... iom_pcw.incl.pl1 */
+ 15     3 
+ 15     4 dcl  pcwp ptr;					/* pointer to PCW */
+ 15     5 
+ 15     6 dcl 1 pcw based (pcwp) aligned,			/* Peripheral Control Word */
+ 15     7      (2 command bit (6),				/* device command */
+ 15     8       2 device bit (6),				/* device code */
+ 15     9       2 ext bit (6),				/* address extension */
+ 15    10       2 code bit (3),				/* should be "111"b for PCW */
+ 15    11       2 mask bit (1),				/* channel mask bit */
+ 15    12       2 control bit (2),				/* terminate/proceed and marker control bits */
+ 15    13       2 chan_cmd bit (6),				/* type of I/O operation */
+ 15    14       2 count bit (6),				/* record count or control character */
+ 15    15       2 mbz1 bit (3),
+ 15    16       2 channel bit (6),				/* channel number */
+ 15    17       2 mbz2 bit (27)) unal;
+ 15    18 
+ 15    19 dcl  idcwp ptr;					/* pointer to IDCW */
+ 15    20 
+ 15    21 dcl 1 idcw based (idcwp) aligned,			/* Instruction DCW */
+ 15    22      (2 command bit (6),				/* device command */
+ 15    23       2 device bit (6),				/* device code */
+ 15    24       2 ext bit (6),				/* address extension */
+ 15    25       2 code bit (3),				/* should be "111"b for PCW */
+ 15    26       2 ext_ctl bit (1),				/* "1"b if address extension to be used */
+ 15    27       2 control bit (2),				/* terminate/proceed and marker control bits */
+ 15    28       2 chan_cmd bit (6),				/* type of I/O operation */
+ 15    29       2 count bit (6)) unal;				/* record count or control character */
+ 15    30 
+ 15    31 /* End include file ...... iom_pcw.incl.pl1 */
+ 15    32 
+      632 
+      633 
+ 16     1 /* BEGIN INCLUDE FILE ... eurc_model_numbers.incl.pl1 ... 11/13/81 E. N. Kittlitz */
+ 16     2 
+ 16     3 dcl  eurc_model_numbers (4) fixed bin internal static init (8001, 8002, 8003, 8004);
+ 16     4 
+ 16     5 /* END INCLUDE FILE ... eurc_model_numbers.incl.pl1 ... */
+      634 
+      635 
+ 17     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 17     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 17     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 17     4 
+ 17     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 17     6 
+ 17     7 dcl (
+ 17     8 
+ 17     9 /* The following constants define the message action codes.  This indicates
+ 17    10*how a message is to be handled.  */
+ 17    11 
+ 17    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 17    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 17    14 
+ 17    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 17    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 17    17 
+ 17    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 17    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 17    20 
+ 17    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 17    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 17    23 
+ 17    24      SYSERR_LOG_OR_PRINT	init (4),
+ 17    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 17    26 
+ 17    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 17    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 17    29 
+ 17    30 
+ 17    31 /* The following constants are added to the normal severities to indicate
+ 17    32*different sorting classes of messages.  */
+ 17    33 
+ 17    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 17    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 17    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 17    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 17    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 17    39 	) fixed bin internal static options (constant);
+ 17    40 
+ 17    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      636 
+      637 
+      638 /* BEGIN MESSAGE DOCUMENTATION
+      639*
+      640*   Message:
+      641*   ioi_init: ERROR_CODE  Unable to get the name of name of iom IOMNO channel CHANNO.
+      642*
+      643*   S:	$crash
+      644*
+      645*   T:	$init
+      646*
+      647*   M:	An attempt to generate the name of logical channel CHANNO of iom
+      648*   IOMNO failed.
+      649*
+      650*   A:	$config
+      651*
+      652*
+      653*   Message:
+      654*   ioi_init: ERROR_CODE  Unable to assign channel CHANID.
+      655*
+      656*   S:	$crash
+      657*
+      658*   T:	$init
+      659*
+      660*   M:	A logical channel could not be assigned to IOI.
+      661*   $err
+      662*
+      663*   A:	$contact
+      664*
+      665*
+      666*   Message:
+      667*   ioi_init: Duplicate "prph NAME" card found.
+      668*
+      669*   S:	$crash
+      670*
+      671*   T:	$init
+      672*
+      673*   M:	$msg
+      674*
+      675*   A:	$config
+      676*
+      677*
+      678*   Message:
+      679*   ioi_init: No matching "prph NAME" found for "chnl NAME".
+      680*
+      681*   S:	$crash
+      682*
+      683*   T:	$init
+      684*
+      685*   M:	$msg
+      686*
+      687*   A:	$config
+      688*
+      689*
+      690*   Message:
+      691*   ioi_init: Multiple definitions of device NAME found.
+      692*
+      693*   S:	$crash
+      694*
+      695*   T:	$init
+      696*
+      697*   M:	$msg
+      698*
+      699*   A:	$config
+      700*
+      701*
+      702*   Message:
+      703*   ioi_init: Multiple definitions of channel CHANID found for subsystem NAME.
+      704*
+      705*   S:	$crash
+      706*
+      707*   T:	$init
+      708*
+      709*   M:	$msg
+      710*
+      711*   A:	$config
+      712*
+      713*
+      714*   Message:
+      715*   ioi_init: No entry for NAME found in disk_data.
+      716*
+      717*   S:	$crash
+      718*
+      719*   T:	$init
+      720*
+      721*   M:	$err
+      722*
+      723*   A:	$contact
+      724*
+      725*
+      726*   Message:
+      727*   ioi_init: No cte found for channel CHANID.
+      728*
+      729*   S:	$crash
+      730*
+      731*   T:	$init
+      732*
+      733*   M:	$err
+      734*
+      735*   A:	$contact
+      736*
+      737*
+      738*   END MESSAGE DOCUMENTATION */
+      739 
+      740      end ioi_init;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0816.1  ioi_init.pl1                      >spec>install>1112>ioi_init.pl1
+606          1    09/02/86  1552.9  ioi_data.incl.pl1                 >ldd>include>ioi_data.incl.pl1
+1-61         2    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+608          3    07/11/84  0937.3  io_config_data.incl.pl1           >ldd>include>io_config_data.incl.pl1
+610          4    05/08/81  1853.6  config_iom_card.incl.pl1          >ldd>include>config_iom_card.incl.pl1
+612          5    05/08/81  1853.6  config_mpc_card.incl.pl1          >ldd>include>config_mpc_card.incl.pl1
+614          6    03/27/86  1120.0  config_ipc_card.incl.pl1          >ldd>include>config_ipc_card.incl.pl1
+616          7    10/31/84  1315.5  config_prph_card.incl.pl1         >ldd>include>config_prph_card.incl.pl1
+618          8    11/08/82  1005.8  config_prph_tap_card.incl.pl1     >ldd>include>config_prph_tap_card.incl.pl1
+620          9    05/08/81  1853.7  config_prph_dsk_card.incl.pl1     >ldd>include>config_prph_dsk_card.incl.pl1
+622         10    05/08/81  1853.6  config_chnl_card.incl.pl1         >ldd>include>config_chnl_card.incl.pl1
+624         11    08/11/88  2011.5  dskdcl.incl.pl1                   >ldd>include>dskdcl.incl.pl1
+626         12    07/11/84  0937.3  io_chnl_util_dcls.incl.pl1        >ldd>include>io_chnl_util_dcls.incl.pl1
+628         13    07/11/84  0937.3  io_manager_dcls.incl.pl1          >ldd>include>io_manager_dcls.incl.pl1
+630         14    02/11/80  0911.3  io_log_status_info.incl.pl1       >ldd>include>io_log_status_info.incl.pl1
+632         15    05/06/74  1742.1  iom_pcw.incl.pl1                  >ldd>include>iom_pcw.incl.pl1
+634         16    05/27/82  1525.6  eurc_model_numbers.incl.pl1       >ldd>include>eurc_model_numbers.incl.pl1
+636         17    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CHNL_CARD_WORD                  000004 constant        char(4)                  initial dcl 10-27 set ref 123* 128*
+CRASH                           000067 constant        fixed bin(17,0)          initial dcl 17-7 set ref 101* 159* 214* 242* 371*
+                                                                                  381* 431* 451* 460* 589* 600*
+IOI_DEVICE_LOCK_EVENT_TEMPLATE         constant        char(2)                  initial packed unaligned dcl 1-207 ref 368
+IOM_CARD_WORD                   000010 constant        char(4)                  initial dcl 4-19 set ref 78* 88*
+IPC_CARD_WORD                   000007 constant        char(4)                  initial dcl 6-25 ref 109
+IPC_FIPS                        000006 constant        char(4)                  initial dcl 6-26 ref 109
+ME                              000011 constant        char(32)                 initial packed unaligned dcl 61 set ref 101* 159*
+                                                                                  214* 242* 371* 381* 431* 451* 460* 589* 600*
+PRPH_CARD_WORD                  000005 constant        char(4)                  initial dcl 7-19 set ref 92* 116*
+adding_controller_dte           000100 automatic       bit(1)                   packed unaligned dcl 35 set ref 179* 312* 327* 342
+                                                                                  377 381
+addr                                                   builtin function         dcl 63 ref 66 67 72 81 134 144 153 172 190 213 218
+                                                                                  238 293 295 348 434 443 476 476 563
+array                    11            based           structure                array level 2 dcl 11-31 ref 582 582
+ascii_dtst                3(09)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref
+                                                                                  112*
+base_ctep                14            based           bit(18)                  level 2 packed packed unaligned dcl 1-96 set ref
+                                                                                  136* 137 137*
+bin                                                    builtin function         dcl 63 ref 157 157 367 381 569
+bit                                                    builtin function         dcl 63 ref 367 381
+ch_idx                          000340 automatic       fixed bin(17,0)          dcl 421 set ref 441* 449*
+chan                      3            based           fixed bin(8,0)           level 2 in structure "prph_dsk_card" dcl 9-5
+                                                                                  in procedure "ioi_init" set ref 392*
+chan                      3            based           fixed bin(8,0)           array level 3 in structure "chnl_card_array"
+                                                                                  dcl 10-20 in procedure "ioi_init" set ref 406*
+chan                      3            based           fixed bin(8,0)           level 2 in structure "prph_card" dcl 7-5
+                                                                                  in procedure "ioi_init" set ref 100 101* 394*
+chan_cmd                  0(24)        based           bit(6)                   level 2 packed packed unaligned dcl 15-21 set ref
+                                                                                  194*
+chanid                                 parameter       char(8)                  dcl 471 in procedure "cte_offset" ref 468 476
+chanid                          000102 automatic       char(8)                  dcl 36 in procedure "ioi_init" set ref 100* 105*
+                                                                                  135* 136*
+chanid                    4            based           char(8)                  level 2 in structure "chantab" dcl 11-132
+                                                                                  in procedure "ioi_init" set ref 564 597 600*
+chanid                    2            based           char(8)                  level 2 in structure "cte" dcl 1-96 in procedure
+                                                                                  "ioi_init" set ref 135* 157* 159* 450* 454* 460
+                                                                                  460 460* 476 570* 572* 597
+channel_entry             4            based           structure                array level 2 dcl 3-53 ref 522 522 526
+channel_entry_template                 based           structure                level 1 dcl 3-59
+channel_required          2            based           char(8)                  level 2 dcl 1-128 set ref 362*
+channel_table                          based           structure                level 1 dcl 3-53
+channel_table_idx        15(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-96 set ref
+                                                                                  454* 455
+channel_table_offset      3(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 3-22
+                                                                                  ref 70
+channels                 11            based           bit(18)                  level 2 packed packed unaligned dcl 11-74 ref 563
+channo                                 parameter       fixed bin(8,0)           dcl 417 ref 414 449
+chantab                                based           structure                level 1 dcl 11-132
+chnl_card                              based           structure                level 1 dcl 10-5
+chnl_card_array                        based           structure                level 1 dcl 10-20
+chnl_cardp                      000170 automatic       pointer                  dcl 10-3 set ref 122* 123* 124 125 128* 239 242 242
+                                                                                  405 405 405 406 406 406
+chx                                    based           fixed bin(35,0)          level 2 in structure "chantab" dcl 11-132
+                                                                                  in procedure "ioi_init" ref 567
+chx                       5            based           fixed bin(35,0)          level 2 in structure "cte" dcl 1-96 in procedure
+                                                                                  "ioi_init" set ref 157* 567*
+code                            000104 automatic       fixed bin(35,0)          dcl 37 in procedure "ioi_init" set ref 100* 101 101*
+                                                                                  157* 159 159* 450* 451 451*
+code                      0(18)        based           bit(3)                   level 2 in structure "idcw" packed packed unaligned
+                                                                                  dcl 15-21 in procedure "ioi_init" set ref 193*
+command                                based           bit(6)                   level 2 packed packed unaligned dcl 15-21 set ref
+                                                                                  192*
+config_$find                    000010 constant        entry                    external dcl 51 ref 78 88 92 116 123 128
+configured               16            based           bit(1)                   array level 4 in structure "channel_table" packed
+                                                                                  packed unaligned dcl 3-53 in procedure "ioi_init"
+                                                                                  ref 455
+configured               24            based           bit(1)                   array level 4 in structure "device_table" packed
+                                                                                  packed unaligned dcl 3-36 in procedure "ioi_init"
+                                                                                  ref 374
+controller               22(13)        based           bit(1)                   level 3 packed packed unaligned dcl 1-128 set ref
+                                                                                  377*
+controller_entry_template              based           structure                level 1 dcl 3-77
+controller_table_offset
+                          4            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 3-22
+                                                                                  ref 69
+count                     0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 15-21 set ref
+                                                                                  195*
+cp                              000176 automatic       pointer                  dcl 11-97 set ref 563* 564 566 567 569 597 600
+ct                                     based           structure                array level 2 dcl 1-40 set ref 133 133 134 443 475
+                                                                                  475 476 476
+cte                                    based           structure                level 1 dcl 1-96 set ref 444*
+ctep                      2(18)        based           bit(18)                  level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 1-74 in procedure "ioi_init" set ref 155 221*
+                                                                                  445 447* 460 596
+ctep                            000134 automatic       pointer                  dcl 1-31 in procedure "ioi_init" set ref 134* 135
+                                                                                  136 137 137 137 155* 155* 156 157 157 157 157 159
+                                                                                  162 163* 165 443* 444 445 446 447 448 450 454 454
+                                                                                  455 455 456 459* 459 459* 460 460* 463 566 567 568
+                                                                                  569 570 572 596* 596* 597* 599
+ctx                             000105 automatic       fixed bin(17,0)          dcl 38 in procedure "ioi_init" set ref 133* 134*
+ctx                             000354 automatic       fixed bin(17,0)          dcl 473 in procedure "cte_offset" set ref 475* 476
+                                                                                  476*
+ctx                             000426 automatic       fixed bin(17,0)          dcl 556 in procedure "setup_disk_sharing" set ref
+                                                                                  560* 563 568*
+current_gtx                     000232 automatic       fixed bin(17,0)          dcl 235 in procedure "find_gte" set ref 237* 238*
+current_gtx                     000222 automatic       fixed bin(17,0)          dcl 209 in procedure "allocate_gte" set ref 212*
+                                                                                  213*
+deleted                   1(01)        based           bit(1)                   level 3 in structure "ite" packed packed unaligned
+                                                                                  dcl 1-63 in procedure "ioi_init" set ref 86*
+deleted                  15(01)        based           bit(1)                   level 3 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_init" set ref 156 455*
+deleted                  22(09)        based           bit(1)                   level 3 in structure "dte" packed packed unaligned
+                                                                                  dcl 1-128 in procedure "ioi_init" set ref 374*
+detailed_status_cmd       3            based           bit(6)                   level 2 packed packed unaligned dcl 1-74 set ref
+                                                                                  111*
+dev_name                               based           char(3)                  level 2 packed packed unaligned dcl 14-18 ref 296
+device                   22            based           bit(6)                   level 2 packed packed unaligned dcl 1-128 set ref
+                                                                                  367* 381
+device_entry              4            based           structure                array level 2 dcl 3-36 ref 507 507 511
+device_entry_template                  based           structure                level 1 dcl 3-42
+device_name                     000302 automatic       char(32)                 packed unaligned dcl 339 set ref 344* 346* 370* 371*
+                                                                                  381*
+device_number                   000106 automatic       fixed bin(17,0)          dcl 39 set ref 178* 313* 315* 320* 320 320* 325* 325
+                                                                                  328* 343 367 381
+device_number_string            000312 automatic       picture(2)               packed unaligned dcl 340 set ref 343* 344
+device_table                           based           structure                level 1 dcl 3-36
+device_table_idx         22(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-128 set ref
+                                                                                  370* 371 374
+device_table_offset       3            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 3-22
+                                                                                  ref 71
+device_type                     000107 automatic       char(4)                  packed unaligned dcl 40 set ref 94* 98 98 125* 145*
+                                                                                  146 254 256 258 258 258 258 296 316 316 375 375
+                                                                                  392 392 456 456
+devtab                                 based           structure                level 1 dcl 11-190
+direct                    1(04)        based           bit(1)                   level 3 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_init" set ref 456*
+direct                   22(12)        based           bit(1)                   level 3 in structure "dte" packed packed unaligned
+                                                                                  dcl 1-128 in procedure "ioi_init" set ref 375*
+disk_channel_table                     based           structure                array level 1 dcl 11-94 set ref 560 560 563
+disk_data                              based           structure                level 1 dcl 11-31
+disk_data_subsystem_idx
+                          7            based           fixed bin(17,0)          level 2 dcl 1-74 set ref 154 225* 584*
+disk_lock_meters                       based           structure                level 1 dcl 11-236
+disk_seg$                       000032 external static fixed bin(17,0)          dcl 11-24 set ref 72
+diskp                           000174 automatic       pointer                  dcl 11-26 set ref 560 563 563 585*
+disksp                          000172 automatic       pointer                  dcl 11-26 set ref 72* 582 582 583 585 585
+disktab                                based           structure                level 1 dcl 11-74
+disktab_ctx               1(09)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 1-96
+                                                                                  set ref 568*
+divide                                                 builtin function         dcl 63 ref 318 405
+dt                       20            based           structure                array level 2 dcl 1-40 set ref 348
+dte                                    based           structure                level 1 dcl 1-128 set ref 350*
+dtep                      2            based           bit(18)                  level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 1-74 in procedure "ioi_init" set ref 221* 351
+                                                                                  352* 356 358 359* 380
+dtep                            000136 automatic       pointer                  dcl 1-32 in procedure "ioi_init" set ref 348* 350
+                                                                                  352 353 353 356 356 358 358 359 361 362 363 364
+                                                                                  365 366 367 368 368 370 371 374 374 375 377 380*
+                                                                                  380 380* 381* 383
+dtx                             000436 automatic       fixed bin(17,0)          dcl 580 set ref 582* 583 584 585*
+dual_controller           3(08)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref
+                                                                                  572*
+eurc_model_numbers              000000 constant        fixed bin(17,0)          initial array dcl 16-3 ref 273 276
+event                    36            based           bit(36)                  level 3 dcl 1-128 set ref 368*
+fips                      3(12)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref
+                                                                                  109* 252 313 342
+flags                     1            based           structure                level 2 in structure "ite" dcl 1-63 in procedure
+                                                                                  "ioi_init"
+flags                    16            based           structure                array level 3 in structure "channel_table" dcl 3-53
+                                                                                  in procedure "ioi_init"
+flags                    24            based           structure                array level 3 in structure "device_table" dcl 3-36
+                                                                                  in procedure "ioi_init"
+flags                    10            based           structure                level 2 in structure "ioi_data" dcl 1-40
+                                                                                  in procedure "ioi_init"
+flags                     3(06)        based           structure                level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 1-74 in procedure "ioi_init" set ref 222*
+flags1                    1            based           structure                level 2 packed packed unaligned dcl 1-96
+flags2                   15            based           structure                level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_init"
+flags2                   22(06)        based           structure                level 2 in structure "dte" packed packed unaligned
+                                                                                  dcl 1-128 in procedure "ioi_init"
+group                     2            based           structure                array level 2 in structure "chnl_card_array"
+                                                                                  dcl 10-20 in procedure "ioi_init" set ref 405 405
+group                     5            based           structure                array level 2 in structure "prph_tap_card_array"
+                                                                                  dcl 8-21 in procedure "ioi_init" ref 318 318
+group_idx                       000270 automatic       fixed bin(17,0)          dcl 310 in procedure "allocate_dtes_from_prph_card"
+                                                                                  set ref 318* 319 320 325*
+group_idx                       000330 automatic       fixed bin(17,0)          dcl 403 in procedure "allocate_ctes_from_chnl_card"
+                                                                                  set ref 405* 406 406 406*
+gt                                     based           structure                array level 2 dcl 1-40 set ref 143 143 144 152 152
+                                                                                  153 213 218 238
+gte                                    based           structure                level 1 dcl 1-74
+gtep                            000132 automatic       pointer                  dcl 1-30 in procedure "ioi_init" set ref 98 104 107
+                                                                                  109 111 112 144* 145 153* 154 154 155 175 176 213*
+                                                                                  214 214 218* 219 220 221 221 222 223 224 225 238*
+                                                                                  239 252 297 301 313 342 342 344 346 351 352 356
+                                                                                  358 359 361 380 431 445 447 448 460 460 572 583
+                                                                                  584 589 596
+gtep                      0(18)        based           bit(18)                  level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_init" set ref 448*
+gtep                      0(18)        based           bit(18)                  level 2 in structure "dte" packed packed unaligned
+                                                                                  dcl 1-128 in procedure "ioi_init" set ref 361*
+gtx                             000110 automatic       fixed bin(17,0)          dcl 41 set ref 143* 144* 152* 153*
+hbound                                                 builtin function         dcl 63 ref 133 143 152 171 273 318 405 475 492 507
+                                                                                  522 582
+high_ctx                        000112 automatic       fixed bin(17,0)          dcl 43 set ref 74* 442* 442 443
+high_dtx                        000113 automatic       fixed bin(17,0)          dcl 44 set ref 74* 347* 347 348
+high_gtx                        000114 automatic       fixed bin(17,0)          dcl 45 set ref 74* 212 217* 217 218
+high_itx                        000115 automatic       fixed bin(17,0)          dcl 46 set ref 74* 80* 80 81 428 430 540 542
+i                               000406 automatic       fixed bin(17,0)          dcl 520 in procedure "channel_table_idx_from_name"
+                                                                                  set ref 522* 523 523*
+i                               000250 automatic       fixed bin(17,0)          dcl 271 in procedure "ascii_detailed_status" set ref
+                                                                                  273* 276*
+i                               000376 automatic       fixed bin(17,0)          dcl 505 in procedure "device_table_idx_from_name"
+                                                                                  set ref 507* 508 508*
+i                               000365 automatic       fixed bin(17,0)          dcl 489 in procedure "iom_table_idx_from_tag" set
+                                                                                  ref 492* 493 493*
+idcw                                   based           structure                level 1 dcl 15-21 set ref 191*
+idcwp                           000204 automatic       pointer                  dcl 15-19 set ref 190* 191 192 193 194 195
+idp                             000130 automatic       pointer                  dcl 1-29 set ref 66* 81 133 133 134 143 143 144 152
+                                                                                  152 153 155 165 171 171 172 190 197 213 218 237
+                                                                                  238 348 380 383 428 434 443 459 460 463 475 475
+                                                                                  476 476 540 544 544 596 599
+in_use                   22(07)        based           bit(1)                   level 3 packed packed unaligned dcl 1-128 set ref
+                                                                                  366*
+io_chnl_util$iom_to_name        000034 constant        entry                    external dcl 12-12 ref 100 450
+io_config_channel_table_ptr     000146 automatic       pointer                  dcl 3-13 set ref 70* 455 522 522 523 526
+io_config_controller_table_ptr  000150 automatic       pointer                  dcl 3-15 set ref 69*
+io_config_data                         based           structure                level 1 dcl 3-22
+io_config_data$                 000030 external static fixed bin(17,0)          dcl 3-8 set ref 67
+io_config_data_ptr              000142 automatic       pointer                  dcl 3-10 set ref 67* 68 68 69 69 70 70 71 71
+io_config_device_table_ptr      000144 automatic       pointer                  dcl 3-11 set ref 71* 374 507 507 508 511
+io_config_iom_table_ptr         000152 automatic       pointer                  dcl 3-17 set ref 68* 492 492 493 496
+io_log_info                            based           structure                level 1 dcl 14-12
+io_log_info_index         6            based           fixed bin(17,0)          level 2 dcl 1-74 set ref 297* 301*
+io_log_infop                    000200 automatic       pointer                  dcl 14-10 set ref 293* 294 295
+io_log_status_info$io_log_status_info
+                                000040 external static fixed bin(17,0)          dcl 14-8 set ref 293
+io_manager$assign               000036 constant        entry                    external dcl 13-10 ref 157
+io_manager_arg                         based           structure                level 1 dcl 13-50
+ioi_config$find_base_channel    000012 constant        entry                    external dcl 52 ref 135
+ioi_config$find_controller_card 000014 constant        entry                    external dcl 54 ref 105 570 572
+ioi_ctx                   1            based           fixed bin(35,0)          level 2 dcl 11-132 set ref 569*
+ioi_data                               based           structure                level 1 dcl 1-40
+ioi_data$                       000026 external static fixed bin(17,0)          dcl 1-37 set ref 66
+ioi_masked$interrupt            000016 constant        entry                    external dcl 56 ref 157 157
+ioi_page_table$init             000020 constant        entry                    external dcl 57 ref 186
+ioi_use                   1            based           bit(1)                   level 3 packed packed unaligned dcl 1-96 set ref
+                                                                                  163*
+iom                       2            based           fixed bin(3,0)           level 2 in structure "prph_card" dcl 7-5
+                                                                                  in procedure "ioi_init" set ref 100* 101* 104*
+                                                                                  394*
+iom                       2            based           fixed bin(3,0)           array level 3 in structure "chnl_card_array"
+                                                                                  dcl 10-20 in procedure "ioi_init" set ref 406*
+iom                       2            based           fixed bin(3,0)           level 2 in structure "prph_dsk_card" dcl 9-5
+                                                                                  in procedure "ioi_init" set ref 392*
+iom_card                               based           structure                level 1 dcl 4-5
+iom_cardp                       000154 automatic       pointer                  dcl 4-3 set ref 77* 78* 79 83 84 85 86 88*
+iom_entry                 4            based           structure                array level 2 dcl 3-87 ref 492 492 496
+iom_entry_template                     based           structure                level 1 dcl 3-93
+iom_model_array                 000120 automatic       char(4)                  array dcl 48 set ref 76* 85*
+iom_table                              based           structure                level 1 dcl 3-87
+iom_table_idx             2(16)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-63 set ref 87*
+iom_table_offset          4(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 3-22
+                                                                                  ref 68
+iomno                                  parameter       fixed bin(3,0)           dcl 418 in procedure "allocate_ctes" set ref 414 428
+                                                                                  450* 451*
+iomno                                  parameter       fixed bin(3,0)           dcl 535 in procedure "IS_ON_IMU" ref 532 540
+ipc                       3(11)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref
+                                                                                  104*
+ipc_card                               based           structure                level 1 dcl 6-12
+ipc_cardp                       000160 automatic       pointer                  dcl 6-10 set ref 108* 109 109
+it                                     based           structure                array level 2 dcl 1-40 set ref 81 171 171 172 434
+ite                                    based           structure                level 1 dcl 1-63 set ref 82*
+itep                     14(18)        based           bit(18)                  level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_init" set ref 446*
+itep                            000140 automatic       pointer                  dcl 1-33 in procedure "ioi_init" set ref 81* 82 83
+                                                                                  84 85 86 87 87 172* 173 173 174 177
+iterp                           000341 automatic       bit(18)                  packed unaligned dcl 422 set ref 432* 434* 446
+itx                             000416 automatic       fixed bin(17,0)          dcl 536 in procedure "IS_ON_IMU" set ref 540* 540*
+                                                                                  542 544 544
+itx                             000342 automatic       fixed bin(17,0)          dcl 423 in procedure "allocate_ctes" set ref 428*
+                                                                                  428* 430 434
+itx                             000111 automatic       fixed bin(17,0)          dcl 42 in procedure "ioi_init" set ref 171* 172*
+lbound                                                 builtin function         dcl 63 ref 133 143 152 171 318 405 475 492 496 507
+                                                                                  511 522 526 560 560 582
+lock                     35            based           structure                level 2 in structure "dte" dcl 1-128 in procedure
+                                                                                  "ioi_init"
+lock                                   based           bit(36)                  level 2 in structure "gte" dcl 1-74 in procedure
+                                                                                  "ioi_init" set ref 219*
+lock                                   based           structure                level 1 dcl 2-12 in procedure "ioi_init"
+log                                    based           structure                level 1 dcl 14-18
+log_entry                 1            based           structure                array level 2 dcl 14-12 set ref 295
+log_status_info_idx             000260 automatic       fixed bin(17,0)          dcl 291 set ref 294* 295 297*
+logp                            000202 automatic       pointer                  dcl 14-16 set ref 295* 296
+max                                                    builtin function         dcl 63 ref 318 405
+min                                                    builtin function         dcl 63 ref 405
+model                                  based           char(4)                  array level 3 in structure "ioi_data" dcl 1-40
+                                                                                  in procedure "ioi_init" set ref 544 544
+model                     5            based           fixed bin(17,0)          array level 3 in structure "prph_tap_card_array"
+                                                                                  dcl 8-21 in procedure "ioi_init" ref 319
+model                     3            based           char(4)                  level 2 in structure "iom_card" dcl 4-5 in procedure
+                                                                                  "ioi_init" ref 84 85
+model                     2            based           fixed bin(17,0)          level 2 in structure "mpc_card" dcl 5-5 in procedure
+                                                                                  "ioi_init" ref 276
+model                                  based           char(4)                  level 2 in structure "ite" dcl 1-63 in procedure
+                                                                                  "ioi_init" set ref 84* 173 173
+mpc_card                               based           structure                level 1 dcl 5-5
+mpc_cardp                       000156 automatic       pointer                  dcl 5-3 set ref 105* 106 108 273 273 276 559* 570
+                                                                                  570* 572
+mplex                     3(10)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref 98*
+                                                                                  154 342
+n_channels                2            based           fixed bin(17,0)          level 2 dcl 3-53 ref 522
+n_devices                 2            based           fixed bin(17,0)          level 2 in structure "device_table" dcl 3-36
+                                                                                  in procedure "ioi_init" ref 507
+n_devices                 4            based           fixed bin(17,0)          level 2 in structure "gte" dcl 1-74 in procedure
+                                                                                  "ioi_init" set ref 176* 223*
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 in structure "chnl_card" packed packed
+                                                                                  unsigned unaligned dcl 10-5 in procedure
+                                                                                  "ioi_init" ref 405
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 in structure "prph_tap_card" packed packed
+                                                                                  unsigned unaligned dcl 8-5 in procedure "ioi_init"
+                                                                                  ref 318
+n_ioms                    2            based           fixed bin(17,0)          level 2 dcl 3-87 ref 492
+name                      1            based           char(4)                  level 2 in structure "prph_card" dcl 7-5
+                                                                                  in procedure "ioi_init" set ref 94 96*
+name                            000364 automatic       char(1)                  packed unaligned dcl 488 in procedure
+                                                                                  "iom_table_idx_from_tag" set ref 491* 493
+name                                   parameter       char                     packed unaligned dcl 503 in procedure
+                                                                                  "device_table_idx_from_name" ref 500 508
+name                     12            based           char(4)                  array level 3 in structure "disk_data" packed packed
+                                                                                  unaligned dcl 11-31 in procedure "ioi_init" ref
+                                                                                  583
+name                                   parameter       char(8)                  dcl 518 in procedure "channel_table_idx_from_name"
+                                                                                  ref 515 523
+name                      4            based           char(8)                  array level 3 in structure "channel_table" dcl 3-53
+                                                                                  in procedure "ioi_init" ref 523
+name                      1            based           char(4)                  level 2 in structure "mpc_card" dcl 5-5 in procedure
+                                                                                  "ioi_init" ref 273
+name                      4            based           char(32)                 array level 3 in structure "device_table" packed
+                                                                                  packed unaligned dcl 3-36 in procedure "ioi_init"
+                                                                                  ref 508
+name                      1            based           char(4)                  level 2 in structure "chnl_card" dcl 10-5
+                                                                                  in procedure "ioi_init" set ref 125 239 242* 242*
+name                      1            based           char(4)                  level 2 in structure "gte" dcl 1-74 in procedure
+                                                                                  "ioi_init" set ref 145 214 214* 220* 239 344 346
+                                                                                  431* 460* 583 589*
+name                      4            based           char(8)                  array level 3 in structure "iom_table" dcl 3-87
+                                                                                  in procedure "ioi_init" ref 493
+nchan                     4            based           fixed bin(17,0)          level 2 in structure "prph_dsk_card" dcl 9-5
+                                                                                  in procedure "ioi_init" set ref 392*
+nchan                     4            based           fixed bin(17,0)          array level 3 in structure "chnl_card_array"
+                                                                                  dcl 10-20 in procedure "ioi_init" set ref 406*
+nchan                     1            based           fixed bin(17,0)          level 2 in structure "disktab" dcl 11-74
+                                                                                  in procedure "ioi_init" ref 560
+nchans                                 parameter       fixed bin(17,0)          dcl 419 ref 414 441
+nct                       1            based           fixed bin(17,0)          level 2 dcl 1-40 ref 81 133 171 171 172 428 434 475
+                                                                                  540 544 544
+ndev                                   based           fixed bin(17,0)          level 2 dcl 14-12 ref 294
+ndrives                   6            based           fixed bin(17,0)          array level 3 dcl 8-21 ref 320 325
+ndt                       2            based           fixed bin(17,0)          level 2 dcl 1-40 ref 81 133 133 134 143 143 144 152
+                                                                                  152 153 171 171 172 213 218 238 428 434 443 475
+                                                                                  475 476 476 540 544 544
+next_ctep                              based           bit(18)                  level 2 packed packed unaligned dcl 1-96 set ref 165
+                                                                                  445* 459 463 599
+next_dtep                              based           bit(18)                  level 2 packed packed unaligned dcl 1-128 set ref
+                                                                                  353* 356* 356 358* 380 383
+ngt                                    based           fixed bin(17,0)          level 2 dcl 1-40 ref 81 133 133 134 143 152 171 171
+                                                                                  172 237 428 434 443 475 475 476 476 540 544 544
+nit                       3            based           fixed bin(17,0)          level 2 dcl 1-40 ref 171
+null                                                   builtin function         dcl 63 ref 77 79 91 93 106 122 124 273 363 364 365
+                                                                                  559 560 560 570
+offset                   11            based           bit(18)                  array level 3 packed packed unaligned dcl 11-31 ref
+                                                                                  585
+opt_info                               based           structure                level 1 dcl 11-217
+pending_connects          5            based           fixed bin(17,0)          level 2 dcl 1-74 set ref 224*
+prph_card                              based           structure                level 1 dcl 7-5
+prph_cardp                      000162 automatic       pointer                  dcl 7-3 set ref 91* 92* 93 94 95 96 100 100 101 101
+                                                                                  104 116* 394 394
+prph_dsk_card                          based           structure                level 1 dcl 9-5
+prph_dsk_cardp                  000166 automatic       pointer                  dcl 9-3 set ref 95* 392 392 392
+prph_name                              parameter       char(4)                  dcl 210 ref 205 214 220
+prph_tap_card                          based           structure                level 1 dcl 8-5
+prph_tap_card_array                    based           structure                level 1 dcl 8-21
+prph_tap_cardp                  000164 automatic       pointer                  dcl 8-3 set ref 95* 318 318 318 319 320 325
+psia                      3(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref
+                                                                                  107* 175*
+ptp                      14            based           pointer                  level 2 dcl 1-128 set ref 365*
+ptr                                                    builtin function         dcl 63 ref 68 69 70 71 155 165 356 358 380 383 459
+                                                                                  460 463 563 585 596 599
+qht                                    based           structure                level 1 dcl 11-179
+quentry                                based           structure                level 1 dcl 11-107
+rel                                                    builtin function         dcl 63 ref 137 155 157 157 352 353 358 359 361 368
+                                                                                  380 434 447 448 459 476 569 596
+rss_idcw                 11            based           bit(36)                  level 2 dcl 1-40 set ref 190
+setup                    10            based           bit(1)                   level 3 packed packed unaligned dcl 1-40 set ref
+                                                                                  197*
+state                     4            based           char(4)                  level 2 dcl 4-5 ref 86
+statusp                   4            based           pointer                  level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_init" set ref 162* 566*
+statusp                         000116 automatic       pointer                  dcl 47 in procedure "ioi_init" set ref 157* 162
+statusp                   2            based           pointer                  level 2 in structure "chantab" dcl 11-132
+                                                                                  in procedure "ioi_init" ref 566
+string                                                 builtin function         dcl 63 set ref 191* 222*
+substr                                                 builtin function         dcl 63 ref 94 125 145 174 273 491
+sys_info                               based           structure                level 1 dcl 11-59
+syserr                          000022 constant        entry                    external dcl 58 ref 214 242 371 381 431 460 589 600
+syserr$error_code               000024 constant        entry                    external dcl 59 ref 101 159 451
+tag                       3            based           fixed bin(3,0)           level 2 in structure "ite" dcl 1-63 in procedure
+                                                                                  "ioi_init" set ref 83* 85 87* 174 177*
+tag                                    parameter       fixed bin(3,0)           dcl 486 in procedure "iom_table_idx_from_tag" ref
+                                                                                  483 491
+tag                                    based           fixed bin(3,0)           array level 3 in structure "ioi_data" dcl 1-40
+                                                                                  in procedure "ioi_init" set ref 428 540
+tag                       1            based           fixed bin(3,0)           level 2 in structure "iom_card" dcl 4-5 in procedure
+                                                                                  "ioi_init" ref 83
+this_channel                    000343 automatic       fixed bin(7,0)           dcl 424 set ref 449* 450* 451*
+type                      1            based           char(4)                  level 2 dcl 6-12 ref 109
+type_word                17            based           structure                level 2 in structure "chnl_card" dcl 10-5
+                                                                                  in procedure "ioi_init"
+type_word                17            based           structure                level 2 in structure "prph_tap_card" dcl 8-5
+                                                                                  in procedure "ioi_init"
+unspec                                                 builtin function         dcl 63 set ref 82* 350* 368 444*
+word                                   based           char(4)                  level 2 dcl 6-12 ref 109
+workspace_astep          10            based           pointer                  level 2 dcl 1-128 set ref 364*
+workspace_ptr             6            based           pointer                  level 2 dcl 1-128 set ref 363*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 17-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 17-7
+BOOTLOAD_READ                          internal static fixed bin(4,0)           initial dcl 11-251
+BOOTLOAD_WRITE                         internal static fixed bin(4,0)           initial dcl 11-251
+DSC_LISTX                              internal static fixed bin(12,0)          initial dcl 11-241
+IOI_DEFAULT_MAX_BOUND                  internal static fixed bin(19,0)          initial dcl 1-198
+IOI_DEFAULT_MAX_TIMEOUT                internal static fixed bin(35,0)          initial dcl 1-199
+IOI_DEFAULT_TIMEOUT                    internal static fixed bin(35,0)          initial dcl 1-201
+IO_CHANNEL_LOCK_TEMPLATE               internal static char(2)                  initial packed unaligned dcl 1-205
+IO_CONFIG_CHANNEL_TABLE_VERSION_1      internal static char(8)                  initial dcl 3-106
+IO_CONFIG_CONTROLLER_TABLE_VERSION_1   internal static char(8)                  initial dcl 3-108
+IO_CONFIG_DATA_VERSION_1               internal static char(8)                  initial dcl 3-102
+IO_CONFIG_DEVICE_TABLE_VERSION_1       internal static char(8)                  initial dcl 3-104
+IO_CONFIG_IOM_TABLE_VERSION_1          internal static char(8)                  initial dcl 3-110
+IO_STATUS_ERROR_MASK                   internal static bit(36)                  initial packed unaligned dcl 1-203
+IO_TYPE                                internal static char(16)                 initial array packed unaligned dcl 11-262
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 17-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 17-7
+MAX_IO_TYPE                            internal static fixed bin(4,0)           initial dcl 11-251
+MPC_CARD_WORD                          internal static char(4)                  initial dcl 5-26
+PAGE_READ                              internal static fixed bin(4,0)           initial dcl 11-251
+PAGE_WRITE                             internal static fixed bin(4,0)           initial dcl 11-251
+RSS_LISTX                              internal static fixed bin(12,0)          initial dcl 11-241
+RST_LISTX                              internal static fixed bin(12,0)          initial dcl 11-241
+SC_LISTX                               internal static fixed bin(12,0)          initial dcl 11-241
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 17-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 17-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 17-7
+TEST                                   internal static fixed bin(4,0)           initial dcl 11-251
+VTOC_READ                              internal static fixed bin(4,0)           initial dcl 11-251
+VTOC_WRITE                             internal static fixed bin(4,0)           initial dcl 11-251
+bootload_map                           defined         bit(1)                   array packed unaligned dcl 11-279
+bootload_mapping                       internal static bit(7)                   initial packed unaligned dcl 11-278
+controller_table                       based           structure                level 1 dcl 3-71
+dp                                     automatic       pointer                  dcl 11-187
+dskdcl_chans_per_subsys                internal static fixed bin(17,0)          initial dcl 11-70
+dskdcl_chans_per_subsys_shift          internal static fixed bin(17,0)          initial dcl 11-71
+io_chnl_util$canonicalize_chanid
+                                000000 constant        entry                    external dcl 12-8
+io_chnl_util$name_to_iom        000000 constant        entry                    external dcl 12-16
+io_manager$assign_add           000000 constant        entry                    external dcl 13-15
+io_manager$connect              000000 constant        entry                    external dcl 13-26
+io_manager$connect_abs          000000 constant        entry                    external dcl 13-29
+io_manager$connect_direct       000000 constant        entry                    external dcl 13-32
+io_manager$get_status           000000 constant        entry                    external dcl 13-35
+io_manager$ignore_interrupt     000000 constant        entry                    external dcl 13-41
+io_manager$mask                 000000 constant        entry                    external dcl 13-38
+io_manager$unassign             000000 constant        entry                    external dcl 13-20
+io_manager$unassign_delete      000000 constant        entry                    external dcl 13-23
+io_manager$workspace_tdcw       000000 constant        entry                    external dcl 13-47
+io_manager_arg_ptr                     automatic       pointer                  dcl 13-49
+ioi_channels                           automatic       fixed bin(17,0)          dcl 1-35
+ioi_devices                            automatic       fixed bin(17,0)          dcl 1-35
+ioi_multiplexers                       automatic       fixed bin(17,0)          dcl 1-35
+ioi_subsystems                         automatic       fixed bin(17,0)          dcl 1-35
+lock_ptr                               automatic       pointer                  dcl 2-11
+mpc_card_array                         based           structure                level 1 dcl 5-19
+optp                                   automatic       pointer                  dcl 11-26
+pcw                                    based           structure                level 1 dcl 15-6
+pcwp                                   automatic       pointer                  dcl 15-4
+prph_dsk_card_array                    based           structure                level 1 dcl 9-21
+pvtdi                                  based           structure                level 1 dcl 11-229
+pvtdip                                 automatic       pointer                  dcl 11-187
+qp                                     automatic       pointer                  dcl 11-97
+sector_map                             defined         bit(1)                   array packed unaligned dcl 11-274
+sector_mapping                         internal static bit(7)                   initial packed unaligned dcl 11-273
+sysp                                   automatic       pointer                  dcl 11-26
+tables_length                          automatic       fixed bin(19,0)          dcl 3-20
+write_map                              defined         bit(1)                   array packed unaligned dcl 11-269
+write_mapping                          internal static bit(7)                   initial packed unaligned dcl 11-268
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+IS_ON_IMU                       003405 constant        entry                    internal dcl 532 ref 104
+allocate_ctes                   002540 constant        entry                    internal dcl 414 ref 177 392 394 406
+allocate_ctes_from_chnl_card    002476 constant        entry                    internal dcl 400 ref 126
+allocate_ctes_from_prph_card    002431 constant        entry                    internal dcl 389 ref 115
+allocate_dtes_from_prph_card    002014 constant        entry                    internal dcl 307 ref 114
+allocate_gte                    001413 constant        entry                    internal dcl 205 ref 96 174
+allocate_next_dte               002117 constant        entry                    internal dcl 336 ref 180 322 329 331
+ascii_detailed_status           001716 constant        entry                    internal dcl 268 ref 112
+channel_table_idx_from_name     003347 constant        entry                    internal dcl 515 ref 454
+cte_offset                      003154 constant        entry                    internal dcl 468 ref 136
+device_table_idx_from_name      003301 constant        entry                    internal dcl 500 ref 370
+extended_status_command         001621 constant        entry                    internal dcl 249 ref 111
+find_disktab                    003642 constant        entry                    internal dcl 577 ref 558
+find_gte                        001525 constant        entry                    internal dcl 232 ref 126
+find_matching_cte               003725 constant        entry                    internal dcl 593 ref 565
+ioi_init                        000267 constant        entry                    external dcl 32
+iom_table_idx_from_tag          003235 constant        entry                    internal dcl 483 ref 87
+setup_disk_sharing              003527 constant        entry                    internal dcl 553 ref 146
+setup_log_status_info           001755 constant        entry                    internal dcl 288 ref 113
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4234        4276    4042        4244
+Length      5042    4042        42         527     171           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ioi_init                            624 external procedure  is an external procedure.  
+allocate_gte                            internal procedure  shares stack frame of external procedure ioi_init.  
+find_gte                                internal procedure  shares stack frame of external procedure ioi_init.  
+extended_status_command                 internal procedure  shares stack frame of external procedure ioi_init.  
+ascii_detailed_status                   internal procedure  shares stack frame of external procedure ioi_init.  
+setup_log_status_info                   internal procedure  shares stack frame of external procedure ioi_init.  
+allocate_dtes_from_prph_card            internal procedure  shares stack frame of external procedure ioi_init.  
+allocate_next_dte                       internal procedure  shares stack frame of external procedure ioi_init.  
+allocate_ctes_from_prph_card            internal procedure  shares stack frame of external procedure ioi_init.  
+allocate_ctes_from_chnl_card            internal procedure  shares stack frame of external procedure ioi_init.  
+allocate_ctes                           internal procedure  shares stack frame of external procedure ioi_init.  
+cte_offset                              internal procedure  shares stack frame of external procedure ioi_init.  
+iom_table_idx_from_tag                  internal procedure  shares stack frame of external procedure ioi_init.  
+device_table_idx_from_name              internal procedure  shares stack frame of external procedure ioi_init.  
+channel_table_idx_from_name             internal procedure  shares stack frame of external procedure ioi_init.  
+IS_ON_IMU                               internal procedure  shares stack frame of external procedure ioi_init.  
+setup_disk_sharing                      internal procedure  shares stack frame of external procedure ioi_init.  
+find_disktab                            internal procedure  shares stack frame of external procedure ioi_init.  
+find_matching_cte                       internal procedure  shares stack frame of external procedure ioi_init.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ioi_init                 000100 adding_controller_dte       ioi_init
+                         000102 chanid                      ioi_init
+                         000104 code                        ioi_init
+                         000105 ctx                         ioi_init
+                         000106 device_number               ioi_init
+                         000107 device_type                 ioi_init
+                         000110 gtx                         ioi_init
+                         000111 itx                         ioi_init
+                         000112 high_ctx                    ioi_init
+                         000113 high_dtx                    ioi_init
+                         000114 high_gtx                    ioi_init
+                         000115 high_itx                    ioi_init
+                         000116 statusp                     ioi_init
+                         000120 iom_model_array             ioi_init
+                         000130 idp                         ioi_init
+                         000132 gtep                        ioi_init
+                         000134 ctep                        ioi_init
+                         000136 dtep                        ioi_init
+                         000140 itep                        ioi_init
+                         000142 io_config_data_ptr          ioi_init
+                         000144 io_config_device_table_ptr  ioi_init
+                         000146 io_config_channel_table_ptr ioi_init
+                         000150 io_config_controller_table_ptr
+                                                            ioi_init
+                         000152 io_config_iom_table_ptr     ioi_init
+                         000154 iom_cardp                   ioi_init
+                         000156 mpc_cardp                   ioi_init
+                         000160 ipc_cardp                   ioi_init
+                         000162 prph_cardp                  ioi_init
+                         000164 prph_tap_cardp              ioi_init
+                         000166 prph_dsk_cardp              ioi_init
+                         000170 chnl_cardp                  ioi_init
+                         000172 disksp                      ioi_init
+                         000174 diskp                       ioi_init
+                         000176 cp                          ioi_init
+                         000200 io_log_infop                ioi_init
+                         000202 logp                        ioi_init
+                         000204 idcwp                       ioi_init
+                         000222 current_gtx                 allocate_gte
+                         000232 current_gtx                 find_gte
+                         000250 i                           ascii_detailed_status
+                         000260 log_status_info_idx         setup_log_status_info
+                         000270 group_idx                   allocate_dtes_from_prph_card
+                         000302 device_name                 allocate_next_dte
+                         000312 device_number_string        allocate_next_dte
+                         000330 group_idx                   allocate_ctes_from_chnl_card
+                         000340 ch_idx                      allocate_ctes
+                         000341 iterp                       allocate_ctes
+                         000342 itx                         allocate_ctes
+                         000343 this_channel                allocate_ctes
+                         000354 ctx                         cte_offset
+                         000364 name                        iom_table_idx_from_tag
+                         000365 i                           iom_table_idx_from_tag
+                         000376 i                           device_table_idx_from_name
+                         000406 i                           channel_table_idx_from_name
+                         000416 itx                         IS_ON_IMU
+                         000426 ctx                         setup_disk_sharing
+                         000436 dtx                         find_disktab
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+config_$find                  io_chnl_util$iom_to_name      io_manager$assign             ioi_config$find_base_channel
+ioi_config$find_controller_card                             ioi_masked$interrupt          ioi_page_table$init
+syserr                        syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+disk_seg$                     io_config_data$               io_log_status_info$io_log_status_info
+ioi_data$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     32 000266        66 000274        67 000276        68 000300        69 000305        70 000312        71 000317
+     72 000324        74 000326        76 000332        77 000343        78 000345        79 000356        80 000362
+     81 000363        82 000407        83 000412        84 000415        85 000417        86 000421        87 000432
+     88 000450        89 000461        91 000462        92 000464        93 000475        94 000502        95 000507
+     96 000511        98 000520       100 000535       101 000555       104 000620       105 000634       106 000645
+    107 000651       108 000654       109 000656       111 000673       112 000702       113 000713       114 000714
+    115 000715       116 000716       118 000727       122 000730       123 000732       124 000743       125 000750
+    126 000755       128 000763       129 000774       133 000775       134 001005       135 001024       136 001035
+    137 001046       139 001054       143 001056       144 001065       145 001076       146 001102       148 001110
+    152 001112       153 001121       154 001132       155 001137       156 001147       157 001153       159 001203
+    162 001242       163 001245       165 001247       167 001255       171 001257       172 001267       173 001312
+    174 001322       175 001334       176 001337       177 001341       178 001360       179 001362       180 001363
+    182 001364       186 001366       190 001373       191 001376       192 001377       193 001401       194 001403
+    195 001405       197 001407       198 001412       205 001413       212 001415       213 001425       214 001436
+    216 001472       217 001474       218 001475       219 001507       220 001510       221 001513       222 001517
+    223 001521       224 001522       225 001523       227 001524       232 001525       237 001527       238 001537
+    239 001550       241 001560       242 001562       243 001616       249 001621       252 001623       254 001634
+    256 001646       258 001660       260 001711       268 001716       273 001720       276 001737       278 001750
+    279 001752       288 001755       293 001756       294 001761       295 001771       296 001775       297 002003
+    298 002006       300 002007       301 002011       303 002013       307 002014       312 002015       313 002016
+    315 002024       316 002026       318 002040       319 002057       320 002064       322 002077       323 002100
+    324 002102       325 002103       326 002106       327 002110       328 002112       329 002113       330 002114
+    331 002115       332 002116       336 002117       342 002120       343 002131       344 002141       345 002154
+    346 002155       347 002160       348 002161       350 002166       351 002171       352 002175       353 002177
+    354 002201       356 002202       358 002206       359 002214       361 002216       362 002221       363 002224
+    364 002226       365 002227       366 002230       367 002232       368 002237       370 002246       371 002254
+    374 002304       375 002321       377 002335       380 002342       381 002357       383 002422       385 002430
+    389 002431       392 002432       394 002460       396 002475       400 002476       405 002477       406 002521
+    408 002535       410 002537       414 002540       428 002542       429 002577       430 002601       431 002604
+    432 002635       433 002636       434 002637       441 002664       442 002672       443 002673       444 002713
+    445 002716       446 002722       447 002725       448 002730       449 002733       450 002737       451 002754
+    454 003017       455 003033       456 003043       459 003063       460 003072       463 003142       464 003150
+    466 003153       468 003154       475 003156       476 003167       478 003225       479 003227       483 003235
+    491 003237       492 003244       493 003255       495 003273       496 003275       500 003301       507 003312
+    508 003323       510 003341       511 003343       515 003347       522 003351       523 003361       525 003377
+    526 003401       532 003405       540 003407       541 003445       542 003447       544 003460       546 003521
+    553 003527       558 003530       559 003531       560 003533       563 003543       564 003554       565 003562
+    566 003563       567 003567       568 003571       569 003574       570 003600       572 003616       575 003636
+    604 003641       577 003642       582 003643       583 003651       584 003660       585 003662       586 003670
+    588 003671       589 003673       591 003724       593 003725       596 003726       597 003736       599 003747
+    600 003755       602 004006
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

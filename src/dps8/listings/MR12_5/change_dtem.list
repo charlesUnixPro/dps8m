@@ -1,0 +1,430 @@
+	COMPILATION LISTING OF SEGMENT change_dtem
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1717.23_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style2,indcomtxt */
+       13 
+       14 change_dtem:
+       15      proc (a_ep);
+       16 
+       17 /**** Coded by E. Stone Nov. 1975 to KST re-do.
+       18*      This procedure to called by any directory control
+       19*      primitive to assure that the dtem of a branch is
+       20*      altered.  The caller has changed to value of an
+       21*      attribute in a directory entry which affects the
+       22*      data in the KST entry for that segment, e.g. access,
+       23*      ring brackets.  Usually the new dtem will be set
+       24*      to the storage system time equivalent of the current
+       25*      clock reading immediately.  If the clock reading equals
+       26*      the dtem, the dtem is incremented by 1.  Care is taken
+       27*      that dtem does not go too far in the future and
+       28*      that the value of the dtem always increases.
+       29*      If necessary the clock is read until these conditions are met.
+       30*      If the old time is manifestly out to lunch, bad_dir_ is signalled. */
+       31 /* Modified 83-12-22 BIM for bad_dir_ signal */
+       32 
+       33 	dcl     a_ep		 ptr;
+       34 	dcl     continue		 bit (1) aligned;
+       35 	dcl     i			 fixed bin;
+       36 	dcl     (old_dtem, new_dtem)	 fixed bin (36);
+       37 	dcl     time		 fixed bin (71);
+       38 	dcl     1 CLOCK		 aligned like clock_value;
+       39 	dcl     1 OLD_DTEM		 aligned like clock_value;
+       40 	dcl     clock		 builtin;
+       41 	dcl     bin		 builtin;
+       42 	dcl     bad_dir_		 condition;
+       43 
+       44 
+  1     1 /* Begin include system_clock_value_.incl.pl1 BIM 83-12-22. */
+  1     2 /* Format of clock doubleword */
+  1     3 /* format: style3,indcomtxt */
+  1     4 
+  1     5 declare	clock_value_ptr	pointer;
+  1     6 declare	1 clock_value	aligned based (clock_value_ptr),
+  1     7 	  2 sign		bit unaligned,
+  1     8 	  2 unused_range	bit (19) unaligned,
+  1     9 	  2 fs_time	bit (36) unaligned,		/* FB 36 unsigned dont work */
+  1    10 	  2 micro_time	bit (16) unaligned;
+  1    11 
+  1    12 /* End include file system_clock_value_.incl.pl1 */
+       45 
+  2     1 /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  2     2 
+  2     3 
+  2     4 /* Template for an entry. Length = 38 words */
+  2     5 
+  2     6 dcl  ep ptr;
+  2     7 
+  2     8 dcl 1 entry based (ep) aligned,
+  2     9 
+  2    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  2    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  2    12 
+  2    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  2    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  2    15 
+  2    16     2 uid bit (36),					/* unique id of entry */
+  2    17 
+  2    18     2 dtem bit (36),				/* date-time entry modified */
+  2    19 
+  2    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  2    21     2 pad0 bit (17),
+  2    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  2    23 
+  2    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  2    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  2    26 
+  2    27     2 author,					/* user who created branch */
+  2    28       3 pers_rp bit (18),				/* name of user who created branch */
+  2    29       3 proj_rp bit (18),				/* project of user who created branch */
+  2    30 
+  2    31       3 tag char (1),				/* tag of user who created branch */
+  2    32       3 pad1 char (3),
+  2    33 
+  2    34     2 primary_name bit (504),				/* first name on name list */
+  2    35 
+  2    36     2 dtd bit (36),					/* date time dumped */
+  2    37 
+  2    38     2 pad2 bit (36),
+  2    39 
+  2    40 
+  2    41 /* the declarations below are for branch only */
+  2    42 
+  2    43 
+  2    44     2 pvid bit (36),				/* physical volume id */
+  2    45 
+  2    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    47     2 pad3 bit (18),
+  2    48 
+  2    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  2    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  2    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  2    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  2    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  2    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  2    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  2    56     2 security_oosw bit (1),				/* security out of service switch */
+  2    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  2    58     2 master_dir bit (1),				/* TRUE for master directory */
+  2    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  2    60     2 pad4 bit (11),
+  2    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  2    62 
+  2    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  2    64 
+  2    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  2    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  2    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  2    68 
+  2    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  2    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  2    71 
+  2    72     2 bc_author,					/* user who last set the bit count */
+  2    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  2    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  2    75 
+  2    76       3 tag char (1),				/* tag of user who set the bit count */
+  2    77       3 pad5 bit (2),
+  2    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  2    79 
+  2    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  2    81 
+  2    82     2 pad6 bit (36),
+  2    83 
+  2    84     2 checksum bit (36),				/* checksum from dtd */
+  2    85 
+  2    86     2 owner bit (36);				/* uid of containing directory */
+  2    87 
+  2    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+       46 
+       47 
+       48 	ep = a_ep;				/* copy entry pointer */
+       49 	old_dtem = bin (ep -> entry.dtem, 36);		/* save current dtem for fast comparison */
+       50 	unspec (OLD_DTEM) = ""b;
+       51 	OLD_DTEM.fs_time = ep -> entry.dtem;
+       52 	unspec (time) = unspec (OLD_DTEM);
+       53 	if (time - clock ()) > 2 * 1000 * 1000		/* 2 seconds */
+       54 	then signal bad_dir_;			/* dtem cannot possibly be that far off */
+       55 
+       56 	continue = "1"b;				/* set flag so that loop is executed at least once */
+       57 
+       58 	do while (continue);
+       59 	     continue = "0"b;			/* usually will change dtem without further ado */
+       60 	     time = clock ();
+       61 	     unspec (CLOCK) = unspec (time);		/* unspec (clock()) not valid */
+       62 	     new_dtem = bin (CLOCK.fs_time, 36);
+       63 	     if new_dtem ^> old_dtem
+       64 	     then do;				/* must take atypical action */
+       65 		     if (new_dtem + 5) < old_dtem
+       66 		     then /* if branch dtem has gone too far in future */
+       67 			continue = "1"b;		/* read clock again */
+       68 		     else new_dtem = old_dtem + 1;	/* otherwise or if equal just increment */
+       69 		end;
+       70 	end;
+       71 	ep -> entry.dtem = bit (new_dtem, 36);		/* set new and different dtem */
+       72      end change_dtem;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1717.2  change_dtem.pl1                   >udd>sm>ds>w>ml>change_dtem.pl1
+45           1    04/09/84  1225.2  system_clock_value_.incl.pl1      >ldd>incl>system_clock_value_.incl.pl1
+46           2    04/29/76  1200.6  dir_entry.incl.pl1                >ldd>incl>dir_entry.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CLOCK                           000110 automatic       structure                level 1 dcl 38 set ref 61*
+OLD_DTEM                        000112 automatic       structure                level 1 dcl 39 set ref 50* 52
+a_ep                                   parameter       pointer                  dcl 33 ref 14 48
+bad_dir_                        000114 stack reference condition                dcl 42 ref 53
+bin                                                    builtin function         dcl 41 ref 49 62
+clock                                                  builtin function         dcl 40 ref 53 60
+clock_value                            based           structure                level 1 dcl 1-6
+continue                        000100 automatic       bit(1)                   dcl 34 set ref 56* 58 59* 65*
+dtem                      3            based           bit(36)                  level 2 dcl 2-8 set ref 49 51 71*
+entry                                  based           structure                level 1 dcl 2-8
+ep                              000122 automatic       pointer                  dcl 2-6 set ref 48* 49 51 71
+fs_time                   0(20) 000112 automatic       bit(36)                  level 2 in structure "OLD_DTEM" packed packed
+                                                                                  unaligned dcl 39 in procedure "change_dtem" set
+                                                                                  ref 51*
+fs_time                   0(20) 000110 automatic       bit(36)                  level 2 in structure "CLOCK" packed packed unaligned
+                                                                                  dcl 38 in procedure "change_dtem" set ref 62
+new_dtem                        000104 automatic       fixed bin(36,0)          dcl 36 set ref 62* 63 65 68* 71
+old_dtem                        000102 automatic       fixed bin(36,0)          dcl 36 set ref 49* 63 65 68
+time                            000106 automatic       fixed bin(71,0)          dcl 37 set ref 52* 53 60* 61
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+clock_value_ptr                        automatic       pointer                  dcl 1-5
+i                                      automatic       fixed bin(17,0)          dcl 35
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+change_dtem                     000011 constant        entry                    external dcl 14
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+bit                                                    builtin function         ref 71
+unspec                                                 builtin function         set ref 50 52* 52 61* 61
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       140         150     114         150
+Length       342     114        10         155      24           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+change_dtem                          86 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+change_dtem              000100 continue                    change_dtem
+                         000102 old_dtem                    change_dtem
+                         000104 new_dtem                    change_dtem
+                         000106 time                        change_dtem
+                         000110 CLOCK                       change_dtem
+                         000112 OLD_DTEM                    change_dtem
+                         000122 ep                          change_dtem
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          signal_op           ext_entry           clock_mac
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+CONSTANTS
+000112  aa     000000177777
+000113  aa     777777600000
+
+000000  aa     000007502200
+
+000001  aa     464000000000
+
+000002  aa     000000000000
+000003  aa     000000000000
+
+000004  aa  142 141 144 137	bad_
+000005  aa  144 151 162 137	dir_
+
+BEGIN PROCEDURE change_dtem
+ENTRY TO change_dtem                                        STATEMENT 1 ON LINE 14
+change_dtem:
+     proc (a_ep);
+
+000006  at     000001000001
+000007  ta     000006000000
+000010  da     000020300000
+000011  aa   000140 6270 00	eax7 	96
+000012  aa  7 00034 3521 20	epp2 	pr7|28,*
+000013  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000014  aa     000002000000
+000015  aa     000000000000
+						STATEMENT 1 ON LINE 48
+	ep = a_ep;
+
+000016  aa  6 00032 3735 20	epp7 	pr6|26,*
+000017  aa  7 00002 3715 20	epp5 	pr7|2,*		a_ep
+000020  aa  5 00000 3715 20	epp5 	pr5|0,*		a_ep
+000021  aa  6 00122 6515 00	spri5	pr6|82		ep
+						STATEMENT 1 ON LINE 49
+	old_dtem = bin (ep -> entry.dtem, 36);
+
+000022  aa  5 00003 2351 00	lda  	pr5|3		entry.dtem
+000023  aa   000044 7730 00	lrl  	36
+000024  aa  6 00102 7571 00	staq 	pr6|66		old_dtem
+						STATEMENT 1 ON LINE 50
+	unspec (OLD_DTEM) = ""b;
+
+000025  aa   777755 2370 04	ldaq 	-19,ic		000002 = 000000000000 000000000000
+000026  aa  6 00112 7571 00	staq 	pr6|74
+						STATEMENT 1 ON LINE 51
+	OLD_DTEM.fs_time = ep -> entry.dtem;
+
+000027  aa  5 00003 2351 00	lda  	pr5|3		entry.dtem
+000030  aa   000024 7730 00	lrl  	20
+000031  aa  6 00112 6771 00	eraq 	pr6|74		OLD_DTEM.fs_time
+000032  aa   000060 3770 04	anaq 	48,ic		000112 = 000000177777 777777600000
+000033  aa  6 00112 6551 00	ersa 	pr6|74		OLD_DTEM.fs_time
+000034  aa  6 00113 6561 00	ersq 	pr6|75		OLD_DTEM.fs_time
+						STATEMENT 1 ON LINE 52
+	unspec (time) = unspec (OLD_DTEM);
+
+000035  aa  6 00112 2371 00	ldaq 	pr6|74
+000036  aa  6 00106 7571 00	staq 	pr6|70
+						STATEMENT 1 ON LINE 53
+	if (time - clock ()) > 2 * 1000 * 1000		/* 2 seconds */
+	then signal bad_dir_;
+
+000037  aa  0 01435 7001 00	tsx0 	pr0|797		clock_mac
+000040  aa   000000 5330 00	negl 	0
+000041  aa  6 00106 0771 00	adaq 	pr6|70		time
+000042  aa  6 00124 7571 00	staq 	pr6|84
+000043  aa   777735 2350 04	lda  	-35,ic		000000 = 000007502200
+000044  aa   000044 7330 00	lrs  	36
+000045  aa  6 00124 1171 00	cmpaq	pr6|84
+000046  aa   000004 6050 04	tpl  	4,ic		000052
+000047  aa   000010 7260 07	lxl6 	8,dl
+000050  aa   777734 3520 04	epp2 	-36,ic		000004 = 142141144137
+000051  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 56
+	continue = "1"b;
+
+000052  aa   400000 2350 03	lda  	131072,du
+000053  aa  6 00100 7551 00	sta  	pr6|64		continue
+						STATEMENT 1 ON LINE 58
+	do while (continue);
+
+000054  aa  6 00100 2351 00	lda  	pr6|64		continue
+000055  aa   000026 6000 04	tze  	22,ic		000103
+						STATEMENT 1 ON LINE 59
+	     continue = "0"b;
+
+000056  aa  6 00100 4501 00	stz  	pr6|64		continue
+						STATEMENT 1 ON LINE 60
+	     time = clock ();
+
+000057  aa  0 01435 7001 00	tsx0 	pr0|797		clock_mac
+000060  aa  6 00106 7571 00	staq 	pr6|70		time
+						STATEMENT 1 ON LINE 61
+	     unspec (CLOCK) = unspec (time);
+
+000061  aa  6 00106 2371 00	ldaq 	pr6|70
+000062  aa  6 00110 7571 00	staq 	pr6|72
+						STATEMENT 1 ON LINE 62
+	     new_dtem = bin (CLOCK.fs_time, 36);
+
+000063  aa  6 00110 2371 00	ldaq 	pr6|72		CLOCK.fs_time
+000064  aa   000024 7370 00	lls  	20
+000065  aa   000044 7730 00	lrl  	36
+000066  aa  6 00104 7571 00	staq 	pr6|68		new_dtem
+						STATEMENT 1 ON LINE 63
+	     if new_dtem ^> old_dtem
+	     then do;
+
+000067  aa  6 00102 1171 00	cmpaq	pr6|66		old_dtem
+000070  aa   777764 6054 04	tpnz 	-12,ic		000054
+						STATEMENT 1 ON LINE 65
+		     if (new_dtem + 5) < old_dtem
+		     then /* if branch dtem has gone too far in future */
+			continue = "1"b;
+
+000071  aa   000005 0330 07	adl  	5,dl
+000072  aa  6 00102 1171 00	cmpaq	pr6|66		old_dtem
+000073  aa   000004 6050 04	tpl  	4,ic		000077
+000074  aa   400000 2350 03	lda  	131072,du
+000075  aa  6 00100 7551 00	sta  	pr6|64		continue
+000076  aa   777756 7100 04	tra  	-18,ic		000054
+						STATEMENT 1 ON LINE 68
+		     else new_dtem = old_dtem + 1;
+
+000077  aa  6 00102 2371 00	ldaq 	pr6|66		old_dtem
+000100  aa   000001 0330 07	adl  	1,dl
+000101  aa  6 00104 7571 00	staq 	pr6|68		new_dtem
+						STATEMENT 1 ON LINE 69
+		end;
+
+						STATEMENT 1 ON LINE 70
+	end;
+
+000102  aa   777752 7100 04	tra  	-22,ic		000054
+						STATEMENT 1 ON LINE 71
+	ep -> entry.dtem = bit (new_dtem, 36);
+
+000103  aa  6 00104 2371 00	ldaq 	pr6|68		new_dtem
+000104  aa   000002 6050 04	tpl  	2,ic		000106
+000105  aa   000000 5330 00	negl 	0
+000106  aa   000044 7370 00	lls  	36
+000107  aa  6 00122 3735 20	epp7 	pr6|82,*		ep
+000110  aa  7 00003 7551 00	sta  	pr7|3		entry.dtem
+						STATEMENT 1 ON LINE 72
+     end change_dtem;
+
+000111  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END PROCEDURE change_dtem
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

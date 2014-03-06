@@ -1,0 +1,250 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXjgGpzzn
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1006.4 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 /* format: style3 */
+       14 
+       15 salv_data:
+       16      procedure;
+       17 
+       18 /* salv_data		- Salvager Ring Zero Data Base. */
+       19 /* Converted to create_data_segment_ April 6, 1976 by Bernard Greenberg */
+       20 /* fault-producer added BIM 2/82 */
+       21 /* Scavenger items added, July 1982, J. Bongiovanni */
+       22 
+       23 dcl	1 salv_data	aligned,			/* salv data structure */
+       24 	  2 lock		aligned,
+       25 	    3 pid		bit (36) aligned init (""b),
+       26 	    3 event	bit (36) aligned init ("777777777776"b3),
+       27 	    3 flags	aligned,
+       28 	      4 notify_sw	bit (1) unaligned init ("0"b),
+       29 	      4 pad	bit (35) unaligned init (""b),
+       30 	  2 debug		bit (1) aligned init ("0"b),	/* want printout of normal deletion stuff */
+       31 	  2 dump		bit (1) aligned init ("0"b),	/* switch to dump dirs on error */
+       32 	  2 print_path	bit (1) aligned init ("0"b),	/* switch to print pathnames */
+       33 	  2 on_line	bit (1) aligned init ("0"b),	/* switch for on-line salvaging */
+       34 	  2 rpv		bit (1) aligned init ("0"b),	/* switch for rpv mode */
+       35 	  2 vol_read_ahead	fixed bin init (4),		/* page read ahead param */
+       36 	  2 debugging_fault_dir_checker
+       37 			bit (1) aligned init ("0"b),	/* If this is turned on, salv_dir_checker_ will intentionally take a fault! */
+       38 	  2 error_severity	fixed bin init (3),		/* syserr severity for fatal scavenger errors */
+       39 	  2 end		bit (0);
+       40 
+       41 
+       42 dcl	create_data_segment_
+       43 			entry (ptr, fixed bin (35));
+       44 dcl	com_err_		entry options (variable);
+       45 dcl	code		fixed bin (35);
+       46 dcl	1 cdsa		like cds_args aligned;
+       47 dcl	cleanup		condition;
+       48 
+       49 dcl	excl		char (32) dim (3) init ("pad*", "end", "mark*");
+       50 dcl	(addr, currentsize, hbound, string, null)
+       51 			builtin;
+       52 
+       53 
+       54 	string (cdsa.switches) = "0"b;
+       55 	cdsa.have_text = "1"b;
+       56 	cdsa.sections (1).struct_name = "salv_data";
+       57 	cdsa.seg_name = "salv_data";
+       58 	cdsa.sections (1).p = addr (salv_data);
+       59 	cdsa.sections (1).len = currentsize (salv_data);
+       60 	cdsa.exclude_array_ptr = addr (excl);
+       61 	cdsa.num_exclude_names = hbound (excl, 1);
+       62 	call create_data_segment_ (addr (cdsa), code);
+       63 	if code ^= 0
+       64 	then call com_err_ (code, "salv_data", "creating data segment");
+       65 	return;
+       66 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       67 
+       68      end salv_data;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0900.2  !BBBJZjXjgGpzzn.pl1               >spec>install>1115>salv_data.cds
+67           1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 50 ref 58 60 62 62
+cds_args                               based           structure                level 1 dcl 1-3
+cdsa                            000114 automatic       structure                level 1 dcl 46 set ref 62 62
+code                            000113 automatic       fixed bin(35,0)          dcl 45 set ref 62* 63 63*
+com_err_                        000014 constant        entry                    external dcl 44 ref 63
+create_data_segment_            000012 constant        entry                    external dcl 42 ref 62
+currentsize                                            builtin function         dcl 50 ref 59
+debug                     3     000100 automatic       bit(1)                   initial level 2 dcl 23 set ref 23*
+debugging_fault_dir_checker
+                         11     000100 automatic       bit(1)                   initial level 2 dcl 23 set ref 23*
+dump                      4     000100 automatic       bit(1)                   initial level 2 dcl 23 set ref 23*
+error_severity           12     000100 automatic       fixed bin(17,0)          initial level 2 dcl 23 set ref 23*
+event                     1     000100 automatic       bit(36)                  initial level 3 dcl 23 set ref 23*
+excl                            000170 automatic       char(32)                 initial array packed unaligned dcl 49 set ref 49*
+                                                                                  49* 49* 60 61
+exclude_array_ptr        42     000114 automatic       pointer                  level 2 dcl 46 set ref 60*
+flags                     2     000100 automatic       structure                level 3 dcl 23
+have_text                44(02) 000114 automatic       bit(1)                   level 3 packed packed unaligned dcl 46 set ref 55*
+hbound                                                 builtin function         dcl 50 ref 61
+len                       2     000114 automatic       fixed bin(18,0)          array level 3 dcl 46 set ref 59*
+lock                            000100 automatic       structure                level 2 dcl 23
+notify_sw                 2     000100 automatic       bit(1)                   initial level 4 packed packed unaligned dcl 23 set
+                                                                                  ref 23*
+num_exclude_names        40     000114 automatic       fixed bin(17,0)          level 2 dcl 46 set ref 61*
+on_line                   6     000100 automatic       bit(1)                   initial level 2 dcl 23 set ref 23*
+p                               000114 automatic       pointer                  array level 3 dcl 46 set ref 58*
+pad                       2(01) 000100 automatic       bit(35)                  initial level 4 packed packed unaligned dcl 23 set
+                                                                                  ref 23*
+pid                             000100 automatic       bit(36)                  initial level 3 dcl 23 set ref 23*
+print_path                5     000100 automatic       bit(1)                   initial level 2 dcl 23 set ref 23*
+rpv                       7     000100 automatic       bit(1)                   initial level 2 dcl 23 set ref 23*
+salv_data                       000100 automatic       structure                level 1 dcl 23 set ref 58 59
+sections                        000114 automatic       structure                array level 2 dcl 46
+seg_name                 30     000114 automatic       char(32)                 level 2 dcl 46 set ref 57*
+string                                                 builtin function         dcl 50 set ref 54*
+struct_name               3     000114 automatic       char(32)                 array level 3 dcl 46 set ref 56*
+switches                 44     000114 automatic       structure                level 2 dcl 46 set ref 54*
+vol_read_ahead           10     000100 automatic       fixed bin(17,0)          initial level 2 dcl 23 set ref 23*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+cleanup                         000162 stack reference condition                dcl 47
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+null                                                   builtin function         dcl 50
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+salv_data                       000024 constant        entry                    external dcl 15
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       242         260     170         252
+Length      1376     170        16        1102      52           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+salv_data                           174 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+salv_data                000100 salv_data                   salv_data
+                         000113 code                        salv_data
+                         000114 cdsa                        salv_data
+                         000170 excl                        salv_data
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000023        23 000031        49 000052        54 000100        55 000101        56 000103        57 000106
+     58 000111        59 000113        60 000115        61 000117        62 000121        63 000133        65 000165
+
+
+Object Segment >spec>install>1115>salv_data
+Created on 11/11/89  1006.5 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0      14     122     132     132
+Length     302      14     106      10     134       0
+
+
+11 Definitions:
+
+
+segname:    salv_data
+
+text|3          debug
+text|11         debugging_fault_dir_checker
+text|4          dump
+text|12         error_severity
+text|0          lock
+text|6          on_line
+text|5          print_path
+text|7          rpv
+symb|0          symbol_table
+text|10         vol_read_ahead
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

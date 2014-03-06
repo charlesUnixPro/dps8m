@@ -1,0 +1,160 @@
+	COMPILATION LISTING OF SEGMENT requote_string_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1001.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 requote_string_: proc (instring) returns (char (*));
+       14 
+       15 /* How difficult is PL/I for character string manipulation */
+       16 /* B. Greenberg 5/31/77 */
+       17 /* E. N. Kittlitz. added quote_string entry. */
+       18 
+       19 dcl  instring char (*);
+       20 dcl  outstringl fixed bin (21);
+       21 dcl  QUOTE char (1) static init ("""") options (constant);
+       22 dcl  QUOTEQUOTE char (2) static init ("""""") options (constant);
+       23 dcl  outstring char (2 * length (instring) + 2);
+       24 dcl (i, j) fixed bin (21);
+       25 dcl  requote_sw bit (1) aligned;
+       26 
+       27 dcl (index, length, substr) builtin;
+       28 
+       29 	requote_sw = "1"b;
+       30 	outstringl = 1;
+       31 	substr (outstring, 1, 1) = QUOTE;
+       32 	i = 1;
+       33 nextj:	j = index (substr (instring, i), QUOTE);
+       34 	if j = 0 then do;
+       35 	     substr (outstring, outstringl + 1, length (instring) - i + 1)
+       36 		= substr (instring, i);
+       37 	     outstringl = outstringl + length (instring) - i + 1;
+       38 	     if requote_sw then do;
+       39 		outstringl = outstringl + 1;
+       40 		substr (outstring, outstringl, 1) = QUOTE;
+       41 	     end;
+       42 	     return (substr (outstring, 1, outstringl));
+       43 	end;
+       44 	substr (outstring, outstringl + 1, j - 1) = substr (instring, i, j - 1);
+       45 	outstringl = outstringl + j;
+       46 	substr (outstring, outstringl, 2) = QUOTEQUOTE;
+       47 	outstringl = outstringl + 1;
+       48 	i = i + j;
+       49 	go to nextj;
+       50 
+       51 quote_string: entry (instring) returns (char (*));
+       52 
+       53 	requote_sw = "0"b;
+       54 	outstringl = 0;
+       55 	i = 1;
+       56 	go to nextj;
+       57 
+       58      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  requote_string_.pl1               >spec>install>1110>requote_string_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+QUOTE                                  constant        char(1)                  initial packed unaligned dcl 21 ref 31 33 40
+QUOTEQUOTE                             constant        char(2)                  initial packed unaligned dcl 22 ref 46
+i                               000101 automatic       fixed bin(21,0)          dcl 24 set ref 32* 33 35 35 37 44 48* 48 55*
+index                                                  builtin function         dcl 27 ref 33
+instring                               parameter       char                     packed unaligned dcl 19 ref 13 23 33 35 35 37 44 51
+j                               000102 automatic       fixed bin(21,0)          dcl 24 set ref 33* 34 44 44 45 48
+length                                                 builtin function         dcl 27 ref 23 35 37
+outstring                       000101 automatic       char                     packed unaligned dcl 23 set ref 31* 35* 40* 42 44*
+                                                                                  46*
+outstringl                      000100 automatic       fixed bin(21,0)          dcl 20 set ref 30* 35 37* 37 39* 39 40 42 44 45* 45
+                                                                                  46 47* 47 54*
+requote_sw                      000103 automatic       bit(1)                   dcl 25 set ref 29* 38 53*
+substr                                                 builtin function         dcl 27 set ref 31* 33 35* 35 40* 42 44* 44 46*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+nextj                           000052 constant        label                    dcl 33 ref 49 56
+quote_string                    000170 constant        entry                    external dcl 51
+requote_string_                 000026 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       246         256     211         256
+Length       422     211        10         127      34           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+requote_string_                      76 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+requote_string_          000100 outstringl                  requote_string_
+                         000101 outstring                   requote_string_
+                         000101 i                           requote_string_
+                         000102 j                           requote_string_
+                         000103 requote_sw                  requote_string_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_auto_adj      ext_entry_desc      return_chars_eis
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     23 000003        13 000022        29 000042        30 000044        31 000046        32 000051        33 000052
+     34 000074        35 000075        37 000116        38 000123        39 000125        40 000126        42 000133
+     44 000142        45 000155        46 000157        47 000163        48 000164        49 000165        51 000166
+     53 000204        54 000205        55 000206        56 000210
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

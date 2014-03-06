@@ -1,0 +1,3195 @@
+	COMPILATION LISTING OF SEGMENT ncp_util_
+	Compiled by: Multics PL/I Compiler, Release 28d, of October 4, 1983
+	Compiled at: Honeywell Multics Op. - System M
+	Compiled on: 07/02/84  1321.2 mst Mon
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 ncp_util_:
+       12           procedure ();
+       13 
+       14 /*             This procedure contains some utility procedures used to find     */
+       15 /*        socket entries, find host entries, etc.                               */
+       16 
+       17 /*        Originally created by D. M. Wells, 1975.12.05                         */
+       18 /*        Modified by D. M. Wells, August, 1977, to use clock builtin.          */
+       19 /*	Modified 3/29/78 by B. Greenberg for extended host addresses 	*/
+       20 
+       21           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+       22 
+       23      declare
+       24          (P_link_num fixed binary (8),
+       25           P_host_num fixed binary (32),
+       26           P_msg_len fixed binary (24),
+       27           P_socket_num fixed binary (32),
+       28           P_error_code fixed binary (35),                   /* a standard Multics status code                 */
+       29           P_create bit (1),
+       30           P_privilege bit (1),
+       31           P_link_gender bit (1),
+       32           P_socket_indx bit (36),
+       33           P_host_ptr pointer,
+       34           P_msg_ptr pointer,
+       35           (P_global_data_ptr, P_proc_tbl_ptr) pointer,
+       36           P_sock_ptr pointer)
+       37                parameter;
+       38 
+       39           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+       40 
+       41      declare
+       42          (val_level fixed binary (3),
+       43           (array_bound, array_indx) fixed binary (17),
+       44           host_indx fixed binary (17),
+       45           num_trans fixed binary (24),
+       46           found bit (1),
+       47           entry_ptr pointer,
+       48           host_ptr pointer,
+       49           (npr, spr) pointer,
+       50           lockp pointer)
+       51                automatic;
+       52 
+       53      declare
+       54           1 match_socket unaligned automatic like socket.foreign_socket;
+       55 
+       56           /* * * * * BASED & TEMPLATE DECLARATIONS * * * * */
+       57 
+       58      declare
+       59           based_ptr pointer
+       60                based;
+       61 
+       62      declare
+       63           1 host_array (1) aligned based like host,
+       64           1 proc_array (1) aligned based like pdt,
+       65           1 socket_array (1) aligned based like socket;
+       66 
+       67           /* * * * * EXTERNAL STATIC DECLARATIONS  * * * * */
+       68 
+       69      declare
+       70          (ncp_params_$timeout_period fixed binary (71),
+       71           ncp_tables_$tracing_info bit (36) aligned,
+       72           pds$network_ptbl_idx fixed binary (17),
+       73           pds$process_id bit (36) aligned)
+       74                external static;
+       75 
+       76      declare
+       77          (ncp_tables_$host_tbl,
+       78           ncp_tables_$meter_cells,
+       79           ncp_tables_$ncp_data,
+       80           ncp_tables_$proc_tbl,
+       81           ncp_tables_$socket_tbl)
+       82                external static;
+       83 
+       84      declare
+       85          (error_table_$bad_index,
+       86           error_table_$bad_processid,
+       87           error_table_$bad_ring_brackets,
+       88           error_table_$imp_down,
+       89           error_table_$net_fhost_down,
+       90           error_table_$net_fhost_inactive,
+       91           error_table_$net_fimp_down,
+       92           error_table_$net_not_up,
+       93           error_table_$net_socket_not_found,
+       94           error_table_$net_table_space)
+       95                fixed binary (35) external static;
+       96 
+       97           /* * * * * ENTRY & PROCEDURE DECLARATIONS  * * * */
+       98 
+       99      declare
+      100           imp_write constant entry (fixed bin (17), ptr, fixed bin (24), fixed bin (24), fixed bin (35)),
+      101           level$get constant entry () returns (fixed bin (3)),
+      102           ncp_assign_$make_process_slot constant entry (fixed bin (17), fixed bin (35)),
+      103           ncp_control_$ncp_change_global_state constant entry (fixed bin (3), char (*), fixed bin (35)),
+      104           ncp_lock_$lock_wait constant entry (ptr, fixed bin (35)),
+      105           ncp_lock_$lock_unlock constant entry (ptr, fixed bin (35)),
+      106           ncp_trace_ constant entry options (variable),
+      107           ncp_trace_$trace_control_msg constant entry (ptr, fixed bin (24));
+      108 
+      109      declare
+      110           (addr, binary, bit, clock, hbound, lbound, min, mod, null, string)
+      111                builtin;
+      112 
+      113           /* * * * * INCLUDE FILES * * * * * * * * * * * * */
+      114 
+      115           
+  1     2 /*        BEGIN include file "ncp_connection_dcls.incl.pl1" --                  */
+  1     3 
+  1     4 /*             This include file contains declarations for the structures       */
+  1     5 /*        maintained by the NCP which contain information about Host-Host       */
+  1     6 /*        connections.  Currently, this is the information about sockets,       */
+  1     7 /*        hosts, and requests-for-connection.                                   */
+  1     8 
+  1     9 /*        Originally created by D. M. Wells, Summer, 1975.                      */
+  1    10 /*	Modified by B. Greenberg, Spring '78 for new leader support */
+  1    11 /*	        Modified by C. Hornig, July 1979 for new host number format */
+  1    12 
+  1    13      declare
+  1    14           1 socket aligned based,                           /* information we keep on a per-socket basis      */
+  1    15              2 event_channel fixed binary (71),             /* event channel of using process                 */
+  1    16              2 overseer_event_channel fixed binary (71),    /* event chanel of overseer process               */
+  1    17              2 lock bit (36) aligned,                       /* lock to prevent simultaneous updating          */
+  1    18              2 process_id bit (36) aligned,                 /* process id of using process                    */
+  1    19              2 overseer_process_id bit (36) aligned,        /* process id of overseer process                 */
+  1    20              2 bit_allocation fixed binary (32),            /* bit allocation outstanding on attached link    */
+  1    21              2 msg_allocation fixed binary (16),            /* message allocation outstanding on link         */
+  1    22 
+  1    23              2 local_socket unaligned like socket.foreign_socket,     /* identification of local socket       */
+  1    24              2 foreign_socket unaligned,                    /* identification of foreign socket               */
+  1    25 	      3 host,				/* id of this host				*/
+  1    26 	        4 net bit (8),			/* network id				*/
+  1    27 	        4 host bit (8),			/* port on imp				*/
+  1    28 	        4 imp bit (16),			/* imp id					*/
+  1    29                 3 socket_num bit (32),                      /* actual socket number                           */
+  1    30                 3 pad bit (8),
+  1    31 
+  1    32              2 rfc_queue fixed binary (17) unaligned,       /* RFC table index of next block for this         */
+  1    33                                                             /* socket, 0 if queue is empty                    */
+  1    34              2 link_number fixed binary (17) unaligned,     /* number of link assigned for connection         */
+  1    35 
+  1    36              2 host_entry_index fixed binary (17) unaligned,          /* index in host table of foreign       */
+  1    37                                                                       /* host involved in connection          */
+  1    38              2 impdim_index fixed binary (17) unaligned,    /* index by which IMPDIM knows about connection   */
+  1    39              2 state bit (6) unaligned,                     /* finite-state-machine information               */
+  1    40              2 byte_size bit (8) unaligned,                 /* byte-size of connections                       */
+  1    41              2 send_gender bit (1) unaligned,               /* on iff this is a transmit socket               */
+  1    42              2 allow_interrupts bit (1) unaligned,          /* on iff INS and INR should be signalled to user */
+  1    43              2 deactivate bit (1) unaligned,                /* on iff this socket should be deactivated when  */
+  1    44                                                             /* matching network messages are finally received */
+  1    45              2 allow_rfc_queuing bit (1) unaligned,         /* on iff we should allow multiple outstanding    */
+  1    46                                                             /* RFC's for this socket                          */
+  1    47              2 extra_bits bit (12) unaligned,
+  1    48 
+  1    49              2 overseer_validation_level bit (3) unaligned,           /* ring of highest overseer control     */
+  1    50              2 validation_level bit (3) unaligned,                    /* ring of highest operator control     */
+  1    51 
+  1    52              2 overseer_lock_id bit (36) aligned,           /* lock id of the overseer process                */
+  1    53              2 umodes bit (36) aligned,                     /* 36 bits that the users can play with           */
+  1    54              2 time_state_changed fixed binary (71),        /* time that the socket state last changed        */
+  1    55              2 signal_event_channel fixed binary (71),      /* chanel to signal over when get INS or INR      */
+  1    56              2 socket_index bit (36) aligned,               /* the handle we gave user for future reference   */
+  1    57              2 history aligned,                             /* state of socket over recent past history       */
+  1    58                 3 num_state_changes fixed binary (11) unaligned,      /* small field, so only keep mod        */
+  1    59                 3 prev_state (0 : 3) fixed binary (5) unaligned;      /* past N states, kept in rotation      */
+  1    60 
+  1    61      declare
+  1    62           1 host aligned based,                             /* information we retain about a foreign host     */
+  1    63              2 lock bit (36) aligned,                       /* lock to prevent simultaneous updating          */
+  1    64              2 rcv_link_index fixed binary (17) unaligned,  /* impdim index of read link for control msgs     */
+  1    65              2 xmit_link_index fixed binary (17) unaligned, /* impdim index of write link for control msgs    */
+  1    66              2 read_links_assigned bit (32) unaligned,      /* a bit is on iff we have assigned that link     */
+  1    67              2 read_link_padd bit (4) unaligned,
+  1    68 	   2 xhost_number_pad bit (9) unaligned,
+  1    69              2 host_state bit (6) unaligned,                /* stae of communications with this host          */
+  1    70              2 previous_host_state bit (6) unaligned,       /* last state of this host                        */
+  1    71              2 state_pad bit (15) unaligned,
+  1    72              2 time_state_changed fixed binary (71),        /* time when host state last changed              */
+  1    73              2 read_links_used bit (32) unaligned,          /* bit is on if link has been used "recently"     */
+  1    74              2 read_link_used_pad bit (4) unaligned,
+  1    75              2 num_connections fixed binary (17) unaligned, /* times we attached links for this host          */
+  1    76              2 hash_index fixed binary (17) unaligned,      /* table index of this host entry                 */
+  1    77 	   2 host_number fixed bin (32) aligned,	/* host number of this host			*/
+  1    78 	   2 host_number_pad fixed bin (35);
+  1    79 
+  1    80      declare
+  1    81           1 rcvd_rfc aligned based,                         /* info about a rcvd Request for Connection       */
+  1    82              2 foreign_socket unaligned like socket.foreign_socket,   /* foreign socket in RFC msg            */
+  1    83              2 foreign_hosts_choice fixed binary (17) unaligned,      /* link or size that other host chose   */
+  1    84              2 next_entry fixed binary (17) unaligned,                /* next RFC entry in queue for socket   */
+  1    85              2 padding (1) fixed binary (35);
+  1    86 
+  1    87      declare
+  1    88 	1 host_address based aligned,			/* Form of a host address			*/
+  1    89 	   2 net bit (8) unaligned,			/* Netwwork ID				*/
+  1    90 	   2 host bit (8) unaligned,			/* Host Port				*/
+  1    91 	   2 imp bit (16) unaligned;			/* IMP ID					*/
+  1    92 				/* Duplicated because of PL/I multi-like restriction */
+  1    93 
+  1    94 /*        END of include file ncp_connection_dcls.incl.pl1                      */
+  1    95 
+      115 
+      116           
+  2     2 /*             "ncp_constants_dcls.incl.pl1" -- include file to       */
+  2     3 /*        declare some constants used throughout the Multics Network  */
+  2     4 /*        Control Program (NCP).                                      */
+  2     5 
+  2     6 /*        Originally created by D. M. Wells, 1975, May 19.            */
+  2     7 
+  2     8      declare
+  2     9          (NCP_DOWN            initial (0),                  /* the NCP has been shutdown normally             */
+  2    10           NCP_UP_IMP_DOWN     initial (1),                  /* the NCP is up, but the IMP is unreachable      */
+  2    11           NCP_UP              initial (2),                  /* the NCP is up and running normally             */
+  2    12           NCP_CRASHED         initial (-1))                 /* the NCP has crashed itself                     */
+  2    13                fixed binary (3) internal static options (constant);
+  2    14 
+  2    15      declare
+  2    16          (READ_GENDER         initial ("0"b),               /* Read sockets are even numbers                  */
+  2    17           WRITE_GENDER        initial ("1"b))               /* Write sockets ar odd numbers                   */
+  2    18                bit (1) internal static options (constant);
+  2    19 
+  2    20      declare
+  2    21          (HOST_OFF            initial (0),                  /* this host is not enabled for communications    */
+  2    22           HOST_UP             initial (1),                  /* Host is up and everything ok                   */
+  2    23           HOST_RST            initial (2),                  /* a Host-Host RST command has been sent          */
+  2    24           HOST_DOWN           initial (3),                  /* Foreign host is down                           */
+  2    25           HOST_ON             initial (4))                  /* Foreign host is enabled, but not RST yet       */
+  2    26                fixed binary (6) internal static options (constant);
+  2    27 
+  2    28      declare
+  2    29          (SOCK_UNASSIGNED     initial (0),                  /* This socket entry is not in use currently      */
+  2    30           SOCK_ASSIGNED       initial (1),                  /* Socket has been assigned and is quiescent      */
+  2    31           SOCK_LISTENING      initial (2),                  /* Socket is listening for incoming-RFCs          */
+  2    32           SOCK_RFC_RCVD       initial (3),                  /* Socket has received RFC from foreign socket    */
+  2    33           SOCK_RFC_ABORTED    initial (4),                  /* CLS  received for unacknowledged RFC           */
+  2    34           SOCK_RFC_SENT       initial (5),                  /* RFC sent to foreign socket, but no reply       */
+  2    35           SOCK_CONNECTED      initial (6),                  /* Socket is connected to foreign socket          */
+  2    36           SOCK_CLS_WAIT       initial (7),                  /* CLS issued, waiting for reply CLS              */
+  2    37                                                             /* State 8 is not currently defined               */
+  2    38           SOCK_DATA_WAIT      initial (9),                  /* User requested close, but data still here      */
+  2    39           SOCK_RFNM_WAIT      initial (10),                 /* User requested close, but waiting on last RFNM */
+  2    40           SOCK_CLS_READ       initial (11),                 /* CLS received, but data still in buffers        */
+  2    41                                                             /* State 12 is not currently defined              */
+  2    42           SOCK_BROKEN         initial (13),                 /* Socket has been involved in some NCP anomaly   */
+  2    43           SOCK_RESET          initial (14))                 /* Socket was connected to host that was reset    */
+  2    44                fixed binary (6) internal static options (constant);
+  2    45 
+  2    46      declare
+  2    47          (SOCK_INDX_MASK      initial ("000000777777"b3),   /* mask to get out actual array index             */
+  2    48           SOCK_UNIQUE_MASK    initial ("377777000000"b3))   /* mask to get out incrementing part of indx      */
+  2    49                bit (36) internal static options (constant);
+  2    50 
+  2    51      declare
+  2    52          (ANY_TRACING         initial ("400000000000"b3),             /* if any tracing is occurring          */
+  2    53           PRINTER_TRACING     initial ("200000000000"b3),             /* if tracing to the ptr is happening   */
+  2    54           SYSERR_LOG_TRACING  initial ("100000000000"b3),             /* if tracing to syserr log mechanism   */
+  2    55 
+  2    56           TRACE_CTL_MSGS      initial ("004000000000"b3),             /* if host-host ctl msgs should be trcd */
+  2    57           TRACE_PROCESS_INFO  initial ("002000000000"b3),             /* if process control should be trcd    */
+  2    58           TRACE_DATA_FLOW     initial ("001000000000"b3),             /* if flow of user data to be traced    */
+  2    59 
+  2    60           TRACE_NCP_RING      initial ("000400000000"b3),             /* if ncp_ring_ should be traced        */
+  2    61           TRACE_NCP_ACCESS    initial ("000200000000"b3),             /* if ncp_access_ should be traced      */
+  2    62           TRACE_NCP_DAEMON    initial ("000100000000"b3),             /* if ncp_daemon_ should be traced      */
+  2    63           TRACE_NCP_CONTROL   initial ("000040000000"b3),             /* if ncp_control_ should be traced     */
+  2    64           TRACE_NCP_TBOP      initial ("000020000000"b3),             /* if ncp_tbop_ should be traced        */
+  2    65           TRACE_NCP_IO        initial ("000010000000"b3))             /* if ncp_io_ should be traced          */
+  2    66                bit (36) aligned internal static options (constant);
+  2    67 
+  2    68 /*        end of include file "ncp_constants_dcls.incl.pl1            */
+  2    69 
+      116 
+      117           
+  3     2 /*        BEGIN include file ncp_data_dcls.incl.pl1 --                          */
+  3     3 
+  3     4 /*             This include file contains declarations of structures kept       */
+  3     5 /*        in the NCP data base which aren't associated directly with            */
+  3     6 /*        Network connections or process control.                               */
+  3     7 
+  3     8 /*        Originally created by D. M. Wells, Jan., 1976 by altering a           */
+  3     9 /*                  previously existing include file.                           */
+  3    10      declare
+  3    11           1 ncp_dt aligned based,                           /* Information about global state of NCP          */
+  3    12              2 ncp_ev_chan fixed binary (71),               /* event channel id of NCP Daemon process         */
+  3    13              2 ncp_procid bit (36),                         /* process id of NCP Daemon process               */
+  3    14              2 ncp_up fixed binary (2),                     /* -1 crashed, 0 uninit, 1 imp down, 2 up         */
+  3    15              2 htbl_size fixed binary (17),                 /* max size of host table in entries              */
+  3    16              2 rtbl_size fixed binary (17),                 /* max size of RFC table in entries               */
+  3    17              2 stbl_size fixed binary (17),                 /* max size of socket table in entries            */
+  3    18              2 size_pad fixed binary (17),
+  3    19 
+  3    20              2 htbl_gent fixed binary (17),                 /* max host entry used                            */
+  3    21              2 rtbl_gent fixed binary (17),                 /* max RFC entry used                             */
+  3    22              2 stbl_gent fixed binary (17),                 /* max socket entry used                          */
+  3    23              2 gent_pad fixed binary (17),
+  3    24 
+  3    25              2 htbl_lock bit (36) aligned,                  /* lock for host table                            */
+  3    26              2 rtbl_lock bit (36) aligned,                  /* lock for RFC table                             */
+  3    27              2 stbl_lock bit (36) aligned,                  /* lock for socket table                          */
+  3    28              2 lock_pad bit (36) aligned,
+  3    29 
+  3    30              2 state_change_reason character (32) unaligned,          /* reason for last state change         */
+  3    31 
+  3    32              2 ncp_devx fixed binary (12),                  /* IOAM devx of NCP pseudo-device                 */
+  3    33              2 ncp_state_changes fixed binary (17),         /* number of times NCP has changed state          */
+  3    34              2 spacen1 (14) fixed fixed binary (35),
+  3    35 
+  3    36              2 host_id fixed binary (32),                   /* network identifier of this Multics System      */
+  3    37              2 crash_on_ncp_error bit (1) aligned,          /* on if should crash to trap ncp error */
+  3    38              2 imp_state char (8) aligned,
+  3    39              2 time_imp_state_changed fixed binary (71),
+  3    40              2 time_ncp_state_changed fixed binary (71),
+  3    41 
+  3    42              2 imp_special_message bit (32),
+  3    43              2 imp_state_change_count fixed binary (17),
+  3    44              2 spacen3 (3) fixed binary (17),
+  3    45              2 ptbl_size fixed binary (17),                 /* number of entries in process table             */
+  3    46              2 ptbl_gent fixed binary (17),                 /* index of highest slot in use                   */
+  3    47              2 ptbl_lock bit (36) aligned,                  /* lock word for "proc_tb"                        */
+  3    48 
+  3    49              2 access_dirname character (168) unaligned,              /* dir of access defining segment       */
+  3    50              2 access_ename character (32) unaligned;                 /* entry of access defining segment     */
+  3    51 
+  3    52      declare
+  3    53           1 meter_dt aligned based,                         /* various meters kept by the NCP                 */
+  3    54              2 prev_user_call_time fixed binary (71),
+  3    55              2 prev_daemon_call_time fixed binary (71),
+  3    56              2 accu_time_in_ncp fixed binary (71),
+  3    57              2 accu_time_since_user_call fixed binary (71),
+  3    58 
+  3    59              2 nprocs_in_ncp fixed binary (17),
+  3    60              2 nprocs_inconsistent bit (1),
+  3    61              2 ndaemon_calls fixed binary (17),
+  3    62              2 ncalls (5) fixed binary (17),
+  3    63 
+  3    64              2 net_error_count fixed binary (17),
+  3    65              2 ncp_wakeup_count (7) fixed binary (17),
+  3    66 
+  3    67              2 call_count (0: 31) fixed binary (17),
+  3    68 
+  3    69              2 ctl_mess_count (0: 15) fixed binary (17),
+  3    70 
+  3    71              2 tbop_mf_count (48) fixed binary (17),
+  3    72 
+  3    73              2 eco_time fixed binary (71),
+  3    74              2 erp_time fixed binary (71),
+  3    75              2 eco_host fixed binary (16),
+  3    76              2 erp_host fixed binary (16),
+  3    77              2 num_activations fixed binary (30),           /* number of socket activations performed         */
+  3    78              2 num_processes fixed binary (30);             /* number of processes using the NCP              */
+  3    79 
+  3    80 /*        END include file ncp_data_dcls.incl.pl1 --                            */
+  3    81 
+      117 
+      118           
+  4     2 /*        BEGIN include file ncp_process_dcls.incl.pl1 --                       */
+  4     3 
+  4     4 /*             This include file contains declarations of per-process data.     */
+  4     5 
+  4     6 /*        Originally created by D. M. Wells, Jan, 1976 from a previously        */
+  4     7 /*                  existing include file.                                      */
+  4     8 
+  4     9      declare
+  4    10           1 gdt aligned based,                              /* this holds data to/from outside world          */
+  4    11              2 init_sw fixed binary (30),                   /* set to 620998 iff initialized properly.        */
+  4    12                                                             /* This particular value has  no significance     */
+  4    13              2 error_code fixed binary (35),                /* a code returned by internal modules            */
+  4    14              2 request_code fixed binary (12),              /* type of request to be performed (input)        */
+  4    15              2 ncp_idx bit (36) unaligned,                  /* handle of socket to be manipulated (input)     */
+  4    16              2 state fixed binary (6),                      /* state of the socket (output)                   */
+  4    17              2 privilege_code fixed binary (2),             /* = 0 unpriv, = 1 priv, = 2 daemon               */
+  4    18              2 nbytes fixed binary (24),                    /* number of bytes of data presented (input)      */
+  4    19              2 nelemt fixed binary (24),                    /* number of bytes transmitted (output)           */
+  4    20 
+  4    21              2 areap pointer,                               /* pointer to a supplied area (input)             */
+  4    22              2 fsoc bit (64) unaligned,                     /* foreign socket associated with this request    */
+  4    23              2 fsoc_pad bit (8) unaligned,
+  4    24              2 abort_location label,                        /* label to goto on procedure abort               */
+  4    25 
+  4    26              2 host_tbl_index fixed binary (17),            /* host_tbl index of foreign host                 */
+  4    27              2 proc_id_arg bit (36),                        /* process id argument                            */
+  4    28              2 entry_time fixed binary (71),                /* time NCP was entered by this call              */
+  4    29              2 entry_type fixed binary (17),                /* 1, 2 daemon; 3 userid; 4 process_rq;           */
+  4    30                                                             /* 5 global_chnchn; 6 socket_state; 7 micro       */
+  4    31              2 nprocs_sw fixed binary (30),                 /* = 459248 if nprocs cell was properly set       */
+  4    32              2 event_chn fixed binary (71),                 /* event_channel argument                         */
+  4    33 
+  4    34              2 proc_tbp pointer,                            /* pointer to this process's static info block    */
+  4    35              2 global_queue aligned,                        /* impdim global queue info struct                */
+  4    36                 3 gq_type fixed binary (17),                /* imp_global_state substructure begins here      */
+  4    37                 3 gq_imp_state character (8) unaligned,     /* state of our IMP (up, down?)                   */
+  4    38                 3 gq_message bit (32) aligned,              /* special message sent by IMP                    */
+  4    39 
+  4    40                 3 gq_imp_index fixed binary (17),           /* imp_dim index of this link                     */
+  4    41                 3 gq_host_id fixed binary (32),             /* host identifier of a foreign host              */
+  4    42                 3 gq_link fixed binary (8),                 /* link number of this link                       */
+  4    43                 3 gq_status aligned,                        /* of this link returned by imp_global_state      */
+  4    44                    4 sba (0 : 17) bit (1) unaligned,        /* status bits from imp dim                       */
+  4    45 
+  4    46              2 spaceg2 (14) fixed binary (17);
+  4    47 
+  4    48      declare
+  4    49           1 pdt aligned based,                              /* information about each process using NCP       */
+  4    50              2 gdtp pointer,                                /* points to this call's global_data base         */
+  4    51              2 returnp label,                               /* return label for non-local error goto          */
+  4    52 
+  4    53              2 multuid character (32) unaligned,            /* process group id                               */
+  4    54 
+  4    55              2 netuid bit (24),                             /* Network id of this process                     */
+  4    56              2 lockid bit (36),                             /* lock id of process,  = ""b iff unassigned      */
+  4    57              2 processid bit (36),                          /* process id of this process                     */
+  4    58              2 error_recur fixed binary (17),               /* number of ncp error recursions                 */
+  4    59              2 global_ev_chn fixed binary (71),             /* this process gets changes of NCP state         */
+  4    60              2 num_activations fixed binary (17),
+  4    61              2 proc_devx fixed binary (12),
+  4    62              2 spacep2 (2) fixed binary (17);
+  4    63 
+  4    64      declare
+  4    65           1 error_snapshot aligned based,                   /* snapshot of process info for an NCP error      */
+  4    66              2 ewho character (32) unaligned,               /* process group id of detecting process          */
+  4    67              2 econdition character (32) unaligned,         /* condition signalled                            */
+  4    68 
+  4    69              2 etime fixed binary (71),                     /* time of error                                  */
+  4    70              2 error_number fixed binary (17),
+  4    71              2 spacee1 (5) fixed binary (17),
+  4    72 
+  4    73              2 mc_cond (32) bit (36) aligned,               /* machine conditions                             */
+  4    74              2 if_data (8) fixed binary (17),               /* space for software supplied data               */
+  4    75              2 proc_slot aligned like pdt,                  /* copy of proc_tbl entry for this process        */
+  4    76              2 gdt_data aligned like gdt,                   /* copy of ncp_global_data at time of error       */
+  4    77              2 associated_data (24) bit (36) aligned;       /* add'l info -- usually copy of socket entry     */
+  4    78 
+  4    79 /*        END include file ncp_process_dcls.incl.pl1 --                         */
+  4    80 
+      118 
+      119 
+      120 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      121 
+      122 find_process_info:
+      123           entry (P_proc_tbl_ptr, P_error_code);
+      124 
+      125           npr = addr (ncp_tables_$ncp_data);
+      126 
+      127           call find_proc_info_slot (P_proc_tbl_ptr, P_error_code);
+      128 
+      129           return;
+      130 
+      131           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      132 
+      133 enter_user_NCP_environment:
+      134           entry (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+      135 
+      136           npr = addr (ncp_tables_$ncp_data);
+      137 
+      138           call find_proc_info_slot (P_proc_tbl_ptr, P_error_code);
+      139           if P_error_code ^= 0
+      140           then return;
+      141 
+      142           if npr -> ncp_dt.ncp_up ^= NCP_UP
+      143           then do;
+      144                if npr -> ncp_dt.ncp_up = NCP_UP_IMP_DOWN
+      145                then P_error_code = error_table_$imp_down;
+      146                else P_error_code = error_table_$net_not_up;
+      147 
+      148                return;
+      149                end;
+      150 
+      151           call enter_ncp (P_proc_tbl_ptr, P_global_data_ptr, "1"b, P_error_code);
+      152 
+      153           return;
+      154 
+      155           /* * * * * * * * * * * * * * * * * * * */
+      156 
+      157 enter_daemon_NCP_environment:
+      158           entry (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+      159 
+      160           npr = addr (ncp_tables_$ncp_data);
+      161 
+      162           call find_proc_info_slot (P_proc_tbl_ptr, P_error_code);
+      163           if P_error_code ^= 0
+      164           then return;
+      165 
+      166           if (npr -> ncp_dt.ncp_up ^= NCP_UP) & (npr -> ncp_dt.ncp_up ^= NCP_UP_IMP_DOWN)
+      167           then do;
+      168                P_error_code = error_table_$net_not_up;
+      169 
+      170                return;
+      171                end;
+      172 
+      173           call enter_ncp (P_proc_tbl_ptr, P_global_data_ptr, "0"b, P_error_code);
+      174 
+      175           return;
+      176 
+      177           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      178 
+      179 exit_NCP_environment:
+      180           entry (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+      181 
+      182           npr = addr (ncp_tables_$ncp_data);
+      183 
+      184           call exit_ncp (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+      185 
+      186           return;
+      187 
+      188           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      189 
+      190 
+      191 send_control_message:
+      192           entry (P_host_ptr, P_msg_ptr, P_msg_len, P_error_code);
+      193 
+      194           if ncp_tables_$tracing_info ^= ""b
+      195           then do;
+      196                call ncp_trace_ (TRACE_CTL_MSGS, "CTL MSG to host ^d", binary (P_host_ptr -> host.host_number, 32));
+      197                call ncp_trace_$trace_control_msg (P_msg_ptr, P_msg_len);
+      198                end;
+      199 
+      200           call imp_write ((P_host_ptr -> host.xmit_link_index), P_msg_ptr, P_msg_len, num_trans, P_error_code);
+      201           if P_error_code ^= 0
+      202           then do;
+      203                if (P_error_code ^= error_table_$net_fhost_down) & (P_error_code ^= error_table_$net_fimp_down)
+      204                then return;
+      205                end;
+      206 
+      207           if (P_msg_len ^= num_trans)
+      208           then do;
+      209                P_error_code = error_table_$net_table_space;
+      210                return;
+      211                end;
+      212 
+      213           P_error_code = 0;
+      214 
+      215           return;
+      216 
+      217           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      218 
+      219 unlock_socket:
+      220           entry (P_sock_ptr, P_error_code);
+      221 
+      222           P_error_code = 0;
+      223           entry_ptr = P_sock_ptr;
+      224           P_sock_ptr = null ();
+      225 
+      226           lockp = addr (entry_ptr -> socket.lock);
+      227 
+      228           call unlock_socket_entry ();
+      229 
+      230           return;
+      231 
+      232           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      233 
+      234 find_socket_from_index:
+      235           entry (P_socket_indx, P_privilege, P_sock_ptr, P_error_code);
+      236 
+      237           P_error_code = 0;
+      238           P_sock_ptr = null ();
+      239 
+      240           spr = addr (ncp_tables_$socket_tbl);
+      241           npr = addr (ncp_tables_$ncp_data);
+      242 
+      243           array_indx = binary (P_socket_indx & SOCK_INDX_MASK, 17);
+      244           if (array_indx <= 0) | (array_indx > npr -> ncp_dt.stbl_gent)
+      245           then do;
+      246                P_error_code = error_table_$bad_index;
+      247                return;
+      248                end;
+      249 
+      250           entry_ptr = addr (spr -> socket_array (array_indx));
+      251 
+      252           lockp = addr (entry_ptr -> socket.lock);
+      253           call ncp_lock_$lock_wait (lockp, (0));
+      254 
+      255           if (entry_ptr -> socket.socket_index ^= P_socket_indx) | (entry_ptr -> socket.state = bit (binary (SOCK_UNASSIGNED, 6)))
+      256           then do;
+      257                call unlock_socket_entry ();
+      258                P_error_code = error_table_$bad_index;
+      259                return;
+      260                end;
+      261 
+      262           if P_privilege
+      263           then do;                                          /* ok if acting on behalf of the NCP itself       */
+      264                P_sock_ptr = entry_ptr;
+      265                return;
+      266                end;
+      267 
+      268           val_level = level$get ();
+      269 
+      270           if (entry_ptr -> socket.process_id = pds$process_id)
+      271                     & (binary (entry_ptr -> socket.validation_level, 3) <= val_level)
+      272           then do;                                          /* ok if this is operating process                */
+      273                P_sock_ptr = entry_ptr;
+      274                return;
+      275                end;
+      276 
+      277           if (entry_ptr -> socket.overseer_process_id = pds$process_id)
+      278                     & (binary (entry_ptr -> socket.overseer_validation_level, 3) >= val_level)
+      279           then do;                                          /* ok if this is overseer process                 */
+      280                P_sock_ptr = entry_ptr;
+      281                return;
+      282                end;
+      283 
+      284                                         /*      At this point, we know that we are not going to grant         */
+      285                                         /* access, but we need to tell caller why it has no access. */
+      286 
+      287           call unlock_socket_entry ();
+      288 
+      289           if (entry_ptr -> socket.process_id = pds$process_id) | (entry_ptr -> socket.overseer_process_id = pds$process_id)
+      290           then P_error_code = error_table_$bad_ring_brackets;         /* proc id matched, must be bad ring    */
+      291           else P_error_code = error_table_$bad_processid;             /* proc id didn't match                 */
+      292 
+      293           return;
+      294 
+      295           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      296 
+      297 find_socket_from_socket_number:
+      298           entry (P_host_num, P_socket_num, P_privilege, P_sock_ptr, P_error_code);
+      299 
+      300           P_error_code = 0;
+      301           P_sock_ptr = null ();
+      302 
+      303           spr = addr (ncp_tables_$socket_tbl);
+      304           npr = addr (ncp_tables_$ncp_data);
+      305 
+      306 	string (match_socket.host) = bit (binary (P_host_num,  32), 32);
+      307           match_socket.socket_num = bit (binary (P_socket_num, 32));
+      308           match_socket.pad = ""b;
+      309 
+      310           array_bound = npr -> ncp_dt.stbl_gent;            /* copy this number so it doesn't change on us    */
+      311 
+      312           do array_indx = 1 by 1 to array_bound
+      313                     while (string (spr -> socket_array (array_indx).local_socket) ^= string (match_socket));
+      314                end;
+      315           if array_indx > array_bound
+      316           then do;
+      317                P_error_code = error_table_$net_socket_not_found;
+      318                return;
+      319                end;
+      320 
+      321           entry_ptr = addr (spr -> socket_array (array_indx));
+      322 
+      323           lockp = addr (entry_ptr -> socket.lock);
+      324           call ncp_lock_$lock_wait (lockp, (0));
+      325 
+      326           if (string (entry_ptr -> socket.local_socket) ^= string (match_socket))
+      327                     | (entry_ptr -> socket.state = bit (binary (SOCK_UNASSIGNED, 6)))
+      328           then do;
+      329                call unlock_socket_entry ();
+      330                P_error_code = error_table_$net_socket_not_found;
+      331                return;
+      332                end;
+      333 
+      334           if ^ P_privilege
+      335           then do;
+      336                if (entry_ptr -> socket.process_id ^= pds$process_id) & (entry_ptr -> socket.overseer_process_id ^= pds$process_id)
+      337                then do;
+      338                     call unlock_socket_entry ();
+      339                     P_error_code = error_table_$bad_processid;
+      340                     return;
+      341                     end;
+      342                end;
+      343 
+      344           P_sock_ptr = entry_ptr;
+      345 
+      346           return;
+      347 
+      348           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      349 
+      350 find_socket_from_link_number:
+      351           entry (P_host_num, P_link_num, P_link_gender, P_sock_ptr, P_error_code);
+      352 
+      353           P_error_code = 0;
+      354           P_sock_ptr = null ();
+      355 
+      356           npr = addr (ncp_tables_$ncp_data);
+      357           spr = addr (ncp_tables_$socket_tbl);
+      358 
+      359           host_ptr = find_host_slot (P_host_num, "0"b, (0));
+      360           if host_ptr = null ()
+      361           then do;
+      362                P_error_code = error_table_$net_fhost_inactive;
+      363                return;
+      364                end;
+      365 
+      366           host_indx = host_ptr -> host.hash_index;
+      367 
+      368           array_bound = npr -> ncp_dt.stbl_gent;                   /* copy this number so it doesn't change on us    */
+      369 
+      370           found = "0"b;
+      371           do array_indx = 1 by 1 to array_bound while (^ found);
+      372                entry_ptr = addr (spr -> socket_array (array_indx));
+      373 
+      374                if entry_ptr -> socket.host_entry_index = host_indx
+      375                then if entry_ptr -> socket.link_number = P_link_num
+      376                     then if entry_ptr -> socket.send_gender = P_link_gender
+      377                          then if entry_ptr -> socket.state ^= bit (binary (SOCK_UNASSIGNED, 6))
+      378                               then found = "1"b;
+      379                end;
+      380           if ^ found
+      381           then do;
+      382                P_error_code = error_table_$net_socket_not_found;
+      383                return;
+      384                end;
+      385 
+      386           lockp = addr (entry_ptr -> socket.lock);
+      387           call ncp_lock_$lock_wait (lockp, (0));
+      388 
+      389           if (entry_ptr -> socket.state = bit (binary (SOCK_UNASSIGNED, 6))) | (entry_ptr -> socket.host_entry_index ^= host_indx)
+      390           then do;
+      391                call unlock_socket_entry ();
+      392                P_error_code = error_table_$net_socket_not_found;
+      393                return;
+      394                end;
+      395 
+      396           P_sock_ptr = entry_ptr;
+      397 
+      398           return;
+      399 
+      400           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      401 
+      402                                                   /*      If this entry is called with the create bit on      */
+      403                                                   /* then the caller should have the host table locked.       */
+      404 
+      405 find_host_entry:
+      406           entry (P_host_num, P_create, P_host_ptr, P_error_code);
+      407 
+      408           npr = addr (ncp_tables_$ncp_data);
+      409 
+      410           P_host_ptr = find_host_slot (P_host_num, P_create, P_error_code);
+      411 
+      412           return;
+      413 
+      414 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      415 
+      416 unlock_socket_entry:
+      417           procedure ();
+      418 
+      419           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      420 
+      421           call ncp_lock_$lock_unlock (lockp, (0));
+      422 
+      423           return;
+      424 
+      425 end;      /* end unlock_socket_entry                       */
+      426 
+      427 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      428 
+      429 find_proc_info_slot:
+      430           procedure (p_slot_ptr, p_err_code);
+      431 
+      432           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+      433 
+      434      declare
+      435          (p_err_code fixed binary (35),
+      436           p_slot_ptr pointer)
+      437                parameter;
+      438 
+      439           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+      440 
+      441      declare
+      442          (slot_indx fixed binary (17),
+      443           ppr pointer)
+      444                automatic;
+      445 
+      446           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      447 
+      448           p_err_code = 0;
+      449           p_slot_ptr = null ();
+      450 
+      451           ppr = addr (ncp_tables_$proc_tbl);
+      452 
+      453           do while ("1"b);                                  /* if ioam caused force detach, then we may       */
+      454                                                             /* need to go through here more than once         */
+      455                slot_indx = pds$network_ptbl_idx;
+      456                if slot_indx = 0
+      457                then do;
+      458                     call ncp_assign_$make_process_slot (slot_indx, p_err_code);
+      459                     if p_err_code ^= 0
+      460                     then return;
+      461 
+      462                     pds$network_ptbl_idx = slot_indx;
+      463                     end;
+      464 
+      465                p_slot_ptr = addr (ppr -> proc_array (slot_indx));
+      466                if slot_indx > 0
+      467                then if slot_indx <= npr -> ncp_dt.ptbl_gent
+      468                     then if p_slot_ptr -> pdt.lockid = pds$process_id
+      469                          then return;                       /* everything checked out, give back to caller    */
+      470 
+      471                pds$network_ptbl_idx = 0;
+      472                slot_indx = 0;                               /* the old slot was bad, go make a new one        */
+      473                end;
+      474 
+      475 end;      /* end find_proc_info_slot                       */
+      476 
+      477 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      478 
+      479 enter_ncp:
+      480           procedure (p_pdt_ptr, p_gdt_ptr, p_user_call, p_err_code);
+      481 
+      482           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+      483 
+      484      declare
+      485          (p_err_code fixed binary (35),
+      486           p_user_call bit (1),
+      487           p_gdt_ptr pointer,
+      488           p_pdt_ptr pointer)
+      489                parameter;
+      490 
+      491           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+      492      declare
+      493          (num_procs fixed binary (17),
+      494           (clock_reading, elapsed_time) fixed binary (71),
+      495           mpr pointer)
+      496                automatic;
+      497 
+      498           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      499 
+      500           p_err_code = 0;
+      501 
+      502           mpr = addr (ncp_tables_$meter_cells);
+      503 
+      504           clock_reading = clock ();                         /* get only one clock reading           */
+      505 
+      506           p_pdt_ptr -> pdt.gdtp = null ();                  /* no global info whilst we fix it up   */
+      507           p_gdt_ptr -> gdt.nprocs_sw = 0;
+      508 
+      509           p_gdt_ptr -> gdt.proc_tbp = p_pdt_ptr;            /* put pointer to process info in global data     */
+      510           p_gdt_ptr -> gdt.entry_time = clock_reading;
+      511           p_gdt_ptr -> gdt.init_sw = 620998;                /* say that global data has been inited */
+      512 
+      513           p_pdt_ptr -> pdt.returnp = p_gdt_ptr -> gdt.abort_location; /* remember where to abort to */
+      514           p_pdt_ptr -> pdt.gdtp = p_gdt_ptr;                /* finally remember where global data is          */
+      515 
+      516           if mpr -> meter_dt.prev_daemon_call_time + ncp_params_$timeout_period  < clock_reading
+      517           then do;
+      518                if npr -> ncp_dt.ncp_up > 0
+      519                then call ncp_control_$ncp_change_global_state (NCP_CRASHED, "Daemon processing was tardy.", (0));
+      520 
+      521                p_err_code = error_table_$net_not_up;
+      522                return;
+      523                end;
+      524 
+      525           if p_user_call
+      526           then do;
+      527                mpr -> meter_dt.prev_user_call_time = clock_reading;
+      528                if p_gdt_ptr -> gdt.request_code >= lbound (mpr -> meter_dt.call_count, 1)
+      529                then if p_gdt_ptr -> gdt.request_code <= hbound (mpr -> meter_dt.call_count, 1)
+      530                     then mpr -> meter_dt.call_count (p_gdt_ptr -> gdt.request_code) = mpr -> meter_dt.call_count (p_gdt_ptr -> gdt.request_code) + 1;
+      531                end;
+      532           else do;
+      533                mpr -> meter_dt.prev_daemon_call_time = clock_reading;
+      534                elapsed_time = clock_reading - mpr -> meter_dt.prev_user_call_time;
+      535                mpr -> meter_dt.accu_time_since_user_call = mpr -> meter_dt.accu_time_since_user_call + elapsed_time;
+      536                mpr -> meter_dt.ndaemon_calls = mpr -> meter_dt.ndaemon_calls + 1;
+      537                end;
+      538 
+      539 
+      540           p_gdt_ptr -> gdt.nprocs_sw = 459248;              /* say that num processes is probably correct     */
+      541           num_procs = mpr -> meter_dt.nprocs_in_ncp + 1;
+      542           mpr -> meter_dt.nprocs_in_ncp = mpr -> meter_dt.nprocs_in_ncp + 1;
+      543           if num_procs < 1
+      544           then mpr -> meter_dt.nprocs_inconsistent = "1"b;  /* num procs is not correct             */
+      545           else do;                                          /* nprocs seems to be ok                          */
+      546                num_procs = min (num_procs, hbound (mpr -> meter_dt.ncalls, 1)); /* only small num of slots    */
+      547                mpr -> meter_dt.ncalls (num_procs) = mpr -> meter_dt.ncalls (num_procs) + 1;
+      548                                                   /* keep track of simultaneity                               */
+      549                end;
+      550 
+      551           return;
+      552 
+      553           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      554 
+      555 exit_ncp:
+      556           entry (p_pdt_ptr, p_gdt_ptr, p_err_code);
+      557 
+      558           p_err_code = 0;
+      559 
+      560           mpr = addr (ncp_tables_$meter_cells);
+      561 
+      562           clock_reading = clock ();                         /* get exit time                        */
+      563 
+      564           if p_gdt_ptr -> gdt.nprocs_sw = 459248
+      565           then do;                                          /* we are set up, so meter                        */
+      566                elapsed_time = clock_reading - p_gdt_ptr -> gdt.entry_time;
+      567                                                             /* keep elapsed time within NCP for process       */
+      568                p_gdt_ptr -> gdt.nprocs_sw = 0;              /* say we've done multi-proc metering   */
+      569                mpr -> meter_dt.accu_time_in_ncp = mpr -> meter_dt.accu_time_in_ncp + elapsed_time;
+      570                mpr -> meter_dt.nprocs_in_ncp = mpr -> meter_dt.nprocs_in_ncp - 1;
+      571 
+      572                if mpr -> meter_dt.nprocs_in_ncp < 0
+      573                then mpr -> meter_dt.nprocs_inconsistent = "1"b;
+      574                end;
+      575 
+      576           p_gdt_ptr -> gdt.init_sw = 0;                     /* tells that we've done all functioning          */
+      577 
+      578           if p_pdt_ptr ^= null ()
+      579           then do;
+      580                p_pdt_ptr -> pdt.gdtp = null ();             /* finishing up global data block                 */
+      581                addr (p_pdt_ptr -> pdt.returnp) -> based_ptr = null ();          /* no valid label to go to    */
+      582                p_pdt_ptr -> pdt.error_recur = 0;            /* We have successfully finished                  */
+      583                end;
+      584 
+      585           return;
+      586 
+      587 end;      /* enter_ncp                                     */
+      588 
+      589 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      590 
+      591 find_host_slot:
+      592           procedure (p_host_num, p_create_slot, p_err_code) returns (ptr);
+      593 
+      594           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+      595 
+      596      declare
+      597          (p_host_num fixed binary (32),
+      598           p_err_code fixed binary (35),
+      599           p_create_slot bit (1))
+      600                parameter;
+      601 
+      602           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+      603 
+      604      declare
+      605          (hash_indx fixed binary (17),
+      606           slot_indx fixed binary (17),
+      607           (host_entry_ptr, hpr) pointer)
+      608                automatic;
+      609 
+      610           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      611 
+      612           p_err_code = 0;
+      613 
+      614 	if p_host_num <= 0
+      615           then do;
+      616                p_err_code = error_table_$net_fhost_inactive;
+      617                return (null ());
+      618                end;
+      619 
+      620           hpr = addr (ncp_tables_$host_tbl);
+      621 
+      622           hash_indx = mod (p_host_num * 11, npr -> ncp_dt.htbl_size) + 1;
+      623 
+      624           do slot_indx = hash_indx by 1 to npr -> ncp_dt.htbl_size, 1 by 1 to hash_indx - 1;
+      625                host_entry_ptr = addr (hpr -> host_array (slot_indx));
+      626 
+      627                if host_entry_ptr -> host.host_number = 0
+      628                then do;
+      629                     if p_create_slot
+      630                     then do;
+      631                          host_entry_ptr -> host.hash_index = slot_indx;
+      632                          host_entry_ptr -> host.host_number = p_host_num;
+      633 
+      634                          return (host_entry_ptr);
+      635                          end;
+      636 
+      637                     p_err_code = error_table_$net_fhost_inactive;
+      638                     return (null ());
+      639                     end;
+      640 
+      641                if host_entry_ptr -> host.host_number = p_host_num
+      642                then return (host_entry_ptr);
+      643                end;
+      644 
+      645           p_err_code = error_table_$net_table_space;
+      646 
+      647           return (null ());
+      648 
+      649 end;      /* end find_host_slot                            */
+      650 
+      651 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      652 
+      653 end;      /* end ncp_util_                                 */
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    07/02/84  1129.5  ncp_util_.pl1                     >dumps>old_dumps>hardcore>ncp_util_.pl1
+115          1    09/05/79  2206.3  ncp_connection_dcls.incl.pl1      >ldd>include>ncp_connection_dcls.incl.pl1
+116          2    10/07/77  1700.0  ncp_constants_dcls.incl.pl1       >ldd>include>ncp_constants_dcls.incl.pl1
+117          3    07/24/78  1704.7  ncp_data_dcls.incl.pl1            >ldd>include>ncp_data_dcls.incl.pl1
+118          4    07/24/78  1704.7  ncp_process_dcls.incl.pl1         >ldd>include>ncp_process_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+NCP_CRASHED                     000001 constant        fixed bin(3,0)           initial dcl 2-8 set ref 518*
+NCP_UP                                 constant        fixed bin(3,0)           initial dcl 2-8 ref 142 166
+NCP_UP_IMP_DOWN                        constant        fixed bin(3,0)           initial dcl 2-8 ref 144 166
+P_create                               parameter       bit(1)                   unaligned dcl 23 set ref 405 410*
+P_error_code                           parameter       fixed bin(35,0)          dcl 23 set ref 122 127* 133 138* 139 144* 146* 151*
+                                                                                  157 162* 163 168* 173* 179 184* 191 200* 201 203
+                                                                                  203 209* 213* 219 222* 234 237* 246* 258* 289*
+                                                                                  291* 297 300* 317* 330* 339* 350 353* 362* 382*
+                                                                                  392* 405 410*
+P_global_data_ptr                      parameter       pointer                  dcl 23 set ref 133 151* 157 173* 179 184*
+P_host_num                             parameter       fixed bin(32,0)          dcl 23 set ref 297 306 350 359* 405 410*
+P_host_ptr                             parameter       pointer                  dcl 23 set ref 191 196 196 200 405 410*
+P_link_gender                          parameter       bit(1)                   unaligned dcl 23 ref 350 374
+P_link_num                             parameter       fixed bin(8,0)           dcl 23 ref 350 374
+P_msg_len                              parameter       fixed bin(24,0)          dcl 23 set ref 191 197* 200* 207
+P_msg_ptr                              parameter       pointer                  dcl 23 set ref 191 197* 200*
+P_privilege                            parameter       bit(1)                   unaligned dcl 23 ref 234 262 297 334
+P_proc_tbl_ptr                         parameter       pointer                  dcl 23 set ref 122 127* 133 138* 151* 157 162* 173*
+                                                                                  179 184*
+P_sock_ptr                             parameter       pointer                  dcl 23 set ref 219 223 224* 234 238* 264* 273* 280*
+                                                                                  297 301* 344* 350 354* 396*
+P_socket_indx                          parameter       bit(36)                  unaligned dcl 23 ref 234 243 255
+P_socket_num                           parameter       fixed bin(32,0)          dcl 23 ref 297 307
+SOCK_INDX_MASK                         constant        bit(36)                  initial unaligned dcl 2-46 ref 243
+SOCK_UNASSIGNED                        constant        fixed bin(6,0)           initial dcl 2-28 ref 255 326 374 389
+TRACE_CTL_MSGS                  000000 constant        bit(36)                  initial dcl 2-51 set ref 196*
+abort_location           14            based           label variable           level 2 dcl 4-9 ref 513
+accu_time_in_ncp          4            based           fixed bin(71,0)          level 2 dcl 3-52 set ref 569* 569
+accu_time_since_user_call
+                          6            based           fixed bin(71,0)          level 2 dcl 3-52 set ref 535* 535
+addr                                                   builtin function         dcl 109 ref 125 136 160 182 226 240 241 250 252 303
+                                                                                  304 321 323 356 357 372 386 408 451 465 502 560
+                                                                                  581 620 625
+array_bound                     000101 automatic       fixed bin(17,0)          dcl 41 set ref 310* 312 315 368* 371
+array_indx                      000102 automatic       fixed bin(17,0)          dcl 41 set ref 243* 244 244 250 312* 312* 315 321
+                                                                                  371* 372*
+based_ptr                              based           pointer                  dcl 58 set ref 581*
+binary                                                 builtin function         dcl 109 ref 196 196 243 255 270 277 306 307 326 374
+                                                                                  389
+bit                                                    builtin function         dcl 109 ref 255 306 307 326 374 389
+call_count               30            based           fixed bin(17,0)          array level 2 dcl 3-52 set ref 528 528 528* 528
+clock                                                  builtin function         dcl 109 ref 504 562
+clock_reading                   000164 automatic       fixed bin(71,0)          dcl 492 set ref 504* 510 516 527 533 534 562* 566
+elapsed_time                    000166 automatic       fixed bin(71,0)          dcl 492 set ref 534* 535 566* 569
+entry_ptr                       000106 automatic       pointer                  dcl 41 set ref 223* 226 250* 252 255 255 264 270 270
+                                                                                  273 277 277 280 289 289 321* 323 326 326 336 336
+                                                                                  344 372* 374 374 374 374 386 389 389 396
+entry_time               22            based           fixed bin(71,0)          level 2 dcl 4-9 set ref 510* 566
+error_recur              21            based           fixed bin(17,0)          level 2 dcl 4-48 set ref 582*
+error_table_$bad_index          000032 external static fixed bin(35,0)          dcl 84 ref 246 258
+error_table_$bad_processid      000034 external static fixed bin(35,0)          dcl 84 ref 291 339
+error_table_$bad_ring_brackets  000036 external static fixed bin(35,0)          dcl 84 ref 289
+error_table_$imp_down           000040 external static fixed bin(35,0)          dcl 84 ref 144
+error_table_$net_fhost_down     000042 external static fixed bin(35,0)          dcl 84 ref 203
+error_table_$net_fhost_inactive 000044 external static fixed bin(35,0)          dcl 84 ref 362 616 637
+error_table_$net_fimp_down      000046 external static fixed bin(35,0)          dcl 84 ref 203
+error_table_$net_not_up         000050 external static fixed bin(35,0)          dcl 84 ref 146 168 521
+error_table_$net_socket_not_found
+                                000052 external static fixed bin(35,0)          dcl 84 ref 317 330 382 392
+error_table_$net_table_space    000054 external static fixed bin(35,0)          dcl 84 ref 209 645
+foreign_socket           13            based           structure                level 2 in structure "socket" packed unaligned
+                                                                                  dcl 1-13 in procedure "ncp_util_"
+foreign_socket           13            based           structure                array level 2 in structure "socket_array" packed
+                                                                                  unaligned dcl 62 in procedure "ncp_util_"
+found                           000105 automatic       bit(1)                   unaligned dcl 41 set ref 370* 371 374* 380
+gdt                                    based           structure                level 1 dcl 4-9
+gdtp                                   based           pointer                  level 2 dcl 4-48 set ref 506* 514* 580*
+hash_index                7(18)        based           fixed bin(17,0)          level 2 packed unaligned dcl 1-61 set ref 366 631*
+hash_indx                       000202 automatic       fixed bin(17,0)          dcl 604 set ref 622* 624 624
+hbound                                                 builtin function         dcl 109 ref 528 546
+host                                   based           structure                level 1 dcl 1-61 in procedure "ncp_util_"
+host                            000120 automatic       structure                level 2 in structure "match_socket" packed unaligned
+                                                                                  dcl 53 in procedure "ncp_util_" set ref 306*
+host_array                             based           structure                array level 1 dcl 62 set ref 625
+host_entry_index         16            based           fixed bin(17,0)          level 2 packed unaligned dcl 1-13 ref 374 389
+host_entry_ptr                  000204 automatic       pointer                  dcl 604 set ref 625* 627 631 632 634 641 641
+host_indx                       000103 automatic       fixed bin(17,0)          dcl 41 set ref 366* 374 389
+host_number              10            based           fixed bin(32,0)          level 2 dcl 1-61 set ref 196 196 627 632* 641
+host_ptr                        000110 automatic       pointer                  dcl 41 set ref 359* 360 366
+hpr                             000206 automatic       pointer                  dcl 604 set ref 620* 625
+htbl_size                 4            based           fixed bin(17,0)          level 2 dcl 3-10 ref 622 624
+imp_write                       000056 constant        entry                    external dcl 99 ref 200
+init_sw                                based           fixed bin(30,0)          level 2 dcl 4-9 set ref 511* 576*
+lbound                                                 builtin function         dcl 109 ref 528
+level$get                       000060 constant        entry                    external dcl 99 ref 268
+link_number              15(18)        based           fixed bin(17,0)          level 2 packed unaligned dcl 1-13 ref 374
+local_socket             11            based           structure                array level 2 in structure "socket_array" packed
+                                                                                  unaligned dcl 62 in procedure "ncp_util_" set ref
+                                                                                  312
+local_socket             11            based           structure                level 2 in structure "socket" packed unaligned
+                                                                                  dcl 1-13 in procedure "ncp_util_" ref 326
+lock                      4            based           bit(36)                  level 2 dcl 1-13 set ref 226 252 323 386
+lockid                   17            based           bit(36)                  level 2 dcl 4-48 ref 466
+lockp                           000116 automatic       pointer                  dcl 41 set ref 226* 252* 253* 323* 324* 386* 387*
+                                                                                  421*
+match_socket                    000120 automatic       structure                level 1 packed unaligned dcl 53 set ref 312 326
+meter_dt                               based           structure                level 1 dcl 3-52
+min                                                    builtin function         dcl 109 ref 546
+mod                                                    builtin function         dcl 109 ref 622
+mpr                             000170 automatic       pointer                  dcl 492 set ref 502* 516 527 528 528 528 528 533 534
+                                                                                  535 535 536 536 541 542 542 543 546 547 547 560*
+                                                                                  569 569 570 570 572 572
+ncalls                   13            based           fixed bin(17,0)          array level 2 dcl 3-52 set ref 546 547* 547
+ncp_assign_$make_process_slot   000062 constant        entry                    external dcl 99 ref 458
+ncp_control_$ncp_change_global_state
+                                000064 constant        entry                    external dcl 99 ref 518
+ncp_dt                                 based           structure                level 1 dcl 3-10
+ncp_lock_$lock_unlock           000070 constant        entry                    external dcl 99 ref 421
+ncp_lock_$lock_wait             000066 constant        entry                    external dcl 99 ref 253 324 387
+ncp_params_$timeout_period      000010 external static fixed bin(71,0)          dcl 69 ref 516
+ncp_tables_$host_tbl            000020 external static fixed bin(17,0)          dcl 76 set ref 620
+ncp_tables_$meter_cells         000022 external static fixed bin(17,0)          dcl 76 set ref 502 560
+ncp_tables_$ncp_data            000024 external static fixed bin(17,0)          dcl 76 set ref 125 136 160 182 241 304 356 408
+ncp_tables_$proc_tbl            000026 external static fixed bin(17,0)          dcl 76 set ref 451
+ncp_tables_$socket_tbl          000030 external static fixed bin(17,0)          dcl 76 set ref 240 303 357
+ncp_tables_$tracing_info        000012 external static bit(36)                  dcl 69 ref 194
+ncp_trace_                      000072 constant        entry                    external dcl 99 ref 196
+ncp_trace_$trace_control_msg    000074 constant        entry                    external dcl 99 ref 197
+ncp_up                    3            based           fixed bin(2,0)           level 2 dcl 3-10 ref 142 144 166 166 518
+ndaemon_calls            12            based           fixed bin(17,0)          level 2 dcl 3-52 set ref 536* 536
+npr                             000112 automatic       pointer                  dcl 41 set ref 125* 136* 142 144 160* 166 166 182*
+                                                                                  241* 244 304* 310 356* 368 408* 466 518 622 624
+nprocs_in_ncp            10            based           fixed bin(17,0)          level 2 dcl 3-52 set ref 541 542* 542 570* 570 572
+nprocs_inconsistent      11            based           bit(1)                   level 2 dcl 3-52 set ref 543* 572*
+nprocs_sw                25            based           fixed bin(30,0)          level 2 dcl 4-9 set ref 507* 540* 564 568*
+null                                                   builtin function         dcl 109 ref 224 238 301 354 360 449 506 578 580 581
+                                                                                  617 638 647
+num_procs                       000162 automatic       fixed bin(17,0)          dcl 492 set ref 541* 543 546* 546 547 547
+num_trans                       000104 automatic       fixed bin(24,0)          dcl 41 set ref 200* 207
+overseer_process_id       6            based           bit(36)                  level 2 dcl 1-13 ref 277 289 336
+overseer_validation_level
+                         17(30)        based           bit(3)                   level 2 packed unaligned dcl 1-13 ref 277
+p_create_slot                          parameter       bit(1)                   unaligned dcl 596 ref 591 629
+p_err_code                             parameter       fixed bin(35,0)          dcl 434 in procedure "find_proc_info_slot" set ref
+                                                                                  429 448* 458* 459
+p_err_code                             parameter       fixed bin(35,0)          dcl 596 in procedure "find_host_slot" set ref 591
+                                                                                  612* 616* 637* 645*
+p_err_code                             parameter       fixed bin(35,0)          dcl 484 in procedure "enter_ncp" set ref 479 500*
+                                                                                  521* 555 558*
+p_gdt_ptr                              parameter       pointer                  dcl 484 ref 479 507 509 510 511 513 514 528 528 528
+                                                                                  528 540 555 564 566 568 576
+p_host_num                             parameter       fixed bin(32,0)          dcl 596 ref 591 614 622 632 641
+p_pdt_ptr                              parameter       pointer                  dcl 484 ref 479 506 509 513 514 555 578 580 581 582
+p_slot_ptr                             parameter       pointer                  dcl 434 set ref 429 449* 465* 466
+p_user_call                            parameter       bit(1)                   unaligned dcl 484 ref 479 525
+pad                       1(28) 000120 automatic       bit(8)                   level 2 packed unaligned dcl 53 set ref 308*
+pds$network_ptbl_idx            000014 external static fixed bin(17,0)          dcl 69 set ref 455 462* 471*
+pds$process_id                  000016 external static bit(36)                  dcl 69 ref 270 277 289 289 336 336 466
+pdt                                    based           structure                level 1 dcl 4-48
+ppr                             000152 automatic       pointer                  dcl 441 set ref 451* 465
+prev_daemon_call_time
+                          2            based           fixed bin(71,0)          level 2 dcl 3-52 set ref 516 533*
+prev_user_call_time                    based           fixed bin(71,0)          level 2 dcl 3-52 set ref 527* 534
+proc_array                             based           structure                array level 1 dcl 62 set ref 465
+proc_tbp                 30            based           pointer                  level 2 dcl 4-9 set ref 509*
+process_id                5            based           bit(36)                  level 2 dcl 1-13 ref 270 289 336
+ptbl_gent                66            based           fixed bin(17,0)          level 2 dcl 3-10 ref 466
+request_code              2            based           fixed bin(12,0)          level 2 dcl 4-9 ref 528 528 528 528
+returnp                   2            based           label variable           level 2 dcl 4-48 set ref 513* 581
+send_gender              17(14)        based           bit(1)                   level 2 packed unaligned dcl 1-13 ref 374
+slot_indx                       000203 automatic       fixed bin(17,0)          dcl 604 in procedure "find_host_slot" set ref 624*
+                                                                                  625 631*
+slot_indx                       000150 automatic       fixed bin(17,0)          dcl 441 in procedure "find_proc_info_slot" set ref
+                                                                                  455* 456 458* 462 465 466 466 472*
+socket                                 based           structure                level 1 dcl 1-13
+socket_array                           based           structure                array level 1 dcl 62 set ref 250 321 372
+socket_index             26            based           bit(36)                  level 2 dcl 1-13 ref 255
+socket_num                0(32) 000120 automatic       bit(32)                  level 2 packed unaligned dcl 53 set ref 307*
+spr                             000114 automatic       pointer                  dcl 41 set ref 240* 250 303* 312 321 357* 372
+state                    17            based           bit(6)                   level 2 packed unaligned dcl 1-13 ref 255 326 374
+                                                                                  389
+stbl_gent                12            based           fixed bin(17,0)          level 2 dcl 3-10 ref 244 310 368
+string                                                 builtin function         dcl 109 set ref 306* 312 312 326 326
+val_level                       000100 automatic       fixed bin(3,0)           dcl 41 set ref 268* 270 277
+validation_level         17(33)        based           bit(3)                   level 2 packed unaligned dcl 1-13 ref 270
+xmit_link_index           1(18)        based           fixed bin(17,0)          level 2 packed unaligned dcl 1-61 ref 200
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANY_TRACING                            internal static bit(36)                  initial dcl 2-51
+HOST_DOWN                              internal static fixed bin(6,0)           initial dcl 2-20
+HOST_OFF                               internal static fixed bin(6,0)           initial dcl 2-20
+HOST_ON                                internal static fixed bin(6,0)           initial dcl 2-20
+HOST_RST                               internal static fixed bin(6,0)           initial dcl 2-20
+HOST_UP                                internal static fixed bin(6,0)           initial dcl 2-20
+NCP_DOWN                               internal static fixed bin(3,0)           initial dcl 2-8
+PRINTER_TRACING                        internal static bit(36)                  initial dcl 2-51
+READ_GENDER                            internal static bit(1)                   initial unaligned dcl 2-15
+SOCK_ASSIGNED                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_BROKEN                            internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_CLS_READ                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_CLS_WAIT                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_CONNECTED                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_DATA_WAIT                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_LISTENING                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RESET                             internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFC_ABORTED                       internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFC_RCVD                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFC_SENT                          internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_RFNM_WAIT                         internal static fixed bin(6,0)           initial dcl 2-28
+SOCK_UNIQUE_MASK                       internal static bit(36)                  initial unaligned dcl 2-46
+SYSERR_LOG_TRACING                     internal static bit(36)                  initial dcl 2-51
+TRACE_DATA_FLOW                        internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_ACCESS                       internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_CONTROL                      internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_DAEMON                       internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_IO                           internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_RING                         internal static bit(36)                  initial dcl 2-51
+TRACE_NCP_TBOP                         internal static bit(36)                  initial dcl 2-51
+TRACE_PROCESS_INFO                     internal static bit(36)                  initial dcl 2-51
+WRITE_GENDER                           internal static bit(1)                   initial unaligned dcl 2-15
+error_snapshot                         based           structure                level 1 dcl 4-64
+host_address                           based           structure                level 1 dcl 1-87
+rcvd_rfc                               based           structure                level 1 dcl 1-80
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+enter_daemon_NCP_environment    000167 constant        entry                    external dcl 157
+enter_ncp                       001416 constant        entry                    internal dcl 479 ref 151 173
+enter_user_NCP_environment      000101 constant        entry                    external dcl 133
+exit_NCP_environment            000251 constant        entry                    external dcl 179
+exit_ncp                        001570 constant        entry                    internal dcl 555 ref 184
+find_host_entry                 001270 constant        entry                    external dcl 405
+find_host_slot                  001644 constant        entry                    internal dcl 591 ref 359 410
+find_proc_info_slot             001337 constant        entry                    internal dcl 429 ref 127 138 162
+find_process_info               000051 constant        entry                    external dcl 122
+find_socket_from_index          000470 constant        entry                    external dcl 234
+find_socket_from_link_number    001057 constant        entry                    external dcl 350
+find_socket_from_socket_number  000666 constant        entry                    external dcl 297
+ncp_util_                       000037 constant        entry                    external dcl 11
+send_control_message            000305 constant        entry                    external dcl 191
+unlock_socket                   000437 constant        entry                    external dcl 219
+unlock_socket_entry             001323 constant        entry                    internal dcl 416 ref 228 257 287 329 338 391
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2470        2566    1772        2500
+Length      3136    1772        76         333     475           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ncp_util_                           212 external procedure  is an external procedure.  
+unlock_socket_entry                     internal procedure  shares stack frame of external procedure ncp_util_.  
+find_proc_info_slot                     internal procedure  shares stack frame of external procedure ncp_util_.  
+enter_ncp                               internal procedure  shares stack frame of external procedure ncp_util_.  
+find_host_slot                          internal procedure  shares stack frame of external procedure ncp_util_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ncp_util_                000100 val_level                   ncp_util_
+                         000101 array_bound                 ncp_util_
+                         000102 array_indx                  ncp_util_
+                         000103 host_indx                   ncp_util_
+                         000104 num_trans                   ncp_util_
+                         000105 found                       ncp_util_
+                         000106 entry_ptr                   ncp_util_
+                         000110 host_ptr                    ncp_util_
+                         000112 npr                         ncp_util_
+                         000114 spr                         ncp_util_
+                         000116 lockp                       ncp_util_
+                         000120 match_socket                ncp_util_
+                         000150 slot_indx                   find_proc_info_slot
+                         000152 ppr                         find_proc_info_slot
+                         000162 num_procs                   enter_ncp
+                         000164 clock_reading               enter_ncp
+                         000166 elapsed_time                enter_ncp
+                         000170 mpr                         enter_ncp
+                         000202 hash_indx                   find_host_slot
+                         000203 slot_indx                   find_host_slot
+                         000204 host_entry_ptr              find_host_slot
+                         000206 hpr                         find_host_slot
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return              mod_fx3             ext_entry           clock
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+imp_write                     level$get                     ncp_assign_$make_process_slot
+ncp_control_$ncp_change_global_state                        ncp_lock_$lock_unlock         ncp_lock_$lock_wait
+ncp_trace_                    ncp_trace_$trace_control_msg
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_index        error_table_$bad_processid    error_table_$bad_ring_brackets
+error_table_$imp_down         error_table_$net_fhost_down   error_table_$net_fhost_inactive
+error_table_$net_fimp_down    error_table_$net_not_up       error_table_$net_socket_not_found
+error_table_$net_table_space  ncp_params_$timeout_period    ncp_tables_$host_tbl          ncp_tables_$meter_cells
+ncp_tables_$ncp_data          ncp_tables_$proc_tbl          ncp_tables_$socket_tbl        ncp_tables_$tracing_info
+pds$network_ptbl_idx          pds$process_id
+
+
+CONSTANTS
+001767  aa     777777777400
+
+001770  aa     000000000017
+001771  aa     777777777400
+
+000000  aa     004000000000
+
+000001  aa     777777777777
+
+000002  aa     000001600760
+
+000003  aa     524000000034
+
+000004  aa     000002274706
+
+000005  aa     524000000022
+
+000006  aa     514000000044
+
+000007  aa     404000000003
+
+000010  aa     464000000000
+
+000011  aa     516000000044
+
+000012  aa     516000000001
+
+000013  aa     404000000043
+
+000014  aa     404000000030
+
+000015  aa     404000000040
+
+000016  aa     404000000010
+
+000020  aa     077777000043
+000021  aa     000001000000
+
+000022  aa  103 124 114 040	CTL 
+000023  aa  115 123 107 040	MSG 
+000024  aa  164 157 040 150	to h
+000025  aa  157 163 164 040	ost 
+000026  aa  136 144 000 000	^d
+
+000027  aa  104 141 145 155	Daem
+000030  aa  157 156 040 160	on p
+000031  aa  162 157 143 145	roce
+000032  aa  163 163 151 156	ssin
+000033  aa  147 040 167 141	g wa
+000034  aa  163 040 164 141	s ta
+000035  aa  162 144 171 056	rdy.
+
+BEGIN PROCEDURE ncp_util_
+ENTRY TO ncp_util_                                          STATEMENT 1 ON LINE 11
+ncp_util_:
+          procedure ();
+
+000036  da     000335200000
+000037  aa   000340 6270 00	eax7 	224
+000040  aa  7 00034 3521 20	epp2 	pr7|28,*
+000041  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000042  aa     000000000000
+000043  aa     000000000000
+						STATEMENT 1 ON LINE 122
+find_process_info:
+          entry (P_proc_tbl_ptr, P_error_code);
+
+000044  aa   000015 7100 04	tra  	13,ic		000061
+ENTRY TO find_process_info                                  STATEMENT 1 ON LINE 122
+find_process_info:
+          entry (P_proc_tbl_ptr, P_error_code);
+
+000045  at     000002000010
+000046  ta     000013000000
+000047  ta     000045000000
+000050  da     000345300000
+000051  aa   000340 6270 00	eax7 	224
+000052  aa  7 00034 3521 20	epp2 	pr7|28,*
+000053  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000054  aa     000004000000
+000055  aa     000000000000
+000056  aa  6 00032 3735 20	epp7 	pr6|26,*
+000057  aa  7 00004 3715 20	epp5 	pr7|4,*
+000060  aa  6 00122 6515 00	spri5	pr6|82
+						STATEMENT 1 ON LINE 125
+          npr = addr (ncp_tables_$ncp_data);
+
+000061  la  4 00024 3735 20	epp7 	pr4|20,*		ncp_tables_$ncp_data
+000062  aa  6 00112 6535 00	spri7	pr6|74		npr
+						STATEMENT 1 ON LINE 127
+          call find_proc_info_slot (P_proc_tbl_ptr, P_error_code);
+
+000063  aa  6 00032 3715 20	epp5 	pr6|26,*
+000064  aa  5 00002 3521 20	epp2 	pr5|2,*		P_proc_tbl_ptr
+000065  aa  6 00216 2521 00	spri2	pr6|142
+000066  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000067  aa  6 00220 2521 00	spri2	pr6|144
+000070  aa  6 00214 3521 00	epp2 	pr6|140
+000071  aa   010000 4310 07	fld  	4096,dl
+000072  aa  2 00000 7571 00	staq 	pr2|0
+000073  aa   001244 6700 04	tsp4 	676,ic		001337
+						STATEMENT 1 ON LINE 129
+          return;
+
+000074  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO enter_user_NCP_environment                         STATEMENT 1 ON LINE 133
+enter_user_NCP_environment:
+          entry (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+
+000075  at     000003000010
+000076  tt     000010000013
+000077  ta     000075000000
+000100  da     000357300000
+000101  aa   000340 6270 00	eax7 	224
+000102  aa  7 00034 3521 20	epp2 	pr7|28,*
+000103  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000104  aa     000006000000
+000105  aa     000000000000
+000106  aa  6 00032 3735 20	epp7 	pr6|26,*
+000107  aa  7 00006 3715 20	epp5 	pr7|6,*
+000110  aa  6 00122 6515 00	spri5	pr6|82
+						STATEMENT 1 ON LINE 136
+          npr = addr (ncp_tables_$ncp_data);
+
+000111  aa  6 00044 3701 20	epp4 	pr6|36,*
+000112  la  4 00024 3735 20	epp7 	pr4|20,*		ncp_tables_$ncp_data
+000113  aa  6 00112 6535 00	spri7	pr6|74		npr
+						STATEMENT 1 ON LINE 138
+          call find_proc_info_slot (P_proc_tbl_ptr, P_error_code);
+
+000114  aa  6 00032 3715 20	epp5 	pr6|26,*
+000115  aa  5 00002 3521 20	epp2 	pr5|2,*		P_proc_tbl_ptr
+000116  aa  6 00216 2521 00	spri2	pr6|142
+000117  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000120  aa  6 00220 2521 00	spri2	pr6|144
+000121  aa  6 00214 3521 00	epp2 	pr6|140
+000122  aa   010000 4310 07	fld  	4096,dl
+000123  aa  2 00000 7571 00	staq 	pr2|0
+000124  aa   001213 6700 04	tsp4 	651,ic		001337
+						STATEMENT 1 ON LINE 139
+          if P_error_code ^= 0
+          then return;
+
+000125  aa  6 00122 2361 20	ldq  	pr6|82,*		P_error_code
+000126  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 142
+          if npr -> ncp_dt.ncp_up ^= NCP_UP
+          then do;
+
+000127  aa  6 00112 3735 20	epp7 	pr6|74,*		npr
+000130  aa  7 00003 2361 00	ldq  	pr7|3		ncp_dt.ncp_up
+000131  aa   000002 1160 07	cmpq 	2,dl
+000132  aa   000013 6000 04	tze  	11,ic		000145
+						STATEMENT 1 ON LINE 144
+               if npr -> ncp_dt.ncp_up = NCP_UP_IMP_DOWN
+               then P_error_code = error_table_$imp_down;
+
+000133  aa   000001 1160 07	cmpq 	1,dl
+000134  aa   000005 6010 04	tnz  	5,ic		000141
+000135  aa  6 00044 3701 20	epp4 	pr6|36,*
+000136  la  4 00040 2361 20	ldq  	pr4|32,*		error_table_$imp_down
+000137  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+000140  aa   000004 7100 04	tra  	4,ic		000144
+						STATEMENT 1 ON LINE 146
+               else P_error_code = error_table_$net_not_up;
+
+000141  aa  6 00044 3701 20	epp4 	pr6|36,*
+000142  la  4 00050 2361 20	ldq  	pr4|40,*		error_table_$net_not_up
+000143  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 148
+               return;
+
+000144  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 149
+               end;
+
+						STATEMENT 1 ON LINE 151
+          call enter_ncp (P_proc_tbl_ptr, P_global_data_ptr, "1"b, P_error_code);
+
+000145  aa   400000 2350 03	lda  	131072,du
+000146  aa  6 00224 7551 00	sta  	pr6|148
+000147  aa  6 00032 3715 20	epp5 	pr6|26,*
+000150  aa  5 00002 3521 20	epp2 	pr5|2,*		P_proc_tbl_ptr
+000151  aa  6 00230 2521 00	spri2	pr6|152
+000152  aa  5 00004 3521 20	epp2 	pr5|4,*		P_global_data_ptr
+000153  aa  6 00232 2521 00	spri2	pr6|154
+000154  aa  6 00224 3521 00	epp2 	pr6|148
+000155  aa  6 00234 2521 00	spri2	pr6|156
+000156  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000157  aa  6 00236 2521 00	spri2	pr6|158
+000160  aa  6 00226 3521 00	epp2 	pr6|150
+000161  aa   020000 4310 07	fld  	8192,dl
+000162  aa  2 00000 7571 00	staq 	pr2|0
+000163  aa   001233 6700 04	tsp4 	667,ic		001416
+						STATEMENT 1 ON LINE 153
+          return;
+
+000164  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO enter_daemon_NCP_environment                       STATEMENT 1 ON LINE 157
+enter_daemon_NCP_environment:
+          entry (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+
+000165  ta     000075000000
+000166  da     000372300000
+000167  aa   000340 6270 00	eax7 	224
+000170  aa  7 00034 3521 20	epp2 	pr7|28,*
+000171  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000172  aa     000006000000
+000173  aa     000000000000
+000174  aa  6 00032 3735 20	epp7 	pr6|26,*
+000175  aa  7 00006 3715 20	epp5 	pr7|6,*
+000176  aa  6 00122 6515 00	spri5	pr6|82
+						STATEMENT 1 ON LINE 160
+          npr = addr (ncp_tables_$ncp_data);
+
+000177  aa  6 00044 3701 20	epp4 	pr6|36,*
+000200  la  4 00024 3735 20	epp7 	pr4|20,*		ncp_tables_$ncp_data
+000201  aa  6 00112 6535 00	spri7	pr6|74		npr
+						STATEMENT 1 ON LINE 162
+          call find_proc_info_slot (P_proc_tbl_ptr, P_error_code);
+
+000202  aa  6 00032 3715 20	epp5 	pr6|26,*
+000203  aa  5 00002 3521 20	epp2 	pr5|2,*		P_proc_tbl_ptr
+000204  aa  6 00216 2521 00	spri2	pr6|142
+000205  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000206  aa  6 00220 2521 00	spri2	pr6|144
+000207  aa  6 00214 3521 00	epp2 	pr6|140
+000210  aa   010000 4310 07	fld  	4096,dl
+000211  aa  2 00000 7571 00	staq 	pr2|0
+000212  aa   001125 6700 04	tsp4 	597,ic		001337
+						STATEMENT 1 ON LINE 163
+          if P_error_code ^= 0
+          then return;
+
+000213  aa  6 00122 2361 20	ldq  	pr6|82,*		P_error_code
+000214  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 166
+          if (npr -> ncp_dt.ncp_up ^= NCP_UP) & (npr -> ncp_dt.ncp_up ^= NCP_UP_IMP_DOWN)
+          then do;
+
+000215  aa  6 00112 3735 20	epp7 	pr6|74,*		npr
+000216  aa  7 00003 2361 00	ldq  	pr7|3		ncp_dt.ncp_up
+000217  aa   000002 1160 07	cmpq 	2,dl
+000220  aa   000007 6000 04	tze  	7,ic		000227
+000221  aa   000001 1160 07	cmpq 	1,dl
+000222  aa   000005 6000 04	tze  	5,ic		000227
+						STATEMENT 1 ON LINE 168
+               P_error_code = error_table_$net_not_up;
+
+000223  aa  6 00044 3701 20	epp4 	pr6|36,*
+000224  la  4 00050 2361 20	ldq  	pr4|40,*		error_table_$net_not_up
+000225  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 170
+               return;
+
+000226  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 171
+               end;
+
+						STATEMENT 1 ON LINE 173
+          call enter_ncp (P_proc_tbl_ptr, P_global_data_ptr, "0"b, P_error_code);
+
+000227  aa   000000 2350 07	lda  	0,dl
+000230  aa  6 00224 7551 00	sta  	pr6|148
+000231  aa  6 00032 3715 20	epp5 	pr6|26,*
+000232  aa  5 00002 3521 20	epp2 	pr5|2,*		P_proc_tbl_ptr
+000233  aa  6 00230 2521 00	spri2	pr6|152
+000234  aa  5 00004 3521 20	epp2 	pr5|4,*		P_global_data_ptr
+000235  aa  6 00232 2521 00	spri2	pr6|154
+000236  aa  6 00224 3521 00	epp2 	pr6|148
+000237  aa  6 00234 2521 00	spri2	pr6|156
+000240  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000241  aa  6 00236 2521 00	spri2	pr6|158
+000242  aa  6 00226 3521 00	epp2 	pr6|150
+000243  aa   020000 4310 07	fld  	8192,dl
+000244  aa  2 00000 7571 00	staq 	pr2|0
+000245  aa   001151 6700 04	tsp4 	617,ic		001416
+						STATEMENT 1 ON LINE 175
+          return;
+
+000246  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO exit_NCP_environment                               STATEMENT 1 ON LINE 179
+exit_NCP_environment:
+          entry (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+
+000247  ta     000075000000
+000250  da     000403300000
+000251  aa   000340 6270 00	eax7 	224
+000252  aa  7 00034 3521 20	epp2 	pr7|28,*
+000253  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000254  aa     000006000000
+000255  aa     000000000000
+000256  aa  6 00032 3735 20	epp7 	pr6|26,*
+000257  aa  7 00006 3715 20	epp5 	pr7|6,*
+000260  aa  6 00122 6515 00	spri5	pr6|82
+						STATEMENT 1 ON LINE 182
+          npr = addr (ncp_tables_$ncp_data);
+
+000261  aa  6 00044 3701 20	epp4 	pr6|36,*
+000262  la  4 00024 3735 20	epp7 	pr4|20,*		ncp_tables_$ncp_data
+000263  aa  6 00112 6535 00	spri7	pr6|74		npr
+						STATEMENT 1 ON LINE 184
+          call exit_ncp (P_proc_tbl_ptr, P_global_data_ptr, P_error_code);
+
+000264  aa  6 00032 3715 20	epp5 	pr6|26,*
+000265  aa  5 00002 3521 20	epp2 	pr5|2,*		P_proc_tbl_ptr
+000266  aa  6 00230 2521 00	spri2	pr6|152
+000267  aa  5 00004 3521 20	epp2 	pr5|4,*		P_global_data_ptr
+000270  aa  6 00232 2521 00	spri2	pr6|154
+000271  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000272  aa  6 00234 2521 00	spri2	pr6|156
+000273  aa  6 00226 3521 00	epp2 	pr6|150
+000274  aa   014000 4310 07	fld  	6144,dl
+000275  aa  2 00000 7571 00	staq 	pr2|0
+000276  aa   001272 6700 04	tsp4 	698,ic		001570
+						STATEMENT 1 ON LINE 186
+          return;
+
+000277  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO send_control_message                               STATEMENT 1 ON LINE 191
+send_control_message:
+          entry (P_host_ptr, P_msg_ptr, P_msg_len, P_error_code);
+
+000300  at     000004000010
+000301  tt     000010000014
+000302  ta     000013000000
+000303  ta     000300000000
+000304  da     000414300000
+000305  aa   000340 6270 00	eax7 	224
+000306  aa  7 00034 3521 20	epp2 	pr7|28,*
+000307  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000310  aa     000010000000
+000311  aa     000000000000
+000312  aa  6 00032 3735 20	epp7 	pr6|26,*
+000313  aa  7 00002 3715 20	epp5 	pr7|2,*
+000314  aa  6 00126 6515 00	spri5	pr6|86
+000315  aa  7 00010 3535 20	epp3 	pr7|8,*
+000316  aa  6 00122 2535 00	spri3	pr6|82
+						STATEMENT 1 ON LINE 194
+          if ncp_tables_$tracing_info ^= ""b
+          then do;
+
+000317  aa  6 00044 3701 20	epp4 	pr6|36,*
+000320  la  4 00012 2351 20	lda  	pr4|10,*		ncp_tables_$tracing_info
+000321  aa   000045 6000 04	tze  	37,ic		000366
+						STATEMENT 1 ON LINE 196
+               call ncp_trace_ (TRACE_CTL_MSGS, "CTL MSG to host ^d", binary (P_host_ptr -> host.host_number, 32));
+
+000322  aa   777500 2370 04	ldaq 	-192,ic		000022 = 103124114040 115123107040
+000323  aa  6 00214 7571 00	staq 	pr6|140
+000324  aa   777500 2370 04	ldaq 	-192,ic		000024 = 164157040150 157163164040
+000325  aa  6 00216 7571 00	staq 	pr6|142
+000326  aa   136144 2350 03	lda  	48228,du
+000327  aa  6 00220 7551 00	sta  	pr6|144
+000330  aa  6 00126 3735 20	epp7 	pr6|86,*		P_host_ptr
+000331  aa  7 00000 3735 20	epp7 	pr7|0,*		P_host_ptr
+000332  aa  7 00010 2361 00	ldq  	pr7|8		host.host_number
+000333  aa  6 00224 7561 00	stq  	pr6|148
+000334  aa   777444 3520 04	epp2 	-220,ic		000000 = 004000000000
+000335  aa  6 00244 2521 00	spri2	pr6|164
+000336  aa  6 00214 3521 00	epp2 	pr6|140
+000337  aa  6 00246 2521 00	spri2	pr6|166
+000340  aa  6 00224 3521 00	epp2 	pr6|148
+000341  aa  6 00250 2521 00	spri2	pr6|168
+000342  aa   777444 3520 04	epp2 	-220,ic		000006 = 514000000044
+000343  aa  6 00252 2521 00	spri2	pr6|170
+000344  aa   777441 3520 04	epp2 	-223,ic		000005 = 524000000022
+000345  aa  6 00254 2521 00	spri2	pr6|172
+000346  aa   777447 3520 04	epp2 	-217,ic		000015 = 404000000040
+000347  aa  6 00256 2521 00	spri2	pr6|174
+000350  aa  6 00242 6211 00	eax1 	pr6|162
+000351  aa   014000 4310 07	fld  	6144,dl
+000352  la  4 00072 3521 20	epp2 	pr4|58,*		ncp_trace_
+000353  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 197
+               call ncp_trace_$trace_control_msg (P_msg_ptr, P_msg_len);
+
+000354  aa  6 00032 3735 20	epp7 	pr6|26,*
+000355  aa  7 00004 3521 20	epp2 	pr7|4,*		P_msg_ptr
+000356  aa  6 00216 2521 00	spri2	pr6|142
+000357  aa  7 00006 3521 20	epp2 	pr7|6,*		P_msg_len
+000360  aa  6 00220 2521 00	spri2	pr6|144
+000361  aa  6 00214 6211 00	eax1 	pr6|140
+000362  aa   010000 4310 07	fld  	4096,dl
+000363  aa  6 00044 3701 20	epp4 	pr6|36,*
+000364  la  4 00074 3521 20	epp2 	pr4|60,*		ncp_trace_$trace_control_msg
+000365  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 198
+               end;
+
+						STATEMENT 1 ON LINE 200
+          call imp_write ((P_host_ptr -> host.xmit_link_index), P_msg_ptr, P_msg_len, num_trans, P_error_code);
+
+000366  aa  6 00126 3735 20	epp7 	pr6|86,*		P_host_ptr
+000367  aa  7 00000 3735 20	epp7 	pr7|0,*		P_host_ptr
+000370  aa  7 00001 2351 00	lda  	pr7|1		host.xmit_link_index
+000371  aa   000022 7350 00	als  	18
+000372  aa   000066 7330 00	lrs  	54
+000373  aa  6 00224 7561 00	stq  	pr6|148
+000374  aa  6 00224 3521 00	epp2 	pr6|148
+000375  aa  6 00230 2521 00	spri2	pr6|152
+000376  aa  6 00032 3715 20	epp5 	pr6|26,*
+000377  aa  5 00004 3521 20	epp2 	pr5|4,*		P_msg_ptr
+000400  aa  6 00232 2521 00	spri2	pr6|154
+000401  aa  5 00006 3521 20	epp2 	pr5|6,*		P_msg_len
+000402  aa  6 00234 2521 00	spri2	pr6|156
+000403  aa  6 00104 3521 00	epp2 	pr6|68		num_trans
+000404  aa  6 00236 2521 00	spri2	pr6|158
+000405  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+000406  aa  6 00240 2521 00	spri2	pr6|160
+000407  aa  6 00226 6211 00	eax1 	pr6|150
+000410  aa   024000 4310 07	fld  	10240,dl
+000411  aa  6 00044 3701 20	epp4 	pr6|36,*
+000412  la  4 00056 3521 20	epp2 	pr4|46,*		imp_write
+000413  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 201
+          if P_error_code ^= 0
+          then do;
+
+000414  aa  6 00122 2361 20	ldq  	pr6|82,*		P_error_code
+000415  aa   000006 6000 04	tze  	6,ic		000423
+						STATEMENT 1 ON LINE 203
+               if (P_error_code ^= error_table_$net_fhost_down) & (P_error_code ^= error_table_$net_fimp_down)
+               then return;
+
+000416  aa  6 00044 3701 20	epp4 	pr6|36,*
+000417  la  4 00042 1161 20	cmpq 	pr4|34,*		error_table_$net_fhost_down
+000420  aa   000003 6000 04	tze  	3,ic		000423
+000421  la  4 00046 1161 20	cmpq 	pr4|38,*		error_table_$net_fimp_down
+000422  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 205
+               end;
+
+						STATEMENT 1 ON LINE 207
+          if (P_msg_len ^= num_trans)
+          then do;
+
+000423  aa  6 00032 3735 20	epp7 	pr6|26,*
+000424  aa  7 00006 2361 20	ldq  	pr7|6,*		P_msg_len
+000425  aa  6 00104 1161 00	cmpq 	pr6|68		num_trans
+000426  aa   000005 6000 04	tze  	5,ic		000433
+						STATEMENT 1 ON LINE 209
+               P_error_code = error_table_$net_table_space;
+
+000427  aa  6 00044 3701 20	epp4 	pr6|36,*
+000430  la  4 00054 2361 20	ldq  	pr4|44,*		error_table_$net_table_space
+000431  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 210
+               return;
+
+000432  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 211
+               end;
+
+						STATEMENT 1 ON LINE 213
+          P_error_code = 0;
+
+000433  aa  6 00122 4501 20	stz  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 215
+          return;
+
+000434  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO unlock_socket                                      STATEMENT 1 ON LINE 219
+unlock_socket:
+          entry (P_sock_ptr, P_error_code);
+
+000435  ta     000045000000
+000436  da     000423300000
+000437  aa   000340 6270 00	eax7 	224
+000440  aa  7 00034 3521 20	epp2 	pr7|28,*
+000441  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000442  aa     000004000000
+000443  aa     000000000000
+000444  aa  6 00032 3735 20	epp7 	pr6|26,*
+000445  aa  7 00002 3715 20	epp5 	pr7|2,*
+000446  aa  6 00130 6515 00	spri5	pr6|88
+000447  aa  7 00004 3535 20	epp3 	pr7|4,*
+000450  aa  6 00122 2535 00	spri3	pr6|82
+						STATEMENT 1 ON LINE 222
+          P_error_code = 0;
+
+000451  aa  6 00122 4501 20	stz  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 223
+          entry_ptr = P_sock_ptr;
+
+000452  aa  6 00130 3735 20	epp7 	pr6|88,*		P_sock_ptr
+000453  aa  7 00000 3735 20	epp7 	pr7|0,*		P_sock_ptr
+000454  aa  6 00106 6535 00	spri7	pr6|70		entry_ptr
+						STATEMENT 1 ON LINE 224
+          P_sock_ptr = null ();
+
+000455  aa   777343 2370 04	ldaq 	-285,ic		000020 = 077777000043 000001000000
+000456  aa  6 00130 7571 20	staq 	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 226
+          lockp = addr (entry_ptr -> socket.lock);
+
+000457  aa  7 00004 3715 00	epp5 	pr7|4		socket.lock
+000460  aa  6 00116 6515 00	spri5	pr6|78		lockp
+						STATEMENT 1 ON LINE 228
+          call unlock_socket_entry ();
+
+000461  aa   000642 6700 04	tsp4 	418,ic		001323
+						STATEMENT 1 ON LINE 230
+          return;
+
+000462  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO find_socket_from_index                             STATEMENT 1 ON LINE 234
+find_socket_from_index:
+          entry (P_socket_indx, P_privilege, P_sock_ptr, P_error_code);
+
+000463  at     000004000011
+000464  tt     000012000010
+000465  ta     000013000000
+000466  ta     000463000000
+000467  da     000434300000
+000470  aa   000340 6270 00	eax7 	224
+000471  aa  7 00034 3521 20	epp2 	pr7|28,*
+000472  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000473  aa     000010000000
+000474  aa     000000000000
+000475  aa  6 00032 3735 20	epp7 	pr6|26,*
+000476  aa  7 00004 3715 20	epp5 	pr7|4,*
+000477  aa  6 00124 6515 00	spri5	pr6|84
+000500  aa  7 00006 3535 20	epp3 	pr7|6,*
+000501  aa  6 00130 2535 00	spri3	pr6|88
+000502  aa  7 00010 3515 20	epp1 	pr7|8,*
+000503  aa  6 00122 2515 00	spri1	pr6|82
+						STATEMENT 1 ON LINE 237
+          P_error_code = 0;
+
+000504  aa  6 00122 4501 20	stz  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 238
+          P_sock_ptr = null ();
+
+000505  aa   777313 2370 04	ldaq 	-309,ic		000020 = 077777000043 000001000000
+000506  aa  6 00130 7571 20	staq 	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 240
+          spr = addr (ncp_tables_$socket_tbl);
+
+000507  aa  6 00044 3701 20	epp4 	pr6|36,*
+000510  la  4 00030 3735 20	epp7 	pr4|24,*		ncp_tables_$socket_tbl
+000511  aa  6 00114 6535 00	spri7	pr6|76		spr
+						STATEMENT 1 ON LINE 241
+          npr = addr (ncp_tables_$ncp_data);
+
+000512  la  4 00024 3715 20	epp5 	pr4|20,*		ncp_tables_$ncp_data
+000513  aa  6 00112 6515 00	spri5	pr6|74		npr
+						STATEMENT 1 ON LINE 243
+          array_indx = binary (P_socket_indx & SOCK_INDX_MASK, 17);
+
+000514  aa  6 00032 3535 20	epp3 	pr6|26,*
+000515  aa  3 00002 3515 20	epp1 	pr3|2,*
+000516  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000517  aa  1 00000 00 0044	descb	pr1|0,36		P_socket_indx
+000520  aa  6 00056 00 0044	descb	pr6|46,36
+000521  aa  6 00056 2351 00	lda  	pr6|46
+000522  aa   777777 3750 07	ana  	262143,dl
+000523  aa   000044 7730 00	lrl  	36
+000524  aa  6 00102 7561 00	stq  	pr6|66		array_indx
+						STATEMENT 1 ON LINE 244
+          if (array_indx <= 0) | (array_indx > npr -> ncp_dt.stbl_gent)
+          then do;
+
+000525  aa  6 00102 2361 00	ldq  	pr6|66		array_indx
+000526  aa   000003 6044 04	tmoz 	3,ic		000531
+000527  aa  5 00012 1161 00	cmpq 	pr5|10		ncp_dt.stbl_gent
+000530  aa   000004 6044 04	tmoz 	4,ic		000534
+						STATEMENT 1 ON LINE 246
+               P_error_code = error_table_$bad_index;
+
+000531  la  4 00032 2361 20	ldq  	pr4|26,*		error_table_$bad_index
+000532  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 247
+               return;
+
+000533  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 248
+               end;
+
+						STATEMENT 1 ON LINE 250
+          entry_ptr = addr (spr -> socket_array (array_indx));
+
+000534  aa   000030 4020 07	mpy  	24,dl
+000535  aa  7 77750 3515 06	epp1 	pr7|-24,ql	socket_array
+000536  aa  6 00106 2515 00	spri1	pr6|70		entry_ptr
+						STATEMENT 1 ON LINE 252
+          lockp = addr (entry_ptr -> socket.lock);
+
+000537  aa  1 00004 3715 00	epp5 	pr1|4		socket.lock
+000540  aa  6 00116 6515 00	spri5	pr6|78		lockp
+						STATEMENT 1 ON LINE 253
+          call ncp_lock_$lock_wait (lockp, (0));
+
+000541  aa  6 00224 4501 00	stz  	pr6|148
+000542  aa  6 00116 3521 00	epp2 	pr6|78		lockp
+000543  aa  6 00216 2521 00	spri2	pr6|142
+000544  aa  6 00224 3521 00	epp2 	pr6|148
+000545  aa  6 00220 2521 00	spri2	pr6|144
+000546  aa  6 00214 6211 00	eax1 	pr6|140
+000547  aa   010000 4310 07	fld  	4096,dl
+000550  la  4 00066 3521 20	epp2 	pr4|54,*		ncp_lock_$lock_wait
+000551  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 255
+          if (entry_ptr -> socket.socket_index ^= P_socket_indx) | (entry_ptr -> socket.state = bit (binary (SOCK_UNASSIGNED, 6)))
+          then do;
+
+000552  aa  6 00032 3735 20	epp7 	pr6|26,*
+000553  aa  7 00002 3715 20	epp5 	pr7|2,*
+000554  aa  6 00106 3535 20	epp3 	pr6|70,*		entry_ptr
+000555  aa  000 100 066 500	cmpb 	(pr),(pr),fill(0)
+000556  aa  5 00000 00 0044	descb	pr5|0,36		P_socket_indx
+000557  aa  3 00026 00 0044	descb	pr3|22,36		socket.socket_index
+000560  aa   000012 6010 04	tnz  	10,ic		000572
+000561  aa   000000 2350 07	lda  	0,dl
+000562  aa   000002 6050 04	tpl  	2,ic		000564
+000563  aa   000000 5310 00	neg  	0
+000564  aa   000036 7350 00	als  	30
+000565  aa  6 00224 7551 00	sta  	pr6|148
+000566  aa  3 00017 2351 00	lda  	pr3|15		socket.state
+000567  aa  0 00014 3771 00	anaq 	pr0|12		= 770000000000 000000000000
+000570  aa  6 00224 1151 00	cmpa 	pr6|148
+000571  aa   000006 6010 04	tnz  	6,ic		000577
+						STATEMENT 1 ON LINE 257
+               call unlock_socket_entry ();
+
+000572  aa   000531 6700 04	tsp4 	345,ic		001323
+						STATEMENT 1 ON LINE 258
+               P_error_code = error_table_$bad_index;
+
+000573  aa  6 00044 3701 20	epp4 	pr6|36,*
+000574  la  4 00032 2361 20	ldq  	pr4|26,*		error_table_$bad_index
+000575  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 259
+               return;
+
+000576  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 260
+               end;
+
+						STATEMENT 1 ON LINE 262
+          if P_privilege
+          then do;
+
+000577  aa  6 00124 3515 20	epp1 	pr6|84,*
+000600  aa  000 000 066 500	cmpb 	(pr),(),fill(0)
+000601  aa  1 00000 00 0001	descb	pr1|0,1		P_privilege
+000602  aa   000000 00 0000	descb	0,0
+000603  aa   000003 6000 04	tze  	3,ic		000606
+						STATEMENT 1 ON LINE 264
+               P_sock_ptr = entry_ptr;
+
+000604  aa  6 00130 2535 20	spri3	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 265
+               return;
+
+000605  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 266
+               end;
+
+						STATEMENT 1 ON LINE 268
+          val_level = level$get ();
+
+000606  aa  6 00100 3521 00	epp2 	pr6|64		val_level
+000607  aa  6 00216 2521 00	spri2	pr6|142
+000610  aa  6 00214 6211 00	eax1 	pr6|140
+000611  aa   004000 4310 07	fld  	2048,dl
+000612  aa  6 00044 3701 20	epp4 	pr6|36,*
+000613  la  4 00060 3521 20	epp2 	pr4|48,*		level$get
+000614  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 270
+          if (entry_ptr -> socket.process_id = pds$process_id)
+                    & (binary (entry_ptr -> socket.validation_level, 3) <= val_level)
+          then do;
+
+000615  aa  6 00106 3735 20	epp7 	pr6|70,*		entry_ptr
+000616  aa  7 00005 2351 00	lda  	pr7|5		socket.process_id
+000617  aa  6 00044 3701 20	epp4 	pr6|36,*
+000620  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+000621  aa   000007 6010 04	tnz  	7,ic		000630
+000622  aa  7 00017 2361 00	ldq  	pr7|15		socket.validation_level
+000623  aa  0 00432 3771 00	anaq 	pr0|282		= 000000000000 000000000007
+000624  aa  6 00100 1161 00	cmpq 	pr6|64		val_level
+000625  aa   000003 6054 04	tpnz 	3,ic		000630
+						STATEMENT 1 ON LINE 273
+               P_sock_ptr = entry_ptr;
+
+000626  aa  6 00130 6535 20	spri7	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 274
+               return;
+
+000627  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 275
+               end;
+
+						STATEMENT 1 ON LINE 277
+          if (entry_ptr -> socket.overseer_process_id = pds$process_id)
+                    & (binary (entry_ptr -> socket.overseer_validation_level, 3) >= val_level)
+          then do;
+
+000630  aa  7 00006 2351 00	lda  	pr7|6		socket.overseer_process_id
+000631  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+000632  aa   000010 6010 04	tnz  	8,ic		000642
+000633  aa  7 00017 2351 00	lda  	pr7|15		socket.overseer_validation_level
+000634  aa   000036 7350 00	als  	30
+000635  aa   000105 7730 00	lrl  	69
+000636  aa  6 00100 1161 00	cmpq 	pr6|64		val_level
+000637  aa   000003 6040 04	tmi  	3,ic		000642
+						STATEMENT 1 ON LINE 280
+               P_sock_ptr = entry_ptr;
+
+000640  aa  6 00130 6535 20	spri7	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 281
+               return;
+
+000641  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 282
+               end;
+
+						STATEMENT 1 ON LINE 287
+          call unlock_socket_entry ();
+
+000642  aa   000461 6700 04	tsp4 	305,ic		001323
+						STATEMENT 1 ON LINE 289
+          if (entry_ptr -> socket.process_id = pds$process_id) | (entry_ptr -> socket.overseer_process_id = pds$process_id)
+          then P_error_code = error_table_$bad_ring_brackets;
+
+000643  aa  6 00106 3735 20	epp7 	pr6|70,*		entry_ptr
+000644  aa  7 00005 2351 00	lda  	pr7|5		socket.process_id
+000645  aa  6 00044 3701 20	epp4 	pr6|36,*
+000646  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+000647  aa   000004 6000 04	tze  	4,ic		000653
+000650  aa  7 00006 2351 00	lda  	pr7|6		socket.overseer_process_id
+000651  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+000652  aa   000004 6010 04	tnz  	4,ic		000656
+000653  la  4 00036 2361 20	ldq  	pr4|30,*		error_table_$bad_ring_brackets
+000654  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+000655  aa   000003 7100 04	tra  	3,ic		000660
+						STATEMENT 1 ON LINE 291
+          else P_error_code = error_table_$bad_processid;
+
+000656  la  4 00034 2361 20	ldq  	pr4|28,*		error_table_$bad_processid
+000657  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 293
+          return;
+
+000660  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO find_socket_from_socket_number                     STATEMENT 1 ON LINE 297
+find_socket_from_socket_number:
+          entry (P_host_num, P_socket_num, P_privilege, P_sock_ptr, P_error_code);
+
+000661  at     000005000015
+000662  tt     000015000012
+000663  tt     000010000013
+000664  ta     000661000000
+000665  da     000447300000
+000666  aa   000340 6270 00	eax7 	224
+000667  aa  7 00034 3521 20	epp2 	pr7|28,*
+000670  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000671  aa     000012000000
+000672  aa     000000000000
+000673  aa  6 00032 3735 20	epp7 	pr6|26,*
+000674  aa  7 00006 3715 20	epp5 	pr7|6,*
+000675  aa  6 00124 6515 00	spri5	pr6|84
+000676  aa  7 00010 3535 20	epp3 	pr7|8,*
+000677  aa  6 00130 2535 00	spri3	pr6|88
+000700  aa  7 00012 3515 20	epp1 	pr7|10,*
+000701  aa  6 00122 2515 00	spri1	pr6|82
+						STATEMENT 1 ON LINE 300
+          P_error_code = 0;
+
+000702  aa  6 00122 4501 20	stz  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 301
+          P_sock_ptr = null ();
+
+000703  aa   777115 2370 04	ldaq 	-435,ic		000020 = 077777000043 000001000000
+000704  aa  6 00130 7571 20	staq 	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 303
+          spr = addr (ncp_tables_$socket_tbl);
+
+000705  aa  6 00044 3701 20	epp4 	pr6|36,*
+000706  la  4 00030 3735 20	epp7 	pr4|24,*		ncp_tables_$socket_tbl
+000707  aa  6 00114 6535 00	spri7	pr6|76		spr
+						STATEMENT 1 ON LINE 304
+          npr = addr (ncp_tables_$ncp_data);
+
+000710  la  4 00024 3715 20	epp5 	pr4|20,*		ncp_tables_$ncp_data
+000711  aa  6 00112 6515 00	spri5	pr6|74		npr
+						STATEMENT 1 ON LINE 306
+	string (match_socket.host) = bit (binary (P_host_num,  32), 32);
+
+000712  aa  6 00032 3535 20	epp3 	pr6|26,*
+000713  aa  3 00002 2351 20	lda  	pr3|2,*		P_host_num
+000714  aa   000002 6050 04	tpl  	2,ic		000716
+000715  aa   000000 5310 00	neg  	0
+000716  aa   000004 7350 00	als  	4
+000717  aa  6 00120 6751 00	era  	pr6|80
+000720  aa  0 00100 3751 00	ana  	pr0|64		= 777777777760
+000721  aa  6 00120 6551 00	ersa 	pr6|80
+						STATEMENT 1 ON LINE 307
+          match_socket.socket_num = bit (binary (P_socket_num, 32));
+
+000722  aa  3 00004 2351 20	lda  	pr3|4,*		P_socket_num
+000723  aa   000002 6050 04	tpl  	2,ic		000725
+000724  aa   000000 5310 00	neg  	0
+000725  aa   000004 7350 00	als  	4
+000726  aa   000040 7730 00	lrl  	32
+000727  aa  6 00120 6771 00	eraq 	pr6|80		match_socket.socket_num
+000730  aa   001040 3770 04	anaq 	544,ic		001770 = 000000000017 777777777400
+000731  aa  6 00120 6551 00	ersa 	pr6|80		match_socket.socket_num
+000732  aa  6 00121 6561 00	ersq 	pr6|81		match_socket.socket_num
+						STATEMENT 1 ON LINE 308
+          match_socket.pad = ""b;
+
+000733  aa   001034 2350 04	lda  	540,ic		001767 = 777777777400
+000734  aa  6 00121 3551 00	ansa 	pr6|81		match_socket.pad
+						STATEMENT 1 ON LINE 310
+          array_bound = npr -> ncp_dt.stbl_gent;
+
+000735  aa  5 00012 2361 00	ldq  	pr5|10		ncp_dt.stbl_gent
+000736  aa  6 00101 7561 00	stq  	pr6|65		array_bound
+						STATEMENT 1 ON LINE 312
+          do array_indx = 1 by 1 to array_bound
+                    while (string (spr -> socket_array (array_indx).local_socket) ^= string (match_socket));
+
+000737  aa  6 00132 7561 00	stq  	pr6|90
+000740  aa   000001 2360 07	ldq  	1,dl
+000741  aa  6 00102 7561 00	stq  	pr6|66		array_indx
+000742  aa  6 00102 2361 00	ldq  	pr6|66		array_indx
+000743  aa  6 00132 1161 00	cmpq 	pr6|90
+000744  aa   000011 6054 04	tpnz 	9,ic		000755
+000745  aa   000030 4020 07	mpy  	24,dl
+000746  aa  6 00114 3735 20	epp7 	pr6|76,*		spr
+000747  aa  7 77761 2351 06	lda  	pr7|-15,ql
+000750  aa  7 77762 2361 06	ldq  	pr7|-14,ql
+000751  aa  6 00120 1171 00	cmpaq	pr6|80
+000752  aa   000003 6000 04	tze  	3,ic		000755
+						STATEMENT 1 ON LINE 314
+               end;
+
+000753  aa  6 00102 0541 00	aos  	pr6|66		array_indx
+000754  aa   777766 7100 04	tra  	-10,ic		000742
+						STATEMENT 1 ON LINE 315
+          if array_indx > array_bound
+          then do;
+
+000755  aa  6 00102 2361 00	ldq  	pr6|66		array_indx
+000756  aa  6 00101 1161 00	cmpq 	pr6|65		array_bound
+000757  aa   000005 6044 04	tmoz 	5,ic		000764
+						STATEMENT 1 ON LINE 317
+               P_error_code = error_table_$net_socket_not_found;
+
+000760  aa  6 00044 3701 20	epp4 	pr6|36,*
+000761  la  4 00052 2361 20	ldq  	pr4|42,*		error_table_$net_socket_not_found
+000762  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 318
+               return;
+
+000763  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 319
+               end;
+
+						STATEMENT 1 ON LINE 321
+          entry_ptr = addr (spr -> socket_array (array_indx));
+
+000764  aa   000030 4020 07	mpy  	24,dl
+000765  aa  6 00114 3735 20	epp7 	pr6|76,*		spr
+000766  aa  7 77750 3735 06	epp7 	pr7|-24,ql	socket_array
+000767  aa  6 00106 6535 00	spri7	pr6|70		entry_ptr
+						STATEMENT 1 ON LINE 323
+          lockp = addr (entry_ptr -> socket.lock);
+
+000770  aa  7 00004 3715 00	epp5 	pr7|4		socket.lock
+000771  aa  6 00116 6515 00	spri5	pr6|78		lockp
+						STATEMENT 1 ON LINE 324
+          call ncp_lock_$lock_wait (lockp, (0));
+
+000772  aa  6 00224 4501 00	stz  	pr6|148
+000773  aa  6 00116 3521 00	epp2 	pr6|78		lockp
+000774  aa  6 00216 2521 00	spri2	pr6|142
+000775  aa  6 00224 3521 00	epp2 	pr6|148
+000776  aa  6 00220 2521 00	spri2	pr6|144
+000777  aa  6 00214 6211 00	eax1 	pr6|140
+001000  aa   010000 4310 07	fld  	4096,dl
+001001  aa  6 00044 3701 20	epp4 	pr6|36,*
+001002  la  4 00066 3521 20	epp2 	pr4|54,*		ncp_lock_$lock_wait
+001003  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 326
+          if (string (entry_ptr -> socket.local_socket) ^= string (match_socket))
+                    | (entry_ptr -> socket.state = bit (binary (SOCK_UNASSIGNED, 6)))
+          then do;
+
+001004  aa  6 00106 3735 20	epp7 	pr6|70,*		entry_ptr
+001005  aa  7 00011 2351 00	lda  	pr7|9
+001006  aa  7 00012 2361 00	ldq  	pr7|10
+001007  aa  6 00120 1171 00	cmpaq	pr6|80
+001010  aa   000012 6010 04	tnz  	10,ic		001022
+001011  aa   000000 2350 07	lda  	0,dl
+001012  aa   000002 6050 04	tpl  	2,ic		001014
+001013  aa   000000 5310 00	neg  	0
+001014  aa   000036 7350 00	als  	30
+001015  aa  6 00224 7551 00	sta  	pr6|148
+001016  aa  7 00017 2351 00	lda  	pr7|15		socket.state
+001017  aa  0 00014 3771 00	anaq 	pr0|12		= 770000000000 000000000000
+001020  aa  6 00224 1151 00	cmpa 	pr6|148
+001021  aa   000006 6010 04	tnz  	6,ic		001027
+						STATEMENT 1 ON LINE 329
+               call unlock_socket_entry ();
+
+001022  aa   000301 6700 04	tsp4 	193,ic		001323
+						STATEMENT 1 ON LINE 330
+               P_error_code = error_table_$net_socket_not_found;
+
+001023  aa  6 00044 3701 20	epp4 	pr6|36,*
+001024  la  4 00052 2361 20	ldq  	pr4|42,*		error_table_$net_socket_not_found
+001025  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 331
+               return;
+
+001026  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 332
+               end;
+
+						STATEMENT 1 ON LINE 334
+          if ^ P_privilege
+          then do;
+
+001027  aa  6 00124 3715 20	epp5 	pr6|84,*
+001030  aa  000 000 066 500	cmpb 	(pr),(),fill(0)
+001031  aa  5 00000 00 0001	descb	pr5|0,1		P_privilege
+001032  aa   000000 00 0000	descb	0,0
+001033  aa   000015 6010 04	tnz  	13,ic		001050
+						STATEMENT 1 ON LINE 336
+               if (entry_ptr -> socket.process_id ^= pds$process_id) & (entry_ptr -> socket.overseer_process_id ^= pds$process_id)
+               then do;
+
+001034  aa  7 00005 2351 00	lda  	pr7|5		socket.process_id
+001035  aa  6 00044 3701 20	epp4 	pr6|36,*
+001036  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+001037  aa   000011 6000 04	tze  	9,ic		001050
+001040  aa  7 00006 2351 00	lda  	pr7|6		socket.overseer_process_id
+001041  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+001042  aa   000006 6000 04	tze  	6,ic		001050
+						STATEMENT 1 ON LINE 338
+                    call unlock_socket_entry ();
+
+001043  aa   000260 6700 04	tsp4 	176,ic		001323
+						STATEMENT 1 ON LINE 339
+                    P_error_code = error_table_$bad_processid;
+
+001044  aa  6 00044 3701 20	epp4 	pr6|36,*
+001045  la  4 00034 2361 20	ldq  	pr4|28,*		error_table_$bad_processid
+001046  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 340
+                    return;
+
+001047  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 341
+                    end;
+
+						STATEMENT 1 ON LINE 342
+               end;
+
+						STATEMENT 1 ON LINE 344
+          P_sock_ptr = entry_ptr;
+
+001050  aa  6 00130 6535 20	spri7	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 346
+          return;
+
+001051  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO find_socket_from_link_number                       STATEMENT 1 ON LINE 350
+find_socket_from_link_number:
+          entry (P_host_num, P_link_num, P_link_gender, P_sock_ptr, P_error_code);
+
+001052  at     000005000015
+001053  tt     000016000012
+001054  tt     000010000013
+001055  ta     001052000000
+001056  da     000462300000
+001057  aa   000340 6270 00	eax7 	224
+001060  aa  7 00034 3521 20	epp2 	pr7|28,*
+001061  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001062  aa     000012000000
+001063  aa     000000000000
+001064  aa  6 00032 3735 20	epp7 	pr6|26,*
+001065  aa  7 00010 3715 20	epp5 	pr7|8,*
+001066  aa  6 00130 6515 00	spri5	pr6|88
+001067  aa  7 00012 3535 20	epp3 	pr7|10,*
+001070  aa  6 00122 2535 00	spri3	pr6|82
+						STATEMENT 1 ON LINE 353
+          P_error_code = 0;
+
+001071  aa  6 00122 4501 20	stz  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 354
+          P_sock_ptr = null ();
+
+001072  aa   776726 2370 04	ldaq 	-554,ic		000020 = 077777000043 000001000000
+001073  aa  6 00130 7571 20	staq 	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 356
+          npr = addr (ncp_tables_$ncp_data);
+
+001074  aa  6 00044 3701 20	epp4 	pr6|36,*
+001075  la  4 00024 3735 20	epp7 	pr4|20,*		ncp_tables_$ncp_data
+001076  aa  6 00112 6535 00	spri7	pr6|74		npr
+						STATEMENT 1 ON LINE 357
+          spr = addr (ncp_tables_$socket_tbl);
+
+001077  la  4 00030 3715 20	epp5 	pr4|24,*		ncp_tables_$socket_tbl
+001100  aa  6 00114 6515 00	spri5	pr6|76		spr
+						STATEMENT 1 ON LINE 359
+          host_ptr = find_host_slot (P_host_num, "0"b, (0));
+
+001101  aa   000000 2350 07	lda  	0,dl
+001102  aa  6 00224 7551 00	sta  	pr6|148
+001103  aa  6 00225 4501 00	stz  	pr6|149
+001104  aa  6 00032 3535 20	epp3 	pr6|26,*
+001105  aa  3 00002 3521 20	epp2 	pr3|2,*		P_host_num
+001106  aa  6 00230 2521 00	spri2	pr6|152
+001107  aa  6 00224 3521 00	epp2 	pr6|148
+001110  aa  6 00232 2521 00	spri2	pr6|154
+001111  aa  6 00225 3521 00	epp2 	pr6|149
+001112  aa  6 00234 2521 00	spri2	pr6|156
+001113  aa  6 00110 3521 00	epp2 	pr6|72		host_ptr
+001114  aa  6 00236 2521 00	spri2	pr6|158
+001115  aa  6 00226 3521 00	epp2 	pr6|150
+001116  aa   020000 4310 07	fld  	8192,dl
+001117  aa  2 00000 7571 00	staq 	pr2|0
+001120  aa   000524 6700 04	tsp4 	340,ic		001644
+						STATEMENT 1 ON LINE 360
+          if host_ptr = null ()
+          then do;
+
+001121  aa  6 00110 2371 00	ldaq 	pr6|72		host_ptr
+001122  aa   776676 6770 04	eraq 	-578,ic		000020 = 077777000043 000001000000
+001123  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001124  aa   000005 6010 04	tnz  	5,ic		001131
+						STATEMENT 1 ON LINE 362
+               P_error_code = error_table_$net_fhost_inactive;
+
+001125  aa  6 00044 3701 20	epp4 	pr6|36,*
+001126  la  4 00044 2361 20	ldq  	pr4|36,*		error_table_$net_fhost_inactive
+001127  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 363
+               return;
+
+001130  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 364
+               end;
+
+						STATEMENT 1 ON LINE 366
+          host_indx = host_ptr -> host.hash_index;
+
+001131  aa  6 00110 3735 20	epp7 	pr6|72,*		host_ptr
+001132  aa  7 00007 2351 00	lda  	pr7|7		host.hash_index
+001133  aa   000022 7350 00	als  	18
+001134  aa   000066 7330 00	lrs  	54
+001135  aa  6 00103 7561 00	stq  	pr6|67		host_indx
+						STATEMENT 1 ON LINE 368
+          array_bound = npr -> ncp_dt.stbl_gent;
+
+001136  aa  6 00112 3715 20	epp5 	pr6|74,*		npr
+001137  aa  5 00012 2361 00	ldq  	pr5|10		ncp_dt.stbl_gent
+001140  aa  6 00101 7561 00	stq  	pr6|65		array_bound
+						STATEMENT 1 ON LINE 370
+          found = "0"b;
+
+001141  aa  6 00105 4501 00	stz  	pr6|69		found
+						STATEMENT 1 ON LINE 371
+          do array_indx = 1 by 1 to array_bound while (^ found);
+
+001142  aa  6 00133 7561 00	stq  	pr6|91
+001143  aa   000001 2360 07	ldq  	1,dl
+001144  aa  6 00102 7561 00	stq  	pr6|66		array_indx
+001145  aa   000000 0110 03	nop  	0,du
+001146  aa  6 00102 2361 00	ldq  	pr6|66		array_indx
+001147  aa  6 00133 1161 00	cmpq 	pr6|91
+001150  aa   000043 6054 04	tpnz 	35,ic		001213
+001151  aa  6 00105 2351 00	lda  	pr6|69		found
+001152  aa   000041 6010 04	tnz  	33,ic		001213
+						STATEMENT 1 ON LINE 372
+               entry_ptr = addr (spr -> socket_array (array_indx));
+
+001153  aa   000030 4020 07	mpy  	24,dl
+001154  aa  6 00114 3735 20	epp7 	pr6|76,*		spr
+001155  aa  7 77750 3735 06	epp7 	pr7|-24,ql	socket_array
+001156  aa  6 00106 6535 00	spri7	pr6|70		entry_ptr
+						STATEMENT 1 ON LINE 374
+               if entry_ptr -> socket.host_entry_index = host_indx
+               then if entry_ptr -> socket.link_number = P_link_num
+                    then if entry_ptr -> socket.send_gender = P_link_gender
+                         then if entry_ptr -> socket.state ^= bit (binary (SOCK_UNASSIGNED, 6))
+                              then found = "1"b;
+
+001157  aa  7 00016 2351 00	lda  	pr7|14		socket.host_entry_index
+001160  aa   000066 7330 00	lrs  	54
+001161  aa  6 00103 1161 00	cmpq 	pr6|67		host_indx
+001162  aa   000027 6010 04	tnz  	23,ic		001211
+001163  aa  7 00015 2351 00	lda  	pr7|13		socket.link_number
+001164  aa   000022 7350 00	als  	18
+001165  aa   000066 7330 00	lrs  	54
+001166  aa  6 00032 3715 20	epp5 	pr6|26,*
+001167  aa  5 00004 1161 20	cmpq 	pr5|4,*		P_link_num
+001170  aa   000021 6010 04	tnz  	17,ic		001211
+001171  aa  5 00006 3535 20	epp3 	pr5|6,*
+001172  aa  000 100 066 500	cmpb 	(pr),(pr),fill(0)
+001173  aa  7 00017 25 0001	descb	pr7|15(14),1	socket.send_gender
+001174  aa  3 00000 00 0001	descb	pr3|0,1		P_link_gender
+001175  aa   000014 6010 04	tnz  	12,ic		001211
+001176  aa   000000 2350 07	lda  	0,dl
+001177  aa   000002 6050 04	tpl  	2,ic		001201
+001200  aa   000000 5310 00	neg  	0
+001201  aa   000036 7350 00	als  	30
+001202  aa  6 00225 7551 00	sta  	pr6|149
+001203  aa  7 00017 2351 00	lda  	pr7|15		socket.state
+001204  aa  0 00014 3771 00	anaq 	pr0|12		= 770000000000 000000000000
+001205  aa  6 00225 1151 00	cmpa 	pr6|149
+001206  aa   000003 6000 04	tze  	3,ic		001211
+001207  aa   400000 2350 03	lda  	131072,du
+001210  aa  6 00105 7551 00	sta  	pr6|69		found
+						STATEMENT 1 ON LINE 379
+               end;
+
+001211  aa  6 00102 0541 00	aos  	pr6|66		array_indx
+001212  aa   777734 7100 04	tra  	-36,ic		001146
+						STATEMENT 1 ON LINE 380
+          if ^ found
+          then do;
+
+001213  aa  6 00105 2351 00	lda  	pr6|69		found
+001214  aa   000005 6010 04	tnz  	5,ic		001221
+						STATEMENT 1 ON LINE 382
+               P_error_code = error_table_$net_socket_not_found;
+
+001215  aa  6 00044 3701 20	epp4 	pr6|36,*
+001216  la  4 00052 2361 20	ldq  	pr4|42,*		error_table_$net_socket_not_found
+001217  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 383
+               return;
+
+001220  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 384
+               end;
+
+						STATEMENT 1 ON LINE 386
+          lockp = addr (entry_ptr -> socket.lock);
+
+001221  aa  6 00106 3735 20	epp7 	pr6|70,*		entry_ptr
+001222  aa  7 00004 3735 00	epp7 	pr7|4		socket.lock
+001223  aa  6 00116 6535 00	spri7	pr6|78		lockp
+						STATEMENT 1 ON LINE 387
+          call ncp_lock_$lock_wait (lockp, (0));
+
+001224  aa  6 00225 4501 00	stz  	pr6|149
+001225  aa  6 00116 3521 00	epp2 	pr6|78		lockp
+001226  aa  6 00216 2521 00	spri2	pr6|142
+001227  aa  6 00225 3521 00	epp2 	pr6|149
+001230  aa  6 00220 2521 00	spri2	pr6|144
+001231  aa  6 00214 6211 00	eax1 	pr6|140
+001232  aa   010000 4310 07	fld  	4096,dl
+001233  aa  6 00044 3701 20	epp4 	pr6|36,*
+001234  la  4 00066 3521 20	epp2 	pr4|54,*		ncp_lock_$lock_wait
+001235  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 389
+          if (entry_ptr -> socket.state = bit (binary (SOCK_UNASSIGNED, 6))) | (entry_ptr -> socket.host_entry_index ^= host_indx)
+          then do;
+
+001236  aa   000000 2350 07	lda  	0,dl
+001237  aa   000002 6050 04	tpl  	2,ic		001241
+001240  aa   000000 5310 00	neg  	0
+001241  aa   000036 7350 00	als  	30
+001242  aa  6 00225 7551 00	sta  	pr6|149
+001243  aa  6 00106 3735 20	epp7 	pr6|70,*		entry_ptr
+001244  aa  7 00017 2351 00	lda  	pr7|15		socket.state
+001245  aa  0 00014 3771 00	anaq 	pr0|12		= 770000000000 000000000000
+001246  aa  6 00225 1151 00	cmpa 	pr6|149
+001247  aa   000005 6000 04	tze  	5,ic		001254
+001250  aa  7 00016 2351 00	lda  	pr7|14		socket.host_entry_index
+001251  aa   000066 7330 00	lrs  	54
+001252  aa  6 00103 1161 00	cmpq 	pr6|67		host_indx
+001253  aa   000006 6000 04	tze  	6,ic		001261
+						STATEMENT 1 ON LINE 391
+               call unlock_socket_entry ();
+
+001254  aa   000047 6700 04	tsp4 	39,ic		001323
+						STATEMENT 1 ON LINE 392
+               P_error_code = error_table_$net_socket_not_found;
+
+001255  aa  6 00044 3701 20	epp4 	pr6|36,*
+001256  la  4 00052 2361 20	ldq  	pr4|42,*		error_table_$net_socket_not_found
+001257  aa  6 00122 7561 20	stq  	pr6|82,*		P_error_code
+						STATEMENT 1 ON LINE 393
+               return;
+
+001260  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 394
+               end;
+
+						STATEMENT 1 ON LINE 396
+          P_sock_ptr = entry_ptr;
+
+001261  aa  6 00130 6535 20	spri7	pr6|88,*		P_sock_ptr
+						STATEMENT 1 ON LINE 398
+          return;
+
+001262  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO find_host_entry                                    STATEMENT 1 ON LINE 405
+find_host_entry:
+          entry (P_host_num, P_create, P_host_ptr, P_error_code);
+
+001263  at     000004000015
+001264  tt     000012000010
+001265  ta     000013000000
+001266  ta     001263000000
+001267  da     000471300000
+001270  aa   000340 6270 00	eax7 	224
+001271  aa  7 00034 3521 20	epp2 	pr7|28,*
+001272  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001273  aa     000010000000
+001274  aa     000000000000
+001275  aa  6 00032 3735 20	epp7 	pr6|26,*
+001276  aa  7 00006 3715 20	epp5 	pr7|6,*
+001277  aa  6 00126 6515 00	spri5	pr6|86
+001300  aa  7 00010 3535 20	epp3 	pr7|8,*
+001301  aa  6 00122 2535 00	spri3	pr6|82
+						STATEMENT 1 ON LINE 408
+          npr = addr (ncp_tables_$ncp_data);
+
+001302  aa  6 00044 3701 20	epp4 	pr6|36,*
+001303  la  4 00024 3735 20	epp7 	pr4|20,*		ncp_tables_$ncp_data
+001304  aa  6 00112 6535 00	spri7	pr6|74		npr
+						STATEMENT 1 ON LINE 410
+          P_host_ptr = find_host_slot (P_host_num, P_create, P_error_code);
+
+001305  aa  6 00032 3715 20	epp5 	pr6|26,*
+001306  aa  5 00002 3521 20	epp2 	pr5|2,*		P_host_num
+001307  aa  6 00230 2521 00	spri2	pr6|152
+001310  aa  5 00004 3521 20	epp2 	pr5|4,*		P_create
+001311  aa  6 00232 2521 00	spri2	pr6|154
+001312  aa  6 00122 3521 20	epp2 	pr6|82,*		P_error_code
+001313  aa  6 00234 2521 00	spri2	pr6|156
+001314  aa  6 00126 3521 20	epp2 	pr6|86,*		P_host_ptr
+001315  aa  6 00236 2521 00	spri2	pr6|158
+001316  aa  6 00226 3521 00	epp2 	pr6|150
+001317  aa   020000 4310 07	fld  	8192,dl
+001320  aa  2 00000 7571 00	staq 	pr2|0
+001321  aa   000323 6700 04	tsp4 	211,ic		001644
+						STATEMENT 1 ON LINE 412
+          return;
+
+001322  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 653
+end;
+
+BEGIN PROCEDURE unlock_socket_entry
+ENTRY TO unlock_socket_entry                                STATEMENT 1 ON LINE 416
+unlock_socket_entry:
+          procedure ();
+
+001323  aa  6 00134 6501 00	spri4	pr6|92
+						STATEMENT 1 ON LINE 421
+          call ncp_lock_$lock_unlock (lockp, (0));
+
+001324  aa  6 00260 4501 00	stz  	pr6|176
+001325  aa  6 00116 3521 00	epp2 	pr6|78		lockp
+001326  aa  6 00264 2521 00	spri2	pr6|180
+001327  aa  6 00260 3521 00	epp2 	pr6|176
+001330  aa  6 00266 2521 00	spri2	pr6|182
+001331  aa  6 00262 6211 00	eax1 	pr6|178
+001332  aa   010000 4310 07	fld  	4096,dl
+001333  aa  6 00044 3701 20	epp4 	pr6|36,*
+001334  la  4 00070 3521 20	epp2 	pr4|56,*		ncp_lock_$lock_unlock
+001335  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 423
+          return;
+
+001336  aa  6 00134 6101 00	rtcd 	pr6|92
+						STATEMENT 1 ON LINE 425
+end;
+
+  END PROCEDURE unlock_socket_entry
+BEGIN PROCEDURE find_proc_info_slot
+ENTRY TO find_proc_info_slot                                STATEMENT 1 ON LINE 429
+find_proc_info_slot:
+          procedure (p_slot_ptr, p_err_code);
+
+001337  aa  6 00142 6501 00	spri4	pr6|98
+001340  aa  6 00144 2521 00	spri2	pr6|100
+						STATEMENT 1 ON LINE 448
+          p_err_code = 0;
+
+001341  aa  2 00004 4501 20	stz  	pr2|4,*		p_err_code
+						STATEMENT 1 ON LINE 449
+          p_slot_ptr = null ();
+
+001342  aa   776456 2370 04	ldaq 	-722,ic		000020 = 077777000043 000001000000
+001343  aa  2 00002 7571 20	staq 	pr2|2,*		p_slot_ptr
+						STATEMENT 1 ON LINE 451
+          ppr = addr (ncp_tables_$proc_tbl);
+
+001344  aa  6 00044 3701 20	epp4 	pr6|36,*
+001345  la  4 00026 3735 20	epp7 	pr4|22,*		ncp_tables_$proc_tbl
+001346  aa  6 00152 6535 00	spri7	pr6|106		ppr
+						STATEMENT 1 ON LINE 453
+          do while ("1"b);
+
+001347  aa   000000 0110 03	nop  	0,du
+						STATEMENT 1 ON LINE 455
+               slot_indx = pds$network_ptbl_idx;
+
+001350  aa  6 00044 3701 20	epp4 	pr6|36,*
+001351  la  4 00014 2361 20	ldq  	pr4|12,*		pds$network_ptbl_idx
+001352  aa  6 00150 7561 00	stq  	pr6|104		slot_indx
+						STATEMENT 1 ON LINE 456
+               if slot_indx = 0
+               then do;
+
+001353  aa   000021 6010 04	tnz  	17,ic		001374
+						STATEMENT 1 ON LINE 458
+                    call ncp_assign_$make_process_slot (slot_indx, p_err_code);
+
+001354  aa  6 00150 3521 00	epp2 	pr6|104		slot_indx
+001355  aa  6 00272 2521 00	spri2	pr6|186
+001356  aa  6 00144 3735 20	epp7 	pr6|100,*
+001357  aa  7 00004 3521 20	epp2 	pr7|4,*		p_err_code
+001360  aa  6 00274 2521 00	spri2	pr6|188
+001361  aa  6 00270 6211 00	eax1 	pr6|184
+001362  aa   010000 4310 07	fld  	4096,dl
+001363  la  4 00062 3521 20	epp2 	pr4|50,*		ncp_assign_$make_process_slot
+001364  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 459
+                    if p_err_code ^= 0
+                    then return;
+
+001365  aa  6 00144 3735 20	epp7 	pr6|100,*
+001366  aa  7 00004 2361 20	ldq  	pr7|4,*		p_err_code
+001367  aa   000002 6000 04	tze  	2,ic		001371
+001370  aa  6 00142 6101 00	rtcd 	pr6|98
+						STATEMENT 1 ON LINE 462
+                    pds$network_ptbl_idx = slot_indx;
+
+001371  aa  6 00150 2361 00	ldq  	pr6|104		slot_indx
+001372  aa  6 00044 3701 20	epp4 	pr6|36,*
+001373  la  4 00014 7561 20	stq  	pr4|12,*		pds$network_ptbl_idx
+						STATEMENT 1 ON LINE 463
+                    end;
+
+						STATEMENT 1 ON LINE 465
+               p_slot_ptr = addr (ppr -> proc_array (slot_indx));
+
+001374  aa   000030 4020 07	mpy  	24,dl
+001375  aa  6 00152 3735 20	epp7 	pr6|106,*		ppr
+001376  aa  7 77750 3735 06	epp7 	pr7|-24,ql	proc_array
+001377  aa  6 00144 3715 20	epp5 	pr6|100,*
+001400  aa  5 00002 6535 20	spri7	pr5|2,*		p_slot_ptr
+						STATEMENT 1 ON LINE 466
+               if slot_indx > 0
+               then if slot_indx <= npr -> ncp_dt.ptbl_gent
+                    then if p_slot_ptr -> pdt.lockid = pds$process_id
+                         then return;
+
+001401  aa  6 00150 2361 00	ldq  	pr6|104		slot_indx
+001402  aa   000010 6044 04	tmoz 	8,ic		001412
+001403  aa  6 00112 3535 20	epp3 	pr6|74,*		npr
+001404  aa  3 00066 1161 00	cmpq 	pr3|54		ncp_dt.ptbl_gent
+001405  aa   000005 6054 04	tpnz 	5,ic		001412
+001406  aa  7 00017 2351 00	lda  	pr7|15		pdt.lockid
+001407  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$process_id
+001410  aa   000002 6010 04	tnz  	2,ic		001412
+001411  aa  6 00142 6101 00	rtcd 	pr6|98
+						STATEMENT 1 ON LINE 471
+               pds$network_ptbl_idx = 0;
+
+001412  la  4 00014 4501 20	stz  	pr4|12,*		pds$network_ptbl_idx
+						STATEMENT 1 ON LINE 472
+               slot_indx = 0;
+
+001413  aa  6 00150 4501 00	stz  	pr6|104		slot_indx
+						STATEMENT 1 ON LINE 473
+               end;
+
+001414  aa   777734 7100 04	tra  	-36,ic		001350
+						STATEMENT 1 ON LINE 475
+end;
+
+001415  aa  6 00142 6101 00	rtcd 	pr6|98
+  END PROCEDURE find_proc_info_slot
+BEGIN PROCEDURE enter_ncp
+ENTRY TO enter_ncp                                          STATEMENT 1 ON LINE 479
+enter_ncp:
+          procedure (p_pdt_ptr, p_gdt_ptr, p_user_call, p_err_code);
+
+001416  aa  6 00154 6501 00	spri4	pr6|108
+001417  aa  6 00156 2521 00	spri2	pr6|110
+001420  aa  2 00010 3735 20	epp7 	pr2|8,*
+001421  aa  6 00172 6535 00	spri7	pr6|122
+						STATEMENT 1 ON LINE 500
+          p_err_code = 0;
+
+001422  aa  7 00000 4501 00	stz  	pr7|0		p_err_code
+						STATEMENT 1 ON LINE 502
+          mpr = addr (ncp_tables_$meter_cells);
+
+001423  aa  6 00044 3701 20	epp4 	pr6|36,*
+001424  la  4 00022 3715 20	epp5 	pr4|18,*		ncp_tables_$meter_cells
+001425  aa  6 00170 6515 00	spri5	pr6|120		mpr
+						STATEMENT 1 ON LINE 504
+          clock_reading = clock ();
+
+001426  aa  0 01435 7001 00	tsx0 	pr0|797		clock
+001427  aa  6 00164 7571 00	staq 	pr6|116		clock_reading
+						STATEMENT 1 ON LINE 506
+          p_pdt_ptr -> pdt.gdtp = null ();
+
+001430  aa   776370 2370 04	ldaq 	-776,ic		000020 = 077777000043 000001000000
+001431  aa  2 00002 3735 20	epp7 	pr2|2,*		p_pdt_ptr
+001432  aa  7 00000 7571 20	staq 	pr7|0,*		pdt.gdtp
+						STATEMENT 1 ON LINE 507
+          p_gdt_ptr -> gdt.nprocs_sw = 0;
+
+001433  aa  2 00004 3535 20	epp3 	pr2|4,*		p_gdt_ptr
+001434  aa  3 00000 3535 20	epp3 	pr3|0,*		p_gdt_ptr
+001435  aa  3 00025 4501 00	stz  	pr3|21		gdt.nprocs_sw
+						STATEMENT 1 ON LINE 509
+          p_gdt_ptr -> gdt.proc_tbp = p_pdt_ptr;
+
+001436  aa  2 00002 3515 20	epp1 	pr2|2,*		p_pdt_ptr
+001437  aa  1 00000 3515 20	epp1 	pr1|0,*		p_pdt_ptr
+001440  aa  3 00030 2515 00	spri1	pr3|24		gdt.proc_tbp
+						STATEMENT 1 ON LINE 510
+          p_gdt_ptr -> gdt.entry_time = clock_reading;
+
+001441  aa  6 00164 2371 00	ldaq 	pr6|116		clock_reading
+001442  aa  2 00004 3535 20	epp3 	pr2|4,*		p_gdt_ptr
+001443  aa  3 00000 3535 20	epp3 	pr3|0,*		p_gdt_ptr
+001444  aa  3 00022 7571 00	staq 	pr3|18		gdt.entry_time
+						STATEMENT 1 ON LINE 511
+          p_gdt_ptr -> gdt.init_sw = 620998;
+
+001445  aa   776337 2360 04	ldq  	-801,ic		000004 = 000002274706
+001446  aa  3 00000 7561 00	stq  	pr3|0		gdt.init_sw
+						STATEMENT 1 ON LINE 513
+          p_pdt_ptr -> pdt.returnp = p_gdt_ptr -> gdt.abort_location;
+
+001447  aa  6 00156 3735 20	epp7 	pr6|110,*
+001450  aa  7 00002 3515 20	epp1 	pr7|2,*		p_pdt_ptr
+001451  aa  1 00000 3515 20	epp1 	pr1|0,*		p_pdt_ptr
+001452  aa  3 00014 3521 20	epp2 	pr3|12,*		gdt.abort_location
+001453  aa  1 00002 2521 00	spri2	pr1|2		pdt.returnp
+001454  aa  3 00016 3521 20	epp2 	pr3|14,*		gdt.abort_location
+001455  aa  1 00004 2521 00	spri2	pr1|4		pdt.returnp
+						STATEMENT 1 ON LINE 514
+          p_pdt_ptr -> pdt.gdtp = p_gdt_ptr;
+
+001456  aa  1 00000 2535 00	spri3	pr1|0		pdt.gdtp
+						STATEMENT 1 ON LINE 516
+          if mpr -> meter_dt.prev_daemon_call_time + ncp_params_$timeout_period  < clock_reading
+          then do;
+
+001457  aa  5 00002 2371 00	ldaq 	pr5|2		meter_dt.prev_daemon_call_time
+001460  aa  6 00044 3701 20	epp4 	pr6|36,*
+001461  la  4 00010 0771 20	adaq 	pr4|8,*		ncp_params_$timeout_period
+001462  aa  6 00164 1171 00	cmpaq	pr6|116		clock_reading
+001463  aa   000034 6050 04	tpl  	28,ic		001517
+						STATEMENT 1 ON LINE 518
+               if npr -> ncp_dt.ncp_up > 0
+               then call ncp_control_$ncp_change_global_state (NCP_CRASHED, "Daemon processing was tardy.", (0));
+
+001464  aa  6 00112 3515 20	epp1 	pr6|74,*		npr
+001465  aa  1 00003 2361 00	ldq  	pr1|3		ncp_dt.ncp_up
+001466  aa   000025 6044 04	tmoz 	21,ic		001513
+001467  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001470  aa   776340 00 0034	desc9a	-800,28		000027 = 104141145155
+001471  aa  6 00276 00 0034	desc9a	pr6|190,28
+001472  aa  6 00305 4501 00	stz  	pr6|197
+001473  aa   776306 3520 04	epp2 	-826,ic		000001 = 777777777777
+001474  aa  6 00310 2521 00	spri2	pr6|200
+001475  aa  6 00276 3521 00	epp2 	pr6|190
+001476  aa  6 00312 2521 00	spri2	pr6|202
+001477  aa  6 00305 3521 00	epp2 	pr6|197
+001500  aa  6 00314 2521 00	spri2	pr6|204
+001501  aa   776306 3520 04	epp2 	-826,ic		000007 = 404000000003
+001502  aa  6 00316 2521 00	spri2	pr6|206
+001503  aa   776300 3520 04	epp2 	-832,ic		000003 = 524000000034
+001504  aa  6 00320 2521 00	spri2	pr6|208
+001505  aa   776306 3520 04	epp2 	-826,ic		000013 = 404000000043
+001506  aa  6 00322 2521 00	spri2	pr6|210
+001507  aa  6 00306 6211 00	eax1 	pr6|198
+001510  aa   014000 4310 07	fld  	6144,dl
+001511  la  4 00064 3521 20	epp2 	pr4|52,*		ncp_control_$ncp_change_global_state
+001512  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 521
+               p_err_code = error_table_$net_not_up;
+
+001513  aa  6 00044 3701 20	epp4 	pr6|36,*
+001514  la  4 00050 2361 20	ldq  	pr4|40,*		error_table_$net_not_up
+001515  aa  6 00172 7561 20	stq  	pr6|122,*		p_err_code
+						STATEMENT 1 ON LINE 522
+               return;
+
+001516  aa  6 00154 6101 00	rtcd 	pr6|108
+						STATEMENT 1 ON LINE 523
+               end;
+
+						STATEMENT 1 ON LINE 525
+          if p_user_call
+          then do;
+
+001517  aa  7 00006 3515 20	epp1 	pr7|6,*
+001520  aa  000 000 066 500	cmpb 	(pr),(),fill(0)
+001521  aa  1 00000 00 0001	descb	pr1|0,1		p_user_call
+001522  aa   000000 00 0000	descb	0,0
+001523  aa   000013 6000 04	tze  	11,ic		001536
+						STATEMENT 1 ON LINE 527
+               mpr -> meter_dt.prev_user_call_time = clock_reading;
+
+001524  aa  6 00164 2371 00	ldaq 	pr6|116		clock_reading
+001525  aa  5 00000 7571 00	staq 	pr5|0		meter_dt.prev_user_call_time
+						STATEMENT 1 ON LINE 528
+               if p_gdt_ptr -> gdt.request_code >= lbound (mpr -> meter_dt.call_count, 1)
+               then if p_gdt_ptr -> gdt.request_code <= hbound (mpr -> meter_dt.call_count, 1)
+                    then mpr -> meter_dt.call_count (p_gdt_ptr -> gdt.request_code) = mpr -> meter_dt.call_count (p_gdt_ptr -> gdt.request_code) + 1;
+
+001526  aa  7 00004 3535 20	epp3 	pr7|4,*		p_gdt_ptr
+001527  aa  3 00000 3535 20	epp3 	pr3|0,*		p_gdt_ptr
+001530  aa  3 00002 2361 00	ldq  	pr3|2		gdt.request_code
+001531  aa   000014 6040 04	tmi  	12,ic		001545
+001532  aa   000037 1160 07	cmpq 	31,dl
+001533  aa   000012 6054 04	tpnz 	10,ic		001545
+001534  aa  5 00030 0541 06	aos  	pr5|24,ql		meter_dt.call_count
+						STATEMENT 1 ON LINE 531
+               end;
+
+001535  aa   000010 7100 04	tra  	8,ic		001545
+						STATEMENT 1 ON LINE 532
+          else do;
+
+						STATEMENT 1 ON LINE 533
+               mpr -> meter_dt.prev_daemon_call_time = clock_reading;
+
+001536  aa  6 00164 2371 00	ldaq 	pr6|116		clock_reading
+001537  aa  5 00002 7571 00	staq 	pr5|2		meter_dt.prev_daemon_call_time
+						STATEMENT 1 ON LINE 534
+               elapsed_time = clock_reading - mpr -> meter_dt.prev_user_call_time;
+
+001540  aa  5 00000 1771 00	sbaq 	pr5|0		meter_dt.prev_user_call_time
+001541  aa  6 00166 7571 00	staq 	pr6|118		elapsed_time
+						STATEMENT 1 ON LINE 535
+               mpr -> meter_dt.accu_time_since_user_call = mpr -> meter_dt.accu_time_since_user_call + elapsed_time;
+
+001542  aa  5 00006 0771 00	adaq 	pr5|6		meter_dt.accu_time_since_user_call
+001543  aa  5 00006 7571 00	staq 	pr5|6		meter_dt.accu_time_since_user_call
+						STATEMENT 1 ON LINE 536
+               mpr -> meter_dt.ndaemon_calls = mpr -> meter_dt.ndaemon_calls + 1;
+
+001544  aa  5 00012 0541 00	aos  	pr5|10		meter_dt.ndaemon_calls
+						STATEMENT 1 ON LINE 537
+               end;
+
+						STATEMENT 1 ON LINE 540
+          p_gdt_ptr -> gdt.nprocs_sw = 459248;
+
+001545  aa   776235 2360 04	ldq  	-867,ic		000002 = 000001600760
+001546  aa  7 00004 3535 20	epp3 	pr7|4,*		p_gdt_ptr
+001547  aa  3 00000 3535 20	epp3 	pr3|0,*		p_gdt_ptr
+001550  aa  3 00025 7561 00	stq  	pr3|21		gdt.nprocs_sw
+						STATEMENT 1 ON LINE 541
+          num_procs = mpr -> meter_dt.nprocs_in_ncp + 1;
+
+001551  aa  5 00010 2361 00	ldq  	pr5|8		meter_dt.nprocs_in_ncp
+001552  aa   000001 0760 07	adq  	1,dl
+001553  aa  6 00162 7561 00	stq  	pr6|114		num_procs
+						STATEMENT 1 ON LINE 542
+          mpr -> meter_dt.nprocs_in_ncp = mpr -> meter_dt.nprocs_in_ncp + 1;
+
+001554  aa  5 00010 0541 00	aos  	pr5|8		meter_dt.nprocs_in_ncp
+						STATEMENT 1 ON LINE 543
+          if num_procs < 1
+          then mpr -> meter_dt.nprocs_inconsistent = "1"b;
+
+001555  aa   000001 1160 07	cmpq 	1,dl
+001556  aa   000004 6050 04	tpl  	4,ic		001562
+001557  aa   400000 2350 03	lda  	131072,du
+001560  aa  5 00011 7551 00	sta  	pr5|9		meter_dt.nprocs_inconsistent
+001561  aa   000006 7100 04	tra  	6,ic		001567
+						STATEMENT 1 ON LINE 545
+          else do;
+
+						STATEMENT 1 ON LINE 546
+               num_procs = min (num_procs, hbound (mpr -> meter_dt.ncalls, 1));
+
+001562  aa   000005 1160 07	cmpq 	5,dl
+001563  aa   000002 6040 04	tmi  	2,ic		001565
+001564  aa   000005 2360 07	ldq  	5,dl
+001565  aa  6 00162 7561 00	stq  	pr6|114		num_procs
+						STATEMENT 1 ON LINE 547
+               mpr -> meter_dt.ncalls (num_procs) = mpr -> meter_dt.ncalls (num_procs) + 1;
+
+001566  aa  5 00012 0541 06	aos  	pr5|10,ql		meter_dt.ncalls
+						STATEMENT 1 ON LINE 549
+               end;
+
+						STATEMENT 1 ON LINE 551
+          return;
+
+001567  aa  6 00154 6101 00	rtcd 	pr6|108
+ENTRY TO exit_ncp                                           STATEMENT 1 ON LINE 555
+exit_ncp:
+          entry (p_pdt_ptr, p_gdt_ptr, p_err_code);
+
+001570  aa  6 00154 6501 00	spri4	pr6|108
+001571  aa  6 00156 2521 00	spri2	pr6|110
+001572  aa  2 00006 3735 20	epp7 	pr2|6,*
+001573  aa  6 00172 6535 00	spri7	pr6|122
+						STATEMENT 1 ON LINE 558
+          p_err_code = 0;
+
+001574  aa  6 00172 4501 20	stz  	pr6|122,*		p_err_code
+						STATEMENT 1 ON LINE 560
+          mpr = addr (ncp_tables_$meter_cells);
+
+001575  aa  6 00044 3701 20	epp4 	pr6|36,*
+001576  la  4 00022 3735 20	epp7 	pr4|18,*		ncp_tables_$meter_cells
+001577  aa  6 00170 6535 00	spri7	pr6|120		mpr
+						STATEMENT 1 ON LINE 562
+          clock_reading = clock ();
+
+001600  aa  0 01435 7001 00	tsx0 	pr0|797		clock
+001601  aa  6 00164 7571 00	staq 	pr6|116		clock_reading
+						STATEMENT 1 ON LINE 564
+          if p_gdt_ptr -> gdt.nprocs_sw = 459248
+          then do;
+
+001602  aa  6 00156 3735 20	epp7 	pr6|110,*
+001603  aa  7 00004 3715 20	epp5 	pr7|4,*		p_gdt_ptr
+001604  aa  5 00000 3715 20	epp5 	pr5|0,*		p_gdt_ptr
+001605  aa  5 00025 2361 00	ldq  	pr5|21		gdt.nprocs_sw
+001606  aa   776174 1160 04	cmpq 	-900,ic		000002 = 000001600760
+001607  aa   000016 6010 04	tnz  	14,ic		001625
+						STATEMENT 1 ON LINE 566
+               elapsed_time = clock_reading - p_gdt_ptr -> gdt.entry_time;
+
+001610  aa  6 00164 2371 00	ldaq 	pr6|116		clock_reading
+001611  aa  5 00022 1771 00	sbaq 	pr5|18		gdt.entry_time
+001612  aa  6 00166 7571 00	staq 	pr6|118		elapsed_time
+						STATEMENT 1 ON LINE 568
+               p_gdt_ptr -> gdt.nprocs_sw = 0;
+
+001613  aa  5 00025 4501 00	stz  	pr5|21		gdt.nprocs_sw
+						STATEMENT 1 ON LINE 569
+               mpr -> meter_dt.accu_time_in_ncp = mpr -> meter_dt.accu_time_in_ncp + elapsed_time;
+
+001614  aa  6 00170 3535 20	epp3 	pr6|120,*		mpr
+001615  aa  3 00004 0771 00	adaq 	pr3|4		meter_dt.accu_time_in_ncp
+001616  aa  3 00004 7571 00	staq 	pr3|4		meter_dt.accu_time_in_ncp
+						STATEMENT 1 ON LINE 570
+               mpr -> meter_dt.nprocs_in_ncp = mpr -> meter_dt.nprocs_in_ncp - 1;
+
+001617  aa   000001 3360 07	lcq  	1,dl
+001620  aa  3 00010 0561 00	asq  	pr3|8		meter_dt.nprocs_in_ncp
+						STATEMENT 1 ON LINE 572
+               if mpr -> meter_dt.nprocs_in_ncp < 0
+               then mpr -> meter_dt.nprocs_inconsistent = "1"b;
+
+001621  aa  3 00010 2361 00	ldq  	pr3|8		meter_dt.nprocs_in_ncp
+001622  aa   000003 6050 04	tpl  	3,ic		001625
+001623  aa   400000 2350 03	lda  	131072,du
+001624  aa  3 00011 7551 00	sta  	pr3|9		meter_dt.nprocs_inconsistent
+						STATEMENT 1 ON LINE 574
+               end;
+
+						STATEMENT 1 ON LINE 576
+          p_gdt_ptr -> gdt.init_sw = 0;
+
+001625  aa  5 00000 4501 00	stz  	pr5|0		gdt.init_sw
+						STATEMENT 1 ON LINE 578
+          if p_pdt_ptr ^= null ()
+          then do;
+
+001626  aa  7 00002 2371 20	ldaq 	pr7|2,*		p_pdt_ptr
+001627  aa   776171 6770 04	eraq 	-903,ic		000020 = 077777000043 000001000000
+001630  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001631  aa   000012 6000 04	tze  	10,ic		001643
+						STATEMENT 1 ON LINE 580
+               p_pdt_ptr -> pdt.gdtp = null ();
+
+001632  aa   776166 2370 04	ldaq 	-906,ic		000020 = 077777000043 000001000000
+001633  aa  7 00002 3535 20	epp3 	pr7|2,*		p_pdt_ptr
+001634  aa  3 00000 7571 20	staq 	pr3|0,*		pdt.gdtp
+						STATEMENT 1 ON LINE 581
+               addr (p_pdt_ptr -> pdt.returnp) -> based_ptr = null ();
+
+001635  aa  7 00002 3515 20	epp1 	pr7|2,*		p_pdt_ptr
+001636  aa  1 00000 3515 20	epp1 	pr1|0,*		p_pdt_ptr
+001637  aa  1 00002 7571 00	staq 	pr1|2		based_ptr
+						STATEMENT 1 ON LINE 582
+               p_pdt_ptr -> pdt.error_recur = 0;
+
+001640  aa  7 00002 3535 20	epp3 	pr7|2,*		p_pdt_ptr
+001641  aa  3 00000 3535 20	epp3 	pr3|0,*		p_pdt_ptr
+001642  aa  3 00021 4501 00	stz  	pr3|17		pdt.error_recur
+						STATEMENT 1 ON LINE 583
+               end;
+
+						STATEMENT 1 ON LINE 585
+          return;
+
+001643  aa  6 00154 6101 00	rtcd 	pr6|108
+						STATEMENT 1 ON LINE 587
+end;
+
+  END PROCEDURE enter_ncp
+BEGIN PROCEDURE find_host_slot
+ENTRY TO find_host_slot                                     STATEMENT 1 ON LINE 591
+find_host_slot:
+          procedure (p_host_num, p_create_slot, p_err_code) returns (ptr);
+
+001644  aa  6 00174 6501 00	spri4	pr6|124
+001645  aa  6 00176 2521 00	spri2	pr6|126
+						STATEMENT 1 ON LINE 612
+          p_err_code = 0;
+
+001646  aa  2 00006 4501 20	stz  	pr2|6,*		p_err_code
+						STATEMENT 1 ON LINE 614
+	if p_host_num <= 0
+          then do;
+
+001647  aa  2 00002 2361 20	ldq  	pr2|2,*		p_host_num
+001650  aa   000007 6054 04	tpnz 	7,ic		001657
+						STATEMENT 1 ON LINE 616
+               p_err_code = error_table_$net_fhost_inactive;
+
+001651  aa  6 00044 3701 20	epp4 	pr6|36,*
+001652  la  4 00044 2361 20	ldq  	pr4|36,*		error_table_$net_fhost_inactive
+001653  aa  2 00006 7561 20	stq  	pr2|6,*		p_err_code
+						STATEMENT 1 ON LINE 617
+               return (null ());
+
+001654  aa   776144 2370 04	ldaq 	-924,ic		000020 = 077777000043 000001000000
+001655  aa  2 00010 7571 20	staq 	pr2|8,*
+001656  aa  6 00174 6101 00	rtcd 	pr6|124
+						STATEMENT 1 ON LINE 618
+               end;
+
+						STATEMENT 1 ON LINE 620
+          hpr = addr (ncp_tables_$host_tbl);
+
+001657  aa  6 00044 3701 20	epp4 	pr6|36,*
+001660  la  4 00020 3735 20	epp7 	pr4|16,*		ncp_tables_$host_tbl
+001661  aa  6 00206 6535 00	spri7	pr6|134		hpr
+						STATEMENT 1 ON LINE 622
+          hash_indx = mod (p_host_num * 11, npr -> ncp_dt.htbl_size) + 1;
+
+001662  aa   000013 4020 07	mpy  	11,dl
+001663  aa  6 00112 3715 20	epp5 	pr6|74,*		npr
+001664  aa  5 00004 3521 00	epp2 	pr5|4		ncp_dt.htbl_size
+001665  aa  0 00706 7001 00	tsx0 	pr0|454		mod_fx3
+001666  aa   000001 0760 07	adq  	1,dl
+001667  aa  6 00202 7561 00	stq  	pr6|130		hash_indx
+						STATEMENT 1 ON LINE 624
+          do slot_indx = hash_indx by 1 to npr -> ncp_dt.htbl_size, 1 by 1 to hash_indx - 1;
+
+001670  aa   000050 3520 04	epp2 	40,ic		001740 = 600203054100
+001671  aa  6 00210 2521 00	spri2	pr6|136
+001672  aa  5 00004 2361 00	ldq  	pr5|4		ncp_dt.htbl_size
+001673  aa  6 00212 7561 00	stq  	pr6|138
+001674  aa  6 00202 2361 00	ldq  	pr6|130		hash_indx
+001675  aa  6 00203 7561 00	stq  	pr6|131		slot_indx
+001676  aa  6 00203 2361 00	ldq  	pr6|131		slot_indx
+001677  aa  6 00212 1161 00	cmpq 	pr6|138
+001700  aa   000042 6054 04	tpnz 	34,ic		001742
+						STATEMENT 1 ON LINE 625
+               host_entry_ptr = addr (hpr -> host_array (slot_indx));
+
+001701  aa  6 00203 2361 00	ldq  	pr6|131		slot_indx
+001702  aa   000012 4020 07	mpy  	10,dl
+001703  aa  6 00206 3735 20	epp7 	pr6|134,*		hpr
+001704  aa  7 77766 3735 06	epp7 	pr7|-10,ql	host_array
+001705  aa  6 00204 6535 00	spri7	pr6|132		host_entry_ptr
+						STATEMENT 1 ON LINE 627
+               if host_entry_ptr -> host.host_number = 0
+               then do;
+
+001706  aa  7 00010 2361 00	ldq  	pr7|8		host.host_number
+001707  aa   000023 6010 04	tnz  	19,ic		001732
+						STATEMENT 1 ON LINE 629
+                    if p_create_slot
+                    then do;
+
+001710  aa  6 00176 3715 20	epp5 	pr6|126,*
+001711  aa  5 00004 3535 20	epp3 	pr5|4,*
+001712  aa  000 000 066 500	cmpb 	(pr),(),fill(0)
+001713  aa  3 00000 00 0001	descb	pr3|0,1		p_create_slot
+001714  aa   000000 00 0000	descb	0,0
+001715  aa   000007 6000 04	tze  	7,ic		001724
+						STATEMENT 1 ON LINE 631
+                         host_entry_ptr -> host.hash_index = slot_indx;
+
+001716  aa  6 00203 2361 00	ldq  	pr6|131		slot_indx
+001717  aa  7 00007 5521 14	stbq 	pr7|7,14		host.hash_index
+						STATEMENT 1 ON LINE 632
+                         host_entry_ptr -> host.host_number = p_host_num;
+
+001720  aa  5 00002 2361 20	ldq  	pr5|2,*		p_host_num
+001721  aa  7 00010 7561 00	stq  	pr7|8		host.host_number
+						STATEMENT 1 ON LINE 634
+                         return (host_entry_ptr);
+
+001722  aa  5 00010 6535 20	spri7	pr5|8,*
+001723  aa  6 00174 6101 00	rtcd 	pr6|124
+						STATEMENT 1 ON LINE 635
+                         end;
+
+						STATEMENT 1 ON LINE 637
+                    p_err_code = error_table_$net_fhost_inactive;
+
+001724  aa  6 00044 3701 20	epp4 	pr6|36,*
+001725  la  4 00044 2361 20	ldq  	pr4|36,*		error_table_$net_fhost_inactive
+001726  aa  5 00006 7561 20	stq  	pr5|6,*		p_err_code
+						STATEMENT 1 ON LINE 638
+                    return (null ());
+
+001727  aa   776071 2370 04	ldaq 	-967,ic		000020 = 077777000043 000001000000
+001730  aa  5 00010 7571 20	staq 	pr5|8,*
+001731  aa  6 00174 6101 00	rtcd 	pr6|124
+						STATEMENT 1 ON LINE 639
+                    end;
+
+						STATEMENT 1 ON LINE 641
+               if host_entry_ptr -> host.host_number = p_host_num
+               then return (host_entry_ptr);
+
+001732  aa  6 00176 3715 20	epp5 	pr6|126,*
+001733  aa  5 00002 1161 20	cmpq 	pr5|2,*		p_host_num
+001734  aa   000003 6010 04	tnz  	3,ic		001737
+001735  aa  5 00010 6535 20	spri7	pr5|8,*
+001736  aa  6 00174 6101 00	rtcd 	pr6|124
+						STATEMENT 1 ON LINE 643
+               end;
+
+001737  aa  6 00210 7101 20	tra  	pr6|136,*
+001740  aa  6 00203 0541 00	aos  	pr6|131		slot_indx
+001741  aa   777735 7100 04	tra  	-35,ic		001676
+001742  aa   000014 3520 04	epp2 	12,ic		001756 = 600203054100
+001743  aa  6 00210 2521 00	spri2	pr6|136
+001744  aa  6 00202 2361 00	ldq  	pr6|130		hash_indx
+001745  aa   000001 1760 07	sbq  	1,dl
+001746  aa  6 00213 7561 00	stq  	pr6|139
+001747  aa   000001 2360 07	ldq  	1,dl
+001750  aa  6 00203 7561 00	stq  	pr6|131		slot_indx
+001751  aa   000000 0110 03	nop  	0,du
+001752  aa  6 00203 2361 00	ldq  	pr6|131		slot_indx
+001753  aa  6 00213 1161 00	cmpq 	pr6|139
+001754  aa   000004 6054 04	tpnz 	4,ic		001760
+001755  aa   777724 7100 04	tra  	-44,ic		001701
+001756  aa  6 00203 0541 00	aos  	pr6|131		slot_indx
+001757  aa   777773 7100 04	tra  	-5,ic		001752
+						STATEMENT 1 ON LINE 645
+          p_err_code = error_table_$net_table_space;
+
+001760  aa  6 00044 3701 20	epp4 	pr6|36,*
+001761  la  4 00054 2361 20	ldq  	pr4|44,*		error_table_$net_table_space
+001762  aa  6 00176 3735 20	epp7 	pr6|126,*
+001763  aa  7 00006 7561 20	stq  	pr7|6,*		p_err_code
+						STATEMENT 1 ON LINE 647
+          return (null ());
+
+001764  aa   776034 2370 04	ldaq 	-996,ic		000020 = 077777000043 000001000000
+001765  aa  7 00010 7571 20	staq 	pr7|8,*
+001766  aa  6 00174 6101 00	rtcd 	pr6|124
+						STATEMENT 1 ON LINE 649
+end;
+
+  END PROCEDURE find_host_slot
+  END PROCEDURE ncp_util_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

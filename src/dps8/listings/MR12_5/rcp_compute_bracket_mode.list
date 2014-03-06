@@ -1,0 +1,350 @@
+	COMPILATION LISTING OF SEGMENT rcp_compute_bracket_mode
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0951.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /****^  HISTORY COMMENTS:
+       10*  1) change(85-07-12,Pozzo), approve(86-08-13,MCR7510),
+       11*     audit(86-08-13,EJSharpe), install(86-08-19,MR12.0-1120):
+       12*     Modified to initialize the variable local_bracket_mode.
+       13*     Change name and date are guesses.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       17 rcp_compute_bracket_mode:
+       18      procedure (a_acs_path, a_requestor_info_ptr, a_resource_info_ptr, a_bracket_mode, a_rbs, a_error_code);
+       19 
+       20 /*            This internal subroutine implements intraprocess access
+       21*   *	    computations (ring brackets) for RCP.
+       22*   *            Created 841030 by Maria M. Pozzo
+       23*   *
+       24*   *            If the ACS segment exists as found in a_acs_path, then get
+       25*   *            the ring brackets from the ACS segment and set access as follows:
+       26*   *                user validation in 0-r1 ---- REW
+       27*   *                user validation in 0-r2 ---- R
+       28*   *	    If the ACS segment does not exist, then this check is bypassed.
+       29**/
+       30 
+       31 /*                        ARGUMENT DATA                          */
+       32 
+       33 dcl	a_requestor_info_ptr   ptr;			/* (I) Pointer to information about the real requestor of the RCP operation - not Initializer. */
+       34 dcl	a_resource_info_ptr	   ptr;			/* (I) Pointer to information about the resource being requested */
+       35 dcl	a_acs_path	   char (168);		/* (I) Pathname of the associated ACS segment */
+       36 dcl	a_bracket_mode	   bit (3);		/* (O) Resulting discretionary access mode of requestor to resource */
+       37 dcl	a_rbs		   (2) fixed bin (3);	/* (O) The ring brackets of the ACS segment if they exist. */
+       38 dcl	a_error_code	   fixed bin (35);		/* (O) Error code */
+       39 
+       40 
+       41 /*                      AUTOMATIC                    */
+       42 
+       43 dcl	local_bracket_mode	   bit (3);		/* Internal bracket mode */
+       44 
+       45 dcl	acs_path		   char (168);		/* ACS pathname */
+       46 dcl	registry_dir	   char (64);		/* Registry directory */
+       47 
+       48 dcl	error_code	   fixed bin (35);		/* Error code */
+       49 dcl	user_level	   fixed bin (3);		/* Validation level of caller */
+       50 dcl	resource_ring_brackets (3) fixed bin (3);	/* Ring brackets of resource */
+       51 
+       52 
+       53 /*                      ENTRIES CALLED               */
+       54 
+       55 dcl	hcs_$get_ring_brackets entry (char (*), char (*), (3) fixed bin (3), fixed bin (35));
+       56 
+       57 /*                      ERROR ENTRIES                */
+       58 
+       59 dcl	error_table_$resource_bad_access
+       60 			   fixed bin (35) ext static;
+       61 
+       62 
+       63 
+       64 /*  Copy input arguments */
+       65 
+       66 	acs_path = a_acs_path;
+       67 	requestor_info_ptr = a_requestor_info_ptr;
+       68 	resource_info_ptr = a_resource_info_ptr;
+       69 
+       70 /* Initialize local variables and get set up */
+       71 
+       72 	error_code = 0;
+       73           local_bracket_mode = "000"b;
+       74 	user_level = requestor_info.validation_level;
+       75 	registry_dir = resource_info.registry_dir;
+       76 
+       77 /*  Find out the ACS segment ring brackets. */
+       78 
+       79 	call hcs_$get_ring_brackets (a_acs_path, "", resource_ring_brackets, error_code);
+       80 	if error_code ^= 0 then
+       81 	     goto MAIN_RETURN;
+       82 	a_rbs (1) = resource_ring_brackets (1);
+       83 	a_rbs (2) = resource_ring_brackets (2);
+       84 
+       85 /*  See if we are in the read (R) bracket 0-r2 */
+       86 
+       87 	if user_level <= resource_ring_brackets (2) then
+       88 	     local_bracket_mode = R_ACCESS;
+       89 
+       90 /* See if we are in the executive/write bracket (EW) which also implies R bracket. */
+       91 
+       92 	if user_level <= resource_ring_brackets (1) then
+       93 	     local_bracket_mode = local_bracket_mode | REW_ACCESS;
+       94 
+       95 MAIN_RETURN:
+       96 	if local_bracket_mode = N_ACCESS then
+       97 	     error_code = error_table_$resource_bad_access;
+       98 	a_bracket_mode = local_bracket_mode;
+       99 	a_error_code = error_code;
+      100 	return;
+      101 
+      102 
+  1     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      103 
+      104 
+  2     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2     2 /*       Begin include file rcp_requestor_info.incl.pl1
+  2     3* *       
+  2     4* *       This include file gives information about the subject,
+  2     5* *       or requestor of the RCP operation.  In one case, absentee
+  2     6* *       requests, the user is the Initializer, so this piece of
+  2     7* *       information tells us about the real requestor of the RCP
+  2     8* *       operation.
+  2     9**/
+  2    10 
+  2    11 dcl requestor_info_ptr ptr;
+  2    12 
+  2    13 dcl 1 requestor_info aligned based (requestor_info_ptr),
+  2    14     2 user_id char (32),
+  2    15     2 current_authorization bit (72) aligned,
+  2    16     2 validation_level fixed bin (3);
+  2    17 
+  2    18 /*  end include file .. rcp_requestor_info.incl.pl1 */
+      105 
+      106 
+  3     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3     2 /*       Begin include file rcp_resource_info.incl.pl1
+  3     3*   *
+  3     4*   *       This include file gives information about the object,
+  3     5*   *       or resource for the RCP operation.  If RM is enabled this
+  3     6*   *       information will provide the registry name and switch pointer
+  3     7*   *       for the registry so additional resource information can be
+  3     8*   *       determined.  If RM is disabled, this information will include
+  3     9*   *       the resource name and/or type.
+  3    10**/
+  3    11 
+  3    12 dcl	resource_info_ptr	   ptr;
+  3    13 
+  3    14 dcl	1 resource_info	   based (resource_info_ptr),
+  3    15 	  2 registry_dir	   aligned char (64),	/*  Could be a different if it is reconstruct operation */
+  3    16 	  2 registry_switch_ptr
+  3    17 			   ptr,			/*  Switch to the registry */
+  3    18 	  2 registry_record_ptr
+  3    19 			   ptr,			/*  Pointer to the registry record */
+  3    20 	  2 resource_type	   char (32),		/*  Resource type */
+  3    21 	  2 resource_name	   char (32);		/*  Resource name */
+  3    22 
+  3    23 /*  end include file .. rcp_resource_info.incl.pl1 */
+      107 
+      108 
+      109      end rcp_compute_bracket_mode;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.0  rcp_compute_bracket_mode.pl1      >spec>install>1111>rcp_compute_bracket_mode.pl1
+103          1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+105          2    03/15/85  0953.1  rcp_requestor_info.incl.pl1       >ldd>include>rcp_requestor_info.incl.pl1
+107          3    03/15/85  0953.1  rcp_resource_info.incl.pl1        >ldd>include>rcp_resource_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+N_ACCESS                               constant        bit(3)                   initial packed unaligned dcl 1-11 ref 95
+REW_ACCESS                             constant        bit(3)                   initial packed unaligned dcl 1-11 ref 92
+R_ACCESS                               constant        bit(3)                   initial packed unaligned dcl 1-11 ref 87
+a_acs_path                             parameter       char(168)                packed unaligned dcl 35 set ref 17 66 79*
+a_bracket_mode                         parameter       bit(3)                   packed unaligned dcl 36 set ref 17 98*
+a_error_code                           parameter       fixed bin(35,0)          dcl 38 set ref 17 99*
+a_rbs                                  parameter       fixed bin(3,0)           array dcl 37 set ref 17 82* 83*
+a_requestor_info_ptr                   parameter       pointer                  dcl 33 ref 17 67
+a_resource_info_ptr                    parameter       pointer                  dcl 34 ref 17 68
+acs_path                        000101 automatic       char(168)                packed unaligned dcl 45 set ref 66*
+error_code                      000173 automatic       fixed bin(35,0)          dcl 48 set ref 72* 79* 80 95* 99
+error_table_$resource_bad_access
+                                000012 external static fixed bin(35,0)          dcl 59 ref 95
+hcs_$get_ring_brackets          000010 constant        entry                    external dcl 55 ref 79
+local_bracket_mode              000100 automatic       bit(3)                   packed unaligned dcl 43 set ref 73* 87* 92* 92 95 98
+registry_dir                    000153 automatic       char(64)                 packed unaligned dcl 46 in procedure
+                                                                                  "rcp_compute_bracket_mode" set ref 75*
+registry_dir                           based           char(64)                 level 2 in structure "resource_info" dcl 3-14
+                                                                                  in procedure "rcp_compute_bracket_mode" ref 75
+requestor_info                         based           structure                level 1 dcl 2-13
+requestor_info_ptr              000200 automatic       pointer                  dcl 2-11 set ref 67* 74
+resource_info                          based           structure                level 1 unaligned dcl 3-14
+resource_info_ptr               000202 automatic       pointer                  dcl 3-12 set ref 68* 75
+resource_ring_brackets          000175 automatic       fixed bin(3,0)           array dcl 50 set ref 79* 82 83 87 92
+user_level                      000174 automatic       fixed bin(3,0)           dcl 49 set ref 74* 87 92
+validation_level         12            based           fixed bin(3,0)           level 2 dcl 2-13 ref 74
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MAIN_RETURN                     000117 constant        label                    dcl 95 ref 80
+rcp_compute_bracket_mode        000023 constant        entry                    external dcl 17
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       212         226     134         222
+Length       452     134        14         210      56           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_compute_bracket_mode            152 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_compute_bracket_mode 000100 local_bracket_mode          rcp_compute_bracket_mode
+                         000101 acs_path                    rcp_compute_bracket_mode
+                         000153 registry_dir                rcp_compute_bracket_mode
+                         000173 error_code                  rcp_compute_bracket_mode
+                         000174 user_level                  rcp_compute_bracket_mode
+                         000175 resource_ring_brackets      rcp_compute_bracket_mode
+                         000200 requestor_info_ptr          rcp_compute_bracket_mode
+                         000202 resource_info_ptr           rcp_compute_bracket_mode
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+hcs_$get_ring_brackets
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$resource_bad_access
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000015        66 000030        67 000035        68 000040        72 000043        73 000044        74 000045
+     75 000047        79 000052        80 000076        82 000100        83 000103        87 000106        92 000112
+     95 000117        98 000124        99 000131       100 000133
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

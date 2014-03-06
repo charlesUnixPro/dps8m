@@ -1,0 +1,396 @@
+	COMPILATION LISTING OF SEGMENT sc_command
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1018.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style2,indcomtxt,idind30 */
+       13 
+       14 
+       15 sc_command:
+       16      procedure options (variable);
+       17 
+       18 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       19 /*							       */
+       20 /* SC_COMMAND - command level interface to system control.		       */
+       21 /*    Concatenates its arguments and calls system_control_ subroutines to    */
+       22 /* execute.  Naturally, only works in the initializer process.	       */
+       23 /*    Used for commands executed from				       */
+       24 /*    .	system_start_up.ec					       */
+       25 /*    .	admin.ec						       */
+       26 /*    .	admin mode					       */
+       27 /*    .	send_admin_command					       */
+       28 /*							       */
+       29 /* This command is to be called ONLY in the system control admin	       */
+       30 /* environment. It insists that sc_stat_$admin_sci_ptr is non_null,	       */
+       31 /* defining the source of the x command or admin mode. Note that	       */
+       32 /* sc_admin_command_ sets admin_sci_ptr as well, so that sac sc_command      */
+       33 /* works.							       */
+       34 /*							       */
+       35 /* This procedure assumes that all I/O switches and handlers are already in  */
+       36 /* place. It handles no conditions, and just call ssu_$execute_line.	       */
+       37 /*							       */
+       38 /* This procedure creates a subsystem invocation all its own so that error   */
+       39 /* messages are prefaced with the actual request name.		       */
+       40 /*							       */
+       41 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       42 
+       43 /* Created by THVV in antiquity. */
+       44 /* Modified to not add trailing blank by C. Hornig, November 1979 */
+       45 /* Cleaned up by E. N. Kittlitz, May 1982 */
+       46 /* 1984-12, BIM: SSU_ system control. */
+       47 
+       48 
+       49 /****^  HISTORY COMMENTS:
+       50*  1) change(87-02-19,GDixon), approve(87-05-25,MCR7680),
+       51*     audit(87-05-06,Parisek), install(87-08-04,MR12.1-1055):
+       52*     Correct coding standard violations.  Use an automatic sc-command-line
+       53*     buffer instead of a based (allocated) buffer.
+       54*                                                   END HISTORY COMMENTS */
+       55 
+       56 
+       57 	dcl     arg_count		        fixed bin;
+       58 	dcl     al		        fixed bin (21);
+       59 	dcl     ap		        ptr;
+       60 	dcl     arg_list_ptr	        ptr;
+       61 	dcl     argument		        char (al) based (ap);
+       62 	dcl     argx		        fixed bin;
+       63 	dcl     buffer_length	        fixed bin (21);
+       64 	dcl     code		        fixed bin (35);
+       65 	dcl     sci_ptr		        pointer;
+       66 	dcl     test		        bit (1) aligned;
+       67 
+       68 	dcl     com_err_		        entry () options (variable);
+       69 	dcl     cu_$arg_count	        entry (fixed bin, fixed bin (35));
+       70 	dcl     cu_$arg_list_ptr	        entry returns(ptr);
+       71 	dcl     cu_$arg_ptr		        entry (fixed bin, ptr, fixed bin (21), fixed bin (35));
+       72 	dcl     cu_$arg_ptr_rel	        entry (fixed bin, ptr, fixed bin(21), fixed bin(35), ptr);
+       73 	dcl     sc_create_sci_	        entry (pointer, fixed binary (35));
+       74 	dcl     sc_create_sci_$destroy        entry (ptr);
+       75 	dcl     ssu_$execute_line	        entry (ptr, ptr, fixed bin (21), fixed bin (35));
+       76 
+       77 	dcl     (addr, addwordno, length, null)
+       78 				        builtin;
+       79 
+       80 	dcl     cleanup		        condition;
+       81 
+       82 	dcl     SP		        char (1) int static options (constant) init (" ");
+       83 
+       84 	test = "0"b;
+       85 	if sc_stat_$admin_sci_ptr = null ()
+       86 	then do;
+       87 		call com_err_ (0, "sc_command", "This command may only be called in the system control environment.");
+       88 		return;
+       89 	     end;
+       90 	sci_ptr = sc_stat_$admin_sci_ptr;
+       91 	go to COMMON;
+       92 
+       93 test:
+       94      entry;
+       95 
+       96 	test = "1"b;
+       97 	sci_ptr = null;
+       98 	on cleanup call sc_create_sci_$destroy (sci_ptr);
+       99 	call sc_create_sci_ (sci_ptr, code);
+      100 	if code ^= 0
+      101 	then do;
+      102 		call com_err_ (code, "sc_command", "Failed to create test subsystem info.");
+      103 		return;
+      104 	     end;
+      105 
+      106 COMMON:
+      107 	call cu_$arg_count (arg_count, code);
+      108 	if code ^= 0
+      109 	then do;
+      110 		call com_err_ (code, "sc_command");
+      111 		return;
+      112 	     end;
+      113 
+      114 	buffer_length = 0;
+      115 	do argx = 1 to arg_count;
+      116 	     call cu_$arg_ptr (argx, ap, al, (0));
+      117 	     if argx > 1
+      118 	     then buffer_length = buffer_length + length (SP);
+      119 	     buffer_length = buffer_length + al;
+      120 	end;
+      121 	arg_list_ptr = cu_$arg_list_ptr();
+      122 
+      123 DCL_BLOCK:
+      124 	begin;
+      125 
+      126 	     dcl	   buffer			   char (buffer_length) varying;
+      127 
+      128 	     buffer = "";
+      129 	     do argx = 1 to arg_count;
+      130 		call cu_$arg_ptr_rel (argx, ap, al, (0), arg_list_ptr);
+      131 		buffer = buffer || argument;
+      132 		buffer = buffer || SP;
+      133 	     end;
+      134 
+      135 	     call ssu_$execute_line (sci_ptr, addwordno (addr (buffer), 1), length (buffer), code);
+      136 	     if test
+      137 	     then if code ^= 0
+      138 		then call com_err_ (code, "sc_command", "Error from ssu_$execute_line.");
+      139 	end DCL_BLOCK;
+      140 
+      141 	if test
+      142 	then call sc_create_sci_$destroy (sci_ptr);
+      143 
+  1     1 /*  BEGIN:   sc_stat_.incl.pl1			  *  *  *  *  *  */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  1     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  1     7*     Add sc_stat_$vchn_requires_accept in support of DSA virtual channels.
+  1     8*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7680),
+  1     9*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  1    10*     Reorganized by type of data to improve readability.
+  1    11*                                                   END HISTORY COMMENTS */
+  1    12 
+  1    13 
+  1    14 			      /* ACCESS NAMES		       */
+  1    15 dcl (
+  1    16  sc_stat_$exec_access_name,	      /* check MC access in an exec request    */
+  1    17  sc_stat_$unidentified_access_name  /* check access if no one is logged in.  */
+  1    18     ) char(32) ext static;
+  1    19 
+  1    20 		        /* PATHNAMES			       */
+  1    21 dcl (
+  1    22  sc_stat_$info_dir,	        /* admin info segs directory		       */
+  1    23  sc_stat_$log_dir,	        /* as log segs directory		       */
+  1    24  sc_stat_$mc_acs_dir,       /* message coordinator ACS segments (.mcacs) dir */
+  1    25  sc_stat_$sysdir	        /* system control directory		       */
+  1    26     ) char(168) ext static;
+  1    27 
+  1    28 		        /* OTHER CHAR STRINGS			       */
+  1    29 dcl (
+  1    30  sc_stat_$master_channel    /* Master TTY channel.		       */
+  1    31     )  char(6) aligned ext static;
+  1    32 
+  1    33 			       /* LABELS			       */
+  1    34 dcl (
+  1    35  sc_stat_$admin_listener_exit_label, /* GO here to exit admin mode.  Set to  */
+  1    36 			       /*    ssu_$null_label unless 	       */
+  1    37 			       /*	   admin_listener is active.	       */
+  1    38  sc_stat_$master_abort_label,	       /* GO here after fault that is not      */
+  1    39 			       /*    attributable to a particular      */
+  1    40 			       /*	   command.		       */
+  1    41  sc_stat_$system_shutdown_label      /* GO here to shut down system	       */
+  1    42     ) label variable ext static;
+  1    43 
+  1    44 			 /* POINTERS TO			       */
+  1    45 dcl (
+  1    46  sc_stat_$admin_log_iocb,	 /* IOCB for admin log		       */
+  1    47  sc_stat_$admin_log_write_ptr, /* DATA for log_write_ calls on the admin log */
+  1    48  sc_stat_$admin_sci_ptr,	 /* DATA ssu_ for terminal currently executing */
+  1    49  sc_stat_$as_log_write_ptr,	 /* DATA for log_write_ calls on as log, used  */
+  1    50 			 /*      by sys_log_.		       */
+  1    51  sc_stat_$initzer_ttyp,	 /* ENT  mc_ate for initializer terminal       */
+  1    52  sc_stat_$master_iocb,	 /* IOCB for "master_i/o"		       */
+  1    53  sc_stat_$master_sci_ptr,	 /* DATA ssu_ (permanent) for system control   */
+  1    54  sc_stat_$mc_ansp,		 /* HEAD of mc_anstbl		       */
+  1    55  sc_stat_$mc_iocb,		 /* IOCB ptr for "mc_i/o"		       */
+  1    56  sc_stat_$sv1_iocb,		 /* IOCB ptr for "severity1"		       */
+  1    57  sc_stat_$sv2_iocb,		 /* IOCB ptr for "severity2"		       */
+  1    58  sc_stat_$sv3_iocb		 /* IOCB ptr for "severity3"		       */
+  1    59     ) ptr ext static;
+  1    60 
+  1    61 			   /* SWITCHES			       */
+  1    62 dcl (
+  1    63  sc_stat_$Go,		   /* TRUE after answering service is listening*/
+  1    64  sc_stat_$Go_typed,		   /* TRUE immediately after 'go' is typed     */
+  1    65  sc_stat_$Multics,		   /* TRUE after answering service started     */
+  1    66  sc_stat_$Multics_typed,	   /* TRUE immediately after 'mult' is typed   */
+  1    67  sc_stat_$Star_typed,	   /* TRUE if 'mult' and 'go' came from 'star' */
+  1    68  sc_stat_$admin_listener_switch, /* TRUE if in the admin listener	       */
+  1    69  sc_stat_$did_part1,	   /* TRUE if part 1 of system startup ec done */
+  1    70  sc_stat_$did_part2,	   /* TRUE if part 2 of system startup ec done */
+  1    71  sc_stat_$did_part3,	   /* TRUE if part 3 of system startup ec done */
+  1    72  sc_stat_$mc_is_on,		   /* TRUE if message coordinator running      */
+  1    73  sc_stat_$no_operator_login,	   /* TRUE if operator login not required, or  */
+  1    74 			   /*	 if PNT not yet available.	       */
+  1    75  sc_stat_$shutdown_typed,	   /* TRUE if 'shutdown' command in progress.  */
+  1    76  sc_stat_$test_mode,	   /* TRUE if in test environment	       */
+  1    77  sc_stat_$vchn_requires_accept   /* TRUE if vchn may only be used if accepted*/
+  1    78 			   /*      by operator signed on system console*/
+  1    79     ) bit(1) aligned ext static;
+  1    80 
+  1    81 
+  1    82 /*  END OF:  sc_stat_.incl.pl1			  *  *  *  *  *  */
+      144 
+      145      end sc_command;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.1  sc_command.pl1                    >spec>install>1112>sc_command.pl1
+144          1    08/06/87  0913.5  sc_stat_.incl.pl1                 >ldd>include>sc_stat_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+SP                              000526 constant        char(1)                  initial packed unaligned dcl 82 ref 117 132
+addr                                                   builtin function         dcl 77 ref 135 135
+addwordno                                              builtin function         dcl 77 ref 135 135
+al                              000101 automatic       fixed bin(21,0)          dcl 58 set ref 116* 119 130* 131
+ap                              000102 automatic       pointer                  dcl 59 set ref 116* 130* 131
+arg_count                       000100 automatic       fixed bin(17,0)          dcl 57 set ref 106* 115 129
+arg_list_ptr                    000104 automatic       pointer                  dcl 60 set ref 121* 130*
+argument                               based           char                     packed unaligned dcl 61 ref 131
+argx                            000106 automatic       fixed bin(17,0)          dcl 62 set ref 115* 116* 117* 129* 130*
+buffer                          000100 automatic       varying char             dcl 126 set ref 128* 131* 131 132* 132 135 135 135
+                                                                                  135
+buffer_length                   000107 automatic       fixed bin(21,0)          dcl 63 set ref 114* 117* 117 119* 119 126
+cleanup                         000116 stack reference condition                dcl 80 ref 98
+code                            000110 automatic       fixed bin(35,0)          dcl 64 set ref 99* 100 102* 106* 108 110* 135* 136
+                                                                                  136*
+com_err_                        000010 constant        entry                    external dcl 68 ref 87 102 110 136
+cu_$arg_count                   000012 constant        entry                    external dcl 69 ref 106
+cu_$arg_list_ptr                000014 constant        entry                    external dcl 70 ref 121
+cu_$arg_ptr                     000016 constant        entry                    external dcl 71 ref 116
+cu_$arg_ptr_rel                 000020 constant        entry                    external dcl 72 ref 130
+length                                                 builtin function         dcl 77 ref 117 135 135
+null                                                   builtin function         dcl 77 ref 85 97
+sc_create_sci_                  000022 constant        entry                    external dcl 73 ref 99
+sc_create_sci_$destroy          000024 constant        entry                    external dcl 74 ref 98 141
+sc_stat_$admin_sci_ptr          000030 external static pointer                  dcl 1-45 ref 85 90
+sci_ptr                         000112 automatic       pointer                  dcl 65 set ref 90* 97* 98* 99* 135* 141*
+ssu_$execute_line               000026 constant        entry                    external dcl 75 ref 135
+test                            000114 automatic       bit(1)                   dcl 66 set ref 84* 96* 136 141
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+sc_stat_$Go                            external static bit(1)                   dcl 1-62
+sc_stat_$Go_typed                      external static bit(1)                   dcl 1-62
+sc_stat_$Multics                       external static bit(1)                   dcl 1-62
+sc_stat_$Multics_typed                 external static bit(1)                   dcl 1-62
+sc_stat_$Star_typed                    external static bit(1)                   dcl 1-62
+sc_stat_$admin_listener_exit_label     external static label variable           dcl 1-34
+sc_stat_$admin_listener_switch         external static bit(1)                   dcl 1-62
+sc_stat_$admin_log_iocb                external static pointer                  dcl 1-45
+sc_stat_$admin_log_write_ptr           external static pointer                  dcl 1-45
+sc_stat_$as_log_write_ptr              external static pointer                  dcl 1-45
+sc_stat_$did_part1                     external static bit(1)                   dcl 1-62
+sc_stat_$did_part2                     external static bit(1)                   dcl 1-62
+sc_stat_$did_part3                     external static bit(1)                   dcl 1-62
+sc_stat_$exec_access_name              external static char(32)                 packed unaligned dcl 1-15
+sc_stat_$info_dir                      external static char(168)                packed unaligned dcl 1-21
+sc_stat_$initzer_ttyp                  external static pointer                  dcl 1-45
+sc_stat_$log_dir                       external static char(168)                packed unaligned dcl 1-21
+sc_stat_$master_abort_label            external static label variable           dcl 1-34
+sc_stat_$master_channel                external static char(6)                  dcl 1-29
+sc_stat_$master_iocb                   external static pointer                  dcl 1-45
+sc_stat_$master_sci_ptr                external static pointer                  dcl 1-45
+sc_stat_$mc_acs_dir                    external static char(168)                packed unaligned dcl 1-21
+sc_stat_$mc_ansp                       external static pointer                  dcl 1-45
+sc_stat_$mc_iocb                       external static pointer                  dcl 1-45
+sc_stat_$mc_is_on                      external static bit(1)                   dcl 1-62
+sc_stat_$no_operator_login             external static bit(1)                   dcl 1-62
+sc_stat_$shutdown_typed                external static bit(1)                   dcl 1-62
+sc_stat_$sv1_iocb                      external static pointer                  dcl 1-45
+sc_stat_$sv2_iocb                      external static pointer                  dcl 1-45
+sc_stat_$sv3_iocb                      external static pointer                  dcl 1-45
+sc_stat_$sysdir                        external static char(168)                packed unaligned dcl 1-21
+sc_stat_$system_shutdown_label         external static label variable           dcl 1-34
+sc_stat_$test_mode                     external static bit(1)                   dcl 1-62
+sc_stat_$unidentified_access_name      external static char(32)                 packed unaligned dcl 1-15
+sc_stat_$vchn_requires_accept          external static bit(1)                   dcl 1-62
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+COMMON                          000234 constant        label                    dcl 106 ref 91
+DCL_BLOCK                       000336 constant        label                    dcl 123
+sc_command                      000063 constant        entry                    external dcl 15
+test                            000133 constant        entry                    external dcl 93
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       664         716     527         674
+Length      1114     527        32         162     135           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_command                          122 external procedure  is an external procedure.  
+on unit on line 98                   68 on unit               
+begin block on line 123             108 begin block         uses auto adjustable storage.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 123  000100 buffer                      begin block on line 123
+sc_command               000100 arg_count                   sc_command
+                         000101 al                          sc_command
+                         000102 ap                          sc_command
+                         000104 arg_list_ptr                sc_command
+                         000106 argx                        sc_command
+                         000107 buffer_length               sc_command
+                         000110 code                        sc_command
+                         000112 sci_ptr                     sc_command
+                         000114 test                        sc_command
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+enter_begin_block   leave_begin_block   call_ext_out_desc   call_ext_out        return_mac          alloc_auto_adj
+enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      cu_$arg_count                 cu_$arg_list_ptr              cu_$arg_ptr
+cu_$arg_ptr_rel               sc_create_sci_                sc_create_sci_$destroy        ssu_$execute_line
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sc_stat_$admin_sci_ptr
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000062        84 000070        85 000071        87 000075        88 000125        90 000126        91 000131
+     93 000132        96 000140        97 000142        98 000144        99 000170       100 000201       102 000203
+    103 000233       106 000234       108 000245       110 000247       111 000270       114 000271       115 000272
+    116 000301       117 000317       119 000323       120 000325       121 000327       123 000336       126 000341
+    128 000352       129 000353       130 000364       131 000404       132 000421       133 000430       135 000432
+    136 000456       139 000513       141 000514       145 000525
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

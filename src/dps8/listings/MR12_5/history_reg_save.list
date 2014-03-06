@@ -1,0 +1,144 @@
+	COMPILATION LISTING OF SEGMENT history_reg_save
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1026.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 history_reg_save: proc;
+       14 
+       15 /* history_reg_save - hardcore primitives for turning  on  or  off  the  ability  to  save
+       16*   history  regs,  either  per  process  (with  the  per_proc  entry) or per-system (with the
+       17*   per_system entry).
+       18*
+       19*   Written 9/16/80 by J. A. Bush for the DPS8/70M CPU
+       20**/
+       21 
+       22 dcl (pp_state, ps_state) bit (1) aligned;		/* entry parameters */
+       23 dcl  pds$save_history_regs bit (1) aligned ext;
+       24 dcl  wired_hardcore_data$global_hregs bit (1) aligned ext;
+       25 
+       26 /* entry to return the state of a process's ability to save history regs, called from hcs_$history_regs_get */
+       27 
+       28 per_proc_get: entry (pp_state);			/* per-process get entry */
+       29 
+       30 	pp_state = pds$save_history_regs;		/* return switch state */
+       31 
+       32 	return;					/* thats it, return to caller */
+       33 
+       34 /* entry to save a process's history regs, called from hcs_$history_regs_set */
+       35 
+       36 per_proc_set: entry (pp_state);			/* per-process set entry */
+       37 
+       38 	pds$save_history_regs = pp_state;		/* set the desired switch state */
+       39 
+       40 	return;					/* thats it, return to caller */
+       41 
+       42 /* entry to return the state of the systems ability to save history regs, called from hphcs_$history_regs_get */
+       43 
+       44 per_system_get: entry (ps_state);			/* per-system get  entry */
+       45 
+       46 	ps_state = wired_hardcore_data$global_hregs;	/* return switch state */
+       47 
+       48 	     return;				/* thats it, return to caller */
+       49 
+       50 /* entry to save everybodies history regs_set called from hphcs_$history_regs_set */
+       51 
+       52 per_system_set: entry (ps_state);			/* per-system set  entry */
+       53 
+       54 	wired_hardcore_data$global_hregs = ps_state;	/* set the desired switch state */
+       55 
+       56 	return;					/* thats it, return to caller */
+       57 
+       58      end history_reg_save;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.9  history_reg_save.pl1              >spec>install>1110>history_reg_save.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+pds$save_history_regs           000010 external static bit(1)                   dcl 23 set ref 30 38*
+pp_state                               parameter       bit(1)                   dcl 22 set ref 28 30* 36 38
+ps_state                               parameter       bit(1)                   dcl 22 set ref 44 46* 52 54
+wired_hardcore_data$global_hregs
+                                000012 external static bit(1)                   dcl 24 set ref 46 54*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+history_reg_save                000002 constant        entry                    external dcl 13
+per_proc_get                    000013 constant        entry                    external dcl 28
+per_proc_set                    000026 constant        entry                    external dcl 36
+per_system_get                  000043 constant        entry                    external dcl 44
+per_system_set                  000057 constant        entry                    external dcl 52
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       202         216      72         212
+Length       372      72        14         137     107           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+history_reg_save                     64 external procedure  is an external procedure.  
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$save_history_regs         wired_hardcore_data$global_hregs
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000001        28 000007        30 000020        32 000023        36 000024        38 000033        40 000040
+     44 000041        46 000050        48 000054        52 000055        54 000064        56 000071
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

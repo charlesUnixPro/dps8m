@@ -1,0 +1,686 @@
+	COMPILATION LISTING OF SEGMENT bce_console_io
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1015.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* BCE_CONSOLE_IO.PL1 bootload command environment console io */
+        9 /* Wrapper for odcdm_ for the command environment */
+       10 /* Written by BIM sometime in '82 */
+       11 /* Modified 830620 for new ocdcm_ interface... -E. A. Ranzenbach
+       12*/* Simplified 8/83 by Keith Loepere, for new bce switches */
+       13 /* Modified 11/83 by Keith Loepere to loop waiting for non-zero input line */
+       14 /* Modified 12/83 by Keith Loepere for put_chars_alert */
+       15 /* Modified 840418 to zero console io before filling... -E. A. Ranzenbach */
+       16 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       17 
+       18 bce_console_io:
+       19      procedure;
+       20 
+       21 /* Entrypoints are get_line, put_chars */
+       22 
+       23 /* This program loops on the console by calling ocdcm until */
+       24 /* it returns success */
+       25 
+       26 dcl  Buffer_ptr		        ptr parameter;
+       27 dcl  Buffer_len		        fixed bin parameter;
+       28 dcl  Buffer		        char (Buffer_len) based (Buffer_ptr);
+       29 dcl  Code			        fixed bin (35) parameter;
+       30 dcl  Switch_ptr		        ptr parameter;
+       31 dcl  N_read		        fixed bin parameter;
+       32 
+       33 dcl  bce_check_abort	        entry;
+       34 dcl  oc_trans_input_	        entry (ptr, fixed bin, fixed bin, ptr, fixed bin);
+       35 dcl  oc_trans_output_	        entry (ptr, fixed bin (21), fixed bin (21), ptr, fixed bin (19), fixed bin (17), bit (1) aligned);
+       36 dcl  ocdcm_$priority_io	        entry (ptr);
+       37 
+       38 dcl  alert		        bit (1) aligned;
+       39 dcl  cont			        bit (1) aligned;
+       40 dcl  cur_ptr		        pointer;
+       41 dcl  internal_buffer	        char (256) aligned;
+       42 dcl  1 my_console_io	        aligned like console_io;
+       43 dcl  n_done		        fixed bin (21);
+       44 dcl  n_to_send		        fixed bin (19);
+       45 dcl  n_to_write		        fixed bin (21);
+       46 
+       47 dcl  addcharno		        builtin;
+       48 dcl  addr			        builtin;
+       49 dcl  length		        builtin;
+       50 dcl  min			        builtin;
+       51 dcl  substr		        builtin;
+       52 dcl  unspec		        builtin;
+       53 
+       54 
+       55 /* For now, assume that we will always be called with a big enough */
+       56 /* buffer to hold an entire input line, converted. */
+       57 
+       58 get_line:
+       59      entry (Switch_ptr, Buffer_ptr, Buffer_len, N_read, Code);
+       60 	Code = 0;
+       61 
+       62 read:	unspec (my_console_io) = ""b;
+       63 	console_io_ptr = addr (my_console_io);
+       64 	console_io.event_chan = 0;			/* build the I/O..*/
+       65 	console_io.read = "1"b;
+       66 	console_io.alert = "0"b;
+       67 	console_io.sequence_no = 0;
+       68 
+       69 	call ocdcm_$priority_io (console_io_ptr);	/* do the input...*/
+       70 	if console_io.leng = 0 then go to read;	/* wait for non-null line */
+       71 
+       72 	call oc_trans_input_ (addr (internal_buffer), length (internal_buffer), N_read, addr (console_io.text), (console_io.leng));
+       73 
+       74 	substr (Buffer, 1, min (length (Buffer), N_read)) =
+       75 	     substr (internal_buffer, 1, min (length (Buffer), N_read));
+       76 
+       77 	return;
+       78 
+       79 put_chars:
+       80      entry (Switch_ptr, Buffer_ptr, Buffer_len, Code);
+       81 
+       82 	alert = "0"b;
+       83 	go to put;
+       84 
+       85 put_chars_alert:
+       86      entry (Switch_ptr, Buffer_ptr, Buffer_len, Code);
+       87 
+       88 	alert = "1"b;
+       89 put:
+       90 	internal_buffer = "";
+       91 	n_to_write = length (Buffer);			/* so they want trailing blanks ! */
+       92 	cont = "0"b;
+       93 	cur_ptr = addr (Buffer);
+       94 	do while (n_to_write > 0);
+       95 
+       96 /* The unused arguments are an output word count and a type flag */
+       97 
+       98 	     call bce_check_abort;
+       99 	     call oc_trans_output_ (cur_ptr, n_to_write, n_done, addr (internal_buffer), n_to_send, 80, cont);
+      100 						/* cont is input_output */
+      101 
+      102 	     unspec (my_console_io) = ""b;
+      103 	     console_io_ptr = addr (my_console_io);
+      104 
+      105 	     console_io.event_chan = 0;		/* build the I/O..*/
+      106 	     console_io.read = "0"b;
+      107 	     console_io.alert = alert;
+      108 	     console_io.sequence_no = 0;
+      109 	     console_io.leng = n_to_send;
+      110 	     console_io.text = substr (internal_buffer, 1, n_to_send * 4);
+      111 
+      112 	     call ocdcm_$priority_io (console_io_ptr);	/* do the output */
+      113 
+      114 	     n_to_write = n_to_write - n_done;
+      115 	     cur_ptr = addcharno (cur_ptr, n_done);
+      116 	end;
+      117 	Code = 0;
+      118 	return;
+      119 
+  1     1 /*  START OF:	oc_data.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+  1     2 
+  1     3 	
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(85-11-14,Farley), approve(85-11-14,MCR6979),
+  1     6*     audit(85-11-14,Fawcett), install(86-03-21,MR12.0-1033):
+  1     7*     Add support for MCA
+  1     8*     and IMU.
+  1     9*  2) change(85-12-03,Farley), approve(85-12-03,MCR7306),
+  1    10*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  1    11*     Fix bugs found while doing Dipper changes.
+  1    12*  3) change(85-12-03,Farley), approve(85-12-03,MCR7312),
+  1    13*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  1    14*     Add BCE MCA lock and unlock.
+  1    15*  4) change(86-08-07,Farley), approve(86-10-07,MCR7523),
+  1    16*     audit(86-10-03,Fawcett), install(86-10-09,MR12.0-1181):
+  1    17*     Removed timeout_factor, as it is nolonger needed.
+  1    18*  5) change(89-08-28,Farley), approve(89-09-18,MCR8132),
+  1    19*     audit(89-10-10,WAAnderson), install(89-10-11,MR12.3-1091):
+  1    20*     Increased MAX_IO_LENGTH from 132 to 256 to be consistent with
+  1    21*     oc_trans_output_.  This also affects the size of oc_data structures. Trace
+  1    22*     entries have been reduced from 168 to 130.
+  1    23*                                                   END HISTORY COMMENTS */
+  1    24 
+  1    25 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1    26 	/*										*/
+  1    27 	/* Purpose:									*/
+  1    28 	/*										*/
+  1    29 	/* 	This include file describes the contents of the oc_data segment as well various other 	*/
+  1    30 	/* 	static values utilized to interface operator's consoles. Changes to this structure that 	*/
+  1    31 	/* 	would affect the size of the oc_data segment will require a change in the size of oc_data */
+  1    32 	/* 	as specified in the MST header. This is true because the segment is fabricated at boot 	*/
+  1    33 	/* 	time and the size must be known prior to fabrication.				*/
+  1    34 	/*										*/
+  1    35 	/*	This include file was recoded from its original version to add support for multiple 	*/
+  1    36 	/* 	consoles.									*/
+  1    37 	/*										*/
+  1    38 	/* Re-written:		05/01/83							*/
+  1    39 	/*										*/
+  1    40 	/* Author:		E. A. Ranzenbach	(Ranzenbach.Multics@M)			*/
+  1    41 	/* Location:		System-M.							*/
+  1    42 	/* Release:		MR10.2							*/
+  1    43 	/*										*/
+  1    44 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1    45 	/*										*/
+  1    46 	/* Modifications:									*/
+  1    47 	/*										*/
+  1    48 	/*  Date	  Author			Reason						*/
+  1    49      	/*										*/
+  1    50 	/*  840410  Edward A. Ranzenbach	Cut size of I/O's to 132 chars...			*/
+  1    51 	/*  840427  Edward A. Ranzenbach	Added "off" console state..."				*/
+  1    52 	/*  850111  Edward A. Ranzenbach	Added lost special interrupt protection.		*/
+  1    53 	/*  850215  Paul K Farley               Add pcw_ignored flag in oc_entry.                           */
+  1    54 	/*  850522  Paul K Farley               Add MCA lock/unlock info.                                   */
+  1    55 	/*  850827  Paul K Farley               Add more info to event trace.				*/
+  1    56 	/*  850913  Paul K Farley               Add timeout_factor variable to oc_entry.		*/
+  1    57 	/*  851114  Paul K Farley               Remove pcw_ignored flag, imu flag will do.		*/
+  1    58 	/*										*/
+  1    59 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1    60 
+  1    61 /* format: off */
+  1    62 
+  1    63 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1    64 	/*										*/
+  1    65 	/* The DCW list consists of an array of sixteen single word Device Control Words that are used to	*/
+  1    66 	/* drive the console devices. These DCWs are listed in their stored order followed by the effects	*/
+  1    67 	/* that they produce:								*/
+  1    68 	/*										*/
+  1    69 	/*	1  =  reset status IDCW	->	Reset the console channel...			*/
+  1    70 	/*	2  =  write alert IDCW	->	Output a bell character to the console...	*/
+  1    71 	/*	3  =  write IDCW		->	Put console in output mode...			*/
+  1    72 	/*	4  =  write  DCW		->	Describes intended outgoing data transfer...	*/
+  1    73 	/*	5  =  write IDCW - newline	->	Put console in output mode...			*/
+  1    74 	/*	6  =  write  DCW - newline	->	Describes newline transfer...			*/
+  1    75 	/*	7  =  read  IDCW		->	Put the console in input mode...		*/
+  1    76 	/*	8  =  read   DCW		->	Describes intended data transfer...		*/
+  1    77 	/*	9  =  read_unechoed  IDCW	->	Put the console in unechoed input mode...	*/
+  1    78 	/*	10 =  read_unechoed  DCW	->	Describes intended data transfer...		*/
+  1    79 	/*	11 =  write IDCW - prompt							*/
+  1    80 	/*	12 =  write  DCW - prompt							*/
+  1    81 	/*	13 =  write IDCW - discard	->	Put console in output mode...			*/
+  1    82 	/*	14 =  write  DCW - discard	->	Describes discard notice...			*/
+  1    83 	/*	15 =  lock MCA IDCW		->	Disable MCA input from console...		*/
+  1    84 	/*	16 =  unlock MCA IDCW	->	Enable MCA input from console...		*/
+  1    85 	/*										*/
+  1    86 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1    87 
+  1    88      dcl	oc_data$		external;					/* so we can find it...		*/
+  1    89 	
+  1    90      dcl  1 oc_data			aligned	 based	 (oc_data_ptr),
+  1    91 	     2 lock 		bit (36),				/* global lock for all of oc_data...	*/
+  1    92 	     2 version		char	(4),			/* should equal oc_data_version...	*/
+  1    93 	     2 console_cnt		fixed bin	(17)	unaligned,	/* number of configured consoles...	*/
+  1    94 	     2 bootload_console_idx	fixed bin	(17)	unaligned,	/* index into opc of bootload console...*/
+  1    95 	     2 flags,
+  1    96 		3 in_service	bit	(1)	unaligned,	/* ON => at least one usable console... */
+  1    97 		3 crash_on_crf	bit	(1)	unaligned,	/* ON => crash on recovery failure...	*/
+  1    98 		3 mc_io_enabled	bit	(1)	unaligned,	/* ON => MC is handling I/O...	*/
+  1    99 		3 list_consoles	bit	(1)	unaligned,	/* ON => list the console assignments...*/
+  1   100 		3 printer_on	bit	(1)	unaligned,	/* ON => echo read characters...	*/
+  1   101 		3 write_q_full	bit	(1)	unaligned,	/* ON => the write queue is full...	*/
+  1   102 		3 must_have_console	bit	(1)	unaligned,	/* ON => we must have a real console... */
+  1   103 		3 pad_oc_data_flags	bit	(29)	unaligned,	/* pad to word boundry...		*/
+  1   104 	     2 no_lock_flags,					/* these flags can be modified without	*/
+  1   105 								/* lock protection...		*/
+  1   106 		3 got_special_int	bit	(1)	unaligned,	/* we could not process this special... */
+  1   107 		3 pad_no_lock_flags	bit	(35)	unaligned,
+  1   108 	     2 pad_misc		fixed bin	(35),			/* to preserve even word alignment...	*/
+  1   109 	     2 prompt		char	(8),			/* string used to prompt for input...	*/
+  1   110 	     2 discard_notice	char	(24),			/* displayed at BREAK condition...	*/
+  1   111 	     2 write_return		bit	(36),			/* newline string = PAD PAD CR NL...	*/
+  1   112 	     2 abs_addr		fixed bin (26),			/* absolute address of oc_data$...	*/
+  1   113 	     2 status_ptr		ptr,				/* points to IOM status word...	*/
+  1   114 	     2 io_ptr		ptr,				/* -> I/O being processed...		*/
+  1   115 	     2 last_read_queued	fixed bin	(71),			/* last time a READ was queued...	*/
+  1   116 	     2 last_write_queued	fixed bin (71),			/* last time a WRITE was queued...	*/
+  1   117 	     2 last_poll_time	fixed bin	(71),			/* last time of timeout poll by pxss...	*/
+  1   118 	     2 max_computed_io_time	fixed bin	(71),			/* maximum time an I/O could take...	*/
+  1   119 	     2 err_event_cid	fixed bin (71),			/* channel used to signal inop state... */
+  1   120 	     2 err_event_pid	bit	(36),			/* ID of process handling inop states...*/
+  1   121 	     2 reader_process_id	bit	(36),			/* only process allowed to read...	*/
+  1   122 	     2 next_free_write	fixed bin	(17)	unaligned,	/* index of the next free WRITE slot... */
+  1   123 	     2 next_event		fixed bin	(17)	unaligned,	/* next event index...		*/
+  1   124 	     2 stacked_read_cnt	fixed bin	(17)	unaligned,	/* READ stack...			*/
+  1   125 	     2 pad_oc_data		bit	(18)	unaligned,
+  1   126 	     2 priority_io	like	console_io,			/* oc_data|42(8)...			*/
+  1   127 	     2 read_io	like	console_io,			/* oc_data|154(8)...		*/
+  1   128 	     2 write_queue		(WRITE_QUEUE_SIZE)			/* oc_data|266(8)...		*/
+  1   129 			like	console_io,
+  1   130 	     2 meters,						/* metering cell at oc_data|1406...	*/
+  1   131 		3 pushed_read_cnt	fixed bin	(35),			/* count of times read stack was used...*/
+  1   132 		3 write_q_full_cnt	fixed bin	(35),			/* count of WRITE fails for no room...	*/
+  1   133 		3 queued_special_int_count
+  1   134 				fixed bin	(35),
+  1   135 		3 pad_meters(7)	fixed bin	(35),			/* for future use...		*/
+  1   136 	     2 opc	(MAX_OPC_CNT)				/* oc_data|1420, 1454, 1510, 1544, 1600...*/
+  1   137 			like	oc_entry,				/* 1634, 1670, 1724...		*/
+  1   138 	     2 event	(EVENT_QUEUE_SIZE)				/* oc_data|1760 thru oc_data|3777...	*/
+  1   139 			like 	oc_event;
+  1   140 
+  1   141 
+  1   142 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1   143 	/*										*/
+  1   144 	/* The following structure describes a configured console.					*/
+  1   145 	/*										*/
+  1   146 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1   147 
+  1   148 	
+  1   149      dcl	1 oc_entry	aligned	based	(oc_entry_ptr),		/* one for each console 34(8) words... */
+  1   150 	     2 name		char	(4),			/* name of this console, i.e. "opca"... */
+  1   151 	     2 opc_idx		fixed bin	(17)	unaligned,	/* index of this entry in opc array...	*/
+  1   152 	     2 model		fixed bin	(17)	unaligned,	/* model of the console...		*/
+  1   153 	     2 flags,
+  1   154 		3 active		bit	(1)	unaligned,	/* ON => this entry is in use...	*/
+  1   155 		3 assigned	bit	(1)	unaligned,	/* ON => io_manager knows device...	*/
+  1   156 		3 bootload_console	bit	(1)	unaligned,	/* ON => this is the bootload console...*/
+  1   157 		3 alternate	bit	(1)	unaligned,	/* ON => console used if active fails...*/
+  1   158 		3 inop_device	bit	(1)	unaligned,	/* ON => console is inoperative...	*/
+  1   159 		3 io_device	bit	(1)	unaligned,	/* ON => console is not available to us.*/
+  1   160 		3 no_device	bit	(1)	unaligned,	/* ON => console has been deleted...	*/
+  1   161 		3 config_change	bit	(1)	unaligned,	/* ON => config change has occurred...	*/
+  1   162 		3 prompt		bit	(1)	unaligned,	/* ON => prompt for input...		*/
+  1   163 		3 pcw_io		bit	(1)	unaligned,	/* ON => use PCW's instead of IDCW's... */
+  1   164 		3 io_in_progress	bit	(1)	unaligned,	/* ON => I/O op is in progress...	*/
+  1   165 		3 got_special_int	bit	(1)	unaligned,	/* ON => RE(TURN QUEST) key was hit...	*/
+  1   166 		3 oper_request	bit	(1)	unaligned,	/* ON => operator has hit request key...*/
+  1   167 		3 discard		bit	(1)	unaligned,	/* ON => discard output...		*/
+  1   168 		3 discarded	bit	(1)	unaligned,	/* ON => (output discarded) printed...	*/
+  1   169 		3 read_unechoed_option				/* ON => read_unechoed option installed.*/
+  1   170 				bit	(1)	unaligned,	/* option must not be installed...	*/
+  1   171 		3 imu		bit	(1)	unaligned,	/* ON => console located in an IMU...	*/
+  1   172 		3 pad_flag	bit	(19)	unaligned,	/* pad to word boundry...		*/
+  1   173 	     2 channel		char	(8),			/* name of this console's channel...	*/
+  1   174 	     2 device_idx		fixed bin (35),			/* operator's console device id...	*/
+  1   175 	     2 line_leng		fixed bin	(17)	unaligned,	/* line length of the console...	*/
+  1   176 	     2 dcw_list_idx		fixed bin	(17)	unaligned,	/* DCW list in progess...		*/
+  1   177 	     2 retry_cnt		fixed bin	(17)	unaligned,	/* times I/O op has been retried...	*/
+  1   178 	     2 RESERVED_PAD		fixed bin	(17)	unaligned,	/* pad to oc_entry + 10(8)...		*/
+  1   179 	     2 io_time		fixed bin (71),			/* time last I/O began...		*/
+  1   180 	     2 status_word		bit	(36),			/* last valid status word received...	*/
+  1   181 	     2 dcw_list	(16)	bit	(36),			/* DCWs used to drive the console...	*/
+  1   182 	     2 pad_oc_entry_end	bit	(36);			/* pad to 34(8) words...		*/
+  1   183 
+  1   184 
+  1   185 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1   186 	/*										*/
+  1   187 	/* This is the format of a console I/O. A pointer to this structure is passed to us by the process	*/
+  1   188 	/* wishing to perform a console I/O. The caller will fill in the following things for a read I/O:	*/
+  1   189 	/*										*/
+  1   190 	/* 	console_io.event_chan	- Will be an event channel to wake the user on when the	*/
+  1   191 	/* 				  I/O completes.					*/
+  1   192 	/*										*/
+  1   193 	/* 	console_io.read		- Set to "1"b indicating a read.			*/
+  1   194 	/*										*/
+  1   195 	/*  For a write the following information is supplied:					*/
+  1   196 	/*										*/
+  1   197 	/* 	console_io.alert		- Set to "1"b if the console alarm is to be on for the	*/
+  1   198 	/* 				  write.						*/
+  1   199 	/*										*/
+  1   200 	/* 	console_io.read		- Set to "0"b.					*/
+  1   201 	/*										*/
+  1   202 	/* 	console_io.sequence_no	- Set to the syserr sequence number for syserr calls. 	*/
+  1   203 	/*										*/
+  1   204 	/* 	console_io.leng		- Set to the word length of the message to be written.	*/
+  1   205 	/*										*/
+  1   206 	/* 	console_io.text		- Set to the text of the message.			*/
+  1   207 	/*										*/
+  1   208 	/* In all cases ocdcm_ will properly reset those items not necessary to the type of I/O being 	*/
+  1   209 	/* performed.									*/
+  1   210 	/*										*/
+  1   211 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1   212 
+  1   213      dcl	1 console_io		aligned 	based 	(console_io_ptr),	/* format of a I/O, 112(8) words...	*/
+  1   214 	     2 time_queued		fixed bin	(71),			/* 0 indicates a free entry...	*/
+  1   215 	     2 event_chan		fixed bin (71),			/* to send wakeup to when I/O completes.*/
+  1   216 	     2 process_id		bit	(36),			/* of the caller...			*/
+  1   217 	     2 console		char	(4),			/* name of the console the I/O went to..*/
+  1   218 	     2 flags,						/* start at console_io + 6(8)...	*/
+  1   219 		3 alert		bit	(1)	unaligned,	/* ON => ring bell first...		*/
+  1   220 		3 read		bit	(1)	unaligned,	/* ON => this is a read request...	*/
+  1   221 		3 alerted		bit	(1)	unaligned,	/* ON => we have successfully alerted...*/
+  1   222 		3 prompted	bit	(1)	unaligned,	/* ON => we have successfully prompted..*/
+  1   223 		3 in_progress	bit	(1)	unaligned,	/* ON => I/O has been started...	*/
+  1   224 		3 completed	bit	(1)	unaligned,	/* ON => the I/O has completed...	*/
+  1   225 		3 retry_reset	bit	(1)	unaligned,	/* ON => I/O was reset by retry_io...	*/
+  1   226 		3 pad_flag	bit	(29)	unaligned,	/* pad to word boundry...		*/
+  1   227 	     2 sequence_no		fixed bin	(35),			/* syserr sequence number...		*/
+  1   228 	     2 leng		fixed bin	(17)	unaligned,	/* in words of the I/O...		*/
+  1   229 	     2 MBZ		fixed bin	(17)	unaligned,	/* reserved for future use...		*/
+  1   230 	     2 pad_text		fixed bin	(35),			/* I/O must start on even word boundry..*/
+  1   231 	     2 text		char	(MAX_IO_LENGTH);		/* the actual I/O...		*/
+  1   232 
+  1   233 
+  1   234 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1   235 	/*										*/
+  1   236 	/* The following structure is used to log an event occurring in in the console software.		*/
+  1   237 	/*										*/
+  1   238 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1   239 
+  1   240 	
+  1   241      dcl	1 oc_event		aligned	based	(oc_event_ptr),	/* each event is 10(8) words long...	*/
+  1   242 	     2 time		fixed bin	(71),			/* time event took place...		*/
+  1   243 	     2 opc_name		char (4),				/* bootload console at time of event... */
+  1   244 	     2 opc_flags		like oc_entry.flags,		/* bootload console flags...		*/
+  1   245 	     2 process_id		bit	(36),			/* process logging the event...	*/
+  1   246 	     2 event_number		fixed bin	(35),			/* number of the event being logged...	*/
+  1   247 	     2 event_io_ptr		ptr;				/* ptr to I/O in progress during event..*/
+  1   248 
+  1   249      dcl	(							/* indices for ease of use...		*/
+  1   250 	RESET_DCW			init	(1),
+  1   251 	ALERT_DCW			init	(2),
+  1   252 	WRITE_DCW			init	(3),
+  1   253 	NEWLINE_DCW		init	(5),
+  1   254 	READ_DCW			init	(7),
+  1   255 	READ_UNECHOED_DCW		init	(9),
+  1   256 	PROMPT_DCW		init	(11),
+  1   257 	DISCARD_DCW		init	(13),
+  1   258 	LOCK_MCA_DCW		init	(15),
+  1   259 	UNLOCK_MCA_DCW		init	(16)
+  1   260 	)			fixed bin	(17)
+  1   261 				internal static	options (constant);
+  1   262      dcl	(							/* list of event numbers...		*/
+  1   263 	INIT_OC_DATA		init	(1),
+  1   264 	GOT_SPECIAL_INT		init	(2),
+  1   265 	PRIORITY_OUTPUT		init	(3),
+  1   266 	QUEUED_READ		init	(4),
+  1   267 	QUEUED_WRITE		init	(5),
+  1   268 	STARTED_READ		init	(6),
+  1   269 	STARTED_UNECHOED_READ	init	(7),
+  1   270 	STARTED_WRITE		init	(8),
+  1   271 	RESET_CHANNEL		init	(9),
+  1   272 	SENT_ALERT		init	(10),
+  1   273 	SENT_NEWLINE		init	(11),
+  1   274 	SENT_PROMPT		init	(12),
+  1   275 	TERMINATED_RESET		init	(13),
+  1   276 	TERMINATED_ALERT		init	(14),
+  1   277 	TERMINATED_NEWLINE		init	(15),
+  1   278 	TERMINATED_PROMPT		init	(16),
+  1   279 	TERMINATED_READ		init	(17),
+  1   280 	TERMINATED_WRITE		init	(18),
+  1   281 	SENT_WAKEUP		init	(19),
+  1   282 	READ_PICKUP		init	(20),
+  1   283 	PUSHED_READ		init	(21),
+  1   284 	POPPED_READ		init	(22),
+  1   285 	READ_NOT_IN_PROGRESS	init	(23),
+  1   286 	LOGGED_ERROR		init	(24),
+  1   287 	IO_TIMEOUT		init	(25),
+  1   288 	RETRY_IO			init	(26),
+  1   289 	GOT_LOCK			init	(27),
+  1   290 	FREED_LOCK		init	(28),
+  1   291 	DISCARDED_OUTPUT		init	(29),
+  1   292 	SENT_MC_IO		init	(30),
+  1   293 	SENT_MC_PRIORITY_IO		init	(31),
+  1   294 	MC_IO_PICKUP		init	(32),
+  1   295 	MC_IO_FAILURE		init	(33),
+  1   296 	LOCK_MCA_IO		init	(34),
+  1   297 	UNLOCK_MCA_IO		init	(35),
+  1   298 	TERMINATED_MCA_LOCK		init	(36),
+  1   299 	TERMINATED_MCA_UNLOCK	init	(37)
+  1   300 	)			fixed bin	(35)
+  1   301 				internal static	options (constant);
+  1   302 
+  1   303      dcl	oc_data_version		char	(4)	init	("1.3")	/* for general information...		*/
+  1   304 				static internal	options (constant);
+  1   305 
+  1   306      dcl	(
+  1   307 	oc_data_ptr,
+  1   308 	oc_entry_ptr,
+  1   309 	oc_event_ptr,
+  1   310 	console_io_ptr
+  1   311 	)			ptr;
+  1   312 
+  1   313      dcl	(
+  1   314 	MAX_OPC_CNT		init	(8),			/* maximum number of consoles...	*/
+  1   315 	MAX_RETRIES		init	(2),			/* we retry I/O ops this many times...	*/
+  1   316 	EVENT_QUEUE_SIZE		init	(130),			/* use up the rest of the 2 pages...	*/
+  1   317 	WRITE_QUEUE_SIZE		init	(8)			/* number of queued writes allowed...	*/
+  1   318 	)
+  1   319 				fixed bin	(17)
+  1   320 				internal static	options (constant);
+  1   321 
+  1   322      dcl	MAX_IMU_IO_TIME		fixed bin	(17)			/* longest possible IMU I/O time...	*/
+  1   323 				internal static	options (constant)
+  1   324 				init	(150);			/* 2 minutes 30 seconds...		*/
+  1   325 
+  1   326      dcl	MAX_IO_TIME	(16)	fixed bin	(17)			/* maximum time the associated I/O 	*/
+  1   327 				internal static	options (constant)	/* operation is allowed to take in 	*/
+  1   328 				init				/* seconds...			*/
+  1   329 			         (
+  1   330 				1,				/* RESET_STATUS...			*/
+  1   331 				1,				/* WRITE ALERT...			*/
+  1   332 				10,				/* WRITE DATA...			*/
+  1   333 				0,				/* DUMMY for WRITE DATA DCW...	*/
+  1   334 				2,				/* WRITE CR, NL...			*/
+  1   335 				0,				/* DUMMY for WRITE CR, NL DCW...	*/
+  1   336 				90,				/* READ DATA...			*/
+  1   337 				0,				/* DUMMY for READ DATA DCW...		*/
+  1   338 				90,				/* READ_UNECHOED DATA...		*/
+  1   339 				0,				/* DUMMY for READ_UNECHOED DATA DCW...	*/
+  1   340 				1,				/* WRITE PROMPT...			*/
+  1   341 				0,				/* DUMMY for WRITE PROMPT DCW...	*/
+  1   342 				10,				/* DISCARD DCW...			*/
+  1   343 				0,				/* DUMMY for DISCARD DCW...		*/
+  1   344 				30,				/* LOCK MCA IO...			*/
+  1   345 				30				/* UNLOCK MCA IO...			*/
+  1   346 				);
+  1   347 
+  1   348      dcl	MAX_IO_LENGTH		fixed bin	(17)
+  1   349 				internal static	options (constant)
+  1   350 				init	(256);			/* in characters...			*/
+  1   351      dcl	MAX_MAX_IO_TIME		fixed bin	(17)			/* longest possible I/O time...	*/
+  1   352 				internal static	options (constant)
+  1   353 				init	(150);			/* should be the same as the longest...	*/
+  1   354 
+  1   355 
+  1   356 /*  END OF:	oc_data.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      120 
+      121      end bce_console_io;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.0  bce_console_io.pl1                >special_ldd>install>MR12.3-1114>bce_console_io.pl1
+120          1    10/12/89  2017.7  oc_data.incl.pl1                  >ldd>include>oc_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Buffer                                 based           char                     packed unaligned dcl 28 set ref 74 74* 74 91 93
+Buffer_len                             parameter       fixed bin(17,0)          dcl 27 ref 58 74 74 74 79 85 91 93
+Buffer_ptr                             parameter       pointer                  dcl 26 ref 58 74 74 74 79 85 91 93
+Code                                   parameter       fixed bin(35,0)          dcl 29 set ref 58 60* 79 85 117*
+MAX_IO_LENGTH                          constant        fixed bin(17,0)          initial dcl 1-348 ref 42 62 72 72 102 110
+N_read                                 parameter       fixed bin(17,0)          dcl 31 set ref 58 72* 74 74
+Switch_ptr                             parameter       pointer                  dcl 30 ref 58 79 85
+addcharno                                              builtin function         dcl 47 ref 115
+addr                                                   builtin function         dcl 48 ref 63 72 72 72 72 93 99 99 103
+alert                           000100 automatic       bit(1)                   dcl 38 in procedure "bce_console_io" set ref 82* 88*
+                                                                                  107
+alert                     6            based           bit(1)                   level 3 in structure "console_io" packed packed
+                                                                                  unaligned dcl 1-213 in procedure "bce_console_io"
+                                                                                  set ref 66* 107*
+bce_check_abort                 000010 constant        entry                    external dcl 33 ref 98
+console_io                             based           structure                level 1 dcl 1-213
+console_io_ptr                  000210 automatic       pointer                  dcl 1-306 set ref 63* 64 65 66 67 69* 70 72 72 72
+                                                                                  103* 105 106 107 108 109 110 112*
+cont                            000101 automatic       bit(1)                   dcl 39 set ref 92* 99*
+cur_ptr                         000102 automatic       pointer                  dcl 40 set ref 93* 99* 115* 115
+event_chan                2            based           fixed bin(71,0)          level 2 dcl 1-213 set ref 64* 105*
+flags                     6            based           structure                level 2 in structure "console_io" dcl 1-213
+                                                                                  in procedure "bce_console_io"
+flags                     2            based           structure                level 2 in structure "oc_entry" dcl 1-149
+                                                                                  in procedure "bce_console_io"
+flags                                  based           structure                array level 3 in structure "oc_data" dcl 1-90
+                                                                                  in procedure "bce_console_io"
+internal_buffer                 000104 automatic       char(256)                dcl 41 set ref 72 72 72 72 74 89* 99 99 110
+leng                     10            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-213 set ref 70
+                                                                                  72 109*
+length                                                 builtin function         dcl 49 ref 72 72 74 74 91
+min                                                    builtin function         dcl 50 ref 74 74
+my_console_io                   000204 automatic       structure                level 1 dcl 42 set ref 62* 63 102* 103
+n_done                          000204 automatic       fixed bin(21,0)          dcl 43 set ref 99* 114 115
+n_to_send                       000205 automatic       fixed bin(19,0)          dcl 44 set ref 99* 109 110
+n_to_write                      000206 automatic       fixed bin(21,0)          dcl 45 set ref 91* 94 99* 114* 114
+oc_entry                               based           structure                level 1 dcl 1-149
+oc_event                               based           structure                level 1 dcl 1-241
+oc_trans_input_                 000012 constant        entry                    external dcl 34 ref 72
+oc_trans_output_                000014 constant        entry                    external dcl 35 ref 99
+ocdcm_$priority_io              000016 constant        entry                    external dcl 36 ref 69 112
+read                      6(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-213 set ref
+                                                                                  65* 106*
+sequence_no               7            based           fixed bin(35,0)          level 2 dcl 1-213 set ref 67* 108*
+substr                                                 builtin function         dcl 51 set ref 74* 74 110
+text                     12            based           char                     level 2 dcl 1-213 set ref 72 72 110*
+unspec                                                 builtin function         dcl 52 set ref 62* 102*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ALERT_DCW                              internal static fixed bin(17,0)          initial dcl 1-249
+DISCARDED_OUTPUT                       internal static fixed bin(35,0)          initial dcl 1-262
+DISCARD_DCW                            internal static fixed bin(17,0)          initial dcl 1-249
+EVENT_QUEUE_SIZE                       internal static fixed bin(17,0)          initial dcl 1-313
+FREED_LOCK                             internal static fixed bin(35,0)          initial dcl 1-262
+GOT_LOCK                               internal static fixed bin(35,0)          initial dcl 1-262
+GOT_SPECIAL_INT                        internal static fixed bin(35,0)          initial dcl 1-262
+INIT_OC_DATA                           internal static fixed bin(35,0)          initial dcl 1-262
+IO_TIMEOUT                             internal static fixed bin(35,0)          initial dcl 1-262
+LOCK_MCA_DCW                           internal static fixed bin(17,0)          initial dcl 1-249
+LOCK_MCA_IO                            internal static fixed bin(35,0)          initial dcl 1-262
+LOGGED_ERROR                           internal static fixed bin(35,0)          initial dcl 1-262
+MAX_IMU_IO_TIME                        internal static fixed bin(17,0)          initial dcl 1-322
+MAX_IO_TIME                            internal static fixed bin(17,0)          initial array dcl 1-326
+MAX_MAX_IO_TIME                        internal static fixed bin(17,0)          initial dcl 1-351
+MAX_OPC_CNT                            internal static fixed bin(17,0)          initial dcl 1-313
+MAX_RETRIES                            internal static fixed bin(17,0)          initial dcl 1-313
+MC_IO_FAILURE                          internal static fixed bin(35,0)          initial dcl 1-262
+MC_IO_PICKUP                           internal static fixed bin(35,0)          initial dcl 1-262
+NEWLINE_DCW                            internal static fixed bin(17,0)          initial dcl 1-249
+POPPED_READ                            internal static fixed bin(35,0)          initial dcl 1-262
+PRIORITY_OUTPUT                        internal static fixed bin(35,0)          initial dcl 1-262
+PROMPT_DCW                             internal static fixed bin(17,0)          initial dcl 1-249
+PUSHED_READ                            internal static fixed bin(35,0)          initial dcl 1-262
+QUEUED_READ                            internal static fixed bin(35,0)          initial dcl 1-262
+QUEUED_WRITE                           internal static fixed bin(35,0)          initial dcl 1-262
+READ_DCW                               internal static fixed bin(17,0)          initial dcl 1-249
+READ_NOT_IN_PROGRESS                   internal static fixed bin(35,0)          initial dcl 1-262
+READ_PICKUP                            internal static fixed bin(35,0)          initial dcl 1-262
+READ_UNECHOED_DCW                      internal static fixed bin(17,0)          initial dcl 1-249
+RESET_CHANNEL                          internal static fixed bin(35,0)          initial dcl 1-262
+RESET_DCW                              internal static fixed bin(17,0)          initial dcl 1-249
+RETRY_IO                               internal static fixed bin(35,0)          initial dcl 1-262
+SENT_ALERT                             internal static fixed bin(35,0)          initial dcl 1-262
+SENT_MC_IO                             internal static fixed bin(35,0)          initial dcl 1-262
+SENT_MC_PRIORITY_IO                    internal static fixed bin(35,0)          initial dcl 1-262
+SENT_NEWLINE                           internal static fixed bin(35,0)          initial dcl 1-262
+SENT_PROMPT                            internal static fixed bin(35,0)          initial dcl 1-262
+SENT_WAKEUP                            internal static fixed bin(35,0)          initial dcl 1-262
+STARTED_READ                           internal static fixed bin(35,0)          initial dcl 1-262
+STARTED_UNECHOED_READ                  internal static fixed bin(35,0)          initial dcl 1-262
+STARTED_WRITE                          internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_ALERT                       internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_MCA_LOCK                    internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_MCA_UNLOCK                  internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_NEWLINE                     internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_PROMPT                      internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_READ                        internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_RESET                       internal static fixed bin(35,0)          initial dcl 1-262
+TERMINATED_WRITE                       internal static fixed bin(35,0)          initial dcl 1-262
+UNLOCK_MCA_DCW                         internal static fixed bin(17,0)          initial dcl 1-249
+UNLOCK_MCA_IO                          internal static fixed bin(35,0)          initial dcl 1-262
+WRITE_DCW                              internal static fixed bin(17,0)          initial dcl 1-249
+WRITE_QUEUE_SIZE                       internal static fixed bin(17,0)          initial dcl 1-313
+oc_data                                based           structure                level 1 dcl 1-90
+oc_data$                               external static fixed bin(17,0)          dcl 1-88
+oc_data_ptr                            automatic       pointer                  dcl 1-306
+oc_data_version                        internal static char(4)                  initial packed unaligned dcl 1-303
+oc_entry_ptr                           automatic       pointer                  dcl 1-306
+oc_event_ptr                           automatic       pointer                  dcl 1-306
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bce_console_io                  000020 constant        entry                    external dcl 18
+get_line                        000034 constant        entry                    external dcl 58
+put                             000206 constant        label                    dcl 89 ref 83
+put_chars                       000156 constant        entry                    external dcl 79
+put_chars_alert                 000173 constant        entry                    external dcl 85
+read                            000046 constant        label                    dcl 62 ref 70
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       446         466     337         456
+Length       664     337        20         161     106           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_console_io                      182 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_console_io           000100 alert                       bce_console_io
+                         000101 cont                        bce_console_io
+                         000102 cur_ptr                     bce_console_io
+                         000104 internal_buffer             bce_console_io
+                         000204 n_done                      bce_console_io
+                         000204 my_console_io               bce_console_io
+                         000205 n_to_send                   bce_console_io
+                         000206 n_to_write                  bce_console_io
+                         000210 console_io_ptr              bce_console_io
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          alloc_auto_adj      ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_check_abort               oc_trans_input_               oc_trans_output_              ocdcm_$priority_io
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     42 000007        18 000017        58 000026        60 000045        62 000046        63 000061        64 000063
+     65 000065        66 000067        67 000071        69 000072        70 000101        72 000105        74 000136
+     77 000150        79 000151        82 000167        83 000170        85 000171        88 000204        89 000206
+     91 000211        92 000214        93 000215        94 000220        98 000222        99 000227       102 000256
+    103 000271       105 000273       106 000275       107 000277       108 000303       109 000304       110 000307
+    112 000315       114 000324       115 000326       116 000332       117 000333       118 000334
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

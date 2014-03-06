@@ -1,0 +1,1359 @@
+	COMPILATION LISTING OF SEGMENT priv_x25_mpx
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1006.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  *********************************************************
+        2*        *                                                       *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1989 *
+        4*        *                                                       *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987              *
+        6*        *                                                       *
+        7*        * Copyright (c) 1986 by Massachusetts Institute of      *
+        8*        * Technology and Honeywell Information Systems, Inc.    *
+        9*        *                                                       *
+       10*        * Copyright (c) 1972 by Massachusetts Institute of      *
+       11*        * Technology and Honeywell Information Systems, Inc.    *
+       12*        *                                                       *
+       13*        ********************************************************* */
+       14 
+       15 
+       16 
+       17 /****^  HISTORY COMMENTS:
+       18*  1) change(86-09-12,Beattie), approve(86-09-12,MCR7540),
+       19*     audit(86-09-19,Brunelle), install(86-10-07,MR12.0-1176):
+       20*     Ensure that LCT entries are freed when X.25 multiplexers crash or are
+       21*     dumped (TR17714).
+       22*  2) change(89-02-21,Parisek), approve(89-06-01,MCR8110),
+       23*     audit(89-10-09,Farley), install(89-10-25,MR12.3-1100):
+       24*     Add x25_packet_trace_(on off) orders for use in tracing PROTOCOL
+       25*     packet I/O.
+       26*                                                   END HISTORY COMMENTS */
+       27 
+       28 
+       29 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       30 priv_x25_mpx:
+       31      procedure;
+       32 
+       33 /* This procedure contains the privileged entry points to the
+       34*   x25 multiplexer.  These entries are never referenced at interrupt
+       35*   time and therefore need not be wired.
+       36*
+       37*   Coded December 1978 by J. Stern
+       38*   Modified 7/31/79 by B.Westcott to support x25 instead.
+       39*   Modified November 1979 by C. Hornig for installation.
+       40*   Modified August 1981 by C. Hornig to add metering.
+       41*   Modified May 1982 by D. W. Cousins for deletion of HOST level2 mpx.
+       42*   Modified July 1983 by Robert Coren to implement administrative control of long_packet_size.
+       43*   Modified August 1983 by Jeff Schiller to implement the "reverse charging" facility.
+       44*   Modified October 1984 by R.J.C. Kissel to use the window size specified.
+       45*   Modified October 1984 by R.J.C. Kissel to set the specified value for the breakall idle timer.
+       46**/
+       47 
+       48 /* Parameters */
+       49 
+       50 dcl  x25_code fixed bin (35);				/* error code */
+       51 dcl  x25_devx fixed bin;				/* device (LCT) index */
+       52 dcl  x25_infop ptr;					/* ptr to control order info structure */
+       53 dcl  x25_miip ptr;					/* ptr to mux_init_info structure */
+       54 dcl  x25_order char (*);				/* control order name */
+       55 dcl  X25_data_ptr ptr;				/* ptr to x25_data (x25 multiplexer data base) */
+       56 
+       57 
+       58 /* Automatic */
+       59 
+       60 dcl  code fixed bin (35);
+       61 dcl  devx fixed bin;
+       62 dcl  order char (32);
+       63 dcl  infop pointer;
+       64 dcl  (lcx, scx) fixed bin;
+       65 
+       66 dcl  1 activate_order aligned,
+       67        2 dce_or_dte bit (1) unaligned,			/* ON = DCE */
+       68        2 lap_or_lapb bit (1) unaligned,			/* ON = lapb */
+       69        2 disc_first bit (1) unaligned,			/* ON = send disc upon physical connect */
+       70        2 trace_off bit (1) unaligned,			/* ON = turn off trace upon line crash */
+       71        2 pad bit (5) unaligned,			/* padding */
+       72        2 activation_order bit (9) unaligned,		/* "001"b3 */
+       73        2 frame_size uns fixed bin (18) unaligned,		/* max size of I-frame */
+       74        2 K uns fixed bin (9) unaligned,			/* max unack frame in frame level */
+       75        2 N2 uns fixed bin (9) unaligned,		/* number of retries */
+       76        2 T1 uns fixed bin (9) unaligned,		/* retry timer in tenths of seconds */
+       77        2 T3 uns fixed bin (9) unaligned;		/* init timer */
+       78 
+       79 /* Based */
+       80 
+       81 dcl  based_packet_size fixed bin based;
+       82 
+       83 
+       84 /* Internal static */
+       85 
+       86 dcl  init_sw bit (1) aligned static init ("0"b);
+       87 dcl  modulus8 fixed bin int static options (constant) init (8);
+       88 
+       89 /* External static */
+       90 
+       91 dcl  error_table_$action_not_performed fixed bin (35) ext;
+       92 dcl  error_table_$dev_nt_assnd fixed bin (35) ext;
+       93 dcl  error_table_$noalloc fixed bin (35) ext;
+       94 dcl  error_table_$null_info_ptr fixed bin (35) ext;
+       95 dcl  error_table_$undefined_order_request fixed bin (35) ext;
+       96 dcl  error_table_$unimplemented_version fixed bin (35) ext;
+       97 
+       98 
+       99 /* Conditions */
+      100 
+      101 dcl  cleanup condition;
+      102 
+      103 
+      104 /* Builtins */
+      105 
+      106 dcl  (addr, after, before, currentsize, fixed, null, reverse, rtrim, size, string, unspec) builtin;
+      107 
+      108 
+      109 /* Entries */
+      110 
+      111 dcl  x25_mpx$system_init entry;
+      112 
+      113 
+      114 /* Entry to allocate and initialize the  multiplexer data base for a given major channel */
+      115 
+      116 init_multiplexer:
+      117      entry (x25_devx, x25_miip, X25_data_ptr, x25_code);
+      118 
+      119 	devx = x25_devx;
+      120 	miip = x25_miip;
+      121 	X25_data_ptr = null ();
+      122 
+      123 	ttybp = addr (tty_buf$);
+      124 	lctp = tty_buf.lct_ptr;
+      125 
+      126 	x25_data_n_sc = mux_init_info.no_channels;
+      127 	x25_data_ptr = null ();
+      128 	on cleanup
+      129 	     begin;
+      130 	     if x25_data_ptr ^= null () then call tty_space_man$free_space (size (x25_data), x25_data_ptr);
+      131 	end;
+      132 
+      133 	call tty_space_man$get_space (size (x25_data), x25_data_ptr);
+      134 						/* allocate space for multiplexer data base */
+      135 	if x25_data_ptr = null () then do;
+      136 	     x25_code = error_table_$noalloc;
+      137 	     return;
+      138 	     end;
+      139 
+      140 	x25_data.name = reverse (after (reverse (mux_init_info.channels (1).name), "."));
+      141 	x25_data.devx = devx;
+      142 	x25_data.state = X25_HUNGUP;
+      143 	x25_data.n_sc = x25_data_n_sc;
+      144 	x25_data.n_lc = 0;
+      145 	x25_data.lc_ptr = null ();
+      146 	x25_data.write_head, x25_data.write_tail = null ();
+      147 
+      148 	do scx = 1 to x25_data.n_sc;
+      149 	     xscep = addr (x25_data.sc (scx));
+      150 	     xsce.name = mux_init_info.channels (scx).name;
+      151 	     xsce.state = SC_HUNGUP;
+      152 	     xsce.devx = mux_init_info.channels (scx).devx;
+      153 	     xsce.lcx = 0;
+      154 	     string (xsce.flags) = ""b;
+      155 	     xsce.service = rtrim (reverse (before (reverse (mux_init_info.channels (scx).name), ".")), " 0123456789");
+      156 	     xsce.write_head, xsce.write_tail = null ();
+      157 	     xsce.trans_table_ptr = null ();
+      158 
+      159 	     lctep = addr (lct.lcte_array (xsce.devx));
+      160 	     lcte.subchannel = scx;
+      161 	end;
+      162 
+      163 	if ^init_sw then do;
+      164 	     call x25_mpx$system_init;
+      165 	     init_sw = "1"b;
+      166 	     end;
+      167 
+      168 	X25_data_ptr = x25_data_ptr;
+      169 	x25_code = 0;
+      170 	return;
+      171 
+      172 /* * * * * * * * * * TERMINATE_MULTIPLEXER * * * * * * * * * */
+      173 
+      174 /* Entry to discard the multiplexer data base for a given major channel */
+      175 
+      176 terminate_multiplexer:
+      177      entry (X25_data_ptr, x25_code);
+      178 
+      179 	x25_data_ptr = X25_data_ptr;
+      180 
+      181 	if x25_data.lc_ptr ^= null () then do;
+      182 	     call tty_space_man$free_space (size (x25_lces), x25_data.lc_ptr);
+      183 	     x25_data.lc_ptr = null ();
+      184 	     end;
+      185 
+      186 	call tty_space_man$free_space (currentsize (x25_data), x25_data_ptr);
+      187 
+      188 	X25_data_ptr = null ();
+      189 	x25_code = 0;
+      190 	return;
+      191 
+      192 /* * * * * * * * * START * * * * * * * * * */
+      193 
+      194 /* Entry to allow dialups on multiplexer subchannels */
+      195 
+      196 start:
+      197      entry (X25_data_ptr, x25_code);
+      198 
+      199 	x25_data_ptr = X25_data_ptr;
+      200 	x25_data.flags.mpx_started = "1"b;
+      201 	x25_code = 0;
+      202 	return;
+      203 
+      204 /* * * * * * * * * * STOP * * * * * * * * * */
+      205 
+      206 /* Entry to forbid dialups on multiplexer subchannels */
+      207 
+      208 stop:
+      209      entry (X25_data_ptr, x25_code);
+      210 
+      211 	x25_data_ptr = X25_data_ptr;
+      212 	x25_data.flags.mpx_started = "0"b;
+      213 	x25_code = 0;
+      214 	return;
+      215 
+      216 /* * * * * * * * * * SHUTDOWN * * * * * * * * * */
+      217 
+      218 /* Entry to shut down the multiplexer (equivalent to a crash) */
+      219 /* instead of just hangup. It should be a disconnect order and
+      220*   then a deactivate order for any state greater then listening
+      221**/
+      222 
+      223 shutdown:
+      224      entry (X25_data_ptr, x25_code);
+      225 
+      226 	x25_data_ptr = X25_data_ptr;
+      227 	if x25_data.state > X25_HUNGUP then call channel_manager$control (x25_data.devx, "hangup", null (), code);
+      228 	return;
+      229 
+      230 /* * * * * * * * * PRIV_CONTROL * * * * * * * * * * */
+      231 
+      232 /* Entry to perform privileged control orders */
+      233 
+      234 priv_control:
+      235      entry (X25_data_ptr, x25_order, x25_infop, x25_code);
+      236 
+      237 	x25_data_ptr = X25_data_ptr;
+      238 	order = x25_order;
+      239 	x25_code = 0;
+      240 
+      241 	if /* case */ order = "copy_meters" then do;
+      242 	     call channel_manager$control (x25_data.devx, order, x25_infop, x25_code);
+      243 	     end;
+      244 
+      245 	else if order = "get_meters" then do;
+      246 	     call channel_manager$control (x25_data.devx, order, x25_infop, x25_code);
+      247 	     end;
+      248 
+      249 	else if order = "x25_packet_trace_on" then x25_data.packet_trace_sw = "1"b;
+      250 	else if order = "x25_packet_trace_off" then x25_data.packet_trace_sw = "0"b;
+      251 	else x25_code = error_table_$undefined_order_request;
+      252 
+      253 	return;
+      254 
+      255 /* * * * * * * * * * HPRIV_CONTROL * * * * * * * * * */
+      256 
+      257 /* Entry to perform highly privileged control orders */
+      258 
+      259 hpriv_control:
+      260      entry (X25_data_ptr, x25_order, x25_infop, x25_code);
+      261 
+      262 	x25_data_ptr = X25_data_ptr;
+      263 	order = x25_order;
+      264 	code = 0;
+      265 
+      266 	if /* case */ order = "load_mpx" then do;	/* bootload the multiplexed device */
+      267 	     ttybp = addr (tty_buf$);
+      268 	     lctp = tty_buf.lct_ptr;
+      269 	     x25_load_infop = x25_infop;		/* save load info */
+      270 
+      271 	     if x25_load_info.version ^= X25_LOAD_INFO_VERSION_1 then do;
+      272 		x25_code = error_table_$unimplemented_version;
+      273 		return;
+      274 		end;
+      275 
+      276 	     if x25_data.state > X25_HUNGUP then do;	/* one at a time please */
+      277 		x25_code = error_table_$action_not_performed;
+      278 		return;
+      279 		end;
+      280 
+      281 	     x25_data.n_lc = x25_load_info.n_lc;
+      282 	     call tty_space_man$get_space (size (x25_lces), x25_data.lc_ptr);
+      283 	     if x25_data.lc_ptr = null () then do;
+      284 		x25_code = error_table_$noalloc;
+      285 		return;
+      286 		end;
+      287 
+      288 	     x25_data.load_proc_id = x25_load_info.pid;
+      289 	     x25_data.load_ev_chan = x25_load_info.ev_chan;
+      290 
+      291 	     unspec (activate_order) = ""b;
+      292 	     activate_order.dce_or_dte = x25_load_info.dce;
+      293 	     activate_order.lap_or_lapb = x25_load_info.abm;
+      294 	     activate_order.disc_first = x25_load_info.disc_first;
+      295 	     activate_order.activation_order = "001"b3;
+      296 	     activate_order.trace_off = x25_load_info.trace_off;
+      297 	     activate_order.frame_size = x25_load_info.frame_size;
+      298 	     activate_order.K = x25_load_info.k;
+      299 	     activate_order.N2 = x25_load_info.n2;
+      300 	     activate_order.T1 = fixed (10e0 * x25_load_info.t1, 9);
+      301 	     activate_order.T3 = fixed (x25_load_info.t3, 9);
+      302 
+      303 	     call channel_manager$control (x25_data.devx, "line_control", addr (activate_order), code);
+      304 	     if code ^= 0 then do;
+      305 		x25_code = code;
+      306 		return;
+      307 		end;
+      308 
+      309 	     x25_data.net_type = x25_load_info.net_type;
+      310 	     x25_data.my_address = x25_load_info.my_address;
+      311 	     string (x25_data.flags) = ""b;
+      312 	     x25_data.flags.bypass_restart = x25_load_info.bypass_restart;
+      313 	     x25_data.flags.no_d = x25_load_info.no_d;
+      314 	     x25_data.flags.out_calls_collect = x25_load_info.flags.out_calls_collect;
+      315 	     x25_data.seq_mod = modulus8;
+      316 	     x25_data.gfid = "01"b;
+      317 	     x25_data.long_packet_size = x25_load_info.long_packet_size;
+      318 	     x25_data.breakall_idle_timer = x25_load_info.breakall_idle_timer;
+      319 
+      320 	     do lcx = 1 to x25_data.n_lc;		/* init subchannel entries */
+      321 		xlcep = addr (x25_lces.lc (lcx));
+      322 		xlce.state = READY;
+      323 		xlce.scx = 0;
+      324 		xlce.max_packet_size = x25_load_info.max_packet_size;
+      325 		xlce.max_window_size = x25_load_info.window_size;
+      326 		xlce.window_size = x25_load_info.window_size;
+      327 		string (xlce.flags) = ""b;
+      328 	     end;
+      329 
+      330 	     do scx = 1 to x25_data.n_sc;
+      331 		xscep = addr (x25_data.sc (scx));
+      332 		lctep = addr (lct.lcte_array (xsce.devx));
+      333 		lcte.physical_channel_devx = xsce.devx;
+      334 	     end;
+      335 
+      336 	     call channel_manager$control (x25_data.devx, "listen", null (), code);
+      337 	     if code ^= 0 then do;
+      338 		x25_code = code;
+      339 		return;
+      340 		end;
+      341 
+      342 	     x25_data.state = X25_LISTENING;
+      343 	     end;
+      344 
+      345 	else if order = "set_long_packet_threshold" then do;
+      346 	     infop = x25_infop;
+      347 	     if infop = null () then code = error_table_$null_info_ptr;
+      348 	     else if x25_data.state = X25_HUNGUP then code = error_table_$dev_nt_assnd;
+      349 	     else x25_data.long_packet_size = infop -> based_packet_size;
+      350 	     end;
+      351 
+      352 	else code = error_table_$undefined_order_request;
+      353 
+      354 	x25_code = code;
+      355 	return;
+      356 
+  1     1 /*  BEGIN INCLUDE FILE ... x25_data.incl.pl1  */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(89-03-20,Parisek), approve(89-06-01,MCR8110),
+  1     6*     audit(89-10-09,Farley), install(89-10-25,MR12.3-1100):
+  1     7*     Add support of protocol mpx.
+  1     8*                                                   END HISTORY COMMENTS */
+  1     9 
+  1    10 
+  1    11 /*       Created june 9, 1979 by B.Westcott   */
+  1    12 /* Revised January 1982 by C. Hornig */
+  1    13 /* Modified  May 1982, by D. W. Cousins for level 2 activation data */
+  1    14 /* Modified August 1983 by Jeff Schiller to implement the "reverse charging" facility. */
+  1    15 /* Modified October 1984 by R.J.C. Kissel to have a value for the idle timer to use for breakall mode. */
+  1    16 /* Modified October 1984 by R.J.C. Kissel to add the write_status_sync_sent flag. */
+  1    17 
+  1    18 dcl  x25_data_ptr ptr;
+  1    19 dcl  x25_data_n_sc fixed bin;				/* number of Multics subchannels */
+  1    20 
+  1    21 dcl  1 x25_data aligned based (x25_data_ptr),		/* level 3 data */
+  1    22        2 name char (32),				/* channel name for messages */
+  1    23        2 devx fixed bin,				/* device index of multiplexer */
+  1    24        2 state fixed bin,				/* see below */
+  1    25        2 n_lc fixed bin,				/* number of logical channels */
+  1    26        2 n_sc fixed bin,				/* number of subchannels */
+  1    27        2 n_pvc fixed bin,				/* number of Permanent Virtual Circuits */
+  1    28        2 flags,
+  1    29          3 send_output bit (1) unaligned,
+  1    30          3 mpx_started bit (1) unaligned,
+  1    31          3 bypass_restart bit (1) unaligned,
+  1    32          3 no_d bit (1) unaligned,			/* end-to-end ack not available */
+  1    33          3 out_calls_collect bit (1) unaligned,
+  1    34          3 packet_trace_sw   bit (1) unaligned,		/* Log packets? */
+  1    35          3 pad1 bit (30) unaligned,
+  1    36        2 seq_mod uns fixed bin (8),			/* modulus for packet sequencing */
+  1    37        2 gfid bit (2),				/* format code to use */
+  1    38        2 load_proc_id bit (36),			/* bootload process id */
+  1    39        2 load_ev_chan fixed bin (71),			/* bootload event channel */
+  1    40        2 net_type char (8),				/* type of net this is */
+  1    41        2 restart_time fixed bin (71),			/* time last restart sent */
+  1    42        2 dialup_info like dialup_info,			/* dialup interrupt info */
+  1    43        2 lc_ptr ptr,				/* LC table */
+  1    44        2 (write_head, write_tail) ptr,			/* chain of packets to write */
+  1    45        2 long_packet_size fixed bin (11),		/* smallest long packet */
+  1    46        2 long_packet_head fixed bin,			/* head of long packet SC chain */
+  1    47        2 long_packet_tail fixed bin,			/* tail of long packet SC chain */
+  1    48        2 breakall_idle_timer fixed bin,			/* breakall idle timer in 1/20 sec. */
+  1    49        2 my_address varying char (15),			/* local DTE address */
+  1    50        2 sc (x25_data_n_sc refer (x25_data.n_sc)) like xsce;/* subchannel tables */
+  1    51 
+  1    52 dcl  (
+  1    53      X25_HUNGUP init (0),				/* values of x25_data.state */
+  1    54      X25_LISTENING init (1),
+  1    55      X25_RESTARTING init (2),
+  1    56      X25_ACTIVE init (3)
+  1    57      ) fixed bin static options (constant);
+  1    58 
+  1    59 dcl  1 x25_lces aligned based (x25_data.lc_ptr),		/* logical channel table */
+  1    60        2 lc (x25_data.n_lc) like xlce;
+  1    61 
+  1    62 dcl  xlcep ptr;
+  1    63 dcl  1 xlce aligned based (xlcep),
+  1    64        2 state fixed bin,				/* see definitions below */
+  1    65        2 scx fixed bin,				/* index of associated subchannel */
+  1    66        2 max_packet_size uns fixed bin (18),		/* maximum data packet allowed */
+  1    67        2 max_window_size uns fixed bin (7),
+  1    68        2 baud_rate fixed bin,				/* speed of remote correspondent */
+  1    69        2 flags aligned,				/* start on a word. */
+  1    70          3 iti_call bit (1) unaligned,			/* set if iti call */
+  1    71          3 int_issued bit (1) unaligned,		/* interrupt packet issued */
+  1    72          3 rnr_received bit (1) unaligned,		/* dce sent rnr packet */
+  1    73          3 iti_break bit (1) unaligned,			/* iti break being serviced */
+  1    74          3 rnr_sent bit (1) unaligned,			/* we sent a RNR */
+  1    75          3 originate bit (1) unaligned,			/* we started this call */
+  1    76          3 timer_set bit (1) unaligned,			/* timing out on RR */
+  1    77          3 collect_call bit (1) unaligned,		/* who pays for call */
+  1    78          3 write_status_sync_sent bit (1) unaligned,	/* we sent one, and haven't heard the result. */
+  1    79          3 pad bit (27) unaligned,
+  1    80        2 window_size fixed bin,			/* V (W) current window size */
+  1    81        2 force_ack_time fixed bin (71),			/* deadline for sending RR */
+  1    82        2 state_time fixed bin (71),			/* time of last state change */
+  1    83        2 next_recv_seq unsigned fixed bin (7),		/* V(R) next receive sequence number */
+  1    84        2 next_send_seq unsigned fixed bin (7),		/* V(S) next sequence for transmssion */
+  1    85        2 last_recv_seq unsigned fixed bin (7),		/* P(R) last issued receive sequence */
+  1    86        2 next_ack_seq unsigned fixed bin (7),		/* P(S) sequence of next ack to be issued */
+  1    87        2 his_address varying char (15),			/* outgoing host number */
+  1    88        2 call_data varying char (16),			/* call user data */
+  1    89        2 iti_params (18) uns fixed bin (9) unaligned;	/* PAD simulation parameters */
+  1    90 
+  1    91 /* state definitions */
+  1    92 
+  1    93 dcl  (
+  1    94      READY init (1),
+  1    95      DTE_WAITING init (2),
+  1    96      FLOW_CONTROL_READY init (3),
+  1    97      DTE_CLEAR_REQUEST init (4),
+  1    98      DTE_RESET_REQUEST init (5),
+  1    99      CONRESP_WAITING   init (6)
+  1   100      ) fixed bin static options (constant);
+  1   101 
+  1   102 dcl  xscep ptr;
+  1   103 dcl  1 xsce aligned based (xscep),
+  1   104        2 name char (32),				/* name of the channel */
+  1   105        2 devx fixed bin,				/* device index */
+  1   106        2 lcx fixed bin,				/* index of xlce */
+  1   107        2 state fixed bin,				/* see definitions below */
+  1   108        2 flags,
+  1   109          3 output_ready bit (1) unaligned,		/* set if window full */
+  1   110          3 end_of_page bit (1) unaligned,		/* set if output read end-of-page */
+  1   111          3 wru_done bit (1) unaligned,			/* user has done a WRU */
+  1   112          3 need_ftd bit (1) unaligned,			/* user has done get_foreign_terminal_data */
+  1   113          3 long_packet_pending bit (1) unaligned,		/* there is a long packet "on hold" */
+  1   114          3 pad bit (13) unaligned,
+  1   115          3 mode (18) bit (1) unaligned,			/* rawi, echoplex, breakall, iflow, oflow, hndlquit, polite, lfecho, 8bit */
+  1   116        2 long_packet_next_scx fixed bin,		/* thread of held sc's */
+  1   117        2 service char (12),				/* name of service offered here */
+  1   118        2 (write_head, write_tail) ptr,			/* data packet chain */
+  1   119        2 trans_table_ptr ptr;				/* translation table */
+  1   120 
+  1   121 dcl  (
+  1   122      SC_HUNGUP init (0),
+  1   123      SC_LISTENING init (1),
+  1   124      SC_DIALING init (2),
+  1   125      SC_DIALED init (3)
+  1   126      ) fixed bin static options (constant);
+  1   127 
+  2     1 /* BEGIN INCLUDE FILE ... mcs_interrupt_info.incl.pl1 */
+  2     2 
+  2     3 /* Defines constants and structures  used by MCS interrupt handlers */
+  2     4 
+  2     5 /* Created 08/21/78 by Robert Coren */
+  2     6 /* Echo negotiation types added sometime by Bernie Greenberg */
+  2     7 /* TIMER and USER_INTERRUPT added in spring of 1982 by Olin Sibert */
+  2     8 /* MASKED type added June 23, 1982, by Robert Coren */
+  2     9 
+  2    10 dcl  DIALUP fixed bin int static options (constant) init (1);
+  2    11 dcl  HANGUP fixed bin int static options (constant) init (2);
+  2    12 dcl  CRASH fixed bin int static options (constant) init (3);
+  2    13 dcl  SEND_OUTPUT fixed bin int static options (constant) init (4);
+  2    14 dcl  INPUT_AVAILABLE fixed bin int static options (constant) init (5);
+  2    15 dcl  ACCEPT_INPUT fixed bin int static options (constant) init (6);
+  2    16 dcl  INPUT_REJECTED fixed bin int static options (constant) init (7);
+  2    17 dcl  QUIT fixed bin int static options (constant) init (8);
+  2    18 dcl  LINE_STATUS fixed bin int static options (constant) init (9);
+  2    19 dcl  DIAL_STATUS fixed bin int static options (constant) init (10);
+  2    20 dcl  WRU_TIMEOUT fixed bin int static options (constant) init (11);
+  2    21 dcl  SPACE_AVAILABLE fixed bin int static options (constant) init (12);
+  2    22 dcl  ACKNOWLEDGE_ECHNEGO_INIT fixed bin int static options (constant) init (13);
+  2    23 dcl  ACKNOWLEDGE_ECHNEGO_STOP fixed bin int static options (constant) init (14);
+  2    24 dcl  TIMER fixed bin int static options (constant) init (15);
+  2    25 dcl  USER_INTERRUPT fixed bin int static options (constant) init (16);
+  2    26 dcl  MASKED fixed bin int static options (constant) init (17);
+  2    27 
+  2    28 dcl  interrupt_info bit (72) aligned;
+  2    29 
+  2    30 dcl 1 dialup_info aligned,				/* for use with DIALUP interrupt */
+  2    31     2 line_type fixed bin (9) unal uns,
+  2    32     2 buffer_pad fixed bin (9) unal uns,		/* free space multiplexer would like in output bufs */
+  2    33     2 baud_rate fixed bin (18) unal uns,
+  2    34     2 max_buf_size fixed bin (9) unal uns,
+  2    35     2 receive_mode_device bit (1) unal,			/* device must be told to enter receive mode */
+  2    36     2 pad bit (26) unal;
+  2    37 
+  2    38 dcl 1 rtx_info aligned,				/* for use with ACCEPT_INPUT interrupt */
+  2    39     2 input_chain unaligned,
+  2    40       3 chain_head bit (18) unaligned,
+  2    41       3 chain_tail bit (18) unaligned,
+  2    42     2 input_count fixed bin (18) unal uns,
+  2    43     2 flags unaligned,
+  2    44       3 break_char bit (1),				/* data contains a break character */
+  2    45       3 output_in_fnp bit (1),			/* there is output in the FNP */
+  2    46       3 output_in_ring_0 bit (1),			/* there is output in ring 0 */
+  2    47       3 formfeed_present bit (1),			/* input contains a formfeed character */
+  2    48       3 pad bit (14);
+  2    49 
+  2    50 dcl 1 timer_info aligned,				/* Info supplied with TIMER interrupt */
+  2    51     2 id bit (36) aligned,				/* ID which was supplied in call to mcs_timer$set */
+  2    52     2 subchan_idx fixed bin;				/* Index of subchannel on whose behalf timer was set */
+  2    53 
+  2    54 /* END INCLUDE FILE ... mcs_interrupt_info.incl.pl1 */
+  1   128 
+  1   129 
+  1   130 /* End include file x25_data.incl.pl1 */
+      357 
+  3     1 /* BEGIN INCLUDE FILE ... x25_load_info.incl.pl1 */
+  3     2 /* Created 12/21/78 by J. Stern */
+  3     3 /* Modified July 1983 by Robert Coren to add long_packet_size */
+  3     4 /* Modified August 1983 by Jeff Schiller to implement the "reverse charging" facility. */
+  3     5 /* Modified October 1984 by R.J.C. Kissel to a value for the idle timer in breakall mode. */
+  3     6 
+  3     7 dcl  X25_LOAD_INFO_VERSION_1 char (8) aligned static options (constant) init ("x25load1");
+  3     8 
+  3     9 dcl  x25_load_infop ptr;
+  3    10 dcl  1 x25_load_info aligned based (x25_load_infop),	/* info for "load_mpx" control order */
+  3    11        2 version char (8),				/* version of this structure */
+  3    12        2 ev_chan fixed bin (71),			/* event channel to signal load completion */
+  3    13        2 pid bit (36) aligned,			/* process to which to signal events */
+  3    14        2 n_lc fixed bin,				/* number of VC's */
+  3    15        2 max_packet_size fixed bin,			/* largest packet we will send */
+  3    16        2 window_size fixed bin,			/* our send window */
+  3    17        2 net_type char (8),				/* type of national facilities */
+  3    18        2 flags,
+  3    19          3 bypass_restart bit (1) unaligned,
+  3    20          3 no_d bit (1) unaligned,			/* network does not support D bit */
+  3    21          3 out_calls_collect bit (1) unaligned,
+  3    22          3 pad1 bit (33) unaligned,
+  3    23        2 my_address varying char (15),			/* local address */
+  3    24        2 frame_level_data,
+  3    25          3 flags,
+  3    26 	 4 dce bit (1) unaligned,
+  3    27 	 4 abm bit (1) unaligned,
+  3    28 	 4 disc_first bit (1) unaligned,
+  3    29 	 4 trace_off bit (1) unaligned,
+  3    30          3 frame_size fixed bin,
+  3    31          3 k fixed bin,
+  3    32          3 n2 fixed bin,
+  3    33          3 t1 float bin,
+  3    34          3 t3 float bin,
+  3    35        2 long_packet_size fixed bin,			/* minimum size of long packet */
+  3    36        2 breakall_idle_timer fixed bin;			/* value of idle timer in 1/20 sec. for breakall mode. */
+  3    37 
+  3    38 /* END INCLUDE FILE ... x25_load_info.incl.pl1 */
+      358 
+  4     1 /* BEGIN INCLUDE FILE ... mux_init_info.incl.pl1 */
+  4     2 
+  4     3 /* Created 8/2/78 by J. Stern */
+  4     4 
+  4     5 
+  4     6 dcl  miip ptr;					/* ptr to mux_init_info structure */
+  4     7 dcl  mii_chan_count fixed bin;			/* channel count when allocating mux_init_info */
+  4     8 
+  4     9 
+  4    10 dcl 1 mux_init_info aligned based (miip),		/* multiplexer initialization info */
+  4    11       2 no_channels fixed bin,			/* number of multiplexed channels */
+  4    12       2 channels (mii_chan_count refer (mux_init_info.no_channels)), /* one entry per channel */
+  4    13         3 name char (32) unal,			/* channel name */
+  4    14         3 devx fixed bin;				/* device index for channel */
+  4    15 
+  4    16 
+  4    17 /* END INCLUDE FILE ... mux_init_info.incl.pl1 */
+      359 
+  5     1 /* BEGIN INCLUDE FILE ... lct.incl.pl1 */
+  5     2 
+  5     3 /* Created by J. Stern 7/26/78 */
+  5     4 /* Metering information added by C. Hornig, March 1980. */
+  5     5 /* Unwired saved meters added by Robert Coren, December 1980 */
+  5     6 
+  5     7 dcl  lctp ptr;					/* ptr to logical channel table */
+  5     8 dcl  lctep ptr;					/* ptr to logical channel table entry */
+  5     9 dcl  lct_size fixed bin;				/* size of lcte_array when allocated */
+  5    10 
+  5    11 dcl 1 lct aligned based (lctp),			/* logical channel table */
+  5    12     2 max_no_lctes fixed bin,				/* maximum number of lct entries */
+  5    13     2 cur_no_lctes fixed bin,				/* current number of lct entries used */
+  5    14     2 lcnt_ptr ptr,					/* ptr to logical channel name table */
+  5    15     2 queue_lock bit (36),				/* lock used to serialize queueing operations */
+  5    16     2 pad (11) fixed bin,
+  5    17     2 lcte_array (lct_size refer (lct.max_no_lctes)) like lcte; /* lct entries */
+  5    18 
+  5    19 
+  5    20 dcl 1 lcte aligned based (lctep),			/* logical channel table entry */
+  5    21     2 lock bit (36),				/* channel lock */
+  5    22     2 data_base_ptr ptr unal,				/* ptr to channel data base */
+  5    23     2 channel_type fixed bin (8) unal,			/* identifies channel manager program */
+  5    24     2 flags unal,
+  5    25       3 entry_in_use bit (1) unal,			/* ON if this entry in use */
+  5    26       3 initialized bit (1) unal,			/* ON if this channel initialized */
+  5    27       3 notify_reqd bit (1) unal,			/* ON if must notify when unlocking this channel */
+  5    28       3 locked_for_interrupt bit (1) unal,		/* ON if lock set by interrupt handler */
+  5    29       3 space_needed bit (1) unal,			/* ON if this channel needs buffer space */
+  5    30       3 special_lock bit (1) unal,			/* ON if lock is managed by multiplexer */
+  5    31       3 trace_force bit (1) unal,			/* ON to trace based on next bit only */
+  5    32 						/* OFF to XOR next bit with tty_buf.default_tracing */
+  5    33       3 trace bit (1) unal,				/* ON to trace this channel */
+  5    34       3 unused bit (1) unal,
+  5    35     2 physical_channel_devx fixed bin (17) unal,		/* devx of physical chan from which logical chan is derived */
+  5    36     2 major_channel_info,
+  5    37       3 major_channel_devx fixed bin unal,		/* major channel device index */
+  5    38       3 subchannel fixed bin (17) unal,			/* subchannel id (or data ptr) wrt major channel */
+  5    39     2 queue_entries,
+  5    40       3 queue_head bit (18) unal,			/* ptr to first queue entry for this channel */
+  5    41       3 queue_tail bit (18) unal,			/* ptr to last queue entry for this channel */
+  5    42     2 word_counts,
+  5    43       3 input_words fixed bin (17) unal,		/* number of input words charged to this channel */
+  5    44       3 output_words fixed bin (17) unal,		/* number of output words charged to this channel */
+  5    45 
+  5    46     2 meters,
+  5    47       3 in_bytes fixed bin (35),
+  5    48       3 out_bytes fixed bin (35),
+  5    49       3 in,
+  5    50         4 calls fixed bin (35),
+  5    51         4 interrupts fixed bin (35),
+  5    52         4 call_time fixed bin (71),
+  5    53         4 interrupt_time fixed bin (71),
+  5    54       3 out like lcte.meters.in,
+  5    55       3 control like lcte.meters.in,
+  5    56     2 saved_meters_ptr ptr,				/* pointer to unwired copy of meters saved at last dialup */
+  5    57 
+  5    58     2 timer_offset bit (18) aligned,			/* Head of list of timers for this channel */
+  5    59 
+  5    60     2 pad (3) fixed bin (35);
+  5    61 
+  5    62 
+  5    63 dcl  lcntp ptr;					/* ptr to logical channel name table */
+  5    64 
+  5    65 dcl 1 lcnt aligned based (lcntp),			/* logical channel name table */
+  5    66     2 names (lct.max_no_lctes) char (32) unal;		/* channel names */
+  5    67 
+  5    68 dcl 1 saved_meters aligned based like lcte.meters;	/* meters saved at dialup, allocated in tty_area */
+  5    69 
+  5    70 
+  5    71 /* END INCLUDE FILE ... lct.incl.pl1 */
+      360 
+  6     1 /* BEGIN INCLUDE FILE ... tty_buf.incl.pl1 */
+  6     2 
+  6     3 /* Date Last Modified and Reason
+  6     4*   Created 04/19/77 by J. Stern (from part of tty.incl.pl1)
+  6     5*   Modified January 1978 by Robert Coren and Larry Johnson for variable-size buffers
+  6     6*   Modified 2/6/78 by Robert Coren to make circular_queue size settable
+  6     7*   Modified Aug 78 by J. Nicholls to move the buffer block format to a file of its own
+  6     8*   and wtcb to its own plus other modification for ring 0 multiplexing, tty_buffer_block.incl.pl1
+  6     9*   Modified 7/17/79 by B. Greenberg for echo negotiation meters.
+  6    10*   Modified November 1979 by C. Hornig for MCS tracing.
+  6    11*   Modified December 1979 by Robert Coren to add FNP channel lock meter
+  6    12*   Modified February 1980 by Robert Coren to remove all references to circular buffer
+  6    13*   Modified March 1980 by Robert Coren to reorganize metering information
+  6    14*   Modified December 1980 by Robert Coren to add FNP-specific events
+  6    15*   Modified 24 March 1982, W. Olin Sibert, to add mcs_timer support, recoverable_error_severity
+  6    16*   Modified November 1984 by Robert Coren to add tty_area_lock
+  6    17**/
+  6    18 
+  6    19 dcl  ttybp ptr,
+  6    20      tty_buf$ ext static,				/* tty buffer segment */
+  6    21      tty_ev fixed bin int static options (constant) init (57), /* event used for wait and notify */
+  6    22      abs_buf_limit fixed bin (18) static options (constant) init (64), /* minimum number of words we will leave free */
+  6    23      input_bpart fixed bin (18) static options (constant) init (2), /* fraction of bleft we will allow for input */
+  6    24      output_bpart fixed bin (18) static options (constant) init (4); /* fraction of bleft we will allow for output */
+  6    25 
+  6    26 
+  6    27 dcl  qblock_size fixed bin int static options (constant) init (16); /* size in words of a delay queue block */
+  6    28 dcl  bsizec fixed bin int static options (constant) init (60); /* number of characters in smallest buffer */
+  6    29 dcl  buf_per_second fixed bin int static options (constant) init (10); /* for figuring out max. buffer size based on speed */
+  6    30 
+  6    31 dcl  FNP_DUMP_PATCH_EVENT fixed bin int static options (constant) init (58);
+  6    32 dcl  FNP_METER_EVENT fixed bin int static options (constant) init (59);
+  6    33 dcl  TTY_AREA_LOCK_EVENT bit (36) aligned int static options (constant) init ("74"b3);
+  6    34 
+  6    35 dcl 1 tty_buf aligned based (ttybp),			/* declaration of tty buffer seg */
+  6    36     2 slock bit (36),				/* per system lock */
+  6    37     2 absorig fixed bin (24),				/* abs address of this seg */
+  6    38     2 borig bit (18),				/* index of start of buffer area */
+  6    39     2 bleft fixed bin (18),				/* words left in pool */
+  6    40     2 free bit (18),				/* pointer to start of free pool */
+  6    41     2 fnp_config_flags (8) bit (1) unal,		/* flag(i) ON if fnp(i) configured */
+  6    42     2 padb1 bit (28) unaligned,
+  6    43     2 lct_ptr ptr,					/* pointer to logical channel table */
+  6    44 
+  6    45     2 nrawread fixed bin (35),			/* number of raw chars input, total */
+  6    46     2 nrawwrite fixed bin (35),			/* number of raw characters output */
+  6    47     2 ninchars fixed bin (35),			/* total input chars after conversion */
+  6    48     2 noutchars fixed bin (35),			/* total output chars before conversion */
+  6    49     2 readblocked fixed bin (35),			/* number of times go input blocked */
+  6    50     2 nblocked fixed bin (35),			/* number of times process output blocked */
+  6    51     2 minbuf fixed bin (18),				/* min output buffer size */
+  6    52     2 totbuf fixed bin (35),				/* divide by nblocked to get ave buffer size */
+  6    53 
+  6    54     2 preconverted fixed bin (35),			/* number of converted chars held in tty_buf */
+  6    55     2 input_restart fixed bin,			/* number of times tty_read had to start over */
+  6    56     2 output_restart fixed bin,			/* number of times tty_write has had to start over */
+  6    57     2 output_buffer_overflow fixed bin,			/* number of times tty_write has run out of buffers */
+  6    58     2 read_time fixed bin (71),			/* total time spent in tty_read */
+  6    59     2 write_time fixed bin (71),			/* total time spent in tty_write */
+  6    60 
+  6    61     2 read_calls fixed bin (35),			/* number of calls to tty_read */
+  6    62     2 write_calls fixed bin (35),			/* number of calls to tty_write */
+  6    63     2 bfx fixed bin,				/* used in calls to iobm */
+  6    64     2 nquits fixed bin (35),				/* number of quits */
+  6    65     2 space_needed_data,
+  6    66       3 space_needed bit (1) unal,			/* space_needed bit on in at least 1 lcte */
+  6    67       3 space_needed_calls fixed bin (34) unal,		/* meter of uses of this facility */
+  6    68     2 space_lock_count fixed bin (35),			/* count of times tty_buf.slock locked */
+  6    69     2 space_lock_wait_count fixed bin (35),		/* count of times necessary to loop to lock it */
+  6    70     2 space_lock_wait_time fixed bin (35),		/* total time looped trying to lock it */
+  6    71 
+  6    72     2 alloc_calls fixed bin (35),			/* total number of allocations performed in tty_buf */
+  6    73     2 free_calls fixed bin (35),			/* total number of freeings in tty_buf */
+  6    74     2 alloc_time fixed bin (35),			/* time spent masked in tty_space_man$get entries */
+  6    75     2 free_time fixed bin (35),			/* time spent masked in tty_space_man$free entries */
+  6    76     2 total_alloc_steps fixed bin (35),			/* number of steps thru free chain while doing above */
+  6    77     2 alloc_failures fixed bin (35),			/* number of unsuccessful attempts to allocate space */
+  6    78     2 cumulative_input_space fixed bin (71),		/* cumulative amount of space allocated for input */
+  6    79 
+  6    80     2 cumulative_output_space fixed bin (71),		/* cumulative amount of space allocated for output */
+  6    81     2 cumulative_control_space fixed bin (71),		/* cumulative amount of space allocated by tty_space_man$get_space */
+  6    82     2 input_space_updates fixed bin (35),		/* number of increments to cumulative_input_space */
+  6    83     2 output_space_updates fixed bin (35),		/* number of increments to cumulative_output_space */
+  6    84     2 control_space_updates fixed bin (35),		/* number of increments to cumulative_control_space */
+  6    85     2 minimum_free_space fixed bin (18),		/* smallest amount of free space ever available */
+  6    86 
+  6    87     2 current_input_space fixed bin (18),		/* amount of space currently allocated for input */
+  6    88     2 current_output_space fixed bin (18),		/* amount of space currently allocated for output */
+  6    89     2 current_control_space fixed bin (18),		/* amount of space currently allocated by get_space */
+  6    90     2 tty_lock_calls fixed bin (35),			/* number of calls to tty_lock$lock entries */
+  6    91     2 found_channel_locked fixed bin (35),		/* number of times tty_lock found channel already locked */
+  6    92     2 max_wait_time fixed bin (35),			/* longest time waited for any channel lock */
+  6    93     2 total_wait_time fixed bin (71),			/* total amount of time spent waiting for channel locks */
+  6    94 
+  6    95     2 echo_neg_time fixed bin (71),			/* cumulative time spent doing echo negotiation */
+  6    96     2 echo_neg_interrupts fixed bin (35),		/* Echo-negotiated shipments */
+  6    97     2 echo_neg_r0_chars fixed bin (35),			/* Chars echoed by ring 0 */
+  6    98     2 echo_neg_mux_chars fixed bin (35),		/* Chars echoed by mux */
+  6    99     2 echo_neg_sndopt_restarts fixed bin (35),		/* Echo reinits */
+  6   100     2 echo_neg_mux_nonecho fixed bin (35),
+  6   101     2 echo_neg_entries fixed bin (35),			/* Entries into negotiate */
+  6   102 
+  6   103     2 echo_neg_mux_inhibit bit (1) aligned,		/* For testing */
+  6   104     2 n_queued_interrupts fixed bin (35),		/* number of interrupts queued by tty_lock */
+  6   105     2 trace unaligned,				/* tracing information */
+  6   106       3 flags,
+  6   107       4 enable bit,					/* global tracing control */
+  6   108       4 default_mode bit,				/* whether to trace channels by default */
+  6   109       4 read bit,					/* read */
+  6   110       4 write bit,					/* write */
+  6   111       4 data bit,					/* buffers on reads and writes */
+  6   112       4 control bit,				/* control, priv_control, and hpriv_control */
+  6   113       4 modes bit,					/* (get set check)_modes */
+  6   114       4 interrupt bit,				/* interrupt, interrupt_later */
+  6   115       4 init bit,					/* init_multiplexer, terminate_multiplexer */
+  6   116       4 start bit,					/* start, stop */
+  6   117       4 shutdown bit,				/* shutdown */
+  6   118       4 space_man bit,				/* tty_space_man$* */
+  6   119       4 pad_flags bit (6),
+  6   120       3 data_offset bit (18),				/* offset of tracing data */
+  6   121 
+  6   122     2 recoverable_error_severity fixed bin,		/* Syserr severity for recoverable MCS errors */
+  6   123 
+  6   124     2 timer_lock bit (36) aligned,			/* Lock owned by mcs_timer */
+  6   125     2 next_timer_offset bit (18) aligned,		/* Offset of next timer to come due */
+  6   126     2 timer_count fixed bin,				/* Number of timers outstanding */
+  6   127     2 timer_process bit (36) aligned,			/* Who is doing timers? */
+  6   128 
+  6   129     2 timer_ev_chn fixed bin (71),			/* How get get him */
+  6   130     2 timer_lock_wait_time fixed bin (71),		/* CPU time spent spinning on timer lock */
+  6   131 
+  6   132     2 timer_lock_count fixed bin (35),			/* Number of times timer lock locked */
+  6   133     2 timer_lock_wait_count fixed bin (35),		/* Number of times imer lock waited on */
+  6   134     2 timer_call_time fixed bin (71),			/* CPU time spent in call side timer operations */
+  6   135 
+  6   136     2 timer_polling_time fixed bin (71),		/* CPU time spent polling (including channel_manager) */
+  6   137     2 timer_set_calls fixed bin (35),			/* Number of calls to mcs_timer$set, set_wired */
+  6   138     2 timer_reset_calls fixed bin (35), 		/* Number of calls to mcs_timer$reset, reset_wired */
+  6   139 
+  6   140     2 timer_change_calls fixed bin (35),		/* Number of calls to mcs_timer$change, change_wired */
+  6   141     2 timer_poll_calls fixed bin (35),			/* Number of calls to mcs_timer$poll */
+  6   142     2 timer_error_calls fixed bin (35), 		/* Number of mcs_timer calls ending with recoverable errors */
+  6   143     2 timer_duplicate_pollings fixed bin (35),		/* Number of timer polling found in progress on other CPU */
+  6   144 
+  6   145     2 tty_area_lock like hc_fast_lock,			/* to prevent contention in allocating/freeing in tty_area */
+  6   146 
+  6   147     2 pad2 (13) fixed bin (35),
+  6   148 
+  6   149     2 free_space fixed bin;				/* start of free space region */
+  6   150 
+  6   151 
+  7     1 /* BEGIN INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  7     2 
+  7     3 /* Created November 1984 by Robert Coren to replace hc_lock.incl.pl1 */
+  7     4 
+  7     5 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  7     6 
+  7     7 /* format: style3 */
+  7     8 
+  7     9 declare	lock_ptr		pointer;
+  7    10 declare	1 hc_fast_lock	aligned based (lock_ptr),
+  7    11 	  2 pid		bit (36) aligned,		/* holder of lock */
+  7    12 	  2 event		bit (36) aligned,		/* event associated with lock */
+  7    13 	  2 flags		aligned,
+  7    14 	    3 notify_sw	bit (1) unaligned,
+  7    15 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  7    16 
+  7    17 /* END INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  6   152 
+  6   153 
+  6   154 /* END INCLUDE FILE ... tty_buf.incl.pl1 */
+      361 
+  8     1 /* BEGIN INCLUDE FILE ... channel_manager_dcls.incl.pl1 */
+  8     2 
+  8     3 /* Created 8/25/78 by J. Stern */
+  8     4 
+  8     5 
+  8     6 /* call channel_manager$read (devx, chain_ptr, more_input_flag, code) */
+  8     7 dcl channel_manager$read entry (fixed bin, ptr, bit (1) aligned, fixed bin (35));
+  8     8 
+  8     9 /* call channel_manager$write (devx, output_ptr, code) */
+  8    10 dcl channel_manager$write entry (fixed bin, ptr, fixed bin (35));
+  8    11 
+  8    12 /* call channel_manager$control (devx, control_type, info_ptr, code) */
+  8    13 dcl channel_manager$control entry (fixed bin, char (*), ptr, fixed bin (35));
+  8    14 
+  8    15 /* call channel_manager$set_modes (devx, mode_change_list_ptr, code) */
+  8    16 dcl channel_manager$set_modes entry (fixed bin, ptr, fixed bin (35));
+  8    17 
+  8    18 /* call channel_manager$check_modes (devx, mode_change_list_ptr, code) */
+  8    19 dcl channel_manager$check_modes entry (fixed bin, ptr, fixed bin (35));
+  8    20 
+  8    21 /* call channel_manager$get_modes (devx, modes, code) */
+  8    22 dcl channel_manager$get_modes entry (fixed bin, char (*), fixed bin (35));
+  8    23 
+  8    24 /* call channel_manager$interrupt (devx, int_type, int_data) */
+  8    25 dcl channel_manager$interrupt entry (fixed bin, fixed bin, bit (72) aligned);
+  8    26 
+  8    27 /* call channel_manager$interrupt_later (devx, int_type, int_data) */
+  8    28 dcl channel_manager$interrupt_later entry (fixed bin, fixed bin, bit (72) aligned);
+  8    29 
+  8    30 /* call channel_manager$queued_interrupt (devx, int_type, int_data) */
+  8    31 dcl channel_manager$queued_interrupt entry (fixed bin, fixed bin, bit (72) aligned);
+  8    32 
+  8    33 
+  8    34 /* END INCLUDE FILE ... channel_manager_dcls.incl.pl1 */
+      362 
+  9     1 /* BEGIN INCLUDE FILE ... tty_space_man_dcls.incl.pl1 */
+  9     2 
+  9     3 /* This include file declares all the entries in tty_space_man and defines the constants
+  9     4**  to be used for the flags argument
+  9     5**   Modified 08/21/78 by Robert Coren to eliminate "masked" flag
+  9     6**   Modified March 1981 by Robert Coren to add get_perm_space entry
+  9     7**   Modified April 1981 by Robert Coren to add switch_chain entry
+  9     8**/
+  9     9 
+  9    10 dcl  tty_space_man$get_space entry (fixed bin, ptr);
+  9    11 dcl  tty_space_man$get_perm_space entry (fixed bin, ptr);
+  9    12 dcl  tty_space_man$free_space entry (fixed bin, ptr);
+  9    13 dcl  tty_space_man$get_buffer entry (fixed bin, fixed bin, bit (1), ptr);
+  9    14 dcl  tty_space_man$free_buffer entry (fixed bin, bit (1), ptr);
+  9    15 dcl  tty_space_man$get_chain entry (fixed bin, fixed bin, fixed bin, bit (1), ptr);
+  9    16 dcl  tty_space_man$free_chain entry (fixed bin, bit (1), ptr);
+  9    17 dcl  tty_space_man$switch_chain entry (fixed bin, fixed bin, bit (1), bit (1), ptr);
+  9    18 dcl  tty_space_man$needs_space entry (fixed bin);
+  9    19 
+  9    20 dcl  INPUT bit (1) int static options (constant) init ("0"b);
+  9    21 dcl  OUTPUT bit (1) int static options (constant) init ("1"b);
+  9    22 
+  9    23 /* END INCLUDE FILE ... tty_space_man_dcls.incl.pl1 */
+      363 
+      364      end priv_x25_mpx;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.9  priv_x25_mpx.pl1                  >spec>install>1111>priv_x25_mpx.pl1
+357          1    10/26/89  2011.9  x25_data.incl.pl1                 >ldd>include>x25_data.incl.pl1
+1-128        2    10/20/82  0938.6  mcs_interrupt_info.incl.pl1       >ldd>include>mcs_interrupt_info.incl.pl1
+358          3    11/27/84  0956.2  x25_load_info.incl.pl1            >ldd>include>x25_load_info.incl.pl1
+359          4    02/23/79  1434.9  mux_init_info.incl.pl1            >ldd>include>mux_init_info.incl.pl1
+360          5    11/08/82  1005.8  lct.incl.pl1                      >ldd>include>lct.incl.pl1
+361          6    01/06/85  1422.1  tty_buf.incl.pl1                  >ldd>include>tty_buf.incl.pl1
+6-152        7    01/06/85  1422.1  hc_fast_lock.incl.pl1             >ldd>include>hc_fast_lock.incl.pl1
+362          8    05/06/80  0958.2  channel_manager_dcls.incl.pl1     >ldd>include>channel_manager_dcls.incl.pl1
+363          9    06/18/81  0900.8  tty_space_man_dcls.incl.pl1       >ldd>include>tty_space_man_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+K                         1     000116 automatic       fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 66 set
+                                                                                  ref 298*
+N2                        1(09) 000116 automatic       fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 66 set
+                                                                                  ref 299*
+READY                                  constant        fixed bin(17,0)          initial dcl 1-93 ref 322
+SC_HUNGUP                              constant        fixed bin(17,0)          initial dcl 1-121 ref 151
+T1                        1(18) 000116 automatic       fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 66 set
+                                                                                  ref 300*
+T3                        1(27) 000116 automatic       fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 66 set
+                                                                                  ref 301*
+X25_HUNGUP                             constant        fixed bin(17,0)          initial dcl 1-52 ref 142 227 276 348
+X25_LISTENING                          constant        fixed bin(17,0)          initial dcl 1-52 ref 342
+X25_LOAD_INFO_VERSION_1         000000 constant        char(8)                  initial dcl 3-7 ref 271
+X25_data_ptr                           parameter       pointer                  dcl 55 set ref 116 121* 168* 176 179 188* 196 199
+                                                                                  208 211 223 226 234 237 259 262
+abm                      20(01)        based           bit(1)                   level 4 packed packed unaligned dcl 3-10 ref 293
+activate_order                  000116 automatic       structure                level 1 dcl 66 set ref 291* 303 303
+activation_order          0(09) 000116 automatic       bit(9)                   level 2 packed packed unaligned dcl 66 set ref 295*
+addr                                                   builtin function         dcl 106 ref 123 149 159 267 303 303 321 331 332
+after                                                  builtin function         dcl 106 ref 140
+based_packet_size                      based           fixed bin(17,0)          dcl 81 ref 349
+before                                                 builtin function         dcl 106 ref 155
+breakall_idle_timer      27            based           fixed bin(17,0)          level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 318
+breakall_idle_timer      43            based           fixed bin(17,0)          level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 318*
+bypass_restart           12            based           bit(1)                   level 3 in structure "x25_load_info" packed packed
+                                                                                  unaligned dcl 3-10 in procedure "priv_x25_mpx" ref
+                                                                                  312
+bypass_restart           15(02)        based           bit(1)                   level 3 in structure "x25_data" packed packed
+                                                                                  unaligned dcl 1-21 in procedure "priv_x25_mpx" set
+                                                                                  ref 312*
+channel_manager$control         000032 constant        entry                    external dcl 8-13 ref 227 242 246 303 336
+channels                  1            based           structure                array level 2 dcl 4-10
+cleanup                         000120 stack reference condition                dcl 101 ref 128
+code                            000100 automatic       fixed bin(35,0)          dcl 60 set ref 227* 264* 303* 304 305 336* 337 338
+                                                                                  347* 348* 352* 354
+currentsize                                            builtin function         dcl 106 ref 186 186
+dce                      20            based           bit(1)                   level 4 packed packed unaligned dcl 3-10 ref 292
+dce_or_dte                      000116 automatic       bit(1)                   level 2 packed packed unaligned dcl 66 set ref 292*
+devx                     10            based           fixed bin(17,0)          level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 152* 159 332 333
+devx                     11            based           fixed bin(17,0)          array level 3 in structure "mux_init_info" dcl 4-10
+                                                                                  in procedure "priv_x25_mpx" ref 152
+devx                     10            based           fixed bin(17,0)          level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 141* 227* 242*
+                                                                                  246* 303* 336*
+devx                            000101 automatic       fixed bin(17,0)          dcl 61 in procedure "priv_x25_mpx" set ref 119* 141
+dialup_info                     000136 automatic       structure                level 1 dcl 2-30
+disc_first               20(02)        based           bit(1)                   level 4 in structure "x25_load_info" packed packed
+                                                                                  unaligned dcl 3-10 in procedure "priv_x25_mpx" ref
+                                                                                  294
+disc_first                0(02) 000116 automatic       bit(1)                   level 2 in structure "activate_order" packed packed
+                                                                                  unaligned dcl 66 in procedure "priv_x25_mpx" set
+                                                                                  ref 294*
+error_table_$action_not_performed
+                                000012 external static fixed bin(35,0)          dcl 91 ref 277
+error_table_$dev_nt_assnd       000014 external static fixed bin(35,0)          dcl 92 ref 348
+error_table_$noalloc            000016 external static fixed bin(35,0)          dcl 93 ref 136 284
+error_table_$null_info_ptr      000020 external static fixed bin(35,0)          dcl 94 ref 347
+error_table_$undefined_order_request
+                                000022 external static fixed bin(35,0)          dcl 95 ref 251 352
+error_table_$unimplemented_version
+                                000024 external static fixed bin(35,0)          dcl 96 ref 272
+ev_chan                   2            based           fixed bin(71,0)          level 2 dcl 3-10 ref 289
+fixed                                                  builtin function         dcl 106 ref 300 301
+flags                    12            based           structure                level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx"
+flags                    15            based           structure                level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 311*
+flags                    20            based           structure                level 3 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx"
+flags                    13            based           structure                level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 154*
+flags                     5            based           structure                level 2 in structure "xlce" dcl 1-63 in procedure
+                                                                                  "priv_x25_mpx" set ref 327*
+frame_level_data         20            based           structure                level 2 dcl 3-10
+frame_size                0(18) 000116 automatic       fixed bin(18,0)          level 2 in structure "activate_order" packed packed
+                                                                                  unsigned unaligned dcl 66 in procedure
+                                                                                  "priv_x25_mpx" set ref 297*
+frame_size               21            based           fixed bin(17,0)          level 3 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 297
+gfid                     17            based           bit(2)                   level 2 dcl 1-21 set ref 316*
+hc_fast_lock                           based           structure                level 1 dcl 7-10
+in                       30            based           structure                array level 4 in structure "lct" dcl 5-11
+                                                                                  in procedure "priv_x25_mpx"
+in                       10            based           structure                level 3 in structure "lcte" dcl 5-20 in procedure
+                                                                                  "priv_x25_mpx"
+in                        2            based           structure                level 2 in structure "saved_meters" dcl 5-68
+                                                                                  in procedure "priv_x25_mpx"
+infop                           000112 automatic       pointer                  dcl 63 set ref 346* 347 349
+init_sw                         000010 internal static bit(1)                   initial dcl 86 set ref 163 165*
+k                        22            based           fixed bin(17,0)          level 3 dcl 3-10 ref 298
+lap_or_lapb               0(01) 000116 automatic       bit(1)                   level 2 packed packed unaligned dcl 66 set ref 293*
+lc                                     based           structure                array level 2 dcl 1-59 set ref 321
+lc_ptr                   32            based           pointer                  level 2 dcl 1-21 set ref 145* 181 182 182 182* 183*
+                                                                                  282 282 282* 283 321
+lct                                    based           structure                level 1 dcl 5-11
+lct_ptr                   6            based           pointer                  level 2 dcl 6-35 ref 124 268
+lcte                                   based           structure                level 1 dcl 5-20
+lcte_array               20            based           structure                array level 2 dcl 5-11 set ref 159 332
+lctep                           000146 automatic       pointer                  dcl 5-8 set ref 159* 160 332* 333
+lctp                            000144 automatic       pointer                  dcl 5-7 set ref 124* 159 268* 332
+lcx                      11            based           fixed bin(17,0)          level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 153*
+lcx                             000114 automatic       fixed bin(17,0)          dcl 64 in procedure "priv_x25_mpx" set ref 320* 321*
+load_ev_chan             22            based           fixed bin(71,0)          level 2 dcl 1-21 set ref 289*
+load_proc_id             20            based           bit(36)                  level 2 dcl 1-21 set ref 288*
+long_packet_size         40            based           fixed bin(11,0)          level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 317* 349*
+long_packet_size         26            based           fixed bin(17,0)          level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 317
+major_channel_info        3            based           structure                level 2 dcl 5-20
+max_packet_size           6            based           fixed bin(17,0)          level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 324
+max_packet_size           2            based           fixed bin(18,0)          level 2 in structure "xlce" unsigned dcl 1-63
+                                                                                  in procedure "priv_x25_mpx" set ref 324*
+max_window_size           3            based           fixed bin(7,0)           level 2 unsigned dcl 1-63 set ref 325*
+meters                    6            based           structure                level 2 in structure "lcte" dcl 5-20 in procedure
+                                                                                  "priv_x25_mpx"
+meters                   26            based           structure                array level 3 in structure "lct" dcl 5-11
+                                                                                  in procedure "priv_x25_mpx"
+miip                            000142 automatic       pointer                  dcl 4-6 set ref 120* 126 140 150 152 155
+modulus8                               constant        fixed bin(17,0)          initial dcl 87 ref 315
+mpx_started              15(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-21 set ref
+                                                                                  200* 212*
+mux_init_info                          based           structure                level 1 dcl 4-10
+my_address               44            based           varying char(15)         level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 310*
+my_address               13            based           varying char(15)         level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 310
+n2                       23            based           fixed bin(17,0)          level 3 dcl 3-10 ref 299
+n_lc                     12            based           fixed bin(17,0)          level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 144* 182 182
+                                                                                  281* 282 282 320
+n_lc                      5            based           fixed bin(17,0)          level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 281
+n_sc                     13            based           fixed bin(17,0)          level 2 dcl 1-21 set ref 143* 148 186 186 330
+name                                   based           char(32)                 level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 140*
+name                                   based           char(32)                 level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 150*
+name                      1            based           char(32)                 array level 3 in structure "mux_init_info" packed
+                                                                                  packed unaligned dcl 4-10 in procedure
+                                                                                  "priv_x25_mpx" ref 140 150 155
+net_type                 10            based           char(8)                  level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 309
+net_type                 24            based           char(8)                  level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 309*
+no_channels                            based           fixed bin(17,0)          level 2 dcl 4-10 ref 126
+no_d                     12(01)        based           bit(1)                   level 3 in structure "x25_load_info" packed packed
+                                                                                  unaligned dcl 3-10 in procedure "priv_x25_mpx" ref
+                                                                                  313
+no_d                     15(03)        based           bit(1)                   level 3 in structure "x25_data" packed packed
+                                                                                  unaligned dcl 1-21 in procedure "priv_x25_mpx" set
+                                                                                  ref 313*
+null                                                   builtin function         dcl 106 ref 121 127 130 135 145 146 156 157 181 183
+                                                                                  188 227 227 283 336 336 347
+order                           000102 automatic       char(32)                 packed unaligned dcl 62 set ref 238* 241 242* 245
+                                                                                  246* 249 250 263* 266 345
+out_calls_collect        12(02)        based           bit(1)                   level 3 in structure "x25_load_info" packed packed
+                                                                                  unaligned dcl 3-10 in procedure "priv_x25_mpx" ref
+                                                                                  314
+out_calls_collect        15(04)        based           bit(1)                   level 3 in structure "x25_data" packed packed
+                                                                                  unaligned dcl 1-21 in procedure "priv_x25_mpx" set
+                                                                                  ref 314*
+packet_trace_sw          15(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-21 set ref
+                                                                                  249* 250*
+physical_channel_devx
+                          2(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 5-20 set ref
+                                                                                  333*
+pid                       4            based           bit(36)                  level 2 dcl 3-10 ref 288
+reverse                                                builtin function         dcl 106 ref 140 140 155 155
+rtrim                                                  builtin function         dcl 106 ref 155
+sc                       52            based           structure                array level 2 dcl 1-21 set ref 149 331
+scx                       1            based           fixed bin(17,0)          level 2 in structure "xlce" dcl 1-63 in procedure
+                                                                                  "priv_x25_mpx" set ref 323*
+scx                             000115 automatic       fixed bin(17,0)          dcl 64 in procedure "priv_x25_mpx" set ref 148* 149
+                                                                                  150 152 155 160* 330* 331*
+seq_mod                  16            based           fixed bin(8,0)           level 2 unsigned dcl 1-21 set ref 315*
+service                  15            based           char(12)                 level 2 dcl 1-103 set ref 155*
+size                                                   builtin function         dcl 106 ref 130 130 133 133 182 182 282 282
+state                    12            based           fixed bin(17,0)          level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 151*
+state                                  based           fixed bin(17,0)          level 2 in structure "xlce" dcl 1-63 in procedure
+                                                                                  "priv_x25_mpx" set ref 322*
+state                    11            based           fixed bin(17,0)          level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 142* 227 276
+                                                                                  342* 348
+string                                                 builtin function         dcl 106 set ref 154* 311* 327*
+subchannel                3(18)        based           fixed bin(17,0)          level 3 packed packed unaligned dcl 5-20 set ref
+                                                                                  160*
+t1                       24            based           float bin(27)            level 3 dcl 3-10 ref 300
+t3                       25            based           float bin(27)            level 3 dcl 3-10 ref 301
+trace_off                 0(03) 000116 automatic       bit(1)                   level 2 in structure "activate_order" packed packed
+                                                                                  unaligned dcl 66 in procedure "priv_x25_mpx" set
+                                                                                  ref 296*
+trace_off                20(03)        based           bit(1)                   level 4 in structure "x25_load_info" packed packed
+                                                                                  unaligned dcl 3-10 in procedure "priv_x25_mpx" ref
+                                                                                  296
+trans_table_ptr          24            based           pointer                  level 2 dcl 1-103 set ref 157*
+tty_buf                                based           structure                level 1 dcl 6-35
+tty_buf$                        000030 external static fixed bin(17,0)          dcl 6-19 set ref 123 267
+tty_space_man$free_space        000036 constant        entry                    external dcl 9-12 ref 130 182 186
+tty_space_man$get_space         000034 constant        entry                    external dcl 9-10 ref 133 282
+ttybp                           000150 automatic       pointer                  dcl 6-19 set ref 123* 124 267* 268
+unspec                                                 builtin function         dcl 106 set ref 291*
+version                                based           char(8)                  level 2 dcl 3-10 ref 271
+window_size               7            based           fixed bin(17,0)          level 2 in structure "x25_load_info" dcl 3-10
+                                                                                  in procedure "priv_x25_mpx" ref 325 326
+window_size               6            based           fixed bin(17,0)          level 2 in structure "xlce" dcl 1-63 in procedure
+                                                                                  "priv_x25_mpx" set ref 326*
+write_head               34            based           pointer                  level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 146*
+write_head               20            based           pointer                  level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 156*
+write_tail               22            based           pointer                  level 2 in structure "xsce" dcl 1-103 in procedure
+                                                                                  "priv_x25_mpx" set ref 156*
+write_tail               36            based           pointer                  level 2 in structure "x25_data" dcl 1-21
+                                                                                  in procedure "priv_x25_mpx" set ref 146*
+x25_code                               parameter       fixed bin(35,0)          dcl 50 set ref 116 136* 169* 176 189* 196 201* 208
+                                                                                  213* 223 234 239* 242* 246* 251* 259 272* 277*
+                                                                                  284* 305* 338* 354*
+x25_data                               based           structure                level 1 dcl 1-21 set ref 130 130 133 133 186 186
+x25_data_n_sc                   000130 automatic       fixed bin(17,0)          dcl 1-19 set ref 126* 130 130 133 133 143
+x25_data_ptr                    000126 automatic       pointer                  dcl 1-18 set ref 127* 130 130 130 130* 133 133 133*
+                                                                                  135 140 141 142 143 144 145 146 146 148 149 168
+                                                                                  179* 181 182 182 182 182 182 183 186 186 186* 199*
+                                                                                  200 211* 212 226* 227 227 237* 242 246 249 250
+                                                                                  262* 276 281 282 282 282 282 282 283 288 289 303
+                                                                                  309 310 311 312 313 314 315 316 317 318 320 321
+                                                                                  330 331 336 342 348 349
+x25_devx                               parameter       fixed bin(17,0)          dcl 51 ref 116 119
+x25_infop                              parameter       pointer                  dcl 52 set ref 234 242* 246* 259 269 346
+x25_lces                               based           structure                level 1 dcl 1-59 set ref 182 182 282 282
+x25_load_info                          based           structure                level 1 dcl 3-10
+x25_load_infop                  000140 automatic       pointer                  dcl 3-9 set ref 269* 271 281 288 289 292 293 294 296
+                                                                                  297 298 299 300 301 309 310 312 313 314 317 318
+                                                                                  324 325 326
+x25_miip                               parameter       pointer                  dcl 53 ref 116 120
+x25_mpx$system_init             000026 constant        entry                    external dcl 111 ref 164
+x25_order                              parameter       char                     packed unaligned dcl 54 ref 234 238 259 263
+xlce                                   based           structure                level 1 dcl 1-63
+xlcep                           000132 automatic       pointer                  dcl 1-62 set ref 321* 322 323 324 325 326 327
+xsce                                   based           structure                level 1 dcl 1-103
+xscep                           000134 automatic       pointer                  dcl 1-102 set ref 149* 150 151 152 153 154 155 156
+                                                                                  156 157 159 331* 332 333
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACCEPT_INPUT                           internal static fixed bin(17,0)          initial dcl 2-15
+ACKNOWLEDGE_ECHNEGO_INIT               internal static fixed bin(17,0)          initial dcl 2-22
+ACKNOWLEDGE_ECHNEGO_STOP               internal static fixed bin(17,0)          initial dcl 2-23
+CONRESP_WAITING                        internal static fixed bin(17,0)          initial dcl 1-93
+CRASH                                  internal static fixed bin(17,0)          initial dcl 2-12
+DIALUP                                 internal static fixed bin(17,0)          initial dcl 2-10
+DIAL_STATUS                            internal static fixed bin(17,0)          initial dcl 2-19
+DTE_CLEAR_REQUEST                      internal static fixed bin(17,0)          initial dcl 1-93
+DTE_RESET_REQUEST                      internal static fixed bin(17,0)          initial dcl 1-93
+DTE_WAITING                            internal static fixed bin(17,0)          initial dcl 1-93
+FLOW_CONTROL_READY                     internal static fixed bin(17,0)          initial dcl 1-93
+FNP_DUMP_PATCH_EVENT                   internal static fixed bin(17,0)          initial dcl 6-31
+FNP_METER_EVENT                        internal static fixed bin(17,0)          initial dcl 6-32
+HANGUP                                 internal static fixed bin(17,0)          initial dcl 2-11
+INPUT                                  internal static bit(1)                   initial packed unaligned dcl 9-20
+INPUT_AVAILABLE                        internal static fixed bin(17,0)          initial dcl 2-14
+INPUT_REJECTED                         internal static fixed bin(17,0)          initial dcl 2-16
+LINE_STATUS                            internal static fixed bin(17,0)          initial dcl 2-18
+MASKED                                 internal static fixed bin(17,0)          initial dcl 2-26
+OUTPUT                                 internal static bit(1)                   initial packed unaligned dcl 9-21
+QUIT                                   internal static fixed bin(17,0)          initial dcl 2-17
+SC_DIALED                              internal static fixed bin(17,0)          initial dcl 1-121
+SC_DIALING                             internal static fixed bin(17,0)          initial dcl 1-121
+SC_LISTENING                           internal static fixed bin(17,0)          initial dcl 1-121
+SEND_OUTPUT                            internal static fixed bin(17,0)          initial dcl 2-13
+SPACE_AVAILABLE                        internal static fixed bin(17,0)          initial dcl 2-21
+TIMER                                  internal static fixed bin(17,0)          initial dcl 2-24
+TTY_AREA_LOCK_EVENT                    internal static bit(36)                  initial dcl 6-33
+USER_INTERRUPT                         internal static fixed bin(17,0)          initial dcl 2-25
+WRU_TIMEOUT                            internal static fixed bin(17,0)          initial dcl 2-20
+X25_ACTIVE                             internal static fixed bin(17,0)          initial dcl 1-52
+X25_RESTARTING                         internal static fixed bin(17,0)          initial dcl 1-52
+abs_buf_limit                          internal static fixed bin(18,0)          initial dcl 6-19
+bsizec                                 internal static fixed bin(17,0)          initial dcl 6-28
+buf_per_second                         internal static fixed bin(17,0)          initial dcl 6-29
+channel_manager$check_modes     000000 constant        entry                    external dcl 8-19
+channel_manager$get_modes       000000 constant        entry                    external dcl 8-22
+channel_manager$interrupt       000000 constant        entry                    external dcl 8-25
+channel_manager$interrupt_later 000000 constant        entry                    external dcl 8-28
+channel_manager$queued_interrupt
+                                000000 constant        entry                    external dcl 8-31
+channel_manager$read            000000 constant        entry                    external dcl 8-7
+channel_manager$set_modes       000000 constant        entry                    external dcl 8-16
+channel_manager$write           000000 constant        entry                    external dcl 8-10
+input_bpart                            internal static fixed bin(18,0)          initial dcl 6-19
+interrupt_info                         automatic       bit(72)                  dcl 2-28
+lcnt                                   based           structure                level 1 dcl 5-65
+lcntp                                  automatic       pointer                  dcl 5-63
+lct_size                               automatic       fixed bin(17,0)          dcl 5-9
+lock_ptr                               automatic       pointer                  dcl 7-9
+mii_chan_count                         automatic       fixed bin(17,0)          dcl 4-7
+output_bpart                           internal static fixed bin(18,0)          initial dcl 6-19
+qblock_size                            internal static fixed bin(17,0)          initial dcl 6-27
+rtx_info                               automatic       structure                level 1 dcl 2-38
+saved_meters                           based           structure                level 1 dcl 5-68
+timer_info                             automatic       structure                level 1 dcl 2-50
+tty_ev                                 internal static fixed bin(17,0)          initial dcl 6-19
+tty_space_man$free_buffer       000000 constant        entry                    external dcl 9-14
+tty_space_man$free_chain        000000 constant        entry                    external dcl 9-16
+tty_space_man$get_buffer        000000 constant        entry                    external dcl 9-13
+tty_space_man$get_chain         000000 constant        entry                    external dcl 9-15
+tty_space_man$get_perm_space    000000 constant        entry                    external dcl 9-11
+tty_space_man$needs_space       000000 constant        entry                    external dcl 9-18
+tty_space_man$switch_chain      000000 constant        entry                    external dcl 9-17
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+hpriv_control                   000777 constant        entry                    external dcl 259
+init_multiplexer                000077 constant        entry                    external dcl 116
+priv_control                    000635 constant        entry                    external dcl 234
+priv_x25_mpx                    000064 constant        entry                    external dcl 30
+shutdown                        000557 constant        entry                    external dcl 223
+start                           000511 constant        entry                    external dcl 196
+stop                            000534 constant        entry                    external dcl 208
+terminate_multiplexer           000426 constant        entry                    external dcl 176
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2104        2144    1642        2114
+Length      2536    1642        40         356     242           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+priv_x25_mpx                        153 external procedure  is an external procedure.  
+on unit on line 128                  72 on unit               
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 init_sw                     priv_x25_mpx
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+priv_x25_mpx             000100 code                        priv_x25_mpx
+                         000101 devx                        priv_x25_mpx
+                         000102 order                       priv_x25_mpx
+                         000112 infop                       priv_x25_mpx
+                         000114 lcx                         priv_x25_mpx
+                         000115 scx                         priv_x25_mpx
+                         000116 activate_order              priv_x25_mpx
+                         000126 x25_data_ptr                priv_x25_mpx
+                         000130 x25_data_n_sc               priv_x25_mpx
+                         000132 xlcep                       priv_x25_mpx
+                         000134 xscep                       priv_x25_mpx
+                         000136 dialup_info                 priv_x25_mpx
+                         000140 x25_load_infop              priv_x25_mpx
+                         000142 miip                        priv_x25_mpx
+                         000144 lctp                        priv_x25_mpx
+                         000146 lctep                       priv_x25_mpx
+                         000150 ttybp                       priv_x25_mpx
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          fl2_to_fx1          enable_op           shorten_stack
+ext_entry           ext_entry_desc      int_entry           reverse_cs          set_chars_eis
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+channel_manager$control       tty_space_man$free_space      tty_space_man$get_space       x25_mpx$system_init
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$dev_nt_assnd     error_table_$noalloc
+error_table_$null_info_ptr    error_table_$undefined_order_request
+error_table_$unimplemented_version                          tty_buf$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     30 000063       116 000071       119 000111       120 000114       121 000117       123 000121       124 000123
+    126 000125       127 000127       128 000131       130 000145       131 000166       133 000167       135 000204
+    136 000210       137 000213       140 000214       141 000252       142 000255       143 000257       144 000261
+    145 000262       146 000264       148 000267       149 000277       150 000303       151 000312       152 000315
+    153 000317       154 000320       155 000321       156 000365       157 000371       159 000373       160 000400
+    161 000402       163 000404       164 000407       165 000413       168 000416       169 000420       170 000421
+    176 000422       179 000440       181 000443       182 000447       183 000463       186 000466       188 000503
+    189 000505       190 000506       196 000507       199 000523       200 000526       201 000530       202 000531
+    208 000532       211 000546       212 000551       213 000553       214 000554       223 000555       226 000571
+    227 000574       228 000627       234 000630       237 000655       238 000660       239 000666       241 000667
+    242 000673       243 000720       245 000721       246 000725       247 000752       249 000753       250 000762
+    251 000771       253 000774       259 000775       262 001017       263 001022       264 001030       266 001031
+    267 001035       268 001040       269 001042       271 001045       272 001051       273 001053       276 001054
+    277 001057       278 001061       281 001062       282 001064       283 001076       284 001103       285 001106
+    288 001107       289 001112       291 001114       292 001116       293 001122       294 001126       295 001132
+    296 001134       297 001140       298 001142       299 001145       300 001150       301 001155       303 001160
+    304 001213       305 001215       306 001216       309 001217       310 001225       311 001232       312 001233
+    313 001240       314 001245       315 001252       316 001254       317 001256       318 001260       320 001262
+    321 001271       322 001276       323 001300       324 001301       325 001304       326 001306       327 001307
+    328 001310       330 001312       331 001323       332 001327       333 001334       334 001336       336 001340
+    337 001372       338 001374       339 001375       342 001376       343 001401       345 001402       346 001406
+    347 001411       348 001421       349 001427       350 001431       352 001432       354 001435       355 001437
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

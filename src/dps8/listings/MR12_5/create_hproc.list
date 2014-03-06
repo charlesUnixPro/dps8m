@@ -1,0 +1,971 @@
+	COMPILATION LISTING OF SEGMENT create_hproc
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1004.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style4 */
+       13 
+       14 create_hproc: proc (access_id, loaded, aptep, initial_procedure) returns (fixed bin (35));
+       15 
+       16 /* Created by Webber for 29-0 (= MR5.0) */
+       17 /* Modified by VanVleck, Greenberg for in-hierarchy and hardcore-seg per-proc segments 4/77 */
+       18 /* Modified by Mike Grady for stack 0 sharing. May 1979 */
+       19 /* Modified by J. Bongiovanni to create a stack for non-early hprocs. December 1982 */
+       20 /* Modified 1984-11-16 by E. Swenson for IPC event channel validation.  The
+       21*   values of R-Offset and R-Factor are initialized here for hprocs. */
+       22 /* Modified 1984-11-20 by Keith Loepere to rename terminate to terminate_. */
+       23 /* Modified 1984-12-11, BIM: give *.*.* RW In ring zero to segments.
+       24*   this permits ring_zero_peek_ and allows this to work outside
+       25*   of the Initializer. */
+       26 
+       27 /* Parameters */
+       28 
+       29 dcl  access_id char (*) aligned;
+       30 dcl  loaded bit (1) aligned;
+       31 dcl  initial_procedure ptr;
+       32 
+       33 dcl  adsp ptr;
+       34 dcl  apdsp ptr;
+       35 dcl  astkp ptr;
+       36 
+       37 /* Automatic */
+       38 
+       39 dcl  save_level uns fixed bin (3);
+       40 dcl  highseg fixed bin (18);
+       41 dcl  dseg_no fixed bin (18);
+       42 dcl  dsp ptr;
+       43 dcl  pds_ptr ptr;
+       44 dcl  stk_ptr ptr;
+       45 dcl  stk_astep ptr;
+       46 dcl  tcode fixed bin (35);
+       47 dcl  dseg_ptr ptr;
+       48 dcl  1 pds_sdw aligned like sdw;
+       49 dcl  1 dbr aligned like sdw;
+       50 dcl  1 stk_sdw aligned like sdw;
+       51 dcl  dstep ptr;
+       52 dcl  astep ptr;
+       53 dcl  proc_id bit (36) aligned;
+       54 dcl  lock_id bit (36) aligned;
+       55 dcl  pds_no fixed bin;
+       56 dcl  append_entry bit (1);
+       57 
+       58 /* External */
+       59 
+       60 dcl  active_all_rings_data$hcscnt fixed bin (18) ext;
+       61 dcl  active_all_rings_data$stack_base_segno fixed bin (18) ext;
+       62 dcl  (dseg$, slt$) external;
+       63 dcl  error_table_$namedup fixed bin (35) external;
+       64 dcl  pds$apt_ptr ptr ext;
+       65 dcl  pds$stack_0_sdwp ptr ext;
+       66 dcl  pds$stack_0_ptr ptr ext;
+       67 dcl  pds$stacks (0:7) ptr ext;
+       68 dcl  pds$last_sp ptr ext;
+       69 dcl  pds$initial_procedure ptr ext;
+       70 dcl  pds$processid bit (36) aligned ext;
+       71 dcl  pds$lock_id bit (36) aligned ext;
+       72 dcl  pds$dstep bit (18) aligned ext;
+       73 dcl  pds$process_group_id char (32) aligned ext;
+       74 dcl  template_pds$ ext;
+       75 dcl  tc_data$pdscopyl fixed bin ext;
+       76 
+       77 /* Based */
+       78 
+       79 dcl  copy_pds (tc_data$pdscopyl) fixed bin based;
+       80 dcl  copy_id bit (36) aligned based;
+       81 dcl  copy_ptr ptr based;
+       82 dcl  copy_group_id char (32) aligned based;
+       83 dcl  copy_dstep bit (18) aligned based;
+       84 dcl  1 based_dseg (0:highseg) aligned like sdw based;
+       85 dcl  1 stack aligned based (sb),
+       86        2 header like stack_header,
+       87        2 first_frame fixed bin;
+       88 
+       89 /* Constant */
+       90 
+       91 dcl  seg_rb (3) fixed bin init (0, 0, 0) static options (constant);
+       92 dcl  dseg_size fixed bin static options (constant) init (3 * 1024);
+       93 dcl  PDS_SIZE fixed bin internal static options (constant) init (4096);
+       94 dcl  STACK_SIZE fixed bin internal static options (constant) init (16384);
+       95 
+       96 /* Entries */
+       97 
+       98 dcl  unique_chars_ entry (bit (*) aligned) returns (char (15));
+       99 dcl  append$branchx entry (char (*), char (*), fixed bin (5), (3) fixed bin, char (*) aligned,
+      100 	fixed bin, fixed bin, fixed bin, fixed bin (35));
+      101 dcl  (level$get, level$set) entry (uns fixed bin (3));
+      102 dcl  grab_aste$prewithdraw entry (ptr, fixed bin, fixed bin (35)) returns (ptr);
+      103 dcl  get_ptrs_$given_astep entry (ptr) returns (1 aligned like sdw);
+      104 dcl  get_ptrs_$given_segno entry (fixed bin (18)) returns (ptr);
+      105 dcl  initiate$priv_init entry (char (*), char (*), char (*), fixed bin, fixed bin, ptr, fixed bin (35));
+      106 dcl  terminate_$noname ext entry (ptr, fixed bin (35));
+      107 dcl  truncate$trseg entry (ptr, fixed bin (19), fixed bin (35));
+      108 dcl  pxss$get_entry entry (ptr);
+      109 dcl  getuid entry returns (bit (36) aligned);
+      110 dcl  pc_wired$wire_wait entry (ptr, fixed bin, fixed bin);
+      111 
+      112 /* Builtins */
+      113 
+      114 dcl  (addr, baseno, baseptr, bin, bit, divide, null, ptr, rel, size, unspec) builtin;
+      115 
+      116 dcl  cleanup condition;
+      117 
+      118 /**/
+      119 /* First get a segment to be used as the PDS */
+      120 
+      121 	append_entry = "1"b;
+      122 	call pxss$get_entry (aptep);
+      123 	if aptep = null then return (1);
+      124 	proc_id = rel (aptep) || "666666"b3;
+      125 
+      126 	call level$get (save_level);
+      127 	on cleanup call level$set (save_level);
+      128 	call level$set (0);
+      129 
+      130 	call get_unique_segment ("pds", pds_ptr, astep, PDS_SIZE, tcode);
+      131 	if tcode ^= 0 then do;
+      132 RETURN_ERROR:
+      133 	     call level$set (save_level);
+      134 	     return (tcode);
+      135 	end;
+      136 
+      137 /* Now get a descriptor segment */
+      138 
+      139 	call get_unique_segment ("dseg", dseg_ptr, dstep, dseg_size, tcode);
+      140 	if tcode ^= 0 then goto RETURN_ERROR;
+      141 
+      142 /* Now get a stack segment */
+      143 
+      144 	call get_unique_segment ("stack", stk_ptr, stk_astep, STACK_SIZE, tcode);
+      145 	if tcode ^= 0 then goto RETURN_ERROR;
+      146 
+      147 	highseg = active_all_rings_data$hcscnt - 1;
+      148 	call level$set (save_level);
+      149 	revert cleanup;
+      150 
+      151 /* Develop the DBR from the dstep. */
+      152 
+      153 join:
+      154 	dbr = get_ptrs_$given_astep (dstep);
+      155 	dsp = addr (dseg$);
+      156 	dseg_no = bin (baseno (dsp), 18);
+      157 
+      158 	dseg_ptr -> based_dseg = dsp -> based_dseg;
+      159 	unspec (dseg_ptr -> sdwa (dseg_no)) = unspec (dbr);
+      160 
+      161 /* Fill in the stack base segno in the DBR so BOS will dump it. */
+      162 
+      163 	if append_entry then
+      164 	     dbr.entry_bound = bit (divide (active_all_rings_data$stack_base_segno, 8, 14, 0), 14);
+      165 
+      166 /* Now get an APT entry and fill it in */
+      167 
+      168 	apte.hproc = "1"b;
+      169 	apte.state = bit (bin (4, 18), 18);		/* initial state is blocked */
+      170 	apte.timax = 4000000;
+      171 	apte.wct_index = pds$apt_ptr -> apte.wct_index;	/* use parent's water closet */
+      172 	apte.processid = proc_id;
+      173 	lock_id = getuid ();
+      174 	apte.lock_id = lock_id;
+      175 	apte.dseg = rel (dstep);
+      176 	apte.pds = rel (astep);
+      177 	unspec (apte.dbr) = unspec (dbr);
+      178 
+      179 /**** Here we set up apte.ipc_r_offset for the hardcore process.  This
+      180*      is an 18-bit unsigned integer used by IPC to validate event channel
+      181*      names in conjunction with apte.ipc_r_factor.  This latter number
+      182*      is determined later, in init_proc.  This is done on order to provide
+      183*      an undeterministic delay between the initialization of these two
+      184*      numbers in order to make it difficult to guess one given the other. */
+      185 
+      186 	apte.ipc_r_offset = binary (substr (bit (binary (clock (), 54), 54), 37, 18), 18);
+      187 
+      188 /**** We defer the setting of R-Factor until after we take a few pages
+      189*      faults in order to make guessing R-Factor given R-Offset more
+      190*      difficult. */
+      191 
+      192 /* Now initialize the PDS and fill in its SDW into the DSEG */
+      193 
+      194 	pds_no = bin (baseno (addr (pds$processid)), 18);
+      195 	pds_sdw = get_ptrs_$given_astep (astep);
+      196 	pds_sdw.cache = "1"b;
+      197 	dseg_ptr -> based_dseg (pds_no) = pds_sdw;
+      198 
+      199 	pds_ptr -> copy_pds = addr (template_pds$) -> copy_pds;
+      200 
+      201 	ptr (pds_ptr, rel (addr (pds$processid))) -> copy_id = proc_id;
+      202 	ptr (pds_ptr, rel (addr (pds$lock_id))) -> copy_id = lock_id;
+      203 	ptr (pds_ptr, rel (addr (pds$apt_ptr))) -> copy_ptr = aptep;
+      204 	ptr (pds_ptr, rel (addr (pds$process_group_id))) -> copy_group_id = access_id;
+      205 	ptr (pds_ptr, rel (addr (pds$dstep))) -> copy_dstep = rel (dstep);
+      206 	ptr (pds_ptr, rel (addr (pds$initial_procedure))) -> copy_ptr = initial_procedure;
+      207 
+      208 	sdwp = addr (dseg$);
+      209 	if append_entry then do;			/* fill in pds stack info with correct stuff */
+      210 	     stk_sdw = get_ptrs_$given_astep (stk_astep);
+      211 	     unspec (dseg_ptr -> sdwa (active_all_rings_data$stack_base_segno)) =
+      212 		unspec (stk_sdw);
+      213 	     ptr (pds_ptr, rel (addr (pds$stack_0_sdwp))) -> copy_ptr =
+      214 		addr (sdwa (active_all_rings_data$stack_base_segno));
+      215 	     ptr (pds_ptr, rel (addr (pds$stack_0_ptr))) -> copy_ptr,
+      216 		ptr (pds_ptr, rel (addr (pds$stacks (0)))) -> copy_ptr,
+      217 		sb = ptr (baseptr (active_all_rings_data$stack_base_segno), 0);
+      218 	     stk_ptr -> stack_header_overlay = pds$stack_0_ptr -> stack_header_overlay;
+      219 	     stk_ptr -> stack_header.stack_begin_ptr,
+      220 		stk_ptr -> stack_header.stack_end_ptr = ptr (sb, rel (addr (stack.first_frame)));
+      221 	end;
+      222 	else do;					/* or for early hprocs */
+      223 	     ptr (pds_ptr, rel (addr (pds$stack_0_sdwp))) -> copy_ptr =
+      224 		addr (sdwa (bin (baseno (stk_ptr), 18)));
+      225 	     ptr (pds_ptr, rel (addr (pds$stack_0_ptr))) -> copy_ptr,
+      226 		ptr (pds_ptr, rel (addr (pds$stacks (0)))) -> copy_ptr,
+      227 		sb = ptr (stk_ptr, 0);
+      228 	end;
+      229 
+      230 	ptr (pds_ptr, rel (addr (pds$last_sp))) -> copy_ptr =
+      231 	     addr (stack.first_frame);
+      232 
+      233 /* Now load the process if it must be loaded */
+      234 
+      235 	if loaded then do;				/* the process is always to be loaded */
+      236 	     apte.loaded = "1"b;
+      237 	     apte.always_loaded = "1"b;
+      238 	     call pc_wired$wire_wait (astep, 0, 1);	/* wire first page of PDS */
+      239 	     call pc_wired$wire_wait (dstep, 0, 1);	/* wire first page of DSEG */
+      240 	end;
+      241 
+      242 	if append_entry then do;
+      243 	     call terminate_$noname (pds_ptr, (0));
+      244 	     call terminate_$noname (dseg_ptr, (0));
+      245 	     call terminate_$noname (stk_ptr, (0));
+      246 	end;
+      247 
+      248 /**** Now, after taking some page faults, we set R-Factor.  The clock
+      249*      value should be unpredictably more advanced. */
+      250 
+      251 	apte.ipc_r_factor =
+      252 	     binary (substr (bit (binary (clock (), 54), 54), 19, 36), 35);
+      253 
+      254 	return (0);
+      255 
+      256 /**/
+      257 early_hproc: entry (access_id, loaded, aptep, initial_procedure, adsp, apdsp, astkp) returns (fixed bin (35));
+      258 
+      259 /* This entry is called during initialization, when segments cannot be created via append. Pointers
+      260*   to two hardcore segments, adsp and apdsp, are supplied to specify segments to be used as the DSEG and PDS
+      261*   of the new process.  These segments should be hardcore if this process is never to be deleted,
+      262*   or deciduous if they are later to be deleted. */
+      263 
+      264 
+      265 	append_entry = "0"b;
+      266 	dseg_ptr = adsp;				/* Copy args for common code. */
+      267 	pds_ptr = apdsp;
+      268 	stk_ptr = astkp;
+      269 
+      270 	astep = get_ptrs_$given_segno (bin (baseno (pds_ptr), 18)); /* Get dseg-seg ptr */
+      271 	dstep = get_ptrs_$given_segno (bin (baseno (dseg_ptr), 18)); /* Ditto the pds */
+      272 	call pxss$get_entry (aptep);
+      273 	if aptep = null then return (1);
+      274 	proc_id = rel (aptep) || "666666"b3;		/* Fabricate process ID */
+      275 	sltp = addr (slt$);
+      276 	highseg = slt.last_sup_seg;
+      277 	go to join;				/* Do all the rest */
+      278 
+      279 
+      280 /* Internal Procedure to create, initiate, and entry-activate a segment. */
+      281 
+      282 get_unique_segment:
+      283      proc (segment_suffix, segment_ptr, aste_ptr, segment_size, rcode);
+      284 
+      285 dcl  segment_suffix char (*);
+      286 dcl  segment_ptr ptr;
+      287 dcl  aste_ptr ptr;
+      288 dcl  segment_size fixed bin;
+      289 dcl  rcode fixed bin (35);
+      290 
+      291 dcl  seg_name char (32);
+      292 
+      293 
+      294 	seg_name = unique_chars_ (proc_id) || "." || segment_suffix;
+      295 	call append$branchx (">system_library_1", seg_name, RW_ACCESS_BIN, seg_rb, "*.*.*", /* The acl term effects us if this is not the Initializer */
+      296 	     0, 0, 0, rcode);
+      297 	if rcode ^= 0 then
+      298 	     if rcode ^= error_table_$namedup then return;
+      299 
+      300 	call initiate$priv_init (">system_library_1", seg_name, "", 0, 0, segment_ptr, rcode);
+      301 	if rcode ^= 0 then return;
+      302 
+      303 	call truncate$trseg (segment_ptr, 0, rcode);
+      304 	if rcode ^= 0 then return;
+      305 
+      306 	aste_ptr = grab_aste$prewithdraw (segment_ptr, segment_size, rcode);
+      307 	if rcode ^= 0 then return;
+      308 
+      309 
+      310      end get_unique_segment;
+      311 
+      312 /* format: off */
+      313  /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      313 
+      314  /* BEGIN INCLUDE FILE ... sdw.incl.pl1 ... last modified 12 May 1976 */
+  2     2 
+  2     3 dcl  sdwp ptr;
+  2     4 
+  2     5 dcl 1 sdw based (sdwp) aligned,			/* Segment Descriptor Word */
+  2     6 
+  2     7    (2 add bit (24),					/* main memory address of page table */
+  2     8     2 (r1, r2, r3) bit (3),				/* ring brackets for the segment */
+  2     9     2 df bit (1),					/* directed fault bit (0 => fault) */
+  2    10     2 df_no bit (2),				/* directed fault number */
+  2    11 
+  2    12     2 pad1 bit (1),
+  2    13     2 bound bit (14),				/* boundary field (in 16 word blocks) */
+  2    14     2 access,					/* access bits */
+  2    15       3 read bit (1),				/* read permission bit */
+  2    16       3 execute bit (1),				/* execute permission bit */
+  2    17       3 write bit (1),				/* write permission bit */
+  2    18       3 privileged bit (1),				/* privileged bit */
+  2    19     2 unpaged bit (1),				/* segment is unpaged if this is 1 */
+  2    20     2 entry_bound_sw bit (1),				/* if this is 0 the entry bound is checked by hardware */
+  2    21     2 cache bit (1),				/* cache enable bit */
+  2    22     2 entry_bound bit (14)) unaligned;			/* entry bound */
+  2    23 
+  2    24 dcl 1 sdwa (0: 1) based (sdwp) aligned like sdw;		/* SDW array (descriptor segment) */
+  2    25 
+  2    26 /* END INCLUDE FILE  sdw.incl.pl1 */
+      314 
+      315  /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  3     2 
+  3     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  3     4 
+  3     5 dcl  aptep pointer;
+  3     6 
+  3     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  3     8     2 thread unaligned,				/* List thread */
+  3     9       3 fp bit (18),				/* Forward pointer */
+  3    10       3 bp bit (18),				/* Backward pointer */
+  3    11     2 flags unaligned,				/* Flags and miscellaneous */
+  3    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  3    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  3    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  3    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  3    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  3    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  3    18       3 eligible bit (1),				/* ON if process is eligible */
+  3    19       3 idle bit (1),				/* ON if  this is an idle process */
+  3    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  3    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  3    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  3    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  3    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  3    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  3    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  3    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  3    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  3    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  3    30       3 state bit (18),				/* execution state */
+  3    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  3    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  3    33 						/* bit 18-35: sequential number */
+  3    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  3    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  3    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  3    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  3    38 
+  3    39 /* * * * * * * * */
+  3    40 
+  3    41     2 ipc_pointers unaligned,
+  3    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  3    43       3 pad3 bit (18),
+  3    44     2 ips_message bit (36),				/* IPS signals pending */
+  3    45     2 asteps unaligned,				/* relative ASTE pointers */
+  3    46       3 pds bit (18),				/* PDS (per-process) */
+  3    47       3 dseg bit (18),				/* DSEG (per-process) */
+  3    48       3 prds bit (18),				/* PRDS (per-processor) */
+  3    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  3    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  3    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  3    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  3    53 
+  3    54 /* * * * * * * * */
+  3    55 
+  3    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  3    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  3    58     2 flags2 unaligned,
+  3    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  3    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  3    61       3 pad7 bit (7),
+  3    62       3 batch bit (1),				/* ON if absentee */
+  3    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  3    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  3    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  3    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  3    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  3    68 
+  3    69 /* * * * * * */
+  3    70 
+  3    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  3    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  3    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  3    74     2 deadline fixed bin (71),			/* time of next run */
+  3    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  3    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  3    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  3    78*						/* reaches this (units = 1/1024 sec) */
+  3    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  3    80     2 access_authorization bit (72),			/* authorization of this process */
+  3    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  3    82 
+  3    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  3    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  3    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  3    86 
+  3    87 /*  Cells used to drive and instrument finite-state model for response time
+  3    88*    measurement. Maintained by meter_response_time */
+  3    89 
+  3    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  3    91     2 pad18 bit (18) unaligned,
+  3    92     2 number_processing fixed bin (35),			/* Number interactions */
+  3    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  3    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  3    95 
+  3    96 /* * * * * * */
+  3    97 
+  3    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  3    99 
+  3   100 /*  End of cells for finite-state model */
+  3   101 
+  3   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  3   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  3   104     2 pad4 bit (28) unaligned,
+  3   105     2 ipc_r_offset fixed bin (18) unsigned,
+  3   106     2 ipc_r_factor fixed bin (35) unsigned,
+  3   107     2 apad (10) fixed bin (35);
+  3   108 
+  3   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      315 
+      316  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  4     2 
+  4     3 /* Declarations for Segment Loading Table header and array.
+  4     4*
+  4     5*   Used by Initialization and MST Checker subroutines */
+  4     6 
+  4     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  4     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  4     9     namep ptr,					/* pointer to segment name list block */
+  4    10     pathp ptr,					/* pointer to segment's directory path name */
+  4    11     aclp ptr;					/* pointer to acl structure */
+  4    12 
+  4    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  4    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  4    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  4    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  4    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  4    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  4    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  4    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  4    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  4    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  4    23 
+  4    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  4    25 
+  4    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  4    27 	2 pad bit (18) unal,
+  4    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  4    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  4    30 
+  4    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  4    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  4    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  4    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  4    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  4    36 	  3 pad bit (5) unal,
+  4    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  4    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  4    39 
+  4    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  4    41 	2 size fixed bin (17),			/* length of pathname */
+  4    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  4    43 	2 acls fixed bin;				/* ACL list starts here */
+  4    44 
+  4    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  4    46 	2 count fixed bin,				/* number of entries in acl list */
+  4    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  4    48 	  3 userid char (32),			/* user specification */
+  4    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  4    50 	  3 pad bit (36) aligned,
+  4    51 	  3 code fixed bin;
+  4    52 
+  4    53 
+  4    54 /* END INCLUDE FILE slt.incl.pl1 */
+      316 
+      317  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  5     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  5     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  5     4 /*	Modified April 1983 by C. Hornig for tasking */
+  5     5 
+  5     6 /****^  HISTORY COMMENTS:
+  5     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  5     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  5     9*     added the heap_header_ptr definition.
+  5    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  5    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  5    12*     Modified to support control point management.  These changes were actually
+  5    13*     made in February 1985 by G. Palter.
+  5    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  5    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  5    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  5    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  5    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  5    19*     (ITS pair).
+  5    20*                                                   END HISTORY COMMENTS */
+  5    21 
+  5    22 /* format: style2 */
+  5    23 
+  5    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  5    25 
+  5    26      dcl	   1 stack_header	      based (sb) aligned,
+  5    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  5    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  5    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  5    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  5    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  5    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  5    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  5    34 	     2 pad4	      bit (2) unal,
+  5    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  5    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  5    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  5    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  5    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  5    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  5    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  5    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  5    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  5    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  5    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  5    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  5    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  5    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  5    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  5    50 	     2 return_no_pop_op_ptr
+  5    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  5    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  5    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  5    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  5    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  5    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  5    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  5    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  5    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  5    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  5    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  5    62 	     2 trace,
+  5    63 	       3 frames,
+  5    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  5    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  5    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  5    67 	     2 pad2	      bit (36),		/*  (61) */
+  5    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  5    69 
+  5    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  5    71 
+  5    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  5    73 						/* (551) octal */
+  5    74 
+  5    75 
+  5    76 /*	The following constants are offsets within this transfer vector table.  */
+  5    77 
+  5    78      dcl	   (
+  5    79 	   call_offset	      fixed bin init (271),
+  5    80 	   push_offset	      fixed bin init (272),
+  5    81 	   return_offset	      fixed bin init (273),
+  5    82 	   return_no_pop_offset   fixed bin init (274),
+  5    83 	   entry_offset	      fixed bin init (275)
+  5    84 	   )		      internal static;
+  5    85 
+  5    86 
+  5    87 
+  5    88 
+  5    89 
+  5    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  5    91*	move the whole stack header should use this overlay.
+  5    92**/
+  5    93 
+  5    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  5    95 
+  5    96 
+  5    97 
+  5    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      317 
+      318 /* format: on */
+      319      end create_hproc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  create_hproc.pl1                  >spec>install>1111>create_hproc.pl1
+313          1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+314          2    09/14/76  0759.8  sdw.incl.pl1                      >ldd>include>sdw.incl.pl1
+315          3    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+316          4    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+317          5    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+PDS_SIZE                        000002 constant        fixed bin(17,0)          initial dcl 93 set ref 130*
+RW_ACCESS_BIN                   000000 constant        fixed bin(5,0)           initial dcl 1-36 set ref 295*
+STACK_SIZE                      000001 constant        fixed bin(17,0)          initial dcl 94 set ref 144*
+access_id                              parameter       char                     dcl 29 ref 14 204 257
+active_all_rings_data$hcscnt    000010 external static fixed bin(18,0)          dcl 60 ref 147
+active_all_rings_data$stack_base_segno
+                                000012 external static fixed bin(18,0)          dcl 61 ref 163 211 213 215
+addr                                                   builtin function         dcl 114 ref 155 194 199 201 202 203 204 205 206 208
+                                                                                  213 213 215 215 219 223 223 225 225 230 230 275
+adsp                                   parameter       pointer                  dcl 33 ref 257 266
+always_loaded             1(12)        based           bit(1)                   level 3 packed packed unaligned dcl 3-7 set ref 237*
+apdsp                                  parameter       pointer                  dcl 34 ref 257 267
+append$branchx                  000054 constant        entry                    external dcl 99 ref 295
+append_entry                    000135 automatic       bit(1)                   packed unaligned dcl 56 set ref 121* 163 209 242
+                                                                                  265*
+apte                                   based           structure                level 1 dcl 3-7
+aptep                                  parameter       pointer                  dcl 3-5 set ref 14 122* 123 124 168 169 170 171 172
+                                                                                  174 175 176 177 186 203 236 237 251 257 272* 273
+                                                                                  274
+aste_ptr                               parameter       pointer                  dcl 287 set ref 282 306*
+astep                           000130 automatic       pointer                  dcl 52 set ref 130* 176 195* 238* 270*
+asteps                   12            based           structure                level 2 packed packed unaligned dcl 3-7
+astkp                                  parameter       pointer                  dcl 35 ref 257 268
+based_dseg                             based           structure                array level 1 dcl 84 set ref 158* 158 197*
+baseno                                                 builtin function         dcl 114 ref 156 194 223 270 270 271 271
+baseptr                                                builtin function         dcl 114 ref 215
+bin                                                    builtin function         dcl 114 ref 156 169 194 223 270 270 271 271
+bit                                                    builtin function         dcl 114 ref 163 169 186 251
+cache                     1(21) 000120 automatic       bit(1)                   level 2 packed packed unaligned dcl 48 set ref 196*
+cleanup                         000136 stack reference condition                dcl 116 ref 127 149
+copy_dstep                             based           bit(18)                  dcl 83 set ref 205*
+copy_group_id                          based           char(32)                 dcl 82 set ref 204*
+copy_id                                based           bit(36)                  dcl 80 set ref 201* 202*
+copy_pds                               based           fixed bin(17,0)          array dcl 79 set ref 199* 199
+copy_ptr                               based           pointer                  dcl 81 set ref 203* 206* 213* 215* 215* 223* 225*
+                                                                                  225* 230*
+dbr                      44            based           fixed bin(71,0)          level 2 in structure "apte" dcl 3-7 in procedure
+                                                                                  "create_hproc" set ref 177*
+dbr                             000122 automatic       structure                level 1 dcl 49 in procedure "create_hproc" set ref
+                                                                                  153* 159 177
+divide                                                 builtin function         dcl 114 ref 163
+dseg                     12(18)        based           bit(18)                  level 3 packed packed unaligned dcl 3-7 set ref 175*
+dseg$                           000014 external static fixed bin(17,0)          dcl 62 set ref 155 208
+dseg_no                         000102 automatic       fixed bin(18,0)          dcl 41 set ref 156* 159
+dseg_ptr                        000116 automatic       pointer                  dcl 47 set ref 139* 158 159 197 211 244* 266* 271
+                                                                                  271
+dseg_size                       000003 constant        fixed bin(17,0)          initial dcl 92 set ref 139*
+dsp                             000104 automatic       pointer                  dcl 42 set ref 155* 156 158
+dstep                           000126 automatic       pointer                  dcl 51 set ref 139* 153* 175 205 239* 271*
+entry_bound               1(22) 000122 automatic       bit(14)                  level 2 packed packed unaligned dcl 49 set ref 163*
+error_table_$namedup            000020 external static fixed bin(35,0)          dcl 63 ref 297
+first_frame             100            based           fixed bin(17,0)          level 2 dcl 85 set ref 219 230
+flags                     1            based           structure                level 2 packed packed unaligned dcl 3-7
+get_ptrs_$given_astep           000064 constant        entry                    external dcl 103 ref 153 195 210
+get_ptrs_$given_segno           000066 constant        entry                    external dcl 104 ref 270 271
+getuid                          000100 constant        entry                    external dcl 109 ref 173
+grab_aste$prewithdraw           000062 constant        entry                    external dcl 102 ref 306
+highseg                         000101 automatic       fixed bin(18,0)          dcl 40 set ref 147* 158 276*
+hproc                     1(04)        based           bit(1)                   level 3 packed packed unaligned dcl 3-7 set ref 168*
+initial_procedure                      parameter       pointer                  dcl 31 ref 14 206 257
+initiate$priv_init              000070 constant        entry                    external dcl 105 ref 300
+ipc_r_factor             65            based           fixed bin(35,0)          level 2 unsigned dcl 3-7 set ref 251*
+ipc_r_offset             64            based           fixed bin(18,0)          level 2 unsigned dcl 3-7 set ref 186*
+last_sup_seg              4            based           fixed bin(18,0)          level 2 dcl 4-13 ref 276
+level$get                       000056 constant        entry                    external dcl 101 ref 126
+level$set                       000060 constant        entry                    external dcl 101 ref 127 128 132 148
+loaded                                 parameter       bit(1)                   dcl 30 in procedure "create_hproc" ref 14 235 257
+loaded                    1(05)        based           bit(1)                   level 3 in structure "apte" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "create_hproc" set ref 236*
+lock_id                  15            based           bit(36)                  level 2 in structure "apte" dcl 3-7 in procedure
+                                                                                  "create_hproc" set ref 174*
+lock_id                         000133 automatic       bit(36)                  dcl 54 in procedure "create_hproc" set ref 173* 174
+                                                                                  202
+null                                                   builtin function         dcl 114 ref 123 273
+pc_wired$wire_wait              000102 constant        entry                    external dcl 110 ref 238 239
+pds                      12            based           bit(18)                  level 3 packed packed unaligned dcl 3-7 set ref 176*
+pds$apt_ptr                     000022 external static pointer                  dcl 64 set ref 171 203
+pds$dstep                       000042 external static bit(18)                  dcl 72 set ref 205
+pds$initial_procedure           000034 external static pointer                  dcl 69 set ref 206
+pds$last_sp                     000032 external static pointer                  dcl 68 set ref 230
+pds$lock_id                     000040 external static bit(36)                  dcl 71 set ref 202
+pds$process_group_id            000044 external static char(32)                 dcl 73 set ref 204
+pds$processid                   000036 external static bit(36)                  dcl 70 set ref 194 201
+pds$stack_0_ptr                 000026 external static pointer                  dcl 66 set ref 215 218 225
+pds$stack_0_sdwp                000024 external static pointer                  dcl 65 set ref 213 223
+pds$stacks                      000030 external static pointer                  array dcl 67 set ref 215 225
+pds_no                          000134 automatic       fixed bin(17,0)          dcl 55 set ref 194* 197
+pds_ptr                         000106 automatic       pointer                  dcl 43 set ref 130* 199 201 202 203 204 205 206 213
+                                                                                  215 215 223 225 225 230 243* 267* 270 270
+pds_sdw                         000120 automatic       structure                level 1 dcl 48 set ref 195* 197
+proc_id                         000132 automatic       bit(36)                  dcl 53 set ref 124* 172 201 274* 294*
+processid                 3            based           bit(36)                  level 2 dcl 3-7 set ref 172*
+ptr                                                    builtin function         dcl 114 ref 201 202 203 204 205 206 213 215 215 215
+                                                                                  219 223 225 225 225 230
+pxss$get_entry                  000076 constant        entry                    external dcl 108 ref 122 272
+rcode                                  parameter       fixed bin(35,0)          dcl 289 set ref 282 295* 297 297 300* 301 303* 304
+                                                                                  306* 307
+rel                                                    builtin function         dcl 114 ref 124 175 176 201 202 203 204 205 205 206
+                                                                                  213 215 215 219 223 225 225 230 274
+save_level                      000100 automatic       fixed bin(3,0)           unsigned dcl 39 set ref 126* 127* 132* 148*
+sb                              000150 automatic       pointer                  dcl 5-24 set ref 215* 218 219 219 225* 230
+sdw                                    based           structure                level 1 dcl 2-5
+sdwa                                   based           structure                array level 1 dcl 2-24 set ref 159* 211* 213 223
+sdwp                            000144 automatic       pointer                  dcl 2-3 set ref 208* 213 223
+seg_name                        000162 automatic       char(32)                 packed unaligned dcl 291 set ref 294* 295* 300*
+seg_rb                          000004 constant        fixed bin(17,0)          initial array dcl 91 set ref 295*
+segment_ptr                            parameter       pointer                  dcl 286 set ref 282 300* 303* 306*
+segment_size                           parameter       fixed bin(17,0)          dcl 288 set ref 282 306*
+segment_suffix                         parameter       char                     packed unaligned dcl 285 ref 282 294
+size                                                   builtin function         dcl 114 ref 218
+slt                                    based           structure                level 1 dcl 4-13
+slt$                            000016 external static fixed bin(17,0)          dcl 62 set ref 275
+sltp                            000146 automatic       pointer                  dcl 4-7 set ref 275* 276
+stack                                  based           structure                level 1 dcl 85
+stack_begin_ptr          22            based           pointer                  level 2 dcl 5-26 set ref 219*
+stack_end_ptr            24            based           pointer                  level 2 dcl 5-26 set ref 219*
+stack_header                           based           structure                level 1 dcl 5-26 set ref 218
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 5-94 set ref 218* 218
+state                     1(18)        based           bit(18)                  level 3 packed packed unaligned dcl 3-7 set ref 169*
+stk_astep                       000112 automatic       pointer                  dcl 45 set ref 144* 210*
+stk_ptr                         000110 automatic       pointer                  dcl 44 set ref 144* 218 219 219 223 225 245* 268*
+stk_sdw                         000124 automatic       structure                level 1 dcl 50 set ref 210* 211
+tc_data$pdscopyl                000050 external static fixed bin(17,0)          dcl 75 ref 199
+tcode                           000114 automatic       fixed bin(35,0)          dcl 46 set ref 130* 131 134 139* 140 144* 145
+template_pds$                   000046 external static fixed bin(17,0)          dcl 74 set ref 199
+terminate_$noname               000072 constant        entry                    external dcl 106 ref 243 244 245
+timax                     7            based           fixed bin(35,0)          level 2 dcl 3-7 set ref 170*
+truncate$trseg                  000074 constant        entry                    external dcl 107 ref 303
+unique_chars_                   000052 constant        entry                    external dcl 98 ref 294
+unspec                                                 builtin function         dcl 114 set ref 159* 159 177* 177 211* 211
+wct_index                21            based           bit(18)                  level 2 packed packed unaligned dcl 3-7 set ref 171*
+                                                                                  171
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+aclp                                   automatic       pointer                  dcl 4-7
+acls                                   based           structure                level 1 dcl 4-45
+call_offset                            internal static fixed bin(17,0)          initial dcl 5-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 5-78
+name_seg                               based           structure                level 1 dcl 4-26
+namep                                  automatic       pointer                  dcl 4-7
+names_ptr                              automatic       pointer                  dcl 4-7
+path                                   based           structure                level 1 dcl 4-40
+pathp                                  automatic       pointer                  dcl 4-7
+push_offset                            internal static fixed bin(17,0)          initial dcl 5-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 5-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 5-78
+segnam                                 based           structure                level 1 dcl 4-31
+tv_offset                              internal static fixed bin(17,0)          initial dcl 5-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETURN_ERROR                    000221 constant        label                    dcl 132 ref 140 145
+create_hproc                    000102 constant        entry                    external dcl 14
+early_hproc                     001032 constant        entry                    external dcl 257
+get_unique_segment              001152 constant        entry                    internal dcl 282 ref 130 139 144
+join                            000264 constant        label                    dcl 153 ref 277
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+binary                                                 builtin function         ref 186 186 251 251
+clock                                                  builtin function         ref 186 251
+substr                                                 builtin function         ref 186 251
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2122        2226    1541        2132
+Length      2564    1541       104         322     361           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+create_hproc                        232 external procedure  is an external procedure.  
+on unit on line 127                  68 on unit               
+get_unique_segment                      internal procedure  shares stack frame of external procedure create_hproc.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+create_hproc             000100 save_level                  create_hproc
+                         000101 highseg                     create_hproc
+                         000102 dseg_no                     create_hproc
+                         000104 dsp                         create_hproc
+                         000106 pds_ptr                     create_hproc
+                         000110 stk_ptr                     create_hproc
+                         000112 stk_astep                   create_hproc
+                         000114 tcode                       create_hproc
+                         000116 dseg_ptr                    create_hproc
+                         000120 pds_sdw                     create_hproc
+                         000122 dbr                         create_hproc
+                         000124 stk_sdw                     create_hproc
+                         000126 dstep                       create_hproc
+                         000130 astep                       create_hproc
+                         000132 proc_id                     create_hproc
+                         000133 lock_id                     create_hproc
+                         000134 pds_no                      create_hproc
+                         000135 append_entry                create_hproc
+                         000144 sdwp                        create_hproc
+                         000146 sltp                        create_hproc
+                         000150 sb                          create_hproc
+                         000162 seg_name                    get_unique_segment
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac          enable_op
+shorten_stack       ext_entry_desc      int_entry           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branchx                get_ptrs_$given_astep         get_ptrs_$given_segno         getuid
+grab_aste$prewithdraw         initiate$priv_init            level$get                     level$set
+pc_wired$wire_wait            pxss$get_entry                terminate_$noname             truncate$trseg
+unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_all_rings_data$hcscnt  active_all_rings_data$stack_base_segno                      dseg$
+error_table_$namedup          pds$apt_ptr                   pds$dstep                     pds$initial_procedure
+pds$last_sp                   pds$lock_id                   pds$process_group_id          pds$processid
+pds$stack_0_ptr               pds$stack_0_sdwp              pds$stacks                    slt$
+tc_data$pdscopyl              template_pds$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000075       121 000120       122 000122       123 000130       124 000140       126 000147       127 000156
+    128 000202       130 000212       131 000217       132 000221       134 000230       139 000233       140 000240
+    144 000242       145 000247       147 000251       148 000255       149 000263       153 000264       155 000277
+    156 000302       158 000306       159 000315       163 000323       168 000337       169 000344       170 000351
+    171 000353       172 000357       173 000361       174 000367       175 000374       176 000377       177 000401
+    186 000404       194 000414       195 000422       196 000435       197 000437       199 000446       201 000456
+    202 000464       203 000472       204 000502       205 000515       206 000523       208 000535       209 000537
+    210 000541       211 000556       213 000566       215 000574       218 000615       219 000624       221 000635
+    223 000636       225 000650       228 000666       230 000671       235 000700       236 000704       237 000710
+    238 000712       239 000730       242 000746       243 000750       244 000762       245 000774       251 001006
+    254 001021       257 001023       265 001050       266 001051       267 001055       268 001060       270 001063
+    271 001100       272 001115       273 001125       274 001135       275 001144       276 001147       277 001151
+    282 001152       294 001163       295 001225       297 001310       300 001317       301 001367       303 001373
+    304 001407       306 001413       307 001430       310 001434
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

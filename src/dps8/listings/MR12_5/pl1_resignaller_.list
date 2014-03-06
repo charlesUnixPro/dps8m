@@ -1,0 +1,313 @@
+	COMPILATION LISTING OF SEGMENT pl1_resignaller_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0955.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2 */
+       14 
+       15 /* This program catches the conditions that the FIM signals from ring 0
+       16*   and resignals them with the correct pl1_info structure, using 
+       17*   pl1_signal_ */
+       18 
+       19 /* BIM June 1981 */
+       20 
+       21 pl1_resignaller_:
+       22      procedure options (support);
+       23 	return;					/* not used */
+       24 	declare pl1_signal_$pl1_signal_from_ops_
+       25 				 entry (character (256), fixed binary, pointer, fixed binary (35), pointer);
+       26 
+       27 stringsize:
+       28      entry;
+       29 	call pl1_signal_$pl1_signal_from_ops_ ("stringsize", length ("stringsize"), null () /* no file */,
+       30 	     702 /* oncode for stringsize */, null () /* no file */);
+       31 	return;
+       32 
+       33 size:
+       34      entry;
+       35 	call pl1_signal_$pl1_signal_from_ops_ ("size", length ("size"), null (), 703 /* oncode */, null () /* no file */)
+       36 	     ;
+       37 	return;
+       38 
+       39 
+       40 establish_handlers:
+       41      entry;
+       42 
+       43 	declare sct_manager_$set	 entry (fixed binary, pointer, fixed binary (35));
+       44 
+       45 	call sct_manager_$set (stringsize_sct_index, codeptr (stringsize), (0));
+       46 	call sct_manager_$set (size_sct_index, codeptr (size), (0));
+       47 
+  1     1 /* BEGIN INCLUDE FILE  static_handlers.incl.pl1  */
+  1     2 
+  1     3 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  1     4 
+  1     5 /* HISTORY:
+  1     6*Written by S. H. Webber, 06/20/75.
+  1     7*Modified:
+  1     8*12/15/83 by Benson Margulies:  added undefined_pointer_sct_index and
+  1     9*	  pgt_sct_index.
+  1    10*06/11/84 by Lee A. Newcomb:  added dm_shutdown_warning_sct_index and
+  1    11*            dm_user_shutdown_sct_index for handling of Data Management
+  1    12*            shutdown.
+  1    13*08/22/84 by R. Michael Tague:  Removed dm_shutdown_warning_sct_index and
+  1    14*            dm_user_shutdown_sct_index.  Added
+  1    15*            system_shutdown_scheduled_sct_index and
+  1    16*            dm_shutdown_scheduled_sct_index.
+  1    17**/
+  1    18 
+  1    19 
+  1    20 /****^  HISTORY COMMENTS:
+  1    21*  1) change(85-11-13,Herbst), approve(87-07-21,MCR7697),
+  1    22*     audit(87-07-21,GDixon), install(87-08-04,MR12.1-1056):
+  1    23*     Add system_message_sct_index.
+  1    24*                                                   END HISTORY COMMENTS */
+  1    25 
+  1    26 
+  1    27 dcl  (
+  1    28      shutdown_sct_index	        init (0),
+  1    29      store_sct_index	        init (1),
+  1    30      mme1_sct_index		        init (2),
+  1    31      fault_tag_1_sct_index	        init (3),
+  1    32      timer_runout_sct_index	        init (4),
+  1    33      command_sct_index	        init (5),
+  1    34      derail_sct_index	        init (6),
+  1    35      lockup_sct_index	        init (7),
+  1    36      connect_sct_index	        init (8),
+  1    37      parity_sct_index	        init (9),
+  1    38      illegal_procedure_sct_index      init (10),
+  1    39      op_not_complete_sct_index        init (11),
+  1    40      startup_sct_index	        init (12),
+  1    41      ovrflo_sct_index	        init (13),
+  1    42      zerodivide_sct_index	        init (14),
+  1    43      execute_sct_index	        init (15),
+  1    44      seg_fault_error_sct_index        init (16),
+  1    45      page_fault_error_sct_index       init (17),
+  1    46      directed_fault_2_sct_index       init (18),
+  1    47      directed_fault_3_sct_index       init (19),
+  1    48      accessviolation_sct_index        init (20),
+  1    49      mme2_sct_index		        init (21),
+  1    50      mme3_sct_index		        init (22),
+  1    51      mme4_sct_index		        init (23),
+  1    52      linkage_error_sct_index	        init (24),
+  1    53      fault_tag_3_sct_index	        init (25),
+  1    54      undefined_fault_sct_index        init (26),
+  1    55      trouble_sct_index	        init (31),
+  1    56      illegal_opcode_sct_index	        init (32),
+  1    57      simfault_000000_sct_index        init (33),
+  1    58      illegal_modifier_sct_index       init (34),
+  1    59      illegal_ring_order_sct_index     init (35),
+  1    60      not_in_execute_bracket_sct_index init (36),
+  1    61      no_execute_permission_sct_index  init (37),
+  1    62      not_in_read_bracket_sct_index    init (38),
+  1    63      no_read_permission_sct_index     init (39),
+  1    64      not_in_write_bracket_sct_index   init (40),
+  1    65      no_write_permission_sct_index    init (41),
+  1    66      not_a_gate_sct_index	        init (42),
+  1    67      not_in_call_bracket_sct_index    init (43),
+  1    68      outward_call_sct_index	        init (44),
+  1    69      bad_outward_call_sct_index       init (45),
+  1    70      inward_return_sct_index	        init (46),
+  1    71      cross_ring_transfer_sct_index    init (47),
+  1    72      ring_alarm_fault_sct_index       init (48),
+  1    73      am_fault_sct_index	        init (49),
+  1    74      out_of_bounds_sct_index	        init (50),
+  1    75      fixedoverflow_sct_index	        init (51),
+  1    76      overflow_sct_index	        init (52),
+  1    77      underflow_sct_index	        init (53),
+  1    78      stringsize_sct_index	        init (54),
+  1    79      other_illegal_proc_sct_index     init (55),
+  1    80      storage_sct_index	        init (56),
+  1    81      packed_pointer_fault_sct_index   init (57),
+  1    82      lot_fault_sct_index	        init (58),
+  1    83      isot_fault_sct_index	        init (59),
+  1    84      system_packed_pointer_sct_index  init (60),
+  1    85      quit_sct_index		        init (61),
+  1    86      alrm_sct_index		        init (62),
+  1    87      cput_sct_index		        init (63),
+  1    88      record_quota_overflow_sct_index  init (64),
+  1    89      size_sct_index		        init (65),
+  1    90      neti_sct_index		        init (66),
+  1    91      other_command_sct_index	        init (67),
+  1    92      susp_sct_index		        init (68),
+  1    93      term_sct_index		        init (69),
+  1    94      wkp_sct_index		        init (70),
+  1    95      undefined_pointer_sct_index      init (71),
+  1    96      pgt_sct_index		        init (72),
+  1    97      system_shutdown_scheduled_sct_index
+  1    98 	                            init (73),
+  1    99      dm_shutdown_scheduled_sct_index  init (74),
+  1   100      system_message_sct_index	        init (75)
+  1   101      )			        fixed bin (17) int static options (constant);
+  1   102 
+  1   103 /* END INCLUDE FILE  static_handlers.incl.pl1 */
+       48 
+       49      end pl1_resignaller_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.9  pl1_resignaller_.pl1              >spec>install>1110>pl1_resignaller_.pl1
+48           1    08/06/87  0913.5  static_handlers.incl.pl1          >ldd>include>static_handlers.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+pl1_signal_$pl1_signal_from_ops_
+                                000010 constant        entry                    external dcl 24 ref 29 35
+sct_manager_$set                000012 constant        entry                    external dcl 43 ref 45 46
+size_sct_index                  000000 constant        fixed bin(17,0)          initial dcl 1-27 set ref 46*
+stringsize_sct_index            000001 constant        fixed bin(17,0)          initial dcl 1-27 set ref 45*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+accessviolation_sct_index              internal static fixed bin(17,0)          initial dcl 1-27
+alrm_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+am_fault_sct_index                     internal static fixed bin(17,0)          initial dcl 1-27
+bad_outward_call_sct_index             internal static fixed bin(17,0)          initial dcl 1-27
+command_sct_index                      internal static fixed bin(17,0)          initial dcl 1-27
+connect_sct_index                      internal static fixed bin(17,0)          initial dcl 1-27
+cput_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+cross_ring_transfer_sct_index          internal static fixed bin(17,0)          initial dcl 1-27
+derail_sct_index                       internal static fixed bin(17,0)          initial dcl 1-27
+directed_fault_2_sct_index             internal static fixed bin(17,0)          initial dcl 1-27
+directed_fault_3_sct_index             internal static fixed bin(17,0)          initial dcl 1-27
+dm_shutdown_scheduled_sct_index        internal static fixed bin(17,0)          initial dcl 1-27
+execute_sct_index                      internal static fixed bin(17,0)          initial dcl 1-27
+fault_tag_1_sct_index                  internal static fixed bin(17,0)          initial dcl 1-27
+fault_tag_3_sct_index                  internal static fixed bin(17,0)          initial dcl 1-27
+fixedoverflow_sct_index                internal static fixed bin(17,0)          initial dcl 1-27
+illegal_modifier_sct_index             internal static fixed bin(17,0)          initial dcl 1-27
+illegal_opcode_sct_index               internal static fixed bin(17,0)          initial dcl 1-27
+illegal_procedure_sct_index            internal static fixed bin(17,0)          initial dcl 1-27
+illegal_ring_order_sct_index           internal static fixed bin(17,0)          initial dcl 1-27
+inward_return_sct_index                internal static fixed bin(17,0)          initial dcl 1-27
+isot_fault_sct_index                   internal static fixed bin(17,0)          initial dcl 1-27
+linkage_error_sct_index                internal static fixed bin(17,0)          initial dcl 1-27
+lockup_sct_index                       internal static fixed bin(17,0)          initial dcl 1-27
+lot_fault_sct_index                    internal static fixed bin(17,0)          initial dcl 1-27
+mme1_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+mme2_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+mme3_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+mme4_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+neti_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+no_execute_permission_sct_index        internal static fixed bin(17,0)          initial dcl 1-27
+no_read_permission_sct_index           internal static fixed bin(17,0)          initial dcl 1-27
+no_write_permission_sct_index          internal static fixed bin(17,0)          initial dcl 1-27
+not_a_gate_sct_index                   internal static fixed bin(17,0)          initial dcl 1-27
+not_in_call_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 1-27
+not_in_execute_bracket_sct_index       internal static fixed bin(17,0)          initial dcl 1-27
+not_in_read_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 1-27
+not_in_write_bracket_sct_index         internal static fixed bin(17,0)          initial dcl 1-27
+op_not_complete_sct_index              internal static fixed bin(17,0)          initial dcl 1-27
+other_command_sct_index                internal static fixed bin(17,0)          initial dcl 1-27
+other_illegal_proc_sct_index           internal static fixed bin(17,0)          initial dcl 1-27
+out_of_bounds_sct_index                internal static fixed bin(17,0)          initial dcl 1-27
+outward_call_sct_index                 internal static fixed bin(17,0)          initial dcl 1-27
+overflow_sct_index                     internal static fixed bin(17,0)          initial dcl 1-27
+ovrflo_sct_index                       internal static fixed bin(17,0)          initial dcl 1-27
+packed_pointer_fault_sct_index         internal static fixed bin(17,0)          initial dcl 1-27
+page_fault_error_sct_index             internal static fixed bin(17,0)          initial dcl 1-27
+parity_sct_index                       internal static fixed bin(17,0)          initial dcl 1-27
+pgt_sct_index                          internal static fixed bin(17,0)          initial dcl 1-27
+quit_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+record_quota_overflow_sct_index        internal static fixed bin(17,0)          initial dcl 1-27
+ring_alarm_fault_sct_index             internal static fixed bin(17,0)          initial dcl 1-27
+seg_fault_error_sct_index              internal static fixed bin(17,0)          initial dcl 1-27
+shutdown_sct_index                     internal static fixed bin(17,0)          initial dcl 1-27
+simfault_000000_sct_index              internal static fixed bin(17,0)          initial dcl 1-27
+startup_sct_index                      internal static fixed bin(17,0)          initial dcl 1-27
+storage_sct_index                      internal static fixed bin(17,0)          initial dcl 1-27
+store_sct_index                        internal static fixed bin(17,0)          initial dcl 1-27
+susp_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+system_message_sct_index               internal static fixed bin(17,0)          initial dcl 1-27
+system_packed_pointer_sct_index        internal static fixed bin(17,0)          initial dcl 1-27
+system_shutdown_scheduled_sct_index    internal static fixed bin(17,0)          initial dcl 1-27
+term_sct_index                         internal static fixed bin(17,0)          initial dcl 1-27
+timer_runout_sct_index                 internal static fixed bin(17,0)          initial dcl 1-27
+trouble_sct_index                      internal static fixed bin(17,0)          initial dcl 1-27
+undefined_fault_sct_index              internal static fixed bin(17,0)          initial dcl 1-27
+undefined_pointer_sct_index            internal static fixed bin(17,0)          initial dcl 1-27
+underflow_sct_index                    internal static fixed bin(17,0)          initial dcl 1-27
+wkp_sct_index                          internal static fixed bin(17,0)          initial dcl 1-27
+zerodivide_sct_index                   internal static fixed bin(17,0)          initial dcl 1-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+establish_handlers              000124 constant        entry                    external dcl 40
+pl1_resignaller_                000012 constant        entry                    external dcl 21
+size                            000063 constant        entry                    external dcl 33 ref 46 46
+stringsize                      000022 constant        entry                    external dcl 27 ref 45 45
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+codeptr                                                builtin function         ref 45 45 46 46
+length                                                 builtin function         ref 29 29 35 35
+null                                                   builtin function         ref 29 29 29 29 35 35 35 35
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       264         300     167         274
+Length       470     167        14         154      75           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+pl1_resignaller_                    146 external procedure  is an external procedure.  
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry           set_support
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+pl1_signal_$pl1_signal_from_ops_                            sct_manager_$set
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     21 000011        23 000020        27 000021        29 000030        31 000061        33 000062        35 000071
+     37 000122        40 000123        45 000132        46 000150        49 000166
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,2004 @@
+	COMPILATION LISTING OF SEGMENT star_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1041.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* Modified June 1984 by Keith Loepere to use the new dc_find. */
+       14 /* Modified by C. Hornig to no longer use system_free_seg */
+       15 /* Modified May 1981 by C. Hornig to compress link pathnames */
+       16 /* Modified Jul 79 by Greenberg for another oversize stack problem. */
+       17 /* Modified Oct 1978 by B. Greenberg to fix oversize stack problem. */
+       18 /* Modified May 1978 by T. Casey to fix bug in list_dir entry point when returning link authors */
+       19 /* Modified 04/78 by G. Palter to fix bug when asking for links only */
+       20 /* Modified 07/77 by THVV for bad_dir_ check */
+       21 /* modified 06/77 by THVV to combine star and dc_pack */
+       22 /* modified 04/77 by THVV to use system_free_seg better */
+       23 /* modified 05/31/76 by R. Bratt to call find_$finished */
+       24 /* modified 04/20/76 by R. Bratt to return partial  info if not mounted */
+       25 /* modified Dec 75 by REM and TAC to add dir_list_ entry for NSS performance */
+       26 /* Modified 4/75 for NSS by THVV */
+       27 /* modified by Kobziar on 11-12-73 to drop setting of append bit on segs  */
+       28 /* modified by Ackerman-Lewis on 12-03-74 to return correct count of names matching star name  */
+       29 /* modified by Kobziar on 741203 to call new entry in access_mode */
+       30 /* Modified 750117 by PG to eliminate $no_acc_ck entry & clean up program */
+       31 
+       32 
+       33 /****^  HISTORY COMMENTS:
+       34*  1) change(86-08-18,JSLove), approve(86-08-18,MCR7518),
+       35*     audit(86-09-29,Parisek), install(86-10-02,MR12.0-1174):
+       36*     Changed to call check_star_name_ with control mask CHECK_STAR_IGNORE_ALL
+       37*     rather than check_star_name_$entry. This bypasses syntactic checks which
+       38*     ring zero is not responsible for enforcing.  Also changed to use named
+       39*     constants defined in check_star_name.incl.pl1.
+       40*  2) change(87-06-01,GDixon), approve(87-07-13,MCR7740),
+       41*     audit(87-07-24,Hartogs), install(87-08-04,MR12.1-1055):
+       42*      A) Modified to properly declare check_star_name_.
+       43*                                                   END HISTORY COMMENTS */
+       44 
+       45 
+       46 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+       47 
+       48 star_:
+       49      procedure (a_dirname, a_star_name, a_pbl, a_areap, a_ecount, a_eptr, a_nptr, a_code);
+       50 
+       51 dcl  a_areap ptr parameter;
+       52 dcl  a_bcount fixed bin parameter;
+       53 dcl  a_bptr ptr parameter;				/* for dc_pack */
+       54 dcl  a_code fixed bin (35) parameter;
+       55 dcl  a_dirname char (*) parameter;
+       56 dcl  a_ecount fixed bin parameter;
+       57 dcl  a_eptr ptr parameter;
+       58 dcl  a_lcount fixed bin parameter;
+       59 dcl  a_lptr ptr parameter;				/* for dc_pack */
+       60 dcl  a_nptr ptr parameter;
+       61 dcl  a_pbl fixed bin (3) parameter;
+       62 dcl  a_star_name char (*) parameter;
+       63 dcl  dcpack_area area parameter;
+       64 
+       65 dcl  branch_count fixed bin;
+       66 dcl  call_find_finish bit (1) aligned;
+       67 dcl  code fixed bin (35);
+       68 dcl  dc_pack bit (1) aligned;
+       69 dcl  dirname char (168);
+       70 dcl  eptr ptr;
+       71 dcl  fast_listing bit (1) aligned;
+       72 dcl  just_return_totals bit (1) aligned;
+       73 dcl  locked bit (1) aligned;
+       74 dcl  n_branches_match fixed bin;
+       75 dcl  n_links_match fixed bin;
+       76 dcl  need_vtoc bit (1) aligned;
+       77 dcl  nptr ptr;
+       78 dcl  number_of_entries fixed bin;
+       79 dcl  pbl fixed bin (3);
+       80 dcl  priv bit (1) aligned;
+       81 dcl  return_link_path bit (1) aligned;
+       82 dcl  saved_dir_change_pclock fixed bin (35);
+       83 dcl  star_list_entry bit (1) aligned;
+       84 dcl  star_name char (32);
+       85 dcl  starname_type fixed bin (2);
+       86 dcl  u_areap ptr;
+       87 dcl  want_branches bit (1) aligned;
+       88 dcl  want_links bit (1) aligned;
+       89 dcl  vtoc_available bit (1) aligned;
+       90 
+       91 dcl  error_table_$argerr fixed bin (35) external;
+       92 dcl  error_table_$nomatch fixed bin (35) external;
+       93 dcl  error_table_$notalloc fixed bin (35) external;
+       94 
+       95 dcl  acc_name_$get entry (ptr, ptr);
+       96 dcl  access_mode$effective entry (pointer, bit (36) aligned, bit (36) aligned, fixed bin (35));
+       97 dcl  alloc_ external entry (fixed bin, pointer, pointer);
+       98 dcl  check_star_name_ entry (char(*), bit(36), fixed bin(2), fixed bin(35));
+       99 dcl  freen_ entry (pointer);
+      100 dcl  hash$search entry (ptr, ptr, ptr, fixed bin (35));
+      101 dcl  lock$dir_lock_read entry (ptr, fixed bin (35));
+      102 dcl  lock$dir_unlock entry (ptr);
+      103 dcl  match_star_name_ entry (char(*) aligned, char(*), fixed bin(35));
+      104 dcl  mountedp entry (bit (36) aligned) returns (fixed bin (35));
+      105 dcl  vtoc_attributes$get_info entry (bit (36) aligned, bit (36), fixed bin, ptr, fixed bin (35));
+      106 
+      107 dcl  (addr, addrel, binary, bit, divide, max, mod, null, rel, size, substr, unspec) builtin;
+      108 
+      109 dcl  (area, bad_dir_, seg_fault_error) condition;
+      110 
+      111 /*
+      112*   star_:
+      113*   procedure (a_dirname, a_star_name, a_pbl, a_areap, a_ecount, a_eptr, a_nptr, a_code);
+      114**/
+      115 
+      116 	dc_pack, priv, fast_listing, star_list_entry = "0"b;
+      117 	go to common;
+      118 
+      119 star_priv:
+      120      entry (a_dirname, a_star_name, a_pbl, a_areap, a_ecount, a_eptr, a_nptr, a_code);
+      121 
+      122 	dc_pack, fast_listing, star_list_entry = "0"b;
+      123 	priv = "1"b;
+      124 	go to common;
+      125 
+      126 list_dir:
+      127      entry (a_dirname, dcpack_area, a_bptr, a_bcount, a_lptr, a_lcount, a_code);
+      128 
+      129 	priv, fast_listing, star_list_entry = "0"b;
+      130 	dc_pack = "1"b;
+      131 	go to common;
+      132 
+      133 list_dir_fast:
+      134      entry (a_dirname, dcpack_area, a_bptr, a_bcount, a_lptr, a_lcount, a_code);
+      135 
+      136 	priv, star_list_entry = "0"b;
+      137 	dc_pack, fast_listing = "1"b;
+      138 	go to common;
+      139 
+      140 dir_list_:
+      141      entry (a_dirname, a_star_name, a_pbl, a_areap, a_bcount, a_lcount, a_eptr, a_nptr, a_code);
+      142 
+      143 	dc_pack, priv = "0"b;
+      144 	fast_listing, star_list_entry = "1"b;
+      145 	go to common;
+      146 
+      147 list_:
+      148      entry (a_dirname, a_star_name, a_pbl, a_areap, a_bcount, a_lcount, a_eptr, a_nptr, a_code);
+      149 
+      150 	dc_pack, priv, fast_listing = "0"b;
+      151 	star_list_entry = "1"b;
+      152 	go to common;
+      153 
+      154 list_priv:
+      155      entry (a_dirname, a_star_name, a_pbl, a_areap, a_bcount, a_lcount, a_eptr, a_nptr, a_code);
+      156 
+      157 	dc_pack, fast_listing = "0"b;
+      158 	priv, star_list_entry = "1"b;
+      159 	go to common;
+      160 
+      161 common:
+      162 	code = 0;
+      163 	want_branches, want_links, return_link_path, need_vtoc = "0"b;
+      164 	call_find_finish, locked = "0"b;
+      165 	dirname = a_dirname;
+      166 
+      167 /*	      Make sure we always return consistent values.		*/
+      168 
+      169 	n_branches_match, n_links_match = 0;
+      170 	dc_branch_arrayp, dc_link_arrayp, eptr, nptr = null ();
+      171 	code = 0;
+      172 
+      173 /* Analyze starname type */
+      174 
+      175 	if dc_pack then do;
+      176 	     starname_type = STAR_TYPE_MATCHES_EVERYTHING;
+      177 	     want_branches, want_links = "1"b;
+      178 	     u_areap = addr (dcpack_area);
+      179 	     end;
+      180 	else do;
+      181 	     star_name = a_star_name;
+      182 	     u_areap = a_areap;
+      183 	     pbl = a_pbl;
+      184 	     if pbl > 3 then do;			/* pathname desired */
+      185 		return_link_path = "1"b;
+      186 		pbl = mod (pbl, 4);			/* trim the pathname option */
+      187 		end;
+      188 
+      189 	     if /* case */ pbl = 1 then want_links = "1"b;
+      190 	     else if pbl = 2 then want_branches = "1"b;
+      191 	     else if pbl = 3 then want_branches, want_links = "1"b;
+      192 	     else do;
+      193 		code = error_table_$argerr;
+      194 		go to finish;
+      195 		end;
+      196 
+      197 	     call check_star_name_ (star_name, CHECK_STAR_IGNORE_ALL, starname_type, code);
+      198 	     if code ^= 0 then go to finish;
+      199 	     end;
+      200 
+      201 RESCAN_DIR:
+      202 	eptr, nptr, dc_branch_arrayp, dc_link_arrayp = null ();
+      203 	call_find_finish, locked = "0"b;
+      204 
+      205 	if priv
+      206 	then call dc_find$dir_read_priv (dirname, dp, code);
+      207 	else call dc_find$dir_read (dirname, dp, code);
+      208 	if code ^= 0 then go to finish;
+      209 
+      210 	call_find_finish, locked = "1"b;
+      211 
+      212 	if starname_type = STAR_TYPE_USE_PL1_COMPARE	/* Special case names with no * or ? */
+      213 	then branch_count, number_of_entries = 1;	/* .. since at most one item can match */
+      214 	else do;
+      215 	     branch_count = dir.seg_count + dir.dir_count;
+      216 	     number_of_entries = branch_count + dir.lcount;
+      217 	     end;
+      218 
+      219 
+      220 	if u_areap = null () then do;			/* Just wants totals */
+      221 	     if starname_type = STAR_TYPE_MATCHES_EVERYTHING then do;
+      222 		if want_branches then n_branches_match = branch_count;
+      223 		if want_links then n_links_match = dir.lcount;
+      224 		go to finish;
+      225 		end;
+      226 	     else just_return_totals = "1"b;		/* No vtoc needed, but must scan thru dir */
+      227 	     end;
+      228 	else just_return_totals = "0"b;
+      229 
+      230 	if ^fast_listing
+      231 	then					/* Never need VTOC for fast list */
+      232 	     if dc_pack | (want_branches & star_list_entry & ^just_return_totals) then do;
+      233 		need_vtoc = "1"b;			/* See if need any info from VTOC */
+      234 		code = mountedp (dir.sons_lvid);	/* volume may not be mounted */
+      235 		vtoc_available = (code = 0);		/* sorry, force fast list, N.B. code must stay set */
+      236 		end;
+      237 
+      238 	call SCAN_DIR;				/* Internal proc does the two scans */
+      239 
+      240 finish:
+      241 	if call_find_finish then call dc_find$finished (dp, locked);
+      242 
+      243 	if star_list_entry | dc_pack then do;		/* Copy values back to caller args */
+      244 	     a_bcount = n_branches_match;
+      245 	     a_lcount = n_links_match;
+      246 	     end;
+      247 	else do;
+      248 	     a_ecount = n_branches_match + n_links_match;
+      249 	     end;
+      250 
+      251 	if dc_pack then do;
+      252 	     a_bptr = dc_branch_arrayp;
+      253 	     a_lptr = dc_link_arrayp;
+      254 	     end;
+      255 	else do;
+      256 	     a_eptr = eptr;
+      257 	     a_nptr = nptr;
+      258 	     end;
+      259 
+      260 	a_code = code;
+      261 	return;
+      262 
+      263 SCAN_DIR:
+      264      procedure;
+      265 
+      266 dcl  alloc_size fixed bin;
+      267 dcl  ec fixed bin (35);
+      268 dcl  entry_list (number_of_entries) uns fixed bin (18);
+      269 dcl  entry_rel bit (18);
+      270 dcl  link_path_blocks fixed bin;
+      271 dcl  n_entries_in_list fixed bin;
+      272 dcl  n_names_match fixed bin;
+      273 dcl  name_rel bit (18);
+      274 dcl  total_names_seen fixed bin;
+      275 
+      276 dcl  u_narray (n_names_match + link_path_blocks) char (32) aligned based (nptr);
+      277 dcl  user_area area based (u_areap);
+      278 
+      279 
+      280 	n_branches_match, n_links_match, total_names_seen = 0;
+      281 	n_entries_in_list, n_names_match, link_path_blocks = 0;
+      282 
+      283 	call MAKE_ENTRY_LIST;
+      284 
+      285 	if n_links_match + n_branches_match = 0 then do;
+      286 	     if ^dc_pack then code = error_table_$nomatch;
+      287 	     go to done;
+      288 	     end;
+      289 
+      290 	if just_return_totals then go to done;		/* If all we want is counts, we got them */
+      291 
+      292 /* Allocate room in user area for copying it out */
+      293 /* We have to unlock the dir first */
+      294 
+      295 	saved_dir_change_pclock = dir.change_pclock;
+      296 
+      297 	call lock$dir_unlock (dp);
+      298 	locked = "0"b;
+      299 
+      300 	on area go to set_no_alloc;
+      301 
+      302 	if dc_pack then do;
+      303 	     dc_n_branches = max (branch_count, 1);
+      304 	     allocate dcpack_branch_array in (user_area);
+      305 
+      306 	     dc_n_links = max (n_links_match, 1);
+      307 	     allocate dcpack_link_array in (user_area);
+      308 	     allocate dcpack_grand_link_pathname_array in (user_area);
+      309 	     dc_grand_n_names = max (total_names_seen, 1);
+      310 	     allocate dcpack_grand_name_array in (user_area);
+      311 
+      312 	     end;
+      313 
+      314 	else do;
+      315 	     if n_names_match + link_path_blocks > 0
+      316 	     then allocate u_narray in (user_area) set (nptr);
+      317 	     else nptr = null;
+      318 
+      319 	     if star_list_entry
+      320 	     then alloc_size = size (star_list_link) * n_links_match + size (star_list_branch) * n_branches_match;
+      321 	     else alloc_size = n_links_match + n_branches_match;
+      322 						/* size (entries) = 1 */
+      323 	     if alloc_size = 0
+      324 	     then eptr = null;
+      325 	     else do;
+      326 		on area go to free_nptr;
+      327 		call alloc_ (alloc_size, u_areap, eptr);/* entries */
+      328 		if eptr = null then go to free_nptr;
+      329 		end;
+      330 	     end;
+      331 
+      332 /* Now relock the dir */
+      333 
+      334 	on seg_fault_error signal bad_dir_;
+      335 	call lock$dir_lock_read (dp, code);
+      336 	if code ^= 0 then go to finish;
+      337 	locked = "1"b;
+      338 	revert seg_fault_error;
+      339 
+      340 	if dir.change_pclock ^= saved_dir_change_pclock then do;
+      341 	     if dc_pack then do;
+      342 		free dcpack_branch_array;
+      343 		free dcpack_link_array;
+      344 		free dcpack_grand_name_array;
+      345 		free dcpack_grand_link_pathname_array;
+      346 		end;
+      347 	     else do;
+      348 		free u_narray;
+      349 		if eptr ^= null () then call freen_ (eptr);
+      350 		end;
+      351 	     call dc_find$finished (dp, locked);
+      352 	     go to RESCAN_DIR;
+      353 	     end;
+      354 
+      355 	call SORT_ENTRY_LIST;
+      356 
+      357 	call RETURN_INFO;
+      358 
+      359 	goto done;
+      360 
+      361 
+      362 free_nptr:
+      363 	free u_narray in (user_area);
+      364 set_no_alloc:
+      365 	code = error_table_$notalloc;
+      366 
+      367 done:
+      368 	return;					/* normal exit from SCAN_DIR */
+      369 
+      370 MAKE_ENTRY_LIST:
+      371 	procedure;
+      372 
+      373 dcl  dir_nwords fixed bin (18);
+      374 dcl  entry_names_match_star fixed bin;
+      375 dcl  n_entries_seen fixed bin;
+      376 dcl  n_names_seen fixed bin;
+      377 
+      378 
+      379 	     dir_nwords = addrel (dp, dir.arearp) -> area.lu;
+      380 
+      381 	     if starname_type ^= STAR_TYPE_USE_PL1_COMPARE then do;
+      382 		n_entries_seen = 0;			/* if there may be several entries */
+      383 		do entry_rel = dir.entryfrp repeat (entry.efrp) while (entry_rel ^= ""b);
+      384 		     ep = addrel (dp, entry_rel);
+      385 		     n_entries_seen = n_entries_seen + 1;
+      386 		     if (n_entries_seen > number_of_entries) | (binary (entry_rel, 18) > dir_nwords)
+      387 		     then signal bad_dir_;		/* check for loop */
+      388 
+      389 
+      390 		     call CHECK_VALID_ENTRY;
+      391 
+      392 		     if (entry.bs & want_branches) | (^entry.bs & want_links) then do;
+      393 						/* Type is correct */
+      394 			entry_names_match_star = 0;	/* Does a name match? */
+      395 			n_names_seen = 0;
+      396 			do name_rel = entry.name_frp repeat (np -> names.fp) while (name_rel ^= ""b);
+      397 			     np = addrel (dp, name_rel);
+      398 			     n_names_seen = n_names_seen + 1;
+      399 			     if (n_names_seen > entry.nnames)
+      400 						/* check for loop */
+      401 				| (binary (name_rel, 18) > dir_nwords) | (np -> names.owner ^= entry.uid)
+      402 				| (np -> names.type ^= NAME_TYPE) | (np -> names.entry_rp ^= entry_rel)
+      403 			     then signal bad_dir_;
+      404 
+      405 
+      406 			     if NAME_MATCHES () then do;
+      407 				entry_names_match_star = entry_names_match_star + 1;
+      408 						/* This name will be listed */
+      409 				n_names_match = n_names_match + 1;
+      410 				end;
+      411 			end;
+      412 
+      413 			if entry_names_match_star > 0 then call TAKE_ENTRY;
+      414 			end;
+      415 		end;				/* end of loop on ep */
+      416 		end;
+      417 
+      418 	     else do;				/* STAR_TYPE_USE_PL1_COMPARE:  Return one or none */
+      419 		call hash$search (dp, addr (star_name), ep, ec);
+      420 		if ec = 0 then do;			/* Special case for efficiency. use hash table */
+      421 		     call CHECK_VALID_ENTRY;		/* Found the entry */
+      422 		     n_names_match = 1;		/* Found desired name */
+      423 		     call TAKE_ENTRY;
+      424 		     end;
+      425 		end;
+      426 
+      427 	     return;
+      428 
+      429 /* ---------------------------------------- */
+      430 
+      431 TAKE_ENTRY:
+      432 	     procedure;
+      433 
+      434 		n_entries_in_list = n_entries_in_list + 1;
+      435 		entry_list (n_entries_in_list) = binary (rel (ep), 18);
+      436 		total_names_seen = total_names_seen + n_names_seen;
+      437 		if ^entry.bs then do;		/* link */
+      438 		     n_links_match = n_links_match + 1;
+      439 		     if return_link_path
+      440 		     then link_path_blocks = link_path_blocks + divide (link.pathname_size + 31, 32, 17, 0);
+      441 		     end;
+      442 		else n_branches_match = n_branches_match + 1;
+      443 
+      444 		return;
+      445 
+      446 	     end TAKE_ENTRY;
+      447 
+      448 /* ----------------------------------------------------- */
+      449 
+      450 CHECK_VALID_ENTRY:
+      451 	     procedure;
+      452 
+      453 		if entry.bs
+      454 		then if (entry.owner ^= dir.uid) | ((entry.type ^= SEG_TYPE) & (entry.type ^= DIR_TYPE))
+      455 		     then signal bad_dir_;
+      456 		     else ;
+      457 		else if (link.owner ^= dir.uid) | (link.type ^= LINK_TYPE) then signal bad_dir_;
+      458 
+      459 		return;
+      460 
+      461 	     end CHECK_VALID_ENTRY;
+      462 
+  1     1 /*     BEGIN INCLUDE FILE ... dir_allocation_area.incl.pl1 ... last modified December 1973 */
+  1     2 
+  1     3 dcl  areap ptr;
+  1     4 
+  1     5 dcl 1 area based (areap) aligned,
+  1     6     2 nsizes fixed bin (18),				/* Number of types. */
+  1     7     2 lu fixed bin (18),				/* Next available word in area. */
+  1     8     2 lw fixed bin (18),				/* Last usable word. */
+  1     9     2 array (100) aligned,				/* Array of types. */
+  1    10       3 fptr bit (18) unaligned,			/* Free pointer for this size. */
+  1    11       3 size fixed bin (17) unaligned;			/* Size. */
+  1    12 
+  1    13 /*     END INCLUDE FILE ... dir_allocation_area.incl.pl1 */
+      463 
+      464 
+      465 	end MAKE_ENTRY_LIST;
+      466 
+      467 SORT_ENTRY_LIST:
+      468 	procedure ();
+      469 
+      470 /* Someday, this should sort the entry list by rel(ep). */
+      471 
+      472 	     return;
+      473 
+      474 	end SORT_ENTRY_LIST;
+      475 
+      476 RETURN_INFO:
+      477 	procedure;
+      478 
+      479 dcl  code fixed bin (35);
+      480 dcl  earrayx fixed bin;
+      481 dcl  exmode bit (36) aligned;
+      482 dcl  grand_larrayx fixed bin;
+      483 dcl  grand_narrayx fixed bin;
+      484 dcl  larrayx fixed bin;
+      485 dcl  link_author char (32) aligned;
+      486 dcl  mode bit (36) aligned;
+      487 dcl  narrayx fixed bin;
+      488 dcl  ret_mode bit (5) aligned;
+      489 dcl  1 sci aligned like based_sc_info;
+      490 dcl  tx fixed bin;
+      491 dcl  vtoc_code fixed bin (35);
+      492 
+      493 	     narrayx, larrayx, earrayx = 1;
+      494 	     grand_narrayx, grand_larrayx = 1;
+      495 
+      496 	     do tx = 1 to n_entries_in_list;
+      497 		ep = addrel (dp, entry_list (tx));
+      498 
+      499 		if entry.bs then do;
+      500 		     call access_mode$effective (ep, mode, exmode, code);
+      501 		     if entry.dirsw
+      502 		     then ret_mode = "0"b || substr (exmode, 1, 1) || "1"b || substr (exmode, 2, 2);
+      503 		     else ret_mode = "0"b || substr (mode, 1, 4);
+      504 
+      505 		     if need_vtoc then do;
+      506 			unspec (sci) = ""b;		/* clear out old junk */
+      507 			vtoc_code = code;
+      508 			if vtoc_available then do;
+      509 			     call vtoc_attributes$get_info (entry.uid, entry.pvid, (entry.vtocx), addr (sci),
+      510 				vtoc_code);
+      511 			     if ^dc_pack & (vtoc_code ^= 0) & (code = 0) then code = vtoc_code;
+      512 			     end;
+      513 			end;
+      514 		     end;
+      515 		else call acc_name_$get (addr (link.author), addr (link_author));
+      516 
+      517 		if dc_pack
+      518 		then call RETURN_DCPACK_INFO;
+      519 		else call RETURN_STAR_INFO;
+      520 	     end;
+      521 
+      522 	     return;
+      523 
+      524 
+      525 RETURN_DCPACK_INFO:
+      526 	     procedure;
+      527 
+      528 declare  first_name_relp bit (18);
+      529 
+      530 /* in this program earrayx goes up by 1 for each branch.
+      531*   larrayx goes up by 1 for each link, and narrayx by 1 for each name on an entry (resets each time) */
+      532 
+      533 		if entry.bs then do;
+      534 		     dc_branchp = addr (dcpack_branch_array (earrayx));
+      535 		     earrayx = earrayx + 1;
+      536 		     unspec (dcpack_branch) = ""b;
+      537 		     dcpack_branch.vtoc_error = (vtoc_code ^= 0);
+      538 		     dcpack_branch.uid = entry.uid;
+      539 		     dcpack_branch.dtu = sci.dtu;
+      540 		     dcpack_branch.dtm = sci.dtm;
+      541 		     dcpack_branch.dtd = entry.dtd;
+      542 		     dcpack_branch.dtem = entry.dtem;
+      543 		     dcpack_branch.dirsw = entry.dirsw;
+      544 		     dcpack_branch.optsw = entry.copysw;
+      545 		     dcpack_branch.bc = bit (entry.bc, 24);
+      546 		     dcpack_branch.cl = bit (divide (sci.csl, 1024, 9, 0), 9);
+      547 		     dcpack_branch.ml = bit (divide (sci.msl, 1024, 9, 0), 9);
+      548 		     dcpack_branch.nnames = entry.nnames;
+      549 		     dcpack_branch.mode = ret_mode;
+      550 
+      551 		     if entry.dirsw then do;
+      552 			dcpack_branch.rb1 = (3)"0"b || entry.ex_ring_brackets (1);
+      553 			dcpack_branch.rb2 = (3)"0"b || entry.ex_ring_brackets (2);
+      554 			dcpack_branch.rb3 = dcpack_branch.rb2;
+      555 			end;
+      556 		     else do;
+      557 			dcpack_branch.rb1 = (3)"0"b || entry.ring_brackets (1);
+      558 			dcpack_branch.rb2 = (3)"0"b || entry.ring_brackets (2);
+      559 			dcpack_branch.rb3 = (3)"0"b || entry.ring_brackets (3);
+      560 			end;
+      561 		     end;
+      562 
+      563 		else do;				/* link */
+      564 
+      565 		     dc_linkp = addr (dcpack_link_array (larrayx));
+      566 		     larrayx = larrayx + 1;
+      567 		     unspec (dcpack_link) = ""b;
+      568 		     dcpack_link.uid = link.uid;
+      569 		     dcpack_link.dtu = ""b;
+      570 		     dcpack_link.dtem = link.dtem;
+      571 		     dcpack_link.dtd = link.dtd;
+      572 		     dcpack_link.nnames = link.nnames;
+      573 		     dc_pnp = null ();
+      574 		     if grand_larrayx > dc_n_links then signal bad_dir_;
+      575 		     dc_pnp = addr (dcpack_grand_link_pathname_array (grand_larrayx));
+      576 		     grand_larrayx = grand_larrayx + 1;
+      577 		     dcpack_path.size = link.pathname_size;
+      578 		     dcpack_path.name = link.pathname;
+      579 		     dcpack_path.author = link_author;
+      580 		     dcpack_link.pathnamerp = rel (dc_pnp);
+      581 
+      582 		     end;				/* links */
+      583 
+      584 		first_name_relp = rel (addr (dcpack_grand_name_array (grand_narrayx)));
+      585 
+      586 		do name_rel = entry.name_frp repeat (np -> names.fp) while (name_rel ^= ""b);
+      587 
+      588 		     if grand_narrayx > dc_grand_n_names then signal bad_dir_;
+      589 		     dc_namep = addr (dcpack_grand_name_array (grand_narrayx));
+      590 		     grand_narrayx = grand_narrayx + 1;
+      591 		     np = addrel (dp, name_rel);
+      592 		     dcpack_ename.name = np -> names.name;
+      593 		     dcpack_ename.size = 32;
+      594 		end;
+      595 
+      596 		if entry.bs
+      597 		then dcpack_branch.namerp = first_name_relp;
+      598 		else dcpack_link.namerp = first_name_relp;
+      599 
+      600 
+      601 		return;
+      602 
+      603 	     end RETURN_DCPACK_INFO;
+      604 
+      605 RETURN_STAR_INFO:
+      606 	     procedure;
+      607 
+      608 dcl  full_pathname char (168) aligned based;
+      609 
+      610 /* In this program, earrayx is in WORDS not entries. It goes up a different amount
+      611*   depending on whether(a) star_ was called, (b) star_list_ was called and it's a branch,
+      612*   (c) star_list_ was called and it's a link. Also, narrayx goes up by 1 for each name
+      613*   and 6 for each link path. */
+      614 
+      615 		esp = addrel (eptr, earrayx - 1);
+      616 		star_entry.nindex = narrayx;
+      617 		star_entry.nnames = 0;
+      618 		if entry.bs
+      619 		then if entry.dirsw
+      620 		     then star_entry.type = "10"b;	/* dir */
+      621 		     else star_entry.type = "01"b;	/* seg */
+      622 		else star_entry.type = "00"b;		/* link */
+      623 
+      624 		do name_rel = entry.name_frp repeat (np -> names.fp) while (name_rel ^= ""b);
+      625 		     np = addrel (dp, name_rel);
+      626 		     if NAME_MATCHES () then do;
+      627 			u_narray (narrayx) = np -> names.name;
+      628 			narrayx = narrayx + 1;
+      629 			star_entry.nnames = star_entry.nnames + 1;
+      630 			end;
+      631 		end;
+      632 
+      633 		if ^star_list_entry
+      634 		then earrayx = earrayx + size (star_entry);
+      635 		else do;
+      636 		     if entry.bs then do;		/* branch */
+      637 			earrayx = earrayx + size (star_list_branch);
+      638 			if entry.dirsw then star_list_branch.master_dir = entry.master_dir;
+      639 			star_list_branch.mode = ret_mode;
+      640 
+      641 			if need_vtoc then do;
+      642 			     star_list_branch.dtm_or_dtem = sci.dtm;
+      643 			     star_list_branch.dtu = sci.dtu;
+      644 			     star_list_branch.rec_or_bc = sci.records;
+      645 			     end;
+      646 			else do;			/* didn't access vtoce */
+      647 			     star_list_branch.dtu = ""b;
+      648 			     star_list_branch.dtm_or_dtem = entry.dtem;
+      649 			     star_list_branch.rec_or_bc = entry.bc;
+      650 			     end;
+      651 			end;
+      652 
+      653 		     else do;			/* link */
+      654 			earrayx = earrayx + size (star_list_link);
+      655 			if return_link_path then do;	/* copy path name */
+      656 			     star_list_link.pln = link.pathname_size;
+      657 			     substr (addr (u_narray (narrayx)) -> full_pathname, 1, link.pathname_size) =
+      658 				link.pathname;
+      659 			     star_list_link.pindex = narrayx;
+      660 			     narrayx = narrayx + divide (link.pathname_size + 31, 32, 17, 0);
+      661 			     end;
+      662 			else do;
+      663 			     star_list_link.pln = 0;
+      664 			     star_list_link.pindex = 0;
+      665 			     end;
+      666 
+      667 			star_list_link.dtm = link.dtem;
+      668 			star_list_link.dtd = link.dtd;
+      669 			end;
+      670 		     end;
+      671 
+      672 	     end RETURN_STAR_INFO;
+      673 
+      674 	end RETURN_INFO;
+      675 
+      676 NAME_MATCHES:
+      677 	procedure returns (bit (1) aligned);
+      678 
+      679 dcl  code fixed bin (35);
+      680 
+      681 	     if starname_type = STAR_TYPE_MATCHES_EVERYTHING then return ("1"b);
+      682 	     call match_star_name_ (np -> names.name, star_name, code);
+      683 	     return (code = 0);
+      684 
+      685 	end NAME_MATCHES;
+      686 
+      687      end SCAN_DIR;
+      688 
+  2     1 /*  BEGIN:   check_star_name.incl.pl1			  *  *  *  *  *  */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(86-08-14,JSLove), approve(86-08-14,MCR7518),
+  2     5*     audit(86-08-14,FCSmith), install(86-10-02,MR12.0-1174):
+  2     6*     Created, to support check_star_name_ entrypoint.
+  2     7*  2) change(87-06-01,GDixon), approve(87-07-13,MCR7740),
+  2     8*     audit(87-06-24,Hartogs), install(87-08-04,MR12.1-1056):
+  2     9*     Change structures and bit structures to be unaligned, to match the
+  2    10*     check_star_name_ parameters to which such strings are passed.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 
+  2    13 /* format: style3,comcol71,ifthenstmt,indcomtxt,indproc,idind30 */
+  2    14 
+  2    15 declare	1 check_star		aligned based,
+  2    16 	  2 reject_wild		bit (1) unaligned,
+  2    17 	  2 ignore_archive		bit (1) unaligned,
+  2    18 	  2 process_archive		bit (1) unaligned,
+  2    19 	  2 ignore_entrypoint	bit (1) unaligned,
+  2    20 	  2 process_entrypoint	bit (1) unaligned,
+  2    21 	  2 ignore_path		bit (1) unaligned,
+  2    22 	  2 process_path		bit (1) unaligned,
+  2    23 	  2 ignore_equal		bit (1) unaligned,
+  2    24 	  2 ignore_length		bit (1) unaligned,
+  2    25 	  2 ignore_nonascii		bit (1) unaligned,
+  2    26 	  2 ignore_null		bit (1) unaligned,
+  2    27 	  2 unimplemented		bit (25) unaligned;
+  2    28 
+  2    29 declare	(
+  2    30 	CHECK_STAR_ENTRY_DEFAULT	initial ("00010001000"b),	/* Behavior of check_star_name_$entry (obsolete). */
+  2    31 	CHECK_STAR_IGNORE_ALL	initial ("01010101111"b),	/* Check for *** and classify only.		*/
+  2    32 	CHECK_STAR_IGNORE_ARCHIVE	initial ("01000000000"b),	/* Do not reject archive convention "::".	*/
+  2    33 	CHECK_STAR_IGNORE_ENTRYPOINT	initial ("00010000000"b),	/* Do not reject "$" or "|" characters.		*/
+  2    34 	CHECK_STAR_IGNORE_EQUAL	initial ("00000001000"b),	/* Do not reject "=" or "%" characters.		*/
+  2    35 	CHECK_STAR_IGNORE_LENGTH	initial ("00000000100"b),	/* Do not reject star names longer than 32 chars.	*/
+  2    36 	CHECK_STAR_IGNORE_NONASCII	initial ("00000000010"b),	/* No not reject star names with nonASCII chars.	*/
+  2    37 	CHECK_STAR_IGNORE_NULL	initial ("00000000001"b),	/* Do not reject names with null components.	*/
+  2    38 	CHECK_STAR_IGNORE_PATH	initial ("00000100000"b),	/* Do not reject "<" or ">" characters.		*/
+  2    39 	CHECK_STAR_PATH_DEFAULT	initial ("00110011100"b),	/* Behavior of check_star_name_$path (obsolete).	*/
+  2    40 	CHECK_STAR_PROCESS_ARCHIVE	initial ("00100000000"b),	/* Process "::" as archive delimiter.		*/
+  2    41 	CHECK_STAR_PROCESS_ENTRYPOINT initial ("00001000000"b),	/* Ignore trailing entrypoint if present.	*/
+  2    42 	CHECK_STAR_PROCESS_PATH	initial ("00000010000"b),	/* Ignore leading directory path if present.	*/
+  2    43 	CHECK_STAR_REJECT_WILD	initial ("10000000000"b),	/* Return error_table_$nostars if type not zero.	*/
+  2    44 	CHECK_STAR_UNIMPLEMENTED	initial ("001FFFFFF"b4)	/* Nonexistent test flags.  Reject them.	*/
+  2    45 	)			bit (36) static options (constant);
+  2    46 
+  2    47 declare	(
+  2    48 	STAR_TYPE_MATCHES_EVERYTHING	initial (2),
+  2    49 	STAR_TYPE_USE_MATCH_PROCEDURE	initial (1),
+  2    50 	STAR_TYPE_USE_PL1_COMPARE	initial (0)
+  2    51 	)			fixed bin (2) static options (constant);
+  2    52 
+  2    53 /*  END OF:  check_star_name.incl.pl1			  *  *  *  *  *  */
+      689 
+      690 
+  3     1 /* BEGIN include file dc_find_dcls.incl.pl1 */
+  3     2 
+  3     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  3     4 /* Added a few more, October 1984. */
+  3     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  3     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  3     7 
+  3     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  3     9 
+  3    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  3    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  3    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  3    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  3    14 
+  3    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  3    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  3    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  3    18 
+  3    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  3    20 
+  3    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  3    22 
+  3    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  3    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  3    25 
+  3    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  3    27 
+  3    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  3    29 
+  3    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  3    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  3    32 
+  3    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  3    34 
+  3    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  3    36 
+  3    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  3    38 
+  3    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    41 
+  3    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  3    44 
+  3    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  3    47 
+  3    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  3    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  3    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  3    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  3    52 
+  3    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  3    58 
+  3    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  3    60 
+  3    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  3    62 
+  3    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  3    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  3    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  3    66 
+  3    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  3    68 
+  3    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  3    70 
+  3    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  3    72 
+  3    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    74 
+  3    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  3    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  3    82 
+  3    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  3    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  3    87 
+  3    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  3    90 
+  3    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  3    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  3    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  3    94 
+  3    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  3    96 
+  3    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  3    98 
+  3    99 /* END include file dc_find_dcls.incl.pl1 */
+      691 
+      692 
+  4     1 /* BEGIN INCLUDE FILE ... dcpack_info.incl.pl1 */
+  4     2 /* format: style3 */
+  4     3 
+  4     4 /* NOTE: ALL ARRAY'D STRUCTURES MUST BE AN EVEN NUMBER OF WORDS LONG! */
+  4     5 
+  4     6 dcl	(dc_branchp, dc_linkp, dc_pnp, dc_namep, dc_branch_arrayp, dc_link_arrayp, dc_name_arrayp, dc_grand_name_arrayp, dc_grand_link_pathname_arrayp)
+  4     7 			ptr;
+  4     8 
+  4     9 dcl	1 dcpack_branch	based (dc_branchp) aligned,	/* structure returned by dc_pack */
+  4    10 	  2 vtoc_error	bit (1) unal,
+  4    11 	  2 pad1		bit (1) unal,
+  4    12 	  2 uid		bit (70) unal,
+  4    13 	  2 pad2		bit (20) unal,
+  4    14 	  2 dtu		bit (52) unal,
+  4    15 	  2 pad3		bit (20) unal,
+  4    16 	  2 dtm		bit (52) unal,
+  4    17 	  2 pad4		bit (20) unal,
+  4    18 	  2 dtd		bit (52) unal,
+  4    19 	  2 pad5		bit (20) unal,
+  4    20 	  2 dtem		bit (52) unal,
+  4    21 	  2 pad6		bit (20) unal,
+  4    22 	  2 rd		bit (52) unal,
+  4    23 	  2 dirsw		bit (1) unal,
+  4    24 	  2 optsw		bit (2) unal,
+  4    25 	  2 bc		bit (24) unal,
+  4    26 	  2 consistsw	bit (2) unal,
+  4    27 	  2 mode		bit (5) unal,
+  4    28 	  2 usage		bit (2) unal,
+  4    29 	  2 usagect	bit (17) unal,
+  4    30 	  2 nomore	bit (1) unal,
+  4    31 	  2 cl		bit (9) unal,
+  4    32 	  2 ml		bit (9) unal,
+  4    33 	  2 acct		bit (36),
+  4    34 	  2 hlim		bit (17) unal,
+  4    35 	  2 llim		bit (17) unal,
+  4    36 	  2 pad7		bit (2) unal,
+  4    37 	  2 rb1		bit (6) unal,
+  4    38 	  2 rb2		bit (6) unal,
+  4    39 	  2 rb3		bit (6) unal,
+  4    40 	  2 pad8		bit (18) unal,
+  4    41 	  2 pad9		bit (18) unal,
+  4    42 	  2 namerp	bit (18) unal,
+  4    43 	  2 nnames	fixed bin;
+  4    44 
+  4    45 dcl	1 dcpack_link	based (dc_linkp) aligned,	/* structure returned by dc_pack */
+  4    46 	  2 pad1		bit (2) unal,
+  4    47 	  2 uid		bit (70) unal,
+  4    48 	  2 pad2		bit (20) unal,
+  4    49 	  2 dtu		bit (52) unal,
+  4    50 	  2 pad3		bit (20) unal,
+  4    51 	  2 dtem		bit (52) unal,
+  4    52 	  2 pad4		bit (20) unal,
+  4    53 	  2 dtd		bit (52) unal,
+  4    54 	  2 pathnamerp	bit (18) unal,
+  4    55 	  2 namerp	bit (18) unal,
+  4    56 	  2 nnames	fixed bin;
+  4    57 
+  4    58 
+  4    59 dcl	1 dcpack_path	based (dc_pnp) aligned,	/* pathname and author for links */
+  4    60 	  2 size		fixed bin (16) unal,
+  4    61 	  2 pad		bit (19) unal,
+  4    62 	  2 author	char (32) unaligned,
+  4    63 	  2 name		char (168) unaligned;
+  4    64 
+  4    65 dcl	1 dcpack_ename	based (dc_namep) aligned,
+  4    66 	  2 size		fixed bin (16) unal,
+  4    67 	  2 pad		bit (19) unal,
+  4    68 	  2 name		char (32) unaligned;	/* for compatibility with old status command */
+  4    69 
+  4    70 /* The following must be set before referencing the arrays */
+  4    71 
+  4    72 dcl	(dc_n_names, dc_n_branches, dc_n_links)
+  4    73 			fixed bin;
+  4    74 
+  4    75 dcl	1 dcpack_branch_array
+  4    76 			(dc_n_branches) like dcpack_branch based (dc_branch_arrayp) aligned;
+  4    77 
+  4    78 dcl	1 dcpack_link_array (dc_n_links) like dcpack_link based (dc_link_arrayp) aligned;
+  4    79 
+  4    80 dcl	1 dcpack_name_array (dc_n_names) aligned like dcpack_ename based (dc_name_arrayp);
+  4    81 
+  4    82 dcl       dc_grand_n_names    fixed bin;              
+  4    83 dcl       1 dcpack_grand_name_array 
+  4    84 	                    (dc_grand_n_names) aligned like dcpack_ename based (dc_grand_name_arrayp);
+  4    85 dcl       1 dcpack_grand_link_pathname_array
+  4    86 		          (dc_n_links) aligned like dcpack_path based (dc_grand_link_pathname_arrayp);
+  4    87 
+  4    88 
+  4    89 /* END INCLUDE FILE ... dcpack_info.incl.pl1 */
+  4    90 
+      693 
+      694 
+  5     1 /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  5     2 
+  5     3 
+  5     4 /* Template for an entry. Length = 38 words */
+  5     5 
+  5     6 dcl  ep ptr;
+  5     7 
+  5     8 dcl 1 entry based (ep) aligned,
+  5     9 
+  5    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  5    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  5    12 
+  5    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  5    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  5    15 
+  5    16     2 uid bit (36),					/* unique id of entry */
+  5    17 
+  5    18     2 dtem bit (36),				/* date-time entry modified */
+  5    19 
+  5    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  5    21     2 pad0 bit (17),
+  5    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  5    23 
+  5    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  5    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  5    26 
+  5    27     2 author,					/* user who created branch */
+  5    28       3 pers_rp bit (18),				/* name of user who created branch */
+  5    29       3 proj_rp bit (18),				/* project of user who created branch */
+  5    30 
+  5    31       3 tag char (1),				/* tag of user who created branch */
+  5    32       3 pad1 char (3),
+  5    33 
+  5    34     2 primary_name bit (504),				/* first name on name list */
+  5    35 
+  5    36     2 dtd bit (36),					/* date time dumped */
+  5    37 
+  5    38     2 pad2 bit (36),
+  5    39 
+  5    40 
+  5    41 /* the declarations below are for branch only */
+  5    42 
+  5    43 
+  5    44     2 pvid bit (36),				/* physical volume id */
+  5    45 
+  5    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  5    47     2 pad3 bit (18),
+  5    48 
+  5    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  5    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  5    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  5    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  5    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  5    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  5    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  5    56     2 security_oosw bit (1),				/* security out of service switch */
+  5    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  5    58     2 master_dir bit (1),				/* TRUE for master directory */
+  5    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  5    60     2 pad4 bit (11),
+  5    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  5    62 
+  5    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  5    64 
+  5    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  5    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  5    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  5    68 
+  5    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  5    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  5    71 
+  5    72     2 bc_author,					/* user who last set the bit count */
+  5    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  5    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  5    75 
+  5    76       3 tag char (1),				/* tag of user who set the bit count */
+  5    77       3 pad5 bit (2),
+  5    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  5    79 
+  5    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  5    81 
+  5    82     2 pad6 bit (36),
+  5    83 
+  5    84     2 checksum bit (36),				/* checksum from dtd */
+  5    85 
+  5    86     2 owner bit (36);				/* uid of containing directory */
+  5    87 
+  5    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      695 
+      696 
+  6     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  6     2 /* Modified 8/74 for NSS */
+  6     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  6     4 /* Modified 3/82 BIM for change pclock */
+  6     5 /* format: style3 */
+  6     6 
+  6     7 /* Template for the directory header. Length = 64 words. */
+  6     8 
+  6     9 dcl  dp ptr;
+  6    10 
+  6    11 dcl 1 dir based (dp) aligned,
+  6    12 
+  6    13    2 modify bit (36),				/* Process ID of last modifier */
+  6    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  6    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  6    16     2 dtc (3),					/* date-time checked by salvager array */
+  6    17       3 date bit (36),				/* the date */
+  6    18       3 error bit (36),				/* what errors were discovered */
+  6    19 
+  6    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  6    21 
+  6    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  6    23 
+  6    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  6    25 
+  6    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  6    27 
+  6    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  6    29     2 version_number fixed bin (17),			/* version number of header */
+  6    30 
+  6    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  6    32     2 pad2 bit (18),
+  6    33 
+  6    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  6    35     2 pad3 bit (18),
+  6    36 
+  6    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  6    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  6    39 
+  6    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  6    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  6    42 
+  6    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  6    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  6    45 
+  6    46     2 lcount fixed bin (17),				/* number of links */
+  6    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  6    48 
+  6    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  6    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  6    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  6    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  6    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  6    54     2 pad4 bit (14),
+  6    55 
+  6    56     2 iacl_count (0:7),
+  6    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  6    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  6    59 
+  6    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  6    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  6    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  6    63 
+  6    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  6    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  6    66 
+  6    67     2 htsize fixed bin (17),				/* size of hash table */
+  6    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  6    69 
+  6    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  6    71     2 pad6 fixed bin (17),
+  6    72 
+  6    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  6    74     2 pad7 bit (18)) unaligned,
+  6    75 
+  6    76     2 dts bit (36),					/* date-time directory last salvaged */
+  6    77 
+  6    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  6    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  6    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  6    81     2 checksum bit (36),				/* checksummed from uid on */
+  6    82     2 owner bit (36);				/* uid of parent dir */
+  6    83 
+  6    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  6    85 
+  6    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      697 
+      698 
+  7     1 /*     BEGIN INCLUDE FILE ... dir_link.incl.pl1 ... last modified August 1974 for nss */
+  7     2 
+  7     3 /* Template for link. Note that it is identical to entry for first 24 words. */
+  7     4 
+  7     5 
+  7     6 dcl 1 link based (ep) aligned,
+  7     7 
+  7     8     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  7     9     2 ebrp bit (18),				/* backward rel ptr to previous entry */
+  7    10 
+  7    11     2 type bit (18),				/* type = dir link */
+  7    12     2 size fixed bin (17),				/* size of link in words */
+  7    13 
+  7    14     2 uid bit (36),					/* unique id of entry */
+  7    15 
+  7    16     2 dtem bit (36),				/* date-time entry modified */
+  7    17 
+  7    18     2 bs bit (1),					/* entry switch = 1 if entry */
+  7    19     2 pad0 bit (17),
+  7    20     2 nnames fixed bin (17),				/* number of names for this entry */
+  7    21 
+  7    22     2 name_frp bit (18),				/* rel pointer to start of name list */
+  7    23     2 name_brp bit (18),				/* rel pointer to end of name list */
+  7    24 
+  7    25     2 author,					/* user who created entry */
+  7    26       3 pers_rp bit (18),				/* name of user who created entry */
+  7    27       3 proj_rp bit (18),				/* project of user who created entry */
+  7    28 
+  7    29       3 tag char (1),				/* tag of user who created entry */
+  7    30       3 pad1 char (3),
+  7    31 
+  7    32     2 primary_name bit (504),				/* first name on name list */
+  7    33 
+  7    34     2 dtd bit (36),					/* date time dumped */
+  7    35 
+  7    36     2 pad2 bit (36),
+  7    37 
+  7    38 
+  7    39 /* the declarations below are only applicable to links */
+  7    40 
+  7    41     2 pad3 bit (18),
+  7    42     2 pathname_size fixed bin (17),			/* number of characters in pathname */
+  7    43 
+  7    44     2 pathname char (168 refer (pathname_size))) unaligned, /* pathname of link */
+  7    45 
+  7    46     2 checksum bit (36),				/* checksum from uid */
+  7    47 
+  7    48     2 owner bit (36);				/* uid of containing directory */
+  7    49 
+  7    50 /*     END INCLUDE FILE ... dir_link.incl.pl1 */
+      699 
+      700 
+  8     1 /*     BEGIN INCLUDE FILE ... dir_name.incl.pl1 ... last modified Nov 1975 for nss */
+  8     2 
+  8     3 /* Template for names of branches or links. Length = 14 words. */
+  8     4 
+  8     5 dcl np ptr;
+  8     6 
+  8     7 dcl 1 names based aligned,				/* based on ptr(dp,ep->entry.name_frp) */
+  8     8     2 fp bit(18) unaligned,				/* rel ptr to next name */
+  8     9     2 bp bit(18) unaligned,				/* rel ptr to prev name */
+  8    10 
+  8    11     2 type bit (18) unaligned,			/* type = dir name */
+  8    12     2 size fixed bin (17) unaligned,			/* size of dir name */
+  8    13 
+  8    14     2 entry_rp bit(18) unaligned,			/* rel ptr to entry */
+  8    15     2 ht_index fixed bin(17) unaligned,			/* index of hash table entry */
+  8    16 
+  8    17     2 hash_thread bit (18) unal,			/* relative ptr to next hash  entry */
+  8    18     2 pad3 bit (18) unal,
+  8    19 
+  8    20     2 name char(32) aligned,
+  8    21 
+  8    22     2 checksum bit (36),				/* checksum from entry_rp */
+  8    23 
+  8    24     2 owner bit (36);				/* uid of entry */
+  8    25 
+  8    26 
+  8    27 /*     END INCLUDE FILE ... dir_name.incl.pl1 */
+      701 
+      702 
+  9     1 /* BEGIN INCLUDE FILE ... fs_types.incl.pl1 */
+  9     2 
+  9     3 dcl  ACCESS_NAME_TYPE bit (18) static options (constant) init ("000001"b3);
+  9     4 dcl  ACLE_TYPE bit (18) static options (constant) init ("000002"b3);
+  9     5 dcl  DIR_HEADER_TYPE bit (18) static options (constant) init ("000003"b3);
+  9     6 dcl  DIR_TYPE bit (18) static options (constant) init ("000004"b3);
+  9     7 dcl  LINK_TYPE bit (18) static options (constant) init ("000005"b3);
+  9     8 dcl  NAME_TYPE bit (18) static options (constant) init ("000006"b3);
+  9     9 dcl  SEG_TYPE bit (18) static options (constant) init ("000007"b3);
+  9    10 dcl  HASH_TABLE_TYPE bit (18) static options (constant) init ("000013"b3);
+  9    11 
+  9    12 dcl  access_name_type fixed bin static options (constant) init (1);
+  9    13 dcl  acle_type fixed bin static options (constant) init (2);
+  9    14 dcl  dir_header_type fixed bin static options (constant) init (3);
+  9    15 dcl  dir_type fixed bin static options (constant) init (4);
+  9    16 dcl  link_type fixed bin static options (constant) init (5);
+  9    17 dcl  name_type fixed bin static options (constant) init (6);
+  9    18 dcl  seg_type fixed bin static options (constant) init (7);
+  9    19 dcl  hash_table_type fixed bin static options (constant) init (11);
+  9    20 
+  9    21 /* END INCLUDE FILE ... fs_types.incl.pl1 */
+      703 
+      704 
+ 10     1 /* BEGIN INCLUDE FILE ... quota_cell.incl.pl1 ... February 1982 */
+ 10     2 
+ 10     3 dcl 1 quota_cell based (qcp) aligned,			/* Argument used by vtoc_attributes$(get set)_quota */
+ 10     4     2 quota fixed bin (35),				/* Record quota */
+ 10     5     2 used fixed bin (35),				/* Current use */
+ 10     6     2 received fixed bin (35),			/* Quota moved down */
+ 10     7     2 tup bit (36),					/* Clock time of update */
+ 10     8     2 trp fixed bin (71),				/* Time-page-product, in page-seconds */
+ 10     9     2 pad fixed bin,
+ 10    10     2 terminal_quota_sw bit (1);			/* TRUE if terminal quota */
+ 10    11 
+ 10    12 dcl  qcp ptr;
+ 10    13 
+ 10    14 /* END INCLUDE FILE ... quota_cell */
+      705 
+      706 
+ 11     1 
+ 11     2 /* Begin include file ...  sc_info.incl.pl1  */
+ 11     3 /* format: style3 */
+ 11     4 /* quota_cell.incl.pl1 MUST be included with this file. */
+ 11     5 
+ 11     6 /* This file defines a structure used for communicating vtoc-resident
+ 11     7*   information between status accessing and setting primitives in
+ 11     8*   segment control */
+ 11     9 
+ 11    10 dcl	scip		ptr;
+ 11    11 
+ 11    12 dcl	1 based_sc_info	aligned based (scip),
+ 11    13 	  2 dtu		bit (36),			/* Date-time used */
+ 11    14 	  2 dtm		bit (36),			/* Date-time modified */
+ 11    15 	  2 records	fixed bin,		/* # records of storage used */
+ 11    16 	  2 msl		fixed bin,		/* Maximum segment length, words */
+ 11    17 	  2 csl		fixed bin,		/* Current segment length, words */
+ 11    18 	  2 flags,
+ 11    19 	    3 dnzp	bit (1) unal,
+ 11    20 	    3 pad_gtpd	bit (1) unal,		/* obsolete PML */
+ 11    21 	    3 damaged	bit (1) unal,
+ 11    22 	    3 nid		bit (1) unal,		/* no incremental volume dump switch */
+ 11    23 	    3 ncd		bit (1) unal,		/* no complete dump switch */
+ 11    24 	    3 synchronized  bit (1) unal,
+ 11    25 	    3 pad		bit (30) unal,
+ 11    26 	  2 pf_count	fixed bin (35),		/* page fault counter. may wrap */
+ 11    27 	  2 qcell (0:1)	aligned like quota_cell,
+ 11    28 	  2 vol_dtd	bit (36),			/* volume date-time-dumped */
+ 11    29 	  2 volid		(3) bit (36) aligned;	/* these belong to the dumper */
+ 11    30 
+ 11    31 
+ 11    32 dcl	1 sc_info		like based_sc_info aligned;
+ 11    33 
+ 11    34 /* End include file ...  sc_info.incl.pl1 */
+      707 
+      708 
+ 12     1 /* BEGIN INCLUDE FILE ... star_info.incl.pl1 */
+ 12     2 
+ 12     3 dcl esp ptr;
+ 12     4 
+ 12     5 dcl 1 star_entry based (esp) aligned,			/* structure returned by star_ */
+ 12     6     (2 type bit (2),				/* 0 = link, 1 = nondir, 2 = dir */
+ 12     7     2 nnames fixed bin (15),				/* number of names for this entry */
+ 12     8     2 nindex fixed bin)unal;				/* index of name in list */
+ 12     9 
+ 12    10 dcl 1 star_list_branch based (esp) aligned,		/* structure returned by list_ */
+ 12    11     (2 type bit (2),
+ 12    12     2 nnames fixed bin (15),
+ 12    13     2 nindex fixed bin) unal,
+ 12    14     2 dtm_or_dtem bit (36),
+ 12    15     2 dtu bit (36),
+ 12    16     (2 mode bit (5),
+ 12    17     2 raw_mode bit (5),				/* ret by status_long, not star */
+ 12    18     2 master_dir bit (1),
+ 12    19     2 rec_or_bc fixed bin (24)) unal;
+ 12    20 
+ 12    21 dcl 1 star_list_link based (esp) aligned,
+ 12    22     (2 type bit (2),
+ 12    23     2 nnames fixed bin (15),
+ 12    24     2 nindex fixed bin) unal,
+ 12    25     2 (dtm, dtd) bit (36),
+ 12    26     (2 pln fixed bin,				/* length of pathname */
+ 12    27     2 pindex fixed bin) unal;				/* index into list of start of link pathname */
+ 12    28 
+ 12    29 /* END INCLUDE FILE ... star_info.incl.pl1 */
+      709 
+      710      end star_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  star_.pl1                         >spec>install>1110>star_.pl1
+463          1    10/15/76  1242.9  dir_allocation_area.incl.pl1      >ldd>include>dir_allocation_area.incl.pl1
+689          2    08/06/87  0913.4  check_star_name.incl.pl1          >ldd>include>check_star_name.incl.pl1
+691          3    05/20/85  0848.1  dc_find_dcls.incl.pl1             >ldd>include>dc_find_dcls.incl.pl1
+693          4    05/24/82  1005.0  dcpack_info.incl.pl1              >ldd>include>dcpack_info.incl.pl1
+695          5    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+697          6    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+699          7    04/29/76  1049.2  dir_link.incl.pl1                 >ldd>include>dir_link.incl.pl1
+701          8    11/02/76  1414.7  dir_name.incl.pl1                 >ldd>include>dir_name.incl.pl1
+703          9    05/26/77  0922.2  fs_types.incl.pl1                 >ldd>include>fs_types.incl.pl1
+705         10    05/27/82  1525.9  quota_cell.incl.pl1               >ldd>include>quota_cell.incl.pl1
+707         11    11/22/82  0955.7  sc_info.incl.pl1                  >ldd>include>sc_info.incl.pl1
+709         12    09/22/77  1147.1  star_info.incl.pl1                >ldd>include>star_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CHECK_STAR_IGNORE_ALL           000000 constant        bit(36)                  initial packed unaligned dcl 2-29 set ref 197*
+DIR_TYPE                               constant        bit(18)                  initial packed unaligned dcl 9-6 ref 453
+LINK_TYPE                              constant        bit(18)                  initial packed unaligned dcl 9-7 ref 457
+NAME_TYPE                              constant        bit(18)                  initial packed unaligned dcl 9-8 ref 399
+SEG_TYPE                               constant        bit(18)                  initial packed unaligned dcl 9-9 ref 453
+STAR_TYPE_MATCHES_EVERYTHING           constant        fixed bin(2,0)           initial dcl 2-47 ref 176 221 681
+STAR_TYPE_USE_PL1_COMPARE              constant        fixed bin(2,0)           initial dcl 2-47 ref 212 381
+a_areap                                parameter       pointer                  dcl 51 ref 48 119 140 147 154 182
+a_bcount                               parameter       fixed bin(17,0)          dcl 52 set ref 126 133 140 147 154 244*
+a_bptr                                 parameter       pointer                  dcl 53 set ref 126 133 252*
+a_code                                 parameter       fixed bin(35,0)          dcl 54 set ref 48 119 126 133 140 147 154 260*
+a_dirname                              parameter       char                     packed unaligned dcl 55 ref 48 119 126 133 140 147
+                                                                                  154 165
+a_ecount                               parameter       fixed bin(17,0)          dcl 56 set ref 48 119 248*
+a_eptr                                 parameter       pointer                  dcl 57 set ref 48 119 140 147 154 256*
+a_lcount                               parameter       fixed bin(17,0)          dcl 58 set ref 126 133 140 147 154 245*
+a_lptr                                 parameter       pointer                  dcl 59 set ref 126 133 253*
+a_nptr                                 parameter       pointer                  dcl 60 set ref 48 119 140 147 154 257*
+a_pbl                                  parameter       fixed bin(3,0)           dcl 61 ref 48 119 140 147 154 183
+a_star_name                            parameter       char                     packed unaligned dcl 62 ref 48 119 140 147 154 181
+acc_name_$get                   000016 constant        entry                    external dcl 95 ref 515
+access_mode$effective           000020 constant        entry                    external dcl 96 ref 500
+addr                                                   builtin function         dcl 107 ref 178 419 419 509 509 515 515 515 515 534
+                                                                                  565 575 584 589 657
+addrel                                                 builtin function         dcl 107 ref 379 384 397 497 591 615 625
+alloc_                          000022 constant        entry                    external dcl 97 ref 327
+alloc_size                      000100 automatic       fixed bin(17,0)          dcl 266 set ref 319* 321* 323 327*
+area                            000000 stack reference condition                dcl 109 in procedure "star_" ref 300 326
+area                                   based           structure                level 1 dcl 1-5 in procedure "MAKE_ENTRY_LIST"
+arearp                   24            based           bit(18)                  level 2 packed packed unaligned dcl 6-11 ref 379
+author                    6            based           structure                level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 7-6 in procedure "star_" set ref 515 515
+author                    1            based           char(32)                 level 2 in structure "dcpack_path" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "star_" set ref
+                                                                                  579*
+bad_dir_                        000000 stack reference condition                dcl 109 ref 334 386 399 453 457 574 588
+based_sc_info                          based           structure                level 1 dcl 11-12
+bc                       40(11)        based           fixed bin(24,0)          level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 5-8 in procedure "star_" ref 545 649
+bc                       14(03)        based           bit(24)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  545*
+binary                                                 builtin function         dcl 107 ref 386 399 435
+bit                                                    builtin function         dcl 107 ref 545 546 547
+branch_count                    000100 automatic       fixed bin(17,0)          dcl 65 set ref 212* 215* 216 222 303
+bs                        4            based           bit(1)                   level 2 packed packed unaligned dcl 5-8 ref 392 392
+                                                                                  437 453 499 533 596 618 636
+call_find_finish                000101 automatic       bit(1)                   dcl 66 set ref 164* 203* 210* 240
+change_pclock            62            based           fixed bin(35,0)          level 2 dcl 6-11 ref 295 340
+check_star_name_                000024 constant        entry                    external dcl 98 ref 197
+cl                       15(18)        based           bit(9)                   level 2 packed packed unaligned dcl 4-9 set ref 546*
+code                            000206 automatic       fixed bin(35,0)          dcl 479 in procedure "RETURN_INFO" set ref 500* 507
+                                                                                  511 511*
+code                            000102 automatic       fixed bin(35,0)          dcl 67 in procedure "star_" set ref 161* 171* 193*
+                                                                                  197* 198 205* 207* 208 234* 235 260 286* 335* 336
+                                                                                  364*
+code                            000322 automatic       fixed bin(35,0)          dcl 679 in procedure "NAME_MATCHES" set ref 682* 683
+copysw                   32(03)        based           bit(1)                   level 2 packed packed unaligned dcl 5-8 ref 544
+csl                       4     000230 automatic       fixed bin(17,0)          level 2 dcl 489 set ref 546
+dc_branch_arrayp                000226 automatic       pointer                  dcl 4-6 set ref 170* 201* 252 304* 342 534
+dc_branchp                      000216 automatic       pointer                  dcl 4-6 set ref 534* 536 537 538 539 540 541 542 543
+                                                                                  544 545 546 547 548 549 552 553 554 554 557 558
+                                                                                  559 596
+dc_find$dir_read                000044 constant        entry                    external dcl 3-23 ref 207
+dc_find$dir_read_priv           000046 constant        entry                    external dcl 3-24 ref 205
+dc_find$finished                000050 constant        entry                    external dcl 3-33 ref 240 351
+dc_grand_link_pathname_arrayp   000234 automatic       pointer                  dcl 4-6 set ref 308* 345 575
+dc_grand_n_names                000240 automatic       fixed bin(17,0)          dcl 4-82 set ref 309* 310 344 588
+dc_grand_name_arrayp            000232 automatic       pointer                  dcl 4-6 set ref 310* 344 584 589
+dc_link_arrayp                  000230 automatic       pointer                  dcl 4-6 set ref 170* 201* 253 307* 343 565
+dc_linkp                        000220 automatic       pointer                  dcl 4-6 set ref 565* 567 568 569 570 571 572 580 598
+dc_n_branches                   000236 automatic       fixed bin(17,0)          dcl 4-72 set ref 303* 304 342
+dc_n_links                      000237 automatic       fixed bin(17,0)          dcl 4-72 set ref 306* 307 308 343 345 574
+dc_namep                        000224 automatic       pointer                  dcl 4-6 set ref 589* 592 593
+dc_pack                         000103 automatic       bit(1)                   dcl 68 set ref 116* 122* 130* 137* 143* 150* 157*
+                                                                                  175 230 243 251 286 302 341 511 517
+dc_pnp                          000222 automatic       pointer                  dcl 4-6 set ref 573* 575* 577 578 579 580
+dcpack_area                            parameter       area(1024)               dcl 63 set ref 126 133 178
+dcpack_branch                          based           structure                level 1 dcl 4-9 set ref 536*
+dcpack_branch_array                    based           structure                array level 1 dcl 4-75 set ref 304 342 534
+dcpack_ename                           based           structure                level 1 dcl 4-65
+dcpack_grand_link_pathname_array       based           structure                array level 1 dcl 4-85 set ref 308 345 575
+dcpack_grand_name_array                based           structure                array level 1 dcl 4-83 set ref 310 344 584 589
+dcpack_link                            based           structure                level 1 dcl 4-45 set ref 567*
+dcpack_link_array                      based           structure                array level 1 dcl 4-78 set ref 307 343 565
+dcpack_path                            based           structure                level 1 dcl 4-59
+dir                                    based           structure                level 1 dcl 6-11
+dir_count                22(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 6-11 ref 215
+dir_nwords                      000136 automatic       fixed bin(18,0)          dcl 373 set ref 379* 386 399
+dirname                         000104 automatic       char(168)                packed unaligned dcl 69 set ref 165* 205* 207*
+dirsw                    14            based           bit(1)                   level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  543*
+dirsw                    32            based           bit(1)                   level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 5-8 in procedure "star_" ref 501 543 551 618
+                                                                                  638
+divide                                                 builtin function         dcl 107 ref 439 546 547 660
+dp                              000244 automatic       pointer                  dcl 6-9 set ref 205* 207* 215 215 216 223 234 240*
+                                                                                  295 297* 335* 340 351* 379 379 383 384 397 419*
+                                                                                  453 457 497 591 625
+dtd                       6(20)        based           bit(52)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  541*
+dtd                      26            based           bit(36)                  level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 7-6 in procedure "star_" ref 571 668
+dtd                      26            based           bit(36)                  level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 5-8 in procedure "star_" ref 541
+dtd                       6(20)        based           bit(52)                  level 2 in structure "dcpack_link" packed packed
+                                                                                  unaligned dcl 4-45 in procedure "star_" set ref
+                                                                                  571*
+dtd                       2            based           bit(36)                  level 2 in structure "star_list_link" dcl 12-21
+                                                                                  in procedure "star_" set ref 668*
+dtem                      3            based           bit(36)                  level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 7-6 in procedure "star_" ref 570 667
+dtem                      4(20)        based           bit(52)                  level 2 in structure "dcpack_link" packed packed
+                                                                                  unaligned dcl 4-45 in procedure "star_" set ref
+                                                                                  570*
+dtem                      3            based           bit(36)                  level 2 in structure "entry" dcl 5-8 in procedure
+                                                                                  "star_" ref 542 648
+dtem                     10(20)        based           bit(52)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  542*
+dtm                       1     000230 automatic       bit(36)                  level 2 in structure "sci" dcl 489 in procedure
+                                                                                  "RETURN_INFO" set ref 540 642
+dtm                       4(20)        based           bit(52)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  540*
+dtm                       1            based           bit(36)                  level 2 in structure "star_list_link" dcl 12-21
+                                                                                  in procedure "star_" set ref 667*
+dtm_or_dtem               1            based           bit(36)                  level 2 dcl 12-10 set ref 642* 648*
+dtu                             000230 automatic       bit(36)                  level 2 in structure "sci" dcl 489 in procedure
+                                                                                  "RETURN_INFO" set ref 539 643
+dtu                       2(20)        based           bit(52)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  539*
+dtu                       2(20)        based           bit(52)                  level 2 in structure "dcpack_link" packed packed
+                                                                                  unaligned dcl 4-45 in procedure "star_" set ref
+                                                                                  569*
+dtu                       2            based           bit(36)                  level 2 in structure "star_list_branch" dcl 12-10
+                                                                                  in procedure "star_" set ref 643* 647*
+earrayx                         000207 automatic       fixed bin(17,0)          dcl 480 set ref 493* 534 535* 535 615 633* 633 637*
+                                                                                  637 654* 654
+ec                              000101 automatic       fixed bin(35,0)          dcl 267 set ref 419* 420
+efrp                                   based           bit(18)                  level 2 packed packed unaligned dcl 5-8 ref 415
+entry                                  based           structure                level 1 dcl 5-8
+entry_list                      000102 automatic       fixed bin(18,0)          array unsigned dcl 268 set ref 435* 497
+entry_names_match_star          000137 automatic       fixed bin(17,0)          dcl 374 set ref 394* 407* 407 413
+entry_rel                       000102 automatic       bit(18)                  packed unaligned dcl 269 set ref 383* 383* 384 386
+                                                                                  399*
+entry_rp                  2            based           bit(18)                  level 2 packed packed unaligned dcl 8-7 ref 399
+entryfrp                 16            based           bit(18)                  level 2 packed packed unaligned dcl 6-11 ref 383
+ep                              000242 automatic       pointer                  dcl 5-6 set ref 384* 392 392 396 399 399 415 419*
+                                                                                  435 437 439 453 453 453 453 457 457 497* 499 500*
+                                                                                  501 509 509 509 515 515 533 538 541 542 543 544
+                                                                                  545 548 551 552 553 557 558 559 568 570 571 572
+                                                                                  577 578 586 596 618 618 624 636 638 638 648 649
+                                                                                  656 657 657 660 667 668
+eptr                            000156 automatic       pointer                  dcl 70 set ref 170* 201* 256 323* 327* 328 349 349*
+                                                                                  615
+error_table_$argerr             000010 external static fixed bin(35,0)          dcl 91 ref 193
+error_table_$nomatch            000012 external static fixed bin(35,0)          dcl 92 ref 286
+error_table_$notalloc           000014 external static fixed bin(35,0)          dcl 93 ref 364
+esp                             000250 automatic       pointer                  dcl 12-3 set ref 319 319 615* 616 617 618 621 622
+                                                                                  629 629 633 637 638 639 642 643 644 647 648 649
+                                                                                  654 656 659 663 664 667 668
+ex_ring_brackets         35(09)        based           bit(3)                   array level 2 packed packed unaligned dcl 5-8 ref
+                                                                                  552 553
+exmode                          000210 automatic       bit(36)                  dcl 481 set ref 500* 501 501
+fast_listing                    000160 automatic       bit(1)                   dcl 71 set ref 116* 122* 129* 137* 144* 150* 157*
+                                                                                  230
+first_name_relp                 000276 automatic       bit(18)                  packed unaligned dcl 528 set ref 584* 596 598
+fp                                     based           bit(18)                  level 2 packed packed unaligned dcl 8-7 ref 411 594
+                                                                                  631
+freen_                          000026 constant        entry                    external dcl 99 ref 349
+full_pathname                          based           char(168)                dcl 608 set ref 657*
+grand_larrayx                   000211 automatic       fixed bin(17,0)          dcl 482 set ref 494* 574 575 576* 576
+grand_narrayx                   000212 automatic       fixed bin(17,0)          dcl 483 set ref 494* 584 588 589 590* 590
+hash$search                     000030 constant        entry                    external dcl 100 ref 419
+just_return_totals              000161 automatic       bit(1)                   dcl 72 set ref 226* 228* 230 290
+larrayx                         000213 automatic       fixed bin(17,0)          dcl 484 set ref 493* 565 566* 566
+lcount                   23            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 6-11 ref 216 223
+link                                   based           structure                level 1 dcl 7-6
+link_author                     000214 automatic       char(32)                 dcl 485 set ref 515 515 579
+link_path_blocks                000103 automatic       fixed bin(17,0)          dcl 270 set ref 281* 315 315 348 362 439* 439
+lock$dir_lock_read              000032 constant        entry                    external dcl 101 ref 335
+lock$dir_unlock                 000034 constant        entry                    external dcl 102 ref 297
+locked                          000162 automatic       bit(1)                   dcl 73 set ref 164* 203* 210* 240* 298* 337* 351*
+lu                        1            based           fixed bin(18,0)          level 2 dcl 1-5 ref 379
+master_dir               32(09)        based           bit(1)                   level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 5-8 in procedure "star_" ref 638
+master_dir                3(10)        based           bit(1)                   level 2 in structure "star_list_branch" packed
+                                                                                  packed unaligned dcl 12-10 in procedure "star_"
+                                                                                  set ref 638*
+match_star_name_                000036 constant        entry                    external dcl 103 ref 682
+max                                                    builtin function         dcl 107 ref 303 306 309
+ml                       15(27)        based           bit(9)                   level 2 packed packed unaligned dcl 4-9 set ref 547*
+mod                                                    builtin function         dcl 107 ref 186
+mode                            000224 automatic       bit(36)                  dcl 486 in procedure "RETURN_INFO" set ref 500* 503
+mode                     14(29)        based           bit(5)                   level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  549*
+mode                      3            based           bit(5)                   level 2 in structure "star_list_branch" packed
+                                                                                  packed unaligned dcl 12-10 in procedure "star_"
+                                                                                  set ref 639*
+mountedp                        000040 constant        entry                    external dcl 104 ref 234
+msl                       3     000230 automatic       fixed bin(17,0)          level 2 dcl 489 set ref 547
+n_branches_match                000163 automatic       fixed bin(17,0)          dcl 74 set ref 169* 222* 244 248 280* 285 319 321
+                                                                                  442* 442
+n_entries_in_list               000104 automatic       fixed bin(17,0)          dcl 271 set ref 281* 434* 434 435 496
+n_entries_seen                  000140 automatic       fixed bin(17,0)          dcl 375 set ref 382* 385* 385 386
+n_links_match                   000164 automatic       fixed bin(17,0)          dcl 75 set ref 169* 223* 245 248 280* 285 306 319
+                                                                                  321 438* 438
+n_names_match                   000105 automatic       fixed bin(17,0)          dcl 272 set ref 281* 315 315 348 362 409* 409 422*
+n_names_seen                    000141 automatic       fixed bin(17,0)          dcl 376 set ref 395* 398* 398 399 436
+name                      1            based           char(32)                 level 2 in structure "dcpack_ename" packed packed
+                                                                                  unaligned dcl 4-65 in procedure "star_" set ref
+                                                                                  592*
+name                      4            based           char(32)                 level 2 in structure "names" dcl 8-7 in procedure
+                                                                                  "star_" set ref 592 627 682*
+name                     11            based           char(168)                level 2 in structure "dcpack_path" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "star_" set ref
+                                                                                  578*
+name_frp                  5            based           bit(18)                  level 2 packed packed unaligned dcl 5-8 ref 396 586
+                                                                                  624
+name_rel                        000106 automatic       bit(18)                  packed unaligned dcl 273 set ref 396* 396* 397 399*
+                                                                                  586* 586* 591* 624* 624* 625*
+namerp                   10(18)        based           bit(18)                  level 2 in structure "dcpack_link" packed packed
+                                                                                  unaligned dcl 4-45 in procedure "star_" set ref
+                                                                                  598*
+namerp                   21(18)        based           bit(18)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  596*
+names                                  based           structure                level 1 dcl 8-7
+narrayx                         000225 automatic       fixed bin(17,0)          dcl 487 set ref 493* 616 627 628* 628 657 659 660*
+                                                                                  660
+need_vtoc                       000165 automatic       bit(1)                   dcl 76 set ref 163* 233* 505 641
+nindex                    0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 12-5 set ref
+                                                                                  616*
+nnames                    0(02)        based           fixed bin(15,0)          level 2 in structure "star_entry" packed packed
+                                                                                  unaligned dcl 12-5 in procedure "star_" set ref
+                                                                                  617* 629* 629
+nnames                   11            based           fixed bin(17,0)          level 2 in structure "dcpack_link" dcl 4-45
+                                                                                  in procedure "star_" set ref 572*
+nnames                    4(18)        based           fixed bin(17,0)          level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 5-8 in procedure "star_" ref 399 548
+nnames                    4(18)        based           fixed bin(17,0)          level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 7-6 in procedure "star_" ref 572
+nnames                   22            based           fixed bin(17,0)          level 2 in structure "dcpack_branch" dcl 4-9
+                                                                                  in procedure "star_" set ref 548*
+np                              000246 automatic       pointer                  dcl 8-5 set ref 397* 399 399 399 411 591* 592 594
+                                                                                  625* 627 631 682
+nptr                            000166 automatic       pointer                  dcl 77 set ref 170* 201* 257 315* 317* 348 362 627
+                                                                                  657
+null                                                   builtin function         dcl 107 ref 170 201 220 317 323 328 349 573
+number_of_entries               000170 automatic       fixed bin(17,0)          dcl 78 set ref 212* 216* 268 386
+optsw                    14(01)        based           bit(2)                   level 2 packed packed unaligned dcl 4-9 set ref 544*
+owner                    15            based           bit(36)                  level 2 in structure "names" dcl 8-7 in procedure
+                                                                                  "star_" ref 399
+owner                                  based           bit(36)                  level 2 in structure "link" dcl 7-6 in procedure
+                                                                                  "star_" ref 457
+owner                    44            based           bit(36)                  level 2 in structure "entry" dcl 5-8 in procedure
+                                                                                  "star_" ref 453
+pathname                 31            based           char                     level 2 packed packed unaligned dcl 7-6 ref 578 657
+pathname_size            30(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 7-6 ref 439 457
+                                                                                  577 578 656 657 657 660
+pathnamerp               10            based           bit(18)                  level 2 packed packed unaligned dcl 4-45 set ref
+                                                                                  580*
+pbl                             000171 automatic       fixed bin(3,0)           dcl 79 set ref 183* 184 186* 186 189 190 191
+pindex                    3(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 12-21 set ref
+                                                                                  659* 664*
+pln                       3            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 12-21 set ref
+                                                                                  656* 663*
+priv                            000172 automatic       bit(1)                   dcl 80 set ref 116* 123* 129* 136* 143* 150* 158*
+                                                                                  205
+pvid                     30            based           bit(36)                  level 2 packed packed unaligned dcl 5-8 set ref 509*
+quota_cell                             based           structure                level 1 dcl 10-3
+rb1                      20            based           bit(6)                   level 2 packed packed unaligned dcl 4-9 set ref 552*
+                                                                                  557*
+rb2                      20(06)        based           bit(6)                   level 2 packed packed unaligned dcl 4-9 set ref 553*
+                                                                                  554 558*
+rb3                      20(12)        based           bit(6)                   level 2 packed packed unaligned dcl 4-9 set ref 554*
+                                                                                  559*
+rec_or_bc                 3(11)        based           fixed bin(24,0)          level 2 packed packed unaligned dcl 12-10 set ref
+                                                                                  644* 649*
+records                   2     000230 automatic       fixed bin(17,0)          level 2 dcl 489 set ref 644
+rel                                                    builtin function         dcl 107 ref 435 580 584
+ret_mode                        000226 automatic       bit(5)                   dcl 488 set ref 501* 503* 549 639
+return_link_path                000173 automatic       bit(1)                   dcl 81 set ref 163* 185* 439 655
+ring_brackets            35            based           bit(3)                   array level 2 packed packed unaligned dcl 5-8 ref
+                                                                                  557 558 559
+saved_dir_change_pclock         000174 automatic       fixed bin(35,0)          dcl 82 set ref 295* 340
+sci                             000230 automatic       structure                level 1 dcl 489 set ref 506* 509 509
+seg_count                22            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 6-11 ref 215
+seg_fault_error                 000000 stack reference condition                dcl 109 ref 334 338
+size                                   based           fixed bin(16,0)          level 2 in structure "dcpack_ename" packed packed
+                                                                                  unaligned dcl 4-65 in procedure "star_" set ref
+                                                                                  593*
+size                                   based           fixed bin(16,0)          level 2 in structure "dcpack_path" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "star_" set ref
+                                                                                  577*
+size                                                   builtin function         dcl 107 in procedure "star_" ref 319 319 633 637 654
+sons_lvid                12            based           bit(36)                  level 2 dcl 6-11 set ref 234*
+star_entry                             based           structure                level 1 dcl 12-5 set ref 633
+star_list_branch                       based           structure                level 1 dcl 12-10 set ref 319 637
+star_list_entry                 000175 automatic       bit(1)                   dcl 83 set ref 116* 122* 129* 136* 144* 151* 158*
+                                                                                  230 243 319 633
+star_list_link                         based           structure                level 1 dcl 12-21 set ref 319 654
+star_name                       000176 automatic       char(32)                 packed unaligned dcl 84 set ref 181* 197* 419 419
+                                                                                  682*
+starname_type                   000206 automatic       fixed bin(2,0)           dcl 85 set ref 176* 197* 212 221 381 681
+substr                                                 builtin function         dcl 107 set ref 501 501 503 657*
+total_names_seen                000107 automatic       fixed bin(17,0)          dcl 274 set ref 280* 309 436* 436
+tx                              000264 automatic       fixed bin(17,0)          dcl 490 set ref 496* 497*
+type                                   based           bit(2)                   level 2 in structure "star_entry" packed packed
+                                                                                  unaligned dcl 12-5 in procedure "star_" set ref
+                                                                                  618* 621* 622*
+type                      1            based           bit(18)                  level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 5-8 in procedure "star_" ref 453 453
+type                      1            based           bit(18)                  level 2 in structure "names" packed packed unaligned
+                                                                                  dcl 8-7 in procedure "star_" ref 399
+type                      1            based           bit(18)                  level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 7-6 in procedure "star_" ref 457
+u_areap                         000210 automatic       pointer                  dcl 86 set ref 178* 182* 220 304 307 308 310 315
+                                                                                  327* 362
+u_narray                               based           char(32)                 array dcl 276 set ref 315 348 362 627* 657
+uid                       0(02)        based           bit(70)                  level 2 in structure "dcpack_branch" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "star_" set ref
+                                                                                  538*
+uid                       2            based           bit(36)                  level 2 in structure "link" packed packed unaligned
+                                                                                  dcl 7-6 in procedure "star_" ref 568
+uid                       0(02)        based           bit(70)                  level 2 in structure "dcpack_link" packed packed
+                                                                                  unaligned dcl 4-45 in procedure "star_" set ref
+                                                                                  568*
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 5-8 in procedure
+                                                                                  "star_" set ref 399 509* 538
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 6-11 in procedure
+                                                                                  "star_" ref 453 457
+unspec                                                 builtin function         dcl 107 set ref 506* 536* 567*
+user_area                              based           area(1024)               dcl 277 ref 304 307 308 310 315 362
+vtoc_attributes$get_info        000042 constant        entry                    external dcl 105 ref 509
+vtoc_available                  000214 automatic       bit(1)                   dcl 89 set ref 235* 508
+vtoc_code                       000265 automatic       fixed bin(35,0)          dcl 491 set ref 507* 509* 511 511 537
+vtoc_error                             based           bit(1)                   level 2 packed packed unaligned dcl 4-9 set ref 537*
+vtocx                    31            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 5-8 ref 509
+want_branches                   000212 automatic       bit(1)                   dcl 87 set ref 163* 177* 190* 191* 222 230 392
+want_links                      000213 automatic       bit(1)                   dcl 88 set ref 163* 177* 189* 191* 223 392
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACCESS_NAME_TYPE                       internal static bit(18)                  initial packed unaligned dcl 9-3
+ACLE_TYPE                              internal static bit(18)                  initial packed unaligned dcl 9-4
+CHECK_STAR_ENTRY_DEFAULT               internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_ARCHIVE              internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_ENTRYPOINT           internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_EQUAL                internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_LENGTH               internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_NONASCII             internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_NULL                 internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_IGNORE_PATH                 internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_PATH_DEFAULT                internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_PROCESS_ARCHIVE             internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_PROCESS_ENTRYPOINT          internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_PROCESS_PATH                internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_REJECT_WILD                 internal static bit(36)                  initial packed unaligned dcl 2-29
+CHECK_STAR_UNIMPLEMENTED               internal static bit(36)                  initial packed unaligned dcl 2-29
+DC_FIND_CHASE                          internal static fixed bin(1,0)           initial dcl 3-10
+DC_FIND_NO_CHASE                       internal static fixed bin(1,0)           initial dcl 3-11
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 3-12
+DC_FIND_UNLOCK_DIR                     internal static bit(1)                   initial dcl 3-13
+DIR_HEADER_TYPE                        internal static bit(18)                  initial packed unaligned dcl 9-5
+HASH_TABLE_TYPE                        internal static bit(18)                  initial packed unaligned dcl 9-10
+STAR_TYPE_USE_MATCH_PROCEDURE          internal static fixed bin(2,0)           initial dcl 2-47
+access_name_type                       internal static fixed bin(17,0)          initial dcl 9-12
+acle_type                              internal static fixed bin(17,0)          initial dcl 9-13
+areap                                  automatic       pointer                  dcl 1-3
+check_star                             based           structure                level 1 dcl 2-15
+dc_find$dir_for_append          000000 constant        entry                    external dcl 3-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 3-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 3-17
+dc_find$dir_initiate            000000 constant        entry                    external dcl 3-19
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 3-21
+dc_find$dir_reclassify          000000 constant        entry                    external dcl 3-26
+dc_find$dir_salvage             000000 constant        entry                    external dcl 3-28
+dc_find$dir_write               000000 constant        entry                    external dcl 3-30
+dc_find$dir_write_priv          000000 constant        entry                    external dcl 3-31
+dc_find$link_target             000000 constant        entry                    external dcl 3-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 3-37
+dc_find$obj_access_write        000000 constant        entry                    external dcl 3-39
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 3-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 3-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 3-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 3-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 3-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 3-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 3-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 3-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 3-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 3-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 3-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 3-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 3-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 3-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 3-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 3-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 3-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 3-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 3-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 3-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 3-69
+dc_find$obj_reclassify          000000 constant        entry                    external dcl 3-71
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 3-73
+dc_find$obj_status_read         000000 constant        entry                    external dcl 3-75
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 3-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 3-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 3-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 3-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 3-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 3-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 3-83
+dc_find$obj_status_write_priv   000000 constant        entry                    external dcl 3-84
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 3-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 3-86
+dc_find$obj_terminate           000000 constant        entry                    external dcl 3-88
+dc_find$obj_terminate_ptr       000000 constant        entry                    external dcl 3-89
+dc_find$obj_truncate            000000 constant        entry                    external dcl 3-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 3-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 3-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 3-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 3-97
+dc_n_names                             automatic       fixed bin(17,0)          dcl 4-72
+dc_name_arrayp                         automatic       pointer                  dcl 4-6
+dcpack_name_array                      based           structure                array level 1 dcl 4-80
+dir_header_type                        internal static fixed bin(17,0)          initial dcl 9-14
+dir_type                               internal static fixed bin(17,0)          initial dcl 9-15
+hash_table_type                        internal static fixed bin(17,0)          initial dcl 9-19
+link_type                              internal static fixed bin(17,0)          initial dcl 9-16
+name_type                              internal static fixed bin(17,0)          initial dcl 9-17
+qcp                                    automatic       pointer                  dcl 10-12
+sc_info                                automatic       structure                level 1 dcl 11-32
+scip                                   automatic       pointer                  dcl 11-10
+seg_type                               internal static fixed bin(17,0)          initial dcl 9-18
+version_number_2                       internal static fixed bin(17,0)          initial dcl 6-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CHECK_VALID_ENTRY               001616 constant        entry                    internal dcl 450 ref 390 421
+MAKE_ENTRY_LIST                 001371 constant        entry                    internal dcl 370 ref 283
+NAME_MATCHES                    002733 constant        entry                    internal dcl 676 ref 406 626
+RESCAN_DIR                      000521 constant        label                    dcl 201 ref 352
+RETURN_DCPACK_INFO              002061 constant        entry                    internal dcl 525 ref 517
+RETURN_INFO                     001671 constant        entry                    internal dcl 476 ref 357
+RETURN_STAR_INFO                002504 constant        entry                    internal dcl 605 ref 519
+SCAN_DIR                        000744 constant        entry                    internal dcl 263 ref 238
+SORT_ENTRY_LIST                 001667 constant        entry                    internal dcl 467 ref 355
+TAKE_ENTRY                      001564 constant        entry                    internal dcl 431 ref 413 423
+common                          000366 constant        label                    dcl 161 ref 117 124 131 138 145 152 159
+dir_list_                       000225 constant        entry                    external dcl 140
+done                            001370 constant        label                    dcl 367 ref 287 290 359
+finish                          000674 constant        label                    dcl 240 ref 194 198 208 224 336
+free_nptr                       001356 constant        label                    dcl 362 ref 326 328
+list_                           000266 constant        entry                    external dcl 147
+list_dir                        000140 constant        entry                    external dcl 126
+list_dir_fast                   000170 constant        entry                    external dcl 133
+list_priv                       000327 constant        entry                    external dcl 154
+set_no_alloc                    001364 constant        label                    dcl 364 ref 300
+star_                           000037 constant        entry                    external dcl 48
+star_priv                       000075 constant        entry                    external dcl 119
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3324        3376    3013        3334
+Length      4042    3013        52         427     310           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+star_                               201 external procedure  is an external procedure.  
+SCAN_DIR                            288 internal procedure  uses auto adjustable storage, and enables or reverts conditions.  
+on unit on line 300                  64 on unit               
+on unit on line 326                  64 on unit               
+on unit on line 334                  70 on unit               
+MAKE_ENTRY_LIST                         internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+TAKE_ENTRY                              internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+CHECK_VALID_ENTRY                       internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+SORT_ENTRY_LIST                         internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+RETURN_INFO                             internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+RETURN_DCPACK_INFO                      internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+RETURN_STAR_INFO                        internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+NAME_MATCHES                            internal procedure  shares stack frame of internal procedure SCAN_DIR.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+SCAN_DIR                 000100 alloc_size                  SCAN_DIR
+                         000101 ec                          SCAN_DIR
+                         000102 entry_list                  SCAN_DIR
+                         000102 entry_rel                   SCAN_DIR
+                         000103 link_path_blocks            SCAN_DIR
+                         000104 n_entries_in_list           SCAN_DIR
+                         000105 n_names_match               SCAN_DIR
+                         000106 name_rel                    SCAN_DIR
+                         000107 total_names_seen            SCAN_DIR
+                         000136 dir_nwords                  MAKE_ENTRY_LIST
+                         000137 entry_names_match_star      MAKE_ENTRY_LIST
+                         000140 n_entries_seen              MAKE_ENTRY_LIST
+                         000141 n_names_seen                MAKE_ENTRY_LIST
+                         000206 code                        RETURN_INFO
+                         000207 earrayx                     RETURN_INFO
+                         000210 exmode                      RETURN_INFO
+                         000211 grand_larrayx               RETURN_INFO
+                         000212 grand_narrayx               RETURN_INFO
+                         000213 larrayx                     RETURN_INFO
+                         000214 link_author                 RETURN_INFO
+                         000224 mode                        RETURN_INFO
+                         000225 narrayx                     RETURN_INFO
+                         000226 ret_mode                    RETURN_INFO
+                         000230 sci                         RETURN_INFO
+                         000264 tx                          RETURN_INFO
+                         000265 vtoc_code                   RETURN_INFO
+                         000276 first_name_relp             RETURN_DCPACK_INFO
+                         000322 code                        NAME_MATCHES
+star_                    000100 branch_count                star_
+                         000101 call_find_finish            star_
+                         000102 code                        star_
+                         000103 dc_pack                     star_
+                         000104 dirname                     star_
+                         000156 eptr                        star_
+                         000160 fast_listing                star_
+                         000161 just_return_totals          star_
+                         000162 locked                      star_
+                         000163 n_branches_match            star_
+                         000164 n_links_match               star_
+                         000165 need_vtoc                   star_
+                         000166 nptr                        star_
+                         000170 number_of_entries           star_
+                         000171 pbl                         star_
+                         000172 priv                        star_
+                         000173 return_link_path            star_
+                         000174 saved_dir_change_pclock     star_
+                         000175 star_list_entry             star_
+                         000176 star_name                   star_
+                         000206 starname_type               star_
+                         000210 u_areap                     star_
+                         000212 want_branches               star_
+                         000213 want_links                  star_
+                         000214 vtoc_available              star_
+                         000216 dc_branchp                  star_
+                         000220 dc_linkp                    star_
+                         000222 dc_pnp                      star_
+                         000224 dc_namep                    star_
+                         000226 dc_branch_arrayp            star_
+                         000230 dc_link_arrayp              star_
+                         000232 dc_grand_name_arrayp        star_
+                         000234 dc_grand_link_pathname_arrayp
+                                                            star_
+                         000236 dc_n_branches               star_
+                         000237 dc_n_links                  star_
+                         000240 dc_grand_n_names            star_
+                         000242 ep                          star_
+                         000244 dp                          star_
+                         000246 np                          star_
+                         000250 esp                         star_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             call_ext_out_desc   call_ext_out        call_int_this       return_mac
+tra_ext_1           alloc_auto_adj      mdfx1               signal_op           enable_op           ext_entry_desc
+int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+acc_name_$get                 access_mode$effective         alloc_                        check_star_name_
+dc_find$dir_read              dc_find$dir_read_priv         dc_find$finished              freen_
+hash$search                   lock$dir_lock_read            lock$dir_unlock               match_star_name_
+mountedp                      vtoc_attributes$get_info
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr           error_table_$nomatch          error_table_$notalloc
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     48 000030       116 000066       117 000072       119 000073       122 000124       123 000127       124 000131
+    126 000132       129 000160       130 000163       131 000165       133 000166       136 000210       137 000212
+    138 000215       140 000216       143 000256       144 000260       145 000263       147 000264       150 000317
+    151 000322       152 000324       154 000325       157 000360       158 000362       159 000365       161 000366
+    163 000367       164 000373       165 000375       169 000403       170 000405       171 000412       175 000413
+    176 000415       177 000417       178 000422       179 000424       181 000425       182 000432       183 000435
+    184 000437       185 000441       186 000443       189 000446       190 000453       191 000460       193 000466
+    194 000471       197 000472       198 000517       201 000521       203 000526       205 000530       207 000546
+    208 000561       210 000563       212 000566       215 000574       216 000605       220 000611       221 000615
+    222 000620       223 000624       224 000632       226 000633       227 000635       228 000636       230 000637
+    233 000651       234 000653       235 000665       238 000670       240 000674       243 000707       244 000713
+    245 000715       246 000720       248 000721       251 000725       252 000727       253 000731       254 000733
+    256 000734       257 000736       260 000740       261 000742       263 000743       268 000751       280 000756
+    281 000761       283 000764       285 000765       286 000771       287 000776       290 000777       295 001001
+    297 001004       298 001013       300 001015       302 001034       303 001037       304 001044       306 001054
+    307 001061       308 001071       309 001101       310 001106       312 001116       315 001117       317 001134
+    319 001136       321 001150       323 001153       326 001157       327 001176       328 001212       334 001217
+    335 001237       336 001251       337 001257       338 001262       340 001263       341 001267       342 001271
+    343 001275       344 001302       345 001307       346 001314       348 001315       349 001322       351 001336
+    352 001350       355 001353       357 001354       359 001355       362 001356       364 001364       367 001370
+    370 001371       379 001372       381 001402       382 001404       383 001405       384 001412       385 001416
+    386 001417       390 001430       392 001431       394 001445       395 001446       396 001447       397 001454
+    398 001460       399 001461       406 001511       407 001516       409 001517       411 001520       413 001525
+    415 001530       416 001535       419 001536       420 001555       421 001557       422 001560       423 001562
+    427 001563       431 001564       434 001565       435 001566       436 001574       437 001576       438 001602
+    439 001603       441 001613       442 001614       444 001615       450 001616       453 001617       456 001643
+    457 001644       459 001666       467 001667       472 001670       476 001671       493 001672       494 001676
+    496 001700       497 001707       499 001715       500 001720       501 001735       503 001760       505 001764
+    506 001766       507 001771       508 001773       509 001775       511 002021       514 002032       515 002033
+    517 002050       519 002055       520 002056       522 002060       525 002061       533 002062       534 002067
+    535 002074       536 002075       537 002100       538 002105       539 002115       540 002125       541 002135
+    542 002145       543 002155       544 002161       545 002167       546 002202       547 002212       548 002222
+    549 002226       551 002233       552 002236       553 002243       554 002251       555 002253       557 002254
+    558 002260       559 002266       561 002274       565 002275       566 002302       567 002303       568 002306
+    569 002316       570 002321       571 002331       572 002341       573 002345       574 002347       575 002355
+    576 002364       577 002365       578 002376       579 002401       580 002404       584 002407       586 002416
+    588 002427       589 002436       590 002445       591 002446       592 002452       593 002455       594 002461
+    596 002465       598 002477       601 002503       605 002504       615 002505       616 002513       617 002515
+    618 002521       621 002535       622 002542       624 002544       625 002552       626 002556       627 002563
+    628 002575       629 002576       631 002606       633 002613       636 002620       637 002624       638 002626
+    639 002637       641 002644       642 002646       643 002650       644 002652       645 002656       647 002657
+    648 002660       649 002662       651 002666       654 002667       655 002671       656 002673       657 002677
+    659 002707       660 002712       661 002720       663 002721       664 002724       667 002726       668 002730
+    672 002732       676 002733       681 002735       682 002744       683 002766
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

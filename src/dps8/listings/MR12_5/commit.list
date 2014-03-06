@@ -1,0 +1,410 @@
+	COMPILATION LISTING OF SEGMENT commit
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0941.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       14 commit:
+       15      proc (p_journal_control_block_ptr, p_code);
+       16 
+       17 /* Complete whatever changes are in progress.
+       18*
+       19*   Written  by  Lindsey Spratt 08/06/79
+       20*   Modified 11/21/79 by C. D. Tavares to commit in forward order instead of reverse.
+       21*   Modified 02/15/85 by Chris Jones for privileges and clean up.
+       22**/
+       23 /* Parameter */
+       24 
+       25 dcl	p_journal_control_block_ptr
+       26 			   ptr;
+       27 dcl	p_code		   fixed bin (35);
+       28 
+       29 /* Automatic */
+       30 
+       31 dcl	privileges_string	   bit (36) aligned;
+       32 dcl	scratch_area_ptr	   ptr;
+       33 
+       34 /* Based */
+       35 
+       36 dcl	scratch_area	   area (4096) based (scratch_area_ptr);
+       37 
+       38 /* Controlled */
+       39 /* Builtin */
+       40 
+       41 dcl	null		   builtin;
+       42 
+       43 dcl	cleanup		   condition;
+       44 
+       45 /* Entry */
+       46 
+       47 dcl	iox_$control	   entry (ptr, char (*), ptr, fixed bin (35));
+       48 dcl	iox_$delete_record	   entry (ptr, fixed bin (35));
+       49 dcl	get_system_free_area_  entry returns (ptr);
+       50 dcl	rcprm_registry_util_$turn_off_privs
+       51 			   entry (bit (36) aligned);
+       52 dcl	rcprm_registry_util_$turn_on_privs
+       53 			   entry (bit (36) aligned);
+       54 
+       55 /* External */
+       56 
+       57 dcl	error_table_$locked_by_this_process
+       58 			   fixed bin (35) ext;
+       59 
+       60 	journal_control_block_ptr = p_journal_control_block_ptr;
+       61 	scratch_area_ptr = get_system_free_area_ ();
+       62 
+       63 	if journal_control_block.latest_entry_ptr = null then do;
+       64 	     p_code = 0;
+       65 	     return;
+       66 	end;
+       67 
+       68 	do journal_entry_ptr = journal_control_block.latest_entry_ptr repeat (journal_entry.prev_ptr)
+       69 	     while (journal_entry.prev_ptr ^= null);
+       70 	end;					/* Find the first journal entry */
+       71 
+       72 	rs_info_ptr = null ();
+       73 	privileges_string = ""b;
+       74 	on cleanup call clean_up;
+       75 
+       76 	call rcprm_registry_util_$turn_on_privs (privileges_string);
+       77 
+       78 	do while (journal_entry_ptr ^= null);
+       79 
+       80 	     goto ENTRY_TYPE (journal_entry.type);
+       81 
+       82 ENTRY_TYPE (1):					/* RS_LOCK */
+       83 ENTRY_TYPE (7):					/* RS_LOCK_COUNT */
+       84 ENTRY_TYPE (8):					/* RS_LOCK_CREATE */
+       85 	     alloc rs_info in (scratch_area);
+       86 	     rs_info.version = rs_info_version_2;
+       87 	     rs_info.unlock_sw = "1"b;
+       88 	     rs_info.lock_sw = "0"b;
+       89 	     rs_info.locate_sw = "1"b;
+       90 	     rs_info.descriptor = journal_entry.descriptor;
+       91 	     call iox_$control (journal_control_block.vfile_iocb_ptr, "record_status", rs_info_ptr, p_code);
+       92 	     if p_code ^= 0 & p_code ^= error_table_$locked_by_this_process then do;
+       93 		call clean_up;
+       94 		return;
+       95 	     end;
+       96 	     free rs_info;
+       97 
+       98 	     goto NEXT;
+       99 
+      100 ENTRY_TYPE (2):					/* write_record */
+      101 	     goto NEXT;
+      102 
+      103 ENTRY_TYPE (3):					/* delete_record */
+      104 	     alloc rs_info in (scratch_area);
+      105 	     rs_info.version = rs_info_version_2;
+      106 	     rs_info.locate_sw = "1"b;
+      107 	     rs_info.descriptor = journal_entry.descriptor;
+      108 
+      109 	     call iox_$control (journal_control_block.vfile_iocb_ptr, "record_status", rs_info_ptr, p_code);
+      110 	     if p_code ^= 0 & p_code ^= error_table_$locked_by_this_process then do;
+      111 		call clean_up;
+      112 		return;
+      113 	     end;
+      114 
+      115 	     free rs_info;
+      116 
+      117 	     call iox_$delete_record (journal_control_block.vfile_iocb_ptr, p_code);
+      118 	     if p_code ^= 0 & p_code ^= error_table_$locked_by_this_process then do;
+      119 		call clean_up;
+      120 		return;
+      121 	     end;
+      122 
+      123 	     goto NEXT;
+      124 
+      125 
+      126 ENTRY_TYPE (4):					/* add_key */
+      127 	     goto NEXT;
+      128 
+      129 
+      130 ENTRY_TYPE (5):					/* delete_key */
+      131 	     goto NEXT;
+      132 
+      133 
+      134 ENTRY_TYPE (6):					/* RS_COUNT */
+      135 	     goto NEXT;
+      136 
+      137 NEXT:
+      138 	     journal_entry_ptr = journal_entry.next_ptr;
+      139 	     if journal_entry_ptr ^= null then
+      140 		journal_entry.prev_ptr = null;
+      141 	end;
+      142 	call clean_up;
+      143 	return;
+      144 
+      145 clean_up:
+      146      proc;
+      147 
+      148 	if rs_info_ptr ^= null () then
+      149 	     free rs_info;
+      150 	call rcprm_registry_util_$turn_off_privs (privileges_string);
+      151 
+      152      end clean_up;
+      153 
+  1     1 /* BEGIN INCLUDE FILE journal_entry.incl.pl1 */
+  1     2 
+  1     3      dcl	   journal_entry_ptr      ptr;
+  1     4      dcl	   a_rec_len	      fixed bin (21);
+  1     5      dcl	   a_key_len	      fixed bin;
+  1     6      dcl	   1 journal_entry	      based (journal_entry_ptr) aligned,
+  1     7 	     2 head,
+  1     8 	       3 prev_ptr	      ptr,
+  1     9 	       3 next_ptr	      ptr,
+  1    10 	       3 type	      fixed bin,
+  1    11 	     2 descriptor	      fixed bin (35),
+  1    12 	     2 inc_ref_count      bit (1) init ("0"b),
+  1    13 	     2 dec_ref_count      bit (1) init ("0"b),
+  1    14 	     2 key_len	      fixed bin ,
+  1    15 	     2 rec_len	      fixed bin (21) ,
+  1    16 	     2 key_str	      char (a_key_len refer (journal_entry.key_len)),
+  1    17 	     2 rec_str	      char (a_rec_len refer (journal_entry.rec_len));
+  1    18 
+  1    19 dcl RS_LOCK fixed bin init(1) options(constant) internal static;
+  1    20 dcl WRITE_RECORD fixed bin init(2) options(constant) internal static;
+  1    21 dcl DELETE_RECORD fixed bin init(3) options(constant) internal static;
+  1    22 dcl ADD_KEY fixed bin init(4) options(constant) internal static;
+  1    23 dcl DELETE_KEY fixed bin init(5) options(constant) internal static;
+  1    24 dcl RS_COUNT fixed bin init(6) options(constant) internal static;
+  1    25 dcl RS_LOCK_COUNT fixed bin init(7) options(constant) internal static;
+  1    26 dcl RS_LOCK_CREATE fixed bin init(8) options(constant) internal static;
+  1    27 
+  1    28 /*  END INCLUDE FILE journal_entry.incl.pl1 */
+      154 
+  2     1 /* BEGIN INCLUDE FILE journal_control_block.incl.pl1 */
+  2     2 
+  2     3      dcl	   sys_info$max_seg_size  fixed bin (24) ext;
+  2     4 
+  2     5      dcl	   journal_control_block_ptr
+  2     6 			      ptr;
+  2     7      dcl	   1 journal_control_block
+  2     8 			      aligned based (journal_control_block_ptr),
+  2     9 	     2 attach	      char (128) var,
+  2    10 	     2 open_desc	      char (128) var,
+  2    11 	     2 vfile_iocb_ptr     ptr,
+  2    12 	     2 latest_entry_ptr   ptr,
+  2    13 	     2 journal_area_ptr   ptr;
+  2    14 
+  2    15      dcl	   journal_area	      area (sys_info$max_seg_size) based (journal_control_block.journal_area_ptr) aligned;
+  2    16 
+  2    17 
+  2    18 /* END INCLUDE FILE journal_control_block.incl.pl1 */
+      155 
+  3     1 /* include file for info structure used with record_status control order
+  3     2*   created by M. Asherman 1/6/76 */
+  3     3 /* modified 6/15/77 to support stationary type records */
+  3     4 
+  3     5      dcl	   rs_info_ptr	      ptr;
+  3     6      dcl	   1 rs_info	      based (rs_info_ptr) aligned,
+  3     7 	     2 version	      fixed,		/* must be set to 1 or 2 (Input) */
+  3     8 	     2 flags	      aligned,
+  3     9 	       3 lock_sw	      bit (1) unal,		/* Input -- if ="1"b  try to lock record */
+  3    10 	       3 unlock_sw	      bit (1) unal,		/* Input -- if ="1"b try to unlock record */
+  3    11 	       3 create_sw	      bit (1) unal,		/* Input--if set creat new record */
+  3    12 	       3 locate_sw	      bit (1) unal,		/* Input--if set causes current rec to be
+  3    13*						   located outside the index by descrip, or created without key */
+  3    14 	       3 inc_ref_count    bit (1) unal,		/* Input--bump reference count of record, if stationary */
+  3    15 	       3 dec_ref_count    bit (1) unal,		/* Input--decrement ref count if this flag set and record stationary */
+  3    16 	       3 locate_pos_sw    bit (1) unal,		/* Input--if set the record_length is taken
+  3    17*						   as an input argument specifying the absolute logical record positioni	  to which both the current and next positions will be set */
+  3    18 	       3 mbz1	      bit (29) unal,	/* must be set to "0"b, reserved for future use */
+  3    19 	     2 record_length      fixed (21),		/* length in bytes, Input if create_sw set */
+  3    20 	     2 max_rec_len	      fixed (21),		/* max length of contained record
+  3    21*						   Input if create_sw is set--overrides min_block_size in effect */
+  3    22 	     2 record_ptr	      ptr,		/* points to first byte of record--will be word aligned */
+  3    23 	     2 descriptor	      fixed (35),		/* Input if locate_sw set and create_sw="0"b */
+  3    24 	     2 ref_count	      fixed (34),		/* Output--should match number of keys on this record-- = -1 if non-stationary record */
+  3    25 	     2 time_last_modified fixed (71),		/* Output */
+  3    26 	     2 modifier	      fixed (35),		/* Output--also Input when locking */
+  3    27 	     2 block_ptr	      ptr unal,		/* Output */
+  3    28 	     2 last_image_modifier
+  3    29 			      fixed (35),
+  3    30 	     2 mbz2	      fixed;
+  3    31 
+  3    32      dcl	   1 rs_desc	      based (addr (rs_info.descriptor)),
+  3    33 						/* record block descriptor structure */
+  3    34 	     2 comp_num	      fixed (17) unal,	/* msf component number */
+  3    35 	     2 offset	      bit (18) unal;	/* word offset of record block */
+  3    36 
+  3    37      dcl	   1 seq_desc	      based (addr (rs_info.descriptor)),
+  3    38 						/* for sequential files */
+  3    39 	     2 bitno	      bit (6) unal,
+  3    40 	     2 comp_num	      fixed (11) unal,	/* msf component number */
+  3    41 	     2 wordno	      bit (18) unal;	/* word offset */
+  3    42 
+  3    43      dcl	   rs_info_version_1      static internal fixed init (1);
+  3    44      dcl	   rs_info_version_2      static internal fixed init (2);
+  3    45 
+      156 
+      157      end;						/* end commit */
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.2  commit.pl1                        >spec>install>1111>commit.pl1
+154          1    02/11/80  1426.1  journal_entry.incl.pl1            >ldd>include>journal_entry.incl.pl1
+155          2    02/11/80  1426.1  journal_control_block.incl.pl1    >ldd>include>journal_control_block.incl.pl1
+156          3    07/19/79  1547.0  rs_info.incl.pl1                  >ldd>include>rs_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+cleanup                         000104 stack reference condition                dcl 43 ref 74
+descriptor                6            based           fixed bin(35,0)          level 2 in structure "rs_info" dcl 3-6 in procedure
+                                                                                  "commit" set ref 90* 107*
+descriptor                5            based           fixed bin(35,0)          level 2 in structure "journal_entry" dcl 1-6
+                                                                                  in procedure "commit" ref 90 107
+error_table_$locked_by_this_process
+                                000022 external static fixed bin(35,0)          dcl 57 ref 92 110 118
+flags                     1            based           structure                level 2 dcl 3-6
+get_system_free_area_           000014 constant        entry                    external dcl 49 ref 61
+head                                   based           structure                level 2 dcl 1-6
+iox_$control                    000010 constant        entry                    external dcl 47 ref 91 109
+iox_$delete_record              000012 constant        entry                    external dcl 48 ref 117
+journal_control_block                  based           structure                level 1 dcl 2-7
+journal_control_block_ptr       000114 automatic       pointer                  dcl 2-5 set ref 60* 63 68 91 109 117
+journal_entry                          based           structure                level 1 dcl 1-6
+journal_entry_ptr               000112 automatic       pointer                  dcl 1-3 set ref 68* 68* 70 78 80 90 107 137* 137 139
+                                                                                  139
+latest_entry_ptr        104            based           pointer                  level 2 dcl 2-7 ref 63 68
+locate_sw                 1(03)        based           bit(1)                   level 3 packed packed unaligned dcl 3-6 set ref 89*
+                                                                                  106*
+lock_sw                   1            based           bit(1)                   level 3 packed packed unaligned dcl 3-6 set ref 88*
+next_ptr                  2            based           pointer                  level 3 dcl 1-6 ref 137
+null                                                   builtin function         dcl 41 ref 63 68 72 78 139 139 148
+p_code                                 parameter       fixed bin(35,0)          dcl 27 set ref 14 64* 91* 92 92 109* 110 110 117*
+                                                                                  118 118
+p_journal_control_block_ptr            parameter       pointer                  dcl 25 ref 14 60
+prev_ptr                               based           pointer                  level 3 dcl 1-6 set ref 68 70 139*
+privileges_string               000100 automatic       bit(36)                  dcl 31 set ref 73* 76* 150*
+rcprm_registry_util_$turn_off_privs
+                                000016 constant        entry                    external dcl 50 ref 150
+rcprm_registry_util_$turn_on_privs
+                                000020 constant        entry                    external dcl 52 ref 76
+rs_info                                based           structure                level 1 dcl 3-6 set ref 82 96 103 115 148
+rs_info_ptr                     000116 automatic       pointer                  dcl 3-5 set ref 72* 82* 86 87 88 89 90 91* 96 103*
+                                                                                  105 106 107 109* 115 148 148
+rs_info_version_2                      constant        fixed bin(17,0)          initial dcl 3-44 ref 86 105
+scratch_area                           based           area(4096)               dcl 36 ref 82 103
+scratch_area_ptr                000102 automatic       pointer                  dcl 32 set ref 61* 82 103
+type                      4            based           fixed bin(17,0)          level 3 dcl 1-6 ref 80
+unlock_sw                 1(01)        based           bit(1)                   level 3 packed packed unaligned dcl 3-6 set ref 87*
+version                                based           fixed bin(17,0)          level 2 dcl 3-6 set ref 86* 105*
+vfile_iocb_ptr          102            based           pointer                  level 2 dcl 2-7 set ref 91* 109* 117*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ADD_KEY                                internal static fixed bin(17,0)          initial dcl 1-22
+DELETE_KEY                             internal static fixed bin(17,0)          initial dcl 1-23
+DELETE_RECORD                          internal static fixed bin(17,0)          initial dcl 1-21
+RS_COUNT                               internal static fixed bin(17,0)          initial dcl 1-24
+RS_LOCK                                internal static fixed bin(17,0)          initial dcl 1-19
+RS_LOCK_COUNT                          internal static fixed bin(17,0)          initial dcl 1-25
+RS_LOCK_CREATE                         internal static fixed bin(17,0)          initial dcl 1-26
+WRITE_RECORD                           internal static fixed bin(17,0)          initial dcl 1-20
+a_key_len                              automatic       fixed bin(17,0)          dcl 1-5
+a_rec_len                              automatic       fixed bin(21,0)          dcl 1-4
+journal_area                           based           area                     dcl 2-15
+rs_desc                                based           structure                level 1 packed packed unaligned dcl 3-32
+rs_info_version_1                      internal static fixed bin(17,0)          initial dcl 3-43
+seq_desc                               based           structure                level 1 packed packed unaligned dcl 3-37
+sys_info$max_seg_size                  external static fixed bin(24,0)          dcl 2-3
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ENTRY_TYPE                      000000 constant        label                    array(8) dcl 82 set ref 80
+NEXT                            000343 constant        label                    dcl 137 ref 98 100 123 126 130 134
+clean_up                        000363 constant        entry                    internal dcl 145 ref 74 93 111 119 142
+commit                          000030 constant        entry                    external dcl 14
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       540         564     411         550
+Length      1010     411        24         210     127           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+commit                              102 external procedure  is an external procedure.  
+on unit on line 74                   64 on unit               
+clean_up                             68 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+commit                   000100 privileges_string           commit
+                         000102 scratch_area_ptr            commit
+                         000112 journal_entry_ptr           commit
+                         000114 journal_control_block_ptr   commit
+                         000116 rs_info_ptr                 commit
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac          enable_op
+ext_entry           int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_system_free_area_         iox_$control                  iox_$delete_record
+rcprm_registry_util_$turn_off_privs                         rcprm_registry_util_$turn_on_privs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$locked_by_this_process
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000024        60 000035        61 000041        63 000047        64 000054        65 000056        68 000057
+     70 000066        72 000072        73 000074        74 000075        76 000117        78 000126        80 000132
+     82 000135        86 000142        87 000144        88 000146        89 000150        90 000152        91 000155
+     92 000207        93 000215        94 000221        96 000222        98 000224       100 000225       103 000226
+    105 000233       106 000235       107 000237       109 000242       110 000274       111 000302       112 000306
+    115 000307       117 000311       118 000324       119 000332       120 000336       123 000337       126 000340
+    130 000341       134 000342       137 000343       139 000346       141 000354       142 000355       143 000361
+    145 000362       148 000370       150 000377       152 000407
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

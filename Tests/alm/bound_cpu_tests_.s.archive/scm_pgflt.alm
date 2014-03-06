@@ -1,0 +1,47 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	scm_pgflt
+	entry	scm_pgflt
+scm_pgflt:
+	push
+	eppbp	ap|2,*	"get ptr to temp seg
+	eppbp	bp|0,*
+	lda	=o427612
+	ldq	=o012000,du
+	stq	sp|temp
+	ldq	1000,dl
+	scm	(pr,rl,al),(pr),mask(000)
+	desc9a	bp|-1(3),ql
+	desc9a	sp|temp,1
+	arg	sp|result
+	ldq	sp|result
+	ttf	2,ic
+	lcq	1,dl
+	adq	1,dl
+	cmpq	133,dl
+	stq 	bp|100
+
+	tnz	fail
+	return
+
+fail:	oct	0	"ZOP
+	return
+
+	temp	temp,result
+	end

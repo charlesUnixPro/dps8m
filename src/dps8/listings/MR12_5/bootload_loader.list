@@ -1,0 +1,2684 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>bootload_loader.alm                                                                                                                    
+ASSEMBLED ON:	11/11/89  0935.6 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    10  "							"
+                                    11  "	BOOTLOAD_LOADER: Subroutine to read			"
+                                    12  "	collection 0.5 (tape fw) or collection 1.		"
+                                    13  "							"
+                                    14  "	tsx2	bootload_loader$load_collection		"
+                                    15  "         tsx2	bootload_loader$skip_collection		"
+                                    16  "	tsx2	bootload_loader$init			"
+                                    17  "							"
+                                    18  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    19  
+                                    20  " HISTORY COMMENTS:
+                                    21  "  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+                                    22  "     audit(86-03-05,GDixon), install(86-03-21,MR12.0-1033):
+                                    23  "      Support IMU and FIPS.
+                                    24  "  2) change(87-03-12,Farley), approve(87-07-06,MCR7717),
+                                    25  "     audit(87-07-15,Fawcett), install(87-07-17,MR12.1-1043):
+                                    26  "     Corrected adjust_tape_device routine to only alter the IDCW if dealing
+                                    27  "     with a non-cold MPC.  Also added reset&mask to POF retry.
+                                    28  "  3) change(87-07-23,Farley), approve(87-07-23,PBF7717),
+                                    29  "     audit(87-07-24,Fawcett), install(87-07-28,MR12.1-1047):
+                                    30  "     Changed POF retry to only unwedge the tape controller one time.  Found
+                                    31  "     that more than once causes the IMU to fault..
+                                    32  "                                                      END HISTORY COMMENTS
+                                    33  
+                                    34  
+                                    35  " Created  10/02/80, W. Olin Sibert, from bootstrap1 and assorted oddments
+                                    36  " Modified 11/12/80, WOS, to add automatic tape firmware finder/loader.
+                                    37  " Modified 12/16/80, WOS, to construct SDWs for both ADP and Level 68, and
+                                    38  "  to eliminate check_overflow, on the assumption that the MST checker
+                                    39  "  should do that checking instead.
+                                    40  " Modified 04/21/81, Chris Jones for simplified I/O
+                                    41  " Modified 9/83, Keith Loepere for adp and paged wired segs.
+                                    42  " Modified 12/83, Keith Loepere for breakpoint_page support.
+                                    43  " Modified June-July 1984 by Paul Farley for IMU support.
+                                    44  " Modified 7/84, Keith Loepere to not clobber bkpt page.
+                                    45  " Modified 5/85, Chris Jones to calculate position of trailer correctly for
+                                    46  "  padded records.
+                                    47  	
+    000000                          48  	name	bootload_loader
+                                    49  
+                                    50  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                    51  	include	bootload_cpu_macros
+                                   2-1  " CPU_MACROS
+                                   2-2  "
+                                   2-3  " Macros used to lend a bit of CPU independence to bootloader code.
+                                   2-4  "
+                                   2-5  " 04/22/81, Chris Jones
+                                   2-6  " 9/83, Keith Loepere so they can work for both machines at once.
+                                   2-7  "
+                                   2-8  "
+                                   2-9  " Macro to get the absolute address of its argument into au
+                                  2-10  " This macro assumes that the address will fit into 18 bits
+                                  2-11  "
+                                  2-12  	macro	absa_au
+                              1   2-13  	lda	bootload_info$system_type
+                              2   2-14  	cmpa	ADP_SYSTEM,dl
+                              3   2-15  	tze	4,ic
+                              4   2-16  	absa	&F1
+                              5   2-17  	als	24-18
+                              6   2-18  	tra	3,ic
+                              7   2-19  	absa	&F1
+                              8   2-20  	als	26-18
+                              9   2-21  &end
+                                  2-22  
+                                  2-23  
+                                  2-24  "
+                                  2-25  " Macro to get the absolute address of its arguments into al
+                                  2-26  "
+                                  2-27  	macro	absa_al
+                              1   2-28  	lda	bootload_info$system_type
+                              2   2-29  	cmpa	ADP_SYSTEM,dl
+                              3   2-30  	tze	4,ic
+                              4   2-31  	absa	&F1
+                              5   2-32  	arl	36-24
+                              6   2-33  	tra	3,ic
+                              7   2-34  	absa	&F1
+                              8   2-35  	arl	36-26
+                              9   2-36  &end
+                                  2-37  
+                                  2-38  " End include file bootload_cpu_macros.incl.alm
+                                    52  	include	coll0_segnos
+                                   3-1  " BEGIN INCLUDE FILE coll0_segnos.incl.alm
+                                   3-2  " Modified in '83 for new bce segments, Keith Loepere.
+                                   3-3  
+                        000000     3-4  	equ	ds_segno_,0	" dseg
+                        000001     3-5  	equ	toehold_segno_,1	" bos_toehold
+                        000002     3-6  	equ	config_segno_,2	" config_deck
+                        000003     3-7  	equ	dn355_mbx_segno_,3	" dn355_mailbox
+                        000004     3-8  	equ	fv_segno_,4	" fault_vector
+                        000005     3-9  	equ	fgbx_segno_,5	" flagbox
+                        000006    3-10  	equ	nt_segno_,6	" name_table
+                        000007    3-11  	equ	slt_segno_,7	" slt
+                        000010    3-12  	equ	toehold_data_segno_,8 " toehold_data
+                        000011    3-13  	equ	iom_mbx_segno_,9	" iom_mailbox
+                        000012    3-14  	equ	upt_segno_,10	" unpaged_page_tables
+                        000013    3-15  	equ	toe_segno_,11	" (bce) toehold
+                                  3-16  
+                        000400    3-17  	equ	bbl0_segno_,256	" bound_bootload_0
+                        000401    3-18  	equ	prb_segno_,257	" physical_record_buffer
+                        000402    3-19  	equ	abs_seg0_segno_,258	" abs_seg0
+                        000403    3-20  	equ	iupt_segno_,259	" int_unpaged_page_tables
+                        000404    3-21  	equ	ed_segno_,260	" early_dump (used for early dump save to tape)
+                                  3-22  
+                                  3-23  " END INCLUDE FILE coll0_segnos.incl.alm
+                                    53  	include	hc_definitions_seg
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE hc_definitions_seg.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 07/28/82  1328.1 edt Wed by convert_include_file,
+                                   4-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   4-8  
+                                   4-9  	"Made from >bootload>update>source>hc_definitions_seg.incl.pl1,
+                                  4-10  	"   modified 07/28/82  1328.1 edt Wed
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure definitions
+                                  4-14  "
+                        001000    4-15  	equ	definitions_size,512
+                                  4-16  
+                                  4-17  
+                        000000    4-18  	equ	definitions.next_free_ptr,0
+                        000002    4-19  	equ	definitions.dot,2		" LEVEL 2
+                                  4-20  
+                        000002    4-21  	equ	definitions.offset,2	" UPPER
+                        000002    4-22  	equ	definitions.length,2	" LOWER
+                                  4-23  
+                        001000    4-24  	equ	definitions.first_free_word,512
+                        000044    4-25  	equ	definitions.first_free_shift,36
+                        000000    4-26  	bool	definitions.first_free_mask,000000
+                                  4-27  
+                                  4-28       "END INCLUDE FILE hc_definitions_seg.incl.alm
+                                    54  	include	hc_linkage_seg
+                                   5-1  
+                                   5-2  
+                                   5-3       "BEGIN INCLUDE FILE hc_linkage_seg.incl.alm
+                                   5-4  
+                                   5-5  
+                                   5-6  	"Created 07/12/82  1556.3 edt Mon by convert_include_file,
+                                   5-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   5-8  
+                                   5-9  	"Made from >bootload>update>source>hc_linkage_seg.incl.pl1,
+                                  5-10  	"   modified 07/12/82  1556.3 edt Mon
+                                  5-11  
+                                  5-12  "
+                                  5-13  "	Structure hc_linkage_seg
+                                  5-14  "
+                        000003    5-15  	equ	hc_linkage_seg_size,3
+                                  5-16  
+                                  5-17  
+                        000000    5-18  	equ	hc_linkage_seg.next_free_ptr,0
+                        000002    5-19  	equ	hc_linkage_seg.free_area,2
+                                  5-20  
+                                  5-21       "END INCLUDE FILE hc_linkage_seg.incl.alm
+                                    55  	include_nolist	iom_word_macros
+                                    56  	include_nolist	make_data_macros
+                                    57  	include	mstr
+                                   8-1  
+                                   8-2  
+                                   8-3       "BEGIN INCLUDE FILE mstr.incl.alm
+                                   8-4  " Last modified November 1983 by Keith Loepere to add head_version.
+                                   8-5  
+                                   8-6  "
+                                   8-7  "	Structure mstr
+                                   8-8  "
+                                   8-9  
+                        000000    8-10  	equ	mstr.head,0		" LEVEL 2
+                                  8-11  
+                                  8-12  
+                        000010    8-13  	equ	mstr.data_word,8
+                        000044    8-14  	equ	mstr.data_shift,36
+                        000000    8-15  	bool	mstr.data_mask,000000
+                                  8-16  
+                        000000    8-17  	equ	mstr.trail,0		" LEVEL 2
+                                  8-18  
+                                  8-19  
+                                  8-20  "
+                                  8-21  "	Structure mst_label
+                                  8-22  "
+                        000000    8-23  	equ	mst_label.xfer_vector,0	" LEVEL 2
+                                  8-24  
+                        000000    8-25  	equ	mst_label.lda_instr,0
+                        000001    8-26  	equ	mst_label.tra_instr,1
+                        000010    8-27  	equ	mst_label.head,8		" LEVEL 2
+                                  8-28  
+                        000020    8-29  	equ	mst_label.vid,16		" LEVEL 2
+                                  8-30  
+                        000050    8-31  	equ	mst_label.fv_overlay,40	" LEVEL 2
+                                  8-32  
+                        000050    8-33  	equ	mst_label.scu_instr,40
+                        000051    8-34  	equ	mst_label.dis_instr,41
+                        000150    8-35  	equ	mst_label.fault_data,104
+                        000160    8-36  	equ	mst_label.boot_pgm_path,112
+                        000232    8-37  	equ	mst_label.userid,154
+                        000242    8-38  	equ	mst_label.label_version,162
+                        000243    8-39  	equ	mst_label.output_mode,163
+                        000244    8-40  	equ	mst_label.boot_pgm_len,164
+                        000245    8-41  	equ	mst_label.copyright,165
+                        000300    8-42  	equ	mst_label.boot_pgm,192
+                        000000    8-43  	equ	mst_label.trail,0		" LEVEL 2
+                                  8-44  
+                                  8-45  
+                                  8-46  "
+                                  8-47  "	Structure mstr_header
+                                  8-48  "
+                        000010    8-49  	equ	mstr_header_size,8
+                                  8-50  
+                        000000    8-51  	equ	mstr_header.c1,0
+                        000001    8-52  	equ	mstr_header.uid,1		" DOUBLE
+                                  8-53  
+                        000003    8-54  	equ	mstr_header.rec_within_file,3	" UPPER
+                        000003    8-55  	equ	mstr_header.phy_file,3	" LOWER
+                                  8-56  
+                        000004    8-57  	equ	mstr_header.data_bits_used,4	" UPPER
+                        000004    8-58  	equ	mstr_header.data_bit_len,4	" LOWER
+                                  8-59  
+                        000005    8-60  	equ	mstr_header.flags_word,5
+                        000011    8-61  	equ	mstr_header.flags_shift,9
+                        000005    8-62  	equ	mstr_header.admin_word,5
+                        400000    8-63  	bool	mstr_header.admin,400000	" DU
+                        000005    8-64  	equ	mstr_header.label_word,5
+                        200000    8-65  	bool	mstr_header.label,200000	" DU
+                        000005    8-66  	equ	mstr_header.eor_word,5
+                        100000    8-67  	bool	mstr_header.eor,100000	" DU
+                        000005    8-68  	equ	mstr_header.set_word,5
+                        000010    8-69  	bool	mstr_header.set,000010	" DU
+                        000005    8-70  	equ	mstr_header.repeat_word,5
+                        000004    8-71  	bool	mstr_header.repeat,000004	" DU
+                        000005    8-72  	equ	mstr_header.eot_word,5
+                        000001    8-73  	bool	mstr_header.eot,000001	" DU
+                        000005    8-74  	equ	mstr_header.drain_word,5
+                        400000    8-75  	bool	mstr_header.drain,400000	" DL
+                        000005    8-76  	equ	mstr_header.continue_word,5
+                        200000    8-77  	bool	mstr_header.continue,200000	" DL
+                        000005    8-78  	equ	mstr_header.head_version_word,5
+                        000011    8-79  	equ	mstr_header.head_version_shift,9
+                        007000    8-80  	bool	mstr_header.head_version_mask,7000
+                        000005    8-81  	equ	mstr_header.repeat_count_word,5
+                        000000    8-82  	equ	mstr_header.repeat_count_shift,0
+                        000777    8-83  	bool	mstr_header.repeat_count_mask,000777
+                                  8-84  
+                        000006    8-85  	equ	mstr_header.checksum,6
+                        000007    8-86  	equ	mstr_header.c2,7
+                                  8-87  
+                                  8-88  "
+                                  8-89  "	Structure mstr_trailer
+                                  8-90  "
+                        000010    8-91  	equ	mstr_trailer_size,8
+                                  8-92  
+                        000000    8-93  	equ	mstr_trailer.c1,0
+                        000001    8-94  	equ	mstr_trailer.uid,1		" DOUBLE
+                                  8-95  
+                        000003    8-96  	equ	mstr_trailer.tot_data_bits_word,3
+                                  8-97  "	equ	mstr_trailer.tot_data_bits_shift,0
+                                  8-98  
+                        000005    8-99  	equ	mstr_trailer.reel_num_word,5
+                        000030   8-100  	equ	mstr_trailer.reel_num_shift,24
+                        007777   8-101  	bool	mstr_trailer.reel_num_mask,007777
+                        000005   8-102  	equ	mstr_trailer.tot_file_word,5
+                        000000   8-103  	equ	mstr_trailer.tot_file_shift,0
+                                 8-104  
+                        000006   8-105  	equ	mstr_trailer.tot_rec_word,6
+                        000000   8-106  	equ	mstr_trailer.tot_rec_shift,0
+                                 8-107  
+                        000007   8-108  	equ	mstr_trailer.c2,7
+                                 8-109  
+                                 8-110  "
+                                 8-111  "	Structure volume_identifier
+                                 8-112  "
+                        000030   8-113  	equ	volume_identifier_size,24
+                                 8-114  
+                                 8-115  "	equ	volume_identifier.installation_id,0
+                        000010   8-116  	equ	volume_identifier.tape_reel_id,8
+                        000020   8-117  	equ	volume_identifier.volume_set_id,16
+                                 8-118  
+                 670314 355245   8-119  	bool	header_c1,670314355245	" MANIFEST
+                 512556 146073   8-120  	bool	header_c2,512556146073	" MANIFEST
+                 107463 422532   8-121  	bool	trailer_c1,107463422532	" MANIFEST
+                 265221 631704   8-122  	bool	trailer_c2,265221631704	" MANIFEST
+                                 8-123  
+                        000003   8-124  	equ	LABEL_VERSION,3		" MANIFEST
+                                 8-125  
+                                 8-126       "END INCLUDE FILE mstr.incl.alm
+                                    58  	include	sdw_info
+                                   9-1  
+                                   9-2  
+                                   9-3       "BEGIN INCLUDE FILE sdw_info.incl.alm
+                                   9-4  
+                                   9-5  
+                                   9-6  	"Created 04/04/81  1404.3 est Sat by convert_include_file,
+                                   9-7  	"   Version of 02/27/81  0031.1 est Fri.
+                                   9-8  
+                                   9-9  	"Made from >udd>Multics>nss>new_pc>include>sdw_info.incl.pl1,
+                                  9-10  	"   modified 03/01/81  2328.0 est Sun
+                                  9-11  
+                                  9-12  "
+                                  9-13  "	Structure sdw_info
+                                  9-14  "
+                        000006    9-15  	equ	sdw_info_size,6
+                                  9-16  
+                                  9-17  
+                        000000    9-18  	equ	sdw_info.address,0
+                        000001    9-19  	equ	sdw_info.bound,1
+                        000002    9-20  	equ	sdw_info.access,2		" LEVEL 2
+                                  9-21  
+                        400000    9-22  	bool	sdw_info.read,400000	" DU
+                        200000    9-23  	bool	sdw_info.execute,200000	" DU
+                        100000    9-24  	bool	sdw_info.write,100000	" DU
+                        040000    9-25  	bool	sdw_info.privileged,040000	" DU
+                                  9-26  
+                        000003    9-27  	equ	sdw_info.rings,3		" LEVEL 2
+                                  9-28  
+                        000041    9-29  	equ	sdw_info.r1_shift,33
+                        000007    9-30  	bool	sdw_info.r1_mask,000007
+                        000036    9-31  	equ	sdw_info.r2_shift,30
+                        000007    9-32  	bool	sdw_info.r2_mask,000007
+                        000033    9-33  	equ	sdw_info.r3_shift,27
+                        000007    9-34  	bool	sdw_info.r3_mask,000007
+                                  9-35  
+                        000004    9-36  	equ	sdw_info.flags,4		" LEVEL 2
+                                  9-37  
+                        400000    9-38  	bool	sdw_info.paged,400000	" DU
+                        200000    9-39  	bool	sdw_info.faulted,200000	" DU
+                        100000    9-40  	bool	sdw_info.cache,100000	" DU
+                                  9-41  
+                        000005    9-42  	equ	sdw_info.gate_entry_bound,5
+                                  9-43  
+                                  9-44       "END INCLUDE FILE sdw_info.incl.alm
+                                    59  	include	slt
+                                  10-1  
+                                  10-2  
+                                  10-3       "BEGIN INCLUDE FILE slt.incl.alm
+                                  10-4  
+                                  10-5  	"Created 11/04/76  1459.6 est Thu by convert_include_file,
+                                  10-6  	"   Version of 04/30/76  1208.1 est Fri.
+                                  10-7  
+                                  10-8  	"Made from >user_dir_dir>Multics>Morris>slt>include>slt.incl.pl1,
+                                  10-9  	"   modified 11/04/76  1459.5 est Thu
+                                 10-10  
+                                 10-11  "
+                                 10-12  "	Structure slt
+                                 10-13  "
+                        100010   10-14  	equ	slt_size,32776
+                                 10-15  
+                                 10-16  
+                        000000   10-17  	equ	slt.name_seg_ptr,0
+                        000002   10-18  	equ	slt.free_core_start,2
+                        000003   10-19  	equ	slt.first_sup_seg,3
+                        000004   10-20  	equ	slt.last_sup_seg,4
+                        000005   10-21  	equ	slt.first_init_seg,5
+                        000006   10-22  	equ	slt.last_init_seg,6
+                        000007   10-23  	equ	slt.free_core_size,7
+                        000010   10-24  	equ	slt.seg,8			"LEVEL 2
+                                 10-25  
+                        000010   10-26  	equ	slt.slte,8
+                                 10-27  
+                                 10-28  "
+                                 10-29  "	Structure name_seg
+                                 10-30  "
+                        000201   10-31  	equ	name_seg_size,129
+                                 10-32  
+                        000000   10-33  	equ	name_seg.next_loc,0		"LOWER
+                                 10-34  
+                        000001   10-35  	equ	name_seg.ht,1		"UPPER
+                                 10-36  
+                                 10-37  "
+                                 10-38  "	Structure segnam
+                                 10-39  "
+                                 10-40  
+                        000000   10-41  	equ	segnam.count,0
+                        000001   10-42  	equ	segnam.names,1		"LEVEL 2
+                                 10-43  
+                        000001   10-44  	equ	segnam.hp,1		"UPPER
+                        400000   10-45  	bool	segnam.ref,400000		"DL
+                        000000   10-46  	equ	segnam.segno_shift,0
+                        007777   10-47  	bool	segnam.segno_mask,007777
+                                 10-48  
+                        000002   10-49  	equ	segnam.name,2		"DOUBLE
+                                 10-50  
+                                 10-51  "
+                                 10-52  "	Structure path
+                                 10-53  "
+                        000000   10-54  	equ	path.size,0
+                        000001   10-55  	equ	path.name,1
+                        000000   10-56  	equ	path.acls,0
+                                 10-57  
+                                 10-58  "
+                                 10-59  "	Structure acls
+                                 10-60  "
+                        000000   10-61  	equ	acls.count,0
+                        000001   10-62  	equ	acls.acl,1		"LEVEL 2
+                                 10-63  
+                        000001   10-64  	equ	acls.userid,1		"DOUBLE
+                        000011   10-65  	equ	acls.mode,9
+                        000013   10-66  	equ	acls.code,11
+                                 10-67  
+                                 10-68       "END INCLUDE FILE slt.incl.alm
+                                    60  	include	slte
+                                  11-1  
+                                  11-2  
+                                  11-3       "BEGIN INCLUDE FILE slte.incl.alm
+                                  11-4  
+                                  11-5  
+                                  11-6  	"Created 12/12/83  1408.5 est Mon by convert_include_file,
+                                  11-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                  11-8  
+                                  11-9  	"Made from >bootload>update>incl>slte.incl.pl1,
+                                 11-10  	"   modified 12/12/83  1408.5 est Mon
+                                 11-11  
+                                 11-12  "
+                                 11-13  "	Structure slte_uns
+                                 11-14  "
+                        000004   11-15  	equ	slte_uns_size,4
+                                 11-16  
+                        000000   11-17  	equ	slte_uns.names_ptr,0	" UPPER
+                        000000   11-18  	equ	slte_uns.path_ptr,0		" LOWER
+                                 11-19  
+                        000001   11-20  	equ	slte_uns.access_word,1
+                        000040   11-21  	equ	slte_uns.access_shift,32
+                        000017   11-22  	bool	slte_uns.access_mask,000017
+                        000001   11-23  	equ	slte_uns.cache_word,1
+                        020000   11-24  	bool	slte_uns.cache,020000	" DU
+                        000001   11-25  	equ	slte_uns.abs_seg_word,1
+                        010000   11-26  	bool	slte_uns.abs_seg,010000	" DU
+                        000001   11-27  	equ	slte_uns.firmware_seg_word,1
+                        004000   11-28  	bool	slte_uns.firmware_seg,004000	" DU
+                        000001   11-29  	equ	slte_uns.layout_seg_word,1
+                        002000   11-30  	bool	slte_uns.layout_seg,002000	" DU
+                        000001   11-31  	equ	slte_uns.breakpointable_word,1
+                        001000   11-32  	bool	slte_uns.breakpointable,001000 " DU
+                        000001   11-33  	equ	slte_uns.wired_word,1
+                        000040   11-34  	bool	slte_uns.wired,000040	" DU
+                        000001   11-35  	equ	slte_uns.paged_word,1
+                        000020   11-36  	bool	slte_uns.paged,000020	" DU
+                        000001   11-37  	equ	slte_uns.per_process_word,1
+                        000010   11-38  	bool	slte_uns.per_process,000010	" DU
+                        000001   11-39  	equ	slte_uns.acl_provided_word,1
+                        000001   11-40  	bool	slte_uns.acl_provided,000001	" DU
+                        000001   11-41  	equ	slte_uns.branch_required_word,1
+                        040000   11-42  	bool	slte_uns.branch_required,040000 " DL
+                        000001   11-43  	equ	slte_uns.init_seg_word,1
+                        020000   11-44  	bool	slte_uns.init_seg,020000	" DL
+                        000001   11-45  	equ	slte_uns.temp_seg_word,1
+                        010000   11-46  	bool	slte_uns.temp_seg,010000	" DL
+                        000001   11-47  	equ	slte_uns.link_provided_word,1
+                        004000   11-48  	bool	slte_uns.link_provided,004000	" DL
+                        000001   11-49  	equ	slte_uns.link_sect_word,1
+                        002000   11-50  	bool	slte_uns.link_sect,002000	" DL
+                        000001   11-51  	equ	slte_uns.link_sect_wired_word,1
+                        001000   11-52  	bool	slte_uns.link_sect_wired,001000 " DL
+                        000001   11-53  	equ	slte_uns.combine_link_word,1
+                        000400   11-54  	bool	slte_uns.combine_link,000400	" DL
+                        000001   11-55  	equ	slte_uns.pre_linked_word,1
+                        000200   11-56  	bool	slte_uns.pre_linked,000200	" DL
+                        000001   11-57  	equ	slte_uns.defs_word,1
+                        000100   11-58  	bool	slte_uns.defs,000100	" DL
+                                 11-59  
+                        000002   11-60  	equ	slte_uns.cur_length_word,2
+                        000033   11-61  	equ	slte_uns.cur_length_shift,27
+                        000777   11-62  	bool	slte_uns.cur_length_mask,000777
+                        000002   11-63  	equ	slte_uns.ringbrack_word,2
+                        000030   11-64  	equ	slte_uns.ringbrack_shift,24
+                        000007   11-65  	bool	slte_uns.ringbrack_mask,000007
+                        000002   11-66  	equ	slte_uns.segno,2		" LOWER
+                                 11-67  
+                        000003   11-68  	equ	slte_uns.max_length_word,3
+                        000030   11-69  	equ	slte_uns.max_length_shift,24
+                        000777   11-70  	bool	slte_uns.max_length_mask,000777
+                        000003   11-71  	equ	slte_uns.bit_count_word,3
+                        000000   11-72  	equ	slte_uns.bit_count_shift,0
+                                 11-73  
+                                 11-74  "
+                                 11-75  "	Structure slte
+                                 11-76  "
+                        000004   11-77  	equ	slte_size,4
+                                 11-78  
+                        000000   11-79  	equ	slte.names_ptr,0		" UPPER
+                        000000   11-80  	equ	slte.path_ptr,0		" LOWER
+                                 11-81  
+                        000001   11-82  	equ	slte.access_word,1
+                        000040   11-83  	equ	slte.access_shift,32
+                        000017   11-84  	bool	slte.access_mask,000017
+                        000001   11-85  	equ	slte.cache_word,1
+                        020000   11-86  	bool	slte.cache,020000		" DU
+                        000001   11-87  	equ	slte.abs_seg_word,1
+                        010000   11-88  	bool	slte.abs_seg,010000		" DU
+                        000001   11-89  	equ	slte.firmware_seg_word,1
+                        004000   11-90  	bool	slte.firmware_seg,004000	" DU
+                        000001   11-91  	equ	slte.layout_seg_word,1
+                        002000   11-92  	bool	slte.layout_seg,002000	" DU
+                        000001   11-93  	equ	slte.breakpointable_word,1
+                        001000   11-94  	bool	slte.breakpointable,001000	" DU
+                        000001   11-95  	equ	slte.wired_word,1
+                        000040   11-96  	bool	slte.wired,000040		" DU
+                        000001   11-97  	equ	slte.paged_word,1
+                        000020   11-98  	bool	slte.paged,000020		" DU
+                        000001   11-99  	equ	slte.per_process_word,1
+                        000010  11-100  	bool	slte.per_process,000010	" DU
+                        000001  11-101  	equ	slte.acl_provided_word,1
+                        000001  11-102  	bool	slte.acl_provided,000001	" DU
+                        000001  11-103  	equ	slte.branch_required_word,1
+                        040000  11-104  	bool	slte.branch_required,040000	" DL
+                        000001  11-105  	equ	slte.init_seg_word,1
+                        020000  11-106  	bool	slte.init_seg,020000	" DL
+                        000001  11-107  	equ	slte.temp_seg_word,1
+                        010000  11-108  	bool	slte.temp_seg,010000	" DL
+                        000001  11-109  	equ	slte.link_provided_word,1
+                        004000  11-110  	bool	slte.link_provided,004000	" DL
+                        000001  11-111  	equ	slte.link_sect_word,1
+                        002000  11-112  	bool	slte.link_sect,002000	" DL
+                        000001  11-113  	equ	slte.link_sect_wired_word,1
+                        001000  11-114  	bool	slte.link_sect_wired,001000	" DL
+                        000001  11-115  	equ	slte.combine_link_word,1
+                        000400  11-116  	bool	slte.combine_link,000400	" DL
+                        000001  11-117  	equ	slte.pre_linked_word,1
+                        000200  11-118  	bool	slte.pre_linked,000200	" DL
+                        000001  11-119  	equ	slte.defs_word,1
+                        000100  11-120  	bool	slte.defs,000100		" DL
+                                11-121  
+                        000002  11-122  	equ	slte.cur_length_word,2
+                        000033  11-123  	equ	slte.cur_length_shift,27
+                        000777  11-124  	bool	slte.cur_length_mask,000777
+                        000002  11-125  	equ	slte.ringbrack_word,2
+                        000030  11-126  	equ	slte.ringbrack_shift,24
+                        000007  11-127  	bool	slte.ringbrack_mask,000007
+                        000002  11-128  	equ	slte.segno,2		" LOWER
+                                11-129  
+                        000003  11-130  	equ	slte.max_length_word,3
+                        000030  11-131  	equ	slte.max_length_shift,24
+                        000777  11-132  	bool	slte.max_length_mask,000777
+                        000003  11-133  	equ	slte.bit_count_word,3
+                        000000  11-134  	equ	slte.bit_count_shift,0
+                                11-135  
+                                11-136       "END INCLUDE FILE slte.incl.alm
+                                    61  	include	system_types
+                                  12-1  
+                                  12-2  
+                                  12-3       "BEGIN INCLUDE FILE system_types.incl.alm
+                                  12-4  
+                                  12-5  
+                                  12-6  	"Created 04/05/81  2144.9 est Sun by convert_include_file,
+                                  12-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                  12-8  
+                                  12-9  	"Made from >udd>Multics>nss>new_pc>include>system_types.incl.pl1,
+                                 12-10  	"   modified 03/21/81  2300.0 est Sat
+                                 12-11  
+                                 12-12  
+                        000001   12-13  	equ	L68_SYSTEM,1		" MANIFEST
+                        000002   12-14  	equ	ADP_SYSTEM,2		" MANIFEST
+                                 12-15  
+                                 12-16       "END INCLUDE FILE system_types.incl.alm
+                                    62  	include_nolist	tape_io_commands
+                                    63  	include	unpaged_page_tables
+                                  14-1  
+                                  14-2  
+                                  14-3       "BEGIN INCLUDE FILE unpaged_page_tables.incl.alm
+                                  14-4  
+                                  14-5  
+                                  14-6  	"Created 03/01/84  1645.1 est Thu by convert_include_file,
+                                  14-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                  14-8  
+                                  14-9  	"Made from >bootload>update>incl>unpaged_page_tables.incl.pl1,
+                                 14-10  	"   modified 03/01/84  1645.1 est Thu
+                                 14-11  
+                                 14-12  "
+                                 14-13  "	Structure upt
+                                 14-14  "
+                                 14-15  
+                        000000   14-16  	equ	upt.sst_absloc,0
+                        000001   14-17  	equ	upt.sst_last_loc,1
+                        000002   14-18  	equ	upt.upt_absloc,2
+                        000003   14-19  	equ	upt.upt_last_loc,3
+                        000004   14-20  	equ	upt.iupt_absloc,4
+                        000005   14-21  	equ	upt.iupt_last_loc,5
+                        000006   14-22  	equ	upt.current_length,6
+                        000007   14-23  	equ	upt.max_length,7
+                        000010   14-24  	equ	upt.first_entry,8		" LEVEL 2
+                                 14-25  
+                                 14-26  
+                                 14-27  "
+                                 14-28  "	Structure upt_entry
+                                 14-29  "
+                        000000   14-30  	equ	upt_entry.size,0
+                        000001   14-31  	equ	upt_entry.segno,1
+                        000002   14-32  	equ	upt_entry.ptws,2
+                                 14-33  
+                                 14-34       "END INCLUDE FILE unpaged_page_tables.incl.alm
+                                    64  " 
+                        000000      65  	equ	prb.ctl,0
+                        000001      66  	equ	prb.data,1
+                        002021      67  	equ	prb.nameptr,1041
+                        002022      68  	equ	prb.hdr,1042
+                                    69  
+                                    70  
+                                    71  	Bentry	init
+                        000000          	segdef	init
+                                        	macro	init_return
+                              1         	Breturn	0
+                              2         &end
+    000000                          72  init:
+                                    73  	Bpush
+    000000  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000001  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                    74  
+                                    75  	absa_au	prb|prb.data
+    000002  4a  4 00014 2351 20         	lda	bootload_info$system_type
+    000003  aa   000002 1150 07         	cmpa	ADP_SYSTEM,dl
+    000004  aa   000004 6000 04         	tze	4,ic
+    000005  aa  5 00001 2121 00         	absa	prb|prb.data
+    000006  aa   000006 7350 00         	als	24-18
+    000007  aa   000003 7100 04         	tra	3,ic
+    000010  aa  5 00001 2121 00         	absa	prb|prb.data
+    000011  aa   000010 7350 00         	als	26-18
+    000012  0a   000747 7510 70     76  	stca	read_tape_ddcw,70
+    000013  aa   000000 5310 00     77  	neg	0		" adjust prb pointer
+    000014  aa   000010 1750 03     78  	sba	mst_label.head,du	" correct for MSTRH
+    000015  aa  5 00000 0551 00     79  	asa	prb|prb.ctl
+                                    80  
+                                    81  " Note (ahem) that the following code depends on the fact that:
+                                    82  "  1. data_bits_used and data_bit_len are in the same word (upper and lower),
+                                    83  "  2. they are both multiples of 36 so the division leaves word oriented values
+                                    84  "     in qu and ql, and
+                                    85  "  3. the upper half of ndata is the amount of real data, BUT
+                                    86  "     the lower half is the actual amount of data read (including the pad)
+                                    87  
+    000016  aa  5 00005 2361 00     88  	ldq	prb|prb.data+mstr_header.data_bits_used
+    000017  aa   000044 5060 07     89  	div	36,dl
+    000020  0a   000600 7560 00     90  	stq	ndata
+                                    91  
+    000021  aa  5 00017 2351 06     92  	lda	prb|prb.data+mstr_header_size+mstr_trailer.tot_rec_word,ql
+                                    93  				" current record
+    000022  aa   000001 0750 07     94  	ada	1,dl
+    000023  0a   000601 7550 00     95  	sta	exprec
+    000024  0a   000737 4500 00     96  	stz	unwedged		" reset flag word
+                                    97  	Breturn
+    000025  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000026  aa   000000 7100 12         	tra	0+,x2
+                                    98  
+                                    99  
+                        000027     100  	segdef	finish
+                                   101  
+    000027  aa   000006 6270 00    102  finish:	eax7	3*2
+    000030  0a   000256 3720 37    103  setclr:	epp	seg,clptrs,x7*
+    000031  aa  6 00000 3511 00    104  	epbp	seg2,seg|0
+    000032  aa  1 00000 6521 00    105  	spri6	seg2|hc_linkage_seg.next_free_ptr
+    000033  aa   777776 6270 17    106  	eax7	-2,x7		" on to next
+    000034  0a   000030 6050 00    107  	tpl	setclr
+                                   108  
+    000035  0a   000266 3720 20    109  	epp	seg,cdptr,*
+    000036  aa  6 00000 3511 00    110  	epbp	seg2,seg|0
+    000037  aa  1 00000 6521 00    111  	spri6	seg2|definitions.next_free_ptr
+                                   112  
+    000040  aa   000000 7100 12    113  	tra	0,x2
+                                   114  "
+                                   115  	Bentry	skip_collection
+                        000041          	segdef	skip_collection
+                                        	macro	skip_collection_return
+                              1         	Breturn	0
+                              2         &end
+                                   116  
+    000041                         117  skip_collection:
+                                   118  	Bpush
+    000041  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000042  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                   119  
+    000043  0a   000725 7020 00    120  	tsx2	adjust_tape_device
+                                   121  
+    000044                         122  skip_next:
+    000044  0a   000226 7020 00    123  	tsx2	readcw		" Look at next control word
+    000045  0a   000053 7100 00    124  	tra	something_to_skip	" data
+    000046  4a  4 00020 7001 20    125  	tsx0	bootload_error$bad_cw
+                                   126  
+    000047                         127  load.cmark:
+    000047  0a   000610 7020 00    128  	tsx2	skip		" skip the collection mark
+    000050  0a   000302 0000 00    129  	arg	k1
+                                   130  	Breturn
+    000051  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000052  aa   000000 7100 12         	tra	0+,x2
+                                   131  
+    000053                         132  something_to_skip:			" First skip the SLTE
+    000053  0a   000610 7020 00    133  	tsx2	skip		" grab the header
+    000054  0a   000301 0000 00    134  	arg	cw
+                                   135  
+    000055  0a   000226 7020 00    136  	tsx2	readcw		" Now read the CW
+    000056  4a  4 00020 7001 20    137  	tsx0	bootload_error$bad_cw
+    000057  0a   000061 7100 00    138  	tra	skip.data
+    000060  4a  4 00020 7001 20    139  	tsx0	bootload_error$bad_cw
+                                   140  
+    000061  0a   000610 7020 00    141  skip.data:tsx2	skip
+    000062  0a   000301 0000 00    142  	arg	cw
+    000063  0a   000044 7100 00    143  	tra	skip_next		" and again
+                                   144  " 
+                                   145  	Bentry	load_collection
+                        000064          	segdef	load_collection
+                                        	macro	load_collection_return
+                              1         	Breturn	0
+                              2         &end
+                                   146  
+    000064                         147  load_collection:
+                                   148  	Bpush
+    000064  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000065  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                   149  
+    000066  0a   000725 7020 00    150  	tsx2	adjust_tape_device
+                                   151  
+    000067  0a   000204 7020 00    152  load.text:tsx2	read_header	" read the header
+    000070  0a   000047 7100 00    153  	tra	load.cmark	" we are done
+                                   154  
+    000071  aa  5 02022 2351 00    155  	lda	prb|prb.hdr-1+slte.link_sect_word
+                                   156  				" make sure this is the text
+    000072  aa   002100 3150 07    157  	cana	slte.link_sect+slte.defs,dl
+    000073  4a  4 00022 6011 20    158  	tnz	bootload_error$bad_sequence
+                                   159  
+    000074  4a  4 00024 7021 20    160  	tsx2	bootload_slt_manager$build_entry	" build the SLTE
+    000075  0a   000300 0000 00    161  	arg	hcw
+    000076  0a   000270 0000 20    162  	arg	hdrp,*
+    000077  4a  4 00026 7101 20    163  	tra	bootload_error$too_many_segs
+                                   164  
+    000100  0a   000250 2514 00    165  	spri1	segptr			" save pointer to it
+    000101  0a   000254 6520 00    166  	spri6	lastsltptr
+                                   167  
+                                   168  "	check to see if this is an 'interesting' segment.
+                                   169  
+    000102  aa  6 00000 2271 00    170  	ldx7	seg|slte.names_ptr
+    000103  aa  4 00002 2351 17    171  	lda	nt|segnam.name,x7	get first 2 words of first name.
+    000104  aa  4 00003 2361 17    172  	ldq	nt|segnam.name+1,x7	"
+    000105  0a   000304 6260 00    173  	eax6	interesting_names	" x6 -> table of interesting names
+    000106  aa   020300 5202 04    174  	rpt	no_interesting_names,4,tze	search the table
+    000107  aa   000000 1170 16    175  	cmpaq	0,x6		compare first 8 characters
+    000110  0a   000113 6064 00    176  	ttn	load_segment	skip if no compare
+                                   177  
+    000111  aa  6 00002 7201 00    178  	lxl0	seg|slte.segno		get segment number again
+    000112  aa   777777 7400 36    179  	stx0	-1,x6*		store segment number for later use
+                                   180  
+                                   181  "	Make SDW for segment and load it.
+                                   182  
+    000113                         183  load_segment:
+    000113  0a   000346 7070 00    184  	tsx7	allocate		routine to allocate core
+                                   185  
+    000114  0a   000604 7020 00    186  	tsx2	read  		" read the segment from tape
+    000115  0a   000250 0000 20    187  	arg	segptr,*
+    000116  0a   000301 0000 00    188  	arg	cw		and store it in
+                                   189  
+    000117  0a   000547 7070 00    190  	tsx7	setaccess  	now set access on loaded segment
+                                   191  
+    000120  aa  5 02022 2351 00    192  	lda	prb|prb.hdr-1+slte.link_provided_word
+    000121  aa   004000 3150 07    193  	cana	slte.link_provided,dl " linkage to read?
+    000122  0a   000067 6000 00    194  	tze	load.text		" no
+                                   195  " 
+                                   196  "	Process linkage segment.
+                                   197  
+    000123  0a   000204 7020 00    198  	tsx2	read_header
+    000124  4a  4 00022 7001 20    199  	tsx0	bootload_error$bad_sequence
+                                   200  
+    000125  aa  5 02022 2351 00    201  	lda	prb|prb.hdr+slte.link_sect_word-1 test for linkage segment
+    000126  aa   002000 3150 07    202  	cana	slte.link_sect,dl	..
+    000127  4a  4 00022 6001 20    203  	tze	bootload_error$bad_sequence
+                                   204  
+    000130  0a   000254 6270 20    205  	eax7	lastsltptr,*	get index of text SLT entry
+    000131  aa   000000 6200 00    206  	eax0	0		X0 will contain index to combined lkg ptr
+    000132  aa  3 00001 2351 17    207  	lda	slt|slte.init_seg_word,x7	init_seg?
+    000133  aa   020000 3150 07    208  	cana	slte.init_seg,dl	..
+    000134  0a   000136 6000 00    209  	tze	*+2		if so,
+    000135  aa   000004 6200 10    210  	eax0	4,x0		increment index
+    000136  aa  3 00001 2351 17    211  	lda	slt|slte.link_sect_wired_word,x7  wired linkage?
+    000137  aa   001000 3150 07    212  	cana	slte.link_sect_wired,dl  ..
+    000140  0a   000142 6000 00    213  	tze	*+2		if so,
+    000141  aa   000002 6200 10    214  	eax0	2,0		increment index
+                                   215  
+    000142  0a   000256 3720 30    216  	epp	seg,clptrs,x0*	pr6 -> correct linkage segment free 
+                                   217  				" word
+    000143  0a   000252 6520 00    218  	spri6	tempptr		" save it
+    000144  aa  3 00002 7211 17    219  	lxl1	slt|slte.segno,x7	X1 contains segment number of text segment
+    000145  4a  4 00030 5461 20    220  	sprp	seg,bootload_info$lot_ptr,*x1	set lot entry
+                                   221  
+    000146  0a   000301 7260 00    222  	lxl6	cw		length of linkage in X6
+    000147  aa   000001 0660 03    223  	adx6	1,du		add one to size of this linkage
+    000150  aa   777776 3660 03    224  	anx6	=o777776,du	rounded up to next even
+    000151  0a   000257 0460 10    225  	asx6	clptrs+1,x0	" update pointer
+                                   226  
+    000152  0a   000604 7020 00    227  	tsx2	read		" read in the linkage
+    000153  0a   000252 0000 20    228  	arg	tempptr,*
+    000154  0a   000301 0000 00    229  	arg	cw
+                                   230  
+    000155  0a   000250 2270 00    231  	ldx7	segptr		segment number of text in X7
+    000156  0a   000252 3720 20    232  	epp	seg,tempptr,*	linkage header
+    000157  aa  6 00007 7471 00    233  	stx7	seg|7		set text pointer in linkage header
+                                   234  " 
+                                   235  "	Process definitions segment.
+                                   236  
+    000160  0a   000204 7020 00    237  	tsx2	read_header
+    000161  4a  4 00022 7001 20    238  	tsx0	bootload_error$bad_sequence
+                                   239  
+    000162  aa  5 02022 2351 00    240  	lda	prb|prb.hdr+slte.defs_word-1 test for defs segment
+    000163  aa   000100 3150 07    241  	cana	slte.defs,dl	..
+    000164  4a  4 00022 6001 20    242  	tze	bootload_error$bad_sequence
+                                   243  
+    000165  0a   000266 3724 20    244  	epbp	seg,cdptr,*	get ptr to base of defs
+    000166  0a   000301 2350 00    245  	lda	cw		get length of defs section
+    000167  aa   777777 3750 07    246  	ana	=o777777,dl	..
+    000170  0a   000267 2750 00    247  	ora	cdptr+1		insert offset of place for defs
+    000171  0a   000250 2270 00    248  	ldx7	segptr		segment number of text in X7
+    000172  aa  6 00000 7551 17    249  	sta	seg|0,x7		add entry to definitions offset table
+                                   250  
+    000173  0a   000266 3720 20    251  	epp	seg,cdptr,*	pr6 -> place for defs
+    000174  0a   000252 6520 20    252  	spri6	tempptr,*		" save it in linkage
+    000175  0a   000252 6520 00    253  	spri6	tempptr		" and for reading
+    000176  0a   000301 7260 00    254  	lxl6	cw		get length of defs in X6
+    000177  0a   000267 0460 00    255  	asx6	cdptr+1		set pointer for next time
+                                   256  
+    000200  0a   000604 7020 00    257  	tsx2	read  		" read the defs
+    000201  0a   000252 0000 20    258  	arg	tempptr,*
+    000202  0a   000301 0000 00    259  	arg	cw
+                                   260  
+    000203  0a   000067 7100 00    261  	tra	load.text		and loop
+                                   262  " 
+                                   263  "	read in segment header information
+                                   264  
+    000204                         265  read_header:
+                                   266  	Bpush
+    000204  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000205  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000206  0a   000226 7020 00    267  	tsx2	readcw		" read the control word
+    000207  0a   000213 7100 00    268  	tra	rh.header
+    000210  4a  4 00020 7001 20    269  	tsx0	bootload_error$bad_cw
+                                   270  
+                                   271  	Breturn
+    000211  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000212  aa   000000 7100 12         	tra	0+,x2
+                                   272  
+    000213  0a   000301 2350 00    273  rh.header:lda	cw		" save away CW
+    000214  0a   000300 7550 00    274  	sta	hcw
+    000215  0a   000604 7020 00    275  	tsx2	read		  " read in the logical segment header.
+    000216  0a   000270 0000 20    276  	arg	hdrp,*
+    000217  0a   000300 0000 00    277  	arg	hcw		number of words wanted
+                                   278  
+    000220  0a   000226 7020 00    279  	tsx2	readcw		  " get cw of the segment
+    000221  4a  4 00020 7001 20    280  	tsx0	bootload_error$bad_cw
+    000222  0a   000224 7100 00    281  	tra	read_header_returns
+    000223  4a  4 00020 7001 20    282  	tsx0	bootload_error$bad_cw
+                                   283  
+    000224                         284  read_header_returns:
+                                   285  	Breturn	1
+    000224  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000225  aa   000001 7100 12         	tra	0+1,x2
+                                   286  
+                                   287  
+                                   288  readcw:	Bpush
+    000226  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000227  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000230  0a   000604 7020 00    289  	tsx2	read
+    000231  0a   000301 0000 00    290  	arg	cw
+    000232  0a   000302 0000 00    291  	arg	k1
+    000233  0a   000301 2270 00    292  	ldx7	cw		" get CW type
+    000234  0a   000246 6000 00    293  	tze	rcw.0		" type 0
+    000235  0a   000301 6470 00    294  	ersx7	cw		" clear the word
+    000236  aa   000001 1070 03    295  	cmpx7	1,du
+    000237  0a   000244 6000 00    296  	tze	rcw.1		" type 1
+    000240  aa   000002 1070 03    297  	cmpx7	2,du		" type 2
+    000241  4a  4 00020 6011 20    298  	tnz	bootload_error$bad_cw
+                                   299  	Breturn	2
+    000242  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000243  aa   000002 7100 12         	tra	0+2,x2
+                                   300  rcw.1:	Breturn	1
+    000244  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000245  aa   000001 7100 12         	tra	0+1,x2
+                                   301  rcw.0:	Breturn	0
+    000246  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000247  aa   000000 7100 12         	tra	0+0,x2
+                                   302  " 
+                        000250     303  	segdef	segptr
+                                   304  
+                                   305  	even
+    000250  aa   077777 000043     306  segptr:	its	-1,1
+    000251  aa   000001 000000 
+    000252  aa   077777 000043     307  tempptr:	its	-1,1
+    000253  aa   000001 000000 
+    000254                         308  lastsltptr:
+    000254  aa   077777 000043     309  	its	-1,1
+    000255  aa   000001 000000 
+    000256  aa   077777 000043     310  clptrs:	its	-1,hc_linkage_seg.free_area	active_sup_linkage
+    000257  aa   000002 000000 
+    000260  aa   077777 000043     311  	its	-1,hc_linkage_seg.free_area	wired_sup_linkage
+    000261  aa   000002 000000 
+    000262  aa   077777 000043     312  	its	-1,hc_linkage_seg.free_area	active_init_linkage
+    000263  aa   000002 000000 
+    000264  aa   077777 000043     313  	its	-1,hc_linkage_seg.free_area	wired_init_linkage
+    000265  aa   000002 000000 
+    000266  aa   077777 000043     314  cdptr:	its	-1,definitions.first_free_word  definitions_
+    000267  aa   001000 000000 
+                                   315  
+    000270  aa   500000 000041     316  hdrp:	itp	prb,prb.hdr-1
+    000271  aa   002021 000000 
+                                   317  
+    000272                         318  si:	bss	,sdw_info_size
+    000300  aa   000000 000000     319  hcw:	dec	0		control word for logical header
+    000301  aa   000000 000000     320  cw:	dec	0		control word
+    000302  aa   000000 000001     321  k1:	dec	1		" constant one
+    000303                         322  bit_count_mask:
+    000303  aa   000077 777777     323  	oct	000077777777	" mask for slte.bit_count
+                                   324  " 
+                                   325  	macro	int_name
+                              1    326  	maclist	object,save
+                              2    327  	aci	@&1@,8
+                              3    328  	zero	&l2,0
+                              4    329  	arg	&3
+                              5    330  	maclist	restore
+                              6    331  &end
+                                   332  
+                                   333  "	Table of 'interesting' names.
+                                   334  
+                                   335  	even
+    000304                         336  interesting_names:
+                                   337  
+                                   338  	int_name	bootload,bootload_1,bootload_info$bootload_1_ptr
+    000304  aa  142 157 157 164
+    000305  aa  154 157 141 144
+    000306  aa   000012 000000 
+    000307  4a  4 00032 0001 20
+                                   339  
+                                   340  	int_name	lot,lot,bootload_info$lot_ptr
+    000310  aa  154 157 164 040
+    000311  aa  040 040 040 040
+    000312  aa   000003 000000 
+    000313  4a  4 00034 0001 20
+                                   341  
+                                   342  	int_name	as_linka,as_linkage,clptrs
+    000314  aa  141 163 137 154
+    000315  aa  151 156 153 141
+    000316  aa   000012 000000 
+    000317  0a   000256 0000 00
+                                   343  	int_name	ws_linka,ws_linkage,clptrs+2
+    000320  aa  167 163 137 154
+    000321  aa  151 156 153 141
+    000322  aa   000012 000000 
+    000323  0a   000260 0000 00
+                                   344  	int_name	ai_linka,ai_linkage,clptrs+4
+    000324  aa  141 151 137 154
+    000325  aa  151 156 153 141
+    000326  aa   000012 000000 
+    000327  0a   000262 0000 00
+                                   345  	int_name	wi_linka,wi_linkage,clptrs+6
+    000330  aa  167 151 137 154
+    000331  aa  151 156 153 141
+    000332  aa   000012 000000 
+    000333  0a   000264 0000 00
+                                   346  
+                                   347  	int_name	definiti,definitions_,cdptr
+    000334  aa  144 145 146 151
+    000335  aa  156 151 164 151
+    000336  aa   000014 000000 
+    000337  0a   000266 0000 00
+                                   348  
+                                   349  	int_name	sys_boot,sys_boot_info,bootload_info$sys_boot_info_ptr
+    000340  aa  163 171 163 137
+    000341  aa  142 157 157 164
+    000342  aa   000015 000000 
+    000343  4a  4 00036 0001 20
+                                   350  
+                        000010     351  	equ	no_interesting_names,(*-interesting_names)/4
+                                   352  " 
+                                   353  "	ALLOCATE
+                                   354  "
+                                   355  "	This subroutine is called (via TSX7) to allocate storage for the segment
+                                   356  "	described by the SLTE currently in the headersegment buffer. An sdw_info
+                                   357  "	is constructed (si), and bootload_dseg$make_sdw is called to fabricate
+                                   358  "	the SDW. The SDW is initially constructed with RW access, so the segment
+                                   359  "	contents can be read in. After the segment is read in, the set_access
+                                   360  "	entrypoint is called, the SDW is refabricated with the appropriate access,
+                                   361  "	and is stored into the DSEG again. The sdw_info is constructed in the area
+                                   362  "	called "si".
+                                   363  "
+                                   364  "	Segments are allocated according to the following rules. X1 is used
+                                   365  "	as a flag to indicate where the segment is to be allocated.
+                                   366  "
+                                   367  "	 * If the segment is zero length on the tape, it gets an all zero
+                                   368  "	   SDW. This case is handled first.
+                                   369  "
+                                   370  "	 * If the segment is a paged supervisor segment, or any sort of
+                                   371  "	   init-seg, it is allocated in a contiguous region of high order
+                                   372  "	   memory, on a 1024 word boundary.  Its page table is put in
+                                   373  "	   int_unpaged_page_tables.
+                                   374  "
+                                   375  "	 * If the segment is an unpaged supervisor segment, it is allocated
+                                   376  "	   on a 1024 word boundary starting from the low end of memory.  Its
+                                   377  "	   page table is put in unpaged_page_tables.
+                                   378  "
+                                   379  "	If the segment has e access, we add the breakpoint_page as an
+                                   380  "	extra page to the end.
+                                   381  
+    000344                         382  running_address:
+    000344  aa   000000 000000     383  	dec	0
+    000345                         384  seg_text_length:
+    000345  aa   000000 000000     385  	dec	0
+                                   386  
+    000346                         387  allocate:
+    000346  aa   000000 1004 00    388  	mlr	(),(),fill(000)	" Clear out sdw_info
+    000347  aa   000000 000000     389  	desc9a	0,0
+    000350  0a   000272 000030     390  	desc9a	si,4*sdw_info_size
+                                   391  
+    000351  aa  6 00003 2361 00    392  	ldq	seg|slte.bit_count_word " Find out how big it is
+    000352  0a   000303 3760 00    393  	anq	bit_count_mask
+    000353  aa   000043 0760 07    394  	adq	35,dl		" Round up to a word
+    000354  aa   000044 5060 07    395  	div	36,dl		" and figure out how many words it is
+                                   396  
+    000355  0a   000540 6000 00    397  	tze	allocate_empty_seg	" If nothing there, give up now
+                                   398  
+    000356  aa   001777 0760 07    399  	adq	1023,dl		" round up to 1024 words
+    000357  aa   776000 3760 07    400  	anq	=o776000,dl
+    000360  0a   000273 7560 00    401  	stq	si+sdw_info.bound	" Save the length
+    000361  0a   000345 7560 00    402  	stq	seg_text_length	" amount to clear (doesn't count bkpt page)
+                                   403  
+    000362  aa  3 00007 2351 00    404  	lda	slt|slt.free_core_size " See if we've got room
+    000363  0a   000273 1750 00    405  	sba	si+sdw_info.bound
+    000364  aa   002000 1750 07    406  	sba	1024,dl		" subtract a page to allow for slop
+    000365  4a  4 00040 6041 20    407  	tmi	bootload_error$out_of_main_memory
+                                   408  
+    000366  aa  6 00001 2351 00    409  	lda	seg|slte.firmware_seg_word
+    000367  aa   004000 3150 03    410  	cana	slte.firmware_seg,du
+    000370  0a   000377 6010 00    411  	tnz	allocate_seg_low
+                                   412  
+    000371  aa  6 00001 2351 00    413  	lda	seg|slte.paged_word " Is seg to be paged?
+    000372  aa   000020 3150 03    414  	cana	slte.paged,du
+    000373  0a   000410 6010 00    415  	tnz	allocate_seg_high
+                                   416  
+    000374  aa  6 00001 2351 00    417  	lda	seg|slte.init_seg_word	" Or is it an init-seg, maybe?
+    000375  aa   020000 3150 07    418  	cana	slte.init_seg,dl
+    000376  0a   000410 6010 00    419  	tnz	allocate_seg_high	" Yup, place with paged segments
+                                   420  
+    000377                         421  allocate_seg_low:
+    000377  aa  3 00002 2351 00    422  	lda	slt|slt.free_core_start	" Get space in low memory
+    000400  0a   000344 7550 00    423  	sta	running_address	 	" Save the address
+    000401  0a   000273 0750 00    424  	ada	si+sdw_info.bound		" Add the length, and adjust the
+    000402  aa  3 00002 7551 00    425  	sta	slt|slt.free_core_start	" beginning of free core
+    000403  aa  3 00007 2351 00    426  	lda	slt|slt.free_core_size	" Also adjust the size
+    000404  0a   000273 1750 00    427  	sba	si+sdw_info.bound
+    000405  aa  3 00007 7551 00    428  	sta	slt|slt.free_core_size
+    000406  0a   000750 3514 20    429  	epp	seg2,=its(upt_segno_,0),*
+    000407  0a   000420 7100 00    430  	tra	have_seg_address
+                                   431  
+    000410                         432  allocate_seg_high:
+    000410  aa  3 00002 2351 00    433  	lda	slt|slt.free_core_start	" Assume these are already
+    000411  aa  3 00007 0751 00    434  	ada	slt|slt.free_core_size	" 1024 word aligned.
+    000412  0a   000273 1750 00    435  	sba	si+sdw_info.bound		" Adjust down by the seg lth.
+    000413  0a   000344 7550 00    436  	sta	running_address	 	" Save the address
+    000414  aa  3 00002 1751 00    437  	sba	slt|slt.free_core_start	" and calculate the new size
+    000415  aa  3 00007 7551 00    438  	sta	slt|slt.free_core_size	" of free core -- free_core_start
+    000416  0a   000752 3514 20    439  	epp	seg2,=its(iupt_segno_,0),*
+    000417  0a   000420 7100 00    440  	tra	have_seg_address		" is unchanged
+                                   441  
+    000420                         442  have_seg_address:				" pr(seg2) -> upt (unpaged page table)
+    000420  aa  6 00001 2351 00    443  	lda	seg|slte.access_word " see if we should add breakpoint_page
+    000421  aa   200000 3750 03    444  	ana	=o200000,du	" e permission
+    000422  0a   000437 6000 00    445  	tze	non_bkpt
+    000423  aa   001000 2350 03    446  	lda	slte.breakpointable,du
+    000424  aa  6 00001 2551 00    447  	orsa	seg|slte.breakpointable_word
+    000425  aa   002000 2350 07    448  	lda	1024,dl		" lengthen for bkpt page
+    000426  0a   000273 0550 00    449  	asa	si+sdw_info.bound
+    000427  aa   000001 2350 07    450  	lda	1,dl
+    000430  aa   000033 7350 00    451  	als	slte.cur_length_shift
+    000431  aa  6 00002 0351 00    452  	adla	seg|slte.cur_length_word
+    000432  aa  6 00002 7551 00    453  	sta	seg|slte.cur_length_word " record as lengthened
+    000433  aa   000001 2350 07    454  	lda	1,dl
+    000434  aa   000030 7350 00    455  	als	slte.max_length_shift
+    000435  aa  6 00003 0351 00    456  	adla	seg|slte.max_length_word
+    000436  aa  6 00003 7551 00    457  	sta	seg|slte.max_length_word
+    000437                         458  non_bkpt:
+    000437  aa  1 00006 2361 00    459  	ldq	seg2|upt.current_length
+    000440  0a   000273 2350 00    460  	lda	si+sdw_info.bound
+    000441  aa   000012 7310 00    461  	ars	10			" # of pages
+    000442  aa   000000 6230 05    462  	eax3	0,al
+                                   463  
+    000443  aa   000003 0750 07    464  	ada	3,dl
+    000444  aa   000001 7310 00    465  	ars	1
+    000445  aa   000001 7350 00    466  	als	1			" round to next size upt entry
+    000446  aa  1 00006 0751 00    467  	ada	seg2|upt.current_length
+    000447  aa  1 00006 7551 00    468  	sta	seg2|upt.current_length	" allocated page table
+    000450  aa  1 00007 1151 00    469  	cmpa	seg2|upt.max_length
+    000451  aa   000002 6044 04    470  	tmoz	2,ic
+    000452  4a  4 00042 7001 20    471  	tsx0	bootload_error$upt_overflow
+    000453  aa  1 00000 3515 06    472  	epp	seg2,seg2|0,ql		" -> upt_entry
+                                   473  
+    000454  0a   000250 2350 00    474  	lda	segptr
+    000455  aa   000022 7310 00    475  	ars	18			" segno
+    000456  aa  1 00001 7551 00    476  	sta	seg2|upt_entry.segno
+    000457  aa  1 00000 4501 00    477  	stz	seg2|upt_entry.size
+    000460  aa  1 00000 4431 00    478  	sxl3	seg2|upt_entry.size
+    000461  aa  1 00002 3515 00    479  	epp	seg2,seg2|upt_entry.ptws
+                                   480  	absa_al	seg2|0
+    000462  4a  4 00014 2351 20         	lda	bootload_info$system_type
+    000463  aa   000002 1150 07         	cmpa	ADP_SYSTEM,dl
+    000464  aa   000004 6000 04         	tze	4,ic
+    000465  aa  1 00000 2121 00         	absa	seg2|0
+    000466  aa   000014 7710 00         	arl	36-24
+    000467  aa   000003 7100 04         	tra	3,ic
+    000470  aa  1 00000 2121 00         	absa	seg2|0
+    000471  aa   000012 7710 00         	arl	36-26
+    000472  0a   000272 7550 00    481  	sta	si+sdw_info.address
+                                   482  
+    000473  aa  6 00001 2351 00    483  	lda	seg|slte.breakpointable_word
+    000474  aa   001000 3150 03    484  	cana	slte.breakpointable,du
+    000475  aa   000002 6000 04    485  	tze	2,ic
+    000476  aa   777777 6230 13    486  	eax3	-1,x3			" last ptw is special for bkpt page
+                                   487  
+    000477  0a   000344 2350 00    488  	lda	running_address
+    000500                         489  gen_ptw:
+    000500  4a  4 00044 7021 20    490  	tsx2	bootload_dseg$make_core_ptw
+    000501  aa  1 00000 7561 00    491  	stq	seg2|0
+    000502  aa   002000 0750 07    492  	ada	1024,dl
+    000503  aa  1 00001 3515 00    493  	epp	seg2,seg2|1
+    000504  aa   777777 6230 13    494  	eax3	-1,x3
+    000505  0a   000500 6010 00    495  	tnz	gen_ptw
+                                   496  
+    000506  aa  6 00001 2351 00    497  	lda	seg|slte.breakpointable_word " add bkpt ptw if necessary
+    000507  aa   001000 3150 03    498  	cana	slte.breakpointable,du
+    000510  0a   000514 6000 00    499  	tze	no_add_bkpt_ptw
+    000511  aa   056000 2350 07    500  	lda	bkpt_absloc,dl
+    000512  4a  4 00044 7021 20    501  	tsx2	bootload_dseg$make_core_ptw
+    000513  aa  1 00000 7561 00    502  	stq	seg2|0
+                                   503  
+    000514                         504  no_add_bkpt_ptw:
+    000514  aa   400000 2350 03    505  	lda	sdw_info.paged,du
+    000515  0a   000276 2550 00    506  	orsa	si+sdw_info.flags
+                                   507  
+    000516  aa   500000 2350 03    508  	lda	sdw_info.read+sdw_info.write,du " Set RW access
+    000517  0a   000274 7550 00    509  	sta	si+sdw_info.access
+                                   510  
+    000520  0a   000272 3720 00    511  	epp	seg,si
+    000521  4a  4 00046 7021 20    512  	tsx2	bootload_dseg$make_sdw
+                                   513  
+    000522  0a   000250 2230 00    514  	ldx3	segptr		" segno * 2 in X3
+    000523  0a   000250 0230 00    515  	adlx3	segptr
+    000524  aa  0 00000 7571 13    516  	staq	ds|0,x3		" Ka-ching!
+    000525  4a  4 00014 2351 20    517  	lda	bootload_info$system_type
+    000526  aa   000002 1150 07    518  	cmpa	ADP_SYSTEM,dl
+    000527  aa   000002 6000 04    519  	tze	2,ic
+    000530  aa   000000 5320 00    520  	cams	0
+                                   521  
+    000531  0a   000345 2350 00    522  	lda	seg_text_length	" now clear the segment
+    000532  aa   000002 7350 00    523  	als	2		" characters
+    000533  0a   000250 3720 20    524  	epp	seg,segptr,*
+    000534  aa   000140 1004 00    525  	mlr	(),(pr,rl),fill(0)
+    000535  aa   000000 000000     526  	desc9a	0
+    000536  aa   600000 000005     527  	desc9a	seg|0,al
+    000537  aa   000000 7100 17    528  	tra	0,x7		" and return
+                                   529  
+                                   530  
+    000540                         531  allocate_empty_seg:
+    000540  aa   200000 2350 03    532  	lda	sdw_info.faulted,du " Make the segment empty
+    000541  0a   000276 7550 00    533  	sta	si+sdw_info.flags	" All the rest of si is still zero
+    000542  0a   000250 2230 00    534  	ldx3	segptr		" segno * 2 in X3
+    000543  0a   000250 0230 00    535  	adlx3	segptr
+    000544  aa  0 00000 4501 13    536  	stz	ds|0,x3		" Ka-ching!
+    000545  aa  0 00001 4501 13    537  	stz	ds|1,x3		" Ka-ching!
+    000546  aa   000000 7100 17    538  	tra	0,x7		" and return
+                                   539  " 
+                                   540  "	SETACCESS
+                                   541  "
+                                   542  "	This entry is called to set the proper access for the segment, once it
+                                   543  "	has been read in. This is also where the encacheable bit is set.
+                                   544  "
+                                   545  
+    000547                         546  setaccess:
+    000547  0a   000276 2350 00    547  	lda	si+sdw_info.flags	" Is it worth it?
+    000550  aa   200000 3150 03    548  	cana	sdw_info.faulted,du
+    000551  aa   000000 6010 17    549  	tnz	0,x7		" Nope, SDW is unusable
+                                   550  
+    000552  aa  5 02021 3721 00    551  	epp	seg,prb|prb.hdr-1	" PR6 -> slte
+                                   552  
+    000553  aa  6 00001 2351 00    553  	lda	seg|slte.cache_word " Set the encacheability bit
+    000554  aa   020000 3750 03    554  	ana	slte.cache,du
+    000555  aa   000003 6000 04    555  	tze	3,ic
+    000556  aa   100000 2350 03    556  	lda	sdw_info.cache,du
+    000557  0a   000276 2550 00    557  	orsa	si+sdw_info.flags
+                                   558  
+    000560  aa  6 00001 2351 00    559  	lda	seg|slte.access_word " Set the correct access
+    000561  aa   000040 7710 00    560  	arl	slte.access_shift	" To low 4 bits
+    000562  aa   000040 7350 00    561  	als	36-4		" Now to high 4 bits
+    000563  0a   000274 7550 00    562  	sta	si+sdw_info.access	" and store it
+                                   563  
+    000564  0a   000272 3720 00    564  	epp	seg,si		" Make the SDW again
+    000565  4a  4 00046 7021 20    565  	tsx2	bootload_dseg$make_sdw
+                                   566  
+    000566  0a   000250 2230 00    567  	ldx3	segptr		" segno * 2 in X3
+    000567  0a   000250 0230 00    568  	adlx3	segptr
+    000570  aa  0 00000 7571 13    569  	staq	ds|0,x3		" Ka-ching!
+    000571  4a  4 00014 2351 20    570  	lda	bootload_info$system_type
+    000572  aa   000002 1150 07    571  	cmpa	ADP_SYSTEM,dl
+    000573  aa   000002 6000 04    572  	tze	2,ic
+    000574  aa   000000 5320 00    573  	cams	0
+    000575  aa   000000 7100 17    574  	tra	0,x7		" and return
+                                   575  " 
+                                   576  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   577  "							"
+                                   578  "	read: subroutine to read the input.			"
+                                   579  "							"
+                                   580  "	calling sequence:	tsx2	read	 		"
+                                   581  "			arg	loc			"
+                                   582  "			arg	=nwords			"
+                                   583  "							"
+                                   584  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   585  
+                                   586  	even
+                        000576     587  	segdef	tape_status
+    000576                         588  tape_status:
+    000576                         589  	bss	,2
+    000600                         590  ndata:	bss	,1
+    000601  aa   000000 000000     591  exprec:	dec	0
+    000602  aa   000000 000000     592  length:	dec	0
+    000603  aa   000000 000000     593  read_skip:dec	0
+                                   594  
+    000604  0a   000603 5540 00    595  read:	stc1	read_skip		" this is read
+    000605  aa   000000 3720 32    596  	epp	seg,0,x2*		" get ptr to data loc
+    000606  aa   000001 7270 32    597  	lxl7	1,x2*		get length
+    000607  0a   000612 7100 00    598  	tra	read_join
+                                   599  
+    000610  0a   000603 4500 00    600  skip:	stz	read_skip		" this is skip
+    000611  aa   000000 7270 32    601  	lxl7	0,x2*		" length
+                                   602  
+    000612                         603  read_join:
+    000612  0a   000602 7470 00    604  	stx7	length
+                                   605  	Bpush
+    000613  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000614  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                   606  
+    000615                         607  readloop:
+    000615  0a   000600 2260 00    608  	ldx6	ndata		get data length of tape record
+    000616  aa  5 00000 1261 00    609  	sblx6	prb|prb.ctl	compute # of words remaining in buffer
+    000617  0a   000647 6000 00    610  	tze	readp		read next record if no more words left
+    000620  0a   000602 1060 00    611  	cmpx6	length		get min (length, words_remaining)
+    000621  0a   000623 6044 00    612  	tmoz	*+2		..
+    000622  0a   000602 2260 00    613  	ldx6	length		..
+                                   614  
+    000623  0a   000603 2340 00    615  	szn	read_skip		" reading?
+    000624  0a   000634 6000 00    616  	tze	no_read		" no
+                                   617  
+    000625  aa  5 00000 2361 00    618  	ldq	prb|prb.ctl	tape buffer offset in QU
+    000626  aa   000000 6350 16    619  	eaa	0,x6		words to copy in AU
+    000627  aa   000002 7370 00    620  	lls	2		generate character count and offset
+    000630  aa  0 00140 1005 42    621  	mlr	(pr,rl,qu),(pr,rl)	copy data from tape buffer
+    000631  aa   500011 000001     622  	desc9a	prb|prb.data+mstr_header_size,au
+    000632  aa   600000 000001     623  	desc9a	seg|0,au
+                                   624  
+    000633  aa  6 00000 3721 16    625  	epp	seg,seg|0,x6	bump pr6 by # of words copied
+                                   626  
+    000634                         627  no_read:
+    000634  aa   000000 6350 16    628  	eaa	0,x6		words copied in AU
+    000635  aa  5 00000 0551 00    629  	asa	prb|prb.ctl	bump record index
+    000636  aa   000000 5310 00    630  	neg	0		complement
+    000637  0a   000602 0550 00    631  	asa	length		decrement length
+    000640  0a   000615 6054 00    632  	tpnz	readloop		loop if more data to copy
+                                   633  
+    000641                         634  read_return:
+    000641  0a   000603 2340 00    635  	szn	read_skip		" return to caller
+    000642  0a   000645 6000 00    636  	tze	skip.return	" skip
+                                   637  	Breturn	2
+    000643  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000644  aa   000002 7100 12         	tra	0+2,x2
+    000645                         638  skip.return:
+                                   639  	Breturn	1
+    000645  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000646  aa   000001 7100 12         	tra	0+1,x2
+                                   640  " 
+                                   641  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   642  "							"
+                                   643  "	Subroutine to read one physical record from tape		"
+                                   644  "							"
+                                   645  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   646  
+    000647  aa   000040 4130 00    647  readp:	rscr	32			" get time
+    000650  0a   000740 7570 00    648  	staq	io_start_time		" and save it
+    000651  aa  5 00000 4501 00    649  	stz	prb|prb.ctl		reset pointer on PRB to zero wds xmitted.
+    000652  aa  5 00001 4501 00    650  	stz	prb|prb.data+mstr_header.c1	and smash the magic word
+    000653                         651  try_readp_again:
+    000653  4a  4 00050 7021 20    652  	tsx2	bootload_io$connect 	" Read a record
+    000654  4a  4 00052 0001 20    653  	arg	bootload_info$tape_iom_number
+    000655  4a  4 00054 0001 20    654  	arg	bootload_info$tape_channel_number
+    000656  0a   000744 0000 00    655  	arg	tape_io_pcw
+    000657  0a   000746 0000 00    656  	arg	read_tape_idcw
+                                   657  
+    000660  0a   000576 7570 00    658  	staq	tape_status
+    000661  4a  4 00056 3151 20    659  	cana	bootload_info$status_mask
+    000662  0a   000704 6010 00    660  	tnz	tape_error
+    000663  aa   007777 3160 07    661  	canq	=o7777,dl			" tally residue?
+    000664  0a   000647 6010 00    662  	tnz	readp			" yes, skip it
+                                   663  
+    000665  aa  5 00001 2361 00    664  	ldq	prb|prb.data+mstr_header.c1	" a quick spot check of the record.
+    000666  0a   000735 1160 00    665  	cmpq	magic_first		we know the first and last words.
+    000667  0a   000647 6010 00    666  	tnz	readp			it is probably just noise
+                                   667  
+                                   668  " See the longish comment earlier about the dependencies between data_bits_used
+                                   669  " and data_bit_len, and why the following code works despite its bad habits.
+                                   670  
+    000670  aa  5 00005 2361 00    671  	ldq	prb|prb.data+mstr_header.data_bits_used	" get bit count of data bits
+    000671  aa   000044 5060 07    672  	div	36,dl		compute data word count
+    000672  0a   000600 7560 00    673  	stq	ndata		and save
+                                   674  
+    000673  aa   000000 6220 06    675  	eax2	0,ql		x2 is trailer pointer
+    000674  aa  5 00020 2361 12    676  	ldq	prb|prb.data+mstr_header_size+mstr_trailer.c2,x2
+    000675  0a   000736 1160 00    677  	cmpq	magic_last
+    000676  0a   000647 6010 00    678  	tnz	readp		" bad record
+                                   679  
+    000677  aa  5 00017 2351 12    680  	lda	prb|prb.data+mstr_header_size+mstr_trailer.tot_rec_word,x2 currec
+    000700  0a   000601 1150 00    681  	cmpa	exprec		expected record?
+    000701  4a  4 00060 6011 20    682  	tnz	bootload_error$bad_mst
+                                   683  
+    000702  0a   000601 0540 00    684  	aos	exprec		save for next read
+    000703  0a   000615 7100 00    685  	tra	readloop		" keep reading
+                                   686  
+    000704                         687  tape_error:
+    000704  aa   770000 3750 03    688  	ana	=o770000,du	" get just major/minor status
+    000705  aa   440000 1150 03    689  	cmpa	=o440000,du	" EOF?
+    000706  0a   000647 6000 00    690  	tze	readp		" yes, skip it
+    000707  aa   600000 1150 03    691  	cmpa	=o600000,du	" POF?
+    000710  0a   000712 6000 00    692  	tze	retry_pof		" try again
+    000711  4a  4 00062 7101 20    693  	tra	bootload_error$tape_error
+                                   694  
+    000712                         695  retry_pof:
+    000712  4a  4 00064 2341 20    696  	szn	bootload_info$cold_tape_mpc	" F/W yet?
+    000713  0a   000720 6000 00    697  	tze	chk_pof_time	" yes, leave it alone
+    000714  0a   000737 2340 00    698  	szn	unwedged		" has unwedging been done
+    000715  0a   000720 6010 00    699  	tnz	chk_pof_time	" yes, just chk time & retry I/O
+    000716  4a  4 00066 7021 20    700  	tsx2	bootload_tape_fw$reset_and_mask " no, do the unwedging
+    000717  0a   000737 5540 00    701  	stc1	unwedged		" show that it has been done
+                                   702  
+    000720                         703  chk_pof_time:
+    000720  aa   000040 4130 00    704  	rscr	32		" get the time
+    000721  0a   000740 1770 00    705  	sbaq	io_start_time	" rel-a-tize
+    000722  0a   000742 1170 00    706  	cmpaq	thirty_sec_limit	" is thirty seconds up?
+    000723  0a   000653 6040 00    707  	tmi	try_readp_again	" NO, try one mo time
+    000724  4a  4 00062 7101 20    708  	tra	bootload_error$tape_error " report error
+                                   709  
+    000725                         710  adjust_tape_device:
+                                   711  
+    000725  4a  4 00064 2341 20    712  	szn	bootload_info$cold_tape_mpc	" F/W yet?
+    000726  aa   000000 6010 12    713  	tnz	0,x2			" no, leave it alone
+    000727  4a  4 00070 2351 20    714  	lda	bootload_info$tape_device_number
+    000730  aa   000030 7350 00    715  	als	24
+    000731  0a   000746 7510 20    716  	stca	read_tape_idcw,20
+    000732  aa   003000 2350 07    717  	lda	=o3000,dl
+    000733  0a   000746 7510 12    718  	stca	read_tape_idcw,2
+    000734  aa   000000 7100 12    719  	tra	0,x2		" return
+                                   720  " 
+    000735                         721  magic_first:
+    000735  aa   670314 355245     722  	oct	670314355245	magic number at word 1 of record
+    000736                         723  magic_last:
+    000736  aa   265221 631704     724  	oct	265221631704	magic number at end of record
+                                   725  
+    000737                         726  unwedged: bss	,1
+                                   727  	even
+    000740                         728  io_start_time:
+    000740                         729  	bss	,2
+    000742                         730  thirty_sec_limit:
+    000742  aa   000000 000000     731  	dec	0,30000000	" thirty seconds (in micros)
+    000743  aa   000162 341600 
+                                   732  
+                                   733  	make_pcw	tape_io_pcw,	" PCW to reset status before tape I/O
+                                   734  		TAPE.reset_status,
+                                   735  		0,
+                                   736  		0,
+                                   737  		nondata,
+                                   738  		terminate,
+                                   739  		1
+                                        	even
+    000744                              tape_io_pcw:
+    000744  aa   400000 700201 
+    000745  aa   000000 000000 
+                                   740  
+    000746                         741  read_tape_idcw:
+    000746  aa   050000 700000     742  	vfd	6/TAPE.read_binary_record,6/0,6/0,3/7,1/0,2/0,6o/0,6/0
+                                   743  
+                                   744  	make_ddcw	read_tape_ddcw,	" DDCW describing physical_record_buffer
+                                   745  		0,
+                                   746  		mstr_header_size+1024+mstr_trailer_size,
+                                   747  		iotd
+    000747                              read_tape_ddcw:
+    000747  aa   000000 002020 
+                                   748  
+                                   749  	end
+LITERALS
+     
+    000750  aa   000012 000043 
+    000751  aa   000000 000000 
+    000752  aa   000403 000043 
+    000753  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000754  5a   000003 000000 
+    000755  5a   000064 600000 
+    000756  aa   000000 000000 
+    000757  55   000012 000002 
+    000760  5a   000002 400003 
+    000761  55   000006 000012 
+    000762  aa  017 142 157 157
+    000763  aa  164 154 157 141
+    000764  aa  144 137 154 157
+    000765  aa  141 144 145 162
+    000766  55   000020 000003 
+    000767  0a   000576 400000 
+    000770  55   000015 000003 
+    000771  aa  013 164 141 160         tape_status
+    000772  aa  145 137 163 164
+    000773  aa  141 164 165 163
+    000774  55   000025 000012 
+    000775  0a   000250 400000 
+    000776  55   000023 000003 
+    000777  aa  006 163 145 147         segptr
+    001000  aa  160 164 162 000
+    001001  55   000034 000020 
+    001002  0a   000064 400000 
+    001003  55   000030 000003 
+    001004  aa  017 154 157 141         load_collection
+    001005  aa  144 137 143 157
+    001006  aa  154 154 145 143
+    001007  aa  164 151 157 156
+    001010  55   000043 000025 
+    001011  0a   000041 400000 
+    001012  55   000037 000003 
+    001013  aa  017 163 153 151         skip_collection
+    001014  aa  160 137 143 157
+    001015  aa  154 154 145 143
+    001016  aa  164 151 157 156
+    001017  55   000050 000034 
+    001020  0a   000027 400000 
+    001021  55   000046 000003 
+    001022  aa  006 146 151 156         finish
+    001023  aa  151 163 150 000
+    001024  55   000055 000043 
+    001025  0a   000000 400000 
+    001026  55   000053 000003 
+    001027  aa  004 151 156 151         init
+    001030  aa  164 000 000 000
+    001031  55   000002 000050 
+    001032  6a   000000 400002 
+    001033  55   000060 000003 
+    001034  aa  014 163 171 155         symbol_table
+    001035  aa  142 157 154 137
+    001036  aa  164 141 142 154
+    001037  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    001040  aa   000000 000015 
+    001041  aa   000000 000000 
+    001042  5a   000025 000000 
+    001043  aa   000000 000000 
+    001044  aa   000000 000000 
+    001045  aa   000000 000000 
+    001046  aa   000000 000000 
+    001047  5a   000055 000000 
+    001050  aa   000000 000000 
+    001051  5a   000020 000000 
+    001052  5a   000034 000000 
+    001053  5a   000012 000000 
+    001054  5a   000043 000000 
+    001055  5a   000050 000000 
+
+EXTERNAL NAMES
+
+    001056  aa  022 164 141 160         tape_device_number
+    001057  aa  145 137 144 145
+    001060  aa  166 151 143 145
+    001061  aa  137 156 165 155
+    001062  aa  142 145 162 000
+    001063  aa  016 162 145 163         reset_and_mask
+    001064  aa  145 164 137 141
+    001065  aa  156 144 137 155
+    001066  aa  141 163 153 000
+    001067  aa  020 142 157 157         bootload_tape_fw
+    001070  aa  164 154 157 141
+    001071  aa  144 137 164 141
+    001072  aa  160 145 137 146
+    001073  aa  167 000 000 000
+    001074  aa  015 143 157 154         cold_tape_mpc
+    001075  aa  144 137 164 141
+    001076  aa  160 145 137 155
+    001077  aa  160 143 000 000
+    001100  aa  012 164 141 160         tape_error
+    001101  aa  145 137 145 162
+    001102  aa  162 157 162 000
+    001103  aa  007 142 141 144         bad_mst
+    001104  aa  137 155 163 164
+    001105  aa  013 163 164 141         status_mask
+    001106  aa  164 165 163 137
+    001107  aa  155 141 163 153
+    001110  aa  023 164 141 160         tape_channel_number
+    001111  aa  145 137 143 150
+    001112  aa  141 156 156 145
+    001113  aa  154 137 156 165
+    001114  aa  155 142 145 162
+    001115  aa  017 164 141 160         tape_iom_number
+    001116  aa  145 137 151 157
+    001117  aa  155 137 156 165
+    001120  aa  155 142 145 162
+    001121  aa  007 143 157 156         connect
+    001122  aa  156 145 143 164
+    001123  aa  013 142 157 157         bootload_io
+    001124  aa  164 154 157 141
+    001125  aa  144 137 151 157
+    001126  aa  010 155 141 153         make_sdw
+    001127  aa  145 137 163 144
+    001130  aa  167 000 000 000
+    001131  aa  015 155 141 153         make_core_ptw
+    001132  aa  145 137 143 157
+    001133  aa  162 145 137 160
+    001134  aa  164 167 000 000
+    001135  aa  015 142 157 157         bootload_dseg
+    001136  aa  164 154 157 141
+    001137  aa  144 137 144 163
+    001140  aa  145 147 000 000
+    001141  aa  014 165 160 164         upt_overflow
+    001142  aa  137 157 166 145
+    001143  aa  162 146 154 157
+    001144  aa  167 000 000 000
+    001145  aa  022 157 165 164         out_of_main_memory
+    001146  aa  137 157 146 137
+    001147  aa  155 141 151 156
+    001150  aa  137 155 145 155
+    001151  aa  157 162 171 000
+    001152  aa  021 163 171 163         sys_boot_info_ptr
+    001153  aa  137 142 157 157
+    001154  aa  164 137 151 156
+    001155  aa  146 157 137 160
+    001156  aa  164 162 000 000
+    001157  aa  016 142 157 157         bootload_1_ptr
+    001160  aa  164 154 157 141
+    001161  aa  144 137 061 137
+    001162  aa  160 164 162 000
+    001163  aa  007 154 157 164         lot_ptr
+    001164  aa  137 160 164 162
+    001165  aa  015 164 157 157         too_many_segs
+    001166  aa  137 155 141 156
+    001167  aa  171 137 163 145
+    001170  aa  147 163 000 000
+    001171  aa  013 142 165 151         build_entry
+    001172  aa  154 144 137 145
+    001173  aa  156 164 162 171
+    001174  aa  024 142 157 157         bootload_slt_manager
+    001175  aa  164 154 157 141
+    001176  aa  144 137 163 154
+    001177  aa  164 137 155 141
+    001200  aa  156 141 147 145
+    001201  aa  162 000 000 000
+    001202  aa  014 142 141 144         bad_sequence
+    001203  aa  137 163 145 161
+    001204  aa  165 145 156 143
+    001205  aa  145 000 000 000
+    001206  aa  006 142 141 144         bad_cw
+    001207  aa  137 143 167 000
+    001210  aa  013 163 171 163         system_type
+    001211  aa  164 145 155 137
+    001212  aa  164 171 160 145
+    001213  aa  015 142 157 157         bootload_info
+    001214  aa  164 154 157 141
+    001215  aa  144 137 151 156
+    001216  aa  146 157 000 000
+    001217  aa  014 157 165 164         out_of_stack
+    001220  aa  137 157 146 137
+    001221  aa  163 164 141 143
+    001222  aa  153 000 000 000
+    001223  aa  016 142 157 157         bootload_error
+    001224  aa  164 154 157 141
+    001225  aa  144 137 145 162
+    001226  aa  162 157 162 000
+    001227  aa  017 145 156 164         entry_stack_ptr
+    001230  aa  162 171 137 163
+    001231  aa  164 141 143 153
+    001232  aa  137 160 164 162
+    001233  aa  012 142 157 157         bootload_0
+    001234  aa  164 154 157 141
+    001235  aa  144 137 060 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001236  aa   000004 000000 
+    001237  55   000237 000102 
+    001240  aa   000004 000000 
+    001241  55   000113 000107 
+    001242  aa   000004 000000 
+    001243  55   000237 000120 
+    001244  aa   000004 000000 
+    001245  55   000247 000124 
+    001246  aa   000004 000000 
+    001247  55   000247 000127 
+    001250  aa   000004 000000 
+    001251  55   000237 000131 
+    001252  aa   000004 000000 
+    001253  55   000237 000134 
+    001254  aa   000004 000000 
+    001255  55   000237 000141 
+    001256  aa   000004 000000 
+    001257  55   000147 000145 
+    001260  aa   000004 000000 
+    001261  55   000161 000152 
+    001262  aa   000004 000000 
+    001263  55   000161 000155 
+    001264  aa   000004 000000 
+    001265  55   000247 000165 
+    001266  aa   000004 000000 
+    001267  55   000247 000171 
+    001270  aa   000004 000000 
+    001271  55   000237 000176 
+    001272  aa   000004 000000 
+    001273  55   000237 000203 
+    001274  aa   000004 000000 
+    001275  55   000237 000207 
+    001276  aa   000004 000000 
+    001277  55   000247 000211 
+    001300  aa   000004 000000 
+    001301  55   000220 000215 
+    001302  aa   000004 000000 
+    001303  55   000247 000226 
+    001304  aa   000004 000000 
+    001305  55   000247 000232 
+    001306  aa   000004 000000 
+    001307  55   000237 000234 
+    001310  aa   000004 000000 
+    001311  55   000247 000243 
+    001312  aa   000004 000000 
+    001313  55   000257 000253 
+    001314  aa   000001 000000 
+    001315  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001316  5a   000262 000000 
+    001317  5a   000264 000000 
+    001320  5a   000266 000000 
+    001321  5a   000270 000000 
+    001322  5a   000272 000000 
+    001323  5a   000274 000000 
+    001324  5a   000276 000000 
+    001325  5a   000300 000000 
+    001326  5a   000302 000000 
+    001327  5a   000304 000000 
+    001330  5a   000306 000000 
+    001331  5a   000310 000000 
+    001332  5a   000312 000000 
+    001333  5a   000314 000000 
+    001334  5a   000316 000000 
+    001335  5a   000320 000000 
+    001336  5a   000322 000000 
+    001337  5a   000324 000000 
+    001340  5a   000326 000000 
+    001341  5a   000330 000000 
+    001342  5a   000332 000000 
+    001343  5a   000334 000000 
+    001344  5a   000336 000000 
+    001345  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000754 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000072 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_0|entry_stack_ptr
+    000011  5a   000370 0000 56
+    000012  9a   777766 0000 46         bootload_error|out_of_stack
+    000013  5a   000367 0000 00
+    000014  9a   777764 0000 46         bootload_info|system_type
+    000015  5a   000366 0000 00
+    000016  9a   777762 0000 46         bootload_0|entry_stack_ptr
+    000017  5a   000370 0000 54
+    000020  9a   777760 0000 46         bootload_error|bad_cw
+    000021  5a   000365 0000 00
+    000022  9a   777756 0000 46         bootload_error|bad_sequence
+    000023  5a   000364 0000 00
+    000024  9a   777754 0000 46         bootload_slt_manager|build_entry
+    000025  5a   000363 0000 00
+    000026  9a   777752 0000 46         bootload_error|too_many_segs
+    000027  5a   000362 0000 00
+    000030  9a   777750 0000 46         bootload_info|lot_ptr
+    000031  5a   000361 0000 71
+    000032  9a   777746 0000 46         bootload_info|bootload_1_ptr
+    000033  5a   000360 0000 00
+    000034  9a   777744 0000 46         bootload_info|lot_ptr
+    000035  5a   000361 0000 00
+    000036  9a   777742 0000 46         bootload_info|sys_boot_info_ptr
+    000037  5a   000357 0000 00
+    000040  9a   777740 0000 46         bootload_error|out_of_main_memory
+    000041  5a   000356 0000 00
+    000042  9a   777736 0000 46         bootload_error|upt_overflow
+    000043  5a   000355 0000 00
+    000044  9a   777734 0000 46         bootload_dseg|make_core_ptw
+    000045  5a   000354 0000 00
+    000046  9a   777732 0000 46         bootload_dseg|make_sdw
+    000047  5a   000353 0000 00
+    000050  9a   777730 0000 46         bootload_io|connect
+    000051  5a   000352 0000 00
+    000052  9a   777726 0000 46         bootload_info|tape_iom_number
+    000053  5a   000351 0000 00
+    000054  9a   777724 0000 46         bootload_info|tape_channel_number
+    000055  5a   000350 0000 00
+    000056  9a   777722 0000 46         bootload_info|status_mask
+    000057  5a   000347 0000 00
+    000060  9a   777720 0000 46         bootload_error|bad_mst
+    000061  5a   000346 0000 00
+    000062  9a   777716 0000 46         bootload_error|tape_error
+    000063  5a   000345 0000 00
+    000064  9a   777714 0000 46         bootload_info|cold_tape_mpc
+    000065  5a   000344 0000 00
+    000066  9a   777712 0000 46         bootload_tape_fw|reset_and_mask
+    000067  5a   000343 0000 00
+    000070  9a   777710 0000 46         bootload_info|tape_device_number
+    000071  5a   000342 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   247226 012632 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000557 
+    000020  aa   000000 000376 
+    000021  aa   000501 000465 
+    000022  aa   000536 000376 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000017 
+    000066  aa   000162 000064 
+    000067  aa   175453 021700 
+    000070  aa   000000 117547 
+    000071  aa   211745 000000 
+    000072  aa   000177 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000210 000051 
+    000077  aa   127236 043476 
+    000100  aa   000000 112724 
+    000101  aa   701742 600000 
+    000102  aa   000223 000042 
+    000103  aa   127236 043504 
+    000104  aa   000000 112724 
+    000105  aa   701743 200000 
+    000106  aa   000234 000050 
+    000107  aa   112741 326606 
+    000110  aa   000000 111274 
+    000111  aa   624367 400000 
+    000112  aa   000246 000044 
+    000113  aa   112741 326611 
+    000114  aa   000000 111274 
+    000115  aa   624377 000000 
+    000116  aa   000257 000045 
+    000117  aa   112375 747472 
+    000120  aa   000000 111240 
+    000121  aa   207531 200000 
+    000122  aa   000271 000046 
+    000123  aa   112375 747473 
+    000124  aa   000000 111240 
+    000125  aa   207531 200000 
+    000126  aa   000303 000032 
+    000127  aa   127236 043541 
+    000130  aa   000000 112724 
+    000131  aa   701746 000000 
+    000132  aa   000312 000036 
+    000133  aa   106701 740603 
+    000134  aa   000000 110670 
+    000135  aa   206426 200000 
+    000136  aa   000322 000031 
+    000137  aa   043243 130516 
+    000140  aa   000000 104205 
+    000141  aa   554413 200000 
+    000142  aa   000331 000032 
+    000143  aa   127236 043555 
+    000144  aa   000000 112724 
+    000145  aa   701750 000000 
+    000146  aa   000340 000042 
+    000147  aa   106701 740577 
+    000150  aa   000000 110670 
+    000151  aa   206425 600000 
+    000152  aa   000351 000046 
+    000153  aa   112741 326633 
+    000154  aa   000000 111274 
+    000155  aa   624415 400000 
+    000156  aa   000363 000051 
+    000157  aa   127236 043612 
+    000160  aa   000000 112724 
+    000161  aa   701752 000000 
+    000162  aa   076163 160145          >special_ldd>install>MR12.3-1114>bootload_loader.alm
+    000163  aa   143151 141154 
+    000164  aa   137154 144144 
+    000165  aa   076151 156163 
+    000166  aa   164141 154154 
+    000167  aa   076115 122061 
+    000170  aa   062056 063055 
+    000171  aa   061061 061064 
+    000172  aa   076142 157157 
+    000173  aa   164154 157141 
+    000174  aa   144137 154157 
+    000175  aa   141144 145162 
+    000176  aa   056141 154155 
+    000177  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000200  aa   076151 156143 
+    000201  aa   154165 144145 
+    000202  aa   076142 157157 
+    000203  aa   164154 157141 
+    000204  aa   144137 145161 
+    000205  aa   165163 056151 
+    000206  aa   156143 154056 
+    000207  aa   141154 155040 
+    000210  aa   076154 144144          >ldd>include>bootload_cpu_macros.incl.alm
+    000211  aa   076151 156143 
+    000212  aa   154165 144145 
+    000213  aa   076142 157157 
+    000214  aa   164154 157141 
+    000215  aa   144137 143160 
+    000216  aa   165137 155141 
+    000217  aa   143162 157163 
+    000220  aa   056151 156143 
+    000221  aa   154056 141154 
+    000222  aa   155040 040040 
+    000223  aa   076154 144144          >ldd>include>coll0_segnos.incl.alm
+    000224  aa   076151 156143 
+    000225  aa   154165 144145 
+    000226  aa   076143 157154 
+    000227  aa   154060 137163 
+    000230  aa   145147 156157 
+    000231  aa   163056 151156 
+    000232  aa   143154 056141 
+    000233  aa   154155 040040 
+    000234  aa   076154 144144          >ldd>include>hc_definitions_seg.incl.alm
+    000235  aa   076151 156143 
+    000236  aa   154165 144145 
+    000237  aa   076150 143137 
+    000240  aa   144145 146151 
+    000241  aa   156151 164151 
+    000242  aa   157156 163137 
+    000243  aa   163145 147056 
+    000244  aa   151156 143154 
+    000245  aa   056141 154155 
+    000246  aa   076154 144144          >ldd>include>hc_linkage_seg.incl.alm
+    000247  aa   076151 156143 
+    000250  aa   154165 144145 
+    000251  aa   076150 143137 
+    000252  aa   154151 156153 
+    000253  aa   141147 145137 
+    000254  aa   163145 147056 
+    000255  aa   151156 143154 
+    000256  aa   056141 154155 
+    000257  aa   076154 144144          >ldd>include>iom_word_macros.incl.alm
+    000260  aa   076151 156143 
+    000261  aa   154165 144145 
+    000262  aa   076151 157155 
+    000263  aa   137167 157162 
+    000264  aa   144137 155141 
+    000265  aa   143162 157163 
+    000266  aa   056151 156143 
+    000267  aa   154056 141154 
+    000270  aa   155040 040040 
+    000271  aa   076154 144144          >ldd>include>make_data_macros.incl.alm
+    000272  aa   076151 156143 
+    000273  aa   154165 144145 
+    000274  aa   076155 141153 
+    000275  aa   145137 144141 
+    000276  aa   164141 137155 
+    000277  aa   141143 162157 
+    000300  aa   163056 151156 
+    000301  aa   143154 056141 
+    000302  aa   154155 040040 
+    000303  aa   076154 144144          >ldd>include>mstr.incl.alm
+    000304  aa   076151 156143 
+    000305  aa   154165 144145 
+    000306  aa   076155 163164 
+    000307  aa   162056 151156 
+    000310  aa   143154 056141 
+    000311  aa   154155 040040 
+    000312  aa   076154 144144          >ldd>include>sdw_info.incl.alm
+    000313  aa   076151 156143 
+    000314  aa   154165 144145 
+    000315  aa   076163 144167 
+    000316  aa   137151 156146 
+    000317  aa   157056 151156 
+    000320  aa   143154 056141 
+    000321  aa   154155 040040 
+    000322  aa   076154 144144          >ldd>include>slt.incl.alm
+    000323  aa   076151 156143 
+    000324  aa   154165 144145 
+    000325  aa   076163 154164 
+    000326  aa   056151 156143 
+    000327  aa   154056 141154 
+    000330  aa   155040 040040 
+    000331  aa   076154 144144          >ldd>include>slte.incl.alm
+    000332  aa   076151 156143 
+    000333  aa   154165 144145 
+    000334  aa   076163 154164 
+    000335  aa   145056 151156 
+    000336  aa   143154 056141 
+    000337  aa   154155 040040 
+    000340  aa   076154 144144          >ldd>include>system_types.incl.alm
+    000341  aa   076151 156143 
+    000342  aa   154165 144145 
+    000343  aa   076163 171163 
+    000344  aa   164145 155137 
+    000345  aa   164171 160145 
+    000346  aa   163056 151156 
+    000347  aa   143154 056141 
+    000350  aa   154155 040040 
+    000351  aa   076154 144144          >ldd>include>tape_io_commands.incl.alm
+    000352  aa   076151 156143 
+    000353  aa   154165 144145 
+    000354  aa   076164 141160 
+    000355  aa   145137 151157 
+    000356  aa   137143 157155 
+    000357  aa   155141 156144 
+    000360  aa   163056 151156 
+    000361  aa   143154 056141 
+    000362  aa   154155 040040 
+    000363  aa   076154 144144          >ldd>include>unpaged_page_tables.incl.alm
+    000364  aa   076151 156143 
+    000365  aa   154165 144145 
+    000366  aa   076165 156160 
+    000367  aa   141147 145144 
+    000370  aa   137160 141147 
+    000371  aa   145137 164141 
+    000372  aa   142154 145163 
+    000373  aa   056151 156143 
+    000374  aa   154056 141154 
+    000375  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+         402    abs_seg0_segno_          coll0_segnos:        19.
+           1    acls.acl                 slt:           62.
+          13    acls.code                slt:           66.
+           0    acls.count               slt:           61.
+          11    acls.mode                slt:           65.
+           1    acls.userid              slt:           64.
+         725    adjust_tape_device       bootload_loader:    120,  150,  710.
+           2    ADP_SYSTEM               bootload_loader:     75,  480,  518,  571,
+                                         system_types:        14.
+         346    allocate                 bootload_loader:    184,  387.
+         540    allocate_empty_seg       bootload_loader:    397,  531.
+         410    allocate_seg_high        bootload_loader:    415,  419,  432.
+         377    allocate_seg_low         bootload_loader:    411,  421.
+                bad_cw                   bootload_loader:    125,  137,  139,  269,  280,  282,  298.
+                bad_mst                  bootload_loader:    682.
+                bad_sequence             bootload_loader:    158,  199,  203,  238,  242.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+         400    bbl0_segno_              coll0_segnos:        17.
+         303    bit_count_mask           bootload_loader:    322,  393.
+       56000    bkpt_absloc              bootload_loader:    500,
+                                         bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_0               bootload_loader:     73,   97,  118,  130,  148,  266,  271,  285,  288,  299,  300,
+                                                             301,  605,  637,  639.
+                bootload_1_ptr           bootload_loader:    338.
+                bootload_dseg            bootload_loader:    490,  501,  512,  565.
+                bootload_error           bootload_loader:     73,  118,  125,  137,  139,  148,  158,  163,  199,  203,  238,
+                                                             242,  266,  269,  280,  282,  288,  298,  407,  471,  605,  682,
+                                                             693,  708.
+                bootload_info            bootload_loader:     75,  220,  338,  340,  349,  480,  517,  570,  653,  654,  659,
+                                                             696,  712,  714.
+                bootload_io              bootload_loader:    652.
+                bootload_slt_manager     bootload_loader:    160.
+                bootload_tape_fw         bootload_loader:    700.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+                build_entry              bootload_loader:    160.
+         266    cdptr                    bootload_loader:    109,  244,  247,  251,  255,  314,  347.
+         720    chk_pof_time             bootload_loader:    697,  699,  703.
+         256    clptrs                   bootload_loader:    103,  216,  225,  310,  342,  343,  344,  345.
+                cold_tape_mpc            bootload_loader:    696,  712.
+           2    config_segno_            coll0_segnos:         6.
+                connect                  bootload_loader:    652.
+         301    cw                       bootload_loader:    134,  142,  188,  222,  229,  245,  254,  259,  273,  290,  292,
+                                                             294,  320.
+           2    definitions.dot          hc_definitions_seg:        19.
+           0    definitions.first_free_mask    hc_definitions_seg:        26.
+          44    definitions.first_free_shift   hc_definitions_seg:        25.
+        1000    definitions.first_free_word    bootload_loader:    314,
+                                               hc_definitions_seg:        24.
+           2    definitions.length       hc_definitions_seg:        22.
+           0    definitions.next_free_ptr      bootload_loader:    111,
+                                               hc_definitions_seg:        18.
+           2    definitions.offset       hc_definitions_seg:        21.
+        1000    definitions_size         hc_definitions_seg:        15.
+           3    dn355_mbx_segno_         coll0_segnos:         7.
+           0    ds                       bootload_loader:    516,  536,  537,  569,
+                                         bootload_equs:       12.
+           0    ds_segno_                coll0_segnos:         4.
+         404    ed_segno_                coll0_segnos:        21.
+                entry_stack_ptr          bootload_loader:     73,   97,  118,  130,  148,  266,  271,  285,  288,  299,  300,
+                                                             301,  605,  637,  639.
+         601    exprec                   bootload_loader:     95,  591,  681,  684.
+       24000    fgbx_absloc              bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+           5    fgbx_segno_              coll0_segnos:         9.
+          27    finish                   bootload_loader:    100,  102.
+           7    fv                       bootload_equs:       19.
+           4    fv_segno_                coll0_segnos:         8.
+         500    gen_ptw                  bootload_loader:    489,  495.
+         420    have_seg_address         bootload_loader:    430,  440,  442.
+         300    hcw                      bootload_loader:    161,  274,  277,  319.
+           2    hc_linkage_seg.free_area       bootload_loader:    310,  311,  312,  313,
+                                               hc_linkage_seg:      19.
+           0    hc_linkage_seg.next_free_ptr   bootload_loader:    105,
+                                               hc_linkage_seg:      18.
+           3    hc_linkage_seg_size      hc_linkage_seg:      15.
+         270    hdrp                     bootload_loader:    162,  276,  316.
+      355245    header_c1                mstr:         119.
+      146073    header_c2                mstr:         120.
+           0    init                     bootload_loader:     71,   72.
+         304    interesting_names        bootload_loader:    173,  336,  351.
+          11    iom_mbx_segno_           coll0_segnos:        13.
+         740    io_start_time            bootload_loader:    648,  705,  728.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+         403    iupt_segno_              bootload_loader:    439,
+                                         coll0_segnos:        20.
+         302    k1                       bootload_loader:    129,  291,  321.
+           1    L68_SYSTEM               system_types:        13.
+           3    LABEL_VERSION            mstr:         124.
+         254    lastsltptr               bootload_loader:    166,  205,  308.
+         602    length                   bootload_loader:    592,  604,  611,  613,  631.
+          47    load.cmark               bootload_loader:    127,  153.
+          67    load.text                bootload_loader:    152,  194,  261.
+          64    load_collection          bootload_loader:    145,  147.
+         113    load_segment             bootload_loader:    176,  183.
+                lot_ptr                  bootload_loader:    220,  340.
+         735    magic_first              bootload_loader:    665,  721.
+         736    magic_last               bootload_loader:    677,  723.
+                make_core_ptw            bootload_loader:    490,  501.
+           0    make_ddcw.address        bootload_loader:    747.
+           0    make_ddcw.char_offset    bootload_loader:    747.
+           0    make_ddcw.op_type        bootload_loader:    747.
+        2020    make_ddcw.tally          bootload_loader:    747.
+           0    make_ddcw.tally_type     bootload_loader:    747.
+           0    make_pcw.channel         bootload_loader:    739.
+           2    make_pcw.chan_cmd        bootload_loader:    739.
+           0    make_pcw.chan_ctrl       bootload_loader:    739.
+           1    make_pcw.chan_data       bootload_loader:    739.
+          40    make_pcw.command         bootload_loader:    739.
+           0    make_pcw.device          bootload_loader:    739.
+           0    make_pcw.extension       bootload_loader:    739.
+           0    make_pcw.mask            bootload_loader:    739.
+                make_sdw                 bootload_loader:    512,  565.
+           2    mb                       bootload_equs:       14.
+           0    mstr.data_mask           mstr:          15.
+          44    mstr.data_shift          mstr:          14.
+          10    mstr.data_word           mstr:          13.
+           0    mstr.head                mstr:          10.
+           0    mstr.trail               mstr:          17.
+      400000    mstr_header.admin        mstr:          63.
+           5    mstr_header.admin_word   mstr:          62.
+           0    mstr_header.c1           bootload_loader:    650,  664,
+                                         mstr:          51.
+           7    mstr_header.c2           mstr:          86.
+           6    mstr_header.checksum     mstr:          85.
+      200000    mstr_header.continue     mstr:          77.
+           5    mstr_header.continue_word      mstr:          76.
+           4    mstr_header.data_bits_used     bootload_loader:     88,  671,
+                                               mstr:          57.
+           4    mstr_header.data_bit_len       mstr:          58.
+      400000    mstr_header.drain        mstr:          75.
+           5    mstr_header.drain_word   mstr:          74.
+      100000    mstr_header.eor          mstr:          67.
+           5    mstr_header.eor_word     mstr:          66.
+           1    mstr_header.eot          mstr:          73.
+           5    mstr_header.eot_word     mstr:          72.
+          11    mstr_header.flags_shift  mstr:          61.
+           5    mstr_header.flags_word   mstr:          60.
+        7000    mstr_header.head_version_mask  mstr:          80.
+          11    mstr_header.head_version_shift       mstr:          79.
+           5    mstr_header.head_version_word  mstr:          78.
+      200000    mstr_header.label        mstr:          65.
+           5    mstr_header.label_word   mstr:          64.
+           3    mstr_header.phy_file     mstr:          55.
+           3    mstr_header.rec_within_file    mstr:          54.
+           4    mstr_header.repeat       mstr:          71.
+         777    mstr_header.repeat_count_mask  mstr:          83.
+           0    mstr_header.repeat_count_shift       mstr:          82.
+           5    mstr_header.repeat_count_word  mstr:          81.
+           5    mstr_header.repeat_word  mstr:          70.
+          10    mstr_header.set          mstr:          69.
+           5    mstr_header.set_word     mstr:          68.
+           1    mstr_header.uid          mstr:          52.
+          10    mstr_header_size         bootload_loader:     92,  622,  676,  680,  747,
+                                         mstr:          49.
+           0    mstr_trailer.c1          mstr:          93.
+           7    mstr_trailer.c2          bootload_loader:    676,
+                                         mstr:         108.
+        7777    mstr_trailer.reel_num_mask     mstr:         101.
+          30    mstr_trailer.reel_num_shift    mstr:         100.
+           5    mstr_trailer.reel_num_word     mstr:          99.
+           3    mstr_trailer.tot_data_bits_word      mstr:          96.
+           0    mstr_trailer.tot_file_shift    mstr:         103.
+           5    mstr_trailer.tot_file_word     mstr:         102.
+           0    mstr_trailer.tot_rec_shift     mstr:         106.
+           6    mstr_trailer.tot_rec_word      bootload_loader:     92,  680,
+                                               mstr:         105.
+           1    mstr_trailer.uid         mstr:          94.
+          10    mstr_trailer_size        bootload_loader:    747,
+                                         mstr:          91.
+         300    mst_label.boot_pgm       mstr:          42.
+         244    mst_label.boot_pgm_len   mstr:          40.
+         160    mst_label.boot_pgm_path  mstr:          36.
+         245    mst_label.copyright      mstr:          41.
+          51    mst_label.dis_instr      mstr:          34.
+         150    mst_label.fault_data     mstr:          35.
+          50    mst_label.fv_overlay     mstr:          31.
+          10    mst_label.head           bootload_loader:     78,
+                                         mstr:          27.
+         242    mst_label.label_version  mstr:          38.
+           0    mst_label.lda_instr      mstr:          25.
+         243    mst_label.output_mode    mstr:          39.
+          50    mst_label.scu_instr      mstr:          33.
+           0    mst_label.trail          mstr:          43.
+           1    mst_label.tra_instr      mstr:          26.
+         232    mst_label.userid         mstr:          37.
+          20    mst_label.vid            mstr:          29.
+           0    mst_label.xfer_vector    mstr:          23.
+           1    name_seg.ht              slt:           35.
+           0    name_seg.next_loc        slt:           33.
+         201    name_seg_size            slt:           31.
+         600    ndata                    bootload_loader:     90,  590,  608,  673.
+         437    non_bkpt                 bootload_loader:    445,  458.
+         514    no_add_bkpt_ptw          bootload_loader:    499,  504.
+          10    no_interesting_names     bootload_loader:    174,  351.
+         634    no_read                  bootload_loader:    616,  627.
+           4    nt                       bootload_loader:    171,  172,
+                                         bootload_equs:       16.
+           6    nt_segno_                coll0_segnos:        10.
+                out_of_main_memory       bootload_loader:    407.
+                out_of_stack             bootload_loader:     73,  118,  148,  266,  288,  605.
+           0    path.acls                slt:           56.
+           1    path.name                slt:           55.
+           0    path.size                slt:           54.
+           5    prb                      bootload_loader:     75,   79,   88,   92,  155,  192,  201,  240,  316,  551,  609,
+                                                             618,  622,  629,  649,  650,  664,  671,  676,  680,
+                                         bootload_equs:       17.
+           0    prb.ctl                  bootload_loader:     65,   79,  609,  618,  629,  649.
+           1    prb.data                 bootload_loader:     66,   75,   88,   92,  622,  650,  664,  671,  676,  680.
+        2022    prb.hdr                  bootload_loader:     68,  155,  192,  201,  240,  316,  551.
+        2021    prb.nameptr              bootload_loader:     67.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+         401    prb_segno_               coll0_segnos:        18.
+         246    rcw.0                    bootload_loader:    293,  301.
+         244    rcw.1                    bootload_loader:    296,  300.
+         604    read                     bootload_loader:    186,  227,  257,  275,  289,  595.
+         226    readcw                   bootload_loader:    123,  136,  267,  279,  288.
+         615    readloop                 bootload_loader:    607,  632,  685.
+         647    readp                    bootload_loader:    610,  647,  662,  666,  678,  690.
+         204    read_header              bootload_loader:    152,  198,  237,  265.
+         224    read_header_returns      bootload_loader:    281,  284.
+         612    read_join                bootload_loader:    598,  603.
+         641    read_return              bootload_loader:    634.
+         603    read_skip                bootload_loader:    593,  595,  600,  615,  635.
+         747    read_tape_ddcw           bootload_loader:     76,  747.
+         746    read_tape_idcw           bootload_loader:    656,  716,  718,  741.
+                reset_and_mask           bootload_loader:    700.
+         712    retry_pof                bootload_loader:    692,  695.
+         213    rh.header                bootload_loader:    268,  273.
+         344    running_address          bootload_loader:    382,  423,  436,  488.
+           2    sdw_info.access          bootload_loader:    509,  562,
+                                         sdw_info:      20.
+           0    sdw_info.address         bootload_loader:    481,
+                                         sdw_info:      18.
+           1    sdw_info.bound           bootload_loader:    401,  405,  424,  427,  435,  449,  460,
+                                         sdw_info:      19.
+      100000    sdw_info.cache           bootload_loader:    556,
+                                         sdw_info:      40.
+      200000    sdw_info.execute         sdw_info:      23.
+      200000    sdw_info.faulted         bootload_loader:    532,  548,
+                                         sdw_info:      39.
+           4    sdw_info.flags           bootload_loader:    506,  533,  547,  557,
+                                         sdw_info:      36.
+           5    sdw_info.gate_entry_bound      sdw_info:      42.
+      400000    sdw_info.paged           bootload_loader:    505,
+                                         sdw_info:      38.
+       40000    sdw_info.privileged      sdw_info:      25.
+           7    sdw_info.r1_mask         sdw_info:      30.
+          41    sdw_info.r1_shift        sdw_info:      29.
+           7    sdw_info.r2_mask         sdw_info:      32.
+          36    sdw_info.r2_shift        sdw_info:      31.
+           7    sdw_info.r3_mask         sdw_info:      34.
+          33    sdw_info.r3_shift        sdw_info:      33.
+      400000    sdw_info.read            bootload_loader:    508,
+                                         sdw_info:      22.
+           3    sdw_info.rings           sdw_info:      27.
+      100000    sdw_info.write           bootload_loader:    508,
+                                         sdw_info:      24.
+           6    sdw_info_size            bootload_loader:    318,  390,
+                                         sdw_info:      15.
+           6    seg                      bootload_loader:    103,  104,  109,  110,  170,  178,  216,  220,  232,  233,  244,
+                                                             249,  251,  392,  409,  413,  417,  443,  447,  452,  453,  456,
+                                                             457,  483,  497,  511,  524,  527,  551,  553,  559,  564,  596,
+                                                             623,  625,
+                                         bootload_equs:       18.
+           1    seg2                     bootload_loader:    104,  105,  110,  111,  429,  439,  459,  467,  468,  469,  472,
+                                                             476,  477,  478,  479,  480,  491,  493,  502,
+                                         bootload_equs:       13.
+           0    segnam.count             slt:           41.
+           1    segnam.hp                slt:           44.
+           2    segnam.name              bootload_loader:    171,  172,
+                                         slt:           49.
+           1    segnam.names             slt:           42.
+      400000    segnam.ref               slt:           45.
+        7777    segnam.segno_mask        slt:           47.
+           0    segnam.segno_shift       slt:           46.
+         250    segptr                   bootload_loader:    165,  187,  231,  248,  303,  306,  474,  514,  515,  524,  534,
+                                                             535,  567,  568.
+         345    seg_text_length          bootload_loader:    384,  402,  522.
+         547    setaccess                bootload_loader:    190,  546.
+          30    setclr                   bootload_loader:    103,  107.
+         272    si                       bootload_loader:    318,  390,  401,  405,  424,  427,  435,  449,  460,  481,  506,
+                                                             509,  511,  533,  547,  557,  562,  564.
+         610    skip                     bootload_loader:    128,  133,  141,  600.
+          61    skip.data                bootload_loader:    138,  141.
+         645    skip.return              bootload_loader:    636,  638.
+          41    skip_collection          bootload_loader:    115,  117.
+          44    skip_next                bootload_loader:    122,  143.
+           3    slt                      bootload_loader:    207,  211,  219,  404,  422,  425,  426,  428,  433,  434,  437,
+                                                             438,
+                                         bootload_equs:       15.
+           5    slt.first_init_seg       slt:           21.
+           3    slt.first_sup_seg        slt:           19.
+           7    slt.free_core_size       bootload_loader:    404,  426,  428,  434,  438,
+                                         slt:           23.
+           2    slt.free_core_start      bootload_loader:    422,  425,  433,  437,
+                                         slt:           18.
+           6    slt.last_init_seg        slt:           22.
+           4    slt.last_sup_seg         slt:           20.
+           0    slt.name_seg_ptr         slt:           17.
+          10    slt.seg                  slt:           24.
+          10    slt.slte                 slt:           26.
+       10000    slte.abs_seg             slte:          88.
+           1    slte.abs_seg_word        slte:          87.
+          17    slte.access_mask         slte:          84.
+          40    slte.access_shift        bootload_loader:    560,
+                                         slte:          83.
+           1    slte.access_word         bootload_loader:    443,  559,
+                                         slte:          82.
+           1    slte.acl_provided        slte:         102.
+           1    slte.acl_provided_word   slte:         101.
+           0    slte.bit_count_shift     slte:         134.
+           3    slte.bit_count_word      bootload_loader:    392,
+                                         slte:         133.
+       40000    slte.branch_required     slte:         104.
+           1    slte.branch_required_word      slte:         103.
+        1000    slte.breakpointable      bootload_loader:    446,  484,  498,
+                                         slte:          94.
+           1    slte.breakpointable_word       bootload_loader:    447,  483,  497,
+                                               slte:          93.
+       20000    slte.cache               bootload_loader:    554,
+                                         slte:          86.
+           1    slte.cache_word          bootload_loader:    553,
+                                         slte:          85.
+         400    slte.combine_link        slte:         116.
+           1    slte.combine_link_word   slte:         115.
+         777    slte.cur_length_mask     slte:         124.
+          33    slte.cur_length_shift    bootload_loader:    451,
+                                         slte:         123.
+           2    slte.cur_length_word     bootload_loader:    452,  453,
+                                         slte:         122.
+         100    slte.defs                bootload_loader:    157,  241,
+                                         slte:         120.
+           1    slte.defs_word           bootload_loader:    240,
+                                         slte:         119.
+        4000    slte.firmware_seg        bootload_loader:    410,
+                                         slte:          90.
+           1    slte.firmware_seg_word   bootload_loader:    409,
+                                         slte:          89.
+       20000    slte.init_seg            bootload_loader:    208,  418,
+                                         slte:         106.
+           1    slte.init_seg_word       bootload_loader:    207,  417,
+                                         slte:         105.
+        2000    slte.layout_seg          slte:          92.
+           1    slte.layout_seg_word     slte:          91.
+        4000    slte.link_provided       bootload_loader:    193,
+                                         slte:         110.
+           1    slte.link_provided_word  bootload_loader:    192,
+                                         slte:         109.
+        2000    slte.link_sect           bootload_loader:    157,  202,
+                                         slte:         112.
+        1000    slte.link_sect_wired     bootload_loader:    212,
+                                         slte:         114.
+           1    slte.link_sect_wired_word      bootload_loader:    211,
+                                               slte:         113.
+           1    slte.link_sect_word      bootload_loader:    155,  201,
+                                         slte:         111.
+         777    slte.max_length_mask     slte:         132.
+          30    slte.max_length_shift    bootload_loader:    455,
+                                         slte:         131.
+           3    slte.max_length_word     bootload_loader:    456,  457,
+                                         slte:         130.
+           0    slte.names_ptr           bootload_loader:    170,
+                                         slte:          79.
+          20    slte.paged               bootload_loader:    414,
+                                         slte:          98.
+           1    slte.paged_word          bootload_loader:    413,
+                                         slte:          97.
+           0    slte.path_ptr            slte:          80.
+          10    slte.per_process         slte:         100.
+           1    slte.per_process_word    slte:          99.
+         200    slte.pre_linked          slte:         118.
+           1    slte.pre_linked_word     slte:         117.
+           7    slte.ringbrack_mask      slte:         127.
+          30    slte.ringbrack_shift     slte:         126.
+           2    slte.ringbrack_word      slte:         125.
+           2    slte.segno               bootload_loader:    178,  219,
+                                         slte:         128.
+       10000    slte.temp_seg            slte:         108.
+           1    slte.temp_seg_word       slte:         107.
+          40    slte.wired               slte:          96.
+           1    slte.wired_word          slte:          95.
+           4    slte_size                slte:          77.
+       10000    slte_uns.abs_seg         slte:          26.
+           1    slte_uns.abs_seg_word    slte:          25.
+          17    slte_uns.access_mask     slte:          22.
+          40    slte_uns.access_shift    slte:          21.
+           1    slte_uns.access_word     slte:          20.
+           1    slte_uns.acl_provided    slte:          40.
+           1    slte_uns.acl_provided_word     slte:          39.
+           0    slte_uns.bit_count_shift       slte:          72.
+           3    slte_uns.bit_count_word  slte:          71.
+       40000    slte_uns.branch_required       slte:          42.
+           1    slte_uns.branch_required_word  slte:          41.
+        1000    slte_uns.breakpointable  slte:          32.
+           1    slte_uns.breakpointable_word   slte:          31.
+       20000    slte_uns.cache           slte:          24.
+           1    slte_uns.cache_word      slte:          23.
+         400    slte_uns.combine_link    slte:          54.
+           1    slte_uns.combine_link_word     slte:          53.
+         777    slte_uns.cur_length_mask       slte:          62.
+          33    slte_uns.cur_length_shift      slte:          61.
+           2    slte_uns.cur_length_word       slte:          60.
+         100    slte_uns.defs            slte:          58.
+           1    slte_uns.defs_word       slte:          57.
+        4000    slte_uns.firmware_seg    slte:          28.
+           1    slte_uns.firmware_seg_word     slte:          27.
+       20000    slte_uns.init_seg        slte:          44.
+           1    slte_uns.init_seg_word   slte:          43.
+        2000    slte_uns.layout_seg      slte:          30.
+           1    slte_uns.layout_seg_word       slte:          29.
+        4000    slte_uns.link_provided   slte:          48.
+           1    slte_uns.link_provided_word    slte:          47.
+        2000    slte_uns.link_sect       slte:          50.
+        1000    slte_uns.link_sect_wired       slte:          52.
+           1    slte_uns.link_sect_wired_word  slte:          51.
+           1    slte_uns.link_sect_word  slte:          49.
+         777    slte_uns.max_length_mask       slte:          70.
+          30    slte_uns.max_length_shift      slte:          69.
+           3    slte_uns.max_length_word       slte:          68.
+           0    slte_uns.names_ptr       slte:          17.
+          20    slte_uns.paged           slte:          36.
+           1    slte_uns.paged_word      slte:          35.
+           0    slte_uns.path_ptr        slte:          18.
+          10    slte_uns.per_process     slte:          38.
+           1    slte_uns.per_process_word      slte:          37.
+         200    slte_uns.pre_linked      slte:          56.
+           1    slte_uns.pre_linked_word       slte:          55.
+           7    slte_uns.ringbrack_mask  slte:          65.
+          30    slte_uns.ringbrack_shift       slte:          64.
+           2    slte_uns.ringbrack_word  slte:          63.
+           2    slte_uns.segno           slte:          66.
+       10000    slte_uns.temp_seg        slte:          46.
+           1    slte_uns.temp_seg_word   slte:          45.
+          40    slte_uns.wired           slte:          34.
+           1    slte_uns.wired_word      slte:          33.
+           4    slte_uns_size            slte:          15.
+           7    slt_segno_               coll0_segnos:        11.
+      100010    slt_size                 slt:           14.
+          53    something_to_skip        bootload_loader:    124,  132.
+                status_mask              bootload_loader:    659.
+                system_type              bootload_loader:     75,  480,  517,  570.
+                sys_boot_info_ptr        bootload_loader:    349.
+          47    TAPE.backspace_file      tape_io_commands:    26.
+          46    TAPE.backspace_record    tape_io_commands:    25.
+          10    TAPE.control_store_overlay     tape_io_commands:    27.
+          31    TAPE.diagnostic_mode_control   tape_io_commands:    49.
+          54    TAPE.erase               tape_io_commands:    29.
+          45    TAPE.forward_space_file  tape_io_commands:    23.
+          44    TAPE.forward_space_record      tape_io_commands:    22.
+           5    TAPE.load_from_device    tape_io_commands:    28.
+          11    TAPE.main_memory_overlay       tape_io_commands:    50.
+          25    TAPE.read_ascii_ebcdic_record  tape_io_commands:    47.
+          27    TAPE.read_ascii_record   tape_io_commands:    45.
+           4    TAPE.read_bcd_record     tape_io_commands:    39.
+           5    TAPE.read_binary_record  bootload_loader:    742,
+                                         tape_io_commands:    35.
+          26    TAPE.read_control_registers    tape_io_commands:     7.
+          24    TAPE.read_ebcdic_record  tape_io_commands:    43.
+           3    TAPE.read_tape_nine      tape_io_commands:    33.
+          67    TAPE.release_device      tape_io_commands:    16.
+          50    TAPE.request_device_status     tape_io_commands:     3.
+           0    TAPE.request_status      tape_io_commands:     1.
+           6    TAPE.reread_bcd_record   tape_io_commands:    40.
+           7    TAPE.reread_binary_record      tape_io_commands:    37.
+          37    TAPE.reread_ebcdic_record      tape_io_commands:    44.
+          66    TAPE.reserve_device      tape_io_commands:    15.
+          51    TAPE.reset_device_status       tape_io_commands:     4.
+          40    TAPE.reset_status        bootload_loader:    739,
+                                         tape_io_commands:     2.
+          70    TAPE.rewind              tape_io_commands:    11.
+          72    TAPE.rewind_unload       tape_io_commands:    14.
+          65    TAPE.set_1600_bpi        tape_io_commands:    21.
+          64    TAPE.set_200_bpi         tape_io_commands:    17.
+          61    TAPE.set_556_bpi         tape_io_commands:    19.
+          60    TAPE.set_800_bpi         tape_io_commands:    20.
+          63    TAPE.set_file_format     tape_io_commands:    10.
+          62    TAPE.set_file_protect    tape_io_commands:     9.
+          57    TAPE.survey_devices      tape_io_commands:     5.
+          75    TAPE.tape_load           tape_io_commands:    13.
+          35    TAPE.write_ascii_ebcdic_record       tape_io_commands:    46.
+          14    TAPE.write_bcd_record    tape_io_commands:    38.
+          15    TAPE.write_binary_record       tape_io_commands:    34.
+          16    TAPE.write_control_registers   tape_io_commands:     8.
+          34    TAPE.write_ebcdic_record       tape_io_commands:    41.
+          55    TAPE.write_eof_record    tape_io_commands:    31.
+          13    TAPE.write_tape_nine     tape_io_commands:    32.
+                tape_channel_number      bootload_loader:    654.
+                tape_device_number       bootload_loader:    714.
+         704    tape_error               bootload_loader:    660,  687,  693,  708.
+                tape_iom_number          bootload_loader:    653.
+         744    tape_io_pcw              bootload_loader:    655,  739.
+         576    tape_status              bootload_loader:    587,  588,  658.
+         252    tempptr                  bootload_loader:    218,  228,  232,  252,  253,  258,  307.
+         742    thirty_sec_limit         bootload_loader:    706,  730.
+       46000    toedata_absloc           bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+          10    toehold_data_segno_      coll0_segnos:        12.
+           1    toehold_segno_           coll0_segnos:         5.
+       24000    toe_absloc               bootload_equs:       81.
+        4000    toe_lth                  bootload_equs:       82.
+          13    toe_segno_               coll0_segnos:        15.
+                too_many_segs            bootload_loader:    163.
+      422532    trailer_c1               mstr:         121.
+      631704    trailer_c2               mstr:         122.
+         653    try_readp_again          bootload_loader:    651,  707.
+         737    unwedged                 bootload_loader:     96,  698,  701,  726.
+           6    upt.current_length       bootload_loader:    459,  467,  468,
+                                         unpaged_page_tables:       22.
+          10    upt.first_entry          unpaged_page_tables:       24.
+           4    upt.iupt_absloc          unpaged_page_tables:       20.
+           5    upt.iupt_last_loc        unpaged_page_tables:       21.
+           7    upt.max_length           bootload_loader:    469,
+                                         unpaged_page_tables:       23.
+           0    upt.sst_absloc           unpaged_page_tables:       16.
+           1    upt.sst_last_loc         unpaged_page_tables:       17.
+           2    upt.upt_absloc           unpaged_page_tables:       18.
+           3    upt.upt_last_loc         unpaged_page_tables:       19.
+       52000    upt_absloc               bootload_equs:       93.
+           2    upt_entry.ptws           bootload_loader:    479,
+                                         unpaged_page_tables:       32.
+           1    upt_entry.segno          bootload_loader:    476,
+                                         unpaged_page_tables:       31.
+           0    upt_entry.size           bootload_loader:    477,  478,
+                                         unpaged_page_tables:       30.
+        2000    upt_lth                  bootload_equs:       94.
+                upt_overflow             bootload_loader:    471.
+          12    upt_segno_               bootload_loader:    429,
+                                         coll0_segnos:        14.
+          10    volume_identifier.tape_reel_id       mstr:         116.
+          20    volume_identifier.volume_set_id      mstr:         117.
+          30    volume_identifier_size   mstr:         113.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

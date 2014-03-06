@@ -1,0 +1,55 @@
+
+
+
+    option  Multics
+
+    name    CAF_1   "
+    
+    segdef  CAF_L1, fake
+
+
+    "
+    " we'll store stuff on our stack frame ...
+    "
+    temp    saveX2      " for saving x2 for subroutine call(s)
+
+
+        even
+save2:      bss     ,2
+save2p:     bss     ,2
+save3p:     bss     ,2
+
+L1:     bss     1
+L2:     bss     1
+
+
+
+        even
+LAQ:
+LA:     bss     1
+LQ:     bss     1
+
+
+        
+exit:   lprp2   save2p
+        rtcd    save2
+
+CAF_L1:     
+
+    sprp2   save2p
+    spri2   save2
+
+    tra     exit
+
+fake:   spri2   save2       " save pr2 for return to caller
+        sprp2   save2p      " save a packed version of pr2
+        sprp3   save3p      " save a packed version of pr3
+        lprp3   save2p      " get PR2's segment number into PR3
+
+        lda     pr2|0,3     " pick up argument pointer
+        eawp3   0,au        " put address into PR3's WORDNO
+        lda     pr3|0       " ****** THIS INSTRUCTION NO LONGER GETS MODIFIED ******
+
+        dis
+
+    end

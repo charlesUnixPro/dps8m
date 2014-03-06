@@ -1,0 +1,915 @@
+	COMPILATION LISTING OF SEGMENT mdc_create_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1021.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1989   *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*        *                                                         *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        8*        *                                                         *
+        9*        * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*        * Technology and Honeywell Information Systems, Inc.      *
+       11*        *                                                         *
+       12*        *********************************************************** */
+       13 
+       14 
+       15 
+       16 
+       17 /****^  HISTORY COMMENTS:
+       18*  1) change(89-02-27,TLNguyen), approve(89-02-27,MCR8049),
+       19*     audit(89-02-28,Parisek), install(89-03-15,MR12.3-1025):
+       20*     a. removed references to create_branch_version_1.
+       21*     b. fixed a stringsize error.
+       22*  2) change(89-03-31,TLNguyen), approve(89-03-31,PBF8049),
+       23*     audit(89-03-31,Farley), install(89-04-24,MR12.3-1031):
+       24*     Reinstated the check for create_branch_version_1 in order to retain
+       25*     binary compatibility.
+       26*                                                   END HISTORY COMMENTS */
+       27 
+       28 
+       29 /* format: style3,indcomtxt */
+       30 /* MDC_CREATE_: Procedure to create a master directory */
+       31 
+       32 /* Written March 1976 by Larry Johnson */
+       33 /* Modified September 1977 by Larry Johnson */
+       34 /* Modified 83-12-07 BIM for correct quota precisions */
+       35 /* Modified 84-11-01 by EJ Sharpe for new dirx_acct entry */
+       36 /* Modified 84-12-27 by Keith Loepere for dir_quota */
+       37 
+       38 mdc_create_:
+       39      proc;
+       40 
+       41 dcl	arg_dir		char (*);			/* Name of containing directory */
+       42 dcl	arg_ename		char (*);			/* Name of new directory */
+       43 dcl	arg_volume	char (*);			/* Logical volume name */
+       44 dcl	arg_mode		bit (36) aligned;		/* Mode needed on new directory */
+       45 dcl	arg_rings		(3) fixed bin (3);		/* Ring brackets of new directory */
+       46 dcl	arg_userid	char (*);			/* Name to be added to acl */
+       47 dcl	arg_quota		fixed bin (18);		/* Quota of new directory */
+       48 dcl	arg_acct_id	char (*);			/* quota account to use for this mdir */
+       49 dcl	arg_owner_id	char (*);			/* user_id who'll be the owner of this mdir */
+       50 dcl	arg_info_ptr	ptr;			/* Pointer to create_branch_info structure */
+       51 dcl	arg_code		fixed bin (35);		/* Status code */
+       52 
+       53 /* static storage */
+       54 
+       55 dcl       create_branch_version_1
+       56                               fixed bin int static options (constant) init (1);
+       57 
+       58 /* Automatic storage */
+       59 
+       60 dcl	dir		char (168);		/* Copy of arg_dir */
+       61 dcl	ename		char (32);		/* Copy of arg_ename */
+       62 dcl	volume		char (32);		/* Copy of arg_volume */
+       63 dcl	cbip		ptr;			/* Copy of create branch_info structure */
+       64 dcl	aip		ptr;			/* Copy of arg_info_ptr */
+       65 dcl	code		fixed bin (35);		/* Status code */
+       66 dcl	quota_left	fixed bin (35);		/* Quota left in account */
+       67 dcl	quota_used	fixed bin (35);		/* Updated quota used */
+       68 dcl	owner_person	char (22);
+       69 dcl	owner_project	char (9);
+       70 dcl	owner_id		char (32);
+       71 dcl	acct_person	char (22);
+       72 dcl	acct_project	char (9);
+       73 dcl	acct_id		char (32);
+       74 dcl	access		bit (36) aligned;		/* Access to logical volume */
+       75 dcl	uid_pathname	(0:15) bit (36) aligned;	/* UID pathaneme of master directory */
+       76 dcl	voluid		bit (36) aligned;		/* UID of logical volume */
+       77 dcl	current_quota	fixed bin (18);
+       78 dcl	trp		fixed bin (71);		/* Time record product */
+       79 
+       80 /* External things */
+       81 
+       82 dcl	admin_gate_$append_master_dir
+       83 			entry (char (*), char (*), ptr, bit (36) aligned, dim (0:15) bit (36) aligned,
+       84 			fixed bin (35));
+       85 dcl	admin_gate_$delete_master_dir
+       86 			entry (dim (0:15) bit (36) aligned, fixed bin (71), fixed bin (35));
+       87 dcl	admin_gate_$get_uidpath
+       88 			entry (char (*), char (*), dim (0:15) bit (36) aligned, fixed bin (35));
+       89 dcl	admin_gate_$mdir_status
+       90 			entry (char (*), char (*), dim (0:15) bit (36) aligned, bit (36) aligned, fixed bin (18),
+       91 			fixed bin (35));
+       92 dcl	admin_gate_$syserr	entry options (variable);
+       93 dcl	get_authorization_	entry returns (bit (72) aligned);
+       94 dcl	get_group_id_	entry() returns(char(32));
+       95 dcl	mdc_lock_$cleanup	entry;
+       96 dcl	mdc_lock_$reset	entry;
+       97 dcl	mdc_lock_$set	entry (fixed bin (35));
+       98 dcl	mdc_parse_acct_$star entry (char (*), char (*), char (*), fixed bin (35));
+       99 dcl	mdc_util_$check_pathent
+      100 			entry (bit (18) aligned, dim (0:15) bit (36) aligned, fixed bin (35));
+      101 dcl	mdc_util_$find_matching_acctent
+      102 			entry (ptr, char (*), char (*), ptr);
+      103 dcl	mdc_util_$find_mdirent
+      104 			entry (ptr, dim (0:15) bit (36) aligned, ptr);
+      105 dcl	mdc_util_$free_mdirent
+      106 			entry (ptr);
+      107 dcl	mdc_util_$get_mdirent
+      108 			entry (ptr, ptr, fixed bin (35));
+      109 dcl	mdc_util_$thread_mdirent
+      110 			entry (ptr);
+      111 dcl	mdcs_util_$find_mdcs
+      112 			entry (char (*), ptr, bit (36) aligned, fixed bin (35));
+      113 dcl	mdcs_util_$find_mdcs_uid
+      114 			entry (bit (36) aligned, ptr, bit (36) aligned, fixed bin (35));
+      115 dcl	mdcs_util_$term_mdcs
+      116 			entry (ptr);
+      117 
+      118 
+      119 dcl	error_table_$argerr ext fixed bin (35);
+      120 dcl	error_table_$noentry
+      121 			ext fixed bin (35);
+      122 dcl	error_table_$mdc_bad_quota
+      123 			ext fixed bin (35);
+      124 dcl	error_table_$mdc_no_quota
+      125 			ext fixed bin (35);
+      126 dcl	error_table_$mdc_no_quota_account
+      127 			ext fixed bin (35);
+      128 dcl	error_table_$mdc_unregistered_mdir
+      129 			ext fixed bin (35);
+      130 dcl	error_table_$mdc_illegal_owner
+      131 			ext fixed bin (35);
+      132 dcl	error_table_$mdc_exec_access
+      133 			ext fixed bin (35);
+      134 dcl	cleanup		condition;
+      135 
+      136 dcl	(ptr, rel, addr, bin, null, substr)
+      137 			builtin;
+      138 
+  1     1 /*  BEGIN INCLUDE FILE - - - create_branch_info.incl.pl1 - - - created January 1975 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(89-01-16,TLNguyen), approve(89-01-16,MCR8049),
+  1     6*     audit(89-02-03,Parisek), install(89-03-15,MR12.3-1025):
+  1     7*       1. Declare version constant properly.
+  1     8*       2. Remove version 1 since it was never referenced and to force
+  1     9*          callers to upgrade their programs.
+  1    10*                                                   END HISTORY COMMENTS */
+  1    11 
+  1    12 
+  1    13 /* Modified December 1984 for dir_quota, Keith Loepere. */
+  1    14 
+  1    15 /* this include files gives the argument structure for create_branch_ */
+  1    16 
+  1    17 dcl 1 create_branch_info aligned based,
+  1    18     2 version fixed bin,				/* set this to the largest value given below */
+  1    19     2 switches unaligned,
+  1    20       3 dir_sw bit (1) unaligned,			/* if on, a directory branch is wanted */
+  1    21       3 copy_sw bit (1) unaligned,			/* if on, initiating segment will be done by copying */
+  1    22       3 chase_sw bit (1) unaligned,			/* if on, if pathname is a link, it will be chased */
+  1    23       3 priv_upgrade_sw bit (1) unaligned,		/* privileged creation (ring 1) of upgraded object */
+  1    24       3 parent_ac_sw bit (1) unaligned,			/* if on, use parent's access class for seg or dir created */
+  1    25       3 mbz1 bit (31) unaligned,			/* pad to full word */
+  1    26     2 mode bit (3) unaligned,				/* segment or directory for acl for userid */
+  1    27     2 mbz2 bit (33) unaligned,			/* pad to full word */
+  1    28     2 rings (3) fixed bin (3),			/* branch's ring brackets */
+  1    29     2 userid char (32),				/* user's access control name */
+  1    30     2 bitcnt fixed bin (24),				/* bit count of the segment */
+  1    31     2 quota fixed bin (18),				/* for directories, this am't of quota will be moved to it */
+  1    32     2 access_class bit (72),				/* is the access class of the body of the branch */
+  1    33     2 dir_quota fixed bin (18);			/* for directories, this am't of dir quota will be moved to it */
+  1    34 
+  1    35 dcl  create_branch_version_2 fixed bin int static options (constant) init (2);
+  1    36 
+  1    37 /* END INCLUDE FILE - - - create_branch_info.incl.pl1 - - - */
+  1    38 
+      139 
+      140 
+      141 
+      142 dcl	1 auto_branch_info	like create_branch_info aligned automatic;
+      143 dcl	1 cbi		like create_branch_info aligned based (cbip);
+      144 
+  2     1 /* Begin include file ..... mdcs.incl.pl1 */
+  2     2 /* Modified to give quota enough precision BIM 83-12-07 */
+  2     3 
+  2     4 /* Format of a master directory control segment */
+  2     5 
+  2     6 dcl  mdcsp ptr;					/* Pointer to structure */
+  2     7 
+  2     8 dcl 1 mdcs aligned based (mdcsp),			/* A master directory control segment */
+  2     9     2 head like mdcs_head,				/* First the header */
+  2    10     2 area area (0 refer (mdcs.area_size));		/* Followed by an area for allocating data */
+  2    11 
+  2    12 dcl 1 mdcs_head aligned based,			/* The header portion of the mdcs */
+  2    13     2 version fixed bin,				/* Version of structure */
+  2    14     2 init bit (1) unal,				/* Set when mdcs created */
+  2    15     2 free_bits bit (35) unal,
+  2    16     2 time_checked fixed bin (71),			/* Time this MDCS last checked for consistency */
+  2    17     2 volume char (32),				/* Name of volume */
+  2    18     2 uid bit (36),					/* Unique id of volume */
+  2    19     2 acct_offset bit (18),				/* Offset to first account entry */
+  2    20     2 dir_offset bit (18),				/* Pointer to first directory entry */
+  2    21     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  2    22     2 area_size fixed bin (18),			/* Size of the area (rest of segment) */
+  2    23     2 restrict_path bit (18),				/* List of pathnames in volume restict list */
+  2    24     2 default_path bit (18),				/* List of pathnames in volume default list */
+  2    25     2 fill (43) bit (36) aligned;			/* Pad to octal 100 */
+  2    26 
+  2    27 dcl  mdcs_version fixed bin int static options (constant) init (1); /* Latest version */
+  2    28 
+  2    29 dcl  mdirp ptr;					/* Pointer to directory entry */
+  2    30 
+  2    31 dcl 1 mdirent aligned based (mdirp),
+  2    32     2 next bit (18) unal,				/* Pointer to next entry */
+  2    33     2 fill bit (18) unal,
+  2    34     2 uidpath (0:15) bit (36),			/* Uid pathname of master dir */
+  2    35     2 owner,					/* Owner of directory */
+  2    36       3 person char (22) unal,
+  2    37       3 project char (9) unal,
+  2    38     2 quota_offset bit (18),				/* Rel pointer to quota account */
+  2    39     2 quota fixed bin (18),				/* The quota */
+  2    40     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  2    41     2 fill2 (10) bit (36) aligned;
+  2    42 
+  2    43 dcl  acctp ptr;					/* Pointer to account entry */
+  2    44 
+  2    45 dcl 1 acctent aligned based (acctp),
+  2    46     2 next bit (18) unal,				/* Relative pointer to next entry */
+  2    47     2 fill bit (18) unal,
+  2    48     2 name,					/* Name of quota account */
+  2    49       3 person char (22) unal,
+  2    50       3 project char (9) unal,
+  2    51     2 quota fixed bin (35),				/* Total quota for account */
+  2    52     2 quota_used fixed bin (35),			/* Amount of quota assigned to master dirs */
+  2    53     2 trp fixed bin (71) unal,			/* Time record product for deleted dirs */
+  2    54     2 backup (3) fixed bin (35),			/* Backup accounting data */
+  2    55     2 restrict_path bit (18),				/* List of restricting paths for account */
+  2    56     2 fill2 (7) bit (36) aligned;
+  2    57 
+  2    58 dcl  pathp ptr;					/* Pointer to uid pathname entry */
+  2    59 
+  2    60 dcl 1 pathent aligned based (pathp),			/* Entry in a list of pathnames */
+  2    61     2 next bit (18) unal,
+  2    62     2 fill bit (18) unal,
+  2    63     2 uidpath (0:15) bit (36);
+  2    64 
+  2    65 
+  2    66 /* End include file ..... mdcs.incl.pl1 */
+      145 
+      146 
+  3     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  3     2*
+  3     3*   Values for the "access mode" argument so often used in hardcore
+  3     4*   James R. Davis 26 Jan 81  MCR 4844
+  3     5*   Added constants for SM access 4/28/82 Jay Pattin
+  3     6*   Added text strings 03/19/85 Chris Jones
+  3     7**/
+  3     8 
+  3     9 
+  3    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3    11 dcl	(
+  3    12 	N_ACCESS		   init ("000"b),
+  3    13 	R_ACCESS		   init ("100"b),
+  3    14 	E_ACCESS		   init ("010"b),
+  3    15 	W_ACCESS		   init ("001"b),
+  3    16 	RE_ACCESS		   init ("110"b),
+  3    17 	REW_ACCESS	   init ("111"b),
+  3    18 	RW_ACCESS		   init ("101"b),
+  3    19 	S_ACCESS		   init ("100"b),
+  3    20 	M_ACCESS		   init ("010"b),
+  3    21 	A_ACCESS		   init ("001"b),
+  3    22 	SA_ACCESS		   init ("101"b),
+  3    23 	SM_ACCESS		   init ("110"b),
+  3    24 	SMA_ACCESS	   init ("111"b)
+  3    25 	)		   bit (3) internal static options (constant);
+  3    26 
+  3    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  3    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  3    29 
+  3    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  3    31 			   static options (constant);
+  3    32 
+  3    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  3    34 			   static options (constant);
+  3    35 
+  3    36 dcl	(
+  3    37 	N_ACCESS_BIN	   init (00000b),
+  3    38 	R_ACCESS_BIN	   init (01000b),
+  3    39 	E_ACCESS_BIN	   init (00100b),
+  3    40 	W_ACCESS_BIN	   init (00010b),
+  3    41 	RW_ACCESS_BIN	   init (01010b),
+  3    42 	RE_ACCESS_BIN	   init (01100b),
+  3    43 	REW_ACCESS_BIN	   init (01110b),
+  3    44 	S_ACCESS_BIN	   init (01000b),
+  3    45 	M_ACCESS_BIN	   init (00010b),
+  3    46 	A_ACCESS_BIN	   init (00001b),
+  3    47 	SA_ACCESS_BIN	   init (01001b),
+  3    48 	SM_ACCESS_BIN	   init (01010b),
+  3    49 	SMA_ACCESS_BIN	   init (01011b)
+  3    50 	)		   fixed bin (5) internal static options (constant);
+  3    51 
+  3    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      147 
+      148 
+      149 /* Entry to create master directory with out info structure */
+      150 
+      151 dir:
+      152      entry (arg_dir, arg_ename, arg_volume, arg_mode, arg_rings, arg_userid, arg_quota, arg_code);
+      153 
+      154 	owner_id, acct_id = "";			/* default to caller id */
+      155 	cbip = addr (auto_branch_info);		/* Pointer to build param list */
+      156 	dir = arg_dir;				/* Copy parameters */
+      157 	ename = arg_ename;
+      158 	volume = arg_volume;
+      159 	cbi.mode = substr (arg_mode, 1, 3);
+      160 	cbi.rings = arg_rings;
+      161 	cbi.userid = arg_userid;
+      162 	cbi.quota = arg_quota;
+      163 	cbi.dir_quota = 0;
+      164 
+      165 	cbi.version = create_branch_version_2;		/* Complete info structure */
+      166 	cbi.dir_sw = "1"b;
+      167 	cbi.copy_sw = "0"b;
+      168 	cbi.chase_sw = "1"b;
+      169 	cbi.priv_upgrade_sw = "0"b;
+      170 	cbi.parent_ac_sw = "1"b;
+      171 	cbi.mbz1 = "0"b;
+      172 	cbi.mbz2 = "0"b;
+      173 	cbi.bitcnt = 0;
+      174 	cbi.access_class = get_authorization_ ();
+      175 
+      176 	go to common;
+      177 
+      178 
+      179 /* Entry to create master directory with info structure */
+      180 
+      181 dirx:
+      182      entry (arg_dir, arg_ename, arg_volume, arg_info_ptr, arg_code);
+      183 
+      184 	owner_id, acct_id = "";			/* default to caller's user_id */
+      185 
+      186 dirx_join:
+      187 	cbip = addr (auto_branch_info);		/* Pointer to my copy of info structure */
+      188 	dir = arg_dir;				/* Copy params */
+      189 	ename = arg_ename;
+      190 	volume = arg_volume;
+      191 	aip = arg_info_ptr;				/* Pointer to callers info structure */
+      192 	cbi = aip -> cbi;				/* Copy entrure structuee */
+      193 
+      194 	if cbi.version < create_branch_version_1 | cbi.version > create_branch_version_2 /* Check some requirements */
+      195 	     | ^cbi.dir_sw | cbi.priv_upgrade_sw | cbi.mbz1 ^= "0"b | cbi.mbz2 ^= "0"b
+      196 	then do;
+      197 		arg_code = error_table_$argerr;
+      198 		return;
+      199 	     end;
+      200 
+      201 	go to common;
+      202 
+      203 
+      204 /* Entry same as "dirx" but with added arguments to specify quota account and/or mdir owner */
+      205 
+      206 dirx_acct:
+      207 	entry (arg_dir, arg_ename, arg_volume, arg_info_ptr, arg_acct_id, arg_owner_id, arg_code);
+      208 
+      209 	owner_id = arg_owner_id;		/* copy our special args */
+      210 	if owner_id = get_group_id_ ()
+      211 	     then owner_id = "";		/* caller really did'nt need this */
+      212 	acct_id = arg_acct_id;
+      213 	if acct_id = get_group_id_ ()
+      214 	     then acct_id = "";		/* caller really did'nt need this */
+      215 	if acct_id = "" then acct_id = owner_id;	/* use owner for matching an account */
+      216 	goto dirx_join;
+      217 
+      218 /* Common coding for all create entries */
+      219 
+      220 common:
+      221 	mdcsp = null;
+      222 	on cleanup call clean_up;
+      223 	call mdc_lock_$set (code);
+      224 	if code ^= 0
+      225 	then go to return_code;			/* Unable to set lock */
+      226 
+      227 	call mdcs_util_$find_mdcs (volume, mdcsp, access, code);
+      228 						/* Find control segment */
+      229 	if code ^= 0
+      230 	then go to unlock_return;
+      231 
+      232 	if (owner_id ^= "") & (acct_id ^= "")	/* caller specified owner/acct ? */
+      233 	then if ((access & E_ACCESS) ^= E_ACCESS)	/* then better be a volume administrator */
+      234 	     then do;
+      235 		code = error_table_$mdc_exec_access;
+      236 		goto term_return;
+      237 	     end;
+      238 
+      239 	call mdc_parse_acct_$star (acct_id, acct_person, acct_project, code); /* Find out who i am */
+      240 	if code ^= 0
+      241 	then go to term_return;
+      242 
+      243 	call mdc_parse_acct_$star (owner_id, owner_person, owner_project, code);
+      244 	if code ^= 0
+      245 	then go to term_return;
+      246 	if owner_person = "*" | owner_project = "*"
+      247 	then do;
+      248 	     code = error_table_$mdc_illegal_owner;
+      249 	     goto term_return;
+      250 	end;
+      251 
+      252 	call mdc_util_$find_matching_acctent (mdcsp, acct_person, acct_project, acctp);
+      253 						/* And find my quota account */
+      254 	if acctp = null
+      255 	then do;
+      256 		code = error_table_$mdc_no_quota_account;
+      257 		go to term_return;
+      258 	     end;
+      259 
+      260 	if (acctent.restrict_path ^= "0"b) | (mdcs.default_path ^= "0"b)
+      261 	then do;					/* Check pathname restrictions */
+      262 		call admin_gate_$get_uidpath (dir, "", uid_pathname, code);
+      263 						/* Get parents uid path */
+      264 		if code ^= 0
+      265 		then go to term_return;
+      266 		if acctent.restrict_path
+      267 		then call mdc_util_$check_pathent (acctent.restrict_path, uid_pathname, code);
+      268 		else call mdc_util_$check_pathent (mdcs.default_path, uid_pathname, code);
+      269 		if code ^= 0
+      270 		then go to term_return;
+      271 	     end;
+      272 
+      273 	if cbi.quota ^> 0
+      274 	then do;					/* Now some quota checks */
+      275 		code = error_table_$mdc_bad_quota;
+      276 		go to term_return;
+      277 	     end;
+      278 	quota_left = acctent.quota - acctent.quota_used;
+      279 	if cbi.quota > quota_left
+      280 	then do;
+      281 		code = error_table_$mdc_no_quota;
+      282 		go to term_return;
+      283 	     end;
+      284 
+      285 	call mdc_util_$get_mdirent (mdcsp, mdirp, code);	/* Get new directory entry */
+      286 	if code ^= 0
+      287 	then go to term_return;
+      288 
+      289 	mdirent.owner.person = owner_person;		/* Initialize it */
+      290 	mdirent.owner.project = owner_project;
+      291 	mdirent.quota_offset = rel (acctp);
+      292 	mdirent.quota = cbi.quota;
+      293 
+      294 	quota_used = acctent.quota_used + cbi.quota;
+      295 	call admin_gate_$append_master_dir (dir, ename, cbip, mdcs.uid, mdirent.uidpath, code);
+      296 	if code ^= 0
+      297 	then do;
+      298 		call mdc_util_$free_mdirent (mdirp);
+      299 		go to term_return;
+      300 	     end;
+      301 	acctent.quota_used = quota_used;
+      302 	call mdc_util_$thread_mdirent (mdirp);
+      303 
+      304 good_return:
+      305 	code = 0;
+      306 term_return:
+      307 	call mdcs_util_$term_mdcs (mdcsp);
+      308 unlock_return:
+      309 	call mdc_lock_$reset;
+      310 return_code:
+      311 	arg_code = code;
+      312 	return;
+      313 
+      314 /* Entry to delete a master directory */
+      315 
+      316 delete:
+      317      entry (arg_dir, arg_ename, arg_code);
+      318 
+      319 	dir = arg_dir;
+      320 	ename = arg_ename;
+      321 	mdcsp = null;
+      322 
+      323 	call admin_gate_$mdir_status (dir, ename, uid_pathname, voluid, current_quota, code);
+      324 	if code ^= 0
+      325 	then go to return_code;
+      326 
+      327 	on cleanup call clean_up;
+      328 	call mdc_lock_$set (code);			/* Set mdcs lock */
+      329 	if code ^= 0
+      330 	then go to return_code;
+      331 	call mdcs_util_$find_mdcs_uid (voluid, mdcsp, access, code);
+      332 						/* Find MDCS */
+      333 	if code = error_table_$noentry
+      334 	then do;					/* MDCS is gone */
+      335 		call admin_gate_$delete_master_dir (uid_pathname, trp, code);
+      336 		if code ^= 0
+      337 		then go to unlock_return;
+      338 		call admin_gate_$syserr (4, "mdc_create_$delete: No MDCS for ^a^[>^]^a. Directory deleted.", dir,
+      339 		     (dir ^= ">"), ename);
+      340 		code = 0;
+      341 		go to unlock_return;
+      342 	     end;
+      343 	else if code ^= 0
+      344 	then go to unlock_return;
+      345 
+      346 	call mdc_util_$find_mdirent (mdcsp, uid_pathname, mdirp);
+      347 						/* Find my directorys entry */
+      348 	if mdirp = null
+      349 	then do;
+      350 		code = error_table_$mdc_unregistered_mdir;
+      351 		go to term_return;
+      352 	     end;
+      353 	acctp = ptr (mdcsp, mdirent.quota_offset);	/* Pointer to quota account entry */
+      354 	quota_used = acctent.quota_used - mdirent.quota;	/* Calc new quota, in case delete works */
+      355 	if quota_used < 0
+      356 	then quota_used = 0;
+      357 	call admin_gate_$delete_master_dir (uid_pathname, trp, code);
+      358 						/* Now delete it */
+      359 	if code ^= 0
+      360 	then go to term_return;
+      361 	call mdc_util_$free_mdirent (mdirp);		/* Don't need directry entry */
+      362 	acctent.quota_used = quota_used;		/* Update quota account */
+      363 	if trp < 0
+      364 	then call admin_gate_$syserr (4, "mdc_create_$delete: TRP for ^a^v(>^)^a on ^a negative (^d).", dir,
+      365 		bin (dir ^= ">", 1), ename, mdcs.volume, trp);
+      366 	else acctent.trp = fb71_add ((acctent.trp), trp); /* Update time record prodcut */
+      367 	go to good_return;
+      368 
+      369 /* Cleanup handler */
+      370 
+      371 clean_up:
+      372      proc;
+      373 
+      374 	if mdcsp ^= null
+      375 	then call mdcs_util_$term_mdcs (mdcsp);
+      376 	call mdc_lock_$cleanup;
+      377 	return;
+      378 
+      379      end clean_up;
+      380 
+      381 
+      382 /* Procedure to do fixed bin(71) adds without overflow */
+      383 
+      384 fb71_add:
+      385      proc (a, b) returns (fixed bin (71));
+      386 
+      387 dcl	(a, b, c)		fixed bin (71);
+      388 dcl	fb71_max		fixed bin (71) int static options (constant)
+      389 			init (11111111111111111111111111111111111111111111111111111111111111111111111b);
+      390 
+      391 	c = fb71_max - a;
+      392 	if b <= c
+      393 	then return (a + b);
+      394 	else return (fb71_max);
+      395 
+      396      end fb71_add;
+      397 
+      398 /* BEGIN MESSAGE DOCUMENTATION
+      399*
+      400*   Message:
+      401*   mdc_create_$delete: TRP for DIRNAME on LVNAME negative.
+      402*
+      403*   S: $log
+      404*
+      405*   T: $run
+      406*
+      407*   M: While deleting master directory DIRNAME, an invalid negative
+      408*   time-record product was found.
+      409*   The invalid number has been ignored, but volume accounting data
+      410*   may have been lost.
+      411*
+      412*   A: $ignore
+      413*
+      414*   Message:
+      415*   mdc_create_$delete: No MDCS for DIRNAME.
+      416*
+      417*   S: $log
+      418*
+      419*   T: $run
+      420*
+      421*   M: When deleting master directory DIRNAME, the master directory
+      422*   control segment (MDCS) could not found.
+      423*   The directory was deleted anyway.
+      424*
+      425*   A: $ignore
+      426*
+      427*   END MESSAGE DOCUMENTATION */
+      428 
+      429 
+      430      end mdc_create_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.5  mdc_create_.pl1                   >spec>install>1111>mdc_create_.pl1
+139          1    03/16/89  2012.8  create_branch_info.incl.pl1       >ldd>include>create_branch_info.incl.pl1
+145          2    11/20/84  1944.9  mdcs.incl.pl1                     >ldd>include>mdcs.incl.pl1
+147          3    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+E_ACCESS                               constant        bit(3)                   initial packed unaligned dcl 3-11 ref 232 232
+a                                      parameter       fixed bin(71,0)          dcl 387 ref 384 391 392
+access                          000243 automatic       bit(36)                  dcl 74 set ref 227* 232 331*
+access_class             20            based           bit(72)                  level 2 dcl 143 set ref 174*
+acct_id                         000233 automatic       char(32)                 packed unaligned dcl 73 set ref 154* 184* 212* 213
+                                                                                  213* 215 215* 232 239*
+acct_person                     000222 automatic       char(22)                 packed unaligned dcl 71 set ref 239* 252*
+acct_project                    000230 automatic       char(9)                  packed unaligned dcl 72 set ref 239* 252*
+acctent                                based           structure                level 1 dcl 2-45
+acctp                           000326 automatic       pointer                  dcl 2-43 set ref 252* 254 260 266 266 278 278 291
+                                                                                  294 301 353* 354 362 366 366
+addr                                                   builtin function         dcl 136 ref 155 186
+admin_gate_$append_master_dir   000010 constant        entry                    external dcl 82 ref 295
+admin_gate_$delete_master_dir   000012 constant        entry                    external dcl 85 ref 335 357
+admin_gate_$get_uidpath         000014 constant        entry                    external dcl 87 ref 262
+admin_gate_$mdir_status         000016 constant        entry                    external dcl 89 ref 323
+admin_gate_$syserr              000020 constant        entry                    external dcl 92 ref 338 363
+aip                             000174 automatic       pointer                  dcl 64 set ref 191* 192
+arg_acct_id                            parameter       char                     packed unaligned dcl 48 ref 206 212
+arg_code                               parameter       fixed bin(35,0)          dcl 51 set ref 151 181 197* 206 310* 316
+arg_dir                                parameter       char                     packed unaligned dcl 41 ref 151 156 181 188 206 316
+                                                                                  319
+arg_ename                              parameter       char                     packed unaligned dcl 42 ref 151 157 181 189 206 316
+                                                                                  320
+arg_info_ptr                           parameter       pointer                  dcl 50 ref 181 191 206
+arg_mode                               parameter       bit(36)                  dcl 44 ref 151 159
+arg_owner_id                           parameter       char                     packed unaligned dcl 49 ref 206 209
+arg_quota                              parameter       fixed bin(18,0)          dcl 47 ref 151 162
+arg_rings                              parameter       fixed bin(3,0)           array dcl 45 ref 151 160
+arg_userid                             parameter       char                     packed unaligned dcl 46 ref 151 161
+arg_volume                             parameter       char                     packed unaligned dcl 43 ref 151 158 181 190 206
+auto_branch_info                000276 automatic       structure                level 1 dcl 142 set ref 155 186
+b                                      parameter       fixed bin(71,0)          dcl 387 ref 384 392 392
+bin                                                    builtin function         dcl 136 ref 363 363
+bitcnt                   16            based           fixed bin(24,0)          level 2 dcl 143 set ref 173*
+c                               000340 automatic       fixed bin(71,0)          dcl 387 set ref 391* 392
+cbi                                    based           structure                level 1 dcl 143 set ref 192* 192
+cbip                            000172 automatic       pointer                  dcl 63 set ref 155* 159 160 161 162 163 165 166 167
+                                                                                  168 169 170 171 172 173 174 186* 192 194 194 194
+                                                                                  194 194 194 273 279 292 294 295*
+chase_sw                  1(02)        based           bit(1)                   level 3 packed packed unaligned dcl 143 set ref 168*
+cleanup                         000270 stack reference condition                dcl 134 ref 222 327
+code                            000176 automatic       fixed bin(35,0)          dcl 65 set ref 223* 224 227* 229 235* 239* 240 243*
+                                                                                  244 248* 256* 262* 264 266* 268* 269 275* 281*
+                                                                                  285* 286 295* 296 304* 310 323* 324 328* 329 331*
+                                                                                  333 335* 336 340* 343 350* 357* 359
+copy_sw                   1(01)        based           bit(1)                   level 3 packed packed unaligned dcl 143 set ref 167*
+create_branch_info                     based           structure                level 1 dcl 1-17
+create_branch_version_1                constant        fixed bin(17,0)          initial dcl 55 ref 194
+create_branch_version_2                constant        fixed bin(17,0)          initial dcl 1-35 ref 165 194
+current_quota                   000265 automatic       fixed bin(18,0)          dcl 77 set ref 323*
+default_path             24            based           bit(18)                  level 3 dcl 2-8 set ref 260 268*
+dir                             000100 automatic       char(168)                packed unaligned dcl 60 set ref 156* 188* 262* 295*
+                                                                                  319* 323* 338* 338 363* 363 363
+dir_quota                22            based           fixed bin(18,0)          level 2 dcl 143 set ref 163*
+dir_sw                    1            based           bit(1)                   level 3 packed packed unaligned dcl 143 set ref 166*
+                                                                                  194
+ename                           000152 automatic       char(32)                 packed unaligned dcl 61 set ref 157* 189* 295* 320*
+                                                                                  323* 338* 363*
+error_table_$argerr             000060 external static fixed bin(35,0)          dcl 119 ref 197
+error_table_$mdc_bad_quota      000064 external static fixed bin(35,0)          dcl 122 ref 275
+error_table_$mdc_exec_access    000076 external static fixed bin(35,0)          dcl 132 ref 235
+error_table_$mdc_illegal_owner  000074 external static fixed bin(35,0)          dcl 130 ref 248
+error_table_$mdc_no_quota       000066 external static fixed bin(35,0)          dcl 124 ref 281
+error_table_$mdc_no_quota_account
+                                000070 external static fixed bin(35,0)          dcl 126 ref 256
+error_table_$mdc_unregistered_mdir
+                                000072 external static fixed bin(35,0)          dcl 128 ref 350
+error_table_$noentry            000062 external static fixed bin(35,0)          dcl 120 ref 333
+fb71_max                        000000 constant        fixed bin(71,0)          initial dcl 388 ref 391 394
+get_authorization_              000022 constant        entry                    external dcl 93 ref 174
+get_group_id_                   000024 constant        entry                    external dcl 94 ref 210 213
+head                                   based           structure                level 2 dcl 2-8
+mbz1                      1(05)        based           bit(31)                  level 3 packed packed unaligned dcl 143 set ref 171*
+                                                                                  194
+mbz2                      2(03)        based           bit(33)                  level 2 packed packed unaligned dcl 143 set ref 172*
+                                                                                  194
+mdc_lock_$cleanup               000026 constant        entry                    external dcl 95 ref 376
+mdc_lock_$reset                 000030 constant        entry                    external dcl 96 ref 308
+mdc_lock_$set                   000032 constant        entry                    external dcl 97 ref 223 328
+mdc_parse_acct_$star            000034 constant        entry                    external dcl 98 ref 239 243
+mdc_util_$check_pathent         000036 constant        entry                    external dcl 99 ref 266 268
+mdc_util_$find_matching_acctent 000040 constant        entry                    external dcl 101 ref 252
+mdc_util_$find_mdirent          000042 constant        entry                    external dcl 103 ref 346
+mdc_util_$free_mdirent          000044 constant        entry                    external dcl 105 ref 298 361
+mdc_util_$get_mdirent           000046 constant        entry                    external dcl 107 ref 285
+mdc_util_$thread_mdirent        000050 constant        entry                    external dcl 109 ref 302
+mdcs                                   based           structure                level 1 dcl 2-8
+mdcs_head                              based           structure                level 1 dcl 2-12
+mdcs_util_$find_mdcs            000052 constant        entry                    external dcl 111 ref 227
+mdcs_util_$find_mdcs_uid        000054 constant        entry                    external dcl 113 ref 331
+mdcs_util_$term_mdcs            000056 constant        entry                    external dcl 115 ref 306 374
+mdcsp                           000322 automatic       pointer                  dcl 2-6 set ref 220* 227* 252* 260 268 285* 295 306*
+                                                                                  321* 331* 346* 353 363 374 374*
+mdirent                                based           structure                level 1 dcl 2-31
+mdirp                           000324 automatic       pointer                  dcl 2-29 set ref 285* 289 290 291 292 295 298* 302*
+                                                                                  346* 348 353 354 361*
+mode                      2            based           bit(3)                   level 2 packed packed unaligned dcl 143 set ref 159*
+null                                                   builtin function         dcl 136 ref 220 254 321 348 374
+owner                    21            based           structure                level 2 dcl 2-31
+owner_id                        000212 automatic       char(32)                 packed unaligned dcl 70 set ref 154* 184* 209* 210
+                                                                                  210* 215 232 243*
+owner_person                    000201 automatic       char(22)                 packed unaligned dcl 68 set ref 243* 246 289
+owner_project                   000207 automatic       char(9)                  packed unaligned dcl 69 set ref 243* 246 290
+parent_ac_sw              1(04)        based           bit(1)                   level 3 packed packed unaligned dcl 143 set ref 170*
+person                   21            based           char(22)                 level 3 packed packed unaligned dcl 2-31 set ref
+                                                                                  289*
+priv_upgrade_sw           1(03)        based           bit(1)                   level 3 packed packed unaligned dcl 143 set ref 169*
+                                                                                  194
+project                  26(18)        based           char(9)                  level 3 packed packed unaligned dcl 2-31 set ref
+                                                                                  290*
+ptr                                                    builtin function         dcl 136 ref 353
+quota                    32            based           fixed bin(18,0)          level 2 in structure "mdirent" dcl 2-31 in procedure
+                                                                                  "mdc_create_" set ref 292* 354
+quota                    17            based           fixed bin(18,0)          level 2 in structure "cbi" dcl 143 in procedure
+                                                                                  "mdc_create_" set ref 162* 273 279 292 294
+quota                    11            based           fixed bin(35,0)          level 2 in structure "acctent" dcl 2-45 in procedure
+                                                                                  "mdc_create_" ref 278
+quota_left                      000177 automatic       fixed bin(35,0)          dcl 66 set ref 278* 279
+quota_offset             31            based           bit(18)                  level 2 dcl 2-31 set ref 291* 353
+quota_used                      000200 automatic       fixed bin(35,0)          dcl 67 in procedure "mdc_create_" set ref 294* 301
+                                                                                  354* 355 355* 362
+quota_used               12            based           fixed bin(35,0)          level 2 in structure "acctent" dcl 2-45 in procedure
+                                                                                  "mdc_create_" set ref 278 294 301* 354 362*
+rel                                                    builtin function         dcl 136 ref 291
+restrict_path            20            based           bit(18)                  level 2 dcl 2-45 set ref 260 266 266*
+rings                     3            based           fixed bin(3,0)           array level 2 dcl 143 set ref 160*
+substr                                                 builtin function         dcl 136 ref 159
+switches                  1            based           structure                level 2 packed packed unaligned dcl 143
+trp                      13            based           fixed bin(71,0)          level 2 in structure "acctent" packed packed
+                                                                                  unaligned dcl 2-45 in procedure "mdc_create_" set
+                                                                                  ref 366* 366
+trp                             000266 automatic       fixed bin(71,0)          dcl 78 in procedure "mdc_create_" set ref 335* 357*
+                                                                                  363 363* 366*
+uid                      14            based           bit(36)                  level 3 dcl 2-8 set ref 295*
+uid_pathname                    000244 automatic       bit(36)                  array dcl 75 set ref 262* 266* 268* 323* 335* 346*
+                                                                                  357*
+uidpath                   1            based           bit(36)                  array level 2 dcl 2-31 set ref 295*
+userid                    6            based           char(32)                 level 2 dcl 143 set ref 161*
+version                                based           fixed bin(17,0)          level 2 dcl 143 set ref 165* 194 194
+voluid                          000264 automatic       bit(36)                  dcl 76 set ref 323* 331*
+volume                    4            based           char(32)                 level 3 in structure "mdcs" dcl 2-8 in procedure
+                                                                                  "mdc_create_" set ref 363*
+volume                          000162 automatic       char(32)                 packed unaligned dcl 62 in procedure "mdc_create_"
+                                                                                  set ref 158* 190* 227*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 3-33
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 3-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 3-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 3-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 3-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 3-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+mdcs_version                           internal static fixed bin(17,0)          initial dcl 2-27
+pathent                                based           structure                level 1 dcl 2-60
+pathp                                  automatic       pointer                  dcl 2-58
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+clean_up                        001667 constant        entry                    internal dcl 371 ref 222 327
+common                          000530 constant        label                    dcl 220 set ref 176 201
+delete                          001247 constant        entry                    external dcl 316
+dir                             000115 constant        entry                    external dcl 151
+dirx                            000263 constant        entry                    external dcl 181
+dirx_acct                       000406 constant        entry                    external dcl 206
+dirx_join                       000321 constant        label                    dcl 186 ref 216
+fb71_add                        001715 constant        entry                    internal dcl 384 ref 366
+good_return                     001223 constant        label                    dcl 304 ref 367
+mdc_create_                     000100 constant        entry                    external dcl 38
+return_code                     001240 constant        label                    dcl 310 ref 224 324 329
+term_return                     001224 constant        label                    dcl 306 ref 236 240 244 249 257 264 269 276 282 286
+                                                                                  299 351 359
+unlock_return                   001233 constant        label                    dcl 308 ref 229 336 341 343
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2362        2462    1752        2372
+Length      2766    1752       100         270     410           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+mdc_create_                         324 external procedure  is an external procedure.  
+on unit on line 222                  64 on unit               
+on unit on line 327                  64 on unit               
+clean_up                             68 internal procedure  is called by several nonquick procedures.  
+fb71_add                                internal procedure  shares stack frame of external procedure mdc_create_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+mdc_create_              000100 dir                         mdc_create_
+                         000152 ename                       mdc_create_
+                         000162 volume                      mdc_create_
+                         000172 cbip                        mdc_create_
+                         000174 aip                         mdc_create_
+                         000176 code                        mdc_create_
+                         000177 quota_left                  mdc_create_
+                         000200 quota_used                  mdc_create_
+                         000201 owner_person                mdc_create_
+                         000207 owner_project               mdc_create_
+                         000212 owner_id                    mdc_create_
+                         000222 acct_person                 mdc_create_
+                         000230 acct_project                mdc_create_
+                         000233 acct_id                     mdc_create_
+                         000243 access                      mdc_create_
+                         000244 uid_pathname                mdc_create_
+                         000264 voluid                      mdc_create_
+                         000265 current_quota               mdc_create_
+                         000266 trp                         mdc_create_
+                         000276 auto_branch_info            mdc_create_
+                         000322 mdcsp                       mdc_create_
+                         000324 mdirp                       mdc_create_
+                         000326 acctp                       mdc_create_
+                         000340 c                           fb71_add
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             call_ext_out_desc   call_ext_out        call_int_other      return_mac          enable_op
+ext_entry           ext_entry_desc      int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$append_master_dir admin_gate_$delete_master_dir admin_gate_$get_uidpath       admin_gate_$mdir_status
+admin_gate_$syserr            get_authorization_            get_group_id_                 mdc_lock_$cleanup
+mdc_lock_$reset               mdc_lock_$set                 mdc_parse_acct_$star          mdc_util_$check_pathent
+mdc_util_$find_matching_acctent                             mdc_util_$find_mdirent        mdc_util_$free_mdirent
+mdc_util_$get_mdirent         mdc_util_$thread_mdirent      mdcs_util_$find_mdcs          mdcs_util_$find_mdcs_uid
+mdcs_util_$term_mdcs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr           error_table_$mdc_bad_quota    error_table_$mdc_exec_access
+error_table_$mdc_illegal_owner                              error_table_$mdc_no_quota
+error_table_$mdc_no_quota_account                           error_table_$mdc_unregistered_mdir
+error_table_$noentry
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     38 000077       151 000105       154 000152       155 000160       156 000162       157 000170       158 000175
+    159 000202       160 000207       161 000216       162 000223       163 000225       165 000226       166 000230
+    167 000232       168 000234       169 000236       170 000240       171 000242       172 000244       173 000246
+    174 000247       176 000255       181 000256       184 000313       186 000321       188 000323       189 000331
+    190 000336       191 000343       192 000346       194 000352       197 000373       198 000376       201 000377
+    206 000400       209 000450       210 000456       212 000474       213 000502       215 000520       216 000527
+    220 000530       222 000532       223 000554       224 000563       227 000565       229 000612       232 000614
+    235 000630       236 000633       239 000634       240 000661       243 000663       244 000710       246 000712
+    248 000722       249 000725       252 000726       254 000752       256 000756       257 000761       260 000762
+    262 000772       264 001017       266 001021       268 001041       269 001055       273 001057       275 001062
+    276 001065       278 001066       279 001075       281 001077       282 001102       285 001103       286 001116
+    289 001120       290 001124       291 001127       292 001131       294 001134       295 001141       296 001177
+    298 001201       299 001210       301 001211       302 001214       304 001223       306 001224       308 001233
+    310 001240       312 001242       316 001243       319 001272       320 001300       321 001305       323 001307
+    324 001344       327 001346       328 001370       329 001377       331 001401       333 001416       335 001422
+    336 001434       338 001436       340 001501       341 001502       343 001503       346 001505       348 001517
+    350 001523       351 001526       353 001527       354 001534       355 001542       357 001544       359 001557
+    361 001561       362 001570       363 001573       366 001653       367 001665       371 001666       374 001674
+    376 001707       377 001714       384 001715       391 001717       392 001722       394 001730
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,199 @@
+	COMPILATION LISTING OF SEGMENT absolute_pathname_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 absolute_pathname_:
+       14      procedure (p_relpath, p_abspath, p_code);
+       15 
+       16 /* ABSOLUTE_PATHNAME_ - Procedure to convert a relative pathname into an absolute pathname. */
+       17 /* Written 770628 by PG (separated from expand_pathname_) */
+       18 /* Modified 790823 by PG to check for error_table_$pathlong case, which
+       19*   arise from the way expand_pathname_ handles archive components */
+       20 
+       21 /* This program has to be separate from expand_pathname_ because */
+       22 /* both programs have an entry of the same name. */
+       23 
+       24 /* parameters */
+       25 
+       26 declare	(
+       27 	p_relpath		char (*),
+       28 	p_suffix		char (*),
+       29 	p_abspath		char (*),
+       30 	p_code		fixed bin (35)
+       31 	)		parameter;
+       32 
+       33 /* automatic */
+       34 
+       35 declare	dname		char (168),
+       36 	dname_len		fixed bin (21),
+       37 	ename		char (32),
+       38 	ename_len		fixed bin (21);
+       39 
+       40 /* entries */
+       41 
+       42 declare	expand_pathname_	entry (char (*), char (*), char (*), fixed bin (35)),
+       43 	expand_pathname_$add_suffix
+       44 			entry (char (*), char (*), char (*), char (*), fixed bin (35));
+       45 
+       46 /* external static */
+       47 
+       48 declare	error_table_$pathlong
+       49 			fixed bin (35) external static;
+       50 
+       51 /* program */
+       52 
+       53 	call expand_pathname_ (p_relpath, dname, ename, p_code);
+       54 	if p_code ^= 0
+       55 	then return;
+       56 
+       57 	call build_absolute_pathname;
+       58 	return;
+       59 
+       60 absolute_pathname_$add_suffix:
+       61      entry (p_relpath, p_suffix, p_abspath, p_code);
+       62 
+       63 	call expand_pathname_$add_suffix (p_relpath, p_suffix, dname, ename, p_code);
+       64 	if p_code ^= 0
+       65 	then return;
+       66 
+       67 	call build_absolute_pathname;
+       68 	return;
+       69 
+       70 build_absolute_pathname:
+       71      procedure;
+       72 
+       73 /* builtins */
+       74 
+       75 declare	rtrim		builtin;
+       76 
+       77 /* program */
+       78 
+       79 	if dname = ">"
+       80 	then p_abspath = ">" || ename;		/* ROOT case */
+       81 	else do;
+       82 		dname_len = length (rtrim (dname));
+       83 		ename_len = length (rtrim (ename));
+       84 
+       85 		if dname_len + ename_len + 1 > 168
+       86 		then do;
+       87 			p_code = error_table_$pathlong;
+       88 			return;
+       89 		     end;
+       90 		p_abspath = substr (dname, 1, dname_len) || ">" || substr (ename, 1, ename_len);
+       91 	     end;
+       92 
+       93      end /* build_absolute_pathname */;
+       94 
+       95      end /* absolute_pathname_ */;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.2  absolute_pathname_.pl1            >special_ldd>install>MR12.3-1114>absolute_pathname_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+dname                           000100 automatic       char(168)                packed unaligned dcl 35 set ref 53* 63* 79 82 90
+dname_len                       000152 automatic       fixed bin(21,0)          dcl 35 set ref 82* 85 90
+ename                           000153 automatic       char(32)                 packed unaligned dcl 35 set ref 53* 63* 79 83 90
+ename_len                       000163 automatic       fixed bin(21,0)          dcl 35 set ref 83* 85 90
+error_table_$pathlong           000014 external static fixed bin(35,0)          dcl 48 ref 87
+expand_pathname_                000010 constant        entry                    external dcl 42 ref 53
+expand_pathname_$add_suffix     000012 constant        entry                    external dcl 42 ref 63
+p_abspath                              parameter       char                     packed unaligned dcl 26 set ref 13 60 79* 90*
+p_code                                 parameter       fixed bin(35,0)          dcl 26 set ref 13 53* 54 60 63* 64 87*
+p_relpath                              parameter       char                     packed unaligned dcl 26 set ref 13 53* 60 63*
+p_suffix                               parameter       char                     packed unaligned dcl 26 set ref 60 63*
+rtrim                                                  builtin function         dcl 75 ref 82 83
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+absolute_pathname_              000010 constant        entry                    external dcl 13
+absolute_pathname_$add_suffix   000067 constant        entry                    external dcl 60
+build_absolute_pathname         000155 constant        entry                    internal dcl 70 ref 57 67
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+length                                                 builtin function         ref 82 83
+substr                                                 builtin function         ref 90 90
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       400         416     303         410
+Length       576     303        16         143      74           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+absolute_pathname_                  175 external procedure  is an external procedure.  
+build_absolute_pathname                 internal procedure  shares stack frame of external procedure absolute_pathname_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+absolute_pathname_       000100 dname                       absolute_pathname_
+                         000152 dname_len                   absolute_pathname_
+                         000153 ename                       absolute_pathname_
+                         000163 ename_len                   absolute_pathname_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   return_mac          shorten_stack       ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+expand_pathname_              expand_pathname_$add_suffix
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$pathlong
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000004        53 000032        54 000056        57 000060        58 000061        60 000062        63 000116
+     64 000151        67 000153        68 000154        70 000155        79 000156        81 000205        82 000206
+     83 000220        85 000232        87 000236        88 000241        90 000242        91 000300        93 000301
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

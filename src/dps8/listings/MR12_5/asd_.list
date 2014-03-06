@@ -1,0 +1,2330 @@
+	COMPILATION LISTING OF SEGMENT asd_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1048.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(88-06-10,Lippard), approve(88-07-04,MCR7929),
+       17*     audit(88-07-08,Parisek), install(88-07-15,MR12.2-1057):
+       18*     Modified to return error code of 0 and status_code of
+       19*     error_table_$user_not_found in case where specific ACLs are requested to
+       20*     be listed and entry has an empty ACL.
+       21*                                                   END HISTORY COMMENTS */
+       22 
+       23 
+       24 /* format: style2 */
+       25 
+       26 asd_:
+       27      procedure;
+       28 
+       29 /* Modified 10/84 Keith Loepere to audit operation as an access change. */
+       30 /* Modified 84-07-03 BIM for ring number range checks.                    */
+       31 /* Modified 6/84 Keith Loepere to use the new dc_find. */
+       32 /* Modified 8/83 E. N. Kittlitz. setfaults$if_active pvid, vtocx args	    */
+       33 /* Modified 3/83 E. N. Kittlitz. setfaults on fatal_error if acl modified */
+       34 /* Modified 5/82 BIM to use Legal PL/I in the case where list_* is called */
+       35 /*	           on a null acl with a area pointer.	              */
+       36 /*		 a one-dim array is allocated, but a count of 0 is    */
+       37 /*		 returned, for compatability. (instead of returning   */
+       38 /*		 an error code)                                       */
+       39 /* Modified 3/82 BIM for no system free seg, refer extent entrypoints */
+       40 /* Modified by B. Margulies 05/10/79 to remove pds$xmode level restriction
+       41* 		and allow setting exacls within validation level */
+       42 /* Modified 07/77 by THVV for bad_dir_ check */
+       43 /* Modified by R. Bratt 06/01/76 to call find_$finished */
+       44 /* Modified by Kobziar 10/15/75 to copy et$user_not_found errors in delete structure */
+       45 /* NSS, 4/25/75, by Greenberg */
+       46 /* Modified by E. Stone Oct 1974 to place uid and dtem in double word */
+       47 /* Modified to copy arguments before using - 9/74 by A. Mason */
+       48 /* Modified by Kobziar on 11-12-73 to return dirseg and nondirseg error codes */
+       49 
+       50 /* This is the gate level acl proc and contains 18 entries for listing, deleting, replacing, and
+       51**   adding acl entries to segments, directories, and initial acls.
+       52**  Entrypoints whose names begin with r_ are identical in function, but take
+       53**  refer extend structures.
+       54**
+       55**  There are r_ entrypoints for acl listing, since for allocation of storage
+       56**  refer extents are cleaner. The other entrypoints stay as they are,
+       57**  because arrays are easier to declare in automatic structures.
+       58**
+       59**  It is always possible to pass addr (XXX_acl.entries), XXX_acl.count
+       60**  into the other entrypoint.
+       61**
+       62**   _e_n_t_r_y		_a_r_g_u_m_e_n_t_s
+       63**
+       64**   list_dall	(a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_acl_ptr, a_acl_count, a_code)
+       65**   r_list_dall	(a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_code);
+       66**   r_list_sall	(a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_code);
+       67**   list_sall	as above.	Dall lists all of a directory acl and used the dir_acl structure(below)
+       68**   .		while sall lists all of a segment's acl and uses the acl structure.
+       69**
+       70**   list_idall	(a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_acl_ptr, a_acl_count, a_ring, a_code)
+       71**   list_isall	List of initial acls for segments and directories, for the specified ring.
+       72**   r_list_idall	(a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_ring, a_code)
+       73**   r_list_isall	(a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_ring, a_code);
+       74**
+       75**   del_dentries	(a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_code)
+       76**   del_sentries	as above. Dentries and sentries use the del_acl structure and delete the specified acl entries.
+       77**   del_identries	(a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_ring, a_code)
+       78**   del_isentries	Delete initial acls for segments and directories for the specified ring.
+       79**   replace_dall	(a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_daemon_sw, a_code)
+       80**   replace_sall	as above. Dall replaces a dir acl with the one given and uses the dir_acl structure
+       81**   .		while sall replaces a segment's acl and uses the acl structure.
+       82**   replace_idall	(a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_daemon_sw, a_ring, a_code)
+       83**   replace_isall	Replace initial acl for segments and directories fir the specified ring.
+       84**   add_dentries	(a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_code)
+       85**   add_sentries	as above. Dentries adds (or changes the mode if the acl entry already exists) the
+       86**   .		given entries to a directory acl and uses the dir_acl structure, while sentries
+       87**   .		adds or changes the mode and uses the acl structure.
+       88**   add_identries	(a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_ring, a_code)
+       89**   add_isentries	Add to initial acls of segments or directories for the specified ring.
+       90**
+       91**
+       92**
+       93**   _a_r_g_u_m_e_n_t		_v_a_l_u_e
+       94**
+       95**   a_dir_name		char(*), the name of the directory (Input).
+       96**   a_entryname		char(*), the name of the brnach in the above directory whoes acl is to be read or
+       97**   .			written (Input).
+       98**   a_area_ptr		ptr, used only in listing acls and pts to an area wher the entire acl should be
+       99**   .			listed, otherwize it is null and only the modes in the given acl list will be listed.
+      100**   .			(Input).
+      101**   a_return_struc_ptr		ptr, is set to point to allocation in area (if a_area_ptr given) of the
+      102**   .			acl list. (Output)
+      103**   a_acl_ptr		ptr, points to an acl, dir_acl, or del_acl structure. (Input for all except
+      104**   .			when listing whole acl rather than specified acl's modes, when it must be null).
+      105**   a_acl_count		fixed bin(17), then number of acl entries in the given structure, (Input except
+      106**   .			for list when listing whole acl, then output).
+      107**   a_daemon_sw		bit(1) aligned, used to specify if want a *.SysDaemon.* rw or sma acl entry appended
+      108**   .			to the acl replacement list. "0"b = yes, "1"b = no, (Input).
+      109**   a_ring			fixed bin(3), the initial acl's ring number.(Must be >= validation level).
+      110**   a_code			fixed bin(35), is a standard file system error code. If non zero then no
+      111**   .			processing has been performed except in the case of deleting, where a user_not_found
+      112**   .			code in the del_acl structure indicates that this entry wasn't found.
+      113**
+      114***/
+      115 
+      116 	dcl     a_acl_count		 fixed bin (17) parameter;
+      117 	dcl     a_acl_ptr		 ptr parameter;
+      118 	dcl     a_area_ptr		 ptr parameter;
+      119 	dcl     a_code		 fixed bin (35) parameter;
+      120 	dcl     a_daemon_sw		 bit (1) parameter; /* indicates whether to remove a *.SysDaemon.* acl */
+      121 	dcl     a_dir_name		 char (*) parameter;
+      122 	dcl     a_entryname		 char (*) parameter;
+      123 	dcl     a_return_struc_ptr	 ptr parameter;
+      124 	dcl     a_ring		 fixed bin (3) parameter;
+      125 
+      126 	dcl     1 acl1		 based (acl_entry_ptr) aligned,
+      127 						/* one entry  of an input acl list */
+      128 		2 ac_name,
+      129 		  3 person	 char (32),
+      130 		  3 project	 char (32),
+      131 		  3 tag		 char (1),
+      132 		2 mode		 bit (36),
+      133 		2 ex_mode		 bit (36);
+      134 	dcl     arg_area		 area based (area_ptr);
+      135 
+      136 	dcl     1 a_n		 aligned like acl1;
+      137 	dcl     acl_entry_ptr	 ptr;
+      138 	dcl     acl_start_ptr	 ptr;
+      139 	dcl     add_sw		 bit (1);
+      140 	dcl     ael		 fixed bin;
+      141 	dcl     area_ptr		 ptr;
+      142 	dcl     called_find		 bit (1) aligned;
+      143 	dcl     caller_level	 fixed bin (3) unsigned;
+      144 	dcl     code		 fixed bin (35);
+      145 	dcl     d_s		 bit (1) aligned;
+      146 	dcl     daemon_sw		 bit (1) aligned;
+      147 	dcl     dirname		 char (168);
+      148 	dcl     entryname		 char (32);
+      149 	dcl     esw		 fixed bin (17);	/* indicates which entry point called */
+      150 	dcl     fail_sw		 bit (1) aligned;
+      151 	dcl     fatal_error_sets_faults
+      152 				 bit (1) aligned;
+      153 	dcl     i			 fixed bin;
+      154 	dcl     initial_acl		 bit (1) aligned;
+      155 	dcl     locked		 bit (1) aligned;
+      156 	dcl     locked_for_write	 bit (1) aligned;
+      157 	dcl     n_acls		 fixed bin;
+      158 	dcl     offset		 fixed bin;
+      159 	dcl     owning_structure	 bit (36) aligned;
+      160 	dcl     refer_allocation	 bit (1) aligned;	/* new style listing */
+      161 	dcl     return_acl_ptr	 pointer;
+      162 	dcl     ring		 fixed bin (17);
+      163 	dcl     structure_supplied	 bit (1) aligned;	/* no allocation needed */
+      164 	dcl     t_char1		 char (32) aligned;
+      165 	dcl     t_char2		 char (32) aligned;
+      166 	dcl     tag		 char (1) aligned;
+      167 	dcl     temp_access_name	 char (32) aligned;
+      168 	dcl     temp_extended_mode	 bit (36) aligned;
+      169 	dcl     temp_mode		 bit (36);
+      170 	dcl     work_p		 ptr;
+      171 
+      172 	dcl     acc_name_$elements	 ext entry (ptr, ptr, fixed bin (35));
+      173 	dcl     acl_$add_entry	 entry (fixed bin, bit (36) aligned, ptr, ptr, bit (1), fixed bin (35));
+      174 	dcl     acl_$del_acl	 entry (fixed bin, bit (36) aligned, ptr);
+      175 	dcl     acl_$del_entry	 entry (fixed bin, bit (36) aligned, ptr, ptr, fixed bin (35));
+      176 	dcl     acl_$list_entry	 entry (fixed bin, bit (36) aligned, ptr, ptr, fixed bin, fixed bin (35));
+      177 	dcl     change_dtem		 entry (ptr);
+      178 	dcl     check_gate_acl_	 entry (ptr, bit (1) aligned, fixed bin (17), char (32) aligned, fixed bin (35));
+      179 	dcl     level$get		 entry returns (fixed bin (3));
+      180 	dcl     lock$dir_lock_read	 entry (ptr, fixed bin (35));
+      181 	dcl     lock$dir_unlock	 entry (ptr);
+      182 	dcl     setfaults$if_active	 entry (bit (36) aligned, bit (36) aligned, fixed bin, bit (1) aligned);
+      183 	dcl     sum$dirmod		 entry (ptr);
+      184 
+      185 	dcl     error_table_$argerr	 ext fixed bin (35);
+      186 	dcl     error_table_$bad_acl_mode
+      187 				 ext fixed bin (35);
+      188 	dcl     error_table_$bad_ring_brackets
+      189 				 ext fixed bin (35);
+      190 	dcl     error_table_$dirseg	 ext fixed bin (35);
+      191 	dcl     error_table_$empty_acl ext fixed bin (35);
+      192 	dcl     error_table_$invalid_ascii
+      193 				 ext fixed bin (35);
+      194 	dcl     error_table_$invalid_mode
+      195 				 ext fixed bin (35);
+      196 	dcl     error_table_$noalloc	 ext fixed bin (35);
+      197 	dcl     error_table_$nondirseg ext fixed bin (35);
+      198 	dcl     error_table_$null_info_ptr
+      199 				 ext fixed bin (35);
+      200 	dcl     error_table_$user_not_found
+      201 				 ext fixed bin (35);
+      202 	dcl     pds$processid	 bit (36) aligned ext;
+      203 
+      204 	dcl     ADD_DIR		 fixed bin static options (constant) init (4);
+      205 	dcl     ADD_SEG		 fixed bin static options (constant) init (8);
+      206 	dcl     DEL_DIR		 fixed bin static options (constant) init (2);
+      207 	dcl     DEL_SEG		 fixed bin static options (constant) init (6);
+      208 	dcl     LIST_DIR		 fixed bin static options (constant) init (1);
+      209 	dcl     LIST_SEG		 fixed bin static options (constant) init (5);
+      210 	dcl     REP_SEG		 fixed bin static options (constant) init (7);
+      211 	dcl     REP_DIR		 fixed bin static options (constant) init (3);
+      212 
+      213 	dcl     (addr, bin, fixed, null, ptr, rtrim, substr)
+      214 				 builtin;
+      215 
+      216 	dcl     (area, any_other, bad_dir_, cleanup, seg_fault_error)
+      217 				 condition;
+      218 
+      219 
+      220 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      221 
+      222 list_idall:
+      223      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_acl_ptr, a_acl_count, a_ring, a_code);
+      224 	initial_acl = "1"b;
+      225 	go to LIST_DALL_COMMON;
+      226 list_dall:
+      227      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_acl_ptr, a_acl_count, a_code);
+      228 	initial_acl = "0"b;
+      229 
+      230 LIST_DALL_COMMON:
+      231 	refer_allocation = "0"b;
+      232 
+      233 	go to R_LIST_DALL_COMMON;
+      234 
+      235 r_list_idall:
+      236      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_ring, a_code);
+      237 	initial_acl = "1"b;
+      238 	go to R_LIST_DALL_COMMON_0;
+      239 
+      240 r_list_dall:
+      241      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_code);
+      242 	initial_acl = "0"b;
+      243 R_LIST_DALL_COMMON_0:
+      244 	refer_allocation = "1"b;
+      245 
+      246 R_LIST_DALL_COMMON:
+      247 	if initial_acl
+      248 	then ring = a_ring;
+      249 
+      250 /* list the alc of a directory */
+      251 	esw = LIST_DIR;
+      252 	go to LIST_COMMON;
+      253 
+      254 list_isall:
+      255      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_acl_ptr, a_acl_count, a_ring, a_code);
+      256 
+      257 	initial_acl = "1"b;
+      258 	go to LIST_SALL_COMMON;
+      259 
+      260 list_sall:
+      261      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_acl_ptr, a_acl_count, a_code);
+      262 
+      263 	initial_acl = "0"b;
+      264 
+      265 LIST_SALL_COMMON:
+      266 	refer_allocation = "0"b;
+      267 
+      268 	go to R_LIST_SALL_COMMON;
+      269 
+      270 r_list_isall:
+      271      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_ring, a_code);
+      272 	initial_acl = "1"b;
+      273 	go to R_LIST_DALL_COMMON_0;
+      274 
+      275 r_list_sall:
+      276      entry (a_dir_name, a_entryname, a_area_ptr, a_return_struc_ptr, a_code);
+      277 	initial_acl = "0"b;
+      278 R_LIST_SALL_COMMON_0:
+      279 	refer_allocation = "1"b;
+      280 
+      281 R_LIST_SALL_COMMON:
+      282 	if initial_acl
+      283 	then ring = a_ring;
+      284 
+      285 	esw = LIST_SEG;
+      286 
+      287 /* The listing entrypoints happen here, via two internal procedures */
+      288 /* One is used when the structure is supplied, and selection is to take */
+      289 /* place. That is process_specific_list. The other is for allocation */
+      290 /* and return. That is process_list_all. */
+      291 
+      292 
+      293 
+      294 LIST_COMMON:
+      295 	caller_level = level$get ();
+      296 
+      297 	locked, locked_for_write, called_find, fatal_error_sets_faults = "0"b;
+      298 
+      299 	area_ptr = a_area_ptr;
+      300 	if initial_acl
+      301 	then if ring < 0 | ring > 7
+      302 	     then call fatal_error (error_table_$argerr);
+      303 	d_s = esw < LIST_SEG;
+      304 	structure_supplied = (area_ptr = null);
+      305 
+      306 	if structure_supplied
+      307 	then do;
+      308 		if refer_allocation
+      309 		then acl_ptr = a_return_struc_ptr;
+      310 		else acl_ptr = a_acl_ptr;
+      311 
+      312 		if acl_ptr = null
+      313 		then call fatal_error (error_table_$null_info_ptr);
+      314 
+      315 		if /* tree */ refer_allocation
+      316 		then if d_s
+      317 		     then do;
+      318 			     acl_count = directory_acl.count;
+      319 			     acl_ptr = addr (directory_acl.entries);
+      320 			end;
+      321 		     else do;
+      322 			     acl_count = segment_acl.count;
+      323 			     acl_ptr = addr (segment_acl.entries);
+      324 			end;
+      325 		else acl_count = a_acl_count;
+      326 	     end;
+      327 	else do;
+      328 		return_acl_ptr = null;
+      329 		acl_ptr = null;
+      330 		acl_count = 0;
+      331 	     end;
+      332 
+      333 
+      334 	on cleanup call cleanup_;
+      335 
+      336 Retry_process_list_all:				/** Come here is the dir changed asychronously */
+      337 	call check_pathname_find_read_lock_and_check_access;
+      338 
+      339 	acl_entry_ptr = addr (a_n);			/* used as a temp for constructing input acl ent */
+      340 	if initial_acl
+      341 	then do;
+      342 		if d_s
+      343 		then acl_start_ptr = addr (dir.iacl (ring).dir_frp);
+      344 		else acl_start_ptr = addr (dir.iacl (ring).seg_frp);
+      345 		if d_s
+      346 		then n_acls = dir.iacl_count (ring).dir;
+      347 		else n_acls = dir.iacl_count (ring).seg;
+      348 		owning_structure = dir.uid;		/* dir is owner of iacl entries */
+      349 	     end;
+      350 	else do;
+      351 		acl_start_ptr = addr (entry.acl_frp);
+      352 		n_acls = entry.acle_count;
+      353 		owning_structure = entry.uid;		/* When checking and making acles, entry owns em */
+      354 	     end;
+      355 
+      356 
+      357 /***** If the acl is null, the only work to do (allocating a null structure) */
+      358 /***** is done after the dir is unlocked. */
+      359 
+      360 	if structure_supplied
+      361 	then call process_specific_list;
+      362 	else if n_acls > 0
+      363 	then call process_list_all;
+      364 
+      365 
+      366 /* Both of these return with the dir locked, and acl_ptr and acl_count */
+      367 /* ready to return */
+      368 
+      369 	call dc_find$finished (dp, "1"b);
+      370 
+      371 	if refer_allocation				/* new style */
+      372 	then if structure_supplied
+      373 	     then ;
+      374 	     else do;
+      375 		     if acl_count = 0
+      376 		     then do;			/* allocate 1-dim (legal pl1) */
+      377 			     acl_count = 1;
+      378 			     if d_s
+      379 			     then do;
+      380 				     allocate directory_acl in (arg_area);
+      381 				     directory_acl.count = 0;
+      382 						/* but report the fact that it is null */
+      383 				end;
+      384 			     else do;
+      385 				     allocate segment_acl in (arg_area);
+      386 				     segment_acl.count = 0;
+      387 				end;
+      388 			     return_acl_ptr = acl_ptr;/* share code with case just below */
+      389 			end;
+      390 		     a_return_struc_ptr = return_acl_ptr;
+      391 		end;
+      392 
+      393 	else /* old style */
+      394 	     if structure_supplied
+      395 	then ;
+      396 	else do;
+      397 		if acl_count = 0			/* null acl */
+      398 		then do;
+      399 			acl_count = 1;		/* allocate 1-dim (legal pl1) */
+      400 			if d_s
+      401 			then allocate directory_acl_array in (arg_area);
+      402 			else allocate segment_acl_array in (arg_area);
+      403 			acl_count = 0;		/* but report 0 count */
+      404 		     end;
+      405 		a_return_struc_ptr = acl_ptr;
+      406 		a_acl_count = acl_count;
+      407 	     end;
+      408 
+      409 	a_code = code;				/* reflect code from some bad entry */
+      410 	return;					/* So much for listing */
+      411 
+      412 
+      413 del_identries:
+      414      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_ring, a_code);
+      415 	initial_acl = "1"b;				/* delete initial acl entries for dir at ring */
+      416 	go to DEL_DENTRIES_COMMON;
+      417 del_dentries:
+      418      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_code);
+      419 						/* del part of dir acl */
+      420 	initial_acl = "0"b;
+      421 DEL_DENTRIES_COMMON:
+      422 	esw = DEL_DIR;
+      423 	goto start_proc;
+      424 
+      425 del_isentries:
+      426      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_ring, a_code);
+      427 	initial_acl = "1"b;				/* delete for segments */
+      428 	go to DEL_SENTRIES_COMMON;
+      429 
+      430 del_sentries:
+      431      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_code);
+      432 						/* del part of seg acl */
+      433 	initial_acl = "0"b;
+      434 DEL_SENTRIES_COMMON:
+      435 	esw = DEL_SEG;
+      436 	goto start_proc;
+      437 
+      438 replace_idall:
+      439      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_daemon_sw, a_ring, a_code);
+      440 	initial_acl = "1"b;				/* replace inatial acl for dirs at ring */
+      441 	go to REPLACE_DALL_COMMON;
+      442 
+      443 replace_dall:
+      444      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_daemon_sw, a_code);
+      445 						/* replace a dir acl with one provided */
+      446 	initial_acl = "0"b;
+      447 REPLACE_DALL_COMMON:
+      448 	esw = REP_DIR;
+      449 	daemon_sw = a_daemon_sw;
+      450 	goto start_proc;
+      451 
+      452 replace_isall:
+      453      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_daemon_sw, a_ring, a_code);
+      454 	initial_acl = "1"b;				/* replace for segments */
+      455 	go to REPLACE_SALL_COMMON;
+      456 
+      457 replace_sall:
+      458      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_daemon_sw, a_code);
+      459 						/* replace s seg acl with one given */
+      460 	initial_acl = "0"b;
+      461 REPLACE_SALL_COMMON:
+      462 	esw = REP_SEG;
+      463 	daemon_sw = a_daemon_sw;
+      464 	goto start_proc;
+      465 
+      466 add_identries:
+      467      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_ring, a_code);
+      468 	initial_acl = "1"b;				/* add initial acls for dir at ring */
+      469 	go to ADD_DENTRIES_COMMON;
+      470 
+      471 add_dentries:
+      472      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_code);
+      473 						/* add or replace  toa dir acl */
+      474 	initial_acl = "0"b;
+      475 ADD_DENTRIES_COMMON:
+      476 	esw = ADD_DIR;
+      477 	goto start_proc;
+      478 
+      479 add_isentries:
+      480      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_ring, a_code);
+      481 	initial_acl = "1"b;				/* add for segmemts */
+      482 	go to ADD_SENTRIES_COMMON;
+      483 
+      484 add_sentries:
+      485      entry (a_dir_name, a_entryname, a_acl_ptr, a_acl_count, a_code);
+      486 						/* add or relpace entries to seg acl */
+      487 	initial_acl = "0"b;
+      488 ADD_SENTRIES_COMMON:
+      489 	esw = ADD_SEG;
+      490 
+      491 
+      492 start_proc:
+      493 	caller_level = level$get ();
+      494 	locked, locked_for_write, called_find, fatal_error_sets_faults = "0"b;
+      495 
+      496 	acl_ptr = a_acl_ptr;
+      497 	acl_count = a_acl_count;
+      498 
+      499 	if initial_acl
+      500 	then do;
+      501 		ring = a_ring;
+      502 		if ring < 0 | ring > 7
+      503 		then call fatal_error (error_table_$argerr);
+      504 	     end;
+      505 
+      506 	d_s = esw < LIST_SEG;
+      507 
+      508 	if esw ^= REP_SEG & esw ^= REP_DIR
+      509 	then do;					/* if replacing, can replace with empty */
+      510 		if acl_ptr = null
+      511 		then call fatal_error (error_table_$null_info_ptr);
+      512 
+      513 		if acl_count = 0
+      514 		then call fatal_error (error_table_$argerr);
+      515 	     end;
+      516 
+      517 	if acl_ptr = null
+      518 	then acl_count = 0;
+      519 	else do;
+      520 		on any_other call fatal_error (error_table_$argerr);
+      521 		call check_in_structure;
+      522 		revert any_other;
+      523 	     end;
+      524 
+      525 	call check_pathname_find_read_lock_and_check_access;
+      526 
+      527 	acl_entry_ptr = addr (a_n);			/* used as a temp for constructing input acl ent */
+      528 	if initial_acl
+      529 	then do;
+      530 		if d_s
+      531 		then acl_start_ptr = addr (dir.iacl (ring).dir_frp);
+      532 		else acl_start_ptr = addr (dir.iacl (ring).seg_frp);
+      533 		if d_s
+      534 		then n_acls = dir.iacl_count (ring).dir;
+      535 		else n_acls = dir.iacl_count (ring).seg;
+      536 		owning_structure = dir.uid;		/* dir is owner of iacl entries */
+      537 	     end;
+      538 	else do;
+      539 		acl_start_ptr = addr (entry.acl_frp);
+      540 		n_acls = entry.acle_count;
+      541 		owning_structure = entry.uid;		/* When checking and making acles, entry owns em */
+      542 	     end;
+      543 
+      544 	dir.modify = pds$processid;
+      545 	if ^initial_acl
+      546 	then do;
+      547 		call change_dtem (ep);
+      548 		fatal_error_sets_faults = "1"b;
+      549 	     end;
+      550 
+      551 /*	*  *  *  delete  *  *  *	*/
+      552 
+      553 	if (esw = DEL_DIR) | (esw = DEL_SEG)
+      554 	then do;
+      555 
+      556 		on any_other call fatal_error (error_table_$argerr);
+      557 		delete_acl_array (*).status_code = 0;
+      558 		revert any_other;
+      559 
+      560 		do i = 1 to acl_count;
+      561 
+      562 		     on any_other call fatal_error (error_table_$argerr);
+      563 		     temp_access_name = delete_acl_array (i).access_name;
+      564 		     revert any_other;
+      565 
+      566 		     call acc_name_$elements (addr (temp_access_name), acl_entry_ptr, code);
+      567 		     if code ^= 0
+      568 		     then do;
+      569 			     on any_other call fatal_error (error_table_$argerr);
+      570 			     delete_acl_array (i).status_code = code;
+      571 			     revert any_other;
+      572 			     call fatal_error (error_table_$argerr);
+      573 			end;
+      574 
+      575 		     call acl_$del_entry (n_acls, owning_structure, acl_start_ptr, acl_entry_ptr, code);
+      576 		     if code ^= 0
+      577 		     then do;
+      578 			     if code = error_table_$user_not_found
+      579 			     then do;
+      580 				     on any_other call fatal_error (error_table_$argerr);
+      581 				     delete_acl_array (i).status_code = code;
+      582 				     revert any_other;
+      583 				     code = 0;
+      584 				     goto del_loop;
+      585 				end;
+      586 			     else call fatal_error (code);
+      587 			end;
+      588 		     if ^initial_acl
+      589 		     then entry.acle_count = entry.acle_count - 1;
+      590 		     else if d_s
+      591 		     then dir.iacl_count.dir (ring) = dir.iacl_count.dir (ring) - 1;
+      592 		     else dir.iacl_count.seg (ring) = dir.iacl_count.seg (ring) - 1;
+      593 		     dir.acle_total = dir.acle_total - 1;
+      594 del_loop:
+      595 		end;
+      596 
+      597 		go to CLEAN_RETURN;
+      598 	     end;					/* esw  = DEL_DIR, DEL_SEG */
+      599 
+      600 
+      601 /*	*  *  *  replacement and addition  *  *  *	*/
+      602 
+      603 /* esw = REP_DIR, REP_SEG, ADD_DIR, ADD_SEG */
+      604 /* see if have to check gate */
+      605 
+      606 	if ^initial_acl				/* ep is invalid if initial_acl = "1"b */
+      607 	then if ((esw = REP_SEG) | (esw = ADD_SEG)) & caller_level > 1
+      608 		& fixed (entry.ring_brackets (2), 3) < fixed (entry.ring_brackets (3), 3)
+      609 	     then do;
+      610 		     call check_gate_acl_ (acl_ptr, "0"b, acl_count, (""), code);
+      611 		     if code ^= 0
+      612 		     then call fatal_error (code);
+      613 		     if esw = ADD_SEG
+      614 		     then if entry.acl_frp ^= ""b
+      615 			then do;			/* trying to sneek own project in? */
+      616 				call check_gate_acl_ (acl_start_ptr, "1"b, (entry.acle_count), (""), code);
+      617 				if code ^= 0
+      618 				then call fatal_error (code);
+      619 			     end;
+      620 		end;
+      621 
+      622 	if (esw = REP_DIR) | (esw = REP_SEG)
+      623 	then do;
+      624 		if initial_acl
+      625 		then if d_s
+      626 		     then ael = dir.iacl_count.dir (ring);
+      627 		     else ael = dir.iacl_count.seg (ring);
+      628 		else ael = entry.acle_count;		/* start by deleting everything */
+      629 		call acl_$del_acl (n_acls, owning_structure, acl_start_ptr);
+      630 		n_acls = 0;
+      631 		if initial_acl
+      632 		then if d_s
+      633 		     then dir.iacl_count.dir (ring) = 0;
+      634 		     else dir.iacl_count.seg (ring) = 0;
+      635 		else entry.acle_count = 0;
+      636 		dir.acle_total = dir.acle_total - ael;	/* should *.SysDaemon be put back ? */
+      637 		if ^daemon_sw
+      638 		then do;
+      639 			t_char1 = "*.SysDaemon.*  ";
+      640 			call acc_name_$elements (addr (t_char1), acl_entry_ptr, (0));
+      641 			acl_entry_ptr -> acl1.mode = RW_ACCESS;
+      642 
+      643 			if d_s
+      644 			then acl_entry_ptr -> acl1.ex_mode = SMA_ACCESS;
+      645 			else acl_entry_ptr -> acl1.ex_mode = ""b;
+      646 			call acl_$add_entry (n_acls, owning_structure, acl_start_ptr, acl_entry_ptr, add_sw, code);
+      647 			if code ^= 0		/* should never happen */
+      648 			then call fatal_error (code);
+      649 
+      650 			n_acls = 1;
+      651 
+      652 			if ^initial_acl
+      653 			then entry.acle_count = entry.acle_count + 1;
+      654 			else if d_s
+      655 			then dir.iacl_count.dir (ring) = dir.iacl_count.dir (ring) + 1;
+      656 			else dir.iacl_count.seg (ring) = dir.iacl_count.seg (ring) + 1;
+      657 			dir.acle_total = dir.acle_total + 1;
+      658 		     end;
+      659 	     end;
+      660 
+      661 	do i = 1 to acl_count;
+      662 
+      663 	     on any_other call fatal_error (error_table_$argerr);
+      664 	     if d_s
+      665 	     then do;
+      666 		     temp_access_name = directory_acl_array (i).access_name;
+      667 		     temp_mode = directory_acl_array (i).mode;
+      668 		     if substr (temp_mode, 4) ^= ""b
+      669 		     then do;
+      670 			     directory_acl_array (i).status_code = error_table_$bad_acl_mode;
+      671 			     call fatal_error (error_table_$argerr);
+      672 			end;
+      673 		end;
+      674 	     else do;
+      675 		     temp_access_name = segment_acl_array (i).access_name;
+      676 		     temp_mode = segment_acl_array (i).mode;
+      677 		     if substr (temp_mode, 5) ^= ""b	/* let a through */
+      678 		     then do;
+      679 			     segment_acl_array (i).status_code = error_table_$bad_acl_mode;
+      680 			     call fatal_error (error_table_$argerr);
+      681 			end;
+      682 		     temp_mode = temp_mode & REW_ACCESS;/* but not far */
+      683 		     temp_extended_mode = segment_acl_array (i).extended_mode;
+      684 		end;
+      685 	     revert any_other;
+      686 
+      687 	     call acc_name_$elements (addr (temp_access_name), acl_entry_ptr, code);
+      688 	     if code ^= 0
+      689 	     then do;
+      690 		     on any_other call fatal_error (error_table_$argerr);
+      691 		     if d_s
+      692 		     then do;
+      693 			     directory_acl_array (i).status_code = code;
+      694 			     go to BAD_ACLE;
+      695 			end;
+      696 		     else do;
+      697 			     segment_acl_array (i).status_code = code;
+      698 BAD_ACLE:
+      699 			     revert any_other;
+      700 			     call fatal_error (error_table_$argerr);
+      701 			end;
+      702 		end;
+      703 	     if d_s
+      704 	     then do;
+      705 		     acl_entry_ptr -> acl1.mode = RW_ACCESS;
+      706 		     acl_entry_ptr -> acl1.ex_mode = temp_mode;
+      707 		end;
+      708 	     else do;
+      709 		     acl_entry_ptr -> acl1.mode = temp_mode;
+      710 		     acl_entry_ptr -> acl1.ex_mode = temp_extended_mode;
+      711 		end;
+      712 
+      713 	     call acl_$add_entry (n_acls, owning_structure, acl_start_ptr, acl_entry_ptr, add_sw, code);
+      714 	     if code ^= 0
+      715 	     then call fatal_error (code);		/* hate to give up here, but no choice */
+      716 	     n_acls = n_acls + 1;
+      717 
+      718 	     if add_sw
+      719 	     then do;				/* acl added, up count */
+      720 		     if ^initial_acl
+      721 		     then entry.acle_count = entry.acle_count + 1;
+      722 		     else if d_s
+      723 		     then dir.iacl_count.dir (ring) = dir.iacl_count.dir (ring) + 1;
+      724 		     else dir.iacl_count.seg (ring) = dir.iacl_count.seg (ring) + 1;
+      725 		     dir.acle_total = dir.acle_total + 1;
+      726 		end;
+      727 
+      728 	end;					/* i do loop */
+      729 
+      730 CLEAN_RETURN:
+      731 	if ^initial_acl
+      732 	then call setfaults$if_active ((entry.uid), (entry.pvid), (entry.vtocx), "1"b);
+      733 	call unlock_dir;
+      734 	a_code = 0;
+      735 	return;
+      736 
+      737 check_pathname_find_read_lock_and_check_access:
+      738      procedure;
+      739 
+      740 	if initial_acl
+      741 	then do;					/* need ptr to locked dir */
+      742 		dirname = a_dir_name;
+      743 		entryname = a_entryname;
+      744 		if dirname = ">"
+      745 		then dirname = ">" || entryname;
+      746 		else if entryname ^= ""		/* compatable with old idiot programs */
+      747 		then dirname = rtrim (dirname) || ">" || entryname;
+      748 
+      749 		if dirname = ""			/* this is always invalid */
+      750 		then call fatal_error (error_table_$argerr);
+      751 
+      752 		if esw = LIST_DIR | esw = LIST_SEG
+      753 		then do;
+      754 			call dc_find$dir_read (dirname, dp, code);
+      755 			if code ^= 0
+      756 			then go to find_error;
+      757 			called_find, locked = "1"b;
+      758 		     end;
+      759 		else do;
+      760 			call dc_find$dir_write (dirname, FS_OBJ_IACL_MOD, dp, code);
+      761 			if code ^= 0
+      762 			then go to find_error;
+      763 			called_find, locked = "1"b;
+      764 			locked_for_write = "1"b;	/* fine, ready to go for iacls */
+      765 
+      766 			if ring < caller_level | ring > 7
+      767 						/* only 8 rings, folks */
+      768 			then call fatal_error (error_table_$bad_ring_brackets);
+      769 		     end;
+      770 	     end;
+      771 	else do;					/* ordinary acl */
+      772 		dirname = a_dir_name;
+      773 		entryname = a_entryname;
+      774 
+      775 		if dirname = ""			/* this is always invalid */
+      776 		then call fatal_error (error_table_$argerr);
+      777 
+      778 		if esw = LIST_DIR | esw = LIST_SEG
+      779 		then do;
+      780 			call dc_find$obj_status_read (dirname, entryname, 1, ep, code);
+      781 			if code ^= 0
+      782 			then go to find_error;
+      783 			locked, called_find = "1"b;
+      784 			dp = ptr (ep, 0);
+      785 		     end;
+      786 		else do;
+      787 			call dc_find$obj_access_write (dirname, entryname, 1, FS_OBJ_ACL_MOD, ep, code);
+      788 			if code ^= 0
+      789 			then
+      790 find_error:
+      791 			     call fatal_error (code);
+      792 			locked, called_find = "1"b;
+      793 			dp = ptr (ep, 0);
+      794 			locked_for_write = "1"b;
+      795 
+      796 			if entry.dirsw
+      797 			then if caller_level > bin (entry.ex_ring_brackets (1), 3)
+      798 						/* modify bracket */
+      799 			     then call fatal_error (error_table_$bad_ring_brackets);
+      800 			     else ;
+      801 			else if caller_level > bin (entry.ring_brackets (1))
+      802 			then call fatal_error (error_table_$bad_ring_brackets);
+      803 		     end;
+      804 
+      805 		if entry.dirsw
+      806 		then do;
+      807 			if esw > ADD_DIR
+      808 			then call fatal_error (error_table_$dirseg);
+      809 						/* have already checked mode, safe to return */
+      810 		     end;
+      811 
+      812 		else do;
+      813 			if esw <= ADD_DIR
+      814 			then call fatal_error (error_table_$nondirseg);
+      815 		     end;
+      816 	     end;
+      817 
+      818 /* dp is set, ep is set for non-inacl case, access is okay */
+      819 
+      820      end check_pathname_find_read_lock_and_check_access;
+      821 
+      822 check_in_structure:
+      823      procedure;
+      824 
+      825 /* Precheck structure to return errors without doing anything. */
+      826 /* check is repeated at actual run through acl to catch modifications */
+      827 /* from other processes */
+      828 
+      829 	declare fail_sw		 bit (1) aligned;
+      830 
+      831 	if esw = DEL_DIR | esw = DEL_SEG
+      832 	then delete_acl_array (*).status_code = 0;
+      833 	else if d_s
+      834 	then directory_acl_array (*).status_code = 0;
+      835 	else segment_acl_array (*).status_code = 0;
+      836 
+      837 	fail_sw = "0"b;
+      838 	work_p = addr (a_n.ac_name);			/* a_n is a temp hold structure */
+      839 	do i = 1 to acl_count;			/* used for argument checking */
+      840 
+      841 	     if (esw = DEL_DIR) | (esw = DEL_SEG)
+      842 	     then do;				/* when deleting acl entries, just perform name check */
+      843 		     call acc_name_$elements (addr (delete_acl_array (i).access_name), work_p, code);
+      844 		     if code ^= 0
+      845 		     then do;
+      846 			     delete_acl_array (i).status_code = code;
+      847 			     if code ^= error_table_$invalid_ascii
+      848 			     then fail_sw = "1"b;
+      849 			end;
+      850 		end;
+      851 
+      852 	     else if d_s
+      853 	     then do;				/* look at directory acl modes and do name check */
+      854 		     if substr (directory_acl_array (i).mode, 4) ^= ""b
+      855 		     then do;
+      856 bad_mode:
+      857 			     directory_acl_array (i).status_code = error_table_$bad_acl_mode;
+      858 			     fail_sw = "1"b;
+      859 			end;
+      860 		     else if substr (directory_acl_array (i).mode, 1, 2) = "01"b
+      861 		     then do;			/* do not allow m without s permission */
+      862 			     directory_acl_array (i).status_code = error_table_$invalid_mode;
+      863 			     fail_sw = "1"b;
+      864 			end;
+      865 
+      866 		     call acc_name_$elements (addr (directory_acl_array (i).access_name), work_p, code);
+      867 		     if code ^= 0
+      868 		     then do;
+      869 			     fail_sw = "1"b;
+      870 			     directory_acl_array (i).status_code = code;
+      871 			end;
+      872 		end;
+      873 
+      874 	     else do;				/* look at segment acl modes and do name check */
+      875 		     if substr (segment_acl_array (i).mode, 5) ^= ""b
+      876 		     then do;			/* permit a mode for compatability */
+      877 			     segment_acl_array (i).status_code = error_table_$bad_acl_mode;
+      878 			     fail_sw = "1"b;
+      879 			end;
+      880 		     call acc_name_$elements (addr (segment_acl_array (i).access_name), work_p, code);
+      881 		     if code ^= 0
+      882 		     then do;
+      883 			     fail_sw = "1"b;
+      884 			     segment_acl_array (i).status_code = code;
+      885 			end;
+      886 		end;
+      887 	end;					/* do i = 1 to acl_count */
+      888 	if fail_sw
+      889 	then do;
+      890 		a_code = error_table_$argerr;
+      891 		go to ERROR_RETURN;
+      892 	     end;
+      893      end check_in_structure;
+      894 
+      895 process_specific_list:
+      896      procedure;
+      897 
+      898 
+      899 	ael = acl_count;
+      900 
+      901 /* zero out all status codes for unambiguous errors */
+      902 
+      903 	on any_other call fatal_error (error_table_$argerr);
+      904 	if d_s
+      905 	then directory_acl_array (*).status_code = 0;
+      906 	else segment_acl_array (*).status_code = 0;
+      907 	revert any_other;
+      908 
+      909 	fail_sw = "0"b;
+      910 
+      911 	do i = 1 to ael;
+      912 	     offset = 0;
+      913 
+      914 	     on any_other call fatal_error (error_table_$argerr);
+      915 	     if d_s
+      916 	     then temp_access_name = directory_acl_array (i).access_name;
+      917 	     else temp_access_name = segment_acl_array (i).access_name;
+      918 	     revert any_other;
+      919 
+      920 	     call acc_name_$elements (addr (temp_access_name), acl_entry_ptr, code);
+      921 	     if code ^= 0
+      922 	     then do;
+      923 		     on any_other call fatal_error (error_table_$argerr);
+      924 		     if d_s
+      925 		     then directory_acl_array (i).status_code = code;
+      926 		     else segment_acl_array (i).status_code = code;
+      927 		     revert any_other;
+      928 		     fail_sw = "1"b;
+      929 		     go to list_loop;
+      930 		end;
+      931 
+      932 	     call acl_$list_entry (n_acls, owning_structure, acl_start_ptr, acl_entry_ptr, offset, code);
+      933 
+      934 	     if code ^= 0
+      935 	     then if code = error_table_$empty_acl
+      936 		then do;
+      937 			on any_other call fatal_error (error_table_$argerr);
+      938 			if d_s
+      939 			then do;
+      940 				directory_acl_array (*).status_code = error_table_$user_not_found;
+      941 				directory_acl_array (*).mode = ""b;
+      942 			     end;
+      943 			else do;
+      944 				segment_acl_array (*).status_code = error_table_$user_not_found;
+      945 				segment_acl_array (*).mode = ""b;
+      946 				segment_acl_array (*).extended_mode = ""b;
+      947 			     end;
+      948 			revert any_other;
+      949 			code = 0;
+      950 			return;
+      951 		     end;
+      952 	     else if code = error_table_$user_not_found
+      953 		then do;
+      954 			on any_other call fatal_error (error_table_$argerr);
+      955 			if d_s
+      956 			then do;
+      957 				directory_acl_array (i).status_code = code;
+      958 				directory_acl_array (i).mode = ""b;
+      959 			     end;
+      960 			else do;
+      961 				segment_acl_array (i).status_code = code;
+      962 				segment_acl_array (i).mode = ""b;
+      963 				segment_acl_array (i).extended_mode = ""b;
+      964 			     end;
+      965 			revert any_other;
+      966 			code = 0;
+      967 			goto list_loop;		/* no such user is okay, continue */
+      968 		     end;
+      969 		else call fatal_error (code);
+      970 
+      971 	     on any_other call fatal_error (error_table_$argerr);
+      972 	     if d_s
+      973 	     then directory_acl_array (i).mode = acl_entry_ptr -> acl1.ex_mode;
+      974 	     else do;				/* check if can return ex mode */
+      975 		     segment_acl_array (i).mode = acl_entry_ptr -> acl1.mode;
+      976 		     segment_acl_array (i).extended_mode = acl_entry_ptr -> acl1.ex_mode;
+      977 		end;
+      978 	     revert any_other;
+      979 list_loop:
+      980 	end;
+      981 	if fail_sw
+      982 	then call fatal_error (error_table_$argerr);
+      983 
+      984      end process_specific_list;
+      985 
+      986 process_list_all:
+      987      procedure;
+      988 	declare saved_dir_change_pclock
+      989 				 fixed bin (35);
+      990 
+      991 	acl_count = n_acls;
+      992 
+      993 /* Unlock, allocate, relock */
+      994 
+      995 	saved_dir_change_pclock = dir.change_pclock;
+      996 
+      997 	call lock$dir_unlock (dp);
+      998 	locked = "0"b;
+      999 
+     1000 	on any_other call fatal_error (error_table_$argerr);
+     1001 	on area call fatal_error (error_table_$noalloc);	/* specific takes precedence */
+     1002 
+     1003 	if refer_allocation
+     1004 	then do;
+     1005 		if d_s
+     1006 		then do;
+     1007 			allocate directory_acl in (arg_area);
+     1008 			directory_acl.count = acl_count;
+     1009 			directory_acl.version = ACL_VERSION_1;
+     1010 			return_acl_ptr = acl_ptr;
+     1011 			acl_ptr = addr (directory_acl.entries);
+     1012 		     end;
+     1013 		else do;
+     1014 			allocate segment_acl in (arg_area);
+     1015 			segment_acl.count = acl_count;
+     1016 			segment_acl.version = ACL_VERSION_1;
+     1017 			return_acl_ptr = acl_ptr;
+     1018 			acl_ptr = addr (segment_acl.entries);
+     1019 		     end;
+     1020 	     end;
+     1021 	else do;
+     1022 		if d_s
+     1023 		then allocate directory_acl_array in (arg_area);
+     1024 		else allocate segment_acl_array in (arg_area);
+     1025 		return_acl_ptr = acl_ptr;
+     1026 	     end;
+     1027 
+     1028 	revert any_other, area;
+     1029 
+     1030 /* Relock */
+     1031 /* hmmm, perhaps we should censor seg_deleted ... ? */
+     1032 
+     1033 	on seg_fault_error signal bad_dir_;
+     1034 	call lock$dir_lock_read (dp, code);
+     1035 	if code ^= 0
+     1036 	then call fatal_error (code);
+     1037 	locked = "1"b;
+     1038 	revert seg_fault_error;
+     1039 
+     1040 	if dir.change_pclock ^= saved_dir_change_pclock
+     1041 	then do;
+     1042 		call unlock_dir;			/* Locked_for_write guaranteed "0"b */
+     1043 		go to Retry_process_list_all;
+     1044 	     end;
+     1045 
+     1046 	acl_entry_ptr = addr (a_n);
+     1047 
+     1048 	do i = 1 to acl_count;
+     1049 	     offset = i;				/* offset ^= 0, so list_entry will not match */
+     1050 
+     1051 	     call acl_$list_entry (acl_count, owning_structure, acl_start_ptr, acl_entry_ptr, offset, code);
+     1052 	     if code = error_table_$argerr
+     1053 	     then /* see if listing all and count wrong */
+     1054 		signal bad_dir_;
+     1055 
+     1056 	     else if code ^= 0
+     1057 	     then call fatal_error (code);
+     1058 
+     1059 	     t_char1 = acl_entry_ptr -> acl1.ac_name.person;
+     1060 	     t_char2 = acl_entry_ptr -> acl1.ac_name.project;
+     1061 	     tag = acl_entry_ptr -> acl1.ac_name.tag;
+     1062 
+     1063 	     on any_other call fatal_error (error_table_$argerr);
+     1064 
+     1065 (nostringsize):
+     1066 	     begin;
+     1067 		if d_s
+     1068 		then do;
+     1069 			directory_acl_array (i).status_code = 0;
+     1070 			directory_acl_array (i).access_name =
+     1071 			     rtrim (t_char1) || "." || rtrim (t_char2) || "." || tag;
+     1072 			directory_acl_array (i).mode = acl_entry_ptr -> acl1.ex_mode;
+     1073 			directory_acl_array (i).status_code = 0;
+     1074 		     end;
+     1075 		else do;
+     1076 			segment_acl_array (i).status_code = 0;
+     1077 			segment_acl_array (i).access_name = rtrim (t_char1) || "." || rtrim (t_char2) || "." || tag;
+     1078 			segment_acl_array (i).mode = acl_entry_ptr -> acl1.mode;
+     1079 			segment_acl_array (i).extended_mode = acl_entry_ptr -> acl1.ex_mode;
+     1080 		     end;
+     1081 	     end /* the begin block */;
+     1082 	     revert any_other;
+     1083 	end;
+     1084 
+     1085      end process_list_all;
+     1086 
+     1087 cleanup_:
+     1088      procedure;
+     1089 
+     1090 						/** ASSUME that if a cleanup is in progress that verify_lock will be */
+     1091 						/** called, so leave the dir locked for verify_lock to find and */
+     1092 						/** salvage. */
+     1093 
+     1094 	if /* case */ esw = LIST_DIR | esw = LIST_SEG
+     1095 	then do;
+     1096 		if /* case */ ^structure_supplied & acl_ptr ^= null
+     1097 		then if /* tree */ refer_allocation
+     1098 		     then if d_s
+     1099 			then free directory_acl;
+     1100 			else free segment_acl;
+     1101 		     else if d_s
+     1102 			then free directory_acl_array;
+     1103 			else free segment_acl_array;
+     1104 	     end;
+     1105 	if called_find
+     1106 	then call dc_find$finished (dp, "0"b);		/* leave locked for verify_lock */
+     1107 
+     1108      end cleanup_;
+     1109 
+     1110 unlock_dir:
+     1111      procedure;
+     1112 
+     1113 	if locked_for_write
+     1114 	then do;
+     1115 		call sum$dirmod (dp);
+     1116 		dir.modify = ""b;
+     1117 	     end;
+     1118 	if called_find
+     1119 	then call dc_find$finished (dp, locked);
+     1120 	else if locked
+     1121 	then call lock$dir_unlock (dp);
+     1122 	locked, called_find = "0"b;
+     1123      end unlock_dir;
+     1124 
+     1125 
+     1126 fatal_error:
+     1127      procedure (cc);
+     1128 	declare cc		 fixed bin (35);
+     1129 
+     1130 	a_code = cc;
+     1131 	if fatal_error_sets_faults			/* only true if we have ep, etc. */
+     1132 	then do;
+     1133 		call setfaults$if_active ((entry.uid), (entry.pvid), (entry.vtocx), "1"b);
+     1134 		fatal_error_sets_faults = ""b;
+     1135 	     end;
+     1136 	call unlock_dir;
+     1137 	call cleanup_;				/* Free space, locking left untouched */
+     1138 	go to ERROR_RETURN;
+     1139      end fatal_error;
+     1140 ERROR_RETURN:
+     1141 	return;
+     1142 
+  1     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+     1143 
+     1144 
+  2     1 /* Begin include file -- acl_structures.incl.pl1 BIM 3/82 */
+  2     2 /* format: style3,indcomtxt,idind30 */
+  2     3 
+  2     4 declare   acl_ptr                       pointer;
+  2     5 declare   acl_count                     fixed bin;
+  2     6 
+  2     7 declare 1 general_acl                   aligned based (acl_ptr), /* for fs_util_ */
+  2     8           2 version                     char (8) aligned,
+  2     9           2 count                       fixed bin,
+  2    10           2 entries                     (acl_count refer (general_acl.count)) aligned like general_acl_entry;
+  2    11 
+  2    12 declare 1 general_acl_entry             based,
+  2    13           2 access_name                 character (32) unaligned,
+  2    14           2 mode                        bit (36) aligned,
+  2    15           2 status_code                 fixed bin (35);
+  2    16 
+  2    17 
+  2    18 declare 1 general_extended_acl          aligned based (acl_ptr), /* for fs_util_ */
+  2    19           2 version                     char (8) aligned,
+  2    20           2 count                       fixed bin,
+  2    21           2 entries                     (acl_count refer (general_extended_acl.count)) aligned like general_extended_acl_entry;
+  2    22 
+  2    23 declare 1 general_extended_acl_entry    aligned based,
+  2    24           2 access_name                 character (32) unaligned,
+  2    25           2 mode                        bit (36) aligned,
+  2    26           2 extended_mode               bit (36) aligned,
+  2    27           2 status_code                 fixed bin (35);
+  2    28 
+  2    29 
+  2    30 declare 1 general_delete_acl            aligned based (acl_ptr), /* for file_system_ */
+  2    31           2 version                     char (8) aligned,
+  2    32           2 count                       fixed bin,
+  2    33           2 entries                     (acl_count refer (general_delete_acl.count)) aligned like delete_acl_entry;
+  2    34 
+  2    35 declare 1 general_delete_acl_entry      aligned based,
+  2    36           2 access_name                 character (32) unaligned,
+  2    37           2 status_code                 fixed bin (35);
+  2    38 
+  2    39 
+  2    40 declare 1 segment_acl                   aligned based (acl_ptr),
+  2    41           2 version                     fixed bin,
+  2    42           2 count                       fixed bin,
+  2    43           2 entries                     (acl_count refer (segment_acl.count)) aligned like segment_acl_entry;
+  2    44 
+  2    45 declare 1 segment_acl_entry             like general_extended_acl_entry aligned based;
+  2    46 declare 1 segment_acl_array             (acl_count) aligned like segment_acl_entry based (acl_ptr);
+  2    47 
+  2    48 
+  2    49 declare 1 directory_acl                 aligned based (acl_ptr),
+  2    50           2 version                     fixed bin,
+  2    51           2 count                       fixed bin,
+  2    52           2 entries                     (acl_count refer (directory_acl.count)) aligned like directory_acl_entry;
+  2    53 
+  2    54 declare 1 directory_acl_entry           like general_acl_entry aligned based;
+  2    55 declare 1 directory_acl_array           (acl_count) aligned like directory_acl_entry based (acl_ptr);
+  2    56 
+  2    57 
+  2    58 declare 1 delete_acl                    based (acl_ptr) aligned,
+  2    59           2 version                     fixed bin,
+  2    60           2 count                       fixed bin,
+  2    61           2 entries                     (acl_count refer (delete_acl.count)) aligned like delete_acl_entry;
+  2    62 
+  2    63 declare 1 delete_acl_entry              like general_delete_acl_entry aligned based;
+  2    64 declare 1 delete_acl_array              (acl_count) aligned like delete_acl_entry based (acl_ptr);
+  2    65 
+  2    66 
+  2    67 declare  (SEG_ACL_VERSION_1             init ("sga1"),
+  2    68           DIR_ACL_VERSION_1             init ("dra1"),
+  2    69           DELETE_ACL_VERSION_1          init ("dla1"))
+  2    70                                         char (4) int static options (constant);
+  2    71 
+  2    72 declare  (GENERAL_ACL_VERSION_1         init ("gacl001"),
+  2    73           GENERAL_EXTENDED_ACL_VERSION_1 init ("gxacl001"),
+  2    74           GENERAL_DELETE_ACL_VERSION_1  init ("gdacl001"))
+  2    75                                         char (8) internal static options (constant);
+  2    76 
+  2    77 declare   ACL_VERSION_1                 fixed bin init (1) int static options (constant);
+  2    78 
+  2    79 /* End include file acl_structures.incl.pl1 */
+     1145 
+     1146 
+  3     1 /* BEGIN include file dc_find_dcls.incl.pl1 */
+  3     2 
+  3     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  3     4 /* Added a few more, October 1984. */
+  3     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  3     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  3     7 
+  3     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  3     9 
+  3    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  3    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  3    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  3    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  3    14 
+  3    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  3    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  3    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  3    18 
+  3    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  3    20 
+  3    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  3    22 
+  3    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  3    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  3    25 
+  3    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  3    27 
+  3    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  3    29 
+  3    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  3    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  3    32 
+  3    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  3    34 
+  3    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  3    36 
+  3    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  3    38 
+  3    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    41 
+  3    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  3    44 
+  3    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  3    47 
+  3    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  3    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  3    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  3    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  3    52 
+  3    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  3    58 
+  3    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  3    60 
+  3    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  3    62 
+  3    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  3    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  3    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  3    66 
+  3    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  3    68 
+  3    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  3    70 
+  3    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  3    72 
+  3    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    74 
+  3    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  3    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  3    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  3    82 
+  3    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  3    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  3    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  3    87 
+  3    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  3    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  3    90 
+  3    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  3    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  3    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  3    94 
+  3    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  3    96 
+  3    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  3    98 
+  3    99 /* END include file dc_find_dcls.incl.pl1 */
+     1147 
+     1148 
+  4     1 /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  4     2 
+  4     3 
+  4     4 /* Template for an entry. Length = 38 words */
+  4     5 
+  4     6 dcl  ep ptr;
+  4     7 
+  4     8 dcl 1 entry based (ep) aligned,
+  4     9 
+  4    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  4    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  4    12 
+  4    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  4    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  4    15 
+  4    16     2 uid bit (36),					/* unique id of entry */
+  4    17 
+  4    18     2 dtem bit (36),				/* date-time entry modified */
+  4    19 
+  4    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  4    21     2 pad0 bit (17),
+  4    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  4    23 
+  4    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  4    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  4    26 
+  4    27     2 author,					/* user who created branch */
+  4    28       3 pers_rp bit (18),				/* name of user who created branch */
+  4    29       3 proj_rp bit (18),				/* project of user who created branch */
+  4    30 
+  4    31       3 tag char (1),				/* tag of user who created branch */
+  4    32       3 pad1 char (3),
+  4    33 
+  4    34     2 primary_name bit (504),				/* first name on name list */
+  4    35 
+  4    36     2 dtd bit (36),					/* date time dumped */
+  4    37 
+  4    38     2 pad2 bit (36),
+  4    39 
+  4    40 
+  4    41 /* the declarations below are for branch only */
+  4    42 
+  4    43 
+  4    44     2 pvid bit (36),				/* physical volume id */
+  4    45 
+  4    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  4    47     2 pad3 bit (18),
+  4    48 
+  4    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  4    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  4    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  4    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  4    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  4    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  4    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  4    56     2 security_oosw bit (1),				/* security out of service switch */
+  4    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  4    58     2 master_dir bit (1),				/* TRUE for master directory */
+  4    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  4    60     2 pad4 bit (11),
+  4    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  4    62 
+  4    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  4    64 
+  4    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  4    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  4    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  4    68 
+  4    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  4    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  4    71 
+  4    72     2 bc_author,					/* user who last set the bit count */
+  4    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  4    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  4    75 
+  4    76       3 tag char (1),				/* tag of user who set the bit count */
+  4    77       3 pad5 bit (2),
+  4    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  4    79 
+  4    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  4    81 
+  4    82     2 pad6 bit (36),
+  4    83 
+  4    84     2 checksum bit (36),				/* checksum from dtd */
+  4    85 
+  4    86     2 owner bit (36);				/* uid of containing directory */
+  4    87 
+  4    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+     1149 
+     1150 
+  5     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  5     2 /* Modified 8/74 for NSS */
+  5     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  5     4 /* Modified 3/82 BIM for change pclock */
+  5     5 /* format: style3 */
+  5     6 
+  5     7 /* Template for the directory header. Length = 64 words. */
+  5     8 
+  5     9 dcl  dp ptr;
+  5    10 
+  5    11 dcl 1 dir based (dp) aligned,
+  5    12 
+  5    13    2 modify bit (36),				/* Process ID of last modifier */
+  5    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  5    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  5    16     2 dtc (3),					/* date-time checked by salvager array */
+  5    17       3 date bit (36),				/* the date */
+  5    18       3 error bit (36),				/* what errors were discovered */
+  5    19 
+  5    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  5    21 
+  5    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  5    23 
+  5    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  5    25 
+  5    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  5    27 
+  5    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  5    29     2 version_number fixed bin (17),			/* version number of header */
+  5    30 
+  5    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  5    32     2 pad2 bit (18),
+  5    33 
+  5    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  5    35     2 pad3 bit (18),
+  5    36 
+  5    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  5    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  5    39 
+  5    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  5    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  5    42 
+  5    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  5    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  5    45 
+  5    46     2 lcount fixed bin (17),				/* number of links */
+  5    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  5    48 
+  5    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  5    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  5    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  5    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  5    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  5    54     2 pad4 bit (14),
+  5    55 
+  5    56     2 iacl_count (0:7),
+  5    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  5    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  5    59 
+  5    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  5    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  5    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  5    63 
+  5    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  5    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  5    66 
+  5    67     2 htsize fixed bin (17),				/* size of hash table */
+  5    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  5    69 
+  5    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  5    71     2 pad6 fixed bin (17),
+  5    72 
+  5    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  5    74     2 pad7 bit (18)) unaligned,
+  5    75 
+  5    76     2 dts bit (36),					/* date-time directory last salvaged */
+  5    77 
+  5    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  5    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  5    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  5    81     2 checksum bit (36),				/* checksummed from uid on */
+  5    82     2 owner bit (36);				/* uid of parent dir */
+  5    83 
+  5    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  5    85 
+  5    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+     1151 
+     1152 
+  6     1 /* BEGIN include file fs_obj_access_codes.incl.pl1 */
+  6     2 
+  6     3 
+  6     4 /****^  HISTORY COMMENTS:
+  6     5*  1) change(88-05-12,Lippard), approve(88-05-02,MCR7881),
+  6     6*     audit(88-06-16,Fawcett), install(88-08-02,MR12.2-1074):
+  6     7*     Changed to add the FS_OBJ_AUDIT_FLAG_MOD constant.
+  6     8*                                                   END HISTORY COMMENTS */
+  6     9 
+  6    10 
+  6    11 /* The possible events within the file system; access codes and
+  6    12*   detailed operation codes.  October 1984, Keith Loepere. */
+  6    13 
+  6    14 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  6    15 
+  6    16 /* Major file system operations. */
+  6    17 
+  6    18 dcl  access_operations_$fs_obj_create bit (36) aligned ext;
+  6    19 dcl  access_operations_$fs_obj_delete bit (36) aligned ext;
+  6    20 dcl  access_operations_$fs_obj_initiate bit (36) aligned ext;
+  6    21 dcl  access_operations_$fs_obj_terminate bit (36) aligned ext;
+  6    22 dcl  access_operations_$fs_obj_contents_read bit (36) aligned ext;
+  6    23 dcl  access_operations_$fs_obj_contents_mod bit (36) aligned ext;
+  6    24 dcl  access_operations_$fs_obj_prop_read bit (36) aligned ext;
+  6    25 dcl  access_operations_$fs_obj_attr_mod bit (36) aligned ext;
+  6    26 dcl  access_operations_$fs_obj_status_mod bit (36) aligned ext;
+  6    27 dcl  access_operations_$fs_obj_access_mod bit (36) aligned ext;
+  6    28 
+  6    29 /* Detailed operations. */
+  6    30 
+  6    31 dcl  FS_OBJ_CONNECT fixed bin (18) uns init (1) static options (constant);
+  6    32 dcl  FS_OBJ_BC_MOD fixed bin (18) uns init (2) static options (constant);
+  6    33 dcl  FS_OBJ_TRUNCATE fixed bin (18) uns init (3) static options (constant);
+  6    34 dcl  FS_OBJ_ACL_MOD fixed bin (18) uns init (4) static options (constant);
+  6    35 dcl  FS_OBJ_RING_MOD fixed bin (18) uns init (5) static options (constant);
+  6    36 dcl  FS_OBJ_ACL_RING_MOD fixed bin (18) uns init (6) static options (constant);
+  6    37 dcl  FS_OBJ_RENAME fixed bin (18) uns init (7) static options (constant);
+  6    38 dcl  FS_OBJ_COPY_SW_MOD fixed bin (18) uns init (8) static options (constant);
+  6    39 dcl  FS_OBJ_DAMAGED_SW_MOD fixed bin (18) uns init (9) static options (constant);
+  6    40 dcl  FS_OBJ_DNZP_MOD fixed bin (18) uns init (10) static options (constant);
+  6    41 dcl  FS_OBJ_ENTRY_BOUND_MOD fixed bin (18) uns init (11) static options (constant);
+  6    42 dcl  FS_OBJ_MAX_LEN_MOD fixed bin (18) uns init (12) static options (constant);
+  6    43 dcl  FS_OBJ_SAFETY_SW_MOD fixed bin (18) uns init (13) static options (constant);
+  6    44 dcl  FS_OBJ_SYNC_SW_MOD fixed bin (18) uns init (14) static options (constant);
+  6    45 dcl  FS_OBJ_VOL_DUMP_SW_MOD fixed bin (18) uns init (15) static options (constant);
+  6    46 dcl  FS_OBJ_AUTHOR_MOD fixed bin (18) uns init (16) static options (constant);
+  6    47 dcl  FS_OBJ_BC_AUTHOR_MOD fixed bin (18) uns init (17) static options (constant);
+  6    48 dcl  FS_OBJ_BACKUP_TIMES_MOD fixed bin (18) uns init (18) static options (constant);
+  6    49 dcl  FS_OBJ_DATES_MOD fixed bin (18) uns init (19) static options (constant);
+  6    50 dcl  FS_OBJ_DT_DUMPED_MOD fixed bin (18) uns init (20) static options (constant);
+  6    51 dcl  FS_OBJ_FOR_RELOADER_MOD fixed bin (18) uns init (21) static options (constant);
+  6    52 dcl  FS_OBJ_SONS_LVID_MOD fixed bin (18) uns init (22) static options (constant);
+  6    53 dcl  FS_OBJ_SOOS_MOD fixed bin (18) uns init (23) static options (constant);
+  6    54 dcl  FS_OBJ_MOVE_QUOTA fixed bin (18) uns init (24) static options (constant);
+  6    55 dcl  FS_OBJ_CORRECT_QUSED fixed bin (18) uns init (25) static options (constant);
+  6    56 dcl  FS_OBJ_DIR_SALVAGE fixed bin (18) uns init (26) static options (constant);
+  6    57 dcl  FS_OBJ_MDIR_QUOTA_MOD fixed bin (18) uns init (27) static options (constant);
+  6    58 dcl  FS_OBJ_QUOTA_MOD fixed bin (18) uns init (28) static options (constant);
+  6    59 dcl  FS_OBJ_QUOTA_RELOAD fixed bin (18) uns init (29) static options (constant);
+  6    60 dcl  FS_OBJ_RECLASSIFY fixed bin (18) uns init (30) static options (constant);
+  6    61 dcl  FS_OBJ_RECLASSIFY_NODE fixed bin (18) uns init (31) static options (constant);
+  6    62 dcl  FS_OBJ_SEG_MOVE fixed bin (18) uns init (32) static options (constant);
+  6    63 dcl  FS_OBJ_TRP_MOD fixed bin (18) uns init (33) static options (constant);
+  6    64 dcl  FS_OBJ_VOLUME_RETRIEVE fixed bin (18) uns init (34) static options (constant);
+  6    65 dcl  FS_OBJ_IACL_MOD fixed bin (18) uns init (35) static options (constant);
+  6    66 dcl  FS_OBJ_CREATE_BRANCH fixed bin (18) uns init (36) static options (constant);
+  6    67 dcl  FS_OBJ_AUDIT_FLAG_MOD fixed bin (18) uns init (37) static options (constant);
+  6    68 
+  6    69 /* END include file fs_obj_access_codes.incl.pl1 */
+     1153 
+     1154      end asd_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  asd_.pl1                          >spec>install>1110>asd_.pl1
+1143         1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+1145         2    10/14/83  1606.6  acl_structures.incl.pl1           >ldd>include>acl_structures.incl.pl1
+1147         3    05/20/85  0848.1  dc_find_dcls.incl.pl1             >ldd>include>dc_find_dcls.incl.pl1
+1149         4    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+1151         5    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+1153         6    08/04/88  2054.1  fs_obj_access_codes.incl.pl1      >ldd>include>fs_obj_access_codes.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACL_VERSION_1                          constant        fixed bin(17,0)          initial dcl 2-77 ref 1009 1016
+ADD_DIR                                constant        fixed bin(17,0)          initial dcl 204 ref 475 807 813
+ADD_SEG                                constant        fixed bin(17,0)          initial dcl 205 ref 488 606 613
+DEL_DIR                                constant        fixed bin(17,0)          initial dcl 206 ref 421 553 831 841
+DEL_SEG                                constant        fixed bin(17,0)          initial dcl 207 ref 434 553 831 841
+FS_OBJ_ACL_MOD                  000003 constant        fixed bin(18,0)          initial unsigned dcl 6-34 set ref 787*
+FS_OBJ_IACL_MOD                 000000 constant        fixed bin(18,0)          initial unsigned dcl 6-65 set ref 760*
+LIST_DIR                               constant        fixed bin(17,0)          initial dcl 208 ref 251 752 778 1094
+LIST_SEG                               constant        fixed bin(17,0)          initial dcl 209 ref 285 303 506 752 778 1094
+REP_DIR                                constant        fixed bin(17,0)          initial dcl 211 ref 447 508 622
+REP_SEG                                constant        fixed bin(17,0)          initial dcl 210 ref 461 508 606 622
+REW_ACCESS                             constant        bit(3)                   initial packed unaligned dcl 1-11 ref 682
+RW_ACCESS                              constant        bit(3)                   initial packed unaligned dcl 1-11 ref 641 705
+SMA_ACCESS                             constant        bit(3)                   initial packed unaligned dcl 1-11 ref 643
+a_acl_count                            parameter       fixed bin(17,0)          dcl 116 set ref 222 226 254 260 325 406* 413 417 425
+                                                                                  430 438 443 452 457 466 471 479 484 497
+a_acl_ptr                              parameter       pointer                  dcl 117 ref 222 226 254 260 310 413 417 425 430 438
+                                                                                  443 452 457 466 471 479 484 496
+a_area_ptr                             parameter       pointer                  dcl 118 ref 222 226 235 240 254 260 270 275 299
+a_code                                 parameter       fixed bin(35,0)          dcl 119 set ref 222 226 235 240 254 260 270 275 409*
+                                                                                  413 417 425 430 438 443 452 457 466 471 479 484
+                                                                                  734* 890* 1130*
+a_daemon_sw                            parameter       bit(1)                   packed unaligned dcl 120 ref 438 443 449 452 457 463
+a_dir_name                             parameter       char                     packed unaligned dcl 121 ref 222 226 235 240 254 260
+                                                                                  270 275 413 417 425 430 438 443 452 457 466 471
+                                                                                  479 484 742 772
+a_entryname                            parameter       char                     packed unaligned dcl 122 ref 222 226 235 240 254 260
+                                                                                  270 275 413 417 425 430 438 443 452 457 466 471
+                                                                                  479 484 743 773
+a_n                             000100 automatic       structure                level 1 dcl 136 set ref 339 527 1046
+a_return_struc_ptr                     parameter       pointer                  dcl 123 set ref 222 226 235 240 254 260 270 275 308
+                                                                                  390* 405*
+a_ring                                 parameter       fixed bin(3,0)           dcl 124 ref 222 235 246 254 270 281 413 425 438 452
+                                                                                  466 479 501
+ac_name                                based           structure                level 2 in structure "acl1" dcl 126 in procedure
+                                                                                  "asd_"
+ac_name                         000100 automatic       structure                level 2 in structure "a_n" dcl 136 in procedure
+                                                                                  "asd_" set ref 838
+acc_name_$elements              000010 constant        entry                    external dcl 172 ref 566 640 687 843 866 880 920
+access_name                            based           char(32)                 array level 2 in structure "directory_acl_array"
+                                                                                  packed packed unaligned dcl 2-55 in procedure
+                                                                                  "asd_" set ref 666 866 866 915 1070*
+access_name                            based           char(32)                 array level 2 in structure "segment_acl_array"
+                                                                                  packed packed unaligned dcl 2-46 in procedure
+                                                                                  "asd_" set ref 675 880 880 917 1077*
+access_name                            based           char(32)                 array level 2 in structure "delete_acl_array" packed
+                                                                                  packed unaligned dcl 2-64 in procedure "asd_" set
+                                                                                  ref 563 843 843
+acl1                                   based           structure                level 1 dcl 126
+acl_$add_entry                  000012 constant        entry                    external dcl 173 ref 646 713
+acl_$del_acl                    000014 constant        entry                    external dcl 174 ref 629
+acl_$del_entry                  000016 constant        entry                    external dcl 175 ref 575
+acl_$list_entry                 000020 constant        entry                    external dcl 176 ref 932 1051
+acl_count                       000316 automatic       fixed bin(17,0)          dcl 2-5 set ref 318* 322* 325* 330* 375 377* 380 380
+                                                                                  385 385 397 399* 400 402 403* 406 497* 513 517*
+                                                                                  557 560 610* 661 831 833 835 839 899 904 906 940
+                                                                                  941 944 945 946 991* 1007 1007 1008 1014 1014 1015
+                                                                                  1022 1024 1048 1051* 1101 1103
+acl_entry_ptr                   000124 automatic       pointer                  dcl 137 set ref 339* 527* 566* 575* 640* 641 643 645
+                                                                                  646* 687* 705 706 709 710 713* 920* 932* 972 975
+                                                                                  976 1046* 1051* 1059 1060 1061 1072 1078 1079
+acl_frp                  36            based           bit(18)                  level 2 packed packed unaligned dcl 4-8 set ref 351
+                                                                                  539 613
+acl_ptr                         000314 automatic       pointer                  dcl 2-4 set ref 308* 310* 312 318 319* 319 322 323*
+                                                                                  323 329* 380* 381 385* 386 388 400* 402* 405 496*
+                                                                                  510 517 557 563 570 581 610* 666 667 670 675 676
+                                                                                  679 683 693 697 831 833 835 843 843 846 854 856
+                                                                                  860 862 866 866 870 875 877 880 880 884 904 906
+                                                                                  915 917 924 926 940 941 944 945 946 957 958 961
+                                                                                  962 963 972 975 976 1007* 1008 1009 1010 1011*
+                                                                                  1011 1014* 1015 1016 1017 1018* 1018 1022* 1024*
+                                                                                  1025 1069 1070 1072 1073 1076 1077 1078 1079 1096
+                                                                                  1096 1100 1101 1103
+acl_start_ptr                   000126 automatic       pointer                  dcl 138 set ref 342* 344* 351* 530* 532* 539* 575*
+                                                                                  616* 629* 646* 713* 932* 1051*
+acle_count               35(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 4-8 set ref 352
+                                                                                  540 588* 588 616 628 635* 652* 652 720* 720
+acle_total               23(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 5-11 set ref
+                                                                                  593* 593 636* 636 657* 657 725* 725
+add_sw                          000130 automatic       bit(1)                   packed unaligned dcl 139 set ref 646* 713* 718
+addr                                                   builtin function         dcl 213 ref 319 323 339 342 344 351 527 530 532 539
+                                                                                  566 566 640 640 687 687 838 843 843 866 866 880
+                                                                                  880 920 920 1011 1018 1046
+ael                             000131 automatic       fixed bin(17,0)          dcl 140 set ref 624* 627* 628* 636 899* 911
+any_other                       000300 stack reference condition                dcl 216 ref 520 522 556 558 562 564 569 571 580 582
+                                                                                  663 685 690 698 903 907 914 918 923 927 937 948
+                                                                                  954 965 971 978 1000 1028 1063 1082
+area                            000000 stack reference condition                dcl 216 ref 1001 1028
+area_ptr                        000132 automatic       pointer                  dcl 141 set ref 299* 304 380 385 400 402 1007 1014
+                                                                                  1022 1024
+arg_area                               based           area(1024)               dcl 134 ref 380 385 400 402 1007 1014 1022 1024
+bad_dir_                        000000 stack reference condition                dcl 216 ref 1033 1052
+bin                                                    builtin function         dcl 213 ref 796 801
+called_find                     000134 automatic       bit(1)                   dcl 142 set ref 297* 494* 757* 763* 783* 792* 1105
+                                                                                  1118 1122*
+caller_level                    000135 automatic       fixed bin(3,0)           unsigned dcl 143 set ref 294* 492* 606 766 796 801
+cc                                     parameter       fixed bin(35,0)          dcl 1128 ref 1126 1130
+change_dtem                     000022 constant        entry                    external dcl 177 ref 547
+change_pclock            62            based           fixed bin(35,0)          level 2 dcl 5-11 ref 995 1040
+check_gate_acl_                 000024 constant        entry                    external dcl 178 ref 610 616
+cleanup                         000306 stack reference condition                dcl 216 ref 334
+code                            000136 automatic       fixed bin(35,0)          dcl 144 set ref 409 566* 567 570 575* 576 578 581
+                                                                                  583* 586* 610* 611 611* 616* 617 617* 646* 647
+                                                                                  647* 687* 688 693 697 713* 714 714* 754* 755 760*
+                                                                                  761 780* 781 787* 788 788* 843* 844 846 847 866*
+                                                                                  867 870 880* 881 884 920* 921 924 926 932* 934 934
+                                                                                  949* 952 957 961 966* 969* 1034* 1035 1035* 1051*
+                                                                                  1052 1056 1056*
+count                     1            based           fixed bin(17,0)          level 2 in structure "directory_acl" dcl 2-49
+                                                                                  in procedure "asd_" set ref 318 380* 381* 1007*
+                                                                                  1008* 1096
+count                     1            based           fixed bin(17,0)          level 2 in structure "segment_acl" dcl 2-40
+                                                                                  in procedure "asd_" set ref 322 385* 386* 1014*
+                                                                                  1015* 1100
+d_s                             000137 automatic       bit(1)                   dcl 145 set ref 303* 315 342 345 378 400 506* 530
+                                                                                  533 590 624 631 643 654 664 691 703 722 833 852
+                                                                                  904 915 924 938 955 972 1005 1022 1067 1096 1101
+daemon_sw                       000140 automatic       bit(1)                   dcl 146 set ref 449* 463* 637
+dc_find$dir_read                000070 constant        entry                    external dcl 3-23 ref 754
+dc_find$dir_write               000072 constant        entry                    external dcl 3-30 ref 760
+dc_find$finished                000074 constant        entry                    external dcl 3-33 ref 369 1105 1118
+dc_find$obj_access_write        000076 constant        entry                    external dcl 3-39 ref 787
+dc_find$obj_status_read         000100 constant        entry                    external dcl 3-75 ref 780
+delete_acl_array                       based           structure                array level 1 dcl 2-64
+delete_acl_entry                       based           structure                level 1 dcl 2-63
+dir                                    based           structure                level 1 dcl 5-11 in procedure "asd_"
+dir                      25(18)        based           fixed bin(17,0)          array level 3 in structure "dir" packed packed
+                                                                                  unaligned dcl 5-11 in procedure "asd_" set ref 345
+                                                                                  533 590* 590 624 631* 654* 654 722* 722
+dir_frp                  36            based           bit(18)                  array level 3 packed packed unaligned dcl 5-11 set
+                                                                                  ref 342 530
+directory_acl                          based           structure                level 1 dcl 2-49 set ref 380 1007 1096
+directory_acl_array                    based           structure                array level 1 dcl 2-55 set ref 400 1022 1101
+directory_acl_entry                    based           structure                level 1 dcl 2-54
+dirname                         000141 automatic       char(168)                packed unaligned dcl 147 set ref 742* 744 744* 746*
+                                                                                  746 749 754* 760* 772* 775 780* 787*
+dirsw                    32            based           bit(1)                   level 2 packed packed unaligned dcl 4-8 ref 796 805
+dp                              000322 automatic       pointer                  dcl 5-9 set ref 342 344 345 347 348 369* 530 532 533
+                                                                                  535 536 544 590 590 592 592 593 593 624 627 631
+                                                                                  634 636 636 654 654 656 656 657 657 722 722 724
+                                                                                  724 725 725 754* 760* 784* 793* 995 997* 1034*
+                                                                                  1040 1105* 1115* 1116 1118* 1120*
+entries                   2            based           structure                array level 2 in structure "directory_acl" dcl 2-49
+                                                                                  in procedure "asd_" set ref 319 1011
+entries                   2            based           structure                array level 2 in structure "segment_acl" dcl 2-40
+                                                                                  in procedure "asd_" set ref 323 1018
+entry                                  based           structure                level 1 dcl 4-8
+entryname                       000213 automatic       char(32)                 packed unaligned dcl 148 set ref 743* 744 746 746
+                                                                                  773* 780* 787*
+ep                              000320 automatic       pointer                  dcl 4-6 set ref 351 352 353 539 540 541 547* 588 588
+                                                                                  606 606 613 616 628 635 652 652 720 720 730 730
+                                                                                  730 780* 784 787* 793 796 796 801 805 1133 1133
+                                                                                  1133
+error_table_$argerr             000040 external static fixed bin(35,0)          dcl 185 set ref 300* 502* 513* 520* 556* 562* 569*
+                                                                                  572* 580* 663* 671* 680* 690* 700* 749* 775* 890
+                                                                                  903* 914* 923* 937* 954* 971* 981* 1000* 1052
+                                                                                  1063*
+error_table_$bad_acl_mode       000042 external static fixed bin(35,0)          dcl 186 ref 670 679 856 877
+error_table_$bad_ring_brackets  000044 external static fixed bin(35,0)          dcl 188 set ref 766* 796* 801*
+error_table_$dirseg             000046 external static fixed bin(35,0)          dcl 190 set ref 807*
+error_table_$empty_acl          000050 external static fixed bin(35,0)          dcl 191 ref 934
+error_table_$invalid_ascii      000052 external static fixed bin(35,0)          dcl 192 ref 847
+error_table_$invalid_mode       000054 external static fixed bin(35,0)          dcl 194 ref 862
+error_table_$noalloc            000056 external static fixed bin(35,0)          dcl 196 set ref 1001*
+error_table_$nondirseg          000060 external static fixed bin(35,0)          dcl 197 set ref 813*
+error_table_$null_info_ptr      000062 external static fixed bin(35,0)          dcl 198 set ref 312* 510*
+error_table_$user_not_found     000064 external static fixed bin(35,0)          dcl 200 ref 578 940 944 952
+esw                             000223 automatic       fixed bin(17,0)          dcl 149 set ref 251* 285* 303 421* 434* 447* 461*
+                                                                                  475* 488* 506 508 508 553 553 606 606 613 622 622
+                                                                                  752 752 778 778 807 813 831 831 841 841 1094 1094
+ex_mode                  22            based           bit(36)                  level 2 dcl 126 set ref 643* 645* 706* 710* 972 976
+                                                                                  1072 1079
+ex_ring_brackets         35(09)        based           bit(3)                   array level 2 packed packed unaligned dcl 4-8 ref
+                                                                                  796
+extended_mode            11            based           bit(36)                  array level 2 dcl 2-46 set ref 683 946* 963* 976*
+                                                                                  1079*
+fail_sw                         000224 automatic       bit(1)                   dcl 150 in procedure "asd_" set ref 909* 928* 981
+fail_sw                         000354 automatic       bit(1)                   dcl 829 in procedure "check_in_structure" set ref
+                                                                                  837* 847* 858* 863* 869* 878* 883* 888
+fatal_error_sets_faults         000225 automatic       bit(1)                   dcl 151 set ref 297* 494* 548* 1131 1134*
+fixed                                                  builtin function         dcl 213 ref 606 606
+general_acl_entry                      based           structure                level 1 unaligned dcl 2-12
+general_delete_acl_entry               based           structure                level 1 dcl 2-35
+general_extended_acl_entry             based           structure                level 1 dcl 2-23
+i                               000226 automatic       fixed bin(17,0)          dcl 153 set ref 560* 563 570 581* 661* 666 667 670
+                                                                                  675 676 679 683 693 697* 839* 843 843 846 854 856
+                                                                                  860 862 866 866 870 875 877 880 880 884* 911* 915
+                                                                                  917 924 926 957 958 961 962 963 972 975 976* 1048*
+                                                                                  1049* 1069 1070 1072 1073 1076 1077 1078 1079
+iacl                     35            based           structure                array level 2 packed packed unaligned dcl 5-11
+iacl_count               25            based           structure                array level 2 packed packed unaligned dcl 5-11
+initial_acl                     000227 automatic       bit(1)                   dcl 154 set ref 224* 228* 237* 242* 246 257* 263*
+                                                                                  272* 277* 281 300 340 415* 420* 427* 433* 440*
+                                                                                  446* 454* 460* 468* 474* 481* 487* 499 528 545 588
+                                                                                  606 624 631 652 720 730 740
+level$get                       000026 constant        entry                    external dcl 179 ref 294 492
+lock$dir_lock_read              000030 constant        entry                    external dcl 180 ref 1034
+lock$dir_unlock                 000032 constant        entry                    external dcl 181 ref 997 1120
+locked                          000230 automatic       bit(1)                   dcl 155 set ref 297* 494* 757* 763* 783* 792* 998*
+                                                                                  1037* 1118* 1120 1122*
+locked_for_write                000231 automatic       bit(1)                   dcl 156 set ref 297* 494* 764* 794* 1113
+mode                     10            based           bit(36)                  array level 2 in structure "directory_acl_array"
+                                                                                  dcl 2-55 in procedure "asd_" set ref 667 854 860
+                                                                                  941* 958* 972* 1072*
+mode                     21            based           bit(36)                  level 2 in structure "acl1" dcl 126 in procedure
+                                                                                  "asd_" set ref 641* 705* 709* 975 1078
+mode                     10            based           bit(36)                  array level 2 in structure "segment_acl_array"
+                                                                                  dcl 2-46 in procedure "asd_" set ref 676 875 945*
+                                                                                  962* 975* 1078*
+modify                                 based           bit(36)                  level 2 dcl 5-11 set ref 544* 1116*
+n_acls                          000232 automatic       fixed bin(17,0)          dcl 157 set ref 345* 347* 352* 362 533* 535* 540*
+                                                                                  575* 629* 630* 646* 650* 713* 716* 716 932* 991
+null                                                   builtin function         dcl 213 ref 304 312 328 329 510 517 1096
+offset                          000233 automatic       fixed bin(17,0)          dcl 158 set ref 912* 932* 1049* 1051*
+owning_structure                000234 automatic       bit(36)                  dcl 159 set ref 348* 353* 536* 541* 575* 629* 646*
+                                                                                  713* 932* 1051*
+pds$processid                   000066 external static bit(36)                  dcl 202 ref 544
+person                                 based           char(32)                 level 3 dcl 126 ref 1059
+project                  10            based           char(32)                 level 3 dcl 126 ref 1060
+ptr                                                    builtin function         dcl 213 ref 784 793
+pvid                     30            based           bit(36)                  level 2 packed packed unaligned dcl 4-8 ref 730 1133
+refer_allocation                000235 automatic       bit(1)                   dcl 160 set ref 230* 243* 265* 278* 308 315 371 1003
+                                                                                  1096
+return_acl_ptr                  000236 automatic       pointer                  dcl 161 set ref 328* 388* 390 1010* 1017* 1025*
+ring                            000240 automatic       fixed bin(17,0)          dcl 162 set ref 246* 281* 300 300 342 344 345 347
+                                                                                  501* 502 502 530 532 533 535 590 590 592 592 624
+                                                                                  627 631 634 654 654 656 656 722 722 724 724 766
+                                                                                  766
+ring_brackets            35            based           bit(3)                   array level 2 packed packed unaligned dcl 4-8 ref
+                                                                                  606 606 801
+rtrim                                                  builtin function         dcl 213 ref 746 1070 1070 1077 1077
+saved_dir_change_pclock         000100 automatic       fixed bin(35,0)          dcl 988 set ref 995* 1040
+seg                      25            based           fixed bin(17,0)          array level 3 packed packed unaligned dcl 5-11 set
+                                                                                  ref 347 535 592* 592 627 634* 656* 656 724* 724
+seg_fault_error                 000000 stack reference condition                dcl 216 ref 1033 1038
+seg_frp                  35            based           bit(18)                  array level 3 packed packed unaligned dcl 5-11 set
+                                                                                  ref 344 532
+segment_acl                            based           structure                level 1 dcl 2-40 set ref 385 1014 1100
+segment_acl_array                      based           structure                array level 1 dcl 2-46 set ref 402 1024 1103
+segment_acl_entry                      based           structure                level 1 dcl 2-45
+setfaults$if_active             000034 constant        entry                    external dcl 182 ref 730 1133
+status_code              11            based           fixed bin(35,0)          array level 2 in structure "directory_acl_array"
+                                                                                  dcl 2-55 in procedure "asd_" set ref 670* 693*
+                                                                                  833* 856* 862* 870* 904* 924* 940* 957* 1069*
+                                                                                  1073*
+status_code              12            based           fixed bin(35,0)          array level 2 in structure "segment_acl_array"
+                                                                                  dcl 2-46 in procedure "asd_" set ref 679* 697*
+                                                                                  835* 877* 884* 906* 926* 944* 961* 1076*
+status_code              10            based           fixed bin(35,0)          array level 2 in structure "delete_acl_array"
+                                                                                  dcl 2-64 in procedure "asd_" set ref 557* 570*
+                                                                                  581* 831* 846*
+structure_supplied              000241 automatic       bit(1)                   dcl 163 set ref 304* 306 360 371 393 1096
+substr                                                 builtin function         dcl 213 ref 668 677 854 860 875
+sum$dirmod                      000036 constant        entry                    external dcl 183 ref 1115
+t_char1                         000242 automatic       char(32)                 dcl 164 set ref 639* 640 640 1059* 1070 1077
+t_char2                         000252 automatic       char(32)                 dcl 165 set ref 1060* 1070 1077
+tag                             000262 automatic       char(1)                  dcl 166 in procedure "asd_" set ref 1061* 1070 1077
+tag                      20            based           char(1)                  level 3 in structure "acl1" dcl 126 in procedure
+                                                                                  "asd_" ref 1061
+temp_access_name                000263 automatic       char(32)                 dcl 167 set ref 563* 566 566 666* 675* 687 687 915*
+                                                                                  917* 920 920
+temp_extended_mode              000273 automatic       bit(36)                  dcl 168 set ref 683* 710
+temp_mode                       000274 automatic       bit(36)                  packed unaligned dcl 169 set ref 667* 668 676* 677
+                                                                                  682* 682 706 709
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 5-11 in procedure
+                                                                                  "asd_" ref 348 536
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 4-8 in procedure
+                                                                                  "asd_" ref 353 541 730 1133
+version                                based           fixed bin(17,0)          level 2 in structure "segment_acl" dcl 2-40
+                                                                                  in procedure "asd_" set ref 1016*
+version                                based           fixed bin(17,0)          level 2 in structure "directory_acl" dcl 2-49
+                                                                                  in procedure "asd_" set ref 1009*
+vtocx                    31            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 4-8 ref 730 1133
+work_p                          000276 automatic       pointer                  dcl 170 set ref 838* 843* 866* 880*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+DC_FIND_CHASE                          internal static fixed bin(1,0)           initial dcl 3-10
+DC_FIND_NO_CHASE                       internal static fixed bin(1,0)           initial dcl 3-11
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 3-12
+DC_FIND_UNLOCK_DIR                     internal static bit(1)                   initial dcl 3-13
+DELETE_ACL_VERSION_1                   internal static char(4)                  initial packed unaligned dcl 2-67
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+DIR_ACL_VERSION_1                      internal static char(4)                  initial packed unaligned dcl 2-67
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+FS_OBJ_ACL_RING_MOD                    internal static fixed bin(18,0)          initial unsigned dcl 6-36
+FS_OBJ_AUDIT_FLAG_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 6-67
+FS_OBJ_AUTHOR_MOD                      internal static fixed bin(18,0)          initial unsigned dcl 6-46
+FS_OBJ_BACKUP_TIMES_MOD                internal static fixed bin(18,0)          initial unsigned dcl 6-48
+FS_OBJ_BC_AUTHOR_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 6-47
+FS_OBJ_BC_MOD                          internal static fixed bin(18,0)          initial unsigned dcl 6-32
+FS_OBJ_CONNECT                         internal static fixed bin(18,0)          initial unsigned dcl 6-31
+FS_OBJ_COPY_SW_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 6-38
+FS_OBJ_CORRECT_QUSED                   internal static fixed bin(18,0)          initial unsigned dcl 6-55
+FS_OBJ_CREATE_BRANCH                   internal static fixed bin(18,0)          initial unsigned dcl 6-66
+FS_OBJ_DAMAGED_SW_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 6-39
+FS_OBJ_DATES_MOD                       internal static fixed bin(18,0)          initial unsigned dcl 6-49
+FS_OBJ_DIR_SALVAGE                     internal static fixed bin(18,0)          initial unsigned dcl 6-56
+FS_OBJ_DNZP_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 6-40
+FS_OBJ_DT_DUMPED_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 6-50
+FS_OBJ_ENTRY_BOUND_MOD                 internal static fixed bin(18,0)          initial unsigned dcl 6-41
+FS_OBJ_FOR_RELOADER_MOD                internal static fixed bin(18,0)          initial unsigned dcl 6-51
+FS_OBJ_MAX_LEN_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 6-42
+FS_OBJ_MDIR_QUOTA_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 6-57
+FS_OBJ_MOVE_QUOTA                      internal static fixed bin(18,0)          initial unsigned dcl 6-54
+FS_OBJ_QUOTA_MOD                       internal static fixed bin(18,0)          initial unsigned dcl 6-58
+FS_OBJ_QUOTA_RELOAD                    internal static fixed bin(18,0)          initial unsigned dcl 6-59
+FS_OBJ_RECLASSIFY                      internal static fixed bin(18,0)          initial unsigned dcl 6-60
+FS_OBJ_RECLASSIFY_NODE                 internal static fixed bin(18,0)          initial unsigned dcl 6-61
+FS_OBJ_RENAME                          internal static fixed bin(18,0)          initial unsigned dcl 6-37
+FS_OBJ_RING_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 6-35
+FS_OBJ_SAFETY_SW_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 6-43
+FS_OBJ_SEG_MOVE                        internal static fixed bin(18,0)          initial unsigned dcl 6-62
+FS_OBJ_SONS_LVID_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 6-52
+FS_OBJ_SOOS_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 6-53
+FS_OBJ_SYNC_SW_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 6-44
+FS_OBJ_TRP_MOD                         internal static fixed bin(18,0)          initial unsigned dcl 6-63
+FS_OBJ_TRUNCATE                        internal static fixed bin(18,0)          initial unsigned dcl 6-33
+FS_OBJ_VOLUME_RETRIEVE                 internal static fixed bin(18,0)          initial unsigned dcl 6-64
+FS_OBJ_VOL_DUMP_SW_MOD                 internal static fixed bin(18,0)          initial unsigned dcl 6-45
+GENERAL_ACL_VERSION_1                  internal static char(8)                  initial packed unaligned dcl 2-72
+GENERAL_DELETE_ACL_VERSION_1           internal static char(8)                  initial packed unaligned dcl 2-72
+GENERAL_EXTENDED_ACL_VERSION_1         internal static char(8)                  initial packed unaligned dcl 2-72
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SEG_ACL_VERSION_1                      internal static char(4)                  initial packed unaligned dcl 2-67
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+access_operations_$fs_obj_access_mod   external static bit(36)                  dcl 6-27
+access_operations_$fs_obj_attr_mod     external static bit(36)                  dcl 6-25
+access_operations_$fs_obj_contents_mod external static bit(36)                  dcl 6-23
+access_operations_$fs_obj_contents_read
+                                       external static bit(36)                  dcl 6-22
+access_operations_$fs_obj_create       external static bit(36)                  dcl 6-18
+access_operations_$fs_obj_delete       external static bit(36)                  dcl 6-19
+access_operations_$fs_obj_initiate     external static bit(36)                  dcl 6-20
+access_operations_$fs_obj_prop_read    external static bit(36)                  dcl 6-24
+access_operations_$fs_obj_status_mod   external static bit(36)                  dcl 6-26
+access_operations_$fs_obj_terminate    external static bit(36)                  dcl 6-21
+dc_find$dir_for_append          000000 constant        entry                    external dcl 3-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 3-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 3-17
+dc_find$dir_initiate            000000 constant        entry                    external dcl 3-19
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 3-21
+dc_find$dir_read_priv           000000 constant        entry                    external dcl 3-24
+dc_find$dir_reclassify          000000 constant        entry                    external dcl 3-26
+dc_find$dir_salvage             000000 constant        entry                    external dcl 3-28
+dc_find$dir_write_priv          000000 constant        entry                    external dcl 3-31
+dc_find$link_target             000000 constant        entry                    external dcl 3-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 3-37
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 3-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 3-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 3-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 3-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 3-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 3-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 3-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 3-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 3-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 3-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 3-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 3-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 3-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 3-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 3-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 3-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 3-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 3-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 3-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 3-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 3-69
+dc_find$obj_reclassify          000000 constant        entry                    external dcl 3-71
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 3-73
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 3-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 3-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 3-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 3-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 3-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 3-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 3-83
+dc_find$obj_status_write_priv   000000 constant        entry                    external dcl 3-84
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 3-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 3-86
+dc_find$obj_terminate           000000 constant        entry                    external dcl 3-88
+dc_find$obj_terminate_ptr       000000 constant        entry                    external dcl 3-89
+dc_find$obj_truncate            000000 constant        entry                    external dcl 3-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 3-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 3-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 3-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 3-97
+delete_acl                             based           structure                level 1 dcl 2-58
+general_acl                            based           structure                level 1 dcl 2-7
+general_delete_acl                     based           structure                level 1 dcl 2-30
+general_extended_acl                   based           structure                level 1 dcl 2-18
+version_number_2                       internal static fixed bin(17,0)          initial dcl 5-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ADD_DENTRIES_COMMON             001505 constant        label                    dcl 475 ref 469
+ADD_SENTRIES_COMMON             001600 constant        label                    dcl 488 ref 482
+BAD_ACLE                        003140 constant        label                    dcl 698 ref 694
+CLEAN_RETURN                    003266 constant        label                    dcl 730 ref 597
+DEL_DENTRIES_COMMON             001105 constant        label                    dcl 421 ref 416
+DEL_SENTRIES_COMMON             001200 constant        label                    dcl 434 ref 428
+ERROR_RETURN                    003325 constant        label                    dcl 1140 ref 891 1138
+LIST_COMMON                     000427 constant        label                    dcl 294 set ref 252
+LIST_DALL_COMMON                000143 constant        label                    dcl 230 ref 225
+LIST_SALL_COMMON                000335 constant        label                    dcl 265 ref 258
+REPLACE_DALL_COMMON             001303 constant        label                    dcl 447 ref 441
+REPLACE_SALL_COMMON             001404 constant        label                    dcl 461 ref 455
+R_LIST_DALL_COMMON              000236 constant        label                    dcl 246 ref 233
+R_LIST_DALL_COMMON_0            000234 constant        label                    dcl 243 ref 238 273
+R_LIST_SALL_COMMON              000421 constant        label                    dcl 281 ref 268
+R_LIST_SALL_COMMON_0            000417 constant        label                    dcl 278
+Retry_process_list_all          000575 constant        label                    dcl 336 ref 1043
+add_dentries                    001455 constant        entry                    external dcl 471
+add_identries                   001417 constant        entry                    external dcl 466
+add_isentries                   001512 constant        entry                    external dcl 479
+add_sentries                    001550 constant        entry                    external dcl 484
+asd_                            000034 constant        entry                    external dcl 26
+bad_mode                        004112 constant        label                    dcl 856
+check_in_structure              003750 constant        entry                    internal dcl 822 ref 521
+check_pathname_find_read_lock_and_check_access
+                                003326 constant        entry                    internal dcl 737 ref 336 525
+cleanup_                        005664 constant        entry                    internal dcl 1087 ref 334 1137
+del_dentries                    001055 constant        entry                    external dcl 417
+del_identries                   001014 constant        entry                    external dcl 413
+del_isentries                   001112 constant        entry                    external dcl 425
+del_loop                        002347 constant        label                    dcl 594 ref 584
+del_sentries                    001150 constant        entry                    external dcl 430
+fatal_error                     006035 constant        entry                    internal dcl 1126 ref 300 312 502 510 513 520 556
+                                                                                  562 569 572 580 586 611 617 647 663 671 680 690
+                                                                                  700 714 749 766 775 788 796 801 807 813 903 914
+                                                                                  923 937 954 969 971 981 1000 1001 1035 1056 1063
+find_error                      003643 constant        label                    dcl 788 ref 755 761 781
+list_dall                       000113 constant        entry                    external dcl 226
+list_idall                      000051 constant        entry                    external dcl 222
+list_isall                      000247 constant        entry                    external dcl 254
+list_loop                       005026 constant        label                    dcl 979 ref 929 967
+list_sall                       000305 constant        entry                    external dcl 260
+process_list_all                005044 constant        entry                    internal dcl 986 ref 362
+process_specific_list           004243 constant        entry                    internal dcl 895 ref 360
+r_list_dall                     000210 constant        entry                    external dcl 240
+r_list_idall                    000153 constant        entry                    external dcl 235
+r_list_isall                    000341 constant        entry                    external dcl 270
+r_list_sall                     000373 constant        entry                    external dcl 275
+replace_dall                    001253 constant        entry                    external dcl 443
+replace_idall                   001211 constant        entry                    external dcl 438
+replace_isall                   001316 constant        entry                    external dcl 452
+replace_sall                    001354 constant        entry                    external dcl 457
+start_proc                      001602 constant        label                    dcl 492 ref 423 436 450 464 477
+unlock_dir                      005762 constant        entry                    internal dcl 1110 ref 733 1042 1136
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      7110        7212    6121        7120
+Length      7706    6121       102         457     767           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+asd_                                357 external procedure  is an external procedure.  
+on unit on line 334                  64 on unit               
+on unit on line 520                  70 on unit               
+on unit on line 556                  70 on unit               
+on unit on line 562                  70 on unit               
+on unit on line 569                  70 on unit               
+on unit on line 580                  70 on unit               
+on unit on line 663                  70 on unit               
+on unit on line 690                  70 on unit               
+check_pathname_find_read_lock_and_check_access
+                                        internal procedure  shares stack frame of external procedure asd_.  
+check_in_structure                      internal procedure  shares stack frame of external procedure asd_.  
+process_specific_list                98 internal procedure  enables or reverts conditions.  
+on unit on line 903                  70 on unit               
+on unit on line 914                  70 on unit               
+on unit on line 923                  70 on unit               
+on unit on line 937                  70 on unit               
+on unit on line 954                  70 on unit               
+on unit on line 971                  70 on unit               
+process_list_all                    120 internal procedure  enables or reverts conditions.  
+on unit on line 1000                 70 on unit               
+on unit on line 1001                 70 on unit               
+on unit on line 1033                 70 on unit               
+on unit on line 1063                 70 on unit               
+begin block on line 1065                begin block         shares stack frame of internal procedure process_list_all.  
+cleanup_                             72 internal procedure  is called by several nonquick procedures.  
+unlock_dir                           74 internal procedure  is called by several nonquick procedures.  
+fatal_error                          78 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+asd_                     000100 a_n                         asd_
+                         000124 acl_entry_ptr               asd_
+                         000126 acl_start_ptr               asd_
+                         000130 add_sw                      asd_
+                         000131 ael                         asd_
+                         000132 area_ptr                    asd_
+                         000134 called_find                 asd_
+                         000135 caller_level                asd_
+                         000136 code                        asd_
+                         000137 d_s                         asd_
+                         000140 daemon_sw                   asd_
+                         000141 dirname                     asd_
+                         000213 entryname                   asd_
+                         000223 esw                         asd_
+                         000224 fail_sw                     asd_
+                         000225 fatal_error_sets_faults     asd_
+                         000226 i                           asd_
+                         000227 initial_acl                 asd_
+                         000230 locked                      asd_
+                         000231 locked_for_write            asd_
+                         000232 n_acls                      asd_
+                         000233 offset                      asd_
+                         000234 owning_structure            asd_
+                         000235 refer_allocation            asd_
+                         000236 return_acl_ptr              asd_
+                         000240 ring                        asd_
+                         000241 structure_supplied          asd_
+                         000242 t_char1                     asd_
+                         000252 t_char2                     asd_
+                         000262 tag                         asd_
+                         000263 temp_access_name            asd_
+                         000273 temp_extended_mode          asd_
+                         000274 temp_mode                   asd_
+                         000276 work_p                      asd_
+                         000314 acl_ptr                     asd_
+                         000316 acl_count                   asd_
+                         000320 ep                          asd_
+                         000322 dp                          asd_
+                         000354 fail_sw                     check_in_structure
+process_list_all         000100 saved_dir_change_pclock     process_list_all
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_l_a               r_e_as              alloc_char_temp     cat_realloc_chars   call_ext_out        call_int_this
+call_int_other      return_mac          tra_ext_1           signal_op           enable_op           shorten_stack
+ext_entry           ext_entry_desc      int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+acc_name_$elements            acl_$add_entry                acl_$del_acl                  acl_$del_entry
+acl_$list_entry               change_dtem                   check_gate_acl_               dc_find$dir_read
+dc_find$dir_write             dc_find$finished              dc_find$obj_access_write      dc_find$obj_status_read
+level$get                     lock$dir_lock_read            lock$dir_unlock               setfaults$if_active
+sum$dirmod
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr           error_table_$bad_acl_mode     error_table_$bad_ring_brackets
+error_table_$dirseg           error_table_$empty_acl        error_table_$invalid_ascii    error_table_$invalid_mode
+error_table_$noalloc          error_table_$nondirseg        error_table_$null_info_ptr    error_table_$user_not_found
+pds$processid
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000033       222 000041       224 000102       225 000104       226 000105       228 000142       230 000143
+    233 000144       235 000145       237 000200       238 000202       240 000203       242 000233       243 000234
+    246 000236       251 000242       252 000244       254 000245       257 000300       258 000302       260 000303
+    263 000334       265 000335       268 000336       270 000337       272 000366       273 000370       275 000371
+    277 000416       278 000417       281 000421       285 000425       294 000427       297 000440       299 000444
+    300 000450       303 000465       304 000471       306 000476       308 000477       310 000506       312 000511
+    315 000524       318 000530       319 000533       320 000535       322 000536       323 000541       324 000543
+    325 000544       326 000546       328 000547       329 000551       330 000552       334 000553       336 000575
+    339 000576       340 000600       342 000602       344 000612       345 000617       347 000630       348 000635
+    349 000637       351 000640       352 000643       353 000650       360 000652       362 000661       369 000667
+    371 000702       375 000707       377 000711       378 000713       380 000715       381 000726       383 000727
+    385 000730       386 000741       388 000742       390 000743       391 000746       393 000747       397 000752
+    399 000754       400 000756       402 000767       403 000775       405 000776       406 001001       409 001003
+    410 001005       413 001006       415 001045       416 001047       417 001050       420 001104       421 001105
+    423 001107       425 001110       427 001143       428 001145       430 001146       433 001177       434 001200
+    436 001202       438 001203       440 001242       441 001244       443 001245       446 001302       447 001303
+    449 001305       450 001313       452 001314       454 001347       455 001351       457 001352       460 001403
+    461 001404       463 001406       464 001414       466 001415       468 001450       469 001452       471 001453
+    474 001504       475 001505       477 001507       479 001510       481 001543       482 001545       484 001546
+    487 001577       488 001600       492 001602       494 001613       496 001617       497 001622       499 001624
+    501 001626       502 001630       506 001642       508 001646       510 001652       513 001665       517 001676
+    520 001704       521 001730       522 001731       525 001732       527 001733       528 001735       530 001737
+    532 001747       533 001754       535 001765       536 001772       537 001774       539 001775       540 002000
+    541 002005       544 002007       545 002012       547 002014       548 002022       553 002024       556 002031
+    557 002055       558 002070       560 002071       562 002101       563 002125       564 002134       566 002135
+    567 002152       569 002154       570 002200       571 002206       572 002207       575 002216       576 002235
+    578 002237       580 002242       581 002266       582 002274       583 002275       584 002276       586 002277
+    588 002305       590 002316       592 002331       593 002341       594 002347       597 002351       606 002352
+    610 002375       611 002421       613 002431       616 002440       617 002470       622 002500       624 002505
+    627 002520       628 002526       629 002533       630 002546       631 002547       634 002561       635 002567
+    636 002572       637 002600       639 002602       640 002605       641 002623       643 002626       645 002633
+    646 002634       647 002655       650 002665       652 002667       654 002700       656 002713       657 002723
+    661 002731       663 002741       664 002765       666 002767       667 002776       668 003001       670 003004
+    671 003010       673 003016       675 003017       676 003026       677 003031       679 003034       680 003040
+    682 003046       683 003050       685 003055       687 003056       688 003073       690 003075       691 003121
+    693 003123       694 003131       697 003132       698 003140       700 003141       703 003150       705 003152
+    706 003155       707 003157       709 003160       710 003163       713 003165       714 003206       716 003216
+    718 003217       720 003222       722 003233       724 003246       725 003256       728 003264       730 003266
+    733 003317       734 003323       735 003324      1140 003325       737 003326       740 003327       742 003331
+    743 003337       744 003344       746 003364       749 003430       752 003444       754 003451       755 003464
+    757 003466       758 003471       760 003472       761 003507       763 003511       764 003514       766 003515
+    770 003531       772 003532       773 003540       775 003545       778 003560       780 003565       781 003606
+    783 003610       784 003613       785 003615       787 003616       788 003641       792 003651       793 003654
+    794 003656       796 003657       800 003677       801 003700       805 003716       807 003722       810 003734
+    813 003735       820 003747       822 003750       831 003751       833 003771       835 004007       837 004022
+    838 004023       839 004025       841 004035       843 004042       844 004062       846 004064       847 004072
+    850 004100       852 004101       854 004103       856 004112       858 004116       859 004120       860 004121
+    862 004125       863 004131       866 004133       867 004151       869 004153       870 004155       872 004163
+    875 004164       877 004173       878 004177       880 004201       881 004217       883 004221       884 004223
+    887 004231       888 004233       890 004235       891 004240       893 004241       895 004242       899 004250
+    903 004253       904 004277       906 004316       907 004331       909 004332       911 004333       912 004344
+    914 004345       915 004371       917 004404       918 004413       920 004414       921 004431       923 004434
+    924 004460       926 004472       927 004500       928 004501       929 004503       932 004504       934 004525
+    937 004533       938 004557       940 004562       941 004603       942 004617       944 004620       945 004641
+    946 004655       948 004671       949 004672       950 004673       952 004674       954 004676       955 004722
+    957 004725       958 004733       959 004734       961 004735       962 004743       963 004744       965 004745
+    966 004746       967 004747       969 004750       971 004757       972 005003       975 005015       976 005023
+    978 005025       979 005026       981 005030       984 005042       986 005043       991 005051       995 005054
+    997 005057       998 005065      1000 005067      1001 005113      1003 005137      1005 005142      1007 005144
+   1008 005157      1009 005161      1010 005163      1011 005164      1012 005166      1014 005167      1015 005202
+   1016 005204      1017 005206      1018 005207      1020 005211      1022 005212      1024 005225      1025 005235
+   1028 005236      1033 005240      1034 005260      1035 005272      1037 005304      1038 005307      1040 005310
+   1042 005314      1043 005321      1046 005324      1048 005326      1049 005336      1051 005337      1052 005360
+   1056 005371      1059 005402      1060 005407      1061 005412      1063 005414      1067 005440      1069 005443
+   1070 005447      1072 005543      1073 005547      1074 005550      1076 005551      1077 005555      1078 005651
+   1079 005655      1082 005657      1083 005660      1085 005662      1087 005663      1094 005671      1096 005677
+   1100 005720      1101 005727      1103 005736      1105 005742      1108 005760      1110 005761      1113 005767
+   1115 005772      1116 006000      1118 006002      1120 006016      1122 006030      1123 006033      1126 006034
+   1130 006042      1131 006046      1133 006050      1134 006076      1136 006100      1137 006105      1138 006112
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

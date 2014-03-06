@@ -1,0 +1,30 @@
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  * Copyright (c) 1972 by Massachusetts Institute of   *
+"  * Technology and Honeywell Information Systems, Inc. *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+"  ******************************************************
+"  *                                                    *
+"  *                                                    *
+"  *    Copyright, (C) Honeywell Information Systems    *
+"  *    Inc., 1980.                                     *
+"  *                                                    *
+"  *                                                    *
+"  ******************************************************
+
+	name	csl_oob
+	entry	csl_oob
+ csl_oob:	push
+	eppbb	ap|2,*
+	eppbb	bb|0,*
+	adwpbb	28648,du
+	csl	(),(pr),bool(3)
+	desc9a	4,0	"4,0 fails ... 5,0 works
+	desc9a	bb|0,2048
+
+	return
+	end

@@ -1,0 +1,242 @@
+	COMPILATION LISTING OF SEGMENT sc_ipc_mask_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1114.84_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* sc_ipc_mask_.pl1 -- utility for getting to a guaranteed mask. */
+        9 /* format: style2 */
+       10 
+       11 /* Modification history:
+       12*   Created 1984-12-05 BIM */
+       13 
+       14 /**** NOTE: Normally, the AS runs masked while executing commands.
+       15*      it unmasks when it is executing an exec_com or entering admin mode,
+       16*      on the theory that the control point will not block in the middle
+       17*      of a database update. When sc_command is used signals are masked
+       18*      again for the duration. */
+       19 
+       20 
+       21 sc_ipc_mask_$unmask:
+       22      procedure (P_remask_count);
+       23 
+       24 	declare P_remask_count	 fixed bin;
+       25 	declare code		 fixed bin (35);
+       26 
+       27 	declare ipc_$unmask_ev_calls	 entry (fixed bin (35));
+       28 	declare ipc_$mask_ev_calls	 entry (fixed bin (35));
+       29 
+       30 	P_remask_count = 0;
+       31 	code = 0;
+       32 	do while (code = 0);
+       33 	     call ipc_$unmask_ev_calls (code);
+       34 	     if code = 0
+       35 	     then P_remask_count = P_remask_count + 1;
+       36 	end;
+       37 	return;
+       38 
+       39 sc_ipc_mask_$remask:
+       40      entry (P_remask_count);
+       41 
+       42 	declare remask_count_up	 fixed bin;
+       43 
+       44 	do remask_count_up = 1 to P_remask_count;	/* PL/I copies the limit */
+       45 	     call ipc_$mask_ev_calls ((0));
+       46 	     P_remask_count = P_remask_count - 1;	/* so this is safe */
+       47 	end;
+       48 	return;
+       49      end sc_ipc_mask_$unmask;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1114.8  sc_ipc_mask_.pl1                  >udd>sm>ds>w>ml>sc_ipc_mask_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+P_remask_count                         parameter       fixed bin(17,0)          dcl 24 set ref 21 30* 34* 34 39 44 46* 46
+code                            000100 automatic       fixed bin(35,0)          dcl 25 set ref 31* 32 33* 34
+ipc_$mask_ev_calls              000012 constant        entry                    external dcl 28 ref 45
+ipc_$unmask_ev_calls            000010 constant        entry                    external dcl 27 ref 33
+remask_count_up                 000101 automatic       fixed bin(17,0)          dcl 42 set ref 44*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+sc_ipc_mask_$remask             000035 constant        entry                    external dcl 39
+sc_ipc_mask_$unmask             000004 constant        entry                    external dcl 21
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       166         202      71         176
+Length       352      71        14         133      74           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_ipc_mask_$unmask                  72 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sc_ipc_mask_$unmask      000100 code                        sc_ipc_mask_$unmask
+                         000101 remask_count_up             sc_ipc_mask_$unmask
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ipc_$mask_ev_calls            ipc_$unmask_ev_calls
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+CONSTANTS
+000000  aa     404000000021
+
+BEGIN PROCEDURE sc_ipc_mask_$unmask
+ENTRY TO sc_ipc_mask_$unmask                                STATEMENT 1 ON LINE 21
+sc_ipc_mask_$unmask:
+     procedure (P_remask_count);
+
+000001  at     000001000000
+000002  ta     000001000000
+000003  da     000053300000
+000004  aa   000120 6270 00	eax7 	80
+000005  aa  7 00034 3521 20	epp2 	pr7|28,*
+000006  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000007  aa     000002000000
+000010  aa     000000000000
+						STATEMENT 1 ON LINE 30
+	P_remask_count = 0;
+
+000011  aa  6 00032 3735 20	epp7 	pr6|26,*
+000012  aa  7 00002 4501 20	stz  	pr7|2,*		P_remask_count
+						STATEMENT 1 ON LINE 31
+	code = 0;
+
+000013  aa  6 00100 4501 00	stz  	pr6|64		code
+						STATEMENT 1 ON LINE 32
+	do while (code = 0);
+
+000014  aa  6 00100 2361 00	ldq  	pr6|64		code
+000015  aa   000015 6010 04	tnz  	13,ic		000032
+						STATEMENT 1 ON LINE 33
+	     call ipc_$unmask_ev_calls (code);
+
+000016  aa  6 00100 3521 00	epp2 	pr6|64		code
+000017  aa  6 00106 2521 00	spri2	pr6|70
+000020  aa  6 00104 6211 00	eax1 	pr6|68
+000021  aa   004000 4310 07	fld  	2048,dl
+000022  aa  6 00044 3701 20	epp4 	pr6|36,*
+000023  la  4 00010 3521 20	epp2 	pr4|8,*		ipc_$unmask_ev_calls
+000024  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 34
+	     if code = 0
+	     then P_remask_count = P_remask_count + 1;
+
+000025  aa  6 00100 2361 00	ldq  	pr6|64		code
+000026  aa   777766 6010 04	tnz  	-10,ic		000014
+000027  aa  6 00032 3735 20	epp7 	pr6|26,*
+000030  aa  7 00002 0541 20	aos  	pr7|2,*		P_remask_count
+						STATEMENT 1 ON LINE 36
+	end;
+
+000031  aa   777763 7100 04	tra  	-13,ic		000014
+						STATEMENT 1 ON LINE 37
+	return;
+
+000032  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO sc_ipc_mask_$remask                                STATEMENT 1 ON LINE 39
+sc_ipc_mask_$remask:
+     entry (P_remask_count);
+
+000033  ta     000001000000
+000034  da     000070300000
+000035  aa   000120 6270 00	eax7 	80
+000036  aa  7 00034 3521 20	epp2 	pr7|28,*
+000037  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000040  aa     000002000000
+000041  aa     000000000000
+						STATEMENT 1 ON LINE 44
+	do remask_count_up = 1 to P_remask_count;
+
+000042  aa  6 00032 3735 20	epp7 	pr6|26,*
+000043  aa  7 00002 2361 20	ldq  	pr7|2,*		P_remask_count
+000044  aa  6 00102 7561 00	stq  	pr6|66
+000045  aa   000001 2360 07	ldq  	1,dl
+000046  aa  6 00101 7561 00	stq  	pr6|65		remask_count_up
+000047  aa   000000 0110 03	nop  	0,du
+000050  aa  6 00101 2361 00	ldq  	pr6|65		remask_count_up
+000051  aa  6 00102 1161 00	cmpq 	pr6|66
+000052  aa   000016 6054 04	tpnz 	14,ic		000070
+						STATEMENT 1 ON LINE 45
+	     call ipc_$mask_ev_calls ((0));
+
+000053  aa  6 00103 4501 00	stz  	pr6|67
+000054  aa  6 00103 3521 00	epp2 	pr6|67
+000055  aa  6 00106 2521 00	spri2	pr6|70
+000056  aa  6 00104 6211 00	eax1 	pr6|68
+000057  aa   004000 4310 07	fld  	2048,dl
+000060  aa  6 00044 3701 20	epp4 	pr6|36,*
+000061  la  4 00012 3521 20	epp2 	pr4|10,*		ipc_$mask_ev_calls
+000062  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 46
+	     P_remask_count = P_remask_count - 1;
+
+000063  aa   000001 3360 07	lcq  	1,dl
+000064  aa  6 00032 3735 20	epp7 	pr6|26,*
+000065  aa  7 00002 0561 20	asq  	pr7|2,*		P_remask_count
+						STATEMENT 1 ON LINE 47
+	end;
+
+000066  aa  6 00101 0541 00	aos  	pr6|65		remask_count_up
+000067  aa   777761 7100 04	tra  	-15,ic		000050
+						STATEMENT 1 ON LINE 48
+	return;
+
+000070  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 49
+     end sc_ipc_mask_$unmask;
+
+  END PROCEDURE sc_ipc_mask_$unmask
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

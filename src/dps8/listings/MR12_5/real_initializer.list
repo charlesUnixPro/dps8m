@@ -1,0 +1,2469 @@
+	COMPILATION LISTING OF SEGMENT real_initializer
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1058.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       10 
+       11 /* WARNING: THIS PROGRAM MUST BE RUN THROUGH PL1_MACRO BEFORE COMPILATION */
+       12 
+       13 real_initializer:
+       14      procedure;
+       15 
+       16 /* *	REAL_INITIALIZER
+       17*   *
+       18*   *	This is the driving procedure for Multics initialization. It is called from
+       19*   *	initializer, a component of bound_active_1 which exists solely to call this
+       20*   *	program, so this program can be an init-seg and get deleted. Because it is
+       21*   *	essentially an extension of initializer itself, it calls itself initializer.
+       22*   *
+       23*   *      As of this program's installation, the collection structure
+       24*   *      of the MST is as follows:
+       25*   *      "collection" 0:
+       26*   *        - the bootable label, if booted from tape (bootload_tape_label)
+       27*   *        - bound_bootload_0, which:
+       28*   *            & sets up a fault environment
+       29*   *	      & loads tape firmware as needed, finding in in collection 0.5
+       30*   *            & loads collection 1.0
+       31*   *            & transfers to bootload_1 which
+       32*   *	         sets up the pl1 environment, and calls initializer, 
+       33*   *	         which calls us.
+       34*   *        - other segments at fixed absolute locations, such as the
+       35*   *	     flagbox, and iom_mailbox.
+       36*   *       collection 0.5
+       37*   *        - firmware images for tape mpc's. bound_bootload_0 reads through
+       38*   *          these until it finds the one it wants, and then uses it
+       39*   *          to boot the MPC. It and all other are then discarded.
+       40*
+       41*   *       collection 1.0
+       42*   *        - formerly collection 1. Programs to initialize paging and io.
+       43*   *          they include this program, and are called by it.
+       44*   *       collection 1.2
+       45*   *	  - runcoms, config decks, etc for bootload Multics command level.
+       46*   *	    They are loaded after the loading of collection 1.0 but before 
+       47*   *	    entering any user subsystems.  They are paged.
+       48*   *	 collection 1.5
+       49*   *	  - programs paged off the bce partition for use by bce.
+       50*
+       51*   *       collection 2.0:
+       52*   *        - formerly collection 2. The hardcore file system and relatives.
+       53*   *
+       54*   *       collection 3.0:
+       55*   *        - user ring programs neccessary for a cold boot.
+       56*   *
+       57*   *     This program can be called on in a number of situations.
+       58*   *     First, there either is or is not a config deck available.
+       59*   *        This is indicated by the value of sys_boot_info$assume_config
+       60*   *        deck.
+       61*   *     Second, there are three possible initializations to be performed:
+       62*   *      - service Multics. Complete initialization and return
+       63*   *        to initializer.pl1 for the call out to ring 1.
+       64*   *      - Collection 1 command level. Complete initialization as
+       65*   *        far as making segs paged, but use a special partition
+       66*   *        on the RPV other than the HC partition. Store an image
+       67*   *        of the unpaged collection 1 environment on disk to be
+       68*   *        returned to in case of a crash, before making_segs_paged.
+       69*   *      - cool boot without BOS, and therefore
+       70*   *        without a config deck. This happens iff sys_boot_info$assume_config
+       71*   *        deck is off. Fabricate a minimal config, asking the operator
+       72*   *        (or trusting sys_boot_info) for the RPV model, device, and channel,
+       73*   *        load firmware into the rpv disk mpc. Read a config deck from
+       74*   *        the config partition on the RPV, then start one of the other
+       75*   *        two initializations using the real config deck.
+       76*   *
+       77******************************************************************************
+       78******* JOURNALIZATION *******************************************************
+       79******************************************************************************
+       80*   *
+       81*   *      Modification history:
+       82*   *	80-12-21, W. Olin Sibert: Split out of initializer.pl1
+       83*   *      82-07-01, BIM: Partially rethought, and brought up to date with 
+       84*   *         current version of initializer.pl1 (mr10.0)
+       85*   *      82-08-01, BIM: Metering and check_stop added back.
+       86*   *      82-08-12, JJB: RLV parasites expunged, scavenger added 
+       87*   *      83-02-05, ENK: kst_util$garbage_collect
+       88*   *      83-04-15, KPL: bootload command level, (through 5/84).
+       89*   *	83-06-20, E. A. Ranzenbach: Modified for ocdcm_$init_all_consoles
+       90*   *	   and ocdcm_$reconfigure.
+       91*   * 	83-06-26, CLJ: Deleted iobm stuff
+       92*   *	84-08-20, KPL: Modified to not call scs_and_clock_init
+       93*   *	   when shutting down bce.
+       94*   *	84-10-17, WOS: Modified for new init_syserr_log and to initialize
+       95*   *	   syserr log names in ring zero instead of AS initialization.
+       96*   *      84-11-09, ADB: Added entry point collection_2 and collection_3 to
+       97*   *         make setting breakpoints in bce probe easier.
+       98*   *	85-01-09, Keith Loepere: fix retry_rpv.
+       99*   *	85-01-23, Keith Loepere: power up date/time software in paged bce;
+      100*   *	   permanent collection 1.5 segs.
+      101*   */
+      102 
+      103 /****^  HISTORY COMMENTS:
+      104*  1) change(86-06-05,GJohnson), approve(86-06-05,MCR7387),
+      105*     audit(86-06-10,Martinson), install(86-07-11,MR12.0-1091):
+      106*     Correct error message documentation.
+      107*  2) change(86-09-05,Farley), approve(86-07-18,MCR7439),
+      108*     audit(86-09-24,Fawcett), install(86-10-20,MR12.0-1189):
+      109*     To move IOI into collection 1.0, so that it will be available
+      110*     at BCE. Also reset sys_info$service_system. Added missing MESSAGE doc.
+      111*                                                   END HISTORY COMMENTS */
+      112 
+      113 /****     MEMORY LAYOUT ISSUES:
+      114*   *      when this program is called, all of collection 1 has
+      115*   *      been loaded into the first 512K of absolute memory.
+      116*   *      init-segs and to-be-made-paged segs are high, and
+      117*   *      everything else (perm-wired segs) are low.
+      118*   *      
+      119*   *      Depending on what kind of initialization we are up to,
+      120*   *      this may need rearrangement.
+      121*   *
+      122*   *      If service is to be booted, the high segments are relocated
+      123*   *      to actually high memory, leaving the low memory to be used
+      124*   *      for the sst and core map (which want to be high in the low 
+      125*   *      controller).
+      126*   *      
+      127*   *      If we are booting the command environment, everything is left as is, 
+      128*   *      since the returnable-to system will be a pre-make-segs-paged
+      129*   *      core image, and it wants to be restricted to 512K.
+      130*   *      
+      131*   *      If there is no config deck at all, then we have no idea 
+      132*   *      memory is around, and there is no choice but to stay in 512K.
+      133*   *	Once the config deck has been read, all memory obtained with
+      134*   *      get_main is returned, and a command environment initialization is 
+      135*   *      undertaken.
+      136*   *      
+      137*   *      If the config deck is changed, initialization to store
+      138*   *      the returnable-to system is repeated.
+      139*   *      
+      140*   *      To turn a command environment into a service boot, the special
+      141*   *      segments, if any, are deleted, the memory allocated with
+      142*   *      get_main is returned, and a service initialization is undertaken.
+      143*
+      144*   */
+      145 
+      146 
+      147 
+      148 dcl  addr				builtin;
+      149 dcl  baseptr			builtin;
+      150 dcl  bin				builtin;
+      151 dcl  binary			builtin;
+      152 dcl  null				builtin;
+      153 dcl  pointer			builtin;
+      154 dcl  substr			builtin;
+      155 
+      156 dcl  code				fixed bin (35);
+      157 dcl  done_one_initialization		bit (1) aligned;
+      158 dcl  meter_initialization		bit (1) aligned;
+      159 dcl  parm_ptr			pointer;
+      160 dcl  ready_to_y_and_s		bit (1) aligned;
+      161 dcl  saved_free_core_size		fixed bin (24);
+      162 dcl  saved_free_core_start		fixed bin (24);	/* Saved state of the SLT core allocation marks */
+      163 dcl  saved_iupt_lth			fixed bin;	/* allocations in int_unpaged_page_tables */
+      164 dcl  saved_upt_lth			fixed bin;	/* in unpaged_page_tables */
+      165 dcl  yell_and_scream		bit (1) aligned;
+      166 
+      167 dcl  bce_abs_seg$free		entry;
+      168 dcl  config_$find			entry (char (4) aligned, pointer);
+      169 dcl  config_$find_parm		entry (char (4) aligned, pointer);
+      170 dcl  condition_			entry (char (*), entry);
+      171 dcl  initial_error_handler		entry;
+      172 dcl  ocdcm_$reconfigure		entry (char (4), fixed bin (17), fixed bin (35));
+      173 dcl  pmut$set_mask			entry (bit (72) aligned);
+      174 dcl  pmut$trace_rsw			entry (bit (36) aligned);
+      175 dcl  syserr			entry options (variable);
+      176 dcl  syserr$error_code		entry options (variable);
+      177 
+      178 dcl  active_all_rings_data$system_id	char (32) ext static;
+      179 dcl  active_all_rings_data$version_id	char (32) ext static;
+      180 dcl  bce_request_table_$bce_request_table_ ext static;
+      181 dcl  config_deck$			(4096) bit (36) aligned ext static;
+      182 dcl  int_unpaged_page_tables$		ext static;
+      183 dcl  safe_config_deck$		(4096) bit (36) aligned ext static;
+      184 dcl  scs$sys_level			bit (72) aligned external static;
+      185 dcl  slt$				fixed bin external static;
+      186 dcl  sys_boot_info$assume_config_deck	bit (1) aligned external; /* implies BOS, by the way */
+      187 dcl  sys_boot_info$boot_without_query	bit (1) aligned external static;
+      188 dcl  sys_boot_info$bootload_mem_size	fixed bin (26) ext static;
+      189 dcl  sys_boot_info$config_has_been_modified bit (1) aligned ext static;
+      190 dcl  sys_boot_info$contig_mem_size	fixed bin (26) ext static;
+      191 dcl  sys_boot_info$rpv_cold_boot	bit (1) aligned external static;
+      192 dcl  sys_boot_info$system_type	fixed bin external static;
+      193 dcl  sys_info$initialization_state	fixed bin external static;
+      194 dcl  sys_info$service_system		bit (1) aligned external static;
+      195 dcl  sys_info$system_type		fixed bin external static;
+      196 dcl  1 toehold$			aligned external like toe_hold;
+      197 dcl  unpaged_page_tables$		ext static;
+      198 
+      199 
+      200 /* The programs called to to actual intitialization-like things. */
+      201 
+      202 dcl  accept_rpv			entry;
+      203 dcl  announce_chwm$after		entry;
+      204 dcl  announce_chwm$before		entry;
+      205 dcl  bce_get_to_command_level		entry (ptr);
+      206 dcl  collect_free_core		entry;
+      207 dcl  dbm_man$init			entry;
+      208 dcl  debug_check$copy_card		entry;
+      209 dcl  delete_segs$temp		entry;
+      210 dcl  dir_lock_init			entry;
+      211 dcl  disk_reader$init		entry;
+      212 dcl  disk_reader$final		entry;
+      213 dcl  establish_config_deck		entry;
+      214 dcl  establish_temp_segs		entry;
+      215 dcl  find_file_partition		entry;
+      216 dcl  find_rpv_subsystem		entry;
+      217 dcl  fnp_init			entry;
+      218 dcl  get_io_segs			entry;
+      219 dcl  getuid$init			entry;
+      220 dcl  init_bce$paged			entry;
+      221 dcl  init_bce$wired			entry;
+      222 dcl  init_branches			entry;
+      223 dcl  init_dm_journal_seg		entry;
+      224 dcl  init_early_config		entry;
+      225 dcl  init_hardcore_gates		entry;
+      226 dcl  init_lvt			entry;
+      227 dcl  init_partitions		entry;
+      228 dcl  init_pvt			entry;
+      229 dcl  init_root_dir			entry;
+      230 dcl  init_root_vols			entry (fixed bin (35));
+      231 dcl  init_scavenger_data		entry;
+      232 dcl  init_sst$early			entry;
+      233 dcl  init_sst$normal		entry;
+      234 dcl  init_sst_name_seg		entry;
+      235 dcl  init_stack_0			entry;
+      236 dcl  init_str_seg			entry;
+      237 dcl  init_sys_var			entry;
+      238 dcl  init_toehold			entry;
+      239 dcl  init_toehold$save_safe_config_deck entry;
+      240 dcl  init_vtoc_man			entry;
+      241 dcl  initialize_faults$fault_init_one	entry;
+      242 dcl  initialize_faults$fault_init_two	entry;
+      243 dcl  initialize_faults$interrupt_init	entry;
+      244 dcl  io_config_init			entry;
+      245 dcl  ioi_init			entry;
+      246 dcl  ioi_page_table$init		entry;
+      247 dcl  iom_data_init			entry;
+      248 dcl  kst_util$garbage_collect		entry (fixed bin (35));
+      249 dcl  load_disk_mpcs			entry;
+      250 dcl  load_mst			entry;
+      251 dcl  load_mst$init_commands		entry;
+      252 dcl  load_mst$make_permanent		entry;
+      253 dcl  load_system			entry;
+      254 dcl  make_segs_paged		entry;
+      255 dcl  move_non_perm_wired_segs		entry;
+      256 dcl  ocdcm_$init_all_consoles		entry;
+      257 dcl  pre_link_hc			entry;
+      258 dcl  read_disk$init			entry;
+      259 dcl  scas_init			entry;
+      260 dcl  scs_and_clock_init$date_time	entry;
+      261 dcl  scs_and_clock_init$early		entry;
+      262 dcl  scs_and_clock_init$normal	entry;
+      263 dcl  segment_loader			entry;
+      264 dcl  init_syserr_log		entry;
+      265 dcl  syserr_seg_manager$initialize_log_names entry;
+      266 dcl  tape_reader$final		entry;
+      267 dcl  tape_reader$init		entry;
+      268 dcl  tc_init			entry;
+      269 dcl  tc_init$early			entry;
+      270 dcl  tc_init$part_2			entry;
+      271 dcl  tc_init$start_other_cpus		entry;
+      272 
+      273 /* Set up debugging flags */
+      274 
+      275 	done_one_initialization = "0"b;
+      276 	meter_initialization = "0"b;
+      277 	yell_and_scream = "0"b;
+      278 
+      279 	sys_info$system_type = sys_boot_info$system_type;
+      280 	addr (unpaged_page_tables$) -> upt.sst_absloc = 0;
+      281 	addr (unpaged_page_tables$) -> upt.sst_last_loc = 0; /* so we don't confuse page table lookers */
+      282 
+      283 	addr (flagbox$) -> fgbx.return_to_bce_command = "";
+      284 
+      285 	if sys_boot_info$assume_config_deck then do;	/* if we came from BOS */
+      286 	     parm_ptr = null;
+      287 	     call config_$find_parm ("mtin", parm_ptr);
+      288 	     meter_initialization = (parm_ptr ^= null);
+      289 
+      290 	     parm_ptr = null ();
+      291 	     call config_$find_parm ("erly", parm_ptr);
+      292 	     if parm_ptr ^= null () then sys_boot_info$assume_config_deck = "0"b;
+      293 	end;
+      294 
+      295 /* Whatever the task at hand, set up fault handling */
+      296 /* The prds, set up by a call from scs_and_clock_init, is */
+      297 /* needed. */
+      298 
+      299 /*	if meter_initialization then call initial_meters$init; */
+      300 
+      301 /* Everyone is interested in the SLT */
+      302 
+      303 	sltp = addr (slt$);
+      304 
+      305 /* This cannot have any effect until faults are initialized */
+      306 
+      307 	call condition_ ("any_other", initial_error_handler);
+      308 
+      309 /* First see if we need to do an exceptional initialization to */
+      310 /* Find the config deck. */
+      311 
+      312 	ready_to_y_and_s = "0"b;
+      313 
+      314 	sys_info$service_system = "0"b;
+      315 	sys_info$initialization_state = 1;
+      316 	sys_info$collection_1_phase = EARLY_INITIALIZATION;
+      317 
+      318 	if sys_boot_info$assume_config_deck then do;
+      319 
+      320 /* When running BOS, we turn on rpv_cold_boot so that the normal pass */
+      321 /* of init_root_vols will format the root. When not running BOS, */
+      322 /* this is done in the early initialization pass. */
+      323 
+      324 	     intk_cardp = null ();
+      325 	     call config_$find (INTK_CARD_WORD, intk_cardp);
+      326 	     if intk_cardp = null () then call syserr (CRASH, "initializer: intk card missing.");
+      327 	     sys_boot_info$rpv_cold_boot = (intk_card.warm_or_cold = "cold");
+      328 	     intk_card.warm_or_cold = "warm";
+      329 
+      330 /* warm/cold here implies that of bce.  warm/cold of service is decided in boot
+      331*command */
+      332 
+      333 
+      334 
+      335 	     call check_stop (1, "scs_and_clock_init$normal");
+      336 	     call scs_and_clock_init$normal;		/* may get called again to reflect config deck changes */
+      337 
+      338 	     sys_info$collection_1_phase = BOOT_INITIALIZATION;
+      339 	end;
+      340 
+      341 bootload_Multics:
+      342 	if sys_info$collection_1_phase ^= SERVICE_INITIALIZATION then do;
+      343 	     call collection_1;
+      344 	     if toehold$.memory_state = At_bce__shutdown then do; /*  return from a previous boot */
+      345 		call TURN_OFF$$masked;
+      346 		sys_info$collection_1_phase = SHUT_INITIALIZATION; /* start up again */
+      347 	     end;
+      348 	     else if toehold$.memory_state = At_bce__crash then do;
+      349 		call TURN_OFF$$masked;
+      350 		if toehold$.multics_state.old_memory_state = At_bce__early then sys_info$collection_1_phase = RE_EARLY_INITIALIZATION;
+      351 		else if toehold$.multics_state.old_memory_state = At_bce__boot then sys_info$collection_1_phase = BCE_CRASH_INITIALIZATION;
+      352 		else sys_info$collection_1_phase = CRASH_INITIALIZATION; /*  we made it far enough to feel config_deck was not the crash cause */
+      353 	     end;
+      354 	     else do;				/* normal pass completion */
+      355 		call TURN_OFF;
+      356 		if sys_info$collection_1_phase = EARLY_INITIALIZATION then
+      357 		     sys_info$collection_1_phase = BOOT_INITIALIZATION;
+      358 		else sys_info$collection_1_phase = SERVICE_INITIALIZATION;
+      359 	     end;
+      360 	     go to bootload_Multics;
+      361 	end;
+      362 
+      363 /* Perform normal initialization. */
+      364 
+      365 	call collection_1;
+      366 
+      367 collection_1:
+      368      proc;
+      369 
+      370 /* Repeated collection 1 initialization.  This is run 4 times (for 
+      371*corresponding values of sys_info$collection_1_phase.  First to find the
+      372*config deck.  Second, to set up the crash handler and command environments.
+      373*Fourth for service.  The first uses limited everything.  The second uses 
+      374*limited memory (and sst).  The fourth uses all. 
+      375*The "third" time is when we shutdown and crash, to rebuild tables. */
+      376 
+      377 collection_1_start:
+      378 	if sys_info$collection_1_phase = RE_EARLY_INITIALIZATION | sys_info$collection_1_phase = BCE_CRASH_INITIALIZATION then
+      379 	     config_deck$ = safe_config_deck$;
+      380 
+      381 	sys_boot_info$config_has_been_modified = "0"b;	/* set when modified, forces query when booting service */
+      382 
+      383 	ready_to_y_and_s = "0"b;
+      384 
+      385 	saved_free_core_start = slt.free_core_start;
+      386 	saved_free_core_size = slt.free_core_size;
+      387 	saved_iupt_lth = addr (int_unpaged_page_tables$) -> upt.current_length;
+      388 	saved_upt_lth = addr (unpaged_page_tables$) -> upt.current_length;
+      389 	sys_boot_info$contig_mem_size = sys_boot_info$bootload_mem_size;
+      390 						/* for the benefit of announce_chwm */
+      391 
+      392 	if sys_info$collection_1_phase = EARLY_INITIALIZATION then do;
+      393 
+      394 
+      395 
+      396 	     call check_stop (2, "init_early_config");
+      397 	     call init_early_config;			/* Fill in console, clock default, tape mpc, itk, sst, tcd, */
+      398 						/* bootload cpu, mem, iom and dummy rpv subsystem */
+      399 	end;
+      400 
+      401 
+      402 
+      403 RETRY_RPV:
+      404 	if sys_info$collection_1_phase = EARLY_INITIALIZATION then do;
+      405 						/* The early entrypoint is as the normal, except that it fills in */
+      406 						/* port number on the cpu card. */
+      407 	     call check_stop (3, "scs_and_clock_init$early");
+      408 	     call scs_and_clock_init$early;
+      409 	end;
+      410 	else do;
+      411 	     call check_stop (3, "scs_and_clock_init$normal");
+      412 	     call scs_and_clock_init$normal;		/* get new clok card if there is one */
+      413 	end;
+      414 
+      415 
+      416 
+      417 	call check_stop (4, "initialize_faults$fault_init_one");
+      418 	call initialize_faults$fault_init_one;
+      419 
+      420 
+      421 
+      422 	if sys_info$collection_1_phase = SERVICE_INITIALIZATION then do;
+      423 	     call check_stop (5, "move_non_perm_wired_segs");
+      424 	     call move_non_perm_wired_segs;		/* use memory, move segs, fix SLT header */
+      425 	end;
+      426 
+      427 
+      428 
+      429 	call check_stop (6, "get_io_segs");
+      430 	call get_io_segs;				/* Allocate the disk_seg, pvt, iom_data, and ioi_data */
+      431 						/* appropriately for the configuration */
+      432 
+      433 
+      434 
+      435 	call check_stop (7, "iom_data_init");
+      436 	call iom_data_init;				/* Initialize the iom_data for all configured devices. */
+      437 
+      438 
+      439 
+      440 	call check_stop (8, "ocdcm_$init_all_consoles");
+      441 	call ocdcm_$init_all_consoles;
+      442 
+      443 	parm_ptr = null;
+      444 	call config_$find_parm ("loud", parm_ptr);
+      445 	yell_and_scream = (parm_ptr ^= null);
+      446 
+      447 	ready_to_y_and_s = "1"b;
+      448 
+      449 
+      450 
+      451 	call check_stop (9, "scas_init");
+      452 	call scas_init;				/* Set up the SCAS again */
+      453 
+      454 
+      455 
+      456 	if sys_info$collection_1_phase ^= SERVICE_INITIALIZATION then do;
+      457 	     call check_stop (10, "tc_init$early");
+      458 	     call tc_init$early;
+      459 	end;
+      460 	else do;
+      461 	     call check_stop (10, "tc_init");
+      462 	     call tc_init;
+      463 	end;
+      464 
+      465 
+      466 
+      467 	if sys_info$collection_1_phase = SERVICE_INITIALIZATION then do;
+      468 	     call check_stop (11, "init_sst$normal");
+      469 	     call init_sst$normal;			/* Set up the full sized SST, with table sizes determined */
+      470 	end;
+      471 	else do;
+      472 	     call check_stop (11, "init_sst$early");
+      473 	     call init_sst$early;
+      474 	end;
+      475 
+      476 	call debug_check$copy_card;			/* not worth a stop */
+      477 
+      478 	if sys_info$collection_1_phase = EARLY_INITIALIZATION
+      479 	     | sys_info$collection_1_phase = BOOT_INITIALIZATION
+      480 	     | sys_info$collection_1_phase = SERVICE_INITIALIZATION then
+      481 	     call announce_chwm$before;		/* from the config deck, and announce the size of memory. */
+      482 
+      483 
+      484 
+      485 	call check_stop (12, "disabling slt allocation");
+      486 	slt.free_core_start, slt.free_core_size = 0;	/* no more SLT mem allocations */
+      487 
+      488 
+      489 
+      490 	call check_stop (13, "initialize_faults$interrupt_init");
+      491 	call initialize_faults$interrupt_init;
+      492 
+      493 
+      494 
+      495 	if ^done_one_initialization then do;
+      496 	     call check_stop (14, "init_bce$wired");/* Bootload Command Environment */
+      497 	     call init_bce$wired;
+      498 	end;
+      499 
+      500 	if sys_info$collection_1_phase = EARLY_INITIALIZATION then do;
+      501 
+      502 /* This call locates the RPV either via sys_boot_info or */
+      503 /* operator query, as needed. it fills in the config */
+      504 /* ROOT card, and fixes the fields in the prph dska and appropriate mpc */
+      505 /* and (someday) mpcs cards. After it is called, paging can really be setup */
+      506 
+      507 
+      508 
+      509 	     call check_stop (15, "find_rpv_subsystem");
+      510 	     call find_rpv_subsystem;
+      511 	end;
+      512 
+      513 	if ^((sys_info$collection_1_phase = SERVICE_INITIALIZATION) |
+      514 	     (sys_info$collection_1_phase = EARLY_INITIALIZATION) |
+      515 	     (sys_info$collection_1_phase = BOOT_INITIALIZATION & sys_boot_info$assume_config_deck)) then do;
+      516 
+      517 
+      518 
+      519 	     call check_stop (16, "load_disk_mpcs");
+      520 	     call load_disk_mpcs;
+      521 	end;
+      522 
+      523 
+      524 
+      525 	call check_stop (17, "init_pvt");
+      526 	call init_pvt;
+      527 
+      528 
+      529 
+      530 	call check_stop (18, "read_disk$init");
+      531 	call read_disk$init;			/* This has to come AFTER init_pvt */
+      532 
+      533 
+      534 
+      535 	call check_stop (19, "init_root_vols");
+      536 	call init_root_vols (code);
+      537 	if code ^= 0 then
+      538 	     if sys_info$collection_1_phase = EARLY_INITIALIZATION then do;
+      539 		sys_boot_info$boot_without_query = "0"b;
+      540 		call TURN_OFF;
+      541 		go to RETRY_RPV;
+      542 	     end;
+      543 	     else call syserr (CRASH, "initializer: bad root volume.");
+      544 
+      545 
+      546 
+      547 	if sys_info$collection_1_phase ^= SERVICE_INITIALIZATION then do;
+      548 
+      549 	     call check_stop (20, "establish_temp_segs");
+      550 	     call establish_temp_segs;
+      551 
+      552 
+      553 
+      554 	     call check_stop (21, "find_file_partition");
+      555 	     call find_file_partition;
+      556 
+      557 	     if ^done_one_initialization then do;
+      558 
+      559 
+      560 
+      561 		call check_stop (22, "tape_reader$init");
+      562 		call tape_reader$init;		/* Initialize the tape reading package. */
+      563 
+      564 
+      565 
+      566 		call check_stop (23, "load_mst");
+      567 		call load_mst;
+      568 
+      569 
+      570 
+      571 		call check_stop (24, "tape_reader$final");
+      572 		call tape_reader$final;
+      573 	     end;
+      574 
+      575 
+      576 
+      577 	     call check_stop (25, "load_mst$init_commands");
+      578 	     call load_mst$init_commands;		/* and get into addr space
+      579*						load_mst$make_permanent is the counterpart for service pass */
+      580 
+      581 
+      582 
+      583 	     if ^done_one_initialization then do;
+      584 		call check_stop (26, "init_bce$paged");
+      585 		call init_bce$paged;		/* and add to bce_data switches */
+      586 	     end;
+      587 	end;
+      588 	else do;
+      589 
+      590 
+      591 
+      592 	     call check_stop (27, "load_mst$make_permanent");
+      593 	     call load_mst$make_permanent;		/* move coll 1.5 perm segs into coll 2 */
+      594 	end;
+      595 
+      596 	sys_boot_info$rpv_cold_boot = "0"b;		/* in case it was on; we are done with special cold boot operations */
+      597 
+      598 
+      599 
+      600 	call check_stop (28, "scs_and_clock_init$date_time");
+      601 	call scs_and_clock_init$date_time;		/* power up the date/time software */
+      602 
+      603 
+      604 
+      605 	call check_stop (29, "io_config_init");
+      606 	call io_config_init;			/* initialize io_config_data */
+      607 
+      608 
+      609 
+      610 	call check_stop (30, "ioi_init");
+      611 	call ioi_init;				/* Initialize the I/O Interfacer. */
+      612 
+      613 
+      614 
+      615 	if sys_info$collection_1_phase = SHUT_INITIALIZATION then
+      616 	     sys_info$collection_1_phase = BOOT_INITIALIZATION;
+      617 
+      618 	safe_config_deck$ = config_deck$;		/* config_deck$ is good, save for crashing */
+      619 
+      620 	if ^done_one_initialization then do;
+      621 	     done_one_initialization = "1"b;		/* don't redo per-system initializations (set before saving toehold) */
+      622 
+      623 /* Set up crash handler. */
+      624 
+      625 	     call check_stop (31, "init_toehold");
+      626 	     call init_toehold;
+      627 	     if toehold$.memory_state = At_bce__crash | toehold$.memory_state = At_bce__shutdown then return; /* return to bce returns to image saved here */
+      628 	end;
+      629 	else if sys_info$collection_1_phase = EARLY_INITIALIZATION | sys_info$collection_1_phase = BOOT_INITIALIZATION | sys_info$collection_1_phase = SERVICE_INITIALIZATION then do;
+      630 	     call check_stop (31, "init_toehold$save_safe_config_deck");
+      631 	     call init_toehold$save_safe_config_deck;
+      632 	end;
+      633 
+      634 	if sys_info$collection_1_phase = RE_EARLY_INITIALIZATION then
+      635 	     sys_info$collection_1_phase = EARLY_INITIALIZATION;
+      636 
+      637 	if sys_info$collection_1_phase = EARLY_INITIALIZATION then
+      638 	     toehold$.memory_state = At_bce__early;
+      639 	else if sys_info$collection_1_phase = BOOT_INITIALIZATION then
+      640 	     toehold$.memory_state = At_bce__boot;
+      641 	else if sys_info$collection_1_phase = SERVICE_INITIALIZATION then
+      642 	     toehold$.memory_state = Multics;
+      643 
+      644 	if sys_info$collection_1_phase = EARLY_INITIALIZATION | sys_info$collection_1_phase = BOOT_INITIALIZATION | sys_info$collection_1_phase = CRASH_INITIALIZATION | sys_info$collection_1_phase = BCE_CRASH_INITIALIZATION then do;
+      645 
+      646 
+      647 
+      648 	     call check_stop (32, "bce_get_to_command_level");
+      649 	     call bce_get_to_command_level (addr (bce_request_table_$bce_request_table_));
+      650 
+      651 	     if sys_info$collection_1_phase = BCE_CRASH_INITIALIZATION then do; /* operator decided to boot again */
+      652 		sys_info$collection_1_phase = BOOT_INITIALIZATION;
+      653 		toehold$.memory_state = At_bce__boot;
+      654 	     end;
+      655 
+      656 /* As of now, the Early Initialization has completed its task. */
+      657 	end;
+      658 
+      659 
+      660 
+      661 	call check_stop (33, "establish_config_deck");
+      662 	call establish_config_deck;			/* read in the config deck */
+      663 
+      664 	if sys_info$collection_1_phase = SERVICE_INITIALIZATION then do;
+      665 
+      666 
+      667 
+      668 	     call check_stop (34, "init_partitions");
+      669 	     call init_partitions;
+      670 
+      671 
+      672 
+      673 	     call check_stop (35, "make_segs_paged");
+      674 	     call make_segs_paged;			/* Make all pageable segments paged */
+      675 
+      676 
+      677 
+      678 	     call check_stop (36, "collect_free_core");
+      679 	     call collect_free_core;			/* and collect all unused core */
+      680 	     call announce_chwm$after;		/* Announce the results */
+      681 	end;
+      682 	return;
+      683 
+      684      end collection_1;
+      685 
+      686 
+      687 
+      688 
+      689 	call check_stop (37, "delete_segs$temp 1");
+      690 	call delete_segs$temp;			/* Delete collection one temp segs */
+      691 
+      692 
+      693 
+      694 	call check_stop (38, "disk_reader$init");
+      695 	call disk_reader$init;
+      696 
+      697 
+      698 
+      699 	call check_stop (39, "segment_loader 2.0");
+      700 	call segment_loader;			/* Load collection 2 */
+      701 
+      702 
+      703 
+      704 	call check_stop (40, "pre_link_hc 2.0");
+      705 	call pre_link_hc;				/* prelink collection 2 */
+      706 
+      707 /* COLLECTION TWO */
+      708 
+      709 collection_2:
+      710      entry;					/* This will make setting breakpoints in bce_probe easier. */
+      711 
+      712 
+      713 	sys_info$initialization_state = 2;		/* Begin collection 2 */
+      714 
+      715 
+      716 
+      717 	call check_stop (41, "initialize_faults$fault_init_two");
+      718 	call initialize_faults$fault_init_two;
+      719 
+      720 
+      721 
+      722 	call check_stop (42, "getuid$init");
+      723 	call getuid$init;				/* set up UID generator */
+      724 
+      725 
+      726 	call check_stop (43, "init_vtoc_man");
+      727 	call init_vtoc_man;				/* Set up vtoc_man's buffers */
+      728 
+      729 
+      730 
+      731 	call check_stop (44, "dbm_man$init");
+      732 	call dbm_man$init;				/* Init the volume dumper's bit map. */
+      733 
+      734 
+      735 
+      736 
+      737 	call check_stop (45, "init_scavenger_data");
+      738 	call init_scavenger_data;
+      739 
+      740 
+      741 
+      742 	call check_stop (46, "init_dm_journal_seg");
+      743 	call init_dm_journal_seg;
+      744 
+      745 
+      746 
+      747 
+      748 	call check_stop (47, "init_sys_var");
+      749 	call init_sys_var;				/* Set some system variables */
+      750 
+      751 
+      752 
+      753 	call check_stop (48, "dir_lock_init");
+      754 	call dir_lock_init;
+      755 
+      756 
+      757 
+      758 /* ioi_page_table$init is also called by ioi_init, but this call is
+      759*   needed to have it switch over to using io_page_table_seg. */
+      760 
+      761 	call check_stop (49, "ioi_page_table$init");
+      762 	call ioi_page_table$init;			/* setup standard io_page_table_seg */
+      763 
+      764 
+      765 
+      766 	call check_stop (50, "fnp_init");
+      767 	call fnp_init;				/* make tty_buf SDW before tc_init$part_2 */
+      768 
+      769 /* *	After this point, changes to the hardcore descriptor segment may
+      770*   *	not be reflected in idle process and hproc descriptor segments.
+      771*   */
+      772 
+      773 
+      774 
+      775 	call check_stop (51, "tc_init$part_2");
+      776 	call tc_init$part_2;			/* Stage 2 of traffic control initialization */
+      777 
+      778 
+      779 
+      780 
+      781 	call check_stop (52, "init_syserr_log");
+      782 	call init_syserr_log ();
+      783 
+      784 	call syserr (LOG, "initializer: Multics ^a (^a) syserr logging initialized", active_all_rings_data$system_id,
+      785 	     active_all_rings_data$version_id);
+      786 
+      787 
+      788 
+      789 
+      790 	call check_stop (53, "init_str_seg");
+      791 	call init_str_seg;				/* Initialize the trailer seg */
+      792 
+      793 
+      794 
+      795 	call check_stop (54, "init_sst_name_seg");
+      796 	call init_sst_name_seg;			/* Set up the SST name table */
+      797 
+      798 
+      799 
+      800 
+      801 	call check_stop (55, "init_hardcore_gates");
+      802 	call init_hardcore_gates;			/* initialize linkage pointers in gates */
+      803 
+      804 /* The permanent file system has not been touched up to this point.
+      805*   Everything has been placed in the hc partition.		*/
+      806 
+      807 
+      808 
+      809 
+      810 	call check_stop (56, "accept_rpv");
+      811 	call accept_rpv;				/* Flush PD, salvage, load vol map */
+      812 
+      813 
+      814 
+      815 	call check_stop (57, "init_lvt");
+      816 	call init_lvt;				/* get LVT in order */
+      817 
+      818 	call condition_ ("bad_dir_", bad_dir_handler);
+      819 	call condition_ ("seg_fault_error", seg_fault_handler);
+      820 
+      821 
+      822 
+      823 	call check_stop (58, "init_root_dir");
+      824 	call init_root_dir;				/* Make the "root" known. */
+      825 
+      826 
+      827 
+      828 	call check_stop (59, "kst_util$garbage_collect");
+      829 	call kst_util$garbage_collect ((0));		/* Clean up the KST after salvaging */
+      830 
+      831 
+      832 
+      833 	call check_stop (60, "init_branches");
+      834 	call init_branches;				/* Set up branches for init. and per-process segs. */
+      835 
+      836 
+      837 
+      838 	call check_stop (61, "syserr_seg_manager$initialize_log_names");
+      839 	call syserr_seg_manager$initialize_log_names ();
+      840 
+      841 
+      842 
+      843 	call check_stop (62, "init_stack_0");
+      844 	call init_stack_0;
+      845 
+      846 
+      847 
+      848 	call check_stop (63, "delete_segs$temp 2.0");
+      849 	call delete_segs$temp;			/* Delete collection 2 temp segs */
+      850 
+      851 
+      852 /*
+      853*   Initialize collection 3.
+      854**/
+      855 	sys_info$initialization_state = 3;		/* Begin collection 3 */
+      856 
+      857 collection_3:
+      858      entry;					/* This will make setting breakpoints in bce_probe easier. */
+      859 
+      860 
+      861 
+      862 	call check_stop (64, "load_system");
+      863 	call load_system;				/* Load collection 3. */
+      864 
+      865 
+      866 
+      867 	call check_stop (65, "disk_reader$final");
+      868 	call disk_reader$final;
+      869 
+      870 
+      871 
+      872 	call check_stop (66, "tc_init$start_other_cpus");
+      873 
+      874 
+      875 	call tc_init$start_other_cpus;		/* Start up additional CPUs */
+      876 	sys_info$initialization_state = 4;		/* Begin normal operation (collection 4) */
+      877 	sys_info$service_system = "1"b;
+      878 
+      879 
+      880 
+      881 	call check_stop (67, "init_proc");
+      882 
+      883 	return;
+      884 
+      885 bad_dir_handler:
+      886      procedure (a_mcp, a_condition, a_infop, a_wcp, a_continue);
+      887 
+      888 dcl  a_mcp			pointer parameter;
+      889 dcl  a_condition			char (*) parameter;
+      890 dcl  a_infop			pointer parameter;
+      891 dcl  a_wcp			pointer parameter;
+      892 dcl  a_continue			bit (1) aligned parameter;
+      893 
+      894 dcl  ppr				pointer;
+      895 dcl  tpr				pointer;
+      896 
+      897 dcl  pvt$root_pvtx			fixed bin ext;
+      898 
+      899 	pvt_arrayp = addr (pvt$array);
+      900 	pvt_array (pvt$root_pvtx).vol_trouble_count = pvt_array (pvt$root_pvtx).vol_trouble_count + 1;
+      901 
+      902 
+      903 CRASH_BAD_DIR:
+      904 	call syserr (CRASH, "initializer: bad_dir_ signal raised.");
+      905 	goto CRASH_BAD_DIR;
+      906 
+      907 
+      908 
+      909 seg_fault_handler:
+      910      entry (a_mcp, a_condition, a_infop, a_wcp, a_continue);
+      911 
+      912 	mcp = a_mcp;
+      913 	scup = addr (mc.scu);
+      914 	ppr = pointer (baseptr (binary (scu.psr, 15)), scu.ilc);
+      915 	tpr = pointer (baseptr (binary (scu.tsr, 15)), scu.ca);
+      916 
+      917 CRASH_SEG_FAULT:
+      918 	call syserr$error_code (CRASH, mc.errcode, "initializer: Segment fault error by ^p referencing ^p:", ppr, tpr);
+      919 	goto CRASH_SEG_FAULT;
+      920 
+      921      end bad_dir_handler;
+      922 
+      923 check_stop:
+      924      procedure (P_Stop_Number, About_To);
+      925 dcl  P_Stop_Number			fixed bin;
+      926 dcl  About_To			char (*);
+      927 dcl  cpu_switches			bit (36) aligned;
+      928 dcl  call_bce			entry;
+      929 dcl  stop_number			fixed bin;
+      930 dcl  Stop_Number			fixed bin;
+      931 
+      932 	Stop_Number = P_Stop_Number + 1000 * sys_info$collection_1_phase;
+      933 
+      934 /*	if meter_initialization then call initialization_meters$entry (Stop_Number, About_To); */
+      935 
+      936 	if yell_and_scream & ready_to_y_and_s then call syserr (ANNOUNCE, "initializer: ^d^20t^a^2xstate ^d^2xphase ^d.", Stop_Number, About_To, sys_info$initialization_state, sys_info$collection_1_phase);
+      937 
+      938 	call pmut$trace_rsw (cpu_switches);
+      939 	if substr (cpu_switches, 1, 9) = "123"b3 then do;
+      940 	     stop_number = BCD (substr (cpu_switches, 10, 24));
+      941 	     if stop_number = Stop_Number then do;
+      942 		if yell_and_scream & ready_to_y_and_s then call syserr (ANNOUNCE, "initializer: ^a check_stop.", About_To);
+      943 		call call_bce;
+      944 	     end;
+      945 	end;
+      946 
+      947 BCD:
+      948 	procedure (Bits) returns (fixed bin);
+      949 
+      950 declare  Bits			    bit (24);
+      951 declare  digits			    (4) fixed bin;
+      952 declare  digits_bits		    (4) bit (6) unaligned defined (Bits);
+      953 
+      954 	     digits = bin (digits_bits, 6);		/* Aggregate */
+      955 	     return (digits (1) * 1000 + digits (2) * 100 + digits (3) * 10 + digits (4));
+      956 	end BCD;
+      957 
+      958      end check_stop;
+      959 
+      960 TURN_OFF: procedure;
+      961 
+      962 dcl  not_masked			bit (1) aligned init ("0"b);
+      963 
+      964 	not_masked = "1"b;
+      965 
+      966 TURN_OFF$$masked: entry;				/* We are already masked; also, our masks may be screwed up so don't try masking. */
+      967 
+      968 	ready_to_y_and_s = "0"b;
+      969 	if not_masked then call ocdcm_$reconfigure ("", SUSPEND_CONSOLE_SERVICE, (0)); /* deactivate the console... */
+      970 	addr (syserr_data$syserr_area) -> sd.ocdcm_init_flag = "0"b; /* PANIC */
+      971 
+      972 	call bce_abs_seg$free;			/* release SDWs */
+      973 
+      974 	if not_masked then call pmut$set_mask (scs$sys_level);
+      975 	call initialize_faults$fault_init_one;
+      976 
+      977 	addr (int_unpaged_page_tables$) -> upt.current_length = saved_iupt_lth;
+      978 	addr (unpaged_page_tables$) -> upt.current_length = saved_upt_lth;
+      979 	slt.free_core_start = saved_free_core_start;
+      980 	slt.free_core_size = saved_free_core_size;
+      981 	addr (unpaged_page_tables$) -> upt.sst_absloc = 0;
+      982 	addr (unpaged_page_tables$) -> upt.sst_last_loc = 0; /* so we don't confuse page table lookers */
+      983 	return;
+      984      end TURN_OFF;
+      985  /* BEGIN include file collection_1_phases.incl.pl1 */
+  1     2 
+  1     3 /* Symbolic names for the various collection1 phases.
+  1     4*Keith Loepere, October 1983. */
+  1     5 
+  1     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  1     7 
+  1     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  1     9 
+  1    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  1    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  1    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  1    13 
+  1    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  1    15*programs can simply tell apart the booting phases from all others (crash or
+  1    16*recovery type phases). */
+  1    17 
+  1    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  1    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  1    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  1    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  1    22 
+  1    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  1    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  1    25 
+  1    26 /* END include file collection_1_phases.incl.pl1 */
+      985 
+      986  /* BEGIN INCLUDE FILE ... config_intk_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 
+  2     3 dcl  intk_cardp pointer;				/* pointer to INTK card */
+  2     4 
+  2     5 dcl 1 intk_card aligned based (intk_cardp),		/* INTK card declaration */
+  2     6     2 word char (4),				/* "intk" */
+  2     7     2 warm_or_cold char (4),				/* Type of bootload: "warm" or "cold" */
+  2     8     2 boot_drive fixed bin,				/* Tape drive on which MST is mounted */
+  2     9     2 parms (12) char (4),				/* up to 12 arbitrary bootload parameters */
+  2    10 
+  2    11     2 type_word aligned,
+  2    12       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    13       3 pad1 bit (4) unaligned,
+  2    14       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    15 
+  2    16 dcl 1 intk_card_array aligned based (intk_cardp),		/* Overlay for counting parameters */
+  2    17     2 pad (3) bit (36) aligned,
+  2    18     2 parms (max (0, intk_card.n_fields - 2)) bit (36) aligned;
+  2    19 
+  2    20 dcl  INTK_CARD_WORD char (4) aligned internal static options (constant) init ("intk");
+  2    21 
+  2    22 /* END INCLUDE FILE ... config_intk_card.incl.pl1 */
+      986 
+      987  /* BEGIN INCLUDE FILE ... flagbox.incl.pl1 */
+  3     2 
+  3     3 
+  3     4 /****^  HISTORY COMMENTS:
+  3     5*  1) change(87-02-26,Farley), approve(87-04-15,MCR7661),
+  3     6*     audit(87-04-21,Fawcett), install(87-04-28,MR12.1-1028):
+  3     7*     Added io_reconfig flag to inhibit BCE from attempting an emergency
+  3     8*     shutdown when the data in memory could be corrupted.
+  3     9*                                                   END HISTORY COMMENTS */
+  3    10 
+  3    11 
+  3    12 /* last modified 5/3/77 by Noel I. Morris	*/
+  3    13 /* Modified 8/79 by R.J.C. Kissel to add FNP blast message. */
+  3    14 /* Modified 7/82 BIM for recognizable sentinel field */
+  3    15 /* Modified for bootload Multics flagbox starting in 8/83 by Keith Loepere. */
+  3    16 
+  3    17 /* The contents of this segment are data shared by Multics and bce.
+  3    18*   This entity occupies the locations within the toehold starting at 40o
+  3    19*   (not counting the toehold_used spacer at the beginning). */
+  3    20 
+  3    21 dcl  flagbox$ ext;
+  3    22 dcl  fgbxp ptr;
+  3    23 
+  3    24 dcl 1 fgbx based (fgbxp) aligned,
+  3    25     2 toehold_used (32) bit (36) aligned,		/* flagbox seg now mapped onto all of first page of toehold -
+  3    26*						This is what was unused before. */
+  3    27     2 flags (36) bit (1) unal,			/* communications switches */
+  3    28     2 slt_segno bit (18),				/* segment # of the SLT */
+  3    29     2 pad1 fixed bin,
+  3    30     2 rtb,					/* return to bce info */
+  3    31      (3 ssenb bit (1),				/* "1"b if storage system enabled */
+  3    32       3 call_bce bit (1),				/* "1"b if bce called by operator */
+  3    33       3 shut bit (1),				/* "1"b if bce called after shutdown */
+  3    34       3 mess bit (1),				/* "1"b if message has been provided */
+  3    35       3 alert bit (1),				/* "1"b if audible alarm to be sounded */
+  3    36       3 breakpoint bit (1),				/* "1"b is breakpoint caused call to bce */
+  3    37       3 manual_crash bit (1),				/* either manual entry or execute fault */
+  3    38       3 io_reconfig bit (1),				/* "1"b if I/O reconfiguration */
+  3    39 						/* could cause memory corruption */
+  3    40       3 pad bit (21),
+  3    41       3 bce_entry fixed bin (6) uns) unal,		/* type of entry into bce
+  3    42*						   00o => Multics entry
+  3    43*						   20o => manual entry
+  3    44*						   40o => esd entry */
+  3    45     2 sentinel char (32) aligned,			/* set by bce (for now) */
+  3    46     2 sst_sdw bit (72),				/* set by init_sst */
+  3    47     2 hc_dbr bit (72),				/* set by start_cpu, idle DBR */
+  3    48     2 message char (64),				/* message for return to bce */
+  3    49     2 return_to_bce_command char (128) unal;		/* command to run upon crash/shutdown */
+  3    50 
+  3    51 declare FLAGBOX_SENTINEL char (32) init ("Flagbox & Toehold Valid") int static options (constant);
+  3    52 
+  3    53 /* END INCLUDE FILE ... flagbox.incl.pl1 */
+      987 
+      988  /*  START OF:	opc_reconfig_options.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+  4     2 
+  4     3 	
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(85-09-09,Farley), approve(85-12-03,MCR7312),
+  4     6*     audit(85-11-14,Fawcett), install(86-03-21,MR12.0-1033):
+  4     7*     Add Lock and unlock
+  4     8*     MCA.
+  4     9*  2) change(85-12-03,Farley), approve(85-12-03,MCR7306),
+  4    10*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  4    11*     Fix bugs found while doing Dipper changes.
+  4    12*  3) change(85-12-03,Farley), approve(85-12-03,MCR7312),
+  4    13*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  4    14*     Add BCE MCA lock and unlock.
+  4    15*                                                   END HISTORY COMMENTS */
+  4    16 
+  4    17 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  4    18 	/*										*/
+  4    19 	/* Purpose:									*/
+  4    20 	/*										*/
+  4    21 	/* This include file contains the possible operator console reconfiguration options. These are 	*/
+  4    22 	/* passed to hphcs_$ocdcm_reconfigure to effect explicit console reconfiguration.		*/
+  4    23 	/*										*/
+  4    24 	/* Initial Coding:		06/18/83							*/
+  4    25 	/*										*/
+  4    26 	/* Author:		E. A. Ranzenbach	(Ranzenbach.Multics@M)			*/
+  4    27 	/* Location:		System-M.							*/
+  4    28 	/* Release:		MR10.2							*/
+  4    29 	/*										*/
+  4    30 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  4    31 	/*										*/
+  4    32 	/* Modifications:									*/
+  4    33 	/*										*/
+  4    34 	/* Date    Author			Reason						*/
+  4    35 	/*										*/
+  4    36 	/* 840420  E. A. Ranzenbach		Added MAKE_UNAVAILABLE option.			*/
+  4    37 	/* 850205  E. A. Ranzenbach		Added SEND_MC_IO option.				*/
+  4    38 	/* 850520  Paul K Farley		Added LOCK_MCA_INPUT option.				*/
+  4    39 	/*				Added UNLOCK_MCA_INPUT option.			*/
+  4    40 	/*										*/
+  4    41 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  4    42 
+  4    43 /* format: off */
+  4    44 
+  4    45      dcl	(
+  4    46 	NOP			init	(0),			/* just to make sure...		*/
+  4    47 	ENABLE_CONSOLE_SERVICE	init	(1),			/* allow syserr and normal I/O...	*/
+  4    48 	SUSPEND_CONSOLE_SERVICE	init	(2),			/* the opposite of ENABLE...		*/
+  4    49 	MAKE_BOOTLOAD_CONSOLE	init	(3),			/* make the bootload console...	*/
+  4    50 	MAKE_ALTERNATE_CONSOLE	init	(4),			/* add console to alternate list...	*/
+  4    51 	MAKE_IO_DEVICE		init	(5),			/* release the console to IOI...	*/
+  4    52 	MAKE_INOP_DEVICE		init	(6),			/* release the console to IOI...	*/
+  4    53 	RESET_CONSOLE		init	(7),			/* reset the bootload console...	*/
+  4    54 	CRASH_ON_CRF		init	(8),			/* CRASH on console recovery failure... */
+  4    55 	RUN_ON_CRF		init	(9),			/* RUN on console recovery failure... 	*/
+  4    56 	MAKE_UNAVAILABLE		init	(10),			/* put console into the OFF state...	*/
+  4    57           SEND_MC_IO		init	(11),			/* forward all I/O to the MC console... */
+  4    58           LOCK_MCA_INPUT		init	(12),			/* Disable input path from console to MCA(in IMU)... */
+  4    59           UNLOCK_MCA_INPUT		init	(13)			/* Enable input path from console to MCA(in IMU)... */
+  4    60 	)
+  4    61 				fixed bin	(17)
+  4    62 				internal static	options (constant);
+  4    63 
+  4    64 /*  END OF:	opc_reconfig_options.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      988 
+      989  /*	BEGIN INCLUDE FILE ... pvt.incl.pl1 ... last modified January 1982 */
+  5     2 
+  5     3 
+  5     4 /* The physical volume table (PVT) is a wired-down table.
+  5     5*   It has one entry for each spindle present, be it for
+  5     6*   Storage System or "I/O" use.
+  5     7**/
+  5     8 
+  5     9      dcl	   pvt$		      ext,
+  5    10 	   pvtp		      ptr;
+  5    11 
+  5    12 
+  5    13      dcl	   1 pvt		      based (pvtp) aligned,
+  5    14 
+  5    15 	     2 n_entries	      fixed bin (17),	/* number of PVT entries */
+  5    16 	     2 max_n_entries      fixed bin (17),	/* max number of PVT entries */
+  5    17 	     2 n_in_use	      fixed bin (17),	/* number of PVT entries in use */
+  5    18 	     2 rwun_pvtx	      fixed bin,		/* rewind_unloading pvtx */
+  5    19 	     2 shutdown_state     fixed bin,		/* state of previous shutdown */
+  5    20 	     2 esd_state	      fixed bin,		/* state of ESD, >0 iff in ESD */
+  5    21 	     2 prev_shutdown_state fixed bin,		/* shutdown state of previous bootload */
+  5    22 	     2 prev_esd_state     fixed bin,		/* ESD state of previous bootload */
+  5    23 
+  5    24 	     2 time_of_bootload fixed bin (71),		/* Time of bootload */
+  5    25 	     2 root_lvid	      bit (36) aligned,	/* Logical volume ID of Root Logical Volume (RLV) */
+  5    26 	     2 root_pvid	      bit (36) aligned,	/* Physical volume ID of Root Physical Volume (RPV) */
+  5    27 	     2 root_pvtx	      fixed bin,		/* Index to PVTE for Root Physical Volume (RPV) */
+  5    28 	     2 root_vtocx	      fixed bin,		/* VTOCE index for root (>) */
+  5    29 	     2 disk_table_vtocx   fixed bin,		/* VTOCE index for disk table on RPV */
+  5    30 	     2 disk_table_uid     bit (36) aligned,	/* File System UID for disk_table */
+  5    31 
+  5    32 	     2 rpvs_requested     bit (1) aligned,	/* RPVS keyword given on BOOT */
+  5    33 	     2 rpv_needs_salv     bit (1) aligned,	/* RPV required (not requested) salvage */
+  5    34 	     2 rlv_needs_salv     bit (1) aligned,	/* RLV required (not requested) salvage */
+  5    35 	     2 volmap_lock_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  5    36 	     2 volmap_idle_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  5    37 	     2 vtoc_map_lock_wait_constant bit (36) aligned, /* For constructing wait event: OR pvte_rel into lower */
+  5    38 	     2 n_volmap_locks_held fixed bin (17),	/* Current number of volmap locks held */
+  5    39 	     2 n_vtoc_map_locks_held fixed bin (17),	/* Current number of VTOC Map locks held */
+  5    40 
+  5    41 	     2 last_volmap_time   fixed bin (71),	/* Time a volmap was last locked/unlocked */
+  5    42 	     2 last_vtoc_map_time fixed bin (71),	/* Time a VTOC Map was last locked/unlocked */
+  5    43 	     2 total_volmap_lock_time fixed bin (71),	/* Total time volmap's were locked (integral) */
+  5    44 	     2 total_vtoc_map_lock_time fixed bin (71),	/* Total time VTOC Maps were locked (integral) */
+  5    45 
+  5    46 	     2 n_volmap_locks     fixed bin (35),	/* Number times a volmap was locked */
+  5    47 	     2 n_vtoc_map_locks   fixed bin (35),	/* Number times a vtoc_map was locked */
+  5    48 	     2 volmap_lock_nowait_calls fixed bin (35),	/* Number calls to lock volmap, no wait */
+  5    49 	     2 volmap_lock_nowait_fails fixed bin (35),	/* Number times lock failed */
+  5    50 	     2 volmap_lock_wait_calls fixed bin (35),	/* Number calls to lock volmap, wait */
+  5    51 	     2 volmap_lock_wait_fails fixed bin (35),	/* Number times lock failed */
+  5    52 	     2 pad (2) bit (36) aligned,
+  5    53 
+  5    54 	     2 array	      fixed bin (71);	/* Array of PVTE's -- must be double-word aligned */
+  5    55 
+  5    56 
+  5    57 
+  5    58 /*	END INCLUDE FILE ...pvt.incl.pl1 */
+      989 
+      990  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  6     2 
+  6     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  6     4 
+  6     5 /****^  HISTORY COMMENTS:
+  6     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  6     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  6     8*     Add the support for subvolumes
+  6     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  6    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  6    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  6    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  6    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  6    14*     Added inconsistent_dbm bit for determining the status of volume
+  6    15*     dumper bit maps.
+  6    16*                                                   END HISTORY COMMENTS */
+  6    17 
+  6    18      dcl	   pvt$array	      aligned external;
+  6    19      dcl	   pvt$max_n_entries      fixed bin external;
+  6    20 
+  6    21      dcl	   pvt_arrayp	      ptr;
+  6    22      dcl	   pvtep		      ptr;
+  6    23 
+  6    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  6    25 
+  6    26      dcl	   1 pvte		      based (pvtep) aligned,
+  6    27 
+  6    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  6    29 
+  6    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  6    31 
+  6    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  6    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  6    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  6    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  6    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  6    37 	     2 pad3	      bit (2) unaligned,
+  6    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  6    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  6    40 
+  6    41 
+  6    42 
+  6    43 	     2 devname	      char (4),		/* device name */
+  6    44 
+  6    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  6    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  6    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  6    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  6    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  6    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  6    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  6    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  6    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  6    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  6    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  6    56 	     2 scav_check_address
+  6    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  6    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  6    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  6    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  6    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  6    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  6    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  6    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  6    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  6    66 
+  6    67 
+  6    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  6    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  6    70 
+  6    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  6    72 
+  6    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  6    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  6    75 
+  6    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  6    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  6    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  6    79 	     2 records_per_cyl    fixed bin,
+  6    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  6    81 	     2 sv_name            char (2) aligned,
+  6    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  6    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  6    84 
+  6    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  6    86 	     2 pad2	      bit (18) unaligned,
+  6    87 
+  6    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  6    89 
+  6    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  6    91 
+  6    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  6    93 
+  6    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  6    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  6    96 
+  6    97 
+  6    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  6    99 
+  6   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  6   101 
+  6   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  6   103 
+  6   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  6   105 
+  6   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  6   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  6   108 
+  6   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  6   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  6   111 
+  6   112 
+  6   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  6   114 	   VOLMAP_ASYNC_READ      init (1),
+  6   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  6   116 
+  6   117 
+  6   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      990 
+      991  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  7     2 
+  7     3 /* Declarations for Segment Loading Table header and array.
+  7     4*
+  7     5*   Used by Initialization and MST Checker subroutines */
+  7     6 
+  7     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  7     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  7     9     namep ptr,					/* pointer to segment name list block */
+  7    10     pathp ptr,					/* pointer to segment's directory path name */
+  7    11     aclp ptr;					/* pointer to acl structure */
+  7    12 
+  7    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  7    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  7    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  7    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  7    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  7    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  7    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  7    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  7    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  7    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  7    23 
+  7    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  7    25 
+  7    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  7    27 	2 pad bit (18) unal,
+  7    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  7    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  7    30 
+  7    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  7    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  7    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  7    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  7    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  7    36 	  3 pad bit (5) unal,
+  7    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  7    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  7    39 
+  7    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  7    41 	2 size fixed bin (17),			/* length of pathname */
+  7    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  7    43 	2 acls fixed bin;				/* ACL list starts here */
+  7    44 
+  7    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  7    46 	2 count fixed bin,				/* number of entries in acl list */
+  7    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  7    48 	  3 userid char (32),			/* user specification */
+  7    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  7    50 	  3 pad bit (36) aligned,
+  7    51 	  3 code fixed bin;
+  7    52 
+  7    53 
+  7    54 /* END INCLUDE FILE slt.incl.pl1 */
+      991 
+      992  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  8     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  8     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  8     4 
+  8     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  8     6 
+  8     7 dcl (
+  8     8 
+  8     9 /* The following constants define the message action codes.  This indicates
+  8    10*how a message is to be handled.  */
+  8    11 
+  8    12      SYSERR_CRASH_SYSTEM	init (1),			
+  8    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  8    14 
+  8    15      SYSERR_TERMINATE_PROCESS	init (2),
+  8    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  8    17 
+  8    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  8    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  8    20 
+  8    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  8    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  8    23 
+  8    24      SYSERR_LOG_OR_PRINT	init (4),
+  8    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  8    26 
+  8    27      SYSERR_LOG_OR_DISCARD	init (5),
+  8    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  8    29 
+  8    30 
+  8    31 /* The following constants are added to the normal severities to indicate
+  8    32*different sorting classes of messages.  */
+  8    33 
+  8    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  8    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  8    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  8    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  8    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  8    39 	) fixed bin internal static options (constant);
+  8    40 
+  8    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      992 
+      993  /* BEGIN INCLUDE FILE  syserr_data.incl.pl1 */
+  9     2 
+  9     3 /* Created by  Bill Silver  on 01/03/73. */
+  9     4 /* Modified September 1975 by Larry Johnson to add binary data */
+  9     5 /* Modified March 1976 by Steve Webber for use with cds */
+  9     6 /* Modified 1985-01-21 by EJ Sharpe: added wmess.process_id */
+  9     7 /* Modified 1985-02-18 by Keith Loepere to break out headers. */
+  9     8 
+  9     9 /* This include file defines the syserr and log areas found in  syserr_data.cds
+  9    10*   There is one lock that coordinates the use of all the data found in
+  9    11*   syserr_data.cds.  NOTE, if this include file changes, syserr_data.cds
+  9    12*   may also have to be changed. */
+  9    13 
+  9    14 dcl  syserr_data$syserr_area char (1) aligned external,
+  9    15      syserr_data$wired_log_area char (1) aligned external;
+  9    16 
+  9    17 dcl  sd_ptr ptr,					/* Pointer to beginning of syserr_area. */
+  9    18      wlog_ptr ptr,					/* Pointer to beginning of wired_log_area. */
+  9    19      wmess_ptr ptr;					/* Pointer to a message entry in the wired log. */
+  9    20 
+  9    21 dcl 1 sd based (sd_ptr) aligned,			/* Overlay of syserr_data$syserr_area. */
+  9    22     2 lock bit (36),				/* Locks all the data in syserr_data. */
+  9    23     2 log_flag bit (1) unal,				/* ON => logging mechanism enabled. */
+  9    24     2 char_type_flag bit (1) unal,			/* ON => ASCII,  OFF => BCD. */
+  9    25     2 ocdcm_init_flag bit (1) unal,			/* ON => ocdcm_ has been initialized. */
+  9    26     2 pad bit (33) unal,
+  9    27     2 prev_text_written char (80);			/* Text of last message written */
+  9    28 
+  9    29 dcl 1 wlog based (wlog_ptr) aligned,			/* Overlay of syserr_data$wired_log_area. */
+  9    30     2 head like wlog_header,				/* Wired log header. */
+  9    31     2 buffer (wlog.head.bsize) bit (36);		/* Wired log buffer. */
+  9    32 
+  9    33 dcl 1 wlog_header based aligned,			/* WIRED LOG HEADER */
+  9    34     2 bsize fixed bin,				/* Size of the wired log buffer in words.
+  9    35*						   Defined in syserr_data.cds. */
+  9    36     2 count fixed bin,				/* Num of message entries in wired log. */
+  9    37     2 slog_ptr ptr,					/* Pointer to the paged log segment: syserr_log. */
+  9    38     2 seq_num fixed bin (35),				/* Sequence number of last message logged. */
+  9    39     2 next bit (18) unal,				/* Offset relative to base syserr_data */
+  9    40 						/* Where next entry will go in wired log. */
+  9    41     2 pad bit (18) unal;
+  9    42 
+  9    43 
+  9    44 /* This is an overlay of a message entry that goes into the wired log.  Each message
+  9    45*   entry corresponds to one syserr message. */
+  9    46 
+  9    47 dcl 1 wmess based (wmess_ptr) aligned,
+  9    48     2 header aligned like wmess_header,
+  9    49     2 text char (0 refer (wmess.text_len)),		/* Text of expanded message - kept in ASCII. */
+  9    50     2 data (0 refer (wmess.data_size)) bit (36);		/* Binary data area */
+  9    51 
+  9    52 dcl 1 wmess_header based aligned,
+  9    53     2 seq_num fixed bin (35),				/* Sequence number of this message. */
+  9    54     2 time fixed bin (71) unal,			/* Time message logged at */
+  9    55     2 code fixed bin (11) unal,			/* Syserr code associated with this message. */
+  9    56     2 text_len fixed bin (11) unal,			/* Length of message text in ASCII characters. */
+  9    57     2 data_size fixed bin (11) unal,			/* Size of binary data */
+  9    58     2 data_code fixed bin (11) unal,			/* Data code */
+  9    59     2 pad bit (24) unal,
+  9    60     2 process_id bit (36);				/* ID of process which wrote message */
+  9    61 
+  9    62 /* END INCLUDE FILE syserr_data.incl.pl1 */
+      993 
+      994  /* BEGIN include file toehold.incl.pl1 */
+ 10     2 
+ 10     3 /* Various reserved entrypoints into the bce toehold.
+ 10     4*Also, only those things one really needs to know about the toehold.
+ 10     5*Keith Loepere, October 1983. */
+ 10     6 
+ 10     7 /* Exclude prn, prv and pad when converting to alm version. */
+ 10     8 
+ 10     9 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 10    10 
+ 10    11 dcl  1 toe_hold		        aligned based,	/* name so alm likes */
+ 10    12        2 entry_sequences	        (0:15) bit (72) aligned, /* described below */
+ 10    13        2 flagbox		        (64) bit (36) aligned,
+ 10    14        2 pad1		        (48) bit (36) aligned,
+ 10    15        2 paths		        (4) like io_path,
+ 10    16        2 n_paths_used	        fixed bin,
+ 10    17        2 memory_state	        fixed bin,		/* of memory/disk swapping, etc. */
+ 10    18        2 bce_dbr		        bit (72) aligned,	/* of bce */
+ 10    19        2 pad2		        (1355) bit (36) aligned,
+ 10    20        2 multics_state	        aligned like mc_state;
+ 10    21 
+ 10    22 dcl  1 io_path		        aligned based,
+ 10    23        2 pcw		        fixed bin (71) aligned,
+ 10    24 
+ 10    25        2 port_number	        fixed bin (3) uns unal, /* these fields form the word that */
+ 10    26        2 iom_number		        fixed bin (15) uns unal, /* must be changed upon */
+ 10    27        2 channel_number	        fixed bin unal,	/* reconfiguration of channels */
+ 10    28 
+ 10    29        2 pad		        bit (36) aligned;
+ 10    30 
+ 10    31 dcl  TOE_HOLD_CRASH_ENTRY	        fixed bin init (0) static options (constant); /* operator causes crash by xed'ind here */
+ 10    32 dcl  TOE_HOLD_ESD_ENTRY	        fixed bin init (1) static options (constant);
+ 10    33 dcl  TOE_HOLD_DUMP_ENTRY	        fixed bin init (2) static options (constant); /* place that causes an early dump */
+ 10    34 dcl  TOE_HOLD_MULTICS_ENTRY	        fixed bin init (3) static options (constant); /* Multics crashes by drl'ing here */
+ 10    35 dcl  TOE_HOLD_RESTART_ENTRY	        fixed bin init (4) static options (constant); /* bce restarts Multics by drl'ing here */
+ 10    36 dcl  TOE_HOLD_BOOT_ENTRY	        fixed bin init (5) static options (constant); /* bootload_tape_label starts init by tra'ing here */
+ 10    37 dcl  TOE_HOLD_BOS_ENTRY	        fixed bin init (12) static options (constant);
+ 10    38 dcl  TOE_HOLD_BOS_NO_SAVE_ENTRY       fixed bin init (13) static options (constant);
+ 10    39 dcl  TOE_HOLD_BOS_MULTICS_ENTRY       fixed bin init (14) static options (constant);
+ 10    40 
+ 10    41 declare  mc_state_ptr	        ptr;	/* to toehold$.multics_state */
+ 10    42 declare 1 mc_state		        aligned based (mc_state_ptr),
+ 10    43        2 mc_		        aligned like mc,		        
+ 10    44        2 masks		        (16) bit (36) aligned,
+ 10    45        2 interrupt		        bit (72) aligned,
+ 10    46        2 mode_reg		        bit (36) aligned,	/* mode_reg and cache_mode_reg form a double word pair */
+ 10    47        2 cache_mode_reg	        bit (36) aligned,
+ 10    48        2 dbr		        bit (72) aligned,
+ 10    49        2 cfg		        bit (72) aligned,
+ 10    50        2 bar		        bit (36) aligned,
+ 10    51        2 old_memory_state	        fixed bin,
+ 10    52        2 pad16		        (6) bit (36) aligned,
+ 10    53        2 ou_history_registers	        (0: 15) bit (72) aligned,
+ 10    54        2 cu_history_registers	        (0: 15) bit (72) aligned,
+ 10    55        2 du_history_registers	        (0: 15) bit (72) aligned,
+ 10    56        2 apu_history_registers        (0: 15) bit (72) aligned,
+ 10    57        2 ptwam_ptrs		        (0: 63) bit (36) aligned,	/* word alignment (mod 16, 32) of these am's matters */
+ 10    58        2 ptwam_regs		        (0: 63) bit (36) aligned,
+ 10    59        2 sdwam_ptrs		        (0: 63) bit (36) aligned,
+ 10    60        2 sdwam_regs		        (0: 63) bit (72) aligned;
+ 10    61 
+ 10    62 /* values for memory_state */
+ 10    63 
+ 10    64 dcl  Initial_undefined	        fixed bin init (0) static options (constant);  /* initial coming to bce */
+ 10    65 dcl  At_bce__early		        fixed bin init (1) static options (constant);
+ 10    66 dcl  At_bce__boot		        fixed bin init (2) static options (constant);  /* at bce during cool boot phase */
+ 10    67 dcl  Multics		        fixed bin init (3) static options (constant);  /* Multics coming up */
+ 10    68 dcl  Undefined_saving_state	        fixed bin init (4) static options (constant);  /* saving state during coming down */
+ 10    69 dcl  Undefined_reading_bce	        fixed bin init (5) static options (constant);  /* reading in bce */
+ 10    70 dcl  At_bce__crash		        fixed bin init (6) static options (constant);  /* disk holds Multics, at bce */
+ 10    71 dcl  At_bce__shutdown	        fixed bin init (7) static options (constant);  /* disk holds (nothing), coming to bce */
+ 10    72 dcl  Undefined_continue	        fixed bin init (8) static options (constant);  /* swapping memory back */
+ 10    73 dcl  Undefined_saving_mem	        fixed bin init (9) static options (constant);
+ 10    74 
+ 10    75  /*  */
+ 11     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+ 11     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+ 11     4 /* Modified 07/07/76 by Morris for fault register data */
+ 11     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+ 11     6 /* Modified '82 to make values constant */
+ 11     7 
+ 11     8 /* words 0-15 pointer registers */
+ 11     9 
+ 11    10 dcl  mcp ptr;
+ 11    11 
+ 11    12 dcl 1 mc based (mcp) aligned,
+ 11    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+ 11    14    (2 regs,					/* registers */
+ 11    15       3 x (0:7) bit (18),				/* index registers */
+ 11    16       3 a bit (36),					/* accumulator */
+ 11    17       3 q bit (36),					/* q-register */
+ 11    18       3 e bit (8),					/* exponent */
+ 11    19       3 pad1 bit (28),
+ 11    20       3 t bit (27),					/* timer register */
+ 11    21       3 pad2 bit (6),
+ 11    22       3 ralr bit (3),				/* ring alarm register */
+ 11    23 
+ 11    24     2 scu (0:7) bit (36),
+ 11    25 
+ 11    26     2 mask bit (72),				/* mem controller mask at time of fault */
+ 11    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+ 11    28     2 errcode fixed bin (35),				/* fault handler's error code */
+ 11    29     2 fim_temp,
+ 11    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+ 11    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+ 11    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+ 11    33     2 fault_reg bit (36),				/* fault register */
+ 11    34     2 pad2 bit (1),
+ 11    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+ 11    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+ 11    37     2 fault_time bit (54),				/* time of fault */
+ 11    38 
+ 11    39     2 eis_info (0:7) bit (36)) unaligned;
+ 11    40 
+ 11    41 
+ 11    42 dcl (apx fixed bin init (0),
+ 11    43      abx fixed bin init (1),
+ 11    44      bpx fixed bin init (2),
+ 11    45      bbx fixed bin init (3),
+ 11    46      lpx fixed bin init (4),
+ 11    47      lbx fixed bin init (5),
+ 11    48      spx fixed bin init (6),
+ 11    49      sbx fixed bin init (7)) internal static options (constant);
+ 11    50 
+ 11    51 
+ 11    52 
+ 11    53 
+ 11    54 dcl  scup ptr;
+ 11    55 
+ 11    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+ 11    57 
+ 11    58 
+ 11    59 /*	WORD (0)		*/
+ 11    60 
+ 11    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+ 11    62       3 prr bit (3),				/* procedure ring register */
+ 11    63       3 psr bit (15),				/* procedure segment register */
+ 11    64       3 p bit (1),					/* procedure privileged bit */
+ 11    65 
+ 11    66     2 apu,					/* APPENDING UNIT STATUS */
+ 11    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+ 11    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+ 11    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+ 11    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+ 11    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+ 11    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+ 11    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+ 11    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+ 11    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+ 11    76       3 ptw bit (1),				/* Fetch of PTW */
+ 11    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+ 11    78       3 fap bit (1),				/* Fetch of final address paged */
+ 11    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+ 11    80       3 fabs bit (1),				/* Fetch of final address absolute */
+ 11    81 
+ 11    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+ 11    83 
+ 11    84 
+ 11    85 /*	WORD (1)		*/
+ 11    86 
+ 11    87     2 fd,						/* FAULT  DATA */
+ 11    88       3 iro bit (1),				/* illegal ring order */
+ 11    89       3 oeb bit (1),				/* out of execute bracket */
+ 11    90       3 e_off bit (1),				/* no execute */
+ 11    91       3 orb bit (1),				/* out of read bracket */
+ 11    92       3 r_off bit (1),				/* no read */
+ 11    93       3 owb bit (1),				/* out of write bracket */
+ 11    94       3 w_off bit (1),				/* no write */
+ 11    95       3 no_ga bit (1),				/* not a gate */
+ 11    96       3 ocb bit (1),				/* out of call bracket */
+ 11    97       3 ocall bit (1),				/* outward call */
+ 11    98       3 boc bit (1),				/* bad outward call */
+ 11    99       3 inret bit (1),				/* inward return */
+ 11   100       3 crt bit (1),				/* cross ring transfer */
+ 11   101       3 ralr bit (1),				/* ring alarm register */
+ 11   102       3 am_er bit (1),				/* associative memory fault */
+ 11   103       3 oosb bit (1),				/* out of segment bounds */
+ 11   104       3 paru bit (1),				/* processor parity upper */
+ 11   105       3 parl bit (1),				/* processor parity lower */
+ 11   106       3 onc_1 bit (1),				/* op not complete type 1 */
+ 11   107       3 onc_2 bit (1),				/* op not complete type 2 */
+ 11   108 
+ 11   109     2 port_stat,					/* PORT  STATUS */
+ 11   110       3 ial bit (4),				/* illegal action lines */
+ 11   111       3 iac bit (3),				/* illegal action channel */
+ 11   112       3 con_chan bit (3),				/* connect channel */
+ 11   113 
+ 11   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+ 11   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+ 11   116 
+ 11   117 
+ 11   118 /*	WORD (2)		*/
+ 11   119 
+ 11   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+ 11   121       3 trr bit (3),				/* temporary ring register */
+ 11   122       3 tsr bit (15),				/* temporary segment register */
+ 11   123 
+ 11   124     2 pad2 bit (9),
+ 11   125 
+ 11   126     2 cpu_no bit (3),				/* CPU number */
+ 11   127 
+ 11   128     2 delta bit (6),				/* tally modification DELTA */
+ 11   129 
+ 11   130 
+ 11   131 /*	WORD (3)		*/
+ 11   132 
+ 11   133     2 word3 bit (18),
+ 11   134 
+ 11   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+ 11   136       3 tsna,					/* Word 1 status */
+ 11   137         4 prn bit (3),				/* Word 1  PR  number */
+ 11   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+ 11   139       3 tsnb,					/* Word 2  status */
+ 11   140         4 prn bit (3),				/* Word 2  PR  number */
+ 11   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+ 11   142       3 tsnc,					/* Word 3  status */
+ 11   143         4 prn bit (3),				/* Word 3  PR  number */
+ 11   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+ 11   145 
+ 11   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+ 11   147 
+ 11   148 
+ 11   149 /* 	WORD (4)		*/
+ 11   150 
+ 11   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+ 11   152 
+ 11   153     2 ir,						/* INDICATOR  REGISTERS */
+ 11   154       3 zero bit (1),				/* zero indicator */
+ 11   155       3 neg bit (1),				/* negative indicator */
+ 11   156       3 carry bit (1),				/* carryry indicator */
+ 11   157       3 ovfl bit (1),				/* overflow indicator */
+ 11   158       3 eovf bit (1),				/* eponent overflow */
+ 11   159       3 eufl bit (1),				/* exponent underflow */
+ 11   160       3 oflm bit (1),				/* overflow mask */
+ 11   161       3 tro bit (1),				/* tally runout */
+ 11   162       3 par bit (1),				/* parity error */
+ 11   163       3 parm bit (1),				/* parity mask */
+ 11   164       3 bm bit (1),					/* ^bar mode */
+ 11   165       3 tru bit (1),				/* truncation mode */
+ 11   166       3 mif bit (1),				/* multi-word instruction mode */
+ 11   167       3 abs bit (1),				/* absolute mode */
+ 11   168       3 hex bit (1),				/* hexadecimal exponent mode */
+ 11   169       3 pad bit (3),
+ 11   170 
+ 11   171 
+ 11   172 /*	WORD (5)		*/
+ 11   173 
+ 11   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+ 11   175 
+ 11   176     2 cu,						/* CONTROL UNIT STATUS */
+ 11   177       3 rf bit (1),					/* on first cycle of repeat instr */
+ 11   178       3 rpt bit (1),				/* repeat instruction */
+ 11   179       3 rd bit (1),					/* repeat double instruction */
+ 11   180       3 rl bit (1),					/* repeat link instruciton */
+ 11   181       3 pot bit (1),				/* IT  modification */
+ 11   182       3 pon bit (1),				/* return type instruction */
+ 11   183       3 xde bit (1),				/* XDE from Even location */
+ 11   184       3 xdo bit (1),				/* XDE from Odd  location */
+ 11   185       3 poa bit (1),				/* operation preparation */
+ 11   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+ 11   187       3 its bit (1),				/* ITS modification */
+ 11   188       3 if bit (1),					/* fault occured during instruction fetch */
+ 11   189 
+ 11   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+ 11   191 
+ 11   192 
+ 11   193 /*	WORDS (6,7)	*/
+ 11   194 
+ 11   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+ 11   196 
+ 11   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+ 11   198 
+ 11   199 
+ 11   200 
+ 11   201 
+ 11   202 
+ 11   203 
+ 11   204 /*	ALTERNATE   SCU  DECLARATION		*/
+ 11   205 
+ 11   206 
+ 11   207 dcl 1 scux based (scup) aligned,
+ 11   208 
+ 11   209    (2 pad0 bit (36),
+ 11   210 
+ 11   211     2 fd,						/* GROUP II  FAULT DATA */
+ 11   212       3 isn bit (1),				/* illegal segment number */
+ 11   213       3 ioc bit (1),				/* illegal op  code  */
+ 11   214       3 ia_am bit (1),				/* illegal address - modifier */
+ 11   215       3 isp bit (1),				/* illegal slave  procedure */
+ 11   216       3 ipr bit (1),				/* illegal procedure */
+ 11   217       3 nea bit (1),				/* non existent address */
+ 11   218       3 oobb bit (1),				/* out of bounds */
+ 11   219       3 pad bit (29),
+ 11   220 
+ 11   221     2 pad2 bit (36),
+ 11   222 
+ 11   223     2 pad3a bit (18),
+ 11   224 
+ 11   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+ 11   226       3 prn bit (3),				/* PR  number */
+ 11   227       3 prv bit (1),				/* PR  valid bit */
+ 11   228 
+ 11   229     2 pad3b bit (6)) unaligned,
+ 11   230 
+ 11   231     2 pad45 (0:1) bit (36),
+ 11   232 
+ 11   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+ 11   234 
+ 11   235 
+ 11   236 
+ 11   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+ 10    75 
+ 10    76 
+ 10    77 /* END include file toehold.incl.pl1 */
+      994 
+      995  /* BEGIN include file unpaged_page_tables.incl.pl1 */
+ 12     2 
+ 12     3 /* This include file describes the segments unpaged_page_tables and
+ 12     4*int_unpaged_page_tables.  These segments contain the page tables for
+ 12     5*segments that are paged and wired, those segments previously called
+ 12     6*unpaged.
+ 12     7*
+ 12     8*Written September 15, 1983 by Keith Loepere. */
+ 12     9 
+ 12    10 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 12    11 
+ 12    12 dcl  upt_ptr		        ptr;
+ 12    13 dcl  1 upt		        aligned based (upt_ptr),
+ 12    14        2 sst_absloc		        fixed bin (26),	/* for dump analyzers */
+ 12    15        2 sst_last_loc	        fixed bin (26),
+ 12    16        2 upt_absloc		        fixed bin (26),
+ 12    17        2 upt_last_loc	        fixed bin (26),
+ 12    18        2 iupt_absloc	        fixed bin (26),
+ 12    19        2 iupt_last_loc	        fixed bin (26),
+ 12    20 
+ 12    21        2 current_length	        fixed bin,		/* number of words currently used */
+ 12    22        2 max_length		        fixed bin,		/* max number of words in memory allocated */
+ 12    23        2 first_entry	        like upt_entry;
+ 12    24 
+ 12    25 dcl  upt_entry_ptr		        ptr;
+ 12    26 dcl  1 upt_entry		        aligned based (upt_entry_ptr),
+ 12    27        2 size		        fixed bin,		/* number of page table words allocated */
+ 12    28        2 segno		        fixed bin,		/* of hardcore segment */
+ 12    29        2 ptws		        (0 refer (upt_entry.size)) bit (36) aligned;
+ 12    30 
+ 12    31 /* END include file unpaged_page_tables.incl.pl1 */
+      995 
+      996 
+      997 /* BEGIN MESSAGE DOCUMENTATION
+      998*
+      999*   Message:
+     1000*   initializer: intk card missing.
+     1001*
+     1002*   S: $crash
+     1003*
+     1004*   T: $init
+     1005*
+     1006*   M: No "intk" card was found in the config deck.
+     1007*
+     1008*   A: $config
+     1009*
+     1010*   Message:
+     1011*   initializer: Bad root volume.
+     1012*
+     1013*   S: $crash
+     1014*
+     1015*   T: $init
+     1016*
+     1017*   M: A volume specified on a ROOT card was found ill formatted by
+     1018*   init_root_vols.
+     1019*
+     1020*   A: $recover
+     1021*
+     1022*   Message:
+     1023*   initializer: Multics SYSID (VERSION) syserr logging initialized.
+     1024*
+     1025*   S: $log
+     1026*
+     1027*   T: $init
+     1028*
+     1029*   M: This is the first syserr message produced by every bootload.  It is
+     1030*   produced as soon as the syserr logging mechanism is made operative, which
+     1031*   insures that it is the first message logged for every bootload.  It
+     1032*   identifies the system ID and version of the running system.
+     1033*
+     1034*   A: $ignore
+     1035*
+     1036*   Message:
+     1037*   initializer: bad_dir_ signal raised
+     1038*
+     1039*   S: $crash
+     1040*
+     1041*   T: $init
+     1042*
+     1043*   M: During system bootload, directory control has encountered an invalid
+     1044*   directory.  This usually occurs due to damage to the root or to
+     1045*   >system_control_1.  The RPV is automatically scheduled for volume salvage.
+     1046*
+     1047*   A: $recover
+     1048*
+     1049*   Message:
+     1050*   initializer: Segment fault error by PPPP referencing PPPP: ERROR
+     1051*
+     1052*   S: $crash
+     1053*
+     1054*   T: $init
+     1055*
+     1056*   M: During system bootload, a segment fault error has occurred.  This
+     1057*   usually indicates running out of room on the RLV.  A BOOT RPVS may recover
+     1058*   some of this space.  The procedure causing the error and the segment being
+     1059*   referenced are identified, along with the error message.
+     1060*
+     1061*   A: $recover
+     1062*
+     1063*   Message:
+     1064*   initializer: STOP_NUM  ENTRY_TO_CALL  state ISTATE  phase CPHASE.
+     1065*
+     1066*   S: $beep
+     1067*
+     1068*   T: $init
+     1069*
+     1070*   M: The "loud" config parm is currently enabled.  This message gives the
+     1071*   current stop number (STOP_NUM), that can be used to stop the initialization
+     1072*   process and return to BCE before calling ENTRY_TO_CALL.  The current values
+     1073*   of sys_info$initialization_state (ISTATE) and sys_info$collection_1_phase
+     1074*   (CPHASE) are also given.
+     1075*
+     1076*   A: $ignore
+     1077*
+     1078*   Message:
+     1079*   initializer: ENTRY_TO_CALL check_stop.
+     1080*
+     1081*   S: $beep
+     1082*
+     1083*   T: $init
+     1084*
+     1085*   M: The initializer has detected that the first nine data switches on the CPU
+     1086*   contain an octal "123" and the STOP number of the entry to be called and the
+     1087*   current collection_1_phase match the other CPU data switches.  The
+     1088*   initializer calls BCE after displaying this message, but before actually
+     1089*   calling the entry.  The CPU data switches have the following usage:
+     1090*   .spf;.inl +10;.unl +9
+     1091*   0  -  8: must be set to an octal "123" for any other switches to be valid.
+     1092*   .unl +9
+     1093*   9  - 14: area for the BCD value of the collection_1_phase to stop in.
+     1094*   .unl +9
+     1095*   15 - 20: area for the BCD hundreds digit of the STOP number.
+     1096*   .unl +9
+     1097*   21 - 26: area for the BCD tens digit of the STOP number.
+     1098*   .unl +9
+     1099*   27 - 32: area for the BCD ones digit of the STOP number.
+     1100*   .unl +9
+     1101*   33 - 35: not used or checked.
+     1102*   .inl -10
+     1103*
+     1104*   A: Execute any BCE functions desired. Modify the setting of the CPU data
+     1105*   switches as required. Execute the BCE "go" function to resume initialization.
+     1106*
+     1107*   END MESSAGE DOCUMENTATION */
+     1108      end real_initializer;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  1058.5  real_initializer.pl1              >spec>install>1110>real_initializer.pl1
+985          1    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+986          2    05/08/81  1853.6  config_intk_card.incl.pl1         >ldd>include>config_intk_card.incl.pl1
+987          3    04/30/87  1513.7  flagbox.incl.pl1                  >ldd>include>flagbox.incl.pl1
+988          4    03/27/86  1120.0  opc_reconfig_options.incl.pl1     >ldd>include>opc_reconfig_options.incl.pl1
+989          5    05/27/82  1525.8  pvt.incl.pl1                      >ldd>include>pvt.incl.pl1
+990          6    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+991          7    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+992          8    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+993          9    03/08/85  0852.7  syserr_data.incl.pl1              >ldd>include>syserr_data.incl.pl1
+994         10    07/11/84  0937.3  toe_hold.incl.pl1                 >ldd>include>toe_hold.incl.pl1
+10-75       11    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+995         12    07/11/84  0937.3  unpaged_page_tables.incl.pl1      >ldd>include>unpaged_page_tables.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000055 constant        fixed bin(17,0)          initial dcl 8-7 set ref 936* 942*
+About_To                               parameter       char                     packed unaligned dcl 926 set ref 923 936* 942*
+At_bce__boot                           constant        fixed bin(17,0)          initial dcl 10-66 ref 351 639 653
+At_bce__crash                          constant        fixed bin(17,0)          initial dcl 10-70 ref 348 627
+At_bce__early                          constant        fixed bin(17,0)          initial dcl 10-65 ref 350 637
+At_bce__shutdown                       constant        fixed bin(17,0)          initial dcl 10-71 ref 344 627
+BCE_CRASH_INITIALIZATION               constant        fixed bin(17,0)          initial dcl 1-20 ref 351 377 644 651
+BOOT_INITIALIZATION                    constant        fixed bin(17,0)          initial dcl 1-11 ref 338 356 478 513 615 629 639 644
+                                                                                  652
+Bits                                   parameter       bit(24)                  packed unaligned dcl 950 ref 947 954 954
+CRASH                           000060 constant        fixed bin(17,0)          initial dcl 8-7 set ref 326* 543* 903* 917*
+CRASH_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 1-18 ref 352 644
+EARLY_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 1-10 ref 316 356 392 403 478 500 513 537
+                                                                                  629 634 637 644
+INTK_CARD_WORD                  000000 constant        char(4)                  initial dcl 2-20 set ref 325*
+LOG                             000056 constant        fixed bin(17,0)          initial dcl 8-7 set ref 784*
+Multics                                constant        fixed bin(17,0)          initial dcl 10-67 ref 641
+P_Stop_Number                          parameter       fixed bin(17,0)          dcl 925 ref 923 932
+RE_EARLY_INITIALIZATION                constant        fixed bin(17,0)          initial dcl 1-19 ref 350 377 634
+SERVICE_INITIALIZATION                 constant        fixed bin(17,0)          initial dcl 1-12 ref 341 358 422 456 467 478 513 547
+                                                                                  629 641 664
+SHUT_INITIALIZATION                    constant        fixed bin(17,0)          initial dcl 1-21 ref 346 615
+SUSPEND_CONSOLE_SERVICE         000057 constant        fixed bin(17,0)          initial dcl 4-45 set ref 969*
+Stop_Number                     000144 automatic       fixed bin(17,0)          dcl 930 set ref 932* 936* 941
+a_condition                            parameter       char                     packed unaligned dcl 889 ref 885 909
+a_continue                             parameter       bit(1)                   dcl 892 ref 885 909
+a_infop                                parameter       pointer                  dcl 890 ref 885 909
+a_mcp                                  parameter       pointer                  dcl 888 ref 885 909 912
+a_wcp                                  parameter       pointer                  dcl 891 ref 885 909
+accept_rpv                      000104 constant        entry                    external dcl 202 ref 811
+active_all_rings_data$system_id 000034 external static char(32)                 packed unaligned dcl 178 set ref 784*
+active_all_rings_data$version_id
+                                000036 external static char(32)                 packed unaligned dcl 179 set ref 784*
+addr                                                   builtin function         dcl 148 ref 280 281 283 303 387 388 649 649 899 913
+                                                                                  970 977 978 981 982
+announce_chwm$after             000106 constant        entry                    external dcl 203 ref 680
+announce_chwm$before            000110 constant        entry                    external dcl 204 ref 478
+baseptr                                                builtin function         dcl 149 ref 914 915
+bce_abs_seg$free                000010 constant        entry                    external dcl 167 ref 972
+bce_get_to_command_level        000112 constant        entry                    external dcl 205 ref 649
+bce_request_table_$bce_request_table_
+                                000040 external static fixed bin(17,0)          dcl 180 set ref 649 649
+bin                                                    builtin function         dcl 150 ref 954
+binary                                                 builtin function         dcl 151 ref 914 915
+ca                        5            based           bit(18)                  level 2 packed packed unaligned dcl 11-56 ref 915
+call_bce                        000332 constant        entry                    external dcl 928 ref 943
+code                            000100 automatic       fixed bin(35,0)          dcl 156 set ref 536* 537
+collect_free_core               000114 constant        entry                    external dcl 206 ref 679
+condition_                      000016 constant        entry                    external dcl 170 ref 307 818 819
+config_$find                    000012 constant        entry                    external dcl 168 ref 325
+config_$find_parm               000014 constant        entry                    external dcl 169 ref 287 291 444
+config_deck$                    000042 external static bit(36)                  array dcl 181 set ref 377* 618
+cpu_switches                    000142 automatic       bit(36)                  dcl 927 set ref 938* 939 940 940
+current_length            6            based           fixed bin(17,0)          level 2 dcl 12-13 set ref 387 388 977* 978*
+dbm_man$init                    000116 constant        entry                    external dcl 207 ref 732
+debug_check$copy_card           000120 constant        entry                    external dcl 208 ref 476
+delete_segs$temp                000122 constant        entry                    external dcl 209 ref 690 849
+digits                          000154 automatic       fixed bin(17,0)          array dcl 951 set ref 954* 955 955 955 955
+digits_bits                            defined         bit(6)                   array packed unaligned dcl 952 ref 954
+dir_lock_init                   000124 constant        entry                    external dcl 210 ref 754
+disk_reader$final               000130 constant        entry                    external dcl 212 ref 868
+disk_reader$init                000126 constant        entry                    external dcl 211 ref 695
+done_one_initialization         000101 automatic       bit(1)                   dcl 157 set ref 275* 495 557 583 620 621*
+errcode                  43            based           fixed bin(35,0)          level 2 packed packed unaligned dcl 11-12 set ref
+                                                                                  917*
+establish_config_deck           000132 constant        entry                    external dcl 213 ref 662
+establish_temp_segs             000134 constant        entry                    external dcl 214 ref 550
+fgbx                                   based           structure                level 1 dcl 3-24
+find_file_partition             000136 constant        entry                    external dcl 215 ref 555
+find_rpv_subsystem              000140 constant        entry                    external dcl 216 ref 510
+flagbox$                        000322 external static fixed bin(17,0)          dcl 3-21 set ref 283
+fnp_init                        000142 constant        entry                    external dcl 217 ref 767
+free_core_size            7            based           fixed bin(24,0)          level 2 dcl 7-13 set ref 386 486* 980*
+free_core_start           2            based           fixed bin(24,0)          level 2 dcl 7-13 set ref 385 486* 979*
+get_io_segs                     000144 constant        entry                    external dcl 218 ref 430
+getuid$init                     000146 constant        entry                    external dcl 219 ref 723
+ilc                       4            based           bit(18)                  level 2 packed packed unaligned dcl 11-56 ref 914
+init_bce$paged                  000150 constant        entry                    external dcl 220 ref 585
+init_bce$wired                  000152 constant        entry                    external dcl 221 ref 497
+init_branches                   000154 constant        entry                    external dcl 222 ref 834
+init_dm_journal_seg             000156 constant        entry                    external dcl 223 ref 743
+init_early_config               000160 constant        entry                    external dcl 224 ref 397
+init_hardcore_gates             000162 constant        entry                    external dcl 225 ref 802
+init_lvt                        000164 constant        entry                    external dcl 226 ref 816
+init_partitions                 000166 constant        entry                    external dcl 227 ref 669
+init_pvt                        000170 constant        entry                    external dcl 228 ref 526
+init_root_dir                   000172 constant        entry                    external dcl 229 ref 824
+init_root_vols                  000174 constant        entry                    external dcl 230 ref 536
+init_scavenger_data             000176 constant        entry                    external dcl 231 ref 738
+init_sst$early                  000200 constant        entry                    external dcl 232 ref 473
+init_sst$normal                 000202 constant        entry                    external dcl 233 ref 469
+init_sst_name_seg               000204 constant        entry                    external dcl 234 ref 796
+init_stack_0                    000206 constant        entry                    external dcl 235 ref 844
+init_str_seg                    000210 constant        entry                    external dcl 236 ref 791
+init_sys_var                    000212 constant        entry                    external dcl 237 ref 749
+init_syserr_log                 000300 constant        entry                    external dcl 264 ref 782
+init_toehold                    000214 constant        entry                    external dcl 238 ref 626
+init_toehold$save_safe_config_deck
+                                000216 constant        entry                    external dcl 239 ref 631
+init_vtoc_man                   000220 constant        entry                    external dcl 240 ref 727
+initial_error_handler           000020 constant        entry                    external dcl 171 ref 307 307
+initialize_faults$fault_init_one
+                                000222 constant        entry                    external dcl 241 ref 418 975
+initialize_faults$fault_init_two
+                                000224 constant        entry                    external dcl 242 ref 718
+initialize_faults$interrupt_init
+                                000226 constant        entry                    external dcl 243 ref 491
+int_unpaged_page_tables$        000044 external static fixed bin(17,0)          dcl 182 set ref 387 977
+intk_card                              based           structure                level 1 dcl 2-5
+intk_cardp                      000114 automatic       pointer                  dcl 2-3 set ref 324* 325* 326 327 328
+io_config_init                  000230 constant        entry                    external dcl 244 ref 606
+io_path                                based           structure                level 1 dcl 10-22
+ioi_init                        000232 constant        entry                    external dcl 245 ref 611
+ioi_page_table$init             000234 constant        entry                    external dcl 246 ref 762
+iom_data_init                   000236 constant        entry                    external dcl 247 ref 436
+kst_util$garbage_collect        000240 constant        entry                    external dcl 248 ref 829
+load_disk_mpcs                  000242 constant        entry                    external dcl 249 ref 520
+load_mst                        000244 constant        entry                    external dcl 250 ref 567
+load_mst$init_commands          000246 constant        entry                    external dcl 251 ref 578
+load_mst$make_permanent         000250 constant        entry                    external dcl 252 ref 593
+load_system                     000252 constant        entry                    external dcl 253 ref 863
+make_segs_paged                 000254 constant        entry                    external dcl 254 ref 674
+mc                                     based           structure                level 1 dcl 11-12
+mc_state                               based           structure                level 1 dcl 10-42
+mcp                             000122 automatic       pointer                  dcl 11-10 set ref 912* 913 917
+memory_state            241     000100 external static fixed bin(17,0)          level 2 dcl 196 set ref 344 348 627 627 637* 639*
+                                                                                  641* 653*
+meter_initialization            000102 automatic       bit(1)                   dcl 158 set ref 276* 288*
+move_non_perm_wired_segs        000256 constant        entry                    external dcl 255 ref 424
+multics_state          2760     000100 external static structure                level 2 dcl 196
+not_masked                      000170 automatic       bit(1)                   initial dcl 962 set ref 962* 964* 969 974
+null                                                   builtin function         dcl 152 ref 286 288 290 292 324 326 443 445
+ocdcm_$init_all_consoles        000260 constant        entry                    external dcl 256 ref 441
+ocdcm_$reconfigure              000022 constant        entry                    external dcl 172 ref 969
+ocdcm_init_flag           1(02)        based           bit(1)                   level 2 packed packed unaligned dcl 9-21 set ref
+                                                                                  970*
+old_memory_state       3071     000100 external static fixed bin(17,0)          level 3 dcl 196 ref 350 351
+parm_ptr                        000104 automatic       pointer                  dcl 159 set ref 286* 287* 288 290* 291* 292 443*
+                                                                                  444* 445
+pmut$set_mask                   000024 constant        entry                    external dcl 173 ref 974
+pmut$trace_rsw                  000026 constant        entry                    external dcl 174 ref 938
+pointer                                                builtin function         dcl 153 ref 914 915
+ppr                             000100 automatic       pointer                  dcl 894 in procedure "bad_dir_handler" set ref 914*
+                                                                                  917*
+ppr                                    based           structure                level 2 in structure "scu" packed packed unaligned
+                                                                                  dcl 11-56 in procedure "real_initializer"
+pre_link_hc                     000262 constant        entry                    external dcl 257 ref 705
+psr                       0(03)        based           bit(15)                  level 3 packed packed unaligned dcl 11-56 ref 914
+pvt$array                       000324 external static fixed bin(17,0)          dcl 6-18 set ref 899
+pvt$root_pvtx                   000330 external static fixed bin(17,0)          dcl 897 ref 900 900
+pvt_array                              based           structure                array level 1 dcl 6-24
+pvt_arrayp                      000116 automatic       pointer                  dcl 6-21 set ref 899* 900 900
+pvte                                   based           structure                level 1 dcl 6-26
+read_disk$init                  000264 constant        entry                    external dcl 258 ref 531
+ready_to_y_and_s                000106 automatic       bit(1)                   dcl 160 set ref 312* 383* 447* 936 942 968*
+return_to_bce_command
+                        100            based           char(128)                level 2 packed packed unaligned dcl 3-24 set ref
+                                                                                  283*
+safe_config_deck$               000046 external static bit(36)                  array dcl 183 set ref 377 618*
+saved_free_core_size            000107 automatic       fixed bin(24,0)          dcl 161 set ref 386* 980
+saved_free_core_start           000110 automatic       fixed bin(24,0)          dcl 162 set ref 385* 979
+saved_iupt_lth                  000111 automatic       fixed bin(17,0)          dcl 163 set ref 387* 977
+saved_upt_lth                   000112 automatic       fixed bin(17,0)          dcl 164 set ref 388* 978
+scas_init                       000266 constant        entry                    external dcl 259 ref 452
+scs$sys_level                   000050 external static bit(72)                  dcl 184 set ref 974*
+scs_and_clock_init$date_time    000270 constant        entry                    external dcl 260 ref 601
+scs_and_clock_init$early        000272 constant        entry                    external dcl 261 ref 408
+scs_and_clock_init$normal       000274 constant        entry                    external dcl 262 ref 336 412
+scu                                    based           structure                level 1 dcl 11-56 in procedure "real_initializer"
+scu                      30            based           bit(36)                  array level 2 in structure "mc" packed packed
+                                                                                  unaligned dcl 11-12 in procedure
+                                                                                  "real_initializer" set ref 913
+scup                            000124 automatic       pointer                  dcl 11-54 set ref 913* 914 914 915 915
+sd                                     based           structure                level 1 dcl 9-21
+segment_loader                  000276 constant        entry                    external dcl 263 ref 700
+slt                                    based           structure                level 1 dcl 7-13
+slt$                            000052 external static fixed bin(17,0)          dcl 185 set ref 303
+sltp                            000120 automatic       pointer                  dcl 7-7 set ref 303* 385 386 486 486 979 980
+sst_absloc                             based           fixed bin(26,0)          level 2 dcl 12-13 set ref 280* 981*
+sst_last_loc              1            based           fixed bin(26,0)          level 2 dcl 12-13 set ref 281* 982*
+stop_number                     000143 automatic       fixed bin(17,0)          dcl 929 set ref 940* 941
+substr                                                 builtin function         dcl 154 ref 939 940 940
+sys_boot_info$assume_config_deck
+                                000054 external static bit(1)                   dcl 186 set ref 285 292* 318 513
+sys_boot_info$boot_without_query
+                                000056 external static bit(1)                   dcl 187 set ref 539*
+sys_boot_info$bootload_mem_size 000060 external static fixed bin(26,0)          dcl 188 ref 389
+sys_boot_info$config_has_been_modified
+                                000062 external static bit(1)                   dcl 189 set ref 381*
+sys_boot_info$contig_mem_size   000064 external static fixed bin(26,0)          dcl 190 set ref 389*
+sys_boot_info$rpv_cold_boot     000066 external static bit(1)                   dcl 191 set ref 327* 596*
+sys_boot_info$system_type       000070 external static fixed bin(17,0)          dcl 192 ref 279
+sys_info$collection_1_phase     000320 external static fixed bin(17,0)          dcl 1-8 set ref 316* 338* 341 346* 350* 351* 352*
+                                                                                  356 356* 358* 377 377 392 403 422 456 467 478 478
+                                                                                  478 500 513 513 513 537 547 615 615* 629 629 629
+                                                                                  634 634* 637 639 641 644 644 644 644 651 652* 664
+                                                                                  932 936*
+sys_info$initialization_state   000072 external static fixed bin(17,0)          dcl 193 set ref 315* 713* 855* 876* 936*
+sys_info$service_system         000074 external static bit(1)                   dcl 194 set ref 314* 877*
+sys_info$system_type            000076 external static fixed bin(17,0)          dcl 195 set ref 279*
+syserr                          000030 constant        entry                    external dcl 175 ref 326 543 784 903 936 942
+syserr$error_code               000032 constant        entry                    external dcl 176 ref 917
+syserr_data$syserr_area         000326 external static char(1)                  dcl 9-14 set ref 970
+syserr_seg_manager$initialize_log_names
+                                000302 constant        entry                    external dcl 265 ref 839
+tape_reader$final               000304 constant        entry                    external dcl 266 ref 572
+tape_reader$init                000306 constant        entry                    external dcl 267 ref 562
+tc_init                         000310 constant        entry                    external dcl 268 ref 462
+tc_init$early                   000312 constant        entry                    external dcl 269 ref 458
+tc_init$part_2                  000314 constant        entry                    external dcl 270 ref 776
+tc_init$start_other_cpus        000316 constant        entry                    external dcl 271 ref 875
+toe_hold                               based           structure                level 1 dcl 10-11
+toehold$                        000100 external static structure                level 1 dcl 196
+tpr                       2            based           structure                level 2 in structure "scu" packed packed unaligned
+                                                                                  dcl 11-56 in procedure "real_initializer"
+tpr                             000102 automatic       pointer                  dcl 895 in procedure "bad_dir_handler" set ref 915*
+                                                                                  917*
+tsr                       2(03)        based           bit(15)                  level 3 packed packed unaligned dcl 11-56 ref 915
+unpaged_page_tables$            000102 external static fixed bin(17,0)          dcl 197 set ref 280 281 388 978 981 982
+upt                                    based           structure                level 1 dcl 12-13
+upt_entry                              based           structure                level 1 dcl 12-26
+vol_trouble_count        33            based           fixed bin(17,0)          array level 2 packed packed unaligned dcl 6-24 set
+                                                                                  ref 900* 900
+warm_or_cold              1            based           char(4)                  level 2 dcl 2-5 set ref 327 328*
+wlog_header                            based           structure                level 1 dcl 9-33
+wmess_header                           based           structure                level 1 dcl 9-52
+yell_and_scream                 000113 automatic       bit(1)                   dcl 165 set ref 277* 445* 936 942
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 8-7
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 1-23
+CRASH_ON_CRF                           internal static fixed bin(17,0)          initial dcl 4-45
+ENABLE_CONSOLE_SERVICE                 internal static fixed bin(17,0)          initial dcl 4-45
+FLAGBOX_SENTINEL                       internal static char(32)                 initial packed unaligned dcl 3-51
+Initial_undefined                      internal static fixed bin(17,0)          initial dcl 10-64
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 8-7
+LOCK_MCA_INPUT                         internal static fixed bin(17,0)          initial dcl 4-45
+MAKE_ALTERNATE_CONSOLE                 internal static fixed bin(17,0)          initial dcl 4-45
+MAKE_BOOTLOAD_CONSOLE                  internal static fixed bin(17,0)          initial dcl 4-45
+MAKE_INOP_DEVICE                       internal static fixed bin(17,0)          initial dcl 4-45
+MAKE_IO_DEVICE                         internal static fixed bin(17,0)          initial dcl 4-45
+MAKE_UNAVAILABLE                       internal static fixed bin(17,0)          initial dcl 4-45
+NOP                                    internal static fixed bin(17,0)          initial dcl 4-45
+RESET_CONSOLE                          internal static fixed bin(17,0)          initial dcl 4-45
+RUN_ON_CRF                             internal static fixed bin(17,0)          initial dcl 4-45
+SEND_MC_IO                             internal static fixed bin(17,0)          initial dcl 4-45
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 8-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 8-7
+TOE_HOLD_BOOT_ENTRY                    internal static fixed bin(17,0)          initial dcl 10-36
+TOE_HOLD_BOS_ENTRY                     internal static fixed bin(17,0)          initial dcl 10-37
+TOE_HOLD_BOS_MULTICS_ENTRY             internal static fixed bin(17,0)          initial dcl 10-39
+TOE_HOLD_BOS_NO_SAVE_ENTRY             internal static fixed bin(17,0)          initial dcl 10-38
+TOE_HOLD_CRASH_ENTRY                   internal static fixed bin(17,0)          initial dcl 10-31
+TOE_HOLD_DUMP_ENTRY                    internal static fixed bin(17,0)          initial dcl 10-33
+TOE_HOLD_ESD_ENTRY                     internal static fixed bin(17,0)          initial dcl 10-32
+TOE_HOLD_MULTICS_ENTRY                 internal static fixed bin(17,0)          initial dcl 10-34
+TOE_HOLD_RESTART_ENTRY                 internal static fixed bin(17,0)          initial dcl 10-35
+UNLOCK_MCA_INPUT                       internal static fixed bin(17,0)          initial dcl 4-45
+Undefined_continue                     internal static fixed bin(17,0)          initial dcl 10-72
+Undefined_reading_bce                  internal static fixed bin(17,0)          initial dcl 10-69
+Undefined_saving_mem                   internal static fixed bin(17,0)          initial dcl 10-73
+Undefined_saving_state                 internal static fixed bin(17,0)          initial dcl 10-68
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 6-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 6-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 6-113
+abx                                    internal static fixed bin(17,0)          initial dcl 11-42
+aclp                                   automatic       pointer                  dcl 7-7
+acls                                   based           structure                level 1 dcl 7-45
+apx                                    internal static fixed bin(17,0)          initial dcl 11-42
+bbx                                    internal static fixed bin(17,0)          initial dcl 11-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 11-42
+fgbxp                                  automatic       pointer                  dcl 3-22
+intk_card_array                        based           structure                level 1 dcl 2-16
+lbx                                    internal static fixed bin(17,0)          initial dcl 11-42
+lpx                                    internal static fixed bin(17,0)          initial dcl 11-42
+mc_state_ptr                           automatic       pointer                  dcl 10-41
+name_seg                               based           structure                level 1 dcl 7-26
+namep                                  automatic       pointer                  dcl 7-7
+names_ptr                              automatic       pointer                  dcl 7-7
+path                                   based           structure                level 1 dcl 7-40
+pathp                                  automatic       pointer                  dcl 7-7
+pvt                                    based           structure                level 1 dcl 5-13
+pvt$                                   external static fixed bin(17,0)          dcl 5-9
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 6-19
+pvtep                                  automatic       pointer                  dcl 6-22
+pvtp                                   automatic       pointer                  dcl 5-9
+sbx                                    internal static fixed bin(17,0)          initial dcl 11-42
+scux                                   based           structure                level 1 dcl 11-207
+sd_ptr                                 automatic       pointer                  dcl 9-17
+segnam                                 based           structure                level 1 dcl 7-31
+spx                                    internal static fixed bin(17,0)          initial dcl 11-42
+syserr_data$wired_log_area             external static char(1)                  dcl 9-14
+upt_entry_ptr                          automatic       pointer                  dcl 12-25
+upt_ptr                                automatic       pointer                  dcl 12-12
+wlog                                   based           structure                level 1 dcl 9-29
+wlog_ptr                               automatic       pointer                  dcl 9-17
+wmess                                  based           structure                level 1 dcl 9-47
+wmess_ptr                              automatic       pointer                  dcl 9-17
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BCD                             004114 constant        entry                    internal dcl 947 ref 940
+CRASH_BAD_DIR                   003624 constant        label                    dcl 903 ref 905
+CRASH_SEG_FAULT                 003712 constant        label                    dcl 917 ref 919
+RETRY_RPV                       002267 constant        label                    dcl 403 ref 541
+TURN_OFF                        004162 constant        entry                    internal dcl 960 ref 355 540
+TURN_OFF$$masked                004167 constant        entry                    internal dcl 966 ref 345 349
+bad_dir_handler                 003575 constant        entry                    internal dcl 885 ref 818 818
+bootload_Multics                001124 constant        label                    dcl 341 ref 360
+check_stop                      003750 constant        entry                    internal dcl 923 ref 335 396 407 411 417 423 429 435
+                                                                                  440 451 457 461 468 472 485 490 496 509 519 525
+                                                                                  530 535 549 554 561 566 571 577 584 592 600 605
+                                                                                  610 625 630 648 661 668 673 678 689 694 699 704
+                                                                                  717 722 726 731 737 742 748 753 761 766 775 781
+                                                                                  790 795 801 810 815 823 828 833 838 843 848 862
+                                                                                  867 872 881
+collection_1                    002213 constant        entry                    internal dcl 367 ref 343 365
+collection_1_start              002214 constant        label                    dcl 377
+collection_2                    001275 constant        entry                    external dcl 709
+collection_3                    002113 constant        entry                    external dcl 857
+real_initializer                000706 constant        entry                    external dcl 13
+seg_fault_handler               003646 constant        entry                    internal dcl 909 ref 819 819
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      6522        7056    5052        6532
+Length     10004    5052       334         712    1447           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+real_initializer                    282 external procedure  is an external procedure.  
+collection_1                            internal procedure  shares stack frame of external procedure real_initializer.  
+bad_dir_handler                     126 internal procedure  is assigned to an entry variable.  
+check_stop                              internal procedure  shares stack frame of external procedure real_initializer.  
+BCD                                     internal procedure  shares stack frame of external procedure real_initializer.  
+TURN_OFF                                internal procedure  shares stack frame of external procedure real_initializer.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bad_dir_handler          000100 ppr                         bad_dir_handler
+                         000102 tpr                         bad_dir_handler
+real_initializer         000100 code                        real_initializer
+                         000101 done_one_initialization     real_initializer
+                         000102 meter_initialization        real_initializer
+                         000104 parm_ptr                    real_initializer
+                         000106 ready_to_y_and_s            real_initializer
+                         000107 saved_free_core_size        real_initializer
+                         000110 saved_free_core_start       real_initializer
+                         000111 saved_iupt_lth              real_initializer
+                         000112 saved_upt_lth               real_initializer
+                         000113 yell_and_scream             real_initializer
+                         000114 intk_cardp                  real_initializer
+                         000116 pvt_arrayp                  real_initializer
+                         000120 sltp                        real_initializer
+                         000122 mcp                         real_initializer
+                         000124 scup                        real_initializer
+                         000142 cpu_switches                check_stop
+                         000143 stop_number                 check_stop
+                         000144 Stop_Number                 check_stop
+                         000154 digits                      BCD
+                         000170 not_masked                  TURN_OFF
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             call_ext_out_desc   call_ext_out        return_mac          ext_entry
+int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+accept_rpv                    announce_chwm$after           announce_chwm$before          bce_abs_seg$free
+bce_get_to_command_level      call_bce                      collect_free_core             condition_
+config_$find                  config_$find_parm             dbm_man$init                  debug_check$copy_card
+delete_segs$temp              dir_lock_init                 disk_reader$final             disk_reader$init
+establish_config_deck         establish_temp_segs           find_file_partition           find_rpv_subsystem
+fnp_init                      get_io_segs                   getuid$init                   init_bce$paged
+init_bce$wired                init_branches                 init_dm_journal_seg           init_early_config
+init_hardcore_gates           init_lvt                      init_partitions               init_pvt
+init_root_dir                 init_root_vols                init_scavenger_data           init_sst$early
+init_sst$normal               init_sst_name_seg             init_stack_0                  init_str_seg
+init_sys_var                  init_syserr_log               init_toehold
+init_toehold$save_safe_config_deck                          init_vtoc_man                 initial_error_handler
+initialize_faults$fault_init_one                            initialize_faults$fault_init_two
+initialize_faults$interrupt_init                            io_config_init                ioi_init
+ioi_page_table$init           iom_data_init                 kst_util$garbage_collect      load_disk_mpcs
+load_mst                      load_mst$init_commands        load_mst$make_permanent       load_system
+make_segs_paged               move_non_perm_wired_segs      ocdcm_$init_all_consoles      ocdcm_$reconfigure
+pmut$set_mask                 pmut$trace_rsw                pre_link_hc                   read_disk$init
+scas_init                     scs_and_clock_init$date_time  scs_and_clock_init$early      scs_and_clock_init$normal
+segment_loader                syserr                        syserr$error_code
+syserr_seg_manager$initialize_log_names                     tape_reader$final             tape_reader$init
+tc_init                       tc_init$early                 tc_init$part_2                tc_init$start_other_cpus
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_all_rings_data$system_id                             active_all_rings_data$version_id
+bce_request_table_$bce_request_table_                       config_deck$                  flagbox$
+int_unpaged_page_tables$      pvt$array                     pvt$root_pvtx                 safe_config_deck$
+scs$sys_level                 slt$                          sys_boot_info$assume_config_deck
+sys_boot_info$boot_without_query                            sys_boot_info$bootload_mem_size
+sys_boot_info$config_has_been_modified                      sys_boot_info$contig_mem_size sys_boot_info$rpv_cold_boot
+sys_boot_info$system_type     sys_info$collection_1_phase   sys_info$initialization_state sys_info$service_system
+sys_info$system_type          syserr_data$syserr_area       toehold$                      unpaged_page_tables$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000705       275 000713       276 000714       277 000715       279 000716       280 000720       281 000721
+    283 000723       285 000727       286 000731       287 000733       288 000745       290 000752       291 000754
+    292 000767       303 000775       307 001000       312 001025       314 001026       315 001030       316 001032
+    318 001034       324 001036       325 001040       326 001050       327 001074       328 001102       335 001104
+    336 001114       338 001121       341 001124       343 001130       344 001131       345 001136       346 001137
+    347 001142       348 001143       349 001145       350 001146       351 001156       352 001163       353 001165
+    355 001166       356 001167       358 001176       360 001200       365 001201       689 001202       690 001215
+    694 001222       695 001233       699 001240       700 001250       704 001255       705 001266       709 001273
+    713 001302       717 001305       718 001315       722 001322       723 001333       726 001340       727 001351
+    731 001356       732 001370       737 001375       738 001410       742 001415       743 001425       748 001432
+    749 001443       753 001450       754 001461       761 001466       762 001501       766 001506       767 001515
+    775 001522       776 001533       781 001540       782 001551       784 001556       790 001605       791 001617
+    795 001624       796 001634       801 001641       802 001654       810 001661       811 001672       815 001677
+    816 001706       818 001713       819 001735       823 001761       824 001772       828 001777       829 002007
+    833 002017       834 002030       838 002035       839 002045       843 002052       844 002064       848 002071
+    849 002101       855 002106       857 002111       862 002120       863 002131       867 002136       868 002151
+    872 002156       875 002166       876 002173       877 002176       881 002200       883 002212       367 002213
+    377 002214       381 002230       383 002231       385 002232       386 002235       387 002237       388 002242
+    389 002245       392 002247       396 002252       397 002262       403 002267       407 002273       408 002303
+    409 002310       411 002311       412 002321       417 002326       418 002336       422 002343       423 002347
+    424 002357       429 002364       430 002375       435 002402       436 002413       440 002420       441 002430
+    443 002435       444 002437       445 002452       447 002457       451 002461       452 002473       456 002500
+    457 002504       458 002515       459 002522       461 002523       462 002532       467 002537       468 002543
+    469 002554       470 002561       472 002562       473 002573       476 002600       478 002605       485 002621
+    486 002631       490 002634       491 002644       495 002651       496 002653       497 002664       500 002671
+    509 002675       510 002710       513 002715       519 002727       520 002740       525 002745       526 002754
+    530 002761       531 002772       535 002777       536 003010       537 003017       539 003025       540 003026
+    541 003027       543 003030       547 003047       549 003053       550 003063       554 003070       555 003103
+    557 003110       561 003112       562 003123       566 003130       567 003137       571 003144       572 003154
+    577 003161       578 003171       583 003176       584 003200       585 003211       587 003216       592 003217
+    593 003227       596 003234       600 003236       601 003246       605 003253       606 003264       610 003271
+    611 003300       615 003305       618 003313       620 003321       621 003323       625 003325       626 003336
+    627 003343       628 003353       629 003354       630 003362       631 003372       634 003377       637 003405
+    639 003413       641 003421       644 003426       648 003437       649 003447       651 003460       652 003464
+    653 003466       661 003471       662 003501       664 003506       668 003512       669 003523       673 003530
+    674 003541       678 003546       679 003561       680 003566       682 003573       885 003574       899 003610
+    900 003613       903 003624       905 003644       909 003645       912 003661       913 003666       914 003670
+    915 003701       917 003712       919 003747       923 003750       932 003761       936 003767       938 004030
+    939 004037       940 004043       941 004051       942 004054       943 004106       958 004113       947 004114
+    954 004116       955 004137       962 004157       960 004162       964 004164       966 004166       968 004171
+    969 004172       970 004212       972 004216       974 004222       975 004233       977 004240       978 004244
+    979 004247       980 004252       981 004254       982 004255       983 004256
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1120 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>bootload_io.alm                                                                                                                        
+ASSEMBLED ON:	11/11/89  0936.2 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " HISTORY COMMENTS:
+                                    10  "  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+                                    11  "     audit(86-03-05,GDixon), install(86-03-21,MR12.0-1033):
+                                    12  "      Support IMU.
+                                    13  "  2) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+                                    14  "     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+                                    15  "     Correct error message documentation.
+                                    16  "  3) change(87-10-02,Farley), approve(88-02-26,MCR7794),
+                                    17  "     audit(88-03-04,Fawcett), install(88-03-15,MR12.2-1035):
+                                    18  "     Added code to set the new flag bootload_info$imu_style_iom.
+                                    19  "  4) change(88-02-12,Farley), approve(88-03-18,MCR7859),
+                                    20  "     audit(88-04-11,Fawcett), install(88-04-19,MR12.2-1037):
+                                    21  "     Added code to $init entry to properly setup the fault and special
+                                    22  "     interrupt channel mailboxes to handle the storing of statuses in the
+                                    23  "     proper places (instead of overwritting the interrupt vectors).
+                                    24  "                                                      END HISTORY COMMENTS
+                                    25  
+    000000                          26  	name	bootload_io
+                                    27  
+                                    28  " The bootload I/O package.
+                                    29  " Rewritten October 1982 by C. Hornig
+                                    30  " Modified September 1983 by Keith Loepere for adp.
+                                    31  " Modified July 1984 by Paul Farley for IMU.
+                                    32  
+                        000200      33  	equ	imw_size,128
+                        000400      34  	equ	iom_mailbox_size,256
+                        000000      35  	equ	channel_mailbox.lpw,0
+                        000002      36  	equ	channel_mailbox.scw,2
+                        000003      37  	equ	channel_mailbox.dcw,3
+                        000040      38  	equ	fault_status_base,32
+                        000120      39  	equ	special_status_base,80
+                        000014      40  	equ	status_queue_size,12
+                        010000      41  	bool	IOTP,010000		" DU
+                        400000      42  	bool	cold_tape_mpc_mask,400000 	" DU
+                        200000      43  	bool	imu_bit_mask,200000 	" DU
+                        000001      44  	equ	imu_bit_shift,1
+                                    45  
+                                    46  	mod	16
+    000000                          47  status:	bss	,16
+    000020                          48  ignore_status:
+    000020                          49  	bss	,16
+    000040                          50  save_regs:bss	,8
+                                    51  
+                                    52  	even
+    000050                          53  pcw:	bss	,2
+                                    54  
+    000052                          55  esw:	bss	,1
+    000053                          56  temp:	bss	,1
+                                    57  " 
+                                    58  " This routine copies the bootload program and sets up bootload_info
+                                    59  "
+                                    60  "	tsx2	bootload_io$preinit
+                                    61  "
+                        000054      62  	segdef	preinit
+                                    63  
+    000054  4a  4 00010 3721 20     64  preinit:	epp	seg,bootload_info$iom_boot_info
+    000055  aa  0 00100 1005 00     65  	mlr	(pr),(pr),fill(0)		" copy the boot program
+    000056  aa   700000 000100      66  	desc9a	fv|0,64
+    000057  aa   600000 000100      67  	desc9a	seg|0,64
+                                    68  
+    000060  aa  6 00000 2351 00     69  	lda	seg|0
+    000061  aa   770000 3750 03     70  	ana	=o770000,du	" check for adp vs l68 iom => system
+    000062  0a   000131 6010 00     71  	tnz	adp_init
+                                    72  
+    000063  aa   000001 2350 07     73  	lda	L68_SYSTEM,dl
+    000064  4a  4 00012 7551 20     74  	sta	bootload_info$system_type
+                                    75  
+    000065  aa  6 00002 2351 00     76  	lda	seg|2		" interrupt base
+    000066  aa   777770 3750 07     77  	ana	=o777770,dl
+    000067  4a  4 00014 1151 20     78  	cmpa	template_slt_$iom_mailbox_absloc
+    000070  0a   000151 6010 00     79  	tnz	bad_iom_interrupt_base
+                                    80  
+    000071  aa  6 00002 2351 00     81  	lda	seg|2		" IOM number
+    000072  aa   000007 3750 07     82  	ana	=o7,dl
+    000073  4a  4 00016 7551 20     83  	sta	bootload_info$tape_iom_number
+    000074  4a  4 00016 0541 20     84  	aos	bootload_info$tape_iom_number
+    000075  aa   000010 7350 00     85  	als	8		" offset in mailbox
+    000076  aa  6 00002 0751 00     86  	ada	seg|2		" absolute address in AL
+    000077  aa   777770 3750 07     87  	ana	=o777770,dl
+    000100  aa   000200 6270 05     88  	eax7	imw_size,al
+    000101  aa  6 00002 1071 00     89  	cmpx7	seg|2		" compare with IOM base
+    000102  0a   000154 6010 00     90  	tnz	bad_iom_base
+                                    91  
+    000103  aa  6 00003 2351 00     92  	lda	seg|3		" get the device number
+    000104  aa   000030 7710 00     93  	arl	24
+    000105  aa   000077 3750 07     94  	ana	=o77,dl
+    000106  4a  4 00020 7551 20     95  	sta	bootload_info$tape_device_number
+                                    96  
+    000107  aa  6 00001 2361 00     97  	ldq	seg|1
+    000110  aa   000033 7720 00     98  	qrl	27		" and the channel
+    000111  aa   000077 3760 07     99  	anq	=o77,dl
+    000112  4a  4 00022 7561 20    100  	stq	bootload_info$tape_channel_number
+                                   101  
+    000113  4a  4 00016 2361 20    102  	ldq	bootload_info$tape_iom_number
+    000114  aa  6 00001 2351 00    103  	lda	seg|1		" get the port number
+    000115  aa   000007 3750 07    104  	ana	=o7,dl
+    000116  4a  4 00024 7551 20    105  	sta	bootload_info$iom_port_table-1,ql
+                                   106  
+                                   107  " Make initial guesses about the presence of BOS.  If thsi test succeeds,
+                                   108  " then bootload_flagbox will check the BOS flagbox for the sentinel.
+                                   109  
+    000117  aa  6 00007 2351 00    110  	lda	seg|7		" get cold boot flag
+    000120  aa   400000 3750 03    111  	ana	cold_tape_mpc_mask,du
+    000121  4a  4 00026 7551 20    112  	sta	bootload_info$cold_tape_mpc
+    000122  aa   400000 6750 03    113  	era	=o400000,du	" not flag
+    000123  4a  4 00030 7551 20    114  	sta	bootload_info$assume_config_deck
+                                   115  
+    000124  aa  6 00007 2351 00    116  	lda	seg|7		" get imu flag
+    000125  aa   200000 3750 03    117  	ana	imu_bit_mask,du
+    000126  aa   000001 7350 00    118  	als	imu_bit_shift
+    000127  4a  4 00032 7551 20    119  	sta	bootload_info$imu_style_iom
+                                   120  
+    000130  aa   000000 7100 12    121  	tra	0,x2		" return
+                                   122  
+    000131                         123  adp_init:
+    000131  aa   000002 2350 07    124  	lda	ADP_SYSTEM,dl
+    000132  4a  4 00012 7551 20    125  	sta	bootload_info$system_type
+                                   126  
+    000133  aa  6 00004 2351 00    127  	lda	seg|4		" IOX number and channel
+    000134  aa   000010 1750 07    128  	sba	8,dl
+    000135  aa   000007 7330 00    129  	lrs	7
+    000136  aa   000007 3750 07    130  	ana	=o7,dl
+    000137  4a  4 00016 7551 20    131  	sta	bootload_info$tape_iom_number
+    000140  4a  4 00016 0541 20    132  	aos	bootload_info$tape_iom_number
+    000141  aa   000035 7320 00    133  	qrs	36-7
+    000142  4a  4 00022 7561 20    134  	stq	bootload_info$tape_channel_number
+                                   135  
+    000143  aa  6 00000 2351 00    136  	lda	seg|0		" get the device number
+    000144  aa   000030 7710 00    137  	arl	24
+    000145  aa   000077 3750 07    138  	ana	=o77,dl
+    000146  4a  4 00020 7551 20    139  	sta	bootload_info$tape_device_number
+                                   140  
+    000147  4a  4 00026 4501 20    141  	stz	bootload_info$cold_tape_mpc
+                                   142  
+    000150  aa   000000 7100 12    143  	tra	0,x2		" return
+                                   144  
+    000151                         145  bad_iom_interrupt_base:
+    000151  0a   000460 2350 00    146  	lda	=o777777000001
+    000152  aa   000000 6160 00    147  	dis
+    000153  aa   777777 7100 04    148  	tra	-1,ic
+                                   149  
+    000154                         150  bad_iom_base:
+    000154  0a   000461 2350 00    151  	lda	=o777777000002
+    000155  aa   000000 6160 00    152  	dis
+    000156  aa   777777 7100 04    153  	tra	-1,ic
+                                   154  " 
+                                   155  " This routine initializes the bootload I/O package.
+                                   156  "
+                                   157  "	tsx2	bootload_io$init
+                                   158  "
+                        000157     159  	segdef	init
+                                   160  
+    000157  0a   000040 7530 00    161  init:	sreg	save_regs
+    000160  aa   002200 2350 07    162  	lda	imw_size+4*64*4,dl
+    000161  aa   000140 1004 00    163  	mlr	(),(pr,rl),fill(0)		" clear everything
+    000162  aa   000000 000000     164  	desc9a	0,0
+    000163  aa   200000 000005     165  	desc9a	mb|0,al
+                                   166  
+    000164  4a  4 00016 2351 20    167  	lda	bootload_info$tape_iom_number " IOM tag (1-4)
+    000165  aa   000010 7350 00    168  	als	8			" 256 words/mailbox
+    000166  aa   777600 6230 05    169  	eax3	imw_size-iom_mailbox_size,al	" X3 -> IOM mailbox
+    000167  4a  4 00016 2361 20    170  	ldq	bootload_info$tape_iom_number " IOM tag (1-4)
+    000170  aa   000014 4020 07    171  	mpy	status_queue_size,dl
+    000171  aa   777764 6240 06    172  	eax4	-status_queue_size,ql	" X4 -> status Q index
+                                   173  
+    000172  aa  2 00040 2121 14    174  	absa	mb|fault_status_base,x4	" get address of status Q
+    000173  aa   000006 7350 00    175  	als	6
+    000174  aa   010014 2750 07    176  	ora	IOTP+status_queue_size,dl	" setup status DCW
+    000175  aa  2 00007 7551 13    177  	sta	mb|1*4+channel_mailbox.dcw,x3 " save DCW in fault chnl mbx
+    000176  aa  2 00006 7551 13    178  	sta	mb|1*4+channel_mailbox.scw,x3 " save DCW for refresh
+    000177  aa  2 00006 2121 13    179  	absa	mb|1*4+channel_mailbox.scw,x3 " get address of refresh DCW
+    000200  aa   000006 7350 00    180  	als	6
+    000201  aa   020001 2750 07    181  	ora	=o020001,dl		" setup LPW
+    000202  aa  2 00004 7551 13    182  	sta	mb|1*4+channel_mailbox.lpw,x3 " save LPW in fault chnl mbx
+                                   183  
+    000203  aa  2 00120 2121 14    184  	absa	mb|special_status_base,x4	" get address of status Q
+    000204  aa   000006 7350 00    185  	als	6
+    000205  aa   010014 2750 07    186  	ora	IOTP+status_queue_size,dl	" setup status DCW
+    000206  aa  2 00033 7551 13    187  	sta	mb|6*4+channel_mailbox.dcw,x3 " save DCW in spec-stat mbx
+    000207  aa  2 00032 7551 13    188  	sta	mb|6*4+channel_mailbox.scw,x3 " save DCW for refresh
+    000210  aa  2 00032 2121 13    189   	absa	mb|6*4+channel_mailbox.scw,x3 " get address of refresh DCW
+    000211  aa   000006 7350 00    190  	als	6
+    000212  aa   020001 2750 07    191  	ora	=o020001,dl		" setup LPW
+    000213  aa  2 00030 7551 13    192  	sta	mb|6*4+channel_mailbox.lpw,x3 " save LPW in spec-stat mbx
+                                   193  
+    000214  0a   000040 0730 00    194  	lreg	save_regs
+    000215  aa   000000 7100 12    195  	tra	0,x2
+                                   196  " 
+                                   197  " This routine issues a connect to the IOM using the caller's PCW
+                                   198  " and DCW lists.  The caller must insure a spare word in front of the 
+                                   199  " dcw list so that, in the iox case, we can insert his pcw (made non-
+                                   200  " terminate) as another idcw in front.
+                                   201  "
+                                   202  "	tsx2	bootload_io$connect
+                                   203  "	arg	iom_no
+                                   204  "	arg	channel_no
+                                   205  "	arg	PCW_address
+                                   206  "	arg	DCW_address
+                                   207  "
+                                   208  "	tsx2	bootload_io$connect_timeout
+                                   209  "	arg	iom_no
+                                   210  "	arg	channel_no
+                                   211  "	arg	PCW_address
+                                   212  "	arg	DCW_address
+                                   213  "	tra	timeout_return
+                                   214  "
+                                   215  " The status from the IOM is returned in the AQ.
+                                   216  "
+                        000000     217  	equ	con.iom,0
+                        000001     218  	equ	con.channel,1
+                        000002     219  	equ	con.pcw,2
+                        000003     220  	equ	con.dcw,3
+                        000004     221  	equ	con.nargs,4
+                        000004     222  	equ	con_t.timeout,4
+                        000005     223  	equ	con_t.nargs,5
+                                   224  
+                        000216     225  	segdef	connect
+                                   226  
+    000216  0a   000052 5540 00    227  connect:	stc1	esw
+    000217  0a   000221 7100 00    228  	tra	join
+                                   229  
+                        000220     230  	segdef	connect_timeout
+                                   231  
+    000220                         232  connect_timeout:
+    000220  0a   000052 4500 00    233  	stz	esw
+                                   234  
+    000221  0a   000040 7530 00    235  join:	sreg	save_regs
+    000222  4a  4 00012 2351 20    236  	lda	bootload_info$system_type
+    000223  aa   000002 1150 07    237  	cmpa	ADP_SYSTEM,dl
+    000224  0a   000353 6000 00    238  	tze	adp_connect
+                                   239  
+                                   240  " Make check to see if the connect is for the console.
+                                   241  " If so we need to wait fifteen milliseconds after the status
+                                   242  " returns, so that the console adapter will have time
+                                   243  " to properly do the terminate interrupt.
+                                   244  " If not the console then set the wait time to one millisecond.
+                                   245  
+    000225  0a   000456 4500 00    246  	stz	doing_console_io
+    000226  4a  4 00034 2341 20    247  	szn	bootload_info$console_available
+    000227  0a   000243 6000 00    248  	tze	not_console_io	" Haven't found one, yet!
+    000230  aa   000000 2350 32    249  	lda	con.iom,x2*
+    000231  4a  4 00036 1151 20    250  	cmpa	bootload_info$console_iom_number
+    000232  0a   000243 6010 00    251  	tnz	not_console_io
+    000233  aa   000001 2350 32    252  	lda	con.channel,x2*
+    000234  4a  4 00040 1151 20    253  	cmpa	bootload_info$console_channel_number
+    000235  0a   000243 6010 00    254  	tnz	not_console_io
+    000236  0a   000454 2350 00    255  	lda	fifteen_millisec
+    000237  0a   000453 7550 00    256  	sta	wait_time+1	" set wait time
+    000240  aa   400000 2350 03    257  	lda	=o400000,du
+    000241  0a   000456 7550 00    258  	sta	doing_console_io	" set console IO flag
+    000242  0a   000245 7100 00    259  	tra	connect_continue
+    000243                         260  not_console_io:
+    000243  0a   000455 2350 00    261  	lda	one_millisec
+    000244  0a   000453 7550 00    262  	sta	wait_time+1
+    000245                         263  connect_continue:
+    000245  aa   000000 2350 32    264  	lda	con.iom,x2*	" IOM tag (1-4)
+    000246  aa   777777 6210 05    265  	eax1	-1,al		" IOM number in X1
+    000247  aa   000010 7350 00    266  	als	8		" 256 words/mailbox
+    000250  aa   777600 6230 05    267  	eax3	imw_size-iom_mailbox_size,al
+                                   268  				" X3 -> IOM mailbox
+    000251  0a   000053 7430 00    269  	stx3	temp		" save it
+                                   270  
+    000252  aa   000001 2360 32    271  	ldq	con.channel,x2*	" channel number
+    000253  aa   000002 7360 00    272  	qls	2		" 4 words/channel
+    000254  aa   000000 6240 06    273  	eax4	0,ql		" in X4
+    000255  0a   000053 0640 00    274  	adx4	temp
+                                   275  
+    000256  aa   000031 7360 00    276  	qls	27-2		" now in high byte
+    000257  aa   000002 2350 32    277  	lda	con.pcw,x2*	" get caller's PCW
+    000260  0a   000050 7570 00    278  	staq	pcw		" save it
+                                   279  
+    000261  aa   000003 2120 32    280  	absa	con.dcw,x2*	" get address of DCW list
+    000262  aa   000006 7350 00    281  	als	6		" in AU
+    000263  aa  2 00000 7551 14    282  	sta	mb|channel_mailbox.lpw,x4
+    000264  aa  2 00001 4501 14    283  	stz	mb|channel_mailbox.lpw+1,x4
+                                   284  				" store LPW
+                                   285  
+    000265  0a   000000 2120 00    286  	absa	status		" get address of status area
+    000266  aa   000006 7350 00    287  	als	6		" in AU
+    000267  aa  2 00002 7551 14    288  	sta	mb|channel_mailbox.scw,x4
+                                   289  				" set SCW
+                                   290  
+    000270  0a   000050 2120 00    291  	absa	pcw		" get address of PCW
+    000271  aa   000006 7350 00    292  	als	6		" in AU
+    000272  aa   020001 2750 07    293  	ora	=o020001,dl	" set bits for connect LPW
+    000273  aa  2 00010 7551 13    294  	sta	mb|2*4+channel_mailbox.lpw,x3
+                                   295  
+    000274  0a   000000 4500 00    296  	stz	status
+    000275  aa   100000 2270 03    297  	ldx7	=o100000,du	" set status timer
+    000276  0a   000050 2350 00    298  	lda	pcw		" look at the PCW
+    000277  aa   040000 3150 07    299  	cana	=o040000,dl	" was it a mask?
+    000300  0a   000303 6000 00    300  	tze	connect_n_wait	" no, must wait for status
+    000301  4a  4 00042 0151 20    301  	cioc	bootload_info$iom_port_table,x1 " fire up the IOM
+    000302  0a   000344 7100 00    302  	tra	no_status		" don't wait for status
+    000303                         303  connect_n_wait:
+    000303  4a  4 00042 0151 20    304  	cioc	bootload_info$iom_port_table,x1 " fire up the IOM
+    000304                         305  status_wait:
+    000304  0a   000000 2350 00    306  	lda	status		" status yet?
+    000305  0a   000313 6040 00    307  	tmi	got_status
+    000306  aa   777777 0270 03    308  	adlx7	-1,du		" count down to timeout
+    000307  0a   000304 6010 00    309  	tnz	status_wait
+    000310  0a   000052 2340 00    310  	szn	esw		" timer running?
+    000311  0a   000304 6010 00    311  	tnz	status_wait
+                                   312  
+    000312  0a   000052 5540 00    313  	stc1	esw		" pretend we are not $timeout
+                                   314  
+                                   315  " IMU only does single precision stores, so after status word
+                                   316  " arrives we need to wait for the second word to be stored...
+                                   317  "
+                                   318  " IMU adapters also take awhile, after the status service, to do the
+                                   319  " status interrupt. Must wait for this, so a new connect will not cause
+                                   320  " the adapter to be faulted.
+                                   321  "
+                                   322  " The IMU console does not use PCWs and if the opcode in the IDCW causes
+                                   323  " a status return to have bit 16 (initiate) on then it needs to be processed.
+                                   324  " The LCC on an IOM does use the PCW, which has a opcode of reset-status, and
+                                   325  " the status will have bit 16 on. This status can be ignored and a better one,
+                                   326  " from the IDCW will come along.
+                                   327  
+    000313                         328  got_status:
+    000313  0a   000456 2340 00    329  	szn	doing_console_io
+    000314  0a   000323 6000 00    330  	tze	pause_for_status	" not console IO
+                                   331  
+    000315  4a  4 00044 2341 20    332  	szn	bootload_info$console_pcw_check
+    000316  0a   000323 6000 00    333  	tze	pause_for_status	" no...
+    000317  4a  4 00044 4501 20    334  	stz	bootload_info$console_pcw_check " reset the check flag
+    000320  0a   000457 6750 00    335  	era	initiate_status	" only sync & initiate bits ON?
+    000321  0a   000323 6000 00    336  	tze	pause_for_status	" yes, console uses the PCW
+    000322  4a  4 00046 4501 20    337  	stz	bootload_info$console_uses_pcw " no, console didn't use it.
+                                   338  
+    000323                         339  pause_for_status:
+    000323  aa   000040 4130 00    340  	rscr	32		" get current time
+    000324  0a   000450 7570 00    341  	staq	status_time
+                                   342  
+    000325  aa   000040 4130 00    343  	rscr	32
+    000326  0a   000450 1770 00    344  	sbaq	status_time
+    000327  0a   000452 1170 00    345  	cmpaq	wait_time
+    000330  aa   777775 6040 04    346  	tmi	-3,ic
+                                   347  
+    000331  0a   000000 2370 00    348  	ldaq	status		" should be there now!!
+    000332  0a   000044 7570 00    349  	staq	save_regs+4	" save the status
+                                   350  
+    000333  0a   000456 2340 00    351  	szn	doing_console_io
+    000334  0a   000344 6000 00    352  	tze	no_status
+    000335  4a  4 00046 2341 20    353  	szn	bootload_info$console_uses_pcw
+    000336  0a   000344 6000 00    354  	tze	no_status		" pcw isn't used, so don't worry.
+    000337  0a   000457 6750 00    355  	era	initiate_status	" only sync & initiate bits ON?
+    000340  0a   000344 6010 00    356  	tnz	no_status		" no, don't try for another one.
+    000341  0a   000000 4500 00    357  	stz	status		" zero out status
+    000342  aa   100000 2270 03    358  	ldx7	=o100000,du	" reset timer
+    000343  0a   000304 7100 00    359  	tra	status_wait	" and wait for good status
+                                   360  
+    000344                         361  no_status:
+    000344  0a   000020 2120 00    362  	absa	ignore_status	" make sure no more status arrives
+    000345  aa   000006 7350 00    363  	als	6
+    000346  aa  2 00002 7551 14    364  	sta	mb|channel_mailbox.scw,x4
+                                   365  
+    000347  0a   000040 0730 00    366  	lreg	save_regs
+    000350  0a   000052 2340 00    367  	szn	esw
+    000351  aa   000004 6010 12    368  	tnz	con.nargs,x2	" return
+    000352  aa   000005 7100 12    369  	tra	con_t.nargs,x2
+                                   370  "
+    000353                         371  adp_connect:
+    000353  aa   000003 6200 32    372  	eax0	con.dcw,x2*	" address of dcw list
+    000354  aa   000002 2350 32    373  	lda	con.pcw,x2*	" get pcw
+    000355  aa   020000 2750 07    374  	ora	=o020000,dl	" turn on proceed
+    000356  aa   777777 7550 10    375  	sta	-1,x0		" insert in front of list
+                                   376  
+    000357  aa   777777 2120 10    377  	absa	-1,x0		" get address of DCW list
+    000360  aa   000010 7350 00    378  	als	8		" in AU
+    000361  0a   000427 7550 00    379  	sta	iox_mailbox_lpw	" store LPW
+                                   380  
+    000362  aa   000000 2350 32    381  	lda	con.iom,x2*	" IOX tag (1-4)
+    000363  aa   777777 0750 07    382  	ada	-1,dl
+    000364  aa   000007 7350 00    383  	als	7		" 128 channels / iox
+    000365  aa   000001 0750 32    384  	ada	con.channel,x2*	" channel number
+    000366  aa   000010 0750 07    385  	ada	8,dl		" iox channel index
+    000367  aa   700000 2750 03    386  	ora	=o700000,du	" form cioc word
+                                   387  
+    000370  0a   000430 4500 00    388  	stz	iox_mailbox_status	" zero status
+    000371  0a   000420 0150 00    389  	cioc	iox_mailbox	" fire up the IOM
+                                   390  
+    000372  aa   000002 2350 32    391  	lda	con.pcw,x2*	" look at the PCW
+    000373  aa   040000 3150 07    392  	cana	=o040000,dl	" was it a mask?
+    000374  0a   000406 6010 00    393  	tnz	adp_no_status	" yes, no status
+                                   394  
+    000375  aa   100000 2270 03    395  	ldx7	=o100000,du	" timer
+    000376                         396  adp_status_wait:
+    000376  0a   000430 2370 00    397  	ldaq	iox_mailbox_status	" status yet?
+    000377  0a   000405 6040 00    398  	tmi	adp_got_status
+    000400  aa   777777 0270 03    399  	adlx7	-1,du		" count down to timeout
+    000401  0a   000376 6010 00    400  	tnz	adp_status_wait
+    000402  0a   000052 2340 00    401  	szn	esw		" timer running?
+    000403  0a   000376 6010 00    402  	tnz	adp_status_wait
+                                   403  
+    000404  0a   000052 5540 00    404  	stc1	esw		" pretend we are not $timeout
+                                   405  
+    000405                         406  adp_got_status:
+    000405  0a   000044 7570 00    407  	staq	save_regs+4	" save the status
+                                   408  
+    000406                         409  adp_no_status:
+    000406  0a   000040 0730 00    410  	lreg	save_regs
+    000407  0a   000052 2340 00    411  	szn	esw
+    000410  aa   000004 6010 12    412  	tnz	con.nargs,x2	" return
+    000411  aa   000005 7100 12    413  	tra	con_t.nargs,x2
+                                   414  
+    000412  aa   000000 0110 03    415  	mod	8
+    000413  aa   000000 0110 03
+    000414  aa   000000 0110 03
+    000415  aa   000000 0110 03
+    000416  aa   000000 0110 03
+    000417  aa   000000 0110 03
+    000420                         416  iox_mailbox:
+    000420  aa   000000 000000     417  	vfd	36o/0		" base addresses for 256k blocks
+    000421  aa   000001 000000     418  	vfd	36o/1000000
+    000422  aa   000002 000000     419  	vfd	36o/2000000
+    000423  aa   000003 000000     420  	vfd	36o/3000000
+    000424  aa   777777 777777     421  	vfd	18o/777777,18o/777777
+    000425  aa   777777 777777     422  	vfd	18o/777777,18o/777777
+    000426  aa   000000 005034     423  	vfd	24/0,12o/5034
+    000427                         424  iox_mailbox_lpw:
+    000427  aa   000000 000000     425  	vfd	36/0		" lpw
+    000430                         426  iox_mailbox_status:
+    000430                         427  	bss	,16		" status
+                                   428  
+                                   429  	even
+    000450                         430  status_time:
+    000450                         431  	bss	,2
+    000452                         432  wait_time:
+    000452                         433  	bss	,2
+    000454                         434  fifteen_millisec:
+    000454  aa   000000 035230     435  	dec	15000
+    000455                         436  one_millisec:
+    000455  aa   000000 001750     437  	dec	1000
+    000456                         438  doing_console_io:
+    000456                         439  	bss	,1
+    000457                         440  initiate_status:
+    000457  aa   400002 000000     441  	oct	400002000000	" sync and initiate bits
+                                   442  " 
+                                   443  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                   444  	include	system_types
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE system_types.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 04/05/81  2144.9 est Sun by convert_include_file,
+                                   2-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   2-8  
+                                   2-9  	"Made from >udd>Multics>nss>new_pc>include>system_types.incl.pl1,
+                                  2-10  	"   modified 03/21/81  2300.0 est Sat
+                                  2-11  
+                                  2-12  
+                        000001    2-13  	equ	L68_SYSTEM,1		" MANIFEST
+                        000002    2-14  	equ	ADP_SYSTEM,2		" MANIFEST
+                                  2-15  
+                                  2-16       "END INCLUDE FILE system_types.incl.alm
+                                   445  
+                                   446  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   447  "							"
+                                   448  "	Error message documentation.				"
+                                   449  "							"
+                                   450  "							"
+                                   451  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   452  
+                                   453  "BEGIN MESSAGE DOCUMENTATION
+                                   454  
+                                   455  
+                                   456  "         Message:
+                                   457  "         HALT with octal 777777000001 in the A register.
+                                   458  
+                                   459  "         S:    $crash
+                                   460  
+                                   461  "         T:    $init
+                                   462  
+                                   463  "         M:    The interrupt base set on the bootload IOM is not 1200 octal.
+                                   464  
+                                   465  "         A:    Set the switches correctly.
+                                   466  
+                                   467  
+                                   468  "         Message:
+                                   469  "         HALT with octal 777777000002 in the A register.
+                                   470  
+                                   471  "         S:   $crash
+                                   472  
+                                   473  "         T:   $init
+                                   474  
+                                   475  "         M:   The iom base set on the bootload IOM is not correct. I.e.,
+                                   476  "         for IOM's 0, 1, 2 and 3 it should be 1400, 2000, 2400 and 3000 octal
+                                   477  "         respectively.
+                                   478  
+                                   479  "         A:   Set the switches correctly.
+                                   480  
+                                   481  "         END MESSAGE DOCUMENTATION
+                                   482  
+                                   483  	end	bootload_io
+LITERALS
+     
+    000460  aa   777777 000001 
+    000461  aa   777777 000002 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000462  5a   000003 000000 
+    000463  5a   000046 600000 
+    000464  aa   000000 000000 
+    000465  55   000011 000002 
+    000466  5a   000002 400003 
+    000467  55   000006 000011 
+    000470  aa  013 142 157 157
+    000471  aa  164 154 157 141
+    000472  aa  144 137 151 157
+    000473  55   000020 000003 
+    000474  0a   000220 400000 
+    000475  55   000014 000003 
+    000476  aa  017 143 157 156         connect_timeout
+    000477  aa  156 145 143 164
+    000500  aa  137 164 151 155
+    000501  aa  145 157 165 164
+    000502  55   000025 000011 
+    000503  0a   000216 400000 
+    000504  55   000023 000003 
+    000505  aa  007 143 157 156         connect
+    000506  aa  156 145 143 164
+    000507  55   000032 000020 
+    000510  0a   000157 400000 
+    000511  55   000030 000003 
+    000512  aa  004 151 156 151         init
+    000513  aa  164 000 000 000
+    000514  55   000037 000025 
+    000515  0a   000054 400000 
+    000516  55   000035 000003 
+    000517  aa  007 160 162 145         preinit
+    000520  aa  151 156 151 164
+    000521  55   000002 000032 
+    000522  6a   000000 400002 
+    000523  55   000042 000003 
+    000524  aa  014 163 171 155         symbol_table
+    000525  aa  142 157 154 137
+    000526  aa  164 141 142 154
+    000527  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000530  aa   000000 000015 
+    000531  aa   000000 000000 
+    000532  aa   000000 000000 
+    000533  aa   000000 000000 
+    000534  aa   000000 000000 
+    000535  5a   000032 000000 
+    000536  aa   000000 000000 
+    000537  5a   000037 000000 
+    000540  aa   000000 000000 
+    000541  aa   000000 000000 
+    000542  aa   000000 000000 
+    000543  5a   000011 000000 
+    000544  5a   000020 000000 
+    000545  5a   000025 000000 
+
+EXTERNAL NAMES
+
+    000546  aa  020 143 157 156         console_uses_pcw
+    000547  aa  163 157 154 145
+    000550  aa  137 165 163 145
+    000551  aa  163 137 160 143
+    000552  aa  167 000 000 000
+    000553  aa  021 143 157 156         console_pcw_check
+    000554  aa  163 157 154 145
+    000555  aa  137 160 143 167
+    000556  aa  137 143 150 145
+    000557  aa  143 153 000 000
+    000560  aa  026 143 157 156         console_channel_number
+    000561  aa  163 157 154 145
+    000562  aa  137 143 150 141
+    000563  aa  156 156 145 154
+    000564  aa  137 156 165 155
+    000565  aa  142 145 162 000
+    000566  aa  022 143 157 156         console_iom_number
+    000567  aa  163 157 154 145
+    000570  aa  137 151 157 155
+    000571  aa  137 156 165 155
+    000572  aa  142 145 162 000
+    000573  aa  021 143 157 156         console_available
+    000574  aa  163 157 154 145
+    000575  aa  137 141 166 141
+    000576  aa  151 154 141 142
+    000577  aa  154 145 000 000
+    000600  aa  015 151 155 165         imu_style_iom
+    000601  aa  137 163 164 171
+    000602  aa  154 145 137 151
+    000603  aa  157 155 000 000
+    000604  aa  022 141 163 163         assume_config_deck
+    000605  aa  165 155 145 137
+    000606  aa  143 157 156 146
+    000607  aa  151 147 137 144
+    000610  aa  145 143 153 000
+    000611  aa  015 143 157 154         cold_tape_mpc
+    000612  aa  144 137 164 141
+    000613  aa  160 145 137 155
+    000614  aa  160 143 000 000
+    000615  aa  016 151 157 155         iom_port_table
+    000616  aa  137 160 157 162
+    000617  aa  164 137 164 141
+    000620  aa  142 154 145 000
+    000621  aa  023 164 141 160         tape_channel_number
+    000622  aa  145 137 143 150
+    000623  aa  141 156 156 145
+    000624  aa  154 137 156 165
+    000625  aa  155 142 145 162
+    000626  aa  022 164 141 160         tape_device_number
+    000627  aa  145 137 144 145
+    000630  aa  166 151 143 145
+    000631  aa  137 156 165 155
+    000632  aa  142 145 162 000
+    000633  aa  017 164 141 160         tape_iom_number
+    000634  aa  145 137 151 157
+    000635  aa  155 137 156 165
+    000636  aa  155 142 145 162
+    000637  aa  022 151 157 155         iom_mailbox_absloc
+    000640  aa  137 155 141 151
+    000641  aa  154 142 157 170
+    000642  aa  137 141 142 163
+    000643  aa  154 157 143 000
+    000644  aa  015 164 145 155         template_slt_
+    000645  aa  160 154 141 164
+    000646  aa  145 137 163 154
+    000647  aa  164 137 000 000
+    000650  aa  013 163 171 163         system_type
+    000651  aa  164 145 155 137
+    000652  aa  164 171 160 145
+    000653  aa  015 151 157 155         iom_boot_info
+    000654  aa  137 142 157 157
+    000655  aa  164 137 151 156
+    000656  aa  146 157 000 000
+    000657  aa  015 142 157 157         bootload_info
+    000660  aa  164 154 157 141
+    000661  aa  144 137 151 156
+    000662  aa  146 157 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000663  aa   000004 000000 
+    000664  55   000175 000064 
+    000665  aa   000004 000000 
+    000666  55   000175 000071 
+    000667  aa   000004 000000 
+    000670  55   000175 000076 
+    000671  aa   000004 000000 
+    000672  55   000175 000104 
+    000673  aa   000004 000000 
+    000674  55   000175 000111 
+    000675  aa   000004 000000 
+    000676  55   000175 000116 
+    000677  aa   000004 000000 
+    000700  55   000175 000122 
+    000701  aa   000004 000000 
+    000702  55   000175 000127 
+    000703  aa   000004 000000 
+    000704  55   000175 000133 
+    000705  aa   000004 000000 
+    000706  55   000175 000137 
+    000707  aa   000004 000000 
+    000710  55   000175 000144 
+    000711  aa   000004 000000 
+    000712  55   000175 000151 
+    000713  aa   000004 000000 
+    000714  55   000162 000155 
+    000715  aa   000004 000000 
+    000716  55   000175 000166 
+    000717  aa   000004 000000 
+    000720  55   000175 000171 
+    000721  aa   000001 000000 
+    000722  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000723  5a   000201 000000 
+    000724  5a   000203 000000 
+    000725  5a   000221 000000 
+    000726  5a   000205 000000 
+    000727  5a   000207 000000 
+    000730  5a   000211 000000 
+    000731  5a   000213 000000 
+    000732  5a   000215 000000 
+    000733  5a   000217 000000 
+    000734  5a   000221 777777 
+    000735  5a   000223 000000 
+    000736  5a   000225 000000 
+    000737  5a   000227 000000 
+    000740  5a   000231 000000 
+    000741  5a   000233 000000 
+    000742  5a   000235 000000 
+    000743  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000462 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000050 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_info|iom_boot_info
+    000011  5a   000260 0000 00
+    000012  9a   777766 0000 46         bootload_info|system_type
+    000013  5a   000257 0000 00
+    000014  9a   777764 0000 46         template_slt_|iom_mailbox_absloc
+    000015  5a   000256 0000 00
+    000016  9a   777762 0000 46         bootload_info|tape_iom_number
+    000017  5a   000255 0000 00
+    000020  9a   777760 0000 46         bootload_info|tape_device_number
+    000021  5a   000254 0000 00
+    000022  9a   777756 0000 46         bootload_info|tape_channel_number
+    000023  5a   000253 0000 00
+    000024  9a   777754 0000 46         bootload_info|iom_port_table
+    000025  5a   000252 0000 06
+    000026  9a   777752 0000 46         bootload_info|cold_tape_mpc
+    000027  5a   000251 0000 00
+    000030  9a   777750 0000 46         bootload_info|assume_config_deck
+    000031  5a   000250 0000 00
+    000032  9a   777746 0000 46         bootload_info|imu_style_iom
+    000033  5a   000247 0000 00
+    000034  9a   777744 0000 46         bootload_info|console_available
+    000035  5a   000246 0000 00
+    000036  9a   777742 0000 46         bootload_info|console_iom_number
+    000037  5a   000245 0000 00
+    000040  9a   777740 0000 46         bootload_info|console_channel_number
+    000041  5a   000244 0000 00
+    000042  9a   777736 0000 46         bootload_info|iom_port_table
+    000043  5a   000243 0000 11
+    000044  9a   777734 0000 46         bootload_info|console_pcw_check
+    000045  5a   000242 0000 00
+    000046  9a   777732 0000 46         bootload_info|console_uses_pcw
+    000047  5a   000241 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   247422 102231 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000020 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000246 
+    000020  aa   000000 000140 
+    000021  aa   000210 000177 
+    000022  aa   000236 000140 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000060 
+    000067  aa   175453 021727 
+    000070  aa   000000 117547 
+    000071  aa   215115 200000 
+    000072  aa   000116 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000127 000042 
+    000077  aa   106701 740577 
+    000100  aa   000000 110670 
+    000101  aa   206425 600000 
+    000102  aa   076163 160145          >special_ldd>install>MR12.3-1114>bootload_io.alm
+    000103  aa   143151 141154 
+    000104  aa   137154 144144 
+    000105  aa   076151 156163 
+    000106  aa   164141 154154 
+    000107  aa   076115 122061 
+    000110  aa   062056 063055 
+    000111  aa   061061 061064 
+    000112  aa   076142 157157 
+    000113  aa   164154 157141 
+    000114  aa   144137 151157 
+    000115  aa   056141 154155 
+    000116  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000117  aa   076151 156143 
+    000120  aa   154165 144145 
+    000121  aa   076142 157157 
+    000122  aa   164154 157141 
+    000123  aa   144137 145161 
+    000124  aa   165163 056151 
+    000125  aa   156143 154056 
+    000126  aa   141154 155040 
+    000127  aa   076154 144144          >ldd>include>system_types.incl.alm
+    000130  aa   076151 156143 
+    000131  aa   154165 144145 
+    000132  aa   076163 171163 
+    000133  aa   164145 155137 
+    000134  aa   164171 160145 
+    000135  aa   163056 151156 
+    000136  aa   143154 056141 
+    000137  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+         353    adp_connect              bootload_io:  238,  371.
+         405    adp_got_status           bootload_io:  398,  406.
+         131    adp_init                 bootload_io:   71,  123.
+         406    adp_no_status            bootload_io:  393,  409.
+         376    adp_status_wait          bootload_io:  396,  400,  402.
+           2    ADP_SYSTEM               bootload_io:  124,  237,
+                                         system_types:        14.
+                assume_config_deck       bootload_io:  114.
+         154    bad_iom_base             bootload_io:   90,  150.
+         151    bad_iom_interrupt_base   bootload_io:   79,  145.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+       56000    bkpt_absloc              bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_info            bootload_io:   64,   74,   83,   84,   95,  100,  102,  105,  112,  114,  119,  125,
+                                                       131,  132,  134,  139,  141,  167,  170,  236,  247,  250,  253,  301,
+                                                       304,  332,  334,  337,  353.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+           3    channel_mailbox.dcw      bootload_io:   37,  177,  187.
+           0    channel_mailbox.lpw      bootload_io:   35,  182,  192,  282,  283,  294.
+           2    channel_mailbox.scw      bootload_io:   36,  178,  179,  188,  189,  288,  364.
+                cold_tape_mpc            bootload_io:  112,  141.
+      400000    cold_tape_mpc_mask       bootload_io:   42,  111.
+           1    con.channel              bootload_io:  218,  252,  271,  384.
+           3    con.dcw                  bootload_io:  220,  280,  372.
+           0    con.iom                  bootload_io:  217,  249,  264,  381.
+           4    con.nargs                bootload_io:  221,  368,  412.
+           2    con.pcw                  bootload_io:  219,  277,  373,  391.
+         216    connect                  bootload_io:  225,  227.
+         245    connect_continue         bootload_io:  259,  263.
+         303    connect_n_wait           bootload_io:  300,  303.
+         220    connect_timeout          bootload_io:  230,  232.
+                console_available        bootload_io:  247.
+                console_channel_number   bootload_io:  253.
+                console_iom_number       bootload_io:  250.
+                console_pcw_check        bootload_io:  332,  334.
+                console_uses_pcw         bootload_io:  337,  353.
+           5    con_t.nargs              bootload_io:  223,  369,  413.
+           4    con_t.timeout            bootload_io:  222.
+         456    doing_console_io         bootload_io:  246,  258,  329,  351,  438.
+           0    ds                       bootload_equs:       12.
+          52    esw                      bootload_io:   55,  227,  233,  310,  313,  367,  401,  404,  411.
+          40    fault_status_base        bootload_io:   38,  174.
+       24000    fgbx_absloc              bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+         454    fifteen_millisec         bootload_io:  255,  434.
+           7    fv                       bootload_io:   66,
+                                         bootload_equs:       19.
+         313    got_status               bootload_io:  307,  328.
+          20    ignore_status            bootload_io:   48,  362.
+      200000    imu_bit_mask             bootload_io:   43,  117.
+           1    imu_bit_shift            bootload_io:   44,  118.
+                imu_style_iom            bootload_io:  119.
+         200    imw_size                 bootload_io:   33,   88,  162,  169,  267.
+         157    init                     bootload_io:  159,  161.
+         457    initiate_status          bootload_io:  335,  355,  440.
+                iom_boot_info            bootload_io:   64.
+                iom_mailbox_absloc       bootload_io:   78.
+         400    iom_mailbox_size         bootload_io:   34,  169,  267.
+                iom_port_table           bootload_io:  105,  301,  304.
+       10000    IOTP                     bootload_io:   41,  176,  186.
+         420    iox_mailbox              bootload_io:  389,  416.
+         427    iox_mailbox_lpw          bootload_io:  379,  424.
+         430    iox_mailbox_status       bootload_io:  388,  397,  426.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+         221    join                     bootload_io:  228,  235.
+           1    L68_SYSTEM               bootload_io:   73,
+                                         system_types:        13.
+           2    mb                       bootload_io:  165,  174,  177,  178,  179,  182,  184,  187,  188,  189,  192,  282,
+                                                       283,  288,  294,  364,
+                                         bootload_equs:       14.
+         243    not_console_io           bootload_io:  248,  251,  254,  260.
+         344    no_status                bootload_io:  302,  352,  354,  356,  361.
+           4    nt                       bootload_equs:       16.
+         455    one_millisec             bootload_io:  261,  436.
+         323    pause_for_status         bootload_io:  330,  333,  336,  339.
+          50    pcw                      bootload_io:   53,  278,  291,  298.
+           5    prb                      bootload_equs:       17.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+          54    preinit                  bootload_io:   62,   64.
+          40    save_regs                bootload_io:   50,  161,  194,  235,  349,  366,  407,  410.
+           6    seg                      bootload_io:   64,   67,   69,   76,   81,   86,   89,   92,   97,  103,  110,  116,
+                                                       127,  136,
+                                         bootload_equs:       18.
+           1    seg2                     bootload_equs:       13.
+           3    slt                      bootload_equs:       15.
+         120    special_status_base      bootload_io:   39,  184.
+           0    status                   bootload_io:   47,  286,  296,  306,  348,  357.
+          14    status_queue_size        bootload_io:   40,  171,  172,  176,  186.
+         450    status_time              bootload_io:  341,  344,  430.
+         304    status_wait              bootload_io:  305,  309,  311,  359.
+                system_type              bootload_io:   74,  125,  236.
+                tape_channel_number      bootload_io:  100,  134.
+                tape_device_number       bootload_io:   95,  139.
+                tape_iom_number          bootload_io:   83,   84,  102,  131,  132,  167,  170.
+          53    temp                     bootload_io:   56,  269,  274.
+                template_slt_            bootload_io:   78.
+       46000    toedata_absloc           bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+       24000    toe_absloc               bootload_equs:       81.
+        4000    toe_lth                  bootload_equs:       82.
+       52000    upt_absloc               bootload_equs:       93.
+        2000    upt_lth                  bootload_equs:       94.
+         452    wait_time                bootload_io:  256,  262,  345,  432.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

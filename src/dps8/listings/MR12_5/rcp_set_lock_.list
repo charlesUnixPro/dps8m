@@ -1,0 +1,385 @@
+	COMPILATION LISTING OF SEGMENT rcp_set_lock_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0942.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 rcp_set_lock_:  procedure;
+       14 
+       15 /*	rcp_set_lock_ taken from set_lock_.
+       16**	Will be made into the real set_lock_ later.
+       17**/
+       18 /*	set_lock_ - This procedure allows a user to guarantee that two processes
+       19*		will not simultaneously execute the same critical section of code.
+       20*		A user provided lock word can be set to the lock identifier of
+       21*		only one process at a time thereby guaranteeing, assuming the proper
+       22*		conventions are followed, that only this process can be currently
+       23*		executing in the critical section of code.
+       24*
+       25*	Originally coded by R. J. Feiertag on November 5, 1971
+       26*	Modified on April 6, 1972 by R. J. Feirtag to work in all rings.
+       27*	Modified on October 1, 1974 by J. Stern to eliminate message segment metering.
+       28*	Modified on December 7, 1974 by Bill Silver to add generalized metering.
+       29**/
+       30 
+       31 dcl	arg_code		fixed bin(35);	/* (O) error_table_ code. */
+       32 dcl	arg_lock		bit(36)  aligned;	/* (I) The lock to lock or unlock. */
+       33 dcl	arg_time_of_lock	fixed bin(71);	/* (I/O) Raw time lock locked. */
+       34 dcl	arg_time_locked	fixed bin(71);	/* (O) Raw time (duration) lock was locked. */
+       35 dcl	arg_time_waiting	fixed bin(71);	/* (O) Raw time waiting for lock. */
+       36 dcl	arg_wait_time	fixed bin;	/* (I) Time in seconds to wait for lock. */
+       37 
+       38 	dcl lock_ptr ptr,	/* Pointer to lock. */
+       39 	    wait_time fixed bin, /* time in seconds to wait for lock to be unlocked */
+       40 	    code fixed bin(35), /* indicates success of call */
+       41 	    time_locked fixed bin(71), /* time locked locked. */
+       42 	    time_started fixed bin(71), /* time we started to wait for lock. */
+       43 	    alarm_time fixed bin(71), /* saved value of alarm timer */
+       44 	    alarm_channel fixed bin(71), /* saved value of alarm timer channel */
+       45 	    message(4) fixed bin(71), /* message from ipc */
+       46 	    failure_time fixed bin(71) init(0), /*  is the time at which this call will give up */
+       47 	    sleep_time fixed bin(71), /* is the number of microseconds until this call gives up */
+       48 	    ttul_code fixed bin, /* is the status from try_to_unlock_lock */
+       49 	    lock_id bit(36) aligned internal static init(""b); /* is the lock identifier of this process */
+       50 
+       51 	dcl based_lock  bit(36) aligned  based(lock_ptr);
+       52 
+       53 	dcl 1 wait_list aligned internal static, /* list of channels to wait on for ipc */
+       54 		2 channel_count fixed bin init(1), /* number of channels to wait on */
+       55 		2 channel fixed bin(71) init(0); /* channel for waiting */
+       56 
+       57 	dcl error_table_$locked_by_other_process ext fixed bin(35),
+       58 	    error_table_$locked_by_this_process ext fixed bin(35),
+       59 	    error_table_$lock_not_locked ext fixed bin(35),
+       60 	    error_table_$invalid_lock_reset ext fixed bin(35),
+       61 	    error_table_$lock_wait_time_exceeded ext fixed bin(35);
+       62 
+       63 	dcl get_lock_id_ ext entry(bit(36) aligned),
+       64 	    get_ring_ ext entry returns(fixed bin(3)),
+       65 	    get_initial_ring_ ext entry returns(fixed bin(3)),
+       66 	    ipc_$create_ev_chn ext entry(fixed bin(71),fixed bin(35)),
+       67 	    ipc_$block ext entry(ptr,ptr,fixed bin(35)),
+       68 	    stacq ext entry(ptr,bit(36) aligned,fixed bin(35)) returns (bit(1) aligned),
+       69 	    hcs_$get_alarm_timer ext entry(fixed bin(71),fixed bin(71)),
+       70 	    hcs_$set_alarm_timer ext entry(fixed bin(71),fixed bin,fixed bin(71)),
+       71 	    hcs_$try_to_unlock_lock ext entry(ptr,fixed bin),
+       72 	    clock_ ext entry returns(fixed bin(71)),
+       73 	    timer_manager_$sleep ext entry(fixed bin(71),bit(2));
+       74 
+       75 	dcl (stac,min,addr) builtin;
+       76 /*	*/
+       77 /*	This entry attempts to set the lock word to the lock indentifier of the
+       78**	calling process.  If the lock is already set by some other existing process
+       79**	then it waits for some given period of time for the lock to be unlocked.
+       80**	If the lock is not unlocked in the given time then set_lock_ gives up and returns.
+       81**/
+       82 lock:  entry  (arg_lock,arg_wait_time,arg_code);
+       83 
+       84 	lock_ptr = addr(arg_lock);		/* Get pointer to lock to lock. */
+       85 	wait_time = arg_wait_time;
+       86 
+       87 	call LOCK;			/* Try to lock lock. */
+       88 
+       89 	arg_code = code;
+       90 	return;
+       91 
+       92 
+       93 
+       94 
+       95 
+       96 /*	This entry performs the same function as unlock except that it allows the
+       97**	caller to perform metering on the lock.
+       98**/
+       99 meter_lock:  entry  (arg_lock,arg_wait_time,arg_time_of_lock,arg_time_waiting,arg_code);
+      100 
+      101 	lock_ptr = addr(arg_lock);		/* Get pointer to lock to lock. */
+      102 	wait_time = arg_wait_time;
+      103 	time_started = 0;			/* Initialize time waiting started. */
+      104 
+      105 	call LOCK;			/* Try to lock the lock. */
+      106 
+      107 	if   (code = 0)  |			/* Was lock set OK? */
+      108 	     (code = error_table_$invalid_lock_reset)
+      109 	     then do;			/* Yes, compute meters. */
+      110 		time_locked = clock_();
+      111 		if   time_started = 0
+      112 		     then time_started = time_locked;
+      113 	     end;
+      114 	     else do;			/* No, lock not locked. */
+      115 		time_locked,
+      116 		time_started = 0;
+      117 	     end;
+      118 
+      119 	arg_time_of_lock = time_locked;	/* Return meter data. */
+      120 	arg_time_waiting = time_locked - time_started;
+      121 	arg_code = code;
+      122 	return;
+      123 /**/
+      124 LOCK:  procedure;
+      125 
+      126 /*	This procedure is called to try to lock the lock.
+      127**/
+      128 
+      129 	if lock_id = ""b then call get_lock_id_(lock_id); /* get lock id if we don't already have it */
+      130 AGAIN:
+      131 	if stac(lock_ptr,lock_id) then do; /* locked successfully, we are done */
+      132 		code = 0; /* return successful code */
+      133 		return;
+      134 		end;
+      135 	call hcs_$try_to_unlock_lock(lock_ptr,ttul_code);
+      136 	if ttul_code = 3 then do; /* lock was invalid and was relocked */
+      137 		code = error_table_$invalid_lock_reset; /* return successful code */
+      138 		return;
+      139 		end;
+      140 	if time_started = 0 then time_started = clock_();
+      141 	if ttul_code = 2 then go to AGAIN; /* lock is not locked, try again */
+      142 	if based_lock = lock_id then do; /* already locked by this process */
+      143 		code = error_table_$locked_by_this_process;
+      144 		return;
+      145 		end;
+      146 	if failure_time = 0 then /* calculate when we will give up */
+      147 	 if wait_time < 0 then  /*  largest possible clock time */
+      148 	  failure_time = /* 2**52 */ 10000000000000000000000000000000000000000000000000000b;
+      149 	  else failure_time = clock_() + wait_time * 1000000; /* calculate time to give up */
+      150 	sleep_time = failure_time - clock_(); /* calculate time to sleep */
+      151 	if sleep_time <= 0 then do; /* time to give up */
+      152 		code = error_table_$lock_wait_time_exceeded; /* return unsuccessful code */
+      153 		return;
+      154 		end;
+      155 	if get_ring_() >= get_initial_ring_() then /* we can call timer_manager_ */
+      156 	 call timer_manager_$sleep(min(sleep_time,2000000),"10"b); /* sleep for some time */
+      157 	 else do; /* we cannot call timer_manager_ */
+      158 		if channel = 0 then do; /* a channel must be created */
+      159 			call ipc_$create_ev_chn(channel,code); /* create the channel */
+      160 			if code ^= 0 then return; /* if trouble then forget it */
+      161 			end;
+      162 		call hcs_$get_alarm_timer(alarm_time,alarm_channel); /* remember current alarm settings */
+      163 		call hcs_$set_alarm_timer(min(sleep_time,1000000),1,channel); /* get awakened later */
+      164 		call ipc_$block(addr(wait_list),addr(message),code); /* wait for wakeup */
+      165 		call hcs_$set_alarm_timer(alarm_time,2,alarm_channel); /* reset original timer settings */
+      166 		if code ^= 0 then return; /* if trouble then give up */
+      167 		end;
+      168 	go to AGAIN; /* try again */
+      169 	end  LOCK;
+      170 /**/
+      171 /*	This entry attempts to unlock the lock.
+      172**/
+      173 unlock:  entry  (arg_lock,arg_code);
+      174 
+      175 	lock_ptr = addr(arg_lock);		/* Get pointer to lock. */
+      176 
+      177 	call UNLOCK;			/* Try to unlock lock. */
+      178 
+      179 	arg_code = code;			/* Return error code. */
+      180 	return;
+      181 
+      182 
+      183 
+      184 
+      185 
+      186 /*	This entry performs the same function as unlock except that it also
+      187**	returns metering data.
+      188**/
+      189 meter_unlock:  entry  (arg_lock,arg_time_of_lock,arg_time_locked,arg_code);
+      190 
+      191 	lock_ptr = addr(arg_lock);		/* Get pointer to lock. */
+      192 
+      193 	call UNLOCK;			/* Try to unlock lock. */
+      194 
+      195 	if   code = 0			/* Was locked unlocked OK? */
+      196 	     then arg_time_locked = clock_() - arg_time_of_lock;
+      197 	     else arg_time_locked = 0;	/* No. */
+      198 	arg_code = code;
+      199 	return;
+      200 
+      201 
+      202 
+      203 
+      204 
+      205 UNLOCK:  procedure;
+      206 
+      207 /*	This procedure is called to try to unlock the lock.
+      208**/
+      209 
+      210 	if lock_id = ""b then call get_lock_id_(lock_id); /* get lock id if we don't already have it */
+      211 	if ^stacq(lock_ptr, lock_id, 0) then /* lock was not locked by this process */
+      212 		if based_lock = ""b then code = error_table_$lock_not_locked;
+      213 					/* lock was not locked */
+      214 		 else code = error_table_$locked_by_other_process;
+      215 					/* lock was set by another process */
+      216 	 else code = 0; /* everything OK - lock was locked by us and cleared by stacq */
+      217 	end  UNLOCK;
+      218 
+      219 	end  rcp_set_lock_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  rcp_set_lock_.pl1                 >spec>install>1111>rcp_set_lock_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 75 ref 84 101 164 164 164 164 175 191
+alarm_channel                   000112 automatic       fixed bin(71,0)          dcl 38 set ref 162* 165*
+alarm_time                      000110 automatic       fixed bin(71,0)          dcl 38 set ref 162* 165*
+arg_code                               parameter       fixed bin(35,0)          dcl 31 set ref 82 89* 99 121* 173 179* 189 198*
+arg_lock                               parameter       bit(36)                  dcl 32 set ref 82 84 99 101 173 175 189 191
+arg_time_locked                        parameter       fixed bin(71,0)          dcl 34 set ref 189 195* 197*
+arg_time_of_lock                       parameter       fixed bin(71,0)          dcl 33 set ref 99 119* 189 195
+arg_time_waiting                       parameter       fixed bin(71,0)          dcl 35 set ref 99 120*
+arg_wait_time                          parameter       fixed bin(17,0)          dcl 36 ref 82 85 99 102
+based_lock                             based           bit(36)                  dcl 51 ref 142 211
+channel                   2     000012 internal static fixed bin(71,0)          initial level 2 dcl 53 set ref 158 159* 163*
+clock_                          000052 constant        entry                    external dcl 63 ref 110 140 149 150 195
+code                            000103 automatic       fixed bin(35,0)          dcl 38 set ref 89 107 107 121 132* 137* 143* 152*
+                                                                                  159* 160 164* 166 179 195 198 211* 214* 216*
+error_table_$invalid_lock_reset 000024 external static fixed bin(35,0)          dcl 57 ref 107 137
+error_table_$lock_not_locked    000022 external static fixed bin(35,0)          dcl 57 ref 211
+error_table_$lock_wait_time_exceeded
+                                000026 external static fixed bin(35,0)          dcl 57 ref 152
+error_table_$locked_by_other_process
+                                000016 external static fixed bin(35,0)          dcl 57 ref 214
+error_table_$locked_by_this_process
+                                000020 external static fixed bin(35,0)          dcl 57 ref 143
+failure_time                    000124 automatic       fixed bin(71,0)          initial dcl 38 set ref 38* 146 146* 149* 150
+get_initial_ring_               000034 constant        entry                    external dcl 63 ref 155
+get_lock_id_                    000030 constant        entry                    external dcl 63 ref 129 210
+get_ring_                       000032 constant        entry                    external dcl 63 ref 155
+hcs_$get_alarm_timer            000044 constant        entry                    external dcl 63 ref 162
+hcs_$set_alarm_timer            000046 constant        entry                    external dcl 63 ref 163 165
+hcs_$try_to_unlock_lock         000050 constant        entry                    external dcl 63 ref 135
+ipc_$block                      000040 constant        entry                    external dcl 63 ref 164
+ipc_$create_ev_chn              000036 constant        entry                    external dcl 63 ref 159
+lock_id                         000010 internal static bit(36)                  initial dcl 38 set ref 129 129* 130 142 210 210*
+                                                                                  211*
+lock_ptr                        000100 automatic       pointer                  dcl 38 set ref 84* 101* 130 135* 142 175* 191* 211*
+                                                                                  211
+message                         000114 automatic       fixed bin(71,0)          array dcl 38 set ref 164 164
+min                                                    builtin function         dcl 75 ref 155 155 163 163
+sleep_time                      000126 automatic       fixed bin(71,0)          dcl 38 set ref 150* 151 155 155 163 163
+stac                                                   builtin function         dcl 75 ref 130
+stacq                           000042 constant        entry                    external dcl 63 ref 211
+time_locked                     000104 automatic       fixed bin(71,0)          dcl 38 set ref 110* 111 115* 119 120
+time_started                    000106 automatic       fixed bin(71,0)          dcl 38 set ref 103* 111 111* 115* 120 140 140*
+timer_manager_$sleep            000054 constant        entry                    external dcl 63 ref 155
+ttul_code                       000130 automatic       fixed bin(17,0)          dcl 38 set ref 135* 136 141
+wait_list                       000012 internal static structure                level 1 dcl 53 set ref 164 164
+wait_time                       000102 automatic       fixed bin(17,0)          dcl 38 set ref 85* 102* 146 149
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+AGAIN                           000251 constant        label                    dcl 130 ref 141 168
+LOCK                            000237 constant        entry                    internal dcl 124 ref 87 105
+UNLOCK                          000537 constant        entry                    internal dcl 205 ref 177 193
+lock                            000035 constant        entry                    external dcl 82
+meter_lock                      000064 constant        entry                    external dcl 99
+meter_unlock                    000174 constant        entry                    external dcl 189
+rcp_set_lock_                   000022 constant        entry                    external dcl 13
+unlock                          000147 constant        entry                    external dcl 173
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1056        1134     606        1066
+Length      1346     606        56         175     250           6
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_set_lock_                       154 external procedure  is an external procedure.  
+LOCK                                    internal procedure  shares stack frame of external procedure rcp_set_lock_.  
+UNLOCK                                  internal procedure  shares stack frame of external procedure rcp_set_lock_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 lock_id                     rcp_set_lock_
+000012 wait_list                   rcp_set_lock_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_set_lock_            000100 lock_ptr                    rcp_set_lock_
+                         000102 wait_time                   rcp_set_lock_
+                         000103 code                        rcp_set_lock_
+                         000104 time_locked                 rcp_set_lock_
+                         000106 time_started                rcp_set_lock_
+                         000110 alarm_time                  rcp_set_lock_
+                         000112 alarm_channel               rcp_set_lock_
+                         000114 message                     rcp_set_lock_
+                         000124 failure_time                rcp_set_lock_
+                         000126 sleep_time                  rcp_set_lock_
+                         000130 ttul_code                   rcp_set_lock_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          stac_mac            ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+clock_                        get_initial_ring_             get_lock_id_                  get_ring_
+hcs_$get_alarm_timer          hcs_$set_alarm_timer          hcs_$try_to_unlock_lock       ipc_$block
+ipc_$create_ev_chn            stacq                         timer_manager_$sleep
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$invalid_lock_reset                             error_table_$lock_not_locked
+error_table_$lock_wait_time_exceeded                        error_table_$locked_by_other_process
+error_table_$locked_by_this_process
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     38 000015        13 000021        82 000030        84 000046        85 000051        87 000053        89 000054
+     90 000056        99 000057       101 000077       102 000102       103 000104       105 000106       107 000107
+    110 000114       111 000123       113 000127       115 000130       119 000133       120 000135       121 000140
+    122 000142       173 000143       175 000160       177 000163       179 000164       180 000166       189 000167
+    191 000207       193 000212       195 000213       197 000231       198 000234       199 000236       124 000237
+    129 000240       130 000251       132 000256       133 000257       135 000260       136 000270       137 000273
+    138 000276       140 000277       141 000310       142 000313       143 000317       144 000321       146 000322
+    149 000331       150 000343       151 000355       152 000356       153 000361       155 000362       158 000425
+    159 000430       160 000440       162 000443       163 000454       164 000477       165 000516       166 000533
+    168 000536       205 000537       210 000540       211 000551       214 000600       216 000604       217 000605
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,2487 @@
+	COMPILATION LISTING OF SEGMENT bce_dump
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1025.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-01-14,Fawcett), approve(86-04-11,MCR7383),
+       12*     audit(86-05-12,Farley), install(86-07-17,MR12.0-1097):
+       13*     Change the call to find_partition$given_drive for subvolumes
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 bce_dump: proc (ss_info_ptr);
+       18 
+       19 /* Program to perform a disk dump of a crashed Multics system within
+       20*bootload Multics.
+       21*Written November 1983 by Keith Loepere. */
+       22 /* Modified August 1984 by Keith Loepere for sstnt option and to change defaults. */
+       23 /* Modified November 1984 by M. Pandolf to include hc_lock. */
+       24 /* Modified January 1985 by Keith Loepere for new find_partition,
+       25*   and to get severity right. */
+       26 
+       27 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       28 
+       29 /* Names of process categories and options. */
+       30 
+       31 dcl  All				fixed bin init (1) static options (constant); /* process_group_num */
+       32 dcl  Directories			fixed bin init (1) static options (constant); /* segment_group_num */
+       33 dcl  Eligible			fixed bin init (2) static options (constant); /* process_group_num */
+       34 dcl  Hardcore			fixed bin init (2) static options (constant); /* segment_group_num */
+       35 dcl  Initializer			fixed bin init (3) static options (constant); /* process_group_num */
+       36 dcl  Modifying_dirs			fixed bin init (3) static options (constant); /* segment_group_num */
+       37 dcl  Per_process			fixed bin init (4) static options (constant); /* segment_group_num */
+       38 dcl  Process_group_names		(4) char (32) static options (constant) init
+       39 				("-all", "-eligible", "-initializer", "-running");
+       40 dcl  Process_group_names_short	(4) char (5) static options (constant) init
+       41 				("-all", "-elig", "-inzr", "-run");
+       42 dcl  Running			fixed bin init (4) static options (constant); /* process_group_num */
+       43 dcl  Segment_group_names		(6) char (32) static options (constant) init
+       44 				("directories", "hardcore", "modifying_dirs", "per_process", "stacks", "writeable");
+       45 dcl  Segment_group_names_short	(6) char (6) static options (constant) init
+       46 				("dir", "hc", "moddir", "pp", "stk", "wrt");
+       47 dcl  Stacks			fixed bin init (5) static options (constant); /* segment_group_num */
+       48 dcl  Writeable			fixed bin init (6) static options (constant); /* segment_group_num */
+       49 
+       50 dcl  addcharno			builtin;
+       51 dcl  addr				builtin;
+       52 dcl  addrel			builtin;
+       53 dcl  after			builtin;
+       54 dcl  apte_num			fixed bin;	/* loop var */
+       55 dcl  arg				char (arg_len) based (arg_ptr);
+       56 dcl  arg_len			fixed bin (21);
+       57 dcl  arg_num			fixed bin;	/* loop var */
+       58 dcl  arg_ptr			ptr;
+       59 dcl  before			builtin;
+       60 dcl  bce_appending_simulation$get_absolute entry (fixed bin (26), fixed bin (18), ptr, fixed bin (35));
+       61 dcl  bce_appending_simulation$get_virtual entry (ptr, fixed bin (26), fixed bin (18), ptr, fixed bin (35));
+       62 dcl  bce_appending_simulation$init	entry (bit (1) aligned, fixed bin (35));
+       63 dcl  bce_appending_simulation$new_dbr	entry (bit (72) aligned, fixed bin (15), fixed bin (35));
+       64 dcl  bce_appending_simulation$new_sdw	entry (fixed bin (71), ptr, fixed bin (35));
+       65 dcl  bce_appending_simulation$new_segment entry (fixed bin (15), ptr, fixed bin (35));
+       66 dcl  bce_check_abort		entry;
+       67 dcl  bce_create_sstnt		entry (fixed bin (26), fixed bin (26));
+       68 dcl  bce_query$yes_no		entry options (variable);
+       69 dcl  bin				builtin;
+       70 dcl  bit				builtin;
+       71 dcl  clock			builtin;
+       72 dcl  code				fixed bin (35);
+       73 dcl  com_err_			entry () options (variable);
+       74 dcl  crash_dbr			bit (72) aligned;
+       75 dcl  crash_dbr_addr			fixed bin (26);
+       76 dcl  create_sstnt			bit (1) aligned;
+       77 dcl  cu_$arg_count_rel		entry (fixed bin, ptr, fixed bin (35));
+       78 dcl  cu_$arg_ptr_rel		entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       79 dcl  current_dbr			bit (72) aligned;
+       80 dcl  current_dump_record		fixed bin (18);	/* record on disk of start of this segment */
+       81 dcl  cv_dec_check_			entry (char (*), fixed bin (35)) returns (fixed bin (35));
+       82 dcl  dbr_util_$dissect		entry (ptr, ptr);
+       83 dcl  dimension			builtin;
+       84 dcl  directory_mod			bit (36) aligned;	/* modify field of dir */
+       85 dcl  divide			builtin;
+       86 dcl  drive_num			char (4);
+       87 dcl  dump_severity			fixed bin init (3) static;
+       88 dcl  dseg$			external;
+       89 dcl  dseg_buffer			(0:511) fixed bin (71); /* buffer page of dseg to optimize sdw checking */
+       90 dcl  1 dseg_info			aligned like seg_info;
+       91 dcl  dseg_no			fixed bin (15);	/* segno of dseg */
+       92 dcl  dump_astep			ptr;		/* for dump_seg */
+       93 dcl  dump_disk_pvid			bit (36) aligned;
+       94 dcl  dump_disk_pvtx			fixed bin;
+       95 dcl  dump_drive_name		char (8);
+       96 dcl  dump_number			fixed bin;	/* user supplied */
+       97 dcl  dump_options			(4) bit (6) aligned;/* options for processes to dump (process_group_num, segment_group_num) */
+       98 dcl  dump_ptp			ptr;		/* page table for dump_seg */
+       99 dcl  dump_seg$			external;		/* mapped onto dump partition */
+      100 dcl  dumped_hc_seg			(0:255) bit (1) unal; /* set true when we succeed in dumping hc seg n */
+      101 dcl  error_table_$bad_arg		fixed bin (35) ext static;
+      102 dcl  error_table_$noarg		fixed bin (35) ext static;
+      103 dcl  examine_crash			bit (1) aligned;
+      104 dcl  find_partition			entry (char (*), fixed bin, bit (36) aligned, fixed bin (18), fixed bin (18), fixed bin (35));
+      105 dcl  find_partition$given_drive	entry (char (*), char (4), char (4), fixed bin, bit (36) aligned, fixed bin (18), fixed bin (18), fixed bin (35));
+      106 dcl  first_dump_record		fixed bin (18);	/* first record in partition */
+      107 dcl  force			bit (1) aligned;
+      108 dcl  get_ptrs_$given_segno		entry (fixed bin (15)) returns (ptr);
+      109 dcl  hbound			builtin;
+      110 dcl  hreg				fixed bin;	/* loop var */
+      111 dcl  i				fixed bin;	/* loop var */
+      112 dcl  ioa_				entry () options (variable);
+      113 dcl  kst_no			fixed bin (15);	/* segno of kst */
+      114 dcl  kst_seg$			external;
+      115 dcl  last_apte			fixed bin;	/* range of aptes to dump */
+      116 dcl  last_segnum			fixed bin (15);	/* range of valid segnos */
+      117 dcl  lbound			builtin;
+      118 dcl  me				char (8) static init ("bce_dump") options (constant);
+      119 dcl  min				builtin;
+      120 dcl  mod				builtin;
+      121 dcl  1 my_apte			aligned like apte;
+      122 dcl  1 my_aste			aligned like aste;
+      123 dcl  1 my_dbr_info			aligned like dbr_info;
+      124 dcl  1 my_dump			aligned like dump;
+      125 dcl  my_page_buffer			bit (1024 * 36) aligned;
+      126 dcl  1 my_ptw_info			aligned like ptw_info;
+      127 dcl  1 my_sdw_info			aligned like sdw_info;
+      128 dcl  1 my_seg_info			aligned like seg_info;
+      129 dcl  n_args			fixed bin;	/* command line args */
+      130 dcl  not_option			bit (1) aligned;	/* true => use not of current option */
+      131 dcl  null_page			bit (1) aligned;	/* false => found non-null page in segment */
+      132 dcl  num_pages			fixed bin;	/* in segment to dump */
+      133 dcl  num_records			fixed bin (18);	/* in dump part */
+      134 dcl  page_buffer			bit (1024 * 36) aligned based;
+      135 dcl  page_num			fixed bin;	/* loop var */
+      136 dcl  pc$cleanup			entry (ptr);
+      137 dcl  pds$				external;
+      138 dcl  pds_no			fixed bin (15);	/* segno of pds */
+      139 dcl  prds$			external;
+      140 dcl  prds_no			fixed bin (15);	/* segno of prds */
+      141 dcl  proc_options			bit (6) unal;	/* options (segment_group_num) for segments for this proc */
+      142 dcl  process_group_num		fixed bin;	/* loop var */
+      143 dcl  processed_crash_dbr		bit (1) aligned;	/* true when we found the apte for the crashing process */
+      144 dcl  ptw_util_$dissect		entry (ptr, ptr);
+      145 dcl  ptw_util_$make_null_disk		entry (ptr, fixed bin (20));
+      146 dcl  read_disk			entry (fixed bin, fixed bin (18), ptr, fixed bin (35));
+      147 dcl  request_abort_			condition;
+      148 dcl  rsw_util$port_info		entry (fixed bin (3), bit (1) aligned, fixed bin, fixed bin, fixed bin (3));
+      149 dcl  scu_base			fixed bin;
+      150 dcl  scu_enabled			bit (1) aligned;
+      151 dcl  scu_interlace			fixed bin (3);
+      152 dcl  scu_size			fixed bin;
+      153 dcl  scu_tag			fixed bin (3);
+      154 dcl  sdw_util_$dissect		entry (ptr, ptr);
+      155 dcl  seg_sdw			fixed bin (71) based (seg_sdw_ptr);
+      156 dcl  seg_sdw_ptr			ptr;
+      157 dcl  segment_group_num		fixed bin;	/* loop var */
+      158 dcl  segno			builtin;
+      159 dcl  segnum			fixed bin (15);	/* loop var */
+      160 dcl  size				builtin;
+      161 dcl  sst_bit_map			bit (16384) aligned;/* map which implies which astes have been dumped, figuring that each aste/pt takes at least 16 words */
+      162 dcl  sst_end			fixed bin (26);	/* range of addresses for sst page segs */
+      163 dcl  sst_index			fixed bin;	/* index into sst_bit_map for this apparent aste */
+      164 dcl  sst_seg$			external;
+      165 dcl  sst_start			fixed bin (26);
+      166 dcl  substr			builtin;
+      167 dcl  subsystem			char (4);
+      168 dcl  sys_boot_info$bce_dbr		bit (72) aligned external;
+      169 dcl  sys_info$clock_		bit (3) aligned external;
+      170 dcl  tc_data$			external;
+      171 dcl  tc_data_addr			fixed bin (26);	/* absadr */
+      172 dcl  tc_data_no			fixed bin (15);	/* segno of tc_data */
+      173 dcl  1 toehold$			aligned like toe_hold external;
+      174 dcl  unspec			builtin;
+      175 dcl  wordno			builtin;
+      176 dcl  write_disk			entry (fixed bin, fixed bin (18), ptr, fixed bin (35));
+      177 dcl  yes_no			bit (1);
+      178 
+      179 
+      180 /* Start by finding supplied dump options. */
+      181 
+      182 	dump_severity = 2;
+      183 	unspec (dump_options) = "0"b;
+      184 	dump_number = 0;
+      185 	force = "0"b;
+      186 	create_sstnt = "1"b;			/* defaults */
+      187 	dump_drive_name = "";
+      188 	examine_crash = (sys_info$collection_1_phase = CRASH_INITIALIZATION | sys_info$collection_1_phase = BCE_CRASH_INITIALIZATION);
+      189 	call cu_$arg_count_rel (n_args, ss_info.arg_list_ptr, code);
+      190 	if code ^= 0 then signal request_abort_;
+      191 
+      192 	if n_args = 0 then do;
+      193 	     call ioa_ ("Usage is: dump <options> {-force | -fc}.");
+      194 	     call ioa_ ("Options are:");
+      195 	     call ioa_ ("   -dump #");
+      196 	     call ioa_ ("   -sstnt | -no_sstnt");
+      197 	     call ioa_ ("   -drive | -dv <name>");
+      198 	     call ioa_ ("   -brief | -bf | -standard | -std | -long | -lg");
+      199 	     call ioa_ ("   -crash | -bce");
+      200 	     call ioa_ ("   <-process_group> <segment options>");
+      201 	     call ioa_ ("   Process groups are:");
+      202 	     do i = 1 to dimension (Process_group_names, 1);
+      203 		call ioa_ ("      ^a ^a", Process_group_names (i), Process_group_names_short (i));
+      204 	     end;
+      205 	     call ioa_ ("   Segment options are:");
+      206 	     do i = 1 to dimension (Segment_group_names, 1);
+      207 		call ioa_ ("      ^a ^a", Segment_group_names (i), Segment_group_names_short (i));
+      208 	     end;
+      209 	     return;
+      210 	end;
+      211 
+      212 	arg_num = 1;
+      213 	do while (arg_num <= n_args);
+      214 	     call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+      215 	     arg_num = arg_num + 1;
+      216 	     if arg = "-dump" then do;
+      217 		if arg_num > n_args then do;
+      218 		     call com_err_ (error_table_$noarg, me, "dump number");
+      219 		     return;
+      220 		end;
+      221 		call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+      222 		arg_num = arg_num + 1;
+      223 		dump_number = cv_dec_check_ (arg, code);
+      224 		if code ^= 0 then do;
+      225 		     call com_err_ (0, me, "Bad dump number. ^a", arg);
+      226 		     return;
+      227 		end;
+      228 	     end;
+      229 	     else if arg = "-drive" | arg = "-dv" then do;
+      230 		if arg_num > n_args then do;
+      231 		     call com_err_ (error_table_$noarg, me, "drive name");
+      232 		     return;
+      233 		end;
+      234 		call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+      235 		arg_num = arg_num + 1;
+      236 		dump_drive_name = arg;
+      237 	     end;
+      238 	     else if arg = "-force" | arg = "-fc" then force = "1"b;
+      239 	     else if arg = "-crash" then examine_crash = "1"b;
+      240 	     else if arg = "-bce" then examine_crash = "0"b;
+      241 	     else if arg = "-sstnt" then create_sstnt = "1"b;
+      242 	     else if arg = "-no_sstnt" then create_sstnt = "0"b;
+      243 	     else if arg = "-brief" | arg = "-bf" then do;
+      244 		unspec (dump_options) = "0"b;
+      245 		substr (dump_options (Running), Hardcore, 1) = "1"b;
+      246 		substr (dump_options (Running), Modifying_dirs, 1) = "1"b;
+      247 		substr (dump_options (Running), Per_process, 1) = "1"b;
+      248 	     end;
+      249 	     else if arg = "-standard" | arg = "-std" then do;
+      250 		unspec (dump_options) = "0"b;
+      251 		substr (dump_options (Running), Hardcore, 1) = "1"b;
+      252 		substr (dump_options (Running), Modifying_dirs, 1) = "1"b;
+      253 		substr (dump_options (Running), Per_process, 1) = "1"b;
+      254 		substr (dump_options (Eligible), Hardcore, 1) = "1"b;
+      255 		substr (dump_options (Eligible), Stacks, 1) = "1"b;
+      256 		dump_options (Initializer) = dump_options (Eligible);
+      257 	     end;
+      258 	     else if arg = "-long" | arg = "-lg" then do;
+      259 		unspec (dump_options) = "0"b;
+      260 		substr (dump_options (All), Writeable, 1) = "1"b;
+      261 	     end;
+      262 	     else do;
+      263 		do process_group_num = 1 to dimension (Process_group_names, 1)
+      264 		     while (Process_group_names (process_group_num) ^= arg & Process_group_names_short (process_group_num) ^= arg);
+      265 		end;
+      266 		if process_group_num > dimension (Process_group_names, 1) then do;
+      267 		     call com_err_ (error_table_$bad_arg, me, "^a", arg);
+      268 		     return;
+      269 		end;
+      270 		if arg_num > n_args then do;
+      271 		     call com_err_ (error_table_$noarg, me, "segment group options");
+      272 		     return;
+      273 		end;
+      274 next_segment_option:
+      275 		call cu_$arg_ptr_rel (arg_num, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+      276 		if arg_len > 0 then
+      277 		     if substr (arg, 1, 1) = "^" then do;
+      278 			not_option = "1"b;
+      279 			arg_len = arg_len - 1;
+      280 			arg_ptr = addcharno (arg_ptr, 1); /* eat not flag */
+      281 		     end;
+      282 		     else not_option = "0"b;
+      283 		else not_option = "0"b;
+      284 		do segment_group_num = 1 to dimension (Segment_group_names, 1)
+      285 		     while (Segment_group_names (segment_group_num) ^= arg & Segment_group_names_short (segment_group_num) ^= arg);
+      286 		end;
+      287 		if segment_group_num <= dimension (Segment_group_names, 1) then do;
+      288 		     substr (dump_options (process_group_num), segment_group_num, 1) = ^not_option;
+      289 		     arg_num = arg_num + 1;
+      290 		     if arg_num <= n_args then go to next_segment_option;
+      291 						/* else we fall through and see this ctl-arg on next loop up */
+      292 		end;
+      293 	     end;
+      294 	end;
+      295 
+      296 	dump_options (Eligible) = dump_options (Eligible) | dump_options (All); /* merge options */
+      297 	dump_options (Running) = dump_options (Running) | dump_options (Eligible);
+      298 	call ioa_ ("Dumping ^[Multics image^;bce^].", examine_crash);
+      299 
+      300 
+      301 /* Setup and initialization. */
+      302 
+      303 	if examine_crash then crash_dbr = toehold$.multics_state.dbr;
+      304 	else crash_dbr = sys_boot_info$bce_dbr;
+      305 	dbr_info_ptr = addr (my_dbr_info);
+      306 	call dbr_util_$dissect (addr (crash_dbr), dbr_info_ptr);
+      307 	crash_dbr_addr = dbr_info.address;
+      308 
+      309 	dumpptr = addr (my_dump);
+      310 	call bce_appending_simulation$init (examine_crash, code);
+      311 	if code ^= 0 then do;
+      312 apnd_error:    call com_err_ (code, me, "appending simulation package");
+      313 	     return;
+      314 	end;
+      315 
+      316 	if dump_drive_name = "" then call find_partition ("dump", dump_disk_pvtx, dump_disk_pvid, first_dump_record, num_records, code);
+      317 	else do;					/* oper supplied drive */
+      318 	     subsystem = before (dump_drive_name, "_");
+      319 	     drive_num = after (dump_drive_name, "_");
+      320 	     if code ^= 0 then do;
+      321 		call com_err_ (0, me, "Bad dump partition drive_name.");
+      322 		return;
+      323 	     end;
+      324 	     call find_partition$given_drive ("dump", subsystem, drive_num, dump_disk_pvtx, dump_disk_pvid, first_dump_record, num_records, code);
+      325 	end;
+      326 	if code ^= 0 then do;
+      327 dump_partition_error:
+      328 	     call com_err_ (code, me, "dump partition");
+      329 	     return;
+      330 	end;
+      331 
+      332 /* Get current header. */
+      333 
+      334 	call read_disk (dump_disk_pvtx, first_dump_record, dumpptr, code);
+      335 	if code ^= 0 then go to dump_partition_error;
+      336 
+      337 	if dump.valid then
+      338 	     if ^force then do;
+      339 		call bce_query$yes_no (yes_no, "dump: The dump partition contains the supposedly valid dump #^d.^/Do you wish to overwrite it? ", dump.erfno);
+      340 		if ^yes_no then do;
+      341 		     dump_severity = 1;
+      342 		     return;
+      343 		end;
+      344 	     end;
+      345 
+      346 	dump.valid = "0"b;
+      347 	if dump_number > 0 then dump.erfno = dump_number;
+      348 	else dump.erfno = dump.erfno + 1;
+      349 	call ioa_ ("Dump #^d", dump.erfno);
+      350 	call write_disk (dump_disk_pvtx, first_dump_record, dumpptr, code); /* hedge against crash */
+      351 	if code ^= 0 then go to dump_partition_error;
+      352 
+      353 	dump.words_dumped = 0;
+      354 	begin;
+      355 dcl  kludge_valid			bit (36) aligned based (addr (dump.valid));
+      356 	     kludge_valid = "111111111111111111111111111111111111"b; /* azm expects it */
+      357 	end;
+      358 	dump.time = clock;				/* fill in header */
+      359 	dump.num_segs = 0;
+      360 	dump.valid_355 = "0"b;
+      361 	dump.dumped_355s = "0"b;
+      362 	dump.time_355 = 0;
+      363 	dump.version = DUMP_VERSION_2;
+      364 
+      365 /* save the various toehold information into the header. */
+      366 
+      367 	dump.dbr = crash_dbr;
+      368 	dump.low_order_port = sys_info$clock_;
+      369 	if examine_crash then do;
+      370 	     dump.amptwregs = toehold$.ptwam_regs;
+      371 	     dump.amptwptrs = toehold$.ptwam_ptrs;
+      372 	     dump.amsdwregs = toehold$.sdwam_regs;
+      373 	     dump.amsdwptrs = toehold$.sdwam_ptrs;
+      374 	     do hreg = 0 to 15;
+      375 		dump.ouhist (hreg) = toehold$.ou_history_registers (hreg);
+      376 		dump.cuhist (hreg) = toehold$.cu_history_registers (hreg);
+      377 		dump.duhist (hreg) = toehold$.du_history_registers (hreg);
+      378 		dump.auhist (hreg) = toehold$.apu_history_registers (hreg);
+      379 	     end;
+      380 	     dump.prs = toehold$.mc_.prs;
+      381 	     unspec (dump.regs) = unspec (toehold$.mc_.regs);
+      382 	     dump.mctime = bin (toehold$.mc_.fault_time, 54);
+      383 	     unspec (dump.scu) = unspec (toehold$.mc_.scu);
+      384 	     unspec (dump.mcm) = unspec (toehold$.masks);
+      385 	     substr (dump.intrpts, 1, 16) = substr (toehold$.interrupt, 1, 16);
+      386 	     substr (dump.intrpts, 17, 16) = substr (toehold$.interrupt, 37, 16);
+      387 	     dump.bar = toehold$.bar;
+      388 	     dump.modereg = toehold$.mode_reg;
+      389 	     dump.cmodereg = toehold$.cache_mode_reg;
+      390 	     dump.faultreg = toehold$.mc_.fault_reg;
+      391 	     dump.ptrlen = toehold$.mc_.eis_info;
+      392 	end;
+      393 	do scu_tag = lbound (dump.coreblocks.num_first, 1) to hbound (dump.coreblocks.num_first, 1);
+      394 	     call rsw_util$port_info (scu_tag, scu_enabled, scu_base, scu_size, scu_interlace);
+      395 	     dump.coreblocks.num_first (scu_tag) = bit (scu_base, 18);
+      396 	     dump.coreblocks.num_blocks (scu_tag) = bit (scu_size, 18);
+      397 	end;
+      398 
+      399 	current_dump_record = first_dump_record + 66;	/* 2 for header and 64 for (obsolete) fnp dumping */
+      400 	dseg_no = segno (addr (dseg$));		/* interesting per-process(or) segments */
+      401 	pds_no = segno (addr (pds$));
+      402 	prds_no = segno (addr (prds$));
+      403 	kst_no = segno (addr (kst_seg$));
+      404 
+      405 	aptep = addr (my_apte);			/* ptrs to local copies of things */
+      406 	sdw_info_ptr = addr (my_sdw_info);
+      407 	ptw_info_ptr = addr (my_ptw_info);
+      408 	seg_info_ptr = addr (my_seg_info);
+      409 	astep = addr (my_aste);
+      410 	dp = addr (directory_mod);
+      411 	dump_astep = get_ptrs_$given_segno (segno (addr (dump_seg$)));
+      412 	dump_ptp = addrel (dump_astep, size (aste));
+      413 	dump_astep -> aste.pvtx = dump_disk_pvtx;
+      414 	do page_num = 0 to 255;
+      415 	     call ptw_util_$make_null_disk (addrel (dump_ptp, page_num), first_dump_record + page_num); /* safe initial state */
+      416 	end;
+      417 
+      418 /* Find range of aptes to dump from tc_data. */
+      419 
+      420 	tcmp = addr (tc_data$);
+      421 	tc_data_no = segno (addr (tc_data$));
+      422 
+      423 	call bce_appending_simulation$new_segment (tc_data_no, seg_info_ptr, code);
+      424 	if code ^= 0 then last_apte = 0;
+      425 	else do;
+      426 	     if seg_info.paged then do;
+      427 		call ptw_util_$dissect (addr (seg_info.page_table (0)), ptw_info_ptr);
+      428 		tc_data_addr = ptw_info.address;
+      429 	     end;
+      430 	     else tc_data_addr = seg_info.address;
+      431 	     call bce_appending_simulation$get_absolute (tc_data_addr + wordno (addr (tcm.apt_size)), 1, addr (last_apte), code);
+      432 	     if code ^= 0 then last_apte = 0;
+      433 	end;
+      434 
+      435 
+      436 /* Get sst bounds (for finding sst paged segments). */
+      437 
+      438 	sst_start = 0; sst_end = -1;
+      439 	call bce_appending_simulation$new_segment (segno (addr (sst_seg$)), seg_info_ptr, code);
+      440 	if code = 0 then do;
+      441 	     if seg_info.paged then do;
+      442 		call ptw_util_$dissect (addr (seg_info.page_table (0)), ptw_info_ptr);
+      443 		sst_start = ptw_info.address;
+      444 	     end;
+      445 	     else sst_start = seg_info.address;
+      446 	     sst_end = sst_start + seg_info.size - 1;
+      447 	end;
+      448 
+      449 	processed_crash_dbr = "0"b;
+      450 	dumped_hc_seg (*) = "0"b;
+      451 	sst_bit_map = "0"b;
+      452 
+      453 	if create_sstnt then call bce_create_sstnt (sst_start, sst_end);
+      454 
+      455 
+      456 /* Walk down through aptes, dumping what the operator wants dumped for each one. */
+      457 
+      458 /* We iterate over all aptes in tc_data.  When we find the apte that matches
+      459*the process that crashed, we set processed_crash_dbr.  Otherwise, this isn't 
+      460*set and we make one more pass (0) which picks this process up. */
+      461 
+      462 	do apte_num = 1 to last_apte, 0 while (^processed_crash_dbr); /* include dbr in machine conditions */
+      463 	     call bce_check_abort;			/* operator wants to stop? */
+      464 
+      465 	     if apte_num > 0 then do;			/* else using crash dbr */
+      466 		call bce_appending_simulation$get_absolute (tc_data_addr + wordno (addr (tcm.apt)) + (apte_num - 1) * size (apte), size (apte), aptep, code);
+      467 		if code ^= 0 then go to next_apte;
+      468 		if apte.state = Empty_apte then go to next_apte;
+      469 		current_dbr = unspec (apte.dbr);
+      470 
+      471 /* Find options that apply to this process. */
+      472 
+      473 		if dump_options (Running) ^= "0"b & (apte.dbr_loaded | apte.state = Stopped_apte) then proc_options = dump_options (Running);
+      474 		else if apte.eligible then proc_options = dump_options (Eligible);
+      475 		else proc_options = dump_options (All);
+      476 		if apte_num = 1 then proc_options = proc_options | dump_options (Initializer); /* inzr is first apte */
+      477 	     end;
+      478 	     else do;
+      479 		current_dbr = crash_dbr;
+      480 		proc_options = dump_options (Running) | dump_options (Initializer); /* grab all you can */
+      481 	     end;
+      482 
+      483 	     call dbr_util_$dissect (addr (current_dbr), dbr_info_ptr);
+      484 	     if dbr_info.address = crash_dbr_addr then processed_crash_dbr = "1"b;
+      485 	     if proc_options = "0"b then go to next_apte; /* not interesting */
+      486 	     substr (proc_options, Hardcore, 1) = "1"b;	/* need to dump these, if any, so that process is 
+      487*						visible in dump (a decrease in segnos appears) */
+      488 
+      489 	     call bce_appending_simulation$new_dbr (current_dbr, last_segnum, code);
+      490 	     if code ^= 0 then go to next_apte;
+      491 	     call bce_appending_simulation$new_segment (dseg_no, addr (dseg_info), code);
+      492 	     if code ^= 0 then go to next_apte;
+      493 
+      494 	     call ioa_ ("proc ^o, dbr = ^24.3b", apte_num, current_dbr);
+      495 
+      496 
+      497 /* Process segments desired. */
+      498 
+      499 	     do segnum = 0 to last_segnum;
+      500 		call bce_check_abort;		/* last chance for operator to stop */
+      501 
+      502 /* optimization - keep around a page of dseg; see if an sdw is faulted before
+      503*expending new_segment on it */
+      504 
+      505 		if mod (segnum, dimension (dseg_buffer, 1)) = 0 then /* crossed into next buffer of sdw's (next dseg page) */
+      506 		     call bce_appending_simulation$get_virtual (addr (dseg_info), segnum * 2, size (dseg_buffer), addr (dseg_buffer), code); /* zero sdw's on error */
+      507 		seg_sdw_ptr = addr (dseg_buffer (mod (segnum, dimension (dseg_buffer, 1))));
+      508 		call sdw_util_$dissect (seg_sdw_ptr, sdw_info_ptr);
+      509 		if sdw_info.faulted then go to next_seg;
+      510 
+      511 		call bce_appending_simulation$new_sdw (seg_sdw, seg_info_ptr, code);
+      512 		if code ^= 0 then go to next_seg;
+      513 
+      514 /* See if we should dump this segment. */
+      515 
+      516 		if substr (proc_options, Hardcore, 1) then
+      517 		     if segnum = dseg_no | segnum = pds_no | segnum = prds_no | segnum = kst_no then go to dump_seg;
+      518 		if ^seg_info.write then go to next_seg;
+      519 		if dbr_info.stack_base_segnum = 0	/* idle or initialization (all segs hc) */
+      520 		     | segnum < dbr_info.stack_base_segnum then /* hc seg */
+      521 		     if segnum > hbound (dumped_hc_seg, 1) then go to dump_seg;
+      522 		     else if ^dumped_hc_seg (segnum) then do;
+      523 			dumped_hc_seg (segnum) = "1"b;
+      524 			go to dump_seg;		/* dump for first proc */
+      525 		     end;
+      526 		     else go to next_seg;		/* not for others */
+      527 		if substr (proc_options, Stacks, 1) & (dbr_info.stack_base_segnum <= segnum & segnum < dbr_info.stack_base_segnum + 8) then go to dump_seg; /* stacks */
+      528 		if ^seg_info.paged then go to dump_seg; /* unpaged non-hardcore - rare */
+      529 		if sst_start > 0 then do;		/* there was a sst */
+      530 		     if seg_info.address < sst_start | sst_end < seg_info.address then go to dump_seg; /* not sst paged seg - rare for non-hc */
+      531 
+      532 /* We now have a non-hardcore standard paged segment. */
+      533 
+      534 		     if ^substr (proc_options, Writeable, 1) then do; /* if we don't want all writable, segments need some justification */
+      535 			if seg_info.sst_data.per_process & substr (proc_options, Per_process, 1) then go to consider_seg;
+      536 			if seg_info.sst_data.dirsw then do;
+      537 			     if substr (proc_options, Directories, 1) then go to consider_seg;
+      538 			     if substr (proc_options, Modifying_dirs, 1) then do;
+      539 				call bce_appending_simulation$get_virtual (seg_info_ptr, wordno (addr (dir.modify)) - wordno (dp), 1, dp, code);
+      540 				if dir.modify then go to consider_seg;
+      541 			     end;
+      542 			end;
+      543 			go to next_seg;
+      544 		     end;
+      545 consider_seg:
+      546 
+      547 /* We want to dump this segment.  First, though, we ask if we dumped it before
+      548*(we have processed its aste before).  Since no two astes can fit in the same
+      549*16 words of memory (they are at least 16 words long), we can divide the sst
+      550*into 16 word blocks.  If two segments claim different (starting) blocks, we
+      551*say they have different astes and are different segments. */
+      552 
+      553 		     sst_index = divide (seg_info.address - sst_start + 8, 16, 14) + 1;
+      554 		     if substr (sst_bit_map, sst_index, 1) then go to next_seg; /* already dumped */
+      555 		     substr (sst_bit_map, sst_index, 1) = "1"b;
+      556 		end;
+      557 		else go to next_seg;
+      558 
+      559 dump_seg:
+      560 
+      561 /* Time to dump this segment.  See if it will fit. */
+      562 
+      563 		if dump.num_segs = dimension (dump.segs, 1) then do;
+      564 		     call ioa_ ("Segment array overflow.");
+      565 		     go to end_dump;
+      566 		end;
+      567 		dump.num_segs = dump.num_segs + 1;
+      568 		dump.segs.segno (dump.num_segs) = bit (bin (segnum, 18), 18);
+      569 		dump.segs.length (dump.num_segs) = "0"b;
+      570 
+      571 /* Map dump_seg onto next area of dump part. */
+      572 
+      573 		num_pages = divide (seg_info.size + 1023, 1024, 8);
+      574 		if current_dump_record + num_pages > first_dump_record + num_records then do;
+      575 		     call ioa_ ("Dump partition overflow.");
+      576 		     go to end_dump;
+      577 		end;
+      578 		do page_num = 0 to num_pages - 1;
+      579 		     call ptw_util_$make_null_disk (addrel (dump_ptp, page_num), current_dump_record + page_num);
+      580 		end;
+      581 
+      582 /* We must find the last non-zero page.  After this, we move it into dump_seg
+      583*and then page the rest of the segment into there.  We read the segment 
+      584*backwards, for possible i/o latency improvement. */
+      585 
+      586 		null_page = "1"b;
+      587 		do page_num = num_pages - 1 to 0 by -1 while (null_page);
+      588 		     call bce_appending_simulation$get_virtual (seg_info_ptr, page_num * 1024, min (1024, seg_info.size - page_num * 1024), addr (my_page_buffer), code);
+      589 		     if my_page_buffer ^= "0"b then null_page = "0"b;
+      590 		end;
+      591 		if null_page then go to next_seg;	/* empty seg */
+      592 		page_num = page_num + 1;		/* last non-null page */
+      593 		addrel (addr (dump_seg$), page_num * 1024) -> page_buffer = my_page_buffer;
+      594 		if page_num > 0 then
+      595 		     call bce_appending_simulation$get_virtual (seg_info_ptr, 0, min (seg_info.size, page_num * 1024), addr (dump_seg$), code);
+      596 		call pc$cleanup (dump_astep);		/* write out */
+      597 		current_dump_record = current_dump_record + page_num + 1;
+      598 		dump.segs.length (dump.num_segs) = bit (bin ((page_num + 1) * 16, 18), 18);
+      599 		dump.words_dumped = dump.words_dumped + (page_num + 1) * 1024;
+      600 next_seg:
+      601 	     end;
+      602 next_apte:
+      603 	end;
+      604 
+      605 	dump_severity = 0;				/* all done! */
+      606 
+      607 end_dump:
+      608 
+      609 /* Write out header */
+      610 
+      611 	call write_disk (dump_disk_pvtx, first_dump_record + 1, addrel (dumpptr, 1024), code);
+      612 	call write_disk (dump_disk_pvtx, first_dump_record, dumpptr, code);
+      613 	return;
+      614 
+      615 severity: entry () returns (fixed bin);
+      616 
+      617 	return (dump_severity);
+      618  /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  1     2 
+  1     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  1     4 
+  1     5 dcl  aptep pointer;
+  1     6 
+  1     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  1     8     2 thread unaligned,				/* List thread */
+  1     9       3 fp bit (18),				/* Forward pointer */
+  1    10       3 bp bit (18),				/* Backward pointer */
+  1    11     2 flags unaligned,				/* Flags and miscellaneous */
+  1    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  1    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  1    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  1    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  1    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  1    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  1    18       3 eligible bit (1),				/* ON if process is eligible */
+  1    19       3 idle bit (1),				/* ON if  this is an idle process */
+  1    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  1    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  1    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  1    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  1    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  1    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  1    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  1    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  1    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  1    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  1    30       3 state bit (18),				/* execution state */
+  1    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  1    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  1    33 						/* bit 18-35: sequential number */
+  1    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  1    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  1    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  1    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  1    38 
+  1    39 /* * * * * * * * */
+  1    40 
+  1    41     2 ipc_pointers unaligned,
+  1    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  1    43       3 pad3 bit (18),
+  1    44     2 ips_message bit (36),				/* IPS signals pending */
+  1    45     2 asteps unaligned,				/* relative ASTE pointers */
+  1    46       3 pds bit (18),				/* PDS (per-process) */
+  1    47       3 dseg bit (18),				/* DSEG (per-process) */
+  1    48       3 prds bit (18),				/* PRDS (per-processor) */
+  1    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  1    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  1    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  1    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  1    53 
+  1    54 /* * * * * * * * */
+  1    55 
+  1    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  1    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  1    58     2 flags2 unaligned,
+  1    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  1    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  1    61       3 pad7 bit (7),
+  1    62       3 batch bit (1),				/* ON if absentee */
+  1    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  1    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  1    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  1    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  1    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  1    68 
+  1    69 /* * * * * * */
+  1    70 
+  1    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  1    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  1    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  1    74     2 deadline fixed bin (71),			/* time of next run */
+  1    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  1    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  1    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  1    78*						/* reaches this (units = 1/1024 sec) */
+  1    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  1    80     2 access_authorization bit (72),			/* authorization of this process */
+  1    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  1    82 
+  1    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  1    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  1    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  1    86 
+  1    87 /*  Cells used to drive and instrument finite-state model for response time
+  1    88*    measurement. Maintained by meter_response_time */
+  1    89 
+  1    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  1    91     2 pad18 bit (18) unaligned,
+  1    92     2 number_processing fixed bin (35),			/* Number interactions */
+  1    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  1    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  1    95 
+  1    96 /* * * * * * */
+  1    97 
+  1    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  1    99 
+  1   100 /*  End of cells for finite-state model */
+  1   101 
+  1   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  1   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  1   104     2 pad4 bit (28) unaligned,
+  1   105     2 ipc_r_offset fixed bin (18) unsigned,
+  1   106     2 ipc_r_factor fixed bin (35) unsigned,
+  1   107     2 apad (10) fixed bin (35);
+  1   108 
+  1   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      618 
+      619  /* BEGIN include file bce_appending_seg_info.incl.pl1 */
+  2     2 
+  2     3 /* Description of data returned by bce_appending_simulation$new_segment. 
+  2     4*Keith Loepere, November 1983. */
+  2     5 
+  2     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  2     7 
+  2     8 dcl  seg_info_ptr		        ptr;
+  2     9 dcl  1 seg_info		        aligned based (seg_info_ptr),
+  2    10        2 sst_data		        aligned like aste,
+  2    11        2 page_table		        (0:255) bit (36) aligned,
+  2    12        2 sdwi		        aligned like sdw_info;
+  2    13 
+  2    14  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  3     2 
+  3     3 /* Template for an AST entry. Length = 12 words. */
+  3     4 
+  3     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  3     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  3     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  3     8 
+  3     9 dcl  astep ptr;
+  3    10 
+  3    11 dcl 1 aste based (astep) aligned,
+  3    12 
+  3    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  3    14     2 bp bit (18),					/* backward used list rel pointer */
+  3    15 
+  3    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  3    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  3    18 
+  3    19     2 strp bit (18),				/* rel pointer to process trailer */
+  3    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  3    21 
+  3    22     2 uid bit (36),					/* segment unique id */
+  3    23 
+  3    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  3    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  3    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  3    27 
+  3    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  3    29     2 init bit (1),					/* used bit - insure 1 lap */
+  3    30     2 gtus bit (1),					/* global transparent usage switch */
+  3    31     2 gtms bit (1),					/* global transparent modified switch */
+  3    32     2 hc bit (1),					/* hard core segment */
+  3    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  3    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  3    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  3    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  3    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  3    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  3    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  3    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  3    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  3    42     2 pad1 bit (2),					/* OO */
+  3    43     2 dius bit (1),					/* dumper in use switch */
+  3    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  3    45     2 dmpr_pad bit (1),
+  3    46     2 ehs bit (1),					/* entry hold switch */
+  3    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  3    48     2 dirsw bit (1),				/* directory switch */
+  3    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  3    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  3    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  3    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  3    53 
+  3    54     2 dtu bit (36),					/* date and time segment last used */
+  3    55 
+  3    56     2 dtm bit (36),					/* date and time segment last modified */
+  3    57 
+  3    58 
+  3    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  3    60 
+  3    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  3    62 
+  3    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  3    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  3    65     2 fms bit (1),					/* file modified switch */
+  3    66     2 npfs bit (1),					/* no page fault switch */
+  3    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  3    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  3    69     2 per_process bit (1),				/* use master quota for this entry */
+  3    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  3    71     2 pad2 bit (2),
+  3    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  3    73     2 np bit (9),					/* number of pages in core */
+  3    74 
+  3    75 
+  3    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  3    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  3    78     2 damaged bit (1),				/* PC declared segment unusable */
+  3    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  3    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  3    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  3    82     2 ptsi bit (2),					/* page table size index */
+  3    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  3    84 
+  3    85 
+  3    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  3    87 
+  3    88 
+  3    89 dcl 1 aste_part aligned based (astep),
+  3    90 
+  3    91     2 one bit (36) unaligned,				/* fp and bp */
+  3    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  3    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  3    94 
+  3    95 
+  3    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  3    97     2 pad1 bit (8*36),
+  3    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  3    99     2 pad2 bit (3*36);
+  3   100 
+  3   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+  2    14 
+  2    15  /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  4     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  4     3 
+  4     4 dcl  sdw_info_ptr pointer;
+  4     5 
+  4     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  4     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  4     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  4     9 
+  4    10     2 access unaligned,				/* REWP */
+  4    11       3 read bit (1) unaligned,
+  4    12       3 execute bit (1) unaligned,
+  4    13       3 write bit (1) unaligned,
+  4    14       3 privileged bit (1) unaligned,
+  4    15 
+  4    16     2 pad1 bit (32) unaligned,
+  4    17 
+  4    18     2 rings unaligned,				/* Ring brackets */
+  4    19       3 r1 bit (3) unaligned,
+  4    20       3 r2 bit (3) unaligned,
+  4    21       3 r3 bit (3) unaligned,
+  4    22 
+  4    23     2 pad2 bit (27) unaligned,
+  4    24 
+  4    25     2 flags aligned,
+  4    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  4    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  4    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  4    29       3 pad3 bit (33) unaligned,
+  4    30 
+  4    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  4    32 
+  4    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+  2    15 
+  2    16 
+  2    17 /* END include file bce_appending_seg_info.incl.pl1 */
+      619 
+      620  /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  5     2 
+  5     3 /* format: style3 */
+  5     4 
+  5     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  5     6 
+  5     7 
+  5     8 /****^  HISTORY COMMENTS:
+  5     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  5    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  5    11*     Added request_handling_opr_aborts flag for save/restore.
+  5    12*                                                   END HISTORY COMMENTS */
+  5    13 
+  5    14 declare	ss_info_ptr	pointer;
+  5    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  5    16 	  2 request_table_ptr
+  5    17 			pointer,
+  5    18 	  2 abort_label	label,
+  5    19 	  2 name		char (32) unaligned,
+  5    20 	  2 arg_list_ptr	pointer,
+  5    21 	  2 info_ptr	pointer,
+  5    22 	  2 flags           aligned,
+  5    23 	    3 forbid_semicolons bit (1) unaligned,
+  5    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  5    25 
+  5    26 /* End include file bce_subsystem_info_ */
+      620 
+      621  /* BEGIN INCLUDE FILE ... bos_dump.incl.pl1 ... */
+  6     2 /* Modified 1 September 1976 */
+  6     3 /* Modified 11/11/80 by J. A. Bush for the DPS8/70M CPU */
+  6     4 /* Modified 6/12/81 by Rich Coppola to extend the dps8 extended fault reg to 
+  6     5*   15 bits  */
+  6     6 /* Modified 02/23/81, W. Olin Sibert, to describe old and new FDUMP styles */
+  6     7 
+  6     8 
+  6     9 dcl  dumpptr ptr;					/* pointer to following structure */
+  6    10 
+  6    11 dcl 1 dump based (dumpptr) aligned,			/* header of dump by fdump */
+  6    12     2 dump_header aligned like dump_header,
+  6    13 
+  6    14     2 segs (1008),					/* segment array */
+  6    15       3 segno bit (18) unal,				/* segment number */
+  6    16       3 length bit (18) unal, 			/* length of segment in sector sized blocks */
+  6    17 
+  6    18     2 amptwregs (0 : 63) bit (36),			/* assoc. mem. page table word regs */
+  6    19     2 amptwptrs (0 : 63) bit (36),			/* assoc. mem. page table word pointers */
+  6    20     2 amsdwregs (0 : 63) bit (72),			/* assoc. mem. segment descriptor word registers */
+  6    21     2 amsdwptrs (0 : 63) bit (36),			/* assoc. mem. segment descriptor word pointers */
+  6    22 
+  6    23     2 ouhist (0 : 63) bit (72), 			/* operations unit history registers */
+  6    24     2 cuhist (0 : 63) bit (72), 			/* control unit history registers */
+  6    25     2 duhist (0 : 63) bit (72), 			/* decimal unit history registers */
+  6    26     2 auhist (0 : 63) bit (72), 			/* appending unit history registers */
+  6    27 
+  6    28     2 prs (0 : 7) ptr,				/* pointer registers */
+  6    29 
+  6    30     2 regs aligned like dump_registers, 		/* assorted machine registers */
+  6    31 
+  6    32     2 low_order_port bit (3), 			/* from which clock is read */
+  6    33     2 pad4 bit (36),
+  6    34     2 mctime fixed bin (52),				/* time conditions were taken */
+  6    35     2 pad5 (0 : 3) bit (36),
+  6    36 
+  6    37     2 misc_registers like dump_misc_registers,		/* Assorted registers & processor data */
+  6    38 
+  6    39     2 ptrlen (0 : 7) bit (36),			/* pointers and lengths for EIS */
+  6    40 
+  6    41     2 coreblocks (0 : 7),
+  6    42       3 num_first bit (18) unal,			/* first addr in coreblock */
+  6    43       3 num_blocks bit (18) unal,			/* number of blocks used */
+  6    44     2 pad7 (112) fixed bin;
+  6    45 
+  6    46 
+  6    47 dcl 1 dump_header aligned based,			/* Standard header for FDUMP */
+  6    48     2 words_dumped fixed bin (35),			/* total words in dump */
+  6    49     2 valid bit (1),				/* = 1 if there is a 6180 dump to be had */
+  6    50     2 time fixed bin (71),				/* time of dump */
+  6    51     2 erfno fixed bin (18),				/* Error Report Form Number */
+  6    52     2 num_segs fixed bin,				/* number of segments dumped */
+  6    53     2 valid_355 bit (1),				/* = 1 if there is a dn355 dump to be had */
+  6    54     2 dumped_355s bit (4),				/* indicates which 355s were dumped */
+  6    55     2 time_355 fixed bin (71),			/* time of 355 dump */
+  6    56     2 version fixed bin,				/* currently 2 */
+  6    57     2 pad0 (5) fixed bin;				/* pad0 to 16 words */
+  6    58 
+  6    59 dcl 1 dump_registers aligned based,			/* Standard (SREG) arrangement of registers in dump */
+  6    60    (2 x (0 : 7) bit (18),				/* index registers */
+  6    61     2 a bit (36),					/* the a register */
+  6    62     2 q bit (36),					/* the q register */
+  6    63     2 e bit (8),					/* the e register */
+  6    64     2 pad2 bit (28),				/* pad */
+  6    65     2 t bit (27),					/* timer register */
+  6    66     2 pad3 bit (6), 				/* pad */
+  6    67     2 ralr bit (3)) unaligned;			/* ring alarm register */
+  6    68 
+  6    69 dcl 1 dump_misc_registers aligned based,
+  6    70     2 scu (0 : 7) bit (36),				/* from store control unit instr. */
+  6    71     2 mcm (0 : 7) bit (72),				/* memory controller masks every 64 K */
+  6    72     2 dbr bit (72), 				/* descriptor segment base register */
+  6    73     2 intrpts bit (36),				/* interrupts */
+  6    74     2 bar bit (36), 				/* base address register */
+  6    75     2 modereg bit (36),				/* mode register */
+  6    76     2 cmodereg bit (36),				/* cache mode register */
+  6    77     2 faultreg bit (36),				/* fault register */
+  6    78     2 ext_fault_reg bit (15) unaligned,			/* DPS8 extended fault register */
+  6    79     2 pad6 bit (21) unaligned;
+  6    80     
+  6    81     
+  6    82 
+  6    83 dcl 1 v1_dump aligned based (dumpptr),			/* Old version of FDUMP (pre March, 1981) */
+  6    84     2 dump_header aligned like dump_header,
+  6    85 
+  6    86     2 segs (688),					/* segment array */
+  6    87       3 segno bit (18) unal,				/* segment number */
+  6    88       3 length bit (18) unal, 			/* length of segment in sector sized blocks */
+  6    89 
+  6    90     2 amsdwregs (0 : 15) bit (72),			/* assoc. mem. segment descriptor word registers */
+  6    91     2 amsdwptrs (0 : 15) bit (36),			/* assoc. mem. segment descriptor word pointers */
+  6    92     2 amptwregs (0 : 15) bit (36),			/* assoc. mem. page table word regs */
+  6    93     2 amptwptrs (0 : 15) bit (36),			/* assoc. mem. page table word pointers */
+  6    94     2 pad1 (0 : 15) bit (36),
+  6    95 
+  6    96     2 ouhist (0 : 15) bit (72), 			/* operations unit history registers */
+  6    97     2 cuhist (0 : 15) bit (72), 			/* control unit history registers */
+  6    98     2 auhist (0 : 15) bit (72), 			/* appending unit history registers */
+  6    99     2 duhist (0 : 15) bit (72), 			/* decimal unit history registers */
+  6   100 
+  6   101     2 prs (0 : 7) ptr,				/* pointer registers */
+  6   102 
+  6   103     2 regs aligned like dump_registers, 		/* assorted machine registers */
+  6   104 
+  6   105     2 mctime fixed bin (52),				/* time conditions were taken */
+  6   106     2 pad4 (0 : 5) bit (36),
+  6   107 
+  6   108     2 misc_registers aligned like dump_misc_registers,	/* Assorted registers */
+  6   109 
+  6   110     2 pad5 bit (36),
+  6   111     2 ptrlen (0 : 7) bit (36),			/* pointers and lengths for EIS */
+  6   112     2 pad6 (15) bit (36),
+  6   113     2 low_order_port bit (3), 			/* from which clock was read */
+  6   114 
+  6   115     2 coreblocks (0 : 7),
+  6   116       3 num_first bit (18) unal,			/* first addr in coreblock */
+  6   117       3 num_blocks bit (18) unal;			/* number of blocks used */
+  6   118 
+  6   119 
+  6   120 dcl  DUMP_VERSION_1 fixed bin internal static options (constant) init (1);
+  6   121 dcl  DUMP_VERSION_2 fixed bin internal static options (constant) init (2);
+  6   122 
+  6   123 /* END INCLUDE FILE ... bos_dump.incl.pl1 ... */
+      621 
+      622  /* BEGIN include file collection_1_phases.incl.pl1 */
+  7     2 
+  7     3 /* Symbolic names for the various collection1 phases.
+  7     4*Keith Loepere, October 1983. */
+  7     5 
+  7     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  7     7 
+  7     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  7     9 
+  7    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  7    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  7    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  7    13 
+  7    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  7    15*programs can simply tell apart the booting phases from all others (crash or
+  7    16*recovery type phases). */
+  7    17 
+  7    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  7    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  7    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  7    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  7    22 
+  7    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  7    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  7    25 
+  7    26 /* END include file collection_1_phases.incl.pl1 */
+      622 
+      623  /* BEGIN include file dbr_info.incl.pl1 */
+  8     2 
+  8     3 /* This include file describes the structure returned by dbr_util_$dissect.
+  8     4*Keith Loepere, October 1983. */
+  8     5 
+  8     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  8     7 
+  8     8 dcl  dbr_info_ptr		        ptr;
+  8     9 
+  8    10 dcl  1 dbr_info		        aligned based (dbr_info_ptr),
+  8    11        2 address		        fixed bin (26),	/* of dseg or dseg page table */
+  8    12        2 bound		        fixed bin (18),	/* length of dseg in words */
+  8    13        2 stack_base_segnum	        fixed bin (15),	/* segment number of ring 0 stack */
+  8    14        2 paged		        bit (1);		/* is dseg paged? */
+  8    15 
+  8    16 /* END include file dbr_info.incl.pl1 */
+      623 
+      624  /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  9     2 /* Modified 8/74 for NSS */
+  9     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  9     4 /* Modified 3/82 BIM for change pclock */
+  9     5 /* format: style3 */
+  9     6 
+  9     7 /* Template for the directory header. Length = 64 words. */
+  9     8 
+  9     9 dcl  dp ptr;
+  9    10 
+  9    11 dcl 1 dir based (dp) aligned,
+  9    12 
+  9    13    2 modify bit (36),				/* Process ID of last modifier */
+  9    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  9    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  9    16     2 dtc (3),					/* date-time checked by salvager array */
+  9    17       3 date bit (36),				/* the date */
+  9    18       3 error bit (36),				/* what errors were discovered */
+  9    19 
+  9    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  9    21 
+  9    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  9    23 
+  9    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  9    25 
+  9    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  9    27 
+  9    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  9    29     2 version_number fixed bin (17),			/* version number of header */
+  9    30 
+  9    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  9    32     2 pad2 bit (18),
+  9    33 
+  9    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  9    35     2 pad3 bit (18),
+  9    36 
+  9    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  9    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  9    39 
+  9    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  9    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  9    42 
+  9    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  9    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  9    45 
+  9    46     2 lcount fixed bin (17),				/* number of links */
+  9    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  9    48 
+  9    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  9    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  9    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  9    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  9    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  9    54     2 pad4 bit (14),
+  9    55 
+  9    56     2 iacl_count (0:7),
+  9    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  9    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  9    59 
+  9    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  9    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  9    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  9    63 
+  9    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  9    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  9    66 
+  9    67     2 htsize fixed bin (17),				/* size of hash table */
+  9    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  9    69 
+  9    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  9    71     2 pad6 fixed bin (17),
+  9    72 
+  9    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  9    74     2 pad7 bit (18)) unaligned,
+  9    75 
+  9    76     2 dts bit (36),					/* date-time directory last salvaged */
+  9    77 
+  9    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  9    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  9    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  9    81     2 checksum bit (36),				/* checksummed from uid on */
+  9    82     2 owner bit (36);				/* uid of parent dir */
+  9    83 
+  9    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  9    85 
+  9    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      624 
+      625  /* BEGIN include file ptw_info.incl.pl1 */
+ 10     2 
+ 10     3 /* Description of the info returned by ptw_util_$dissect.  
+ 10     4*Keith Loepere, October 1983. */
+ 10     5 
+ 10     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 10     7 
+ 10     8 dcl  ptw_info_ptr		        ptr;
+ 10     9 
+ 10    10 dcl  1 ptw_info		        aligned based (ptw_info_ptr),
+ 10    11        2 address		        fixed bin (26),	/* memory or device number */
+ 10    12        2 add_type		        bit (4) unal,
+ 10    13        2 null_disk		        bit (1) unal,
+ 10    14        2 er		        bit (1) unal,
+ 10    15        2 wired		        bit (1) unal,
+ 10    16        2 os		        bit (1) unal,
+ 10    17        2 phu1		        bit (1) unal,	/* used in quantum */
+ 10    18        2 phm1		        bit (1) unal,	/* modified in quantum */
+ 10    19        2 valid		        bit (1) unal,
+ 10    20        2 phu		        bit (1) unal,
+ 10    21        2 phm		        bit (1) unal;
+ 10    22 
+ 10    23 /* END include file ptw_info.incl.pl1 */
+      625 
+      626  /* BEGIN include file state_equs.incl.pl1 */
+ 11     2 
+ 11     3 /* States of aptes, created from alm version be Keith Loepere, November 1983. */
+ 11     4 
+ 11     5 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 11     6 
+ 11     7 dcl  Empty_apte		        bit (18) unal init ("000000"b3) static options (constant);
+ 11     8 dcl  Running_apte		        bit (18) unal init ("000001"b3) static options (constant);
+ 11     9 dcl  Ready_apte		        bit (18) unal init ("000002"b3) static options (constant);
+ 11    10 dcl  Waiting_apte		        bit (18) unal init ("000003"b3) static options (constant);
+ 11    11 dcl  Blocked_apte		        bit (18) unal init ("000004"b3) static options (constant);
+ 11    12 dcl  Stopped_apte		        bit (18) unal init ("000005"b3) static options (constant);
+ 11    13 dcl  Ptlocking_apte		        bit (18) unal init ("000006"b3) static options (constant);
+ 11    14 
+ 11    15 
+ 11    16 /* END include file state_equs.incl.pl1 */
+      626 
+      627  /* BEGIN INCLUDE FILE ... tcm.incl.pl1 ... used to generate tc_data cds */
+ 12     2 /* NOTE -- This include file has TWO counterparts in ALM: tc_meters.incl.alm and */
+ 12     3 /* wcte.incl.alm. They cannot be produced with cif, and must be kept up to date manually. */
+ 12     4 /* Modified 830914 to replace tty_polling_time with opc_polling_time... -E. A. Ranzenbach */
+ 12     5 /* Modified 1984.05.21 by M. Pandolf to add tc_suspend_lock */
+ 12     6 /* Modified 1984.11.26 by Keith Loepere for uid_array. */
+ 12     7 /* Modified 1984.12.06 by Keith Loepere for page create delaying. */
+ 12     8 
+ 12     9 dcl  tcmp ptr;
+ 12    10 
+ 12    11 dcl 1 tcm aligned based (tcmp),
+ 12    12     2 tc_suspend_lock like lock,			/* when locked, tc is suspended */
+ 12    13     2 cid2 fixed bin (18),
+ 12    14     2 cid3 fixed bin (18),
+ 12    15     2 cid4 fixed bin (18),
+ 12    16     2 depth_count fixed bin (18),			/* depth last process run */
+ 12    17     2 loadings fixed bin (18),			/* number of process loadings */
+ 12    18 
+ 12    19     2 blocks fixed bin (18),				/* number of calls to block */
+ 12    20     2 wakeups fixed bin (18),				/* number of calls to wakeup */
+ 12    21     2 waits fixed bin (18),				/* number of calls to wait */
+ 12    22     2 notifies fixed bin (18),			/* number of calls to notify */
+ 12    23     2 schedulings fixed bin (18),
+ 12    24     2 interactions fixed bin (18),			/* number of interactive schedulings */
+ 12    25     2 avequeue fixed bin (35, 18),			/* recent time average of number in queue */
+ 12    26     2 te_wait fixed bin (18),				/* times te called from wait */
+ 12    27 
+ 12    28     2 te_block fixed bin (18),			/* times te updated from block */
+ 12    29     2 te_i_stop fixed bin (18),			/* times te updated from i_stop */
+ 12    30     2 te_pre_empt fixed bin (18),			/* times te updated from pre_empt */
+ 12    31     2 p_interactions fixed bin,			/* times interaction bit turned off because of high priority */
+ 12    32     2 idle fixed bin (71),				/* total idle time */
+ 12    33     2 mp_idle fixed bin (71),				/* multi-programming idle */
+ 12    34 
+ 12    35     2 nmp_idle fixed bin (71),			/* non-multi-programming idle time */
+ 12    36     2 zero_idle fixed bin (71),			/* zero idle time */
+ 12    37     2 last_time fixed bin (71),			/* last time a process was run */
+ 12    38     2 loop_locks fixed bin (18),			/* times looped on the APT lock */
+ 12    39     2 loop_lock_time fixed bin (18),			/* time looping on the APT lock */
+ 12    40     2 ave_eligible fixed bin (35, 18),			/* average length of eligible queue */
+ 12    41     2 sort_to_elhead fixed bin (18),			/* 0=> no one,1 => int've only, 2 => everybody */
+ 12    42     2 processor_time fixed bin (71),			/* total processor time on system */
+ 12    43     2 response_time fixed bin (71),			/* estimate of response time */
+ 12    44     2 eligible_time fixed bin (71),			/* estimate of eligible time */
+ 12    45     2 response_count fixed bin,			/* count of response meters */
+ 12    46     2 eligible_count fixed bin,			/* count of eligible meters */
+ 12    47     2 quit_counts (0:5) fixed bin,			/* array of buckets indexed by state */
+ 12    48     2 loading_idle fixed bin (71),			/* loading_idle time */
+ 12    49     2 delta_vcpu fixed bin (71),			/* delta virtual CPU time for the system */
+ 12    50     2 post_purge_switch fixed bin,			/* ON if post purging is to be done */
+ 12    51     2 time_out_severity fixed bin,			/* syserr first arg for notify time outs */
+ 12    52     2 notify_check fixed bin,				/* obsolete */
+ 12    53     2 quit_priority fixed bin,			/* factor for scheduler quit response */
+ 12    54     2 iobm_polling_time fixed bin (71),			/* time to poll iobm */
+ 12    55     2 end_of_time fixed bin (71),			/* very large time */
+ 12    56     2 gp_at_notify fixed bin (18),			/* 0 => just do get_idle_processor */
+ 12    57     2 gp_at_ptlnotify fixed bin (18),			/* 0 => just do get_idle_processor */
+ 12    58     2 int_q_enabled fixed bin (18),			/* 0 => no intv q in percent mode */
+ 12    59     2 fnp_buffer_threshold fixed bin (18),		/* if fewer free buffs then stingy alloc strategy */
+ 12    60 						/* set this to >= half n_ttylines/fnp for safety */
+ 12    61 
+ 12    62 /* 100 octal */
+ 12    63 
+ 12    64     2 depths (8) fixed bin (18),			/* histogram of run depths */
+ 12    65     2 tdepths (8) fixed bin (71),			/* histogram of times run per depth */
+ 12    66     2 pfdepth (8) fixed bin (18),			/* histogram of page faults per depth */
+ 12    67 
+ 12    68     2 ptl_not_waits fixed bin (18),			/* times ptl_wait noticed ptl was unlocked */
+ 12    69     2 gw_gp_window_count fixed bin (18),		/* times window noticed */
+ 12    70     2 metering_lock fixed bin (18),			/* 0=locked, else unlocked */
+ 12    71     2 ptl_waits fixed bin (18),			/* num calls to ptl_wait */
+ 12    72     2 gp_start_count fixed bin (18),			/*  to detect gw_gp window lossage */
+ 12    73     2 gp_done_count fixed bin (18),
+ 12    74     2 nto_check_time fixed bin (71),			/* next time at which nto code will be called */
+ 12    75     2 nto_delta fixed bin (35),			/* microsec between nto checks */
+ 12    76     2 nto_count fixed bin (18),			/* number of times nto detected */
+ 12    77     2 tcpu_scheduling fixed bin (18),			/* obsolete				*/
+ 12    78     2 nto_event bit (36),				/* last event which NTO'd */
+ 12    79     2 page_notifies fixed bin (18),
+ 12    80     2 notify_nobody_count fixed bin (18),
+ 12    81     2 notify_nobody_event bit (36),
+ 12    82     2 system_type fixed bin,				/* used to be tcm.inter */
+ 12    83 
+ 12    84     2 stat (0:15) fixed bin (18),			/* num apte's in each state */
+ 12    85 
+ 12    86 /* 200 octal */
+ 12    87 
+ 12    88     2 wait (8),
+ 12    89       3 time fixed bin (18),				/* histogram of page fault waiting times versus did */
+ 12    90       3 count fixed bin (18),
+ 12    91 
+ 12    92     2 ready (8),
+ 12    93       3 time fixed bin (18),				/* histogram of times in ready queue */
+ 12    94       3 count fixed bin (18),
+ 12    95 
+ 12    96     2 total_pf_time fixed bin (71),			/* total time spent from start to end of
+ 12    97*						   all page faults */
+ 12    98     2 total_pf_count fixed bin (18),			/* total number of page faults metered */
+ 12    99     2 auto_tune_ws fixed bin (18),			/* 0=> dont, atherwise compensate for quantum len */
+ 12   100     2 ocore_delta fixed bin (18),			/* number of pages reserved for int users */
+ 12   101     2 ws_sum fixed bin (18),				/* total of eligible's ws_sizes */
+ 12   102     2 nonidle_force_count fixed bin (18),		/* count of eligibilities forced */
+ 12   103     2 itt_list_lock bit (36) aligned,			/* Lock on ITT free list */
+ 12   104     2 cpu_pf_time fixed bin (71),			/* total cpu time spent handling page faults */
+ 12   105     2 cpu_pf_count fixed bin (18),			/* total count of cpu time meterings */
+ 12   106     2 special_offsets unaligned,
+ 12   107       3 apt_offset bit (18),
+ 12   108       3 pad bit (18),
+ 12   109     2 getwork_time fixed bin (71),			/* total time spent in getwork */
+ 12   110     2 getwork_count fixed bin (18),			/* total times through getwork */
+ 12   111     2 short_pf_count fixed bin (18),			/* number of short page faults */
+ 12   112     2 interrupt_time fixed bin (71),			/* total time spent in interrupt */
+ 12   113     2 interrupt_count fixed bin (71),			/* total number of metered interrupts */
+ 12   114     2 ocore fixed bin (35, 18),			/* fraction of core for int've users */
+ 12   115     2 pre_empt_flag bit (36) aligned,			/* controls whether preempting at done time */
+ 12   116     2 cumulative_memory_usage fixed binary (71),		/* total number of memory usage units */
+ 12   117     2 processor_time_at_define_wc fixed bin (71),		/* value of processor_time when WC's last defined */
+ 12   118     2 boost_priority fixed bin,			/* number of times priority process given high priority */
+ 12   119     2 lost_priority fixed bin,			/* number of times priority process lost eligibility */
+ 12   120     2 total_clock_lag fixed bin (71),			/* sum of all simulated clock delays */
+ 12   121     2 clock_simulations fixed bin,			/* number of times alarm clock interrupt was simulated */
+ 12   122     2 max_clock_lag fixed bin,			/* largest simulated alarm clock delay */
+ 12   123 
+ 12   124 /* 300 octal */
+ 12   125 
+ 12   126     2 pdscopyl fixed bin (18),			/* amount of pds to copy for new process */
+ 12   127     2 max_hproc_segno fixed bin,			/* largest allowed hardcore segment number */
+ 12   128     2 prds_length fixed bin (18),			/* length of PRDS */
+ 12   129     2 pds_length fixed bin (18),			/* length of PDS */
+ 12   130     2 lock fixed bin (18),				/* process id generator lock */
+ 12   131     2 id bit (36) aligned,				/* next uid to be added to uid_array */
+ 12   132     2 system_shutdown fixed bin (18),
+ 12   133     2 working_set_factor fixed bin (35, 18),		/* working set factor */
+ 12   134 
+ 12   135     2 ncpu fixed bin (18),				/* number of processors currently being used */
+ 12   136     2 last_eligible bit (18),				/* last process to gain eligibility */
+ 12   137     2 apt_lock fixed bin (35),			/* + write; 0 hidden; -1 unlocked; -(N+1) Nreaders */
+ 12   138     2 apt_size fixed bin (18),			/* number of APT entries */
+ 12   139     2 realtime_q aligned like based_sentinel,		/* processes with realtime deadlines */
+ 12   140     2 aht_size fixed bin (18),			/* APT hash table size */
+ 12   141     2 itt_size fixed bin (18),			/* number of ITT entries */
+ 12   142 
+ 12   143     2 dst_size fixed bin (18),			/* number of allowed DST entries */
+ 12   144     2 itt_free_list bit (18),				/* pointer to ITT free list */
+ 12   145     2 used_itt fixed bin (18),			/* number of used ITT entries */
+ 12   146     2 initializer_id bit (36) aligned,			/* process id of initializer */
+ 12   147     2 n_eligible fixed bin (18),			/* number of processes eligible */
+ 12   148     2 max_eligible fixed bin (30),			/* maximum allowed number of eligible processes */
+ 12   149     2 wait_enable fixed bin (18),			/* turned on when waiting mechanism works */
+ 12   150     2 apt_entry_size fixed bin (18),			/* size of an APT entry */
+ 12   151 
+ 12   152     2 interactive_q aligned like based_sentinel,		/* head of interactive queue */
+ 12   153     2 dst_ptr ptr,					/* pointer to device signal table */
+ 12   154     2 old_user ptr,					/* last process to run (apt ptr ) */
+ 12   155     2 initialize_time fixed bin (71),			/* time of initialization */
+ 12   156 
+ 12   157     2 init_event fixed bin (18),			/* wait event during initialization */
+ 12   158     2 oldt fixed bin (18),				/* timer reading from previous process */
+ 12   159     2 newt fixed bin (18),				/* timer setting for new process */
+ 12   160     2 tefirst fixed bin (30),				/* first eligible time */
+ 12   161     2 telast fixed bin (30),				/* last eligible time */
+ 12   162     2 timax fixed bin (35),				/* time in queue for lowest level */
+ 12   163     2 empty_q bit (18),				/* thread of empty APT entries */
+ 12   164     2 working_set_addend fixed bin (18),		/* additive working set parameter */
+ 12   165     2 ready_q_head bit (0) aligned,			/* for added segdef */
+ 12   166     2 eligible_q_head aligned like based_sentinel,	/* head of eligible queue */
+ 12   167     2 ready_q_tail bit (0) aligned,			/* for added segdef */
+ 12   168     2 eligible_q_tail aligned like based_sentinel,	/* tail of eligible queue */
+ 12   169     2 idle_tail aligned like based_sentinel,		/* tail of idle list */
+ 12   170     2 min_eligible fixed bin (30),
+ 12   171     2 alarm_timer_list bit (18) aligned,		/* rel pointer to apt entry for next alarm timer */
+ 12   172     2 guaranteed_elig_inc fixed bin (35),		/* amount of guaranteed eligibility time in microsecs. */
+ 12   173     2 priority_sched_inc fixed bin (35),		/* amount of block time before process is given priority */
+ 12   174     2 next_alarm_time fixed bin (71),			/* clock time for next alarm timer */
+ 12   175     2 priority_sched_time fixed bin (71),		/* time for priority process to be given priority */
+ 12   176     2 opc_polling_time fixed bin (71),			/* time to poll console DIM */
+ 12   177     2 disk_polling_time fixed bin (71),			/* time to poll disk DIM */
+ 12   178     2 tape_polling_time fixed bin (71),			/* time to poll tape DIM */
+ 12   179     2 imp_polling_time fixed bin (71),			/* time to poll imp */
+ 12   180     2 imp_polling_lock fixed bin (18),			/* do not poll if lock set */
+ 12   181     2 max_channels fixed bin (18),			/* num special channels per process */
+ 12   182 
+ 12   183 /* 400 octal */
+ 12   184 
+ 12   185     2 system_virtual_time fixed bin (71),		/* non-idle virtual time */
+ 12   186     2 credit_bank fixed bin (71),			/* credits not yet passed out */
+ 12   187     2 min_wct_index bit (18) aligned,			/* offset of initializer work class table entry */
+ 12   188     2 max_wct_index bit (18) aligned,			/* offset of highest wcte currently defined */
+ 12   189     2 delta_vt fixed bin (71),			/* temp used by pxss.compute_virtual_clocks */
+ 12   190     2 gross_idle_time fixed bin (71),			/* idle time_used_clock */
+ 12   191     2 credits_per_scatter fixed bin (35),		/* total number of credits awarded at once */
+ 12   192     2 best_credit_value fixed bin (18),			/* temp for pxss.find_next_eligible */
+ 12   193     2 define_wc_time fixed bin (71),			/* clock time when workclasses last degined */
+ 12   194     2 max_batch_elig fixed bin (35),
+ 12   195     2 num_batch_elig fixed bin (35),
+ 12   196     2 deadline_mode fixed bin (35),			/* 0=> ti sorts, else deadline sorts */
+ 12   197     2 credits_scattered fixed bin (35),
+ 12   198     2 max_max_eligible fixed bin (30),			/* Maximum of maxe */
+ 12   199     2 max_stopped_stack_0 fixed bin (35),		/* Maximum stack_0's suspended by stopped procs	*/
+ 12   200     2 stopped_stack_0 fixed bin (35),			/* Number stack_0's suspended by stopped procs	*/
+ 12   201     2 mos_polling_interval fixed bin (35),		/* for heals */
+ 12   202     2 mos_polling_time fixed bin (71),			/* for heals */
+ 12   203     2 vcpu_response_bounds (VCPU_RESPONSE_BOUNDS) fixed bin (35),
+ 12   204     2 vcpu_response_bounds_size fixed bin (35),
+ 12   205     2 meter_response_time_calls fixed bin (35),
+ 12   206     2 meter_response_time_invalid fixed bin (35),
+ 12   207     2 meter_response_time_overhead fixed bin (71),
+ 12   208     2 init_wait_time fixed bin (71),			/* used by wait/notify during initialization	*/
+ 12   209     2 init_wait_timeout fixed bin (71),			/* notify-timeout interval during initialization	*/
+ 12   210     2 init_timeout_severity fixed bin,			/* notify-timeout severity during initialization	*/
+ 12   211     2 init_timeout_recurse fixed bin,			/* count of NTO recursion during initialization	*/
+ 12   212     2 max_timer_register fixed bin (71),		/* max cpu burst = # cpus x pre_empt_sample_time	*/
+ 12   213     2 pre_empt_sample_time fixed bin (35),		/* tuning parameter - max time between samples	*/
+ 12   214     2 governing_credit_bank fixed bin (35),		/* used for limiting eligibility on governed work classes*/
+ 12   215     2 process_initial_quantum fixed bin (35),		/* eligibility quantum first eligibility	*/
+ 12   216     2 default_procs_required bit (8) aligned,		/* default mask of CPUs required */
+ 12   217     2 work_class_idle fixed bin (71),			/* idle time due to work class restrictions */
+ 12   218 
+ 12   219 /* Tuning Parameters for Stack Truncation */
+ 12   220 
+ 12   221     2 stk_truncate bit (1) aligned,
+ 12   222     2 stk_truncate_always bit (1) aligned,
+ 12   223     2 stk_trunc_avg_f1 fixed bin (35, 18),
+ 12   224     2 stk_trunc_avg_f2 fixed bin (35, 18),
+ 12   225     2 lock_error_severity fixed bin,                        /* syserr severity */
+ 12   226 
+ 12   227     2 gv_integration fixed bin (35),			/* Integration interval for governing */
+ 12   228     2 gv_integration_set bit (1) aligned,		/* ON => gv_integration set by ctp */
+ 12   229     2 pauses fixed bin (35),				/* Calls to pause (reschedule) */
+ 12   230     2 volmap_polling_time fixed bin (71),
+ 12   231     2 next_ring0_timer fixed bin (71),			/* next time that ring 0 timer goes off */
+ 12   232     2 realtime_io_priority_switch fixed bin,		/* 0 => give I/O interrupt wakeups realtime priotiry */
+ 12   233     2 realtime_io_deadline fixed bin (35),		/* Delta to clock for I/O realtime deadline */
+ 12   234     2 realtime_io_quantum fixed bin (35),		/* Quantum for I/O realtime burst */
+ 12   235     2 realtime_priorities fixed bin (35),		/* Count for metering */
+ 12   236     2 relinquishes fixed bin (35),			/* Calls to relinquish_priority */
+ 12   237     2 abort_ips_mask bit (36) aligned,			/* IPS mask for tc_util$check_abort */
+ 12   238 
+ 12   239 /* 500 octal */
+ 12   240 
+ 12   241     2 uid_array (0:15) bit (36) aligned,		/* array from which a uid is chosen (randomly) */
+ 12   242     2 pad5 (176) fixed bin (35),			/* room for expansion compatibly		*/
+ 12   243 
+ 12   244 /* 1000 octal */
+ 12   245 
+ 12   246     2 pad7 (64) fixed bin (35),
+ 12   247 
+ 12   248 /* 1100 octal */
+ 12   249 
+ 12   250     2 pad6 (8) fixed bin (35),
+ 12   251     2 work_class_table aligned,			/* array of per workclass information */
+ 12   252       3 wcte (0:16) aligned like wct_entry,
+ 12   253 
+ 12   254 /* 3000 octal */
+ 12   255 
+ 12   256     2 apt fixed bin;
+ 12   257 
+ 12   258 dcl  wctep ptr;
+ 12   259 
+ 12   260 dcl 1 wct_entry aligned based (wctep),			/* Work class entry */
+ 12   261     2 thread unaligned,				/* Ready list */
+ 12   262       3 fp bit (18),				/* Head of ready list */
+ 12   263       3 bp bit (18),				/* Tail of ready list */
+ 12   264     2 flags unaligned,
+ 12   265       3 mnbz bit (1),				/* Sentinel bit must not be zero. */
+ 12   266       3 defined bit (1),
+ 12   267       3 io_priority bit (1),
+ 12   268       3 governed bit (1),
+ 12   269       3 interactive_q bit (1),
+ 12   270       3 pad bit (31),
+ 12   271     2 credits fixed bin (35),				/* Current worthiness of group */
+ 12   272     2 minf fixed bin (35),				/* min fraction of cpu */
+ 12   273     2 pin_weight fixed bin (35),			/* number of cycles to pin pages */
+ 12   274     2 eligibilities fixed bin (35),			/* Count of eligibilities awarded */
+ 12   275     2 cpu_sum fixed bin (71),				/* CPU used by members */
+ 12   276     2 resp1 fixed bin (71),
+ 12   277     2 resp2 fixed bin (71),
+ 12   278     2 quantum1 fixed bin (35),
+ 12   279     2 quantum2 fixed bin (35),
+ 12   280     2 rmeter1 fixed bin (71),
+ 12   281     2 rmeter2 fixed bin (71),
+ 12   282     2 rcount1 fixed bin (35),
+ 12   283     2 rcount2 fixed bin (35),
+ 12   284     2 realtime fixed bin (35),
+ 12   285     2 purging fixed bin (35),
+ 12   286     2 maxel fixed bin (35),
+ 12   287     2 nel fixed bin (35),
+ 12   288     2 number_thinks fixed bin (35),			/* number times process entered "think" state	*/
+ 12   289     2 number_queues fixed bin (35),			/* number times process entered "queued" state	*/
+ 12   290     2 total_think_time fixed bin (71),
+ 12   291     2 total_queue_time fixed bin (71),
+ 12   292 
+ 12   293 /*  The next three arrays  correspond to the array vcpu_response_bounds				*/
+ 12   294 
+ 12   295     2 number_processing (VCPU_RESPONSE_BOUNDS+1) fixed bin (35), /* number times entered "processing" state	*/
+ 12   296     2 total_processing_time (VCPU_RESPONSE_BOUNDS+1) fixed bin (71),
+ 12   297     2 total_vcpu_time (VCPU_RESPONSE_BOUNDS+1) fixed bin (71),
+ 12   298     2 maxf fixed bin (35),				/* maximum fraction of cpu time		*/
+ 12   299     2 governing_credits fixed bin (35),			/* for limiting cpu resources			*/
+ 12   300     2 pad1 (4) fixed bin (35);
+ 12   301 	
+ 12   302 
+ 12   303 dcl 1 based_sentinel aligned based,			/* format of pxss-style sentinel */
+ 12   304     2 fp bit (18) unal,
+ 12   305     2 bp bit (18) unal,
+ 12   306     2 sentinel bit (36) aligned;
+ 12   307 
+ 12   308 dcl VCPU_RESPONSE_BOUNDS fixed bin init (3) int static options (constant);
+ 12   309 
+ 12   310 /* END INCLUDE FILE tcm.incl.pl1 */
+      627 
+      628  /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+ 13     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+ 13     3*   encourages name conflicts.
+ 13     4*   USE HC_FAST_LOCK INSTEAD!
+ 13     5**/
+ 13     6 
+ 13     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+ 13     8 
+ 13     9 /* format: style3 */
+ 13    10 
+ 13    11 declare	lock_ptr		pointer;
+ 13    12 declare	1 lock		aligned based (lock_ptr),
+ 13    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+ 13    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+ 13    15 	  2 flags		aligned,
+ 13    16 	    3 notify_sw	bit (1) unaligned,
+ 13    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+ 13    18 
+ 13    19 /* End include file hc_lock.incl.pl1 */
+      628 
+      629  /* BEGIN include file toehold.incl.pl1 */
+ 14     2 
+ 14     3 /* Various reserved entrypoints into the bce toehold.
+ 14     4*Also, only those things one really needs to know about the toehold.
+ 14     5*Keith Loepere, October 1983. */
+ 14     6 
+ 14     7 /* Exclude prn, prv and pad when converting to alm version. */
+ 14     8 
+ 14     9 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 14    10 
+ 14    11 dcl  1 toe_hold		        aligned based,	/* name so alm likes */
+ 14    12        2 entry_sequences	        (0:15) bit (72) aligned, /* described below */
+ 14    13        2 flagbox		        (64) bit (36) aligned,
+ 14    14        2 pad1		        (48) bit (36) aligned,
+ 14    15        2 paths		        (4) like io_path,
+ 14    16        2 n_paths_used	        fixed bin,
+ 14    17        2 memory_state	        fixed bin,		/* of memory/disk swapping, etc. */
+ 14    18        2 bce_dbr		        bit (72) aligned,	/* of bce */
+ 14    19        2 pad2		        (1355) bit (36) aligned,
+ 14    20        2 multics_state	        aligned like mc_state;
+ 14    21 
+ 14    22 dcl  1 io_path		        aligned based,
+ 14    23        2 pcw		        fixed bin (71) aligned,
+ 14    24 
+ 14    25        2 port_number	        fixed bin (3) uns unal, /* these fields form the word that */
+ 14    26        2 iom_number		        fixed bin (15) uns unal, /* must be changed upon */
+ 14    27        2 channel_number	        fixed bin unal,	/* reconfiguration of channels */
+ 14    28 
+ 14    29        2 pad		        bit (36) aligned;
+ 14    30 
+ 14    31 dcl  TOE_HOLD_CRASH_ENTRY	        fixed bin init (0) static options (constant); /* operator causes crash by xed'ind here */
+ 14    32 dcl  TOE_HOLD_ESD_ENTRY	        fixed bin init (1) static options (constant);
+ 14    33 dcl  TOE_HOLD_DUMP_ENTRY	        fixed bin init (2) static options (constant); /* place that causes an early dump */
+ 14    34 dcl  TOE_HOLD_MULTICS_ENTRY	        fixed bin init (3) static options (constant); /* Multics crashes by drl'ing here */
+ 14    35 dcl  TOE_HOLD_RESTART_ENTRY	        fixed bin init (4) static options (constant); /* bce restarts Multics by drl'ing here */
+ 14    36 dcl  TOE_HOLD_BOOT_ENTRY	        fixed bin init (5) static options (constant); /* bootload_tape_label starts init by tra'ing here */
+ 14    37 dcl  TOE_HOLD_BOS_ENTRY	        fixed bin init (12) static options (constant);
+ 14    38 dcl  TOE_HOLD_BOS_NO_SAVE_ENTRY       fixed bin init (13) static options (constant);
+ 14    39 dcl  TOE_HOLD_BOS_MULTICS_ENTRY       fixed bin init (14) static options (constant);
+ 14    40 
+ 14    41 declare  mc_state_ptr	        ptr;	/* to toehold$.multics_state */
+ 14    42 declare 1 mc_state		        aligned based (mc_state_ptr),
+ 14    43        2 mc_		        aligned like mc,		        
+ 14    44        2 masks		        (16) bit (36) aligned,
+ 14    45        2 interrupt		        bit (72) aligned,
+ 14    46        2 mode_reg		        bit (36) aligned,	/* mode_reg and cache_mode_reg form a double word pair */
+ 14    47        2 cache_mode_reg	        bit (36) aligned,
+ 14    48        2 dbr		        bit (72) aligned,
+ 14    49        2 cfg		        bit (72) aligned,
+ 14    50        2 bar		        bit (36) aligned,
+ 14    51        2 old_memory_state	        fixed bin,
+ 14    52        2 pad16		        (6) bit (36) aligned,
+ 14    53        2 ou_history_registers	        (0: 15) bit (72) aligned,
+ 14    54        2 cu_history_registers	        (0: 15) bit (72) aligned,
+ 14    55        2 du_history_registers	        (0: 15) bit (72) aligned,
+ 14    56        2 apu_history_registers        (0: 15) bit (72) aligned,
+ 14    57        2 ptwam_ptrs		        (0: 63) bit (36) aligned,	/* word alignment (mod 16, 32) of these am's matters */
+ 14    58        2 ptwam_regs		        (0: 63) bit (36) aligned,
+ 14    59        2 sdwam_ptrs		        (0: 63) bit (36) aligned,
+ 14    60        2 sdwam_regs		        (0: 63) bit (72) aligned;
+ 14    61 
+ 14    62 /* values for memory_state */
+ 14    63 
+ 14    64 dcl  Initial_undefined	        fixed bin init (0) static options (constant);  /* initial coming to bce */
+ 14    65 dcl  At_bce__early		        fixed bin init (1) static options (constant);
+ 14    66 dcl  At_bce__boot		        fixed bin init (2) static options (constant);  /* at bce during cool boot phase */
+ 14    67 dcl  Multics		        fixed bin init (3) static options (constant);  /* Multics coming up */
+ 14    68 dcl  Undefined_saving_state	        fixed bin init (4) static options (constant);  /* saving state during coming down */
+ 14    69 dcl  Undefined_reading_bce	        fixed bin init (5) static options (constant);  /* reading in bce */
+ 14    70 dcl  At_bce__crash		        fixed bin init (6) static options (constant);  /* disk holds Multics, at bce */
+ 14    71 dcl  At_bce__shutdown	        fixed bin init (7) static options (constant);  /* disk holds (nothing), coming to bce */
+ 14    72 dcl  Undefined_continue	        fixed bin init (8) static options (constant);  /* swapping memory back */
+ 14    73 dcl  Undefined_saving_mem	        fixed bin init (9) static options (constant);
+ 14    74 
+ 14    75  /*  */
+ 15     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+ 15     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+ 15     4 /* Modified 07/07/76 by Morris for fault register data */
+ 15     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+ 15     6 /* Modified '82 to make values constant */
+ 15     7 
+ 15     8 /* words 0-15 pointer registers */
+ 15     9 
+ 15    10 dcl  mcp ptr;
+ 15    11 
+ 15    12 dcl 1 mc based (mcp) aligned,
+ 15    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+ 15    14    (2 regs,					/* registers */
+ 15    15       3 x (0:7) bit (18),				/* index registers */
+ 15    16       3 a bit (36),					/* accumulator */
+ 15    17       3 q bit (36),					/* q-register */
+ 15    18       3 e bit (8),					/* exponent */
+ 15    19       3 pad1 bit (28),
+ 15    20       3 t bit (27),					/* timer register */
+ 15    21       3 pad2 bit (6),
+ 15    22       3 ralr bit (3),				/* ring alarm register */
+ 15    23 
+ 15    24     2 scu (0:7) bit (36),
+ 15    25 
+ 15    26     2 mask bit (72),				/* mem controller mask at time of fault */
+ 15    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+ 15    28     2 errcode fixed bin (35),				/* fault handler's error code */
+ 15    29     2 fim_temp,
+ 15    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+ 15    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+ 15    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+ 15    33     2 fault_reg bit (36),				/* fault register */
+ 15    34     2 pad2 bit (1),
+ 15    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+ 15    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+ 15    37     2 fault_time bit (54),				/* time of fault */
+ 15    38 
+ 15    39     2 eis_info (0:7) bit (36)) unaligned;
+ 15    40 
+ 15    41 
+ 15    42 dcl (apx fixed bin init (0),
+ 15    43      abx fixed bin init (1),
+ 15    44      bpx fixed bin init (2),
+ 15    45      bbx fixed bin init (3),
+ 15    46      lpx fixed bin init (4),
+ 15    47      lbx fixed bin init (5),
+ 15    48      spx fixed bin init (6),
+ 15    49      sbx fixed bin init (7)) internal static options (constant);
+ 15    50 
+ 15    51 
+ 15    52 
+ 15    53 
+ 15    54 dcl  scup ptr;
+ 15    55 
+ 15    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+ 15    57 
+ 15    58 
+ 15    59 /*	WORD (0)		*/
+ 15    60 
+ 15    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+ 15    62       3 prr bit (3),				/* procedure ring register */
+ 15    63       3 psr bit (15),				/* procedure segment register */
+ 15    64       3 p bit (1),					/* procedure privileged bit */
+ 15    65 
+ 15    66     2 apu,					/* APPENDING UNIT STATUS */
+ 15    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+ 15    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+ 15    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+ 15    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+ 15    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+ 15    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+ 15    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+ 15    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+ 15    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+ 15    76       3 ptw bit (1),				/* Fetch of PTW */
+ 15    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+ 15    78       3 fap bit (1),				/* Fetch of final address paged */
+ 15    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+ 15    80       3 fabs bit (1),				/* Fetch of final address absolute */
+ 15    81 
+ 15    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+ 15    83 
+ 15    84 
+ 15    85 /*	WORD (1)		*/
+ 15    86 
+ 15    87     2 fd,						/* FAULT  DATA */
+ 15    88       3 iro bit (1),				/* illegal ring order */
+ 15    89       3 oeb bit (1),				/* out of execute bracket */
+ 15    90       3 e_off bit (1),				/* no execute */
+ 15    91       3 orb bit (1),				/* out of read bracket */
+ 15    92       3 r_off bit (1),				/* no read */
+ 15    93       3 owb bit (1),				/* out of write bracket */
+ 15    94       3 w_off bit (1),				/* no write */
+ 15    95       3 no_ga bit (1),				/* not a gate */
+ 15    96       3 ocb bit (1),				/* out of call bracket */
+ 15    97       3 ocall bit (1),				/* outward call */
+ 15    98       3 boc bit (1),				/* bad outward call */
+ 15    99       3 inret bit (1),				/* inward return */
+ 15   100       3 crt bit (1),				/* cross ring transfer */
+ 15   101       3 ralr bit (1),				/* ring alarm register */
+ 15   102       3 am_er bit (1),				/* associative memory fault */
+ 15   103       3 oosb bit (1),				/* out of segment bounds */
+ 15   104       3 paru bit (1),				/* processor parity upper */
+ 15   105       3 parl bit (1),				/* processor parity lower */
+ 15   106       3 onc_1 bit (1),				/* op not complete type 1 */
+ 15   107       3 onc_2 bit (1),				/* op not complete type 2 */
+ 15   108 
+ 15   109     2 port_stat,					/* PORT  STATUS */
+ 15   110       3 ial bit (4),				/* illegal action lines */
+ 15   111       3 iac bit (3),				/* illegal action channel */
+ 15   112       3 con_chan bit (3),				/* connect channel */
+ 15   113 
+ 15   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+ 15   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+ 15   116 
+ 15   117 
+ 15   118 /*	WORD (2)		*/
+ 15   119 
+ 15   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+ 15   121       3 trr bit (3),				/* temporary ring register */
+ 15   122       3 tsr bit (15),				/* temporary segment register */
+ 15   123 
+ 15   124     2 pad2 bit (9),
+ 15   125 
+ 15   126     2 cpu_no bit (3),				/* CPU number */
+ 15   127 
+ 15   128     2 delta bit (6),				/* tally modification DELTA */
+ 15   129 
+ 15   130 
+ 15   131 /*	WORD (3)		*/
+ 15   132 
+ 15   133     2 word3 bit (18),
+ 15   134 
+ 15   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+ 15   136       3 tsna,					/* Word 1 status */
+ 15   137         4 prn bit (3),				/* Word 1  PR  number */
+ 15   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+ 15   139       3 tsnb,					/* Word 2  status */
+ 15   140         4 prn bit (3),				/* Word 2  PR  number */
+ 15   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+ 15   142       3 tsnc,					/* Word 3  status */
+ 15   143         4 prn bit (3),				/* Word 3  PR  number */
+ 15   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+ 15   145 
+ 15   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+ 15   147 
+ 15   148 
+ 15   149 /* 	WORD (4)		*/
+ 15   150 
+ 15   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+ 15   152 
+ 15   153     2 ir,						/* INDICATOR  REGISTERS */
+ 15   154       3 zero bit (1),				/* zero indicator */
+ 15   155       3 neg bit (1),				/* negative indicator */
+ 15   156       3 carry bit (1),				/* carryry indicator */
+ 15   157       3 ovfl bit (1),				/* overflow indicator */
+ 15   158       3 eovf bit (1),				/* eponent overflow */
+ 15   159       3 eufl bit (1),				/* exponent underflow */
+ 15   160       3 oflm bit (1),				/* overflow mask */
+ 15   161       3 tro bit (1),				/* tally runout */
+ 15   162       3 par bit (1),				/* parity error */
+ 15   163       3 parm bit (1),				/* parity mask */
+ 15   164       3 bm bit (1),					/* ^bar mode */
+ 15   165       3 tru bit (1),				/* truncation mode */
+ 15   166       3 mif bit (1),				/* multi-word instruction mode */
+ 15   167       3 abs bit (1),				/* absolute mode */
+ 15   168       3 hex bit (1),				/* hexadecimal exponent mode */
+ 15   169       3 pad bit (3),
+ 15   170 
+ 15   171 
+ 15   172 /*	WORD (5)		*/
+ 15   173 
+ 15   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+ 15   175 
+ 15   176     2 cu,						/* CONTROL UNIT STATUS */
+ 15   177       3 rf bit (1),					/* on first cycle of repeat instr */
+ 15   178       3 rpt bit (1),				/* repeat instruction */
+ 15   179       3 rd bit (1),					/* repeat double instruction */
+ 15   180       3 rl bit (1),					/* repeat link instruciton */
+ 15   181       3 pot bit (1),				/* IT  modification */
+ 15   182       3 pon bit (1),				/* return type instruction */
+ 15   183       3 xde bit (1),				/* XDE from Even location */
+ 15   184       3 xdo bit (1),				/* XDE from Odd  location */
+ 15   185       3 poa bit (1),				/* operation preparation */
+ 15   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+ 15   187       3 its bit (1),				/* ITS modification */
+ 15   188       3 if bit (1),					/* fault occured during instruction fetch */
+ 15   189 
+ 15   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+ 15   191 
+ 15   192 
+ 15   193 /*	WORDS (6,7)	*/
+ 15   194 
+ 15   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+ 15   196 
+ 15   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+ 15   198 
+ 15   199 
+ 15   200 
+ 15   201 
+ 15   202 
+ 15   203 
+ 15   204 /*	ALTERNATE   SCU  DECLARATION		*/
+ 15   205 
+ 15   206 
+ 15   207 dcl 1 scux based (scup) aligned,
+ 15   208 
+ 15   209    (2 pad0 bit (36),
+ 15   210 
+ 15   211     2 fd,						/* GROUP II  FAULT DATA */
+ 15   212       3 isn bit (1),				/* illegal segment number */
+ 15   213       3 ioc bit (1),				/* illegal op  code  */
+ 15   214       3 ia_am bit (1),				/* illegal address - modifier */
+ 15   215       3 isp bit (1),				/* illegal slave  procedure */
+ 15   216       3 ipr bit (1),				/* illegal procedure */
+ 15   217       3 nea bit (1),				/* non existent address */
+ 15   218       3 oobb bit (1),				/* out of bounds */
+ 15   219       3 pad bit (29),
+ 15   220 
+ 15   221     2 pad2 bit (36),
+ 15   222 
+ 15   223     2 pad3a bit (18),
+ 15   224 
+ 15   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+ 15   226       3 prn bit (3),				/* PR  number */
+ 15   227       3 prv bit (1),				/* PR  valid bit */
+ 15   228 
+ 15   229     2 pad3b bit (6)) unaligned,
+ 15   230 
+ 15   231     2 pad45 (0:1) bit (36),
+ 15   232 
+ 15   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+ 15   234 
+ 15   235 
+ 15   236 
+ 15   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+ 14    75 
+ 14    76 
+ 14    77 /* END include file toehold.incl.pl1 */
+      629 
+      630      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0825.6  bce_dump.pl1                      >special_ldd>install>MR12.3-1114>bce_dump.pl1
+618          1    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+619          2    07/11/84  0937.3  bce_appending_seg_info.incl.pl1   >ldd>include>bce_appending_seg_info.incl.pl1
+2-14         3    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+2-15         4    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+620          5    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+621          6    08/12/81  2025.8  bos_dump.incl.pl1                 >ldd>include>bos_dump.incl.pl1
+622          7    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+623          8    07/11/84  0937.3  dbr_info.incl.pl1                 >ldd>include>dbr_info.incl.pl1
+624          9    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+625         10    07/11/84  0937.3  ptw_info.incl.pl1                 >ldd>include>ptw_info.incl.pl1
+626         11    07/11/84  0937.3  state_equs.incl.pl1               >ldd>include>state_equs.incl.pl1
+627         12    01/30/85  1523.9  tcm.incl.pl1                      >ldd>include>tcm.incl.pl1
+628         13    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+629         14    07/11/84  0937.3  toe_hold.incl.pl1                 >ldd>include>toe_hold.incl.pl1
+14-75       15    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+All                                    constant        fixed bin(17,0)          initial dcl 31 ref 260 296 475
+BCE_CRASH_INITIALIZATION               constant        fixed bin(17,0)          initial dcl 7-20 ref 188
+CRASH_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 7-18 ref 188
+DUMP_VERSION_2                         constant        fixed bin(17,0)          initial dcl 6-121 ref 363
+Directories                            constant        fixed bin(17,0)          initial dcl 32 ref 537
+Eligible                               constant        fixed bin(17,0)          initial dcl 33 ref 254 255 256 296 296 297 474
+Empty_apte                             constant        bit(18)                  initial packed unaligned dcl 11-7 ref 468
+Hardcore                               constant        fixed bin(17,0)          initial dcl 34 ref 245 251 254 486 516
+Initializer                            constant        fixed bin(17,0)          initial dcl 35 ref 256 476 480
+Modifying_dirs                         constant        fixed bin(17,0)          initial dcl 36 ref 246 252 538
+Per_process                            constant        fixed bin(17,0)          initial dcl 37 ref 247 253 535
+Process_group_names             000100 constant        char(32)                 initial array packed unaligned dcl 38 set ref 202
+                                                                                  203* 263 263 266
+Process_group_names_short       000073 constant        char(5)                  initial array packed unaligned dcl 40 set ref 203*
+                                                                                  263
+Running                                constant        fixed bin(17,0)          initial dcl 42 ref 245 246 247 251 252 253 297 297
+                                                                                  473 473 480
+Segment_group_names             000013 constant        char(32)                 initial array packed unaligned dcl 43 set ref 206
+                                                                                  207* 284 284 287
+Segment_group_names_short       000002 constant        char(6)                  initial array packed unaligned dcl 45 set ref 207*
+                                                                                  284
+Stacks                                 constant        fixed bin(17,0)          initial dcl 47 ref 255 527
+Stopped_apte                           constant        bit(18)                  initial packed unaligned dcl 11-12 ref 473
+VCPU_RESPONSE_BOUNDS                   constant        fixed bin(17,0)          initial dcl 12-308 ref 466 466 466 466
+Writeable                              constant        fixed bin(17,0)          initial dcl 48 ref 260 534
+access                  416            based           structure                level 3 packed packed unaligned dcl 2-9
+addcharno                                              builtin function         dcl 50 ref 280
+addr                                                   builtin function         dcl 51 ref 305 306 306 309 356 400 401 402 403 405
+                                                                                  406 407 408 409 410 411 411 420 421 427 427 431
+                                                                                  431 431 439 439 442 442 466 483 483 491 491 505
+                                                                                  505 505 505 507 539 588 588 593 594 594
+addrel                                                 builtin function         dcl 52 ref 412 415 415 579 579 593 607 607
+address                                based           fixed bin(26,0)          level 2 in structure "ptw_info" dcl 10-10
+                                                                                  in procedure "bce_dump" ref 428 443
+address                                based           fixed bin(26,0)          level 2 in structure "dbr_info" dcl 8-10
+                                                                                  in procedure "bce_dump" ref 307 484
+address                 414            based           fixed bin(26,0)          level 3 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_dump" ref 430 445 530 530 545
+after                                                  builtin function         dcl 53 ref 319
+amptwptrs              2100            based           bit(36)                  array level 2 dcl 6-11 set ref 371*
+amptwregs              2000            based           bit(36)                  array level 2 dcl 6-11 set ref 370*
+amsdwptrs              2400            based           bit(36)                  array level 2 dcl 6-11 set ref 373*
+amsdwregs              2200            based           bit(72)                  array level 2 dcl 6-11 set ref 372*
+apt                                    based           fixed bin(17,0)          level 2 dcl 12-11 set ref 466
+apt_size                313            based           fixed bin(18,0)          level 2 dcl 12-11 set ref 431
+apte                                   based           structure                level 1 dcl 1-7 ref 466 466 466
+apte_num                        000100 automatic       fixed bin(17,0)          dcl 54 set ref 462* 465 466 476 494*
+aptep                           012332 automatic       pointer                  dcl 1-5 set ref 405* 466 466 466 466* 468 469 473
+                                                                                  473 474
+apu_history_registers
+                       3240     000120 external static bit(72)                  array level 3 dcl 173 ref 378
+arg                                    based           char                     packed unaligned dcl 55 set ref 216 223* 225* 229
+                                                                                  229 236 238 238 239 240 241 242 243 243 249 249
+                                                                                  258 258 263 263 267* 276 284 284
+arg_len                         000101 automatic       fixed bin(21,0)          dcl 56 set ref 214* 216 221* 223 223 225 225 229 229
+                                                                                  234* 236 238 238 239 240 241 242 243 243 249 249
+                                                                                  258 258 263 263 267 267 274* 276 276 279* 279 284
+                                                                                  284
+arg_list_ptr             16            based           pointer                  level 2 dcl 5-15 set ref 189* 214* 221* 234* 274*
+arg_num                         000102 automatic       fixed bin(17,0)          dcl 57 set ref 212* 213 214* 215* 215 217 221* 222*
+                                                                                  222 230 234* 235* 235 270 274* 289* 289 290
+arg_ptr                         000104 automatic       pointer                  dcl 58 set ref 214* 216 221* 223 225 229 229 234*
+                                                                                  236 238 238 239 240 241 242 243 243 249 249 258
+                                                                                  258 263 263 267 274* 276 280* 280 284 284
+aste                                   based           structure                level 1 dcl 3-11 set ref 412
+astep                           012336 automatic       pointer                  dcl 3-9 set ref 409* 412
+auhist                 3300            based           bit(72)                  array level 2 dcl 6-11 set ref 378*
+bar                    3070     000120 external static bit(36)                  level 3 in structure "toehold$" dcl 173 in procedure
+                                                                                  "bce_dump" ref 387
+bar                    3573            based           bit(36)                  level 3 in structure "dump" dcl 6-11 in procedure
+                                                                                  "bce_dump" set ref 387*
+based_sentinel                         based           structure                level 1 dcl 12-303
+bce_appending_simulation$get_absolute
+                                000012 constant        entry                    external dcl 60 ref 431 466
+bce_appending_simulation$get_virtual
+                                000014 constant        entry                    external dcl 61 ref 505 539 588 594
+bce_appending_simulation$init   000016 constant        entry                    external dcl 62 ref 310
+bce_appending_simulation$new_dbr
+                                000020 constant        entry                    external dcl 63 ref 489
+bce_appending_simulation$new_sdw
+                                000022 constant        entry                    external dcl 64 ref 511
+bce_appending_simulation$new_segment
+                                000024 constant        entry                    external dcl 65 ref 423 439 491
+bce_check_abort                 000026 constant        entry                    external dcl 66 ref 463 500
+bce_create_sstnt                000030 constant        entry                    external dcl 67 ref 453
+bce_query$yes_no                000032 constant        entry                    external dcl 68 ref 339
+before                                                 builtin function         dcl 59 ref 318
+bin                                                    builtin function         dcl 69 ref 382 568 598
+bit                                                    builtin function         dcl 70 ref 395 396 568 598
+cache_mode_reg         3063     000120 external static bit(36)                  level 3 dcl 173 ref 389
+clock                                                  builtin function         dcl 71 ref 358
+cmodereg               3575            based           bit(36)                  level 3 dcl 6-11 set ref 389*
+code                            000106 automatic       fixed bin(35,0)          dcl 72 set ref 189* 190 214* 221* 223* 224 234* 274*
+                                                                                  310* 311 312* 316* 320 324* 326 327* 334* 335 350*
+                                                                                  351 423* 424 431* 432 439* 440 466* 467 489* 490
+                                                                                  491* 492 505* 511* 512 539* 588* 594* 607* 612*
+com_err_                        000034 constant        entry                    external dcl 73 ref 218 225 231 267 271 312 321 327
+coreblocks             3610            based           structure                array level 2 dcl 6-11
+crash_dbr                       000110 automatic       bit(72)                  dcl 74 set ref 303* 304* 306 306 367 479
+crash_dbr_addr                  000112 automatic       fixed bin(26,0)          dcl 75 set ref 307* 484
+create_sstnt                    000113 automatic       bit(1)                   dcl 76 set ref 186* 241* 242* 453
+cu_$arg_count_rel               000036 constant        entry                    external dcl 77 ref 189
+cu_$arg_ptr_rel                 000040 constant        entry                    external dcl 78 ref 214 221 234 274
+cu_history_registers   3140     000120 external static bit(72)                  array level 3 dcl 173 ref 376
+cuhist                 2700            based           bit(72)                  array level 2 dcl 6-11 set ref 376*
+current_dbr                     000114 automatic       bit(72)                  dcl 79 set ref 469* 479* 483 483 489* 494*
+current_dump_record             000116 automatic       fixed bin(18,0)          dcl 80 set ref 399* 574 579 597* 597
+cv_dec_check_                   000042 constant        entry                    external dcl 81 ref 223
+dbr                    3570            based           bit(72)                  level 3 in structure "dump" dcl 6-11 in procedure
+                                                                                  "bce_dump" set ref 367*
+dbr                    3064     000120 external static bit(72)                  level 3 in structure "toehold$" dcl 173 in procedure
+                                                                                  "bce_dump" ref 303
+dbr                      44            based           fixed bin(71,0)          level 2 in structure "apte" dcl 1-7 in procedure
+                                                                                  "bce_dump" ref 469
+dbr_info                               based           structure                level 1 dcl 8-10
+dbr_info_ptr                    012344 automatic       pointer                  dcl 8-8 set ref 305* 306* 307 483* 484 519 519 527
+                                                                                  527
+dbr_loaded                1(13)        based           bit(1)                   level 3 packed packed unaligned dcl 1-7 ref 473
+dbr_util_$dissect               000044 constant        entry                    external dcl 82 ref 306 483
+dimension                                              builtin function         dcl 83 ref 202 206 263 266 284 287 505 507 559
+dir                                    based           structure                level 1 dcl 9-11
+directory_mod                   000117 automatic       bit(36)                  dcl 84 set ref 410
+dirsw                     5(21)        based           bit(1)                   level 3 packed packed unaligned dcl 2-9 ref 536
+divide                                                 builtin function         dcl 85 ref 545 573
+dp                              012346 automatic       pointer                  dcl 9-9 set ref 410* 539 539 539* 540
+drive_num                       000120 automatic       char(4)                  packed unaligned dcl 86 set ref 319* 324*
+dseg$                           000046 external static fixed bin(17,0)          dcl 88 set ref 400
+dseg_buffer                     000122 automatic       fixed bin(71,0)          array dcl 89 set ref 505 505 505 505 505 507 507
+dseg_info                       002122 automatic       structure                level 1 dcl 90 set ref 491 491 505 505
+dseg_no                         002544 automatic       fixed bin(15,0)          dcl 91 set ref 400* 491* 516
+du_history_registers   3200     000120 external static bit(72)                  array level 3 dcl 173 ref 377
+duhist                 3100            based           bit(72)                  array level 2 dcl 6-11 set ref 377*
+dump                                   based           structure                level 1 dcl 6-11
+dump_astep                      002546 automatic       pointer                  dcl 92 set ref 411* 412 413 596*
+dump_disk_pvid                  002550 automatic       bit(36)                  dcl 93 set ref 316* 324*
+dump_disk_pvtx                  002551 automatic       fixed bin(17,0)          dcl 94 set ref 316* 324* 334* 350* 413 607* 612*
+dump_drive_name                 002552 automatic       char(8)                  packed unaligned dcl 95 set ref 187* 236* 316 318
+                                                                                  319
+dump_header                            based           structure                level 2 in structure "dump" dcl 6-11 in procedure
+                                                                                  "bce_dump"
+dump_header                            based           structure                level 1 dcl 6-47 in procedure "bce_dump"
+dump_misc_registers                    based           structure                level 1 dcl 6-69
+dump_number                     002554 automatic       fixed bin(17,0)          dcl 96 set ref 184* 223* 347 347
+dump_options                    002555 automatic       bit(6)                   array dcl 97 set ref 183* 244* 245* 246* 247* 250*
+                                                                                  251* 252* 253* 254* 255* 256* 256 259* 260* 288*
+                                                                                  296* 296 296 297* 297 297 473 473 474 475 476 480
+                                                                                  480
+dump_ptp                        002562 automatic       pointer                  dcl 98 set ref 412* 415 415 579 579
+dump_registers                         based           structure                level 1 dcl 6-59
+dump_seg$                       000050 external static fixed bin(17,0)          dcl 99 set ref 411 411 593 594 594
+dump_severity                   000010 internal static fixed bin(17,0)          initial dcl 87 set ref 182* 341* 605* 617
+dumped_355s               7            based           bit(4)                   level 3 dcl 6-11 set ref 361*
+dumped_hc_seg                   002564 automatic       bit(1)                   array packed unaligned dcl 100 set ref 450* 519 522
+                                                                                  523*
+dumpptr                         012342 automatic       pointer                  dcl 6-9 set ref 309* 334* 337 339 346 347 348 348
+                                                                                  349 350* 353 356 358 359 360 361 362 363 367 368
+                                                                                  370 371 372 373 375 376 377 378 380 381 382 383
+                                                                                  384 385 386 387 388 389 390 391 393 393 395 396
+                                                                                  559 559 567 567 568 568 569 569 598 598 599 599
+                                                                                  607 607 612*
+eis_info               3030     000120 external static bit(36)                  array level 4 packed packed unaligned dcl 173 ref
+                                                                                  391
+eligible                  1(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-7 ref 474
+erfno                     4            based           fixed bin(18,0)          level 3 dcl 6-11 set ref 339* 347* 348* 348 349*
+error_table_$bad_arg            000052 external static fixed bin(35,0)          dcl 101 set ref 267*
+error_table_$noarg              000054 external static fixed bin(35,0)          dcl 102 set ref 218* 231* 271*
+examine_crash                   002574 automatic       bit(1)                   dcl 103 set ref 188* 239* 240* 298* 303 310* 369
+fault_reg              3025     000120 external static bit(36)                  level 4 packed packed unaligned dcl 173 ref 390
+fault_time             3026(18) 000120 external static bit(54)                  level 4 packed packed unaligned dcl 173 ref 382
+faulted                   4(01)        based           bit(1)                   level 3 packed packed unaligned dcl 4-6 ref 509
+faultreg               3576            based           bit(36)                  level 3 dcl 6-11 set ref 390*
+find_partition                  000056 constant        entry                    external dcl 104 ref 316
+find_partition$given_drive      000060 constant        entry                    external dcl 105 ref 324
+first_dump_record               002575 automatic       fixed bin(18,0)          dcl 106 set ref 316* 324* 334* 350* 399 415 574 607
+                                                                                  612*
+flags                     4            based           structure                level 2 in structure "sdw_info" dcl 4-6 in procedure
+                                                                                  "bce_dump"
+flags                   420            based           structure                level 3 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_dump"
+flags                     1            based           structure                level 2 in structure "apte" packed packed unaligned
+                                                                                  dcl 1-7 in procedure "bce_dump"
+force                           002576 automatic       bit(1)                   dcl 107 set ref 185* 238* 337
+get_ptrs_$given_segno           000062 constant        entry                    external dcl 108 ref 411
+hbound                                                 builtin function         dcl 109 ref 393 519
+hreg                            002577 automatic       fixed bin(17,0)          dcl 110 set ref 374* 375 375 376 376 377 377 378
+                                                                                  378*
+i                               002600 automatic       fixed bin(17,0)          dcl 111 set ref 202* 203 203* 206* 207 207*
+interrupt              3060     000120 external static bit(72)                  level 3 dcl 173 ref 385 386
+intrpts                3572            based           bit(36)                  level 3 dcl 6-11 set ref 385* 386*
+io_path                                based           structure                level 1 dcl 14-22
+ioa_                            000064 constant        entry                    external dcl 112 ref 193 194 195 196 197 198 199 200
+                                                                                  201 203 205 207 298 349 494 564 575
+kludge_valid                           based           bit(36)                  dcl 355 set ref 356*
+kst_no                          002601 automatic       fixed bin(15,0)          dcl 113 set ref 403* 516
+kst_seg$                        000066 external static fixed bin(17,0)          dcl 114 set ref 403
+last_apte                       002602 automatic       fixed bin(17,0)          dcl 115 set ref 424* 431 431 432* 462
+last_segnum                     002603 automatic       fixed bin(15,0)          dcl 116 set ref 489* 499
+lbound                                                 builtin function         dcl 117 ref 393
+length                   20(18)        based           bit(18)                  array level 3 packed packed unaligned dcl 6-11 set
+                                                                                  ref 569* 598*
+lock                                   based           structure                level 1 dcl 13-12
+low_order_port         3530            based           bit(3)                   level 2 dcl 6-11 set ref 368*
+masks                  3040     000120 external static bit(36)                  array level 3 dcl 173 ref 384
+mc                                     based           structure                level 1 dcl 15-12
+mc_                    2760     000120 external static structure                level 3 dcl 173
+mc_state                               based           structure                level 1 dcl 14-42
+mcm                    3550            based           bit(72)                  array level 3 dcl 6-11 set ref 384*
+mctime                 3532            based           fixed bin(52,0)          level 2 dcl 6-11 set ref 382*
+me                              000000 constant        char(8)                  initial packed unaligned dcl 118 set ref 218* 225*
+                                                                                  231* 267* 271* 312* 321* 327*
+min                                                    builtin function         dcl 119 ref 588 588 594 594
+misc_registers         3540            based           structure                level 2 dcl 6-11
+mod                                                    builtin function         dcl 120 ref 505 507
+mode_reg               3062     000120 external static bit(36)                  level 3 dcl 173 ref 388
+modereg                3574            based           bit(36)                  level 3 dcl 6-11 set ref 388*
+modify                                 based           bit(36)                  level 2 dcl 9-11 set ref 539 540
+multics_state          2760     000120 external static structure                level 2 dcl 173
+my_apte                         002604 automatic       structure                level 1 dcl 121 set ref 405
+my_aste                         002704 automatic       structure                level 1 dcl 122 set ref 409
+my_dbr_info                     002720 automatic       structure                level 1 dcl 123 set ref 305
+my_dump                         002724 automatic       structure                level 1 dcl 124 set ref 309
+my_page_buffer                  006724 automatic       bit(36864)               dcl 125 set ref 588 588 589 593
+my_ptw_info                     010724 automatic       structure                level 1 dcl 126 set ref 407
+my_sdw_info                     010726 automatic       structure                level 1 dcl 127 set ref 406
+my_seg_info                     010734 automatic       structure                level 1 dcl 128 set ref 408
+n_args                          011356 automatic       fixed bin(17,0)          dcl 129 set ref 189* 192 213 217 230 270 290
+not_option                      011357 automatic       bit(1)                   dcl 130 set ref 278* 282* 283* 288
+null_page                       011360 automatic       bit(1)                   dcl 131 set ref 586* 587 589* 591
+num_blocks             3610(18)        based           bit(18)                  array level 3 packed packed unaligned dcl 6-11 set
+                                                                                  ref 396*
+num_first              3610            based           bit(18)                  array level 3 packed packed unaligned dcl 6-11 set
+                                                                                  ref 393 393 395*
+num_pages                       011361 automatic       fixed bin(17,0)          dcl 132 set ref 573* 574 578 587
+num_records                     011362 automatic       fixed bin(18,0)          dcl 133 set ref 316* 324* 574
+num_segs                  5            based           fixed bin(17,0)          level 3 dcl 6-11 set ref 359* 559 567* 567 568 569
+                                                                                  598
+ou_history_registers   3100     000120 external static bit(72)                  array level 3 dcl 173 ref 375
+ouhist                 2500            based           bit(72)                  array level 2 dcl 6-11 set ref 375*
+page_buffer                            based           bit(36864)               dcl 134 set ref 593*
+page_num                        011363 automatic       fixed bin(17,0)          dcl 135 set ref 414* 415 415 415* 578* 579 579 579*
+                                                                                  587* 588 588 588* 592* 592 593 594 594 594 597 598
+                                                                                  599
+page_table               14            based           bit(36)                  array level 2 dcl 2-9 set ref 427 427 442 442
+paged                   420            based           bit(1)                   level 4 packed packed unaligned dcl 2-9 ref 426 441
+                                                                                  528
+pc$cleanup                      000070 constant        entry                    external dcl 136 ref 596
+pds$                            000072 external static fixed bin(17,0)          dcl 137 set ref 401
+pds_no                          011364 automatic       fixed bin(15,0)          dcl 138 set ref 401* 516
+per_process              12(14)        based           bit(1)                   level 3 packed packed unaligned dcl 2-9 ref 535
+prds$                           000074 external static fixed bin(17,0)          dcl 139 set ref 402
+prds_no                         011365 automatic       fixed bin(15,0)          dcl 140 set ref 402* 516
+proc_options                    011366 automatic       bit(6)                   packed unaligned dcl 141 set ref 473* 474* 475* 476*
+                                                                                  476 480* 485 486* 516 527 534 535 537 538
+process_group_num               011367 automatic       fixed bin(17,0)          dcl 142 set ref 263* 263 263* 266 288
+processed_crash_dbr             011370 automatic       bit(1)                   dcl 143 set ref 449* 484* 602
+prs                    2760     000120 external static pointer                  array level 4 in structure "toehold$" dcl 173
+                                                                                  in procedure "bce_dump" ref 380
+prs                    3500            based           pointer                  array level 2 in structure "dump" dcl 6-11
+                                                                                  in procedure "bce_dump" set ref 380*
+ptrlen                 3600            based           bit(36)                  array level 2 dcl 6-11 set ref 391*
+ptw_info                               based           structure                level 1 dcl 10-10
+ptw_info_ptr                    012350 automatic       pointer                  dcl 10-8 set ref 407* 427* 428 442* 443
+ptw_util_$dissect               000076 constant        entry                    external dcl 144 ref 427 442
+ptw_util_$make_null_disk        000100 constant        entry                    external dcl 145 ref 415 579
+ptwam_ptrs             3300     000120 external static bit(36)                  array level 3 dcl 173 ref 371
+ptwam_regs             3400     000120 external static bit(36)                  array level 3 dcl 173 ref 370
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 3-11 set ref
+                                                                                  413*
+read_disk                       000102 constant        entry                    external dcl 146 ref 334
+regs                   3520            based           structure                level 2 in structure "dump" dcl 6-11 in procedure
+                                                                                  "bce_dump" set ref 381*
+regs                   3000     000120 external static structure                level 4 in structure "toehold$" packed packed
+                                                                                  unaligned dcl 173 in procedure "bce_dump" ref 381
+request_abort_                  011372 stack reference condition                dcl 147 ref 190
+rsw_util$port_info              000104 constant        entry                    external dcl 148 ref 394
+scu                    3540            based           bit(36)                  array level 3 in structure "dump" dcl 6-11
+                                                                                  in procedure "bce_dump" set ref 383*
+scu                    3010     000120 external static bit(36)                  array level 4 in structure "toehold$" packed packed
+                                                                                  unaligned dcl 173 in procedure "bce_dump" ref 383
+scu_base                        011400 automatic       fixed bin(17,0)          dcl 149 set ref 394* 395
+scu_enabled                     011401 automatic       bit(1)                   dcl 150 set ref 394*
+scu_interlace                   011402 automatic       fixed bin(3,0)           dcl 151 set ref 394*
+scu_size                        011403 automatic       fixed bin(17,0)          dcl 152 set ref 394* 396
+scu_tag                         011404 automatic       fixed bin(3,0)           dcl 153 set ref 393* 394* 395 396*
+sdw_info                               based           structure                level 1 dcl 4-6
+sdw_info_ptr                    012340 automatic       pointer                  dcl 4-4 set ref 406* 508* 509
+sdw_util_$dissect               000106 constant        entry                    external dcl 154 ref 508
+sdwam_ptrs             3500     000120 external static bit(36)                  array level 3 dcl 173 ref 373
+sdwam_regs             3600     000120 external static bit(72)                  array level 3 dcl 173 ref 372
+sdwi                    414            based           structure                level 2 dcl 2-9
+seg_info                               based           structure                level 1 dcl 2-9
+seg_info_ptr                    012334 automatic       pointer                  dcl 2-8 set ref 408* 423* 426 427 427 430 439* 441
+                                                                                  442 442 445 446 511* 518 528 530 530 535 536 539*
+                                                                                  545 573 588* 588 588 594* 594 594
+seg_sdw                                based           fixed bin(71,0)          dcl 155 set ref 511*
+seg_sdw_ptr                     011406 automatic       pointer                  dcl 156 set ref 507* 508* 511
+segment_group_num               011410 automatic       fixed bin(17,0)          dcl 157 set ref 284* 284 284* 287 288
+segno                    20            based           bit(18)                  array level 3 in structure "dump" packed packed
+                                                                                  unaligned dcl 6-11 in procedure "bce_dump" set ref
+                                                                                  568*
+segno                                                  builtin function         dcl 158 in procedure "bce_dump" ref 400 401 402 403
+                                                                                  411 411 421 439 439
+segnum                          011411 automatic       fixed bin(15,0)          dcl 159 set ref 499* 505 505 507 516 516 516 516 519
+                                                                                  519 522 523 527 527 568*
+segs                     20            based           structure                array level 2 dcl 6-11 set ref 559
+size                                                   builtin function         dcl 160 in procedure "bce_dump" ref 412 466 466 466
+                                                                                  505 505
+size                    415            based           fixed bin(19,0)          level 3 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_dump" ref 446 573 588 588 594 594
+ss_info                                based           structure                level 1 dcl 5-15
+ss_info_ptr                            parameter       pointer                  dcl 5-14 ref 17 189 214 221 234 274
+sst_bit_map                     011412 automatic       bit(16384)               dcl 161 set ref 451* 554 555*
+sst_data                               based           structure                level 2 dcl 2-9
+sst_end                         012322 automatic       fixed bin(26,0)          dcl 162 set ref 438* 446* 453* 530
+sst_index                       012323 automatic       fixed bin(17,0)          dcl 163 set ref 545* 554 555
+sst_seg$                        000110 external static fixed bin(17,0)          dcl 164 set ref 439 439
+sst_start                       012324 automatic       fixed bin(26,0)          dcl 165 set ref 438* 443* 445* 446 453* 529 530 545
+stack_base_segnum         2            based           fixed bin(15,0)          level 2 dcl 8-10 ref 519 519 527 527
+state                     1(18)        based           bit(18)                  level 3 packed packed unaligned dcl 1-7 ref 468 473
+substr                                                 builtin function         dcl 166 set ref 245* 246* 247* 251* 252* 253* 254*
+                                                                                  255* 260* 276 288* 385* 385 386* 386 486* 516 527
+                                                                                  534 535 537 538 554 555*
+subsystem                       012325 automatic       char(4)                  packed unaligned dcl 167 set ref 318* 324*
+sys_boot_info$bce_dbr           000112 external static bit(72)                  dcl 168 ref 304
+sys_info$clock_                 000114 external static bit(3)                   dcl 169 ref 368
+sys_info$collection_1_phase     000124 external static fixed bin(17,0)          dcl 7-8 ref 188 188
+tc_data$                        000116 external static fixed bin(17,0)          dcl 170 set ref 420 421
+tc_data_addr                    012326 automatic       fixed bin(26,0)          dcl 171 set ref 428* 430* 431 466
+tc_data_no                      012327 automatic       fixed bin(15,0)          dcl 172 set ref 421* 423*
+tcm                                    based           structure                level 1 dcl 12-11
+tcmp                            012352 automatic       pointer                  dcl 12-9 set ref 420* 431 466
+time                      2            based           fixed bin(71,0)          level 3 dcl 6-11 set ref 358*
+time_355                 10            based           fixed bin(71,0)          level 3 dcl 6-11 set ref 362*
+toe_hold                               based           structure                level 1 dcl 14-11
+toehold$                        000120 external static structure                level 1 dcl 173
+unspec                                                 builtin function         dcl 174 set ref 183* 244* 250* 259* 381* 381 383*
+                                                                                  383 384* 384 469
+valid                     1            based           bit(1)                   level 3 dcl 6-11 set ref 337 346* 356
+valid_355                 6            based           bit(1)                   level 3 dcl 6-11 set ref 360*
+version                  12            based           fixed bin(17,0)          level 3 dcl 6-11 set ref 363*
+wct_entry                              based           structure                level 1 dcl 12-260
+wordno                                                 builtin function         dcl 175 ref 431 466 539 539
+words_dumped                           based           fixed bin(35,0)          level 3 dcl 6-11 set ref 353* 599* 599
+write                   416(02)        based           bit(1)                   level 4 packed packed unaligned dcl 2-9 ref 518
+write_disk                      000122 constant        entry                    external dcl 176 ref 350 607 612
+yes_no                          012330 automatic       bit(1)                   packed unaligned dcl 177 set ref 339* 340
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+At_bce__boot                           internal static fixed bin(17,0)          initial dcl 14-66
+At_bce__crash                          internal static fixed bin(17,0)          initial dcl 14-70
+At_bce__early                          internal static fixed bin(17,0)          initial dcl 14-65
+At_bce__shutdown                       internal static fixed bin(17,0)          initial dcl 14-71
+BOOT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 7-11
+Blocked_apte                           internal static bit(18)                  initial packed unaligned dcl 11-11
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 7-23
+DUMP_VERSION_1                         internal static fixed bin(17,0)          initial dcl 6-120
+EARLY_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 7-10
+Initial_undefined                      internal static fixed bin(17,0)          initial dcl 14-64
+Multics                                internal static fixed bin(17,0)          initial dcl 14-67
+Ptlocking_apte                         internal static bit(18)                  initial packed unaligned dcl 11-13
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 7-19
+Ready_apte                             internal static bit(18)                  initial packed unaligned dcl 11-9
+Running_apte                           internal static bit(18)                  initial packed unaligned dcl 11-8
+SERVICE_INITIALIZATION                 internal static fixed bin(17,0)          initial dcl 7-12
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 7-21
+TOE_HOLD_BOOT_ENTRY                    internal static fixed bin(17,0)          initial dcl 14-36
+TOE_HOLD_BOS_ENTRY                     internal static fixed bin(17,0)          initial dcl 14-37
+TOE_HOLD_BOS_MULTICS_ENTRY             internal static fixed bin(17,0)          initial dcl 14-39
+TOE_HOLD_BOS_NO_SAVE_ENTRY             internal static fixed bin(17,0)          initial dcl 14-38
+TOE_HOLD_CRASH_ENTRY                   internal static fixed bin(17,0)          initial dcl 14-31
+TOE_HOLD_DUMP_ENTRY                    internal static fixed bin(17,0)          initial dcl 14-33
+TOE_HOLD_ESD_ENTRY                     internal static fixed bin(17,0)          initial dcl 14-32
+TOE_HOLD_MULTICS_ENTRY                 internal static fixed bin(17,0)          initial dcl 14-34
+TOE_HOLD_RESTART_ENTRY                 internal static fixed bin(17,0)          initial dcl 14-35
+Undefined_continue                     internal static fixed bin(17,0)          initial dcl 14-72
+Undefined_reading_bce                  internal static fixed bin(17,0)          initial dcl 14-69
+Undefined_saving_mem                   internal static fixed bin(17,0)          initial dcl 14-73
+Undefined_saving_state                 internal static fixed bin(17,0)          initial dcl 14-68
+Waiting_apte                           internal static bit(18)                  initial packed unaligned dcl 11-10
+abx                                    internal static fixed bin(17,0)          initial dcl 15-42
+apx                                    internal static fixed bin(17,0)          initial dcl 15-42
+asta                                   based           bit(432)                 array dcl 3-86
+aste_part                              based           structure                level 1 dcl 3-89
+bbx                                    internal static fixed bin(17,0)          initial dcl 15-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 15-42
+lbx                                    internal static fixed bin(17,0)          initial dcl 15-42
+lock_ptr                               automatic       pointer                  dcl 13-11
+lpx                                    internal static fixed bin(17,0)          initial dcl 15-42
+mc_state_ptr                           automatic       pointer                  dcl 14-41
+mcp                                    automatic       pointer                  dcl 15-10
+sbx                                    internal static fixed bin(17,0)          initial dcl 15-42
+scu                                    based           structure                level 1 dcl 15-56
+scup                                   automatic       pointer                  dcl 15-54
+scux                                   based           structure                level 1 dcl 15-207
+seg_aste                               based           structure                level 1 dcl 3-96
+spx                                    internal static fixed bin(17,0)          initial dcl 15-42
+v1_dump                                based           structure                level 1 dcl 6-83
+version_number_2                       internal static fixed bin(17,0)          initial dcl 9-84
+wctep                                  automatic       pointer                  dcl 12-258
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+apnd_error                      002163 constant        label                    dcl 312
+bce_dump                        000514 constant        entry                    external dcl 17
+consider_seg                    004146 constant        label                    dcl 545 ref 535 537 540
+dump_partition_error            002414 constant        label                    dcl 327 ref 335 351
+dump_seg                        004164 constant        label                    dcl 559 ref 516 519 524 527 528 530
+end_dump                        004506 constant        label                    dcl 607 ref 565 576
+next_apte                       004473 constant        label                    dcl 602 ref 467 468 485 490 492
+next_seg                        004471 constant        label                    dcl 600 ref 509 512 518 522 529 543 554 591
+next_segment_option             001735 constant        label                    dcl 274 ref 290
+severity                        004560 constant        entry                    external dcl 615
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5232        5360    4605        5242
+Length      6150    4605       126         553     425           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_dump                           5512 external procedure  is an external procedure.  
+begin block on line 354                 begin block         shares stack frame of external procedure bce_dump.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 dump_severity               bce_dump
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_dump                 000100 apte_num                    bce_dump
+                         000101 arg_len                     bce_dump
+                         000102 arg_num                     bce_dump
+                         000104 arg_ptr                     bce_dump
+                         000106 code                        bce_dump
+                         000110 crash_dbr                   bce_dump
+                         000112 crash_dbr_addr              bce_dump
+                         000113 create_sstnt                bce_dump
+                         000114 current_dbr                 bce_dump
+                         000116 current_dump_record         bce_dump
+                         000117 directory_mod               bce_dump
+                         000120 drive_num                   bce_dump
+                         000122 dseg_buffer                 bce_dump
+                         002122 dseg_info                   bce_dump
+                         002544 dseg_no                     bce_dump
+                         002546 dump_astep                  bce_dump
+                         002550 dump_disk_pvid              bce_dump
+                         002551 dump_disk_pvtx              bce_dump
+                         002552 dump_drive_name             bce_dump
+                         002554 dump_number                 bce_dump
+                         002555 dump_options                bce_dump
+                         002562 dump_ptp                    bce_dump
+                         002564 dumped_hc_seg               bce_dump
+                         002574 examine_crash               bce_dump
+                         002575 first_dump_record           bce_dump
+                         002576 force                       bce_dump
+                         002577 hreg                        bce_dump
+                         002600 i                           bce_dump
+                         002601 kst_no                      bce_dump
+                         002602 last_apte                   bce_dump
+                         002603 last_segnum                 bce_dump
+                         002604 my_apte                     bce_dump
+                         002704 my_aste                     bce_dump
+                         002720 my_dbr_info                 bce_dump
+                         002724 my_dump                     bce_dump
+                         006724 my_page_buffer              bce_dump
+                         010724 my_ptw_info                 bce_dump
+                         010726 my_sdw_info                 bce_dump
+                         010734 my_seg_info                 bce_dump
+                         011356 n_args                      bce_dump
+                         011357 not_option                  bce_dump
+                         011360 null_page                   bce_dump
+                         011361 num_pages                   bce_dump
+                         011362 num_records                 bce_dump
+                         011363 page_num                    bce_dump
+                         011364 pds_no                      bce_dump
+                         011365 prds_no                     bce_dump
+                         011366 proc_options                bce_dump
+                         011367 process_group_num           bce_dump
+                         011370 processed_crash_dbr         bce_dump
+                         011400 scu_base                    bce_dump
+                         011401 scu_enabled                 bce_dump
+                         011402 scu_interlace               bce_dump
+                         011403 scu_size                    bce_dump
+                         011404 scu_tag                     bce_dump
+                         011406 seg_sdw_ptr                 bce_dump
+                         011410 segment_group_num           bce_dump
+                         011411 segnum                      bce_dump
+                         011412 sst_bit_map                 bce_dump
+                         012322 sst_end                     bce_dump
+                         012323 sst_index                   bce_dump
+                         012324 sst_start                   bce_dump
+                         012325 subsystem                   bce_dump
+                         012326 tc_data_addr                bce_dump
+                         012327 tc_data_no                  bce_dump
+                         012330 yes_no                      bce_dump
+                         012332 aptep                       bce_dump
+                         012334 seg_info_ptr                bce_dump
+                         012336 astep                       bce_dump
+                         012340 sdw_info_ptr                bce_dump
+                         012342 dumpptr                     bce_dump
+                         012344 dbr_info_ptr                bce_dump
+                         012346 dp                          bce_dump
+                         012350 ptw_info_ptr                bce_dump
+                         012352 tcmp                        bce_dump
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return_mac          mdfx1               signal_op
+ext_entry           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_appending_simulation$get_absolute                       bce_appending_simulation$get_virtual
+bce_appending_simulation$init bce_appending_simulation$new_dbr
+bce_appending_simulation$new_sdw                            bce_appending_simulation$new_segment
+bce_check_abort               bce_create_sstnt              bce_query$yes_no              com_err_
+cu_$arg_count_rel             cu_$arg_ptr_rel               cv_dec_check_                 dbr_util_$dissect
+find_partition                find_partition$given_drive    get_ptrs_$given_segno         ioa_
+pc$cleanup                    ptw_util_$dissect             ptw_util_$make_null_disk      read_disk
+rsw_util$port_info            sdw_util_$dissect             write_disk
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dseg$                         dump_seg$                     error_table_$bad_arg          error_table_$noarg
+kst_seg$                      pds$                          prds$                         sst_seg$
+sys_boot_info$bce_dbr         sys_info$clock_               sys_info$collection_1_phase   tc_data$
+toehold$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000511       182 000523       183 000525       184 000530       185 000531       186 000532       187 000534
+    188 000536       189 000546       190 000563       192 000570       193 000572       194 000606       195 000623
+    196 000641       197 000660       198 000677       199 000713       200 000732       201 000746       202 000765
+    203 000773       204 001027       205 001031       206 001050       207 001055       208 001111       209 001113
+    212 001122       213 001124       214 001127       215 001151       216 001152       217 001160       218 001163
+    219 001211       221 001220       222 001242       223 001243       224 001270       225 001272       226 001326
+    228 001335       229 001336       230 001346       231 001351       232 001376       234 001405       235 001427
+    236 001430       237 001435       238 001436       239 001451       240 001460       241 001466       242 001475
+    243 001503       244 001513       245 001516       246 001521       247 001523       248 001525       249 001526
+    250 001536       251 001541       252 001544       253 001546       254 001550       255 001553       256 001555
+    257 001561       258 001562       259 001572       260 001575       261 001600       263 001601       265 001626
+    266 001630       267 001633       268 001665       270 001674       271 001677       272 001726       274 001735
+    276 001757       278 001766       279 001770       280 001772       281 001775       282 001776       283 002000
+    284 002001       286 002026       287 002030       288 002033       289 002046       290 002047       294 002052
+    296 002053       297 002064       298 002072       303 002112       304 002123       305 002130       306 002132
+    307 002144       309 002146       310 002150       311 002161       312 002163       313 002207       316 002216
+    318 002261       319 002271       320 002307       321 002311       322 002336       324 002345       326 002412
+    327 002414       329 002443       334 002452       335 002467       337 002471       339 002476       340 002522
+    341 002525       342 002530       346 002537       347 002541       348 002545       349 002546       350 002565
+    351 002602       353 002604       356 002605       358 002610       359 002613       360 002614       361 002615
+    362 002616       363 002620       367 002622       368 002625       369 002630       370 002633       371 002637
+    372 002642       373 002645       374 002650       375 002655       376 002666       377 002672       378 002676
+    379 002702       380 002704       381 002712       382 002715       383 002721       384 002724       385 002727
+    386 002733       387 002740       388 002742       389 002744       390 002746       391 002750       393 002764
+    394 002771       395 003010       396 003020       397 003027       399 003031       400 003034       401 003042
+    402 003047       403 003054       405 003061       406 003064       407 003066       408 003070       409 003072
+    410 003074       411 003076       412 003117       413 003122       414 003126       415 003133       416 003151
+    420 003153       421 003156       423 003163       424 003176       426 003202       427 003206       428 003221
+    429 003223       430 003224       431 003226       432 003256       438 003261       438 003262       439 003264
+    440 003305       441 003307       442 003313       443 003326       444 003330       445 003331       446 003333
+    449 003337       450 003340       451 003352       453 003355       462 003370       463 003401       465 003406
+    466 003410       467 003501       468 003503       469 003507       473 003513       474 003531       475 003540
+    476 003543       477 003552       479 003553       480 003555       483 003566       484 003601       485 003606
+    486 003611       489 003613       490 003626       491 003630       492 003645       494 003647       499 003676
+    500 003705       505 003712       507 003747       508 003753       509 003764       511 003770       512 004003
+    516 004005       518 004021       519 004025       522 004035       523 004041       524 004044       527 004045
+    528 004055       529 004060       530 004062       534 004067       535 004072       536 004100       537 004103
+    538 004106       539 004111       540 004143       543 004145       545 004146       554 004155       555 004161
+    559 004164       564 004170       565 004207       567 004210       568 004211       569 004220       573 004222
+    574 004227       575 004236       576 004255       578 004256       579 004265       580 004303       586 004305
+    587 004307       588 004316       589 004351       590 004357       591 004362       592 004364       593 004365
+    594 004377       596 004432       597 004441       598 004445       599 004463       600 004471       602 004473
+    605 004504       607 004506       612 004531       613 004546       615 004555       617 004566
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

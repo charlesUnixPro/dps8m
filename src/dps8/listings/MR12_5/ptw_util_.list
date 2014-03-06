@@ -1,0 +1,709 @@
+	COMPILATION LISTING OF SEGMENT ptw_util_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1027.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 ptw_util_: proc ();
+       14 
+       15 /* *	PTW_UTIL_
+       16*   *
+       17*   *	A utility for manipulating PTWs in a format appropriate to the
+       18*   *	running system. It is for data manipulation only; if used to
+       19*   *	modify live PTWs, the appropriate cam/cache functions must
+       20*   *	be performed by the caller.
+       21*   *
+       22*   *	April, 1981, W. Olin Sibert
+       23*   *      October 1983, Keith Loepere for $dissect and $set_phm
+       24*   */
+       25 
+       26 	return;					/* Not an entrypoint */
+       27 
+       28 dcl  P_ptw_ptr pointer parameter;
+       29 dcl  P_ptw_info_ptr pointer parameter;
+       30 dcl  P_coreadd fixed bin (26) parameter;
+       31 dcl  P_add_type bit (4) unaligned parameter;
+       32 dcl  P_diskadd fixed bin (20) parameter;
+       33 dcl  P_nulladd bit (22) aligned parameter;
+       34 dcl  P_pdadd fixed bin (16) parameter;
+       35 dcl  P_modified_bit bit (1) aligned;
+       36 
+       37 dcl  ptp pointer;					 /* Can't be declared in the include file */
+       38 dcl  null_flag bit (1) aligned;
+       39 dcl 1 null_ptw aligned based (ptp),
+       40     2 devadd bit (22) unaligned,
+       41     2 pad bit (14) unaligned;
+       42 
+       43 dcl  sst$cmp pointer external static;
+       44 dcl  sst$cmesize fixed bin external static;
+       45 
+       46 dcl  sys_info$system_type fixed bin external static;
+       47 
+       48 dcl (addr, divide, unspec) builtin;
+       49 
+       50 /*  */
+       51 
+       52 ptw_util_$make_core: entry (P_ptw_ptr, P_coreadd);
+       53 
+       54 /* This entry fabricates a PTW which describes the specified core frame */
+       55 
+       56 	ptp = P_ptw_ptr;
+       57 
+       58 	if sys_info$system_type = ADP_SYSTEM then do;
+       59 	     unspec (adp_ptw) = ""b;
+       60 	     adp_core_ptw.frame = divide (P_coreadd, 1024, 16, 0);
+       61 	     adp_ptw.add_type = add_type.core;
+       62 	     adp_ptw.write = "1"b;			/* Always supposed to be writable */
+       63 	     adp_ptw.valid = "1"b;			/* And make it valid, too */
+       64 	     end;
+       65 
+       66 	else do;					/* Ordinary Level 68 */
+       67 	     unspec (l68_ptw) = ""b;
+       68 	     l68_core_ptw.frame = divide (P_coreadd, 1024, 16, 0);
+       69 	     l68_ptw.add_type = add_type.core;
+       70 	     l68_ptw.df_no = "01"b;			/* Set the DF number correctly for initialization */
+       71 	     l68_ptw.valid = "1"b;			/* And make it valid, too */
+       72 	     end;
+       73 
+       74 	return;					/* End of ptw_util_$make_core */
+       75 
+       76 /*  */
+       77 
+       78 ptw_util_$get_coreadd: entry (P_ptw_ptr, P_coreadd);
+       79 
+       80 /* This entry returns the core address described by the PTW, if it is valid, or returns -1 */
+       81 
+       82 	ptp = P_ptw_ptr;
+       83 
+       84 	if sys_info$system_type = ADP_SYSTEM then
+       85 	     if ^adp_ptw.valid then
+       86 		P_coreadd = -1;
+       87 	     else P_coreadd = 1024 * adp_core_ptw.frame;
+       88 
+       89 	else if ^l68_ptw.valid then			/* Ordinary Level 68 */
+       90 		P_coreadd = -1;
+       91 	     else P_coreadd = 1024 * l68_core_ptw.frame;
+       92 
+       93 	return;					/* End of ptw_util_$get_coreadd */
+       94 
+       95 
+       96 
+       97 ptw_util_$get_add_type: entry (P_ptw_ptr, P_add_type);
+       98 
+       99 /* This entry returns the add_type from the PTW */
+      100 
+      101 	ptp = P_ptw_ptr;
+      102 
+      103 	if sys_info$system_type = ADP_SYSTEM then
+      104 	     P_add_type = adp_ptw.add_type;
+      105 	else P_add_type = l68_ptw.add_type;
+      106 
+      107 	return;					/* End of ptw_util_$get_add_type */
+      108 
+      109 /*  */
+      110 
+      111 ptw_util_$make_disk: entry (P_ptw_ptr, P_diskadd);
+      112 
+      113 /* This entry fabricates a PTW which describes a specified disk record */
+      114 
+      115 	null_flag = "0"b;
+      116 	goto MAKE_DISK_COMMON;
+      117 
+      118 
+      119 ptw_util_$make_null_disk: entry (P_ptw_ptr, P_diskadd);
+      120 
+      121 /* This entry fabricates a PTW which describes a specified, not yet written, disk record */
+      122 
+      123 	null_flag = "1"b;
+      124 	goto MAKE_DISK_COMMON;
+      125 
+      126 
+      127 MAKE_DISK_COMMON:
+      128 	ptp = P_ptw_ptr;
+      129 
+      130 	if sys_info$system_type = ADP_SYSTEM then do;
+      131 	     unspec (adp_ptw) = ""b;
+      132 	     adp_ptw.add = substr (bit (binary (P_diskadd, 20), 20), 3, 18); /* Only 18 bits for now */
+      133 	     adp_ptw.add_type = add_type.disk;
+      134 	     substr (adp_ptw.add, 1, 1) = null_flag;	/* First bit in disk address */
+      135 	     adp_ptw.write = "1"b;			/* Always supposed to be writable */
+      136 	     end;
+      137 
+      138 	else do;					/* Ordinary Level 68 */
+      139 	     unspec (l68_ptw) = ""b;
+      140 	     adp_ptw.add = substr (bit (binary (P_diskadd, 20), 20), 3, 18); /* Only 18 bits for now */
+      141 	     l68_ptw.add_type = add_type.disk;
+      142 	     substr (l68_ptw.add, 1, 1) = null_flag;	/* First bit in disk address */
+      143 	     l68_ptw.df_no = "01"b;			/* Set the DF number correctly for initialization */
+      144 	     end;
+      145 
+      146 	return;					/* End of ptw_util_$make_disk */
+      147 
+      148 /*  */
+      149 
+      150 ptw_util_$make_null: entry (P_ptw_ptr, P_nulladd);
+      151 
+      152 /* This entry fabricates a PTW containing a standard form 22 bit null address */
+      153 
+      154 	ptp = P_ptw_ptr;
+      155 
+      156 	if sys_info$system_type = ADP_SYSTEM then do;
+      157 	     unspec (adp_ptw) = ""b;
+      158 	     null_ptw.devadd = P_nulladd;
+      159 	     adp_ptw.write = "1"b;			/* Always supposed to be writable */
+      160 	     end;
+      161 
+      162 	else do;					/* Ordinary Level 68 */
+      163 	     unspec (l68_ptw) = ""b;
+      164 	     null_ptw.devadd = P_nulladd;
+      165 	     l68_ptw.df_no = "01"b;			/* Set the DF number correctly for initialization */
+      166 	     end;
+      167 
+      168 	return;					/* End of ptw_util_$make_null */
+      169 
+      170 /*  */
+      171 
+      172 ptw_util_$make_pd: entry (P_ptw_ptr, P_pdadd);
+      173 
+      174 /* This entry fabricates a PTW which describes a specified disk record */
+      175 
+      176 	ptp = P_ptw_ptr;
+      177 
+      178 	if sys_info$system_type = ADP_SYSTEM then do;
+      179 	     unspec (adp_ptw) = ""b;
+      180 	     adp_ptw.add = bit (binary (P_pdadd, 18), 18);
+      181 	     adp_ptw.add_type = add_type.pd;
+      182 	     adp_ptw.write = "1"b;			/* Always supposed to be writable */
+      183 	     end;
+      184 
+      185 	else do;					/* Ordinary Level 68 */
+      186 	     unspec (l68_ptw) = ""b;
+      187 	     adp_ptw.add = bit (binary (P_pdadd, 18), 18);
+      188 	     l68_ptw.add_type = add_type.pd;
+      189 	     l68_ptw.df_no = "01"b;			/* Set the DF number correctly for initialization */
+      190 	     end;
+      191 
+      192 	return;					/* End of ptw_util_$make_disk */
+      193 
+      194 /*  */
+      195 
+      196 ptw_util_$set_valid: entry (P_ptw_ptr);
+      197 
+      198 /* This entry sets a PTW to be "valid"; that is, not faulted. No validation is performed. */
+      199 
+      200 	ptp = P_ptw_ptr;				/* Make it addressable */
+      201 
+      202 	if sys_info$system_type = ADP_SYSTEM then do;
+      203 	     adp_ptw.valid = "1"b;
+      204 	     adp_ptw.unusable1 = ""b; 		/* Clear out hardware padding, just in case */
+      205 	     adp_ptw.unusable2 = ""b;
+      206 	     end;
+      207 
+      208 	else do;					/* Set valid, and set DF1, too */
+      209 	     l68_ptw.valid = "1"b;
+      210 	     l68_ptw.df_no = "01"b;
+      211 	     end;
+      212 
+      213 	return;					/* End of ptw_util_$set_valid */
+      214 
+      215 
+      216 
+      217 
+      218 ptw_util_$set_faulted: entry (P_ptw_ptr);
+      219 
+      220 /* This entry sets a PTW to be "faulted"; that is, not valid. No validation is performed. */
+      221 
+      222 	ptp = P_ptw_ptr;				/* Make it addressable */
+      223 
+      224 	if sys_info$system_type = ADP_SYSTEM then do;
+      225 	     adp_ptw.valid = "0"b;
+      226 	     adp_ptw.unusable1 = ""b; 		/* Clear out hardware padding, just in case */
+      227 	     adp_ptw.unusable2 = ""b;
+      228 	     end;
+      229 
+      230 	else do;
+      231 	     l68_ptw.valid = "0"b;
+      232 	     l68_ptw.df_no = "01"b;			/* Refresh these bits, just in case */
+      233 	     end;
+      234 
+      235 	return;					/* End of ptw_util_$set_faulted */
+      236 
+      237 /*  */
+      238 
+      239 ptw_util_$set_wired: entry (P_ptw_ptr);
+      240 
+      241 /* This entry makes a PTW be "wired" */
+      242 
+      243 	ptp = P_ptw_ptr;				/* Make it addressable */
+      244 
+      245 	if sys_info$system_type = ADP_SYSTEM then
+      246 	     adp_ptw.wired = "1"b;
+      247 	else l68_ptw.wired = "1"b;
+      248 
+      249 	return;					/* End of ptw_util_$set_wired */
+      250 
+      251 
+      252 
+      253 
+      254 ptw_util_$set_unwired: entry (P_ptw_ptr);
+      255 
+      256 /* This entry makes a PTW be "unwired" */
+      257 
+      258 	ptp = P_ptw_ptr;				/* Make it addressable */
+      259 
+      260 	if sys_info$system_type = ADP_SYSTEM then
+      261 	     adp_ptw.wired = "0"b;
+      262 	else l68_ptw.wired = "0"b;
+      263 
+      264 	return;					/* End of ptw_util_$set_wired */
+      265 
+      266 ptw_util_$set_phm: entry (P_ptw_ptr);
+      267 
+      268 /* This entry marks a PTW as modified. */
+      269 
+      270 	ptp = P_ptw_ptr;				/* Make it addressable */
+      271 
+      272 	if sys_info$system_type = ADP_SYSTEM then
+      273 	     adp_ptw.phm = "1"b;
+      274 	else l68_ptw.phm = "1"b;
+      275 
+      276 	return;					/* End of ptw_util_$set_phm */
+      277 
+      278 ptw_util_$reset_phm: entry (P_ptw_ptr);
+      279 
+      280 /* This entry marks a PTW as unmodified. */
+      281 
+      282 	ptp = P_ptw_ptr;				/* Make it addressable */
+      283 
+      284 	if sys_info$system_type = ADP_SYSTEM then
+      285 	     adp_ptw.phm, adp_ptw.phm1 = "0"b;
+      286 	else l68_ptw.phm, l68_ptw.phm1 = "0"b;
+      287 
+      288 	return;					/* End of ptw_util_$reset_phm */
+      289 
+      290 ptw_util_$get_phm: entry (P_ptw_ptr, P_modified_bit);
+      291 
+      292 /* This entry returns the state (phm | phm1) of the cumulative phm bit */
+      293 
+      294 	ptp = P_ptw_ptr;
+      295 
+      296 	if sys_info$system_type = ADP_SYSTEM then
+      297 	     P_modified_bit = adp_ptw.phm | adp_ptw.phm1;
+      298 	else P_modified_bit = l68_ptw.phm | l68_ptw.phm1;
+      299 
+      300 	return;					/* End of ptw_util_$get_phm */
+      301 
+      302 dissect: entry (P_ptw_ptr, P_ptw_info_ptr);
+      303 
+      304 	ptp = P_ptw_ptr;
+      305 	ptw_info_ptr = P_ptw_info_ptr;
+      306 	if sys_info$system_type = ADP_SYSTEM then do;
+      307 	     if adp_ptw.add_type = add_type.core then do;
+      308 		ptw_info.address = adp_core_ptw.frame * 1024;
+      309 		ptw_info.null_disk = "0"b;
+      310 	     end;
+      311 	     else if adp_ptw.add_type = add_type.disk then do;
+      312 		ptw_info.address = bin (substr (adp_ptw.add, 2, 17), 17);
+      313 		ptw_info.null_disk = substr (adp_ptw.add, 1, 1);
+      314 	     end;
+      315 	     else do;
+      316 		ptw_info.address = bin (adp_ptw.add, 18);
+      317 		ptw_info.null_disk = "0"b;
+      318 	     end;
+      319 	     ptw_info = adp_ptw.flags, by name;
+      320 	end;
+      321 	else do;
+      322 	     if l68_ptw.add_type = add_type.core then do;
+      323 		ptw_info.address = l68_core_ptw.frame * 1024;
+      324 		ptw_info.null_disk = "0"b;
+      325 	     end;
+      326 	     else if l68_ptw.add_type = add_type.disk then do;
+      327 		ptw_info.address = bin (substr (l68_ptw.add, 2, 17), 17);
+      328 		ptw_info.null_disk = substr (l68_ptw.add, 1, 1);
+      329 	     end;
+      330 	     else do;
+      331 		ptw_info.address = bin (l68_ptw.add, 18);
+      332 		ptw_info.null_disk = "0"b;
+      333 	     end;
+      334 	     ptw_info = l68_ptw.flags, by name;
+      335 	end;
+      336 	return;					/* end of ptw_util_$dissect */
+      337  /* BEGIN INCLUDE FILE ... ptw.adp.incl.pl1 ... 02/11/81, for ADP conversion */
+  1     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  1     3 
+  1     4 dcl 1 adp_core_ptw aligned based (ptp), 		/* PTW for in-core page */
+  1     5     2 pad1 bit (2) unaligned,
+  1     6     2 frame fixed bin (16) unsigned unaligned,		/* Core frame number */
+  1     7     2 flags like adp_ptw_flags unaligned;		/* add_type = "00"b; */
+  1     8 
+  1     9 dcl 1 adp_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  1    10     2 add bit (18) unaligned,
+  1    11     2 flags like adp_ptw_flags unaligned;
+  1    12 
+  1    13 dcl 1 adp_special_ptw aligned based (ptp) like adp_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  1    14 dcl 1 adp_real_disk_ptw aligned based (ptp) like adp_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  1    15 dcl 1 adp_null_disk_ptw aligned based (ptp) like adp_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  1    16 
+  1    17 dcl 1 adp_ptw_flags unaligned based,			/* Common lower halfword for ADP PTW */
+  1    18    (2 add_type bit (4),				/* See specific declarations */
+  1    19     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  1    20     2 wired bit (1),				/* page is to remain in core */
+  1    21     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  1    22     2 phu1 bit (1), 				/* page has been used in the quantum */
+  1    23     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  1    24 
+  1    25     2 unusable1 bit (3),				/* Shares hardware byte */
+  1    26     2 valid bit (1),				/* "1"b if page is in core */
+  1    27     2 write bit (1),				/* "1"b if page may be written into */
+  1    28     2 unusable2 bit (1),				/* Shares hardware byte */
+  1    29     2 iox bit (1),					/* "1"b if page is to be present to IOX */
+  1    30     2 phm bit (1),					/* page has been modified bit */
+  1    31     2 phu bit (1)) unaligned; 			/* page has been used bit */
+  1    32 
+  1    33 /* END INCLUDE FILE ... ptw.adp.incl.pl1 */
+      337 
+      338  /* BEGIN INCLUDE FILE ... ptw.l68.incl.pl1 ... 02/26/81, for ADP conversion */
+  2     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  2     3 
+  2     4 dcl 1 l68_core_ptw aligned based (ptp), 		/* In-core page descriptor */
+  2     5     2 frame fixed bin (14) unsigned unaligned,		/* Core frame number */
+  2     6     2 pad1 bit (4) unaligned,
+  2     7     2 flags unaligned like l68_ptw_flags;
+  2     8 
+  2     9 dcl 1 l68_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  2    10     2 add bit (18) unaligned,
+  2    11     2 flags like l68_ptw_flags unaligned;
+  2    12 
+  2    13 dcl 1 l68_special_ptw aligned based (ptp) like l68_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  2    14 dcl 1 l68_real_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  2    15 dcl 1 l68_null_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  2    16 
+  2    17 dcl 1 l68_ptw_flags unaligned based,			/* Various software/hardware flags */
+  2    18    (2 add_type bit (4),				/* 0000=null, 1000=core, 0100=disk, 0010=pd, 0001=swap */
+  2    19     2 first bit (1),				/* the page has not yet been written out */
+  2    20     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  2    21 
+  2    22     2 pad1 bit (1),
+  2    23     2 unusable1 bit (1),				/* can't be used because hardware resets this bit */
+  2    24     2 phu bit (1),					/* page has been used bit */
+  2    25 
+  2    26     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  2    27     2 nypd bit (1), 				/* must be moved to paging device */
+  2    28     2 phm bit (1),					/* page has been modified bit */
+  2    29 
+  2    30     2 phu1 bit (1), 				/* page has been used in the quantum */
+  2    31     2 wired bit (1),				/* page is to remain in core */
+  2    32     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  2    33     2 valid bit (1),				/* directed fault if this is 0 (page not in core) */
+  2    34     2 df_no bit (2)) unaligned;			/* directed fault number for page faults */
+  2    35 
+  2    36 /* END INCLUDE FILE ... ptw.l68.incl.pl1 */
+      338 
+      339  
+  3     2 	/* BEGIN INCLUDE FILE add_type.incl.pl1 */
+  3     3 	/* 02/26/75 by Bernard S. Greenberg */
+  3     4 
+  3     5 	/* This file provides a structure for checking
+  3     6*		PTW/CME address type fields in PL/I */
+  3     7 
+  3     8 dcl 1 add_type unaligned static internal,
+  3     9 	2 core bit (4) init ("1000"b),		/* in core- S/B only in PTW */
+  3    10 	2 disk bit (4) init ("0100"b),		/* Disk address */
+  3    11 	2 pd   bit (4) init ("0010"b),		/* Paging Device */
+  3    12 	2 reserved bit (4) init ("0001"b),		/* Reserved */
+  3    13 	2 non_null bit (4) init ("1111"b);		/* Not null address */
+  3    14 
+  3    15 dcl 1 badd_type unaligned based,
+  3    16     2 (core, disk, pd, reserved) bit (1) unaligned;
+  3    17 
+  3    18 	/* END INCLUDE FILE add_type.incl.pl1 */
+      339 
+      340  /* BEGIN include file ptw_info.incl.pl1 */
+  4     2 
+  4     3 /* Description of the info returned by ptw_util_$dissect.  
+  4     4*Keith Loepere, October 1983. */
+  4     5 
+  4     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  4     7 
+  4     8 dcl  ptw_info_ptr		        ptr;
+  4     9 
+  4    10 dcl  1 ptw_info		        aligned based (ptw_info_ptr),
+  4    11        2 address		        fixed bin (26),	/* memory or device number */
+  4    12        2 add_type		        bit (4) unal,
+  4    13        2 null_disk		        bit (1) unal,
+  4    14        2 er		        bit (1) unal,
+  4    15        2 wired		        bit (1) unal,
+  4    16        2 os		        bit (1) unal,
+  4    17        2 phu1		        bit (1) unal,	/* used in quantum */
+  4    18        2 phm1		        bit (1) unal,	/* modified in quantum */
+  4    19        2 valid		        bit (1) unal,
+  4    20        2 phu		        bit (1) unal,
+  4    21        2 phm		        bit (1) unal;
+  4    22 
+  4    23 /* END include file ptw_info.incl.pl1 */
+      340 
+      341  /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+  5     2 
+  5     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+  5     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+  5     5 
+  5     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+  5     7     ("Level68", "ADP");
+  5     8 
+  5     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      341 
+      342 
+      343 	end ptw_util_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0825.5  ptw_util_.pl1                     >special_ldd>install>MR12.3-1114>ptw_util_.pl1
+337          1    03/27/82  0430.2  ptw.adp.incl.pl1                  >ldd>include>ptw.adp.incl.pl1
+338          2    03/27/82  0430.2  ptw.l68.incl.pl1                  >ldd>include>ptw.l68.incl.pl1
+339          3    09/29/77  1502.7  add_type.incl.pl1                 >ldd>include>add_type.incl.pl1
+340          4    07/11/84  0937.3  ptw_info.incl.pl1                 >ldd>include>ptw_info.incl.pl1
+341          5    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ADP_SYSTEM                             constant        fixed bin(17,0)          initial dcl 5-4 ref 58 84 103 130 156 178 202 224
+                                                                                  245 260 272 284 296 306
+P_add_type                             parameter       bit(4)                   packed unaligned dcl 31 set ref 97 103* 105*
+P_coreadd                              parameter       fixed bin(26,0)          dcl 30 set ref 52 60 68 78 84* 87* 89* 91*
+P_diskadd                              parameter       fixed bin(20,0)          dcl 32 ref 111 119 132 140
+P_modified_bit                         parameter       bit(1)                   dcl 35 set ref 290 296* 298*
+P_nulladd                              parameter       bit(22)                  dcl 33 ref 150 158 164
+P_pdadd                                parameter       fixed bin(16,0)          dcl 34 ref 172 180 187
+P_ptw_info_ptr                         parameter       pointer                  dcl 29 ref 302 305
+P_ptw_ptr                              parameter       pointer                  dcl 28 ref 52 56 78 82 97 101 111 119 127 150 154
+                                                                                  172 176 196 200 218 222 239 243 254 258 266 270
+                                                                                  278 282 290 294 302 304
+add                                    based           bit(18)                  level 2 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  132* 134* 140* 180* 187* 312 313 316
+add                                    based           bit(18)                  level 2 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  142* 327 328 331
+add_type                        000000 constant        structure                level 1 packed packed unaligned dcl 3-8 in procedure
+                                                                                  "ptw_util_"
+add_type                  0(18)        based           bit(4)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  69* 105 141* 188* 322 326
+add_type                  0(18)        based           bit(4)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  61* 103 133* 181* 307 311
+address                                based           fixed bin(26,0)          level 2 dcl 4-10 set ref 308* 312* 316* 323* 327*
+                                                                                  331*
+adp_core_ptw                           based           structure                level 1 dcl 1-4
+adp_ptw                                based           structure                level 1 dcl 1-9 set ref 59* 131* 157* 179*
+adp_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 1-17
+core                            000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 3-8 ref
+                                                                                  61 69 307 322
+devadd                                 based           bit(22)                  level 2 packed packed unaligned dcl 39 set ref 158*
+                                                                                  164*
+df_no                     0(34)        based           bit(2)                   level 3 packed packed unaligned dcl 2-9 set ref 70*
+                                                                                  143* 165* 189* 210* 232*
+disk                      0(04) 000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 3-8 ref
+                                                                                  133 141 311 326
+divide                                                 builtin function         dcl 48 ref 60 68
+flags                     0(18)        based           structure                level 2 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  334
+flags                     0(18)        based           structure                level 2 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  319
+frame                                  based           fixed bin(14,0)          level 2 in structure "l68_core_ptw" packed packed
+                                                                                  unsigned unaligned dcl 2-4 in procedure
+                                                                                  "ptw_util_" set ref 68* 91 323
+frame                     0(02)        based           fixed bin(16,0)          level 2 in structure "adp_core_ptw" packed packed
+                                                                                  unsigned unaligned dcl 1-4 in procedure
+                                                                                  "ptw_util_" set ref 60* 87 308
+l68_core_ptw                           based           structure                level 1 dcl 2-4
+l68_ptw                                based           structure                level 1 dcl 2-9 set ref 67* 139* 163* 186*
+l68_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 2-17
+null_disk                 1(04)        based           bit(1)                   level 2 packed packed unaligned dcl 4-10 set ref
+                                                                                  309* 313* 317* 324* 328* 332*
+null_flag                       000102 automatic       bit(1)                   dcl 38 set ref 115* 123* 134 142
+null_ptw                               based           structure                level 1 dcl 39
+pd                        0(08) 000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 3-8 ref
+                                                                                  181 188
+phm                       0(29)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  274* 286* 298
+phm                       0(34)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  272* 284* 296
+phm1                      0(26)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  284* 296
+phm1                      0(27)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  286* 298
+ptp                             000100 automatic       pointer                  dcl 37 set ref 56* 59 60 61 62 63 67 68 69 70 71 82*
+                                                                                  84 87 89 91 101* 103 105 127* 131 132 133 134 135
+                                                                                  139 140 141 142 143 154* 157 158 159 163 164 165
+                                                                                  176* 179 180 181 182 186 187 188 189 200* 203 204
+                                                                                  205 209 210 222* 225 226 227 231 232 243* 245 247
+                                                                                  258* 260 262 270* 272 274 282* 284 284 286 286
+                                                                                  294* 296 296 298 298 304* 307 308 311 312 313 316
+                                                                                  319 322 323 326 327 328 331 334
+ptw_info                               based           structure                level 1 dcl 4-10 set ref 319* 334*
+ptw_info_ptr                    000104 automatic       pointer                  dcl 4-8 set ref 305* 308 309 312 313 316 317 319 323
+                                                                                  324 327 328 331 332 334
+sys_info$system_type            000010 external static fixed bin(17,0)          dcl 46 ref 58 84 103 130 156 178 202 224 245 260 272
+                                                                                  284 296 306
+unspec                                                 builtin function         dcl 48 set ref 59* 67* 131* 139* 157* 163* 179* 186*
+unusable1                 0(27)        based           bit(3)                   level 3 packed packed unaligned dcl 1-9 set ref 204*
+                                                                                  226*
+unusable2                 0(32)        based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 205*
+                                                                                  227*
+valid                     0(33)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  71* 89 209* 231*
+valid                     0(30)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  63* 84 203* 225*
+wired                     0(23)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "ptw_util_" set ref
+                                                                                  245* 260*
+wired                     0(31)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "ptw_util_" set ref
+                                                                                  247* 262*
+write                     0(31)        based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 62*
+                                                                                  135* 159* 182*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+L68_SYSTEM                             internal static fixed bin(17,0)          initial dcl 5-3
+SYSTEM_TYPE_NAME                       internal static char(8)                  initial array packed unaligned dcl 5-6
+addr                                                   builtin function         dcl 48
+adp_null_disk_ptw                      based           structure                level 1 dcl 1-15
+adp_real_disk_ptw                      based           structure                level 1 dcl 1-14
+adp_special_ptw                        based           structure                level 1 dcl 1-13
+badd_type                              based           structure                level 1 packed packed unaligned dcl 3-15
+l68_null_disk_ptw                      based           structure                level 1 dcl 2-15
+l68_real_disk_ptw                      based           structure                level 1 dcl 2-14
+l68_special_ptw                        based           structure                level 1 dcl 2-13
+sst$cmesize                            external static fixed bin(17,0)          dcl 44
+sst$cmp                                external static pointer                  dcl 43
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MAKE_DISK_COMMON                000232 constant        label                    dcl 127 ref 116 124
+dissect                         000732 constant        entry                    external dcl 302
+ptw_util_                       000011 constant        entry                    external dcl 13
+ptw_util_$get_add_type          000156 constant        entry                    external dcl 97
+ptw_util_$get_coreadd           000106 constant        entry                    external dcl 78
+ptw_util_$get_phm               000665 constant        entry                    external dcl 290
+ptw_util_$make_core             000023 constant        entry                    external dcl 52
+ptw_util_$make_disk             000211 constant        entry                    external dcl 111
+ptw_util_$make_null             000320 constant        entry                    external dcl 150
+ptw_util_$make_null_disk        000222 constant        entry                    external dcl 119
+ptw_util_$make_pd               000363 constant        entry                    external dcl 172
+ptw_util_$reset_phm             000632 constant        entry                    external dcl 278
+ptw_util_$set_faulted           000476 constant        entry                    external dcl 218
+ptw_util_$set_phm               000605 constant        entry                    external dcl 266
+ptw_util_$set_unwired           000560 constant        entry                    external dcl 254
+ptw_util_$set_valid             000441 constant        entry                    external dcl 196
+ptw_util_$set_wired             000533 constant        entry                    external dcl 239
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+bin                                                    builtin function         ref 312 316 327 331
+binary                                                 builtin function         ref 132 140 180 187
+bit                                                    builtin function         ref 132 140 180 187
+substr                                                 builtin function         set ref 132 134* 140 142* 312 313 327 328
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1604        1616    1230        1614
+Length      2136    1230        12         304     353           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ptw_util_                            71 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ptw_util_                000100 ptp                         ptw_util_
+                         000102 null_flag                   ptw_util_
+                         000104 ptw_info_ptr                ptw_util_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sys_info$system_type
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000010        26 000016        52 000017        56 000030        58 000034        59 000040        60 000041
+     61 000047        62 000054        63 000056        64 000060        67 000061        68 000062        69 000070
+     70 000075        71 000101        74 000103        78 000104        82 000113        84 000117        87 000131
+     89 000137        91 000145        93 000151        97 000152       101 000163       103 000167       105 000200
+    107 000204       111 000205       115 000216       116 000217       119 000220       123 000227       124 000231
+    127 000232       130 000236       131 000242       132 000243       133 000252       134 000257       135 000263
+    136 000265       139 000266       140 000267       141 000276       142 000303       143 000307       146 000313
+    150 000314       154 000325       156 000331       157 000335       158 000336       159 000342       160 000344
+    163 000345       164 000346       165 000352       168 000356       172 000357       176 000370       178 000374
+    179 000400       180 000401       181 000406       182 000413       183 000415       186 000416       187 000417
+    188 000424       189 000431       192 000435       196 000436       200 000446       202 000452       203 000456
+    204 000460       205 000462       206 000464       209 000465       210 000467       213 000473       218 000474
+    222 000503       224 000507       225 000513       226 000515       227 000517       228 000521       231 000522
+    232 000524       235 000530       239 000531       243 000540       245 000544       247 000553       249 000555
+    254 000556       258 000565       260 000571       262 000600       264 000602       266 000603       270 000612
+    272 000616       274 000625       276 000627       278 000630       282 000637       284 000643       286 000654
+    288 000660       290 000661       294 000672       296 000676       298 000714       300 000725       302 000726
+    304 000737       305 000743       306 000746       307 000752       308 000762       309 000767       310 000771
+    311 000772       312 000777       313 001003       314 001010       316 001011       317 001014       319 001016
+    320 001073       322 001074       323 001104       324 001110       325 001112       326 001113       327 001120
+    328 001124       329 001131       331 001132       332 001135       334 001137       336 001214
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

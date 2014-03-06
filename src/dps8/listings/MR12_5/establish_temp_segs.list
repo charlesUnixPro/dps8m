@@ -1,0 +1,539 @@
+	COMPILATION LISTING OF SEGMENT establish_temp_segs
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0958.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 establish_temp_segs: proc;
+        9 
+       10 /* Routine to cause the segments bootload_temp_n to be mapped onto
+       11*the boot partition.  It also creates the paged abs-segs multics_low_mem,
+       12*multics_high_mem, disk_config_deck and dump_seg.
+       13*Written by Keith Loepere, October 1983. */
+       14 
+       15 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       16 
+       17 dcl  addr			        builtin;
+       18 dcl  bce_abs_seg$add	        entry (fixed bin (15));
+       19 dcl  bce_data$number_of_temp_segs     fixed bin external static;
+       20 dcl  character		        builtin;
+       21 dcl  codeptr		        builtin;
+       22 dcl  disk_config_deck$	        (4096) bit (36) aligned external;
+       23 dcl  divide		        builtin;
+       24 dcl  dump_seg$		        external;
+       25 dcl  first_record		        fixed bin (20);
+       26 dcl  ltrim		        builtin;
+       27 dcl  make_sdw$no_pages	        entry (fixed bin (15), fixed bin (71), ptr, ptr);
+       28 dcl  map_onto_disk		        entry (fixed bin, fixed bin (20), fixed bin, ptr, bit (1) aligned);
+       29 dcl  multics_high_mem$	        external;
+       30 dcl  multics_low_mem$	        external;
+       31 dcl  n_records		        fixed bin;
+       32 dcl  null			        builtin;
+       33 dcl  partition_sdw		        fixed bin (71);
+       34 dcl  pmut$swap_sdw		        entry (ptr, ptr);
+       35 dcl  ptp			        ptr;
+       36 dcl  pvt$root_pvtx		        fixed bin external static;
+       37 dcl  segno		        builtin;
+       38 dcl  slt$			        external;
+       39 dcl  slt_manager$get_seg_ptr	        entry (char (32) aligned) returns (ptr);
+       40 dcl  sys_boot_info$bce_part_frec      fixed bin (20) external static;
+       41 dcl  sys_boot_info$config_part_frec   fixed bin (20) external static;
+       42 dcl  sys_boot_info$rpv_cold_boot      bit (1) aligned external static;
+       43 dcl  sys_info$bce_max_seg_size        fixed bin (18) external static;
+       44 dcl  temp_seg_num		        fixed bin (15);
+       45 dcl  temp_seg_ptr		        ptr;
+       46 
+       47 	sltp = addr (slt$);
+       48 
+       49 	call map_onto_disk (pvt$root_pvtx, sys_boot_info$config_part_frec, 4, addr (disk_config_deck$), 
+       50 	     ^(sys_info$collection_1_phase = EARLY_INITIALIZATION & sys_boot_info$rpv_cold_boot));  /* disk contents don't matter for cold boot */
+       51 	call bce_abs_seg$add (segno (addr (disk_config_deck$)));
+       52 
+       53 	call map_onto_disk (pvt$root_pvtx, sys_boot_info$bce_part_frec + SAVED_IMAGE_RECORDX, 256, addr (multics_low_mem$), "1"b);
+       54 	call bce_abs_seg$add (segno (addr (multics_low_mem$)));
+       55 
+       56 	call map_onto_disk (pvt$root_pvtx, sys_boot_info$bce_part_frec + SAVED_IMAGE_RECORDX + 256, 256, addr (multics_high_mem$), "1"b);
+       57 	call bce_abs_seg$add (segno (addr (multics_high_mem$)));
+       58 
+       59 	call make_sdw$no_pages (segno (addr (dump_seg$)), partition_sdw, astep, ptp);
+       60 	call pmut$swap_sdw (addr (dump_seg$), addr (partition_sdw));
+       61 	call bce_abs_seg$add (segno (addr (dump_seg$)));
+       62 
+       63 	first_record = sys_boot_info$bce_part_frec + BCE_PAGING_AREA_RECORDX;
+       64 
+       65 	temp_seg_ptr = codeptr (establish_temp_segs);	/* non-null */
+       66 	do temp_seg_num = 1 repeat temp_seg_num + 1 while (temp_seg_ptr ^= null);
+       67 	     temp_seg_ptr = slt_manager$get_seg_ptr ("bootload_temp_" || ltrim (character (temp_seg_num)));
+       68 	end;
+       69 	bce_data$number_of_temp_segs, temp_seg_num = temp_seg_num - 1; /* last temp seg no */
+       70 	n_records = divide (BCE_PAGING_AREA_LTH, temp_seg_num, 17); /* slice area evenly */
+       71 	sys_info$bce_max_seg_size = n_records * 1024;
+       72 
+       73 	do temp_seg_num = 1 repeat temp_seg_num + 1;
+       74 	     temp_seg_ptr = slt_manager$get_seg_ptr ("bootload_temp_" || ltrim (character (temp_seg_num)));
+       75 	     if temp_seg_ptr = null then return;
+       76 
+       77 	     sltep = addr (slt.seg (segno (temp_seg_ptr)));
+       78 	     slte_uns.max_length = n_records;
+       79 
+       80 	     call map_onto_disk (pvt$root_pvtx, first_record, n_records, temp_seg_ptr, "0"b);
+       81 	     call bce_abs_seg$add (segno (temp_seg_ptr));
+       82 
+       83 	     first_record = first_record + n_records;
+       84 	end;
+       85 	return;
+  1     1 /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+       86 
+  2     1 /* BEGIN include file bce_partition_layout.incl.pl1
+  2     2*This is the layout of the bce partition for bootload Multics.
+  2     3*Written September 1983 by Keith Loepere. */
+  2     4 
+  2     5 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  2     6 
+  2     7 dcl  BCE_PART_LTH		        init (2200) fixed bin internal static options (constant);  /* This is the default value. */
+  2     8 dcl  SAVED_IMAGE_RECORDX	        init (0) fixed bin internal static options (constant);
+  2     9 dcl  CRASH_HANDLER_RECORDX	        init (512) fixed bin internal static options (constant);
+  2    10 dcl  BCE_PAGING_AREA_RECORDX	        init (1024) fixed bin internal static options (constant);
+  2    11 dcl  BCE_PAGING_AREA_LTH	        init (128) fixed bin internal static options (constant);
+  2    12 dcl  MST_AREA_RECORDX	        init (1152) fixed bin internal static options (constant);
+  2    13 
+  2    14 /* END include file bce_partition_layout.incl.pl1 */
+       87 
+  3     1 /* BEGIN include file collection_1_phases.incl.pl1 */
+  3     2 
+  3     3 /* Symbolic names for the various collection1 phases.
+  3     4*Keith Loepere, October 1983. */
+  3     5 
+  3     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  3     7 
+  3     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  3     9 
+  3    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  3    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  3    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  3    13 
+  3    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  3    15*programs can simply tell apart the booting phases from all others (crash or
+  3    16*recovery type phases). */
+  3    17 
+  3    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  3    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  3    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  3    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  3    22 
+  3    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  3    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  3    25 
+  3    26 /* END include file collection_1_phases.incl.pl1 */
+       88 
+  4     1 /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  4     2 
+  4     3 /* Declarations for Segment Loading Table header and array.
+  4     4*
+  4     5*   Used by Initialization and MST Checker subroutines */
+  4     6 
+  4     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  4     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  4     9     namep ptr,					/* pointer to segment name list block */
+  4    10     pathp ptr,					/* pointer to segment's directory path name */
+  4    11     aclp ptr;					/* pointer to acl structure */
+  4    12 
+  4    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  4    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  4    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  4    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  4    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  4    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  4    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  4    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  4    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  4    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  4    23 
+  4    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  4    25 
+  4    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  4    27 	2 pad bit (18) unal,
+  4    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  4    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  4    30 
+  4    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  4    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  4    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  4    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  4    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  4    36 	  3 pad bit (5) unal,
+  4    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  4    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  4    39 
+  4    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  4    41 	2 size fixed bin (17),			/* length of pathname */
+  4    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  4    43 	2 acls fixed bin;				/* ACL list starts here */
+  4    44 
+  4    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  4    46 	2 count fixed bin,				/* number of entries in acl list */
+  4    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  4    48 	  3 userid char (32),			/* user specification */
+  4    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  4    50 	  3 pad bit (36) aligned,
+  4    51 	  3 code fixed bin;
+  4    52 
+  4    53 
+  4    54 /* END INCLUDE FILE slt.incl.pl1 */
+       89 
+  5     1 /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  5     2 /* Declaration for Segment Loading Table Entry structure.
+  5     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  5     4 /* modified 5/4/76 by Noel I. Morris	*/
+  5     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  5     6 /* format: style3 */
+  5     7 
+  5     8 dcl	sltep		ptr;
+  5     9 
+  5    10 dcl	1 slte_uns	based (sltep) aligned,
+  5    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  5    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  5    13 /**** End of word 1 */
+  5    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  5    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  5    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  5    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  5    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  5    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  5    20 	  2 pad1		bit (3),			/* unused */
+  5    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  5    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  5    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  5    24 	  2 pad3		bit (2),
+  5    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  5    26 /**** End of 1st half of word 2 */
+  5    27 	  2 pad4		bit (3),
+  5    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  5    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  5    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  5    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  5    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  5    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  5    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  5    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  5    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  5    37 /***** End of word 2 */
+  5    38 	  2 pad5		bit (6),
+  5    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  5    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  5    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  5    42 /***** End of word 3 */
+  5    43 	  2 pad7		bit (3),
+  5    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  5    45 	  2 bit_count	fixed bin (24) uns
+  5    46 	  )		unaligned;		/* bitcount of segment */
+  5    47 
+  5    48 dcl	1 slte		based (sltep) aligned,
+  5    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  5    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  5    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  5    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  5    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  5    54 	  2 firmware_seg    bit (1),
+  5    55 	  2 layout_seg      bit (1),
+  5    56 	  2 breakpointable  bit (1),
+  5    57 	  2 pad2		bit (3),
+  5    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  5    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  5    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  5    61 	  2 pad3		bit (2),
+  5    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  5    63 	  2 pad4		bit (3),
+  5    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  5    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  5    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  5    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  5    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  5    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  5    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  5    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  5    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  5    73 	  2 pad5		bit (6),
+  5    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  5    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  5    76 	  2 segno		bit (18),			/* text/link segment number */
+  5    77 	  2 pad6		bit (3),
+  5    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  5    79 	  2 bit_count	bit (24)
+  5    80 	  )		unaligned;		/* bitcount of segment */
+  5    81 
+  5    82 /* END INCLUDE FILE slte.incl.pl1 */
+       90 
+       91      end establish_temp_segs;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.4  establish_temp_segs.pl1           >spec>install>1112>establish_temp_segs.pl1
+86           1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+87           2    07/11/84  0937.3  bce_partition_layout.incl.pl1     >ldd>include>bce_partition_layout.incl.pl1
+88           3    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+89           4    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+90           5    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BCE_PAGING_AREA_LTH                    constant        fixed bin(17,0)          initial dcl 2-11 ref 70
+BCE_PAGING_AREA_RECORDX                constant        fixed bin(17,0)          initial dcl 2-10 ref 63
+EARLY_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 3-10 ref 49
+SAVED_IMAGE_RECORDX                    constant        fixed bin(17,0)          initial dcl 2-8 ref 53 56
+addr                                                   builtin function         dcl 17 ref 47 49 49 51 51 53 53 54 54 56 56 57 57 59
+                                                                                  59 60 60 60 60 61 61 77
+astep                           000112 automatic       pointer                  dcl 1-9 set ref 59*
+bce_abs_seg$add                 000010 constant        entry                    external dcl 18 ref 51 54 57 61 81
+bce_data$number_of_temp_segs    000012 external static fixed bin(17,0)          dcl 19 set ref 69*
+character                                              builtin function         dcl 20 ref 67 74
+codeptr                                                builtin function         dcl 21 ref 65
+disk_config_deck$               000014 external static bit(36)                  array dcl 22 set ref 49 49 51 51
+divide                                                 builtin function         dcl 23 ref 70
+dump_seg$                       000016 external static fixed bin(17,0)          dcl 24 set ref 59 59 60 60 61 61
+first_record                    000100 automatic       fixed bin(20,0)          dcl 25 set ref 63* 80* 83* 83
+ltrim                                                  builtin function         dcl 26 ref 67 74
+make_sdw$no_pages               000020 constant        entry                    external dcl 27 ref 59
+map_onto_disk                   000022 constant        entry                    external dcl 28 ref 49 53 56 80
+max_length                3(03)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 5-10
+                                                                                  set ref 78*
+multics_high_mem$               000024 external static fixed bin(17,0)          dcl 29 set ref 56 56 57 57
+multics_low_mem$                000026 external static fixed bin(17,0)          dcl 30 set ref 53 53 54 54
+n_records                       000101 automatic       fixed bin(17,0)          dcl 31 set ref 70* 71 78 80* 83
+null                                                   builtin function         dcl 32 ref 66 75
+partition_sdw                   000102 automatic       fixed bin(71,0)          dcl 33 set ref 59* 60 60
+pmut$swap_sdw                   000030 constant        entry                    external dcl 34 ref 60
+ptp                             000104 automatic       pointer                  dcl 35 set ref 59*
+pvt$root_pvtx                   000032 external static fixed bin(17,0)          dcl 36 set ref 49* 53* 56* 80*
+seg                      10            based           structure                array level 2 dcl 4-13 set ref 77
+segno                                                  builtin function         dcl 37 ref 51 51 54 54 57 57 59 59 61 61 77 81 81
+slt                                    based           structure                level 1 dcl 4-13
+slt$                            000034 external static fixed bin(17,0)          dcl 38 set ref 47
+slt_manager$get_seg_ptr         000036 constant        entry                    external dcl 39 ref 67 74
+slte_uns                               based           structure                level 1 dcl 5-10
+sltep                           000116 automatic       pointer                  dcl 5-8 set ref 77* 78
+sltp                            000114 automatic       pointer                  dcl 4-7 set ref 47* 77
+sys_boot_info$bce_part_frec     000040 external static fixed bin(20,0)          dcl 40 ref 53 56 63
+sys_boot_info$config_part_frec  000042 external static fixed bin(20,0)          dcl 41 set ref 49*
+sys_boot_info$rpv_cold_boot     000044 external static bit(1)                   dcl 42 ref 49
+sys_info$bce_max_seg_size       000046 external static fixed bin(18,0)          dcl 43 set ref 71*
+sys_info$collection_1_phase     000050 external static fixed bin(17,0)          dcl 3-8 ref 49
+temp_seg_num                    000106 automatic       fixed bin(15,0)          dcl 44 set ref 66* 67* 68* 69 69* 70 73* 74* 84*
+temp_seg_ptr                    000110 automatic       pointer                  dcl 45 set ref 65* 66 67* 74* 75 77 80* 81 81
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BCE_CRASH_INITIALIZATION               internal static fixed bin(17,0)          initial dcl 3-20
+BCE_PART_LTH                           internal static fixed bin(17,0)          initial dcl 2-7
+BOOT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 3-11
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 3-23
+CRASH_HANDLER_RECORDX                  internal static fixed bin(17,0)          initial dcl 2-9
+CRASH_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 3-18
+MST_AREA_RECORDX                       internal static fixed bin(17,0)          initial dcl 2-12
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 3-19
+SERVICE_INITIALIZATION                 internal static fixed bin(17,0)          initial dcl 3-12
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 3-21
+aclp                                   automatic       pointer                  dcl 4-7
+acls                                   based           structure                level 1 dcl 4-45
+asta                                   based           bit(432)                 array dcl 1-86
+aste                                   based           structure                level 1 dcl 1-11
+aste_part                              based           structure                level 1 dcl 1-89
+name_seg                               based           structure                level 1 dcl 4-26
+namep                                  automatic       pointer                  dcl 4-7
+names_ptr                              automatic       pointer                  dcl 4-7
+path                                   based           structure                level 1 dcl 4-40
+pathp                                  automatic       pointer                  dcl 4-7
+seg_aste                               based           structure                level 1 dcl 1-96
+segnam                                 based           structure                level 1 dcl 4-31
+slte                                   based           structure                level 1 dcl 5-48
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+establish_temp_segs             000011 constant        entry                    external dcl 8 ref 65
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       754        1026     516         764
+Length      1332     516        52         267     236           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+establish_temp_segs                 118 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+establish_temp_segs      000100 first_record                establish_temp_segs
+                         000101 n_records                   establish_temp_segs
+                         000102 partition_sdw               establish_temp_segs
+                         000104 ptp                         establish_temp_segs
+                         000106 temp_seg_num                establish_temp_segs
+                         000110 temp_seg_ptr                establish_temp_segs
+                         000112 astep                       establish_temp_segs
+                         000114 sltp                        establish_temp_segs
+                         000116 sltep                       establish_temp_segs
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     call_ext_out        return_mac          shorten_stack       ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_abs_seg$add               make_sdw$no_pages             map_onto_disk                 pmut$swap_sdw
+slt_manager$get_seg_ptr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$number_of_temp_segs  disk_config_deck$             dump_seg$                     multics_high_mem$
+multics_low_mem$              pvt$root_pvtx                 slt$                          sys_boot_info$bce_part_frec
+sys_boot_info$config_part_frec                              sys_boot_info$rpv_cold_boot   sys_info$bce_max_seg_size
+sys_info$collection_1_phase
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000010        47 000016        49 000020        51 000050        53 000065        54 000114        56 000131
+     57 000161        59 000176        60 000221        61 000236        63 000253        65 000257        66 000261
+     67 000270        68 000341        69 000344        70 000351        71 000354        73 000356        74 000360
+     75 000431        77 000436        78 000445        80 000452        81 000473        83 000506        84 000510
+     85 000512
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved
