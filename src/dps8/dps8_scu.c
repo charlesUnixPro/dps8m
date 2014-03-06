@@ -1974,8 +1974,6 @@ t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_CPU;
     scu [scu_unit_num] . ports [scu_port_num] . idnum = cpu_unit_num;
     scu [scu_unit_num] . ports [scu_port_num] . dev_port = cpu_port_num;
-    //scu [scu_unit_num] . ports [scu_port_num] . devp = & cpu_dev;
-    //scu [scu_unit_num] . ports [scu_port_num] . unitp = & cpu_unit [cpu_unit_num];
     return SCPE_OK;
   }
 
@@ -2009,19 +2007,9 @@ t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
         return SCPE_ARG;
       }
 
-    //DEVICE * devp = & iom_dev;
-    UNIT * unitp = & iom_unit [iom_unit_num];
-     
     scu [scu_unit_num] . ports [scu_port_num] . type = ADEV_IOM;
     scu [scu_unit_num] . ports [scu_port_num] . idnum = iom_unit_num;
     scu [scu_unit_num] . ports [scu_port_num] . dev_port = iom_port_num;
-
-    //scu [scu_unit_num] . ports [scu_port_num] . devp = devp;
-    //scu [scu_unit_num] . ports [scu_port_num] . unitp  = unitp;
-
-    unitp -> u3 = scu_port_num;
-    unitp -> u4 = 0;
-    unitp -> u5 = scu_unit_num;
 
     return SCPE_OK;
   }

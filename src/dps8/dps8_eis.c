@@ -2819,7 +2819,7 @@ int mopSES(EISstruct *e)
 /*!
  * fetch MOP from e->mopAddr/e->mopCN ...
  */
-MOPstruct* EISgetMop(EISstruct *e)
+static MOPstruct* EISgetMop(EISstruct *e)
 {
     //static word18 lastAddress;  // try to keep memory access' down
     //static word36 data;

@@ -2974,9 +2974,6 @@ t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 
 /* dps8_iom.c */
 
-DEVICE * get_iom_channel_dev (uint iom_unit_num, int chan, int dev_code, int * unit_num);
-extern UNIT iom_unit [];
-
 void iom_init(void);
 t_stat iom_boot(int32 unit_num, DEVICE *dptr);
 void iom_interrupt(int iom_unit_num);
@@ -2984,12 +2981,9 @@ t_stat iom_svc(UNIT* up);
 t_stat iom_reset(DEVICE *dptr);
 t_stat iom_boot(int32 unit_num, DEVICE *dptr);
 t_stat channel_svc(UNIT *up);
-int get_iom_numunits (void);
 enum chan_type { chan_type_CPI, chan_type_PSI };
 typedef enum chan_type chan_type;
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
-
-/* dps8_mpc.c */
 
 /* dps8_sys.c */
 

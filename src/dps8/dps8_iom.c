@@ -354,7 +354,7 @@ static t_stat iom_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
 
 #define IOM_CONNECT_CHAN 2
 
-UNIT iom_unit [N_IOM_UNITS_MAX] =
+static UNIT iom_unit [N_IOM_UNITS_MAX] =
   {
     { UDATA(NULL /*&iom_svc*/, 0, 0) },
     { UDATA(NULL /*&iom_svc*/, 0, 0) },
@@ -834,7 +834,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
  *
  */
 
-DEVICE * get_iom_channel_dev (uint iom_unit_num, int chan, int dev_code, int * unit_num)
+static DEVICE * get_iom_channel_dev (uint iom_unit_num, int chan, int dev_code, int * unit_num)
   {
     // Some devices (eg console) and not unit aware, and ignore this
     // value
@@ -1307,9 +1307,9 @@ static void setup_iom_scpage_map (void)
         for (int pg = 0; pg < N_SCPAGES; pg ++)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
             __func__, pg, iom_scpage_map [iom_unit_num] [pg]);
-   }
+  }
    
-int query_iom_scpage_map (int iom_unit_num, word24 addr)
+static int query_iom_scpage_map (int iom_unit_num, word24 addr)
   {
     uint scpg = addr / SCPAGE;
     if (scpg < N_SCPAGES)
@@ -3081,8 +3081,6 @@ static int send_flags_to_channel (void)
 //--         return 1;
 //--     }
 //-- }
-//-- 
-//-- // ============================================================================
 
 /*
  * dev_send_idcw()
@@ -3226,10 +3224,7 @@ static int dev_send_idcw (int iom_unit_num, int chan, int dev_code, pcw_t * pcwp
 //--     
     return rc;
   }
-//-- 
-//-- // ============================================================================
-//-- 
-//-- 
+
 //-- /*
 //--  * dev_io()
 //--  *
@@ -3583,7 +3578,6 @@ static char * dcw2text (const dcw_t * p)
     return buf;
   }
 
-//-- // ============================================================================
 //-- 
 //-- /*
 //--  * print_dcw()
@@ -3602,7 +3596,6 @@ static char * dcw2text (const dcw_t * p)
 //-- }
 //-- #endif
 //-- 
-//-- // ============================================================================
 
 /*
  * lpw2text()
@@ -3621,8 +3614,6 @@ static char * lpw2text (const lpw_t * p, int conn)
                 p->lbnd, p->size, p->size, p->idcw);
     return buf;
   }
-
-//-- // ============================================================================
 
 /*
  * fetch_and_parse_lpw()
@@ -3662,7 +3653,6 @@ static void fetch_and_parse_lpw (lpw_t * p, int addr, bool is_conn)
       }
   }
 
-//-- // ============================================================================
 //-- 
 //-- /*
 //--  * print_lpw()
@@ -3683,7 +3673,6 @@ static void fetch_and_parse_lpw (lpw_t * p, int addr, bool is_conn)
 //-- }
 //-- #endif
 //-- 
-//-- // ============================================================================
 
 //
 // lpw_write()
@@ -3718,7 +3707,6 @@ static int lpw_write (int chan, int chanloc, const lpw_t * p)
     return 0;
   }
 
-//-- // ============================================================================
 //-- 
 //-- #if 0
 //-- 
@@ -3753,7 +3741,7 @@ static int lpw_write (int chan, int chanloc, const lpw_t * p)
  */
 
 static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati, word6 rcount, word12 residue, word3 char_pos, int is_read)
-{
+  {
     // See page 33 and AN87 for format of y-pair of status info
     
 //--     channel_t* chanp = get_chan(iom_unit_num, chan, dev_code);
@@ -3912,7 +3900,6 @@ static int status_service(int iom_unit_num, int chan, int dev_code, word12 stati
     return 0;
   }
 
-//-- // ============================================================================
 //-- 
 //-- /*
 //--  * iom_fault()
@@ -3947,7 +3934,8 @@ static void iom_fault (int iom_unit_num, int chan, const char* who, int is_sys, 
 #define AN70
 #ifndef AN70  // [CAC] AN70-1 May84 disagrees
 
-enum iom_imw_pics {
+enum iom_imw_pics
+  {
     // These are for bits 19..21 of an IMW address.  This is normally
     // the Interrupt Level from a Channel's Program Interrupt Service
     // Request.  We can deduce from the map in 3.2.7 that certain
@@ -3960,7 +3948,7 @@ enum iom_imw_pics {
     imw_terminate_pic = 3,  // IMW address ...011xx
     imw_marker_pic = 5,     // IMW address ...101xx
     imw_special_pic = 7     // IMW address ...111xx
-};
+  };
 
 #else
 
@@ -4251,7 +4239,7 @@ static t_stat iom_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
   }
 
 static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
-{
+  {
     int unit_num = IOM_UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= iom_dev . numunits)
       {
@@ -4322,7 +4310,7 @@ static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Boot skip:                %02o(8)\n", p -> boot_skip);
     
     return SCPE_OK;
-}
+  }
 
 //
 // set iom0 config=<blah> [;<blah>]

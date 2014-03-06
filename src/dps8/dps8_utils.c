@@ -837,6 +837,9 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
 
 void cmp72(word72 op1, word72 op2, word18 *flags)
 {
+   // The case of op1 == 400000000000000000000000 and op2 == 0 falls through
+   // this code.
+#if 0
     if (!(op1 & SIGN72) && (op2 & SIGN72) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
     else if ((op1 & SIGN72) == (op2 & SIGN72) && (op1 > op2))
@@ -856,6 +859,34 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
         SETF(*flags, I_CARRY | I_NEG);
         CLRF(*flags, I_ZERO);
     }
+#else
+    word72s op1s = SIGNEXT72 (op1);
+    word72s op2s = SIGNEXT72 (op2);
+    if (op1s > op2s)
+      {
+        if (op2 & SIGN72)
+          CLRF (* flags, I_CARRY);
+        else
+          SETF (* flags, I_CARRY);
+        CLRF (* flags, I_ZERO | I_NEG);
+      }
+    else if (op1s == op2s)
+      {
+        SETF (* flags, I_CARRY | I_ZERO);
+        CLRF (* flags, I_NEG);
+      }
+    else /* op1s < op2s */
+      {
+        if (op1 & SIGN72)
+          SETF (* flags, I_CARRY);
+        else
+          CLRF (* flags, I_CARRY);
+        CLRF (* flags, I_ZERO);
+        SETF (* flags, I_NEG);
+      }
+
+
+#endif
 }
 
 /*
