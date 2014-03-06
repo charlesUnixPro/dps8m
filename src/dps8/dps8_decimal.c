@@ -32,6 +32,12 @@
 //decNumber *decBCDToNumber(const uint8_t *bcd, int length, const int scale, decNumber *dn);
 //uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn);
 
+#define PRINTDEC(msg, dn) \
+    { \
+        char temp[256]; \
+        decNumberToString(dn, temp); \
+        sim_printf("%s:'%s'\n", msg, temp);   \
+    }
 
 
 /* ------------------------------------------------------------------ */
@@ -499,9 +505,18 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
         if (s == CSFL)
             if (r2->digits < adjLen)
             {
+                //PRINTDEC("Value 1", r2)
+                
                 decNumber _s, *s;
-                s = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));                
-                r2 = decNumberRescale(r2, r2, s, set);
+                int rescaleFactor = r2->exponent - (adjLen - r2->digits);
+                s = decNumberFromInt32(&_s, rescaleFactor); //r2->exponent - (adjLen - r2->digits));
+                //s = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));
+                //PRINTDEC("Value s", s)
+
+                if (rescaleFactor > (adjLen - r2->digits))
+                    r2 = decNumberRescale(r2, r2, s, set);
+                
+                //PRINTDEC("Value 2", r2)
             }
         decBCDFromNumber(out, adjLen, &scale, r2);
         for(int i = 0 ; i < adjLen ; i += 1 )
@@ -2597,6 +2612,8 @@ void dv3d(DCDstruct *ins)
             break;  // no sign wysiwyg
     }
     decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    //PRINTDEC("op1", op1);
+    
     if (e->sign == -1)
         op1->bits = DECNEG;
     if (e->S1 == CSFL)
@@ -2632,6 +2649,21 @@ void dv3d(DCDstruct *ins)
         op2->bits = DECNEG;
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
+    
+    // TODO: Need to check/implement this
+    // The number of required quotient digits, NQ, is determined before division begins as follows:
+    //  1) Floating-point quotient
+    //      NQ = N3, but if the divisor is greater than the dividend after operand alignment, the leading zero digit produced is counted and
+    //      the effective precision of the result is reduced by one.
+    //  2) Fixed-point quotient
+    //    NQ = (N2-LZ2+1) - (N1-LZ1) + (E2-E1-SF3)
+    //    ￼where: Nn = given operand field length
+    //        LZn = leading zero count for operand n
+    //        En = exponent of operand n
+    //        SF3 = scaling factor of quotient
+    // 3) Rounding
+    //    If rounding is specified (R = 1), then one extra quotient digit is produced.
+    
     
     decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Yes, they're switched
     
