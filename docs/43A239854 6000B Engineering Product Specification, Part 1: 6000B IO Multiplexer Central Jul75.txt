@@ -388,7 +388,7 @@ Honeywell   Rev.A                                                  Page  8
 
 	EPS-1, IOM Peripherial Subsystem Interface Adapter (43A177880)
 
-	EPS-1, Conso1e Channel Adapter (43A232500)
+	EPS-1, Console Channel Adapter (43A232500)
 
 	General Design Requirements for 655/35S (43A177851)
 
@@ -1539,7 +1539,7 @@ Honeywell   Rev. B                                                 Page 31
 	             instruction is ended (terminated) when the channel
 	             detects the tally run-out condition of the tally.
 
-	   O1 IOTP   I/O Transfer and Proceed. The current device in-
+	   01 IOTP   I/O Transfer and Proceed. The current device in-
 	             struction proceeds to a new DCW when the channel
 	             detects the tally run-out condition of the tally.
 
@@ -2104,13 +2104,13 @@ Honeywell   Rev. A                                                 Page 42
 
 	     A = initial DCW address (relative)
 
-	     S = the number of S12-word blocks addressable by the pro-
+	     S = the number of 512-word blocks addressable by the pro-
 	         gram; (size) - S is relative to the Lower Bound; i.e., the
 	         number of 512 word blocks "starts" at the Lower Bound.
 
 	     T = initial DCW tally = DCW (24-35)
 
-	     Note: If T = 0000(8)8 it must be treated as 10000(8) by
+	     Note: If T = 0000(8) it must be treated as 10000(8) by
 	           the IOM Central in the boundary check.
 
 
@@ -5354,7 +5354,7 @@ Honeywell   Rev. D                                                 Page B16
 	S = the number of words addressable by the program starting
 	    from the Lower Bound. MOD 01
 
-	T = initial DCW tally. MOD O1
+	T = initial DCW tally. MOD 01
 
 
 
