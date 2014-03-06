@@ -6290,13 +6290,23 @@ static t_stat DoEISInstruction(DCDstruct *i)
 #endif
         // priviledged instructions
             
-        case 0257:  ///< lptp
         case 0173:  ///< lptr
-        case 0774:  ///< lra
-        case 0232:  ///< ldsr
-        case 0557:  ///< sptp
-        case 0154:  ///< sptr
-        case 0254:  ///< ssdr
+            doFault(i, illproc_fault, 0, "lptr is illproc on DPS8M");
+            return CONT_FAULT;
+
+        case 0232:  ///< lsdr
+            doFault(i, illproc_fault, 0, "lsdr is illproc on DPS8M");
+            return CONT_FAULT;
+
+        case 0257:  ///< lptp
+            doFault(i, illproc_fault, 0, "lprp is illproc on DPS8M");
+            return CONT_FAULT;
+
+        //case 0774:  ///< lra
+        //case 0232:  ///< ldsr
+        //case 0557:  ///< sptp
+        //case 0154:  ///< sptr
+        //case 0254:  ///< ssdr
             
         // Privileged - Clear Associative Memory
         case 0532:  ///< camp
