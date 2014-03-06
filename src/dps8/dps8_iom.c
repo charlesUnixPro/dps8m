@@ -1740,12 +1740,25 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 
       ret = dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, pcwp,
                            & stati, & need_data, & is_read);
+      //sim_printf ("dev_send_idcw p(0) stati %04o control %o ret %d\n", stati, pcwp -> control, ret);
       if (ret)
         {
           sim_debug (DBG_DEBUG, & iom_dev,
                      "%s: dev_send_idcw returned %d\n", __func__, ret);
         }
 
+#if 0
+      if (! need_data &&
+          pcwp -> control == 0)
+        {
+          if (ret == 0)
+            {
+              status_service (iom_unit_num, chan, pcwp -> dev_code, stati, 0 /*rcount*/, 0 /*residue*/, 0 /*char_pos*/, 0 /*is_read*/);
+              send_terminate_interrupt (iom_unit_num, chan);
+            }
+          return ret;
+        }
+#endif
 #if 0
       if (! need_data && iom [iom_unit_num] . channels [chan] [pcwp -> dev_code] . ctype == chan_type_CPI)
         {
@@ -1911,6 +1924,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                 // SEND IDCW TO CHANNEL
                 need_data = false;
                 dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, & dcw . fields . instr, & stati, & need_data, & is_read);
+                //sim_printf ("dev_send_idcw p(1) stati %04o control %o\n", stati, dcw . fields . instr . control);
                 char_pos = 0;
                 rcount = dcw . fields . instr . chan_data;
                 residue = 0;
@@ -1920,6 +1934,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                 if ((stati & 04000) && // have status
                     ((stati & 03700) != 0))
                   {
+//sim_printf ("cac terminate 7\n");
                     sim_debug (DBG_DEBUG, & iom_dev,
                                "%s: IDCW returns non-zero status(%04o); terminating DCW loop\n",
                                __func__, stati);
@@ -1938,10 +1953,22 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                     (stati & 04000) && // have status
                     ((stati & 03700) != 0))
                   {
+//sim_printf ("cac terminate 8\n");
                     ptro = true;
                     sim_debug (DBG_TRACE, & iom_dev, "IDCW terminate\n");
                   }
+#if 1 // this sends 20184 looping with no I/O
+                if (dcw . fields . instr . control == 0 &&
+                    (stati & 04000)) // have status
+                  {
+                    ptro = true;
+                    sim_debug (DBG_TRACE, & iom_dev, "IDCW terminate\n");
+//sim_printf ("cac terminate\n");
+                  }
+#endif
+
               }
+//sim_printf ("cac terminate D\n");
             goto D;
           }
     

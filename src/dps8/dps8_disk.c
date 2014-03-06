@@ -206,13 +206,46 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
 
     sim_debug (DBG_DEBUG, & disk_dev, "%s: IOM %c, Chan 0%o, dev-cmd 0%o, dev-code 0%o\n",
             __func__, 'A' + iom_unit_num, pcwp -> chan, pcwp -> dev_cmd, pcwp -> dev_code);
-return 1; // XXX
 
-    return 0;
+    // XXX do right when write
+    * is_read = true;
+
+        // idcw.command values:
+        //  000 request status -- from disk_init
+        //  022 read status register -- from disk_init
+        //  023 read ascii
+        //  025 read -- disk_control.list
+        //  030 seek512 -- disk_control.list
+        //  031 write -- disk_control.list
+        //  033 write ascii
+        //  042 restore access arm -- from disk_init
+        //  051 write alert
+        //  057 maybe read id
+        //  072 unload -- disk_control.list
+
+    switch (pcwp -> dev_cmd)
+      {
+        case 040: // CMD 40 Reset status
+          {
+            * stati = 04000;
+            sim_debug (DBG_NOTIFY, & disk_dev, "Reset status\n");
+            return 0;
+          }
+
+        default:
+          {
+            * stati = 04501;
+            sim_debug (DBG_ERR, & tape_dev,
+                       "%s: Unknown command 0%o\n", __func__, pcwp -> dev_cmd);
+            return 1;
+          }
+      }
+    return 1;   // not reached
   }
 
 static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
   {
+sim_printf ("disk_iom_io called\n");
     //int disk_unit_num = DISK_UNIT_NUM (unitp);
     return 0;
   }

@@ -468,7 +468,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
 //--             return 0;
 //--         }
 
-        case 051:               // CMD 051 -- Reset Device Status
+        case 040:               // CMD 040 -- Reset Device Status
             // BUG: How should 040 reset status differ from 051 reset device
             // status?  Presumably the former is for the MPC itself...
             * stati = 04000;
