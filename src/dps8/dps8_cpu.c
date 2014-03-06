@@ -1209,7 +1209,8 @@ jmpIntr:;
 
                     if (xrv == CONT_TRA)
                     {
-                        set_addr_mode(ABSOLUTE_mode);
+                        //set_addr_mode(ABSOLUTE_mode);
+                        clear_TEMPORARY_ABSOLUTE_mode ();
                         sim_debug (DBG_INTR, & cpu_dev, "Interrupt pair transfers\n");
                         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
                     }
