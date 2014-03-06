@@ -1184,7 +1184,7 @@ jmpIntr:;
                     // addr_modes_t am = get_addr_mode();  // save address mode
 
 		    // Temporary absolute mode
-		    set_addr_mode (TEMPORARY_ABSOLUTE_mode);
+		    set_TEMPORARY_ABSOLUTE_mode ();
 
 		    // Set to ring 0
 		    PPR . PRR = 0;
@@ -1209,7 +1209,6 @@ jmpIntr:;
 
                     if (xrv == CONT_TRA)
                     {
-                        //set_addr_mode(ABSOLUTE_mode);
                         clear_TEMPORARY_ABSOLUTE_mode ();
                         sim_debug (DBG_INTR, & cpu_dev, "Interrupt pair transfers\n");
                         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
@@ -1799,6 +1798,11 @@ static bool secret_addressing_mode;
  *
  */
 
+void set_TEMPORARY_ABSOLUTE_mode (void)
+{
+    secret_addressing_mode = true;
+}
+
 void clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = false;
@@ -1838,10 +1842,6 @@ void set_addr_mode(addr_modes_t mode)
         
         PPR.P = 1;
         
-#if 0
-        if (switches . degenerate_mode)
-          setDegenerate();
-#endif 
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
         if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
@@ -1857,22 +1857,10 @@ void set_addr_mode(addr_modes_t mode)
         CLRF(rIR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
-    } else if (mode == TEMPORARY_ABSOLUTE_mode) {
-        PPR.P = 1;
-        secret_addressing_mode = true;
-        
-#if 0
-        if (switches . degenerate_mode)
-          setDegenerate();
-#endif
-        
-        sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting temporary absolute mode.\n");
-
     } else {
         sim_debug (DBG_ERR, & cpu_dev, "APU: Unable to determine address mode.\n");
         cancel_run(STOP_BUG);
     }
-    //processorAddressingMode = mode;
 }
 
 

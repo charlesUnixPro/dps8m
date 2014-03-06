@@ -489,7 +489,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     
     PPR.PRR = 0;
     
-    set_addr_mode(TEMPORARY_ABSOLUTE_mode);
+    set_TEMPORARY_ABSOLUTE_mode ();
     
     // MME expects the IC to point to the code being XEDed
     //if (f == &_faults[FAULT_MME] ||

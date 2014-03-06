@@ -601,8 +601,7 @@ enum _processor_addressing_mode {
     UNKNOWN_MODE = 0,
     ABSOLUTE_MODE,
     APPEND_MODE,
-    BAR_MODE,
-    TEMPORARY_ABSOLUTE_MODE
+    BAR_MODE
 };// processorAddressingMode;
 typedef enum _processor_addressing_mode _processor_addressing_mode;
 
@@ -1971,7 +1970,7 @@ typedef unsigned flag_t;    // efficient unsigned flag
 
 // The CPU supports 3 addressing modes
 // [CAC] I tell a lie: 4 modes....
-typedef enum { ABSOLUTE_mode = ABSOLUTE_MODE, APPEND_mode = APPEND_MODE, BAR_mode = BAR_MODE, TEMPORARY_ABSOLUTE_mode = TEMPORARY_ABSOLUTE_MODE} addr_modes_t;
+typedef enum { ABSOLUTE_mode = ABSOLUTE_MODE, APPEND_mode = APPEND_MODE, BAR_mode = BAR_MODE } addr_modes_t;
 
 
 
@@ -2938,6 +2937,7 @@ t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
 
 bool sample_interrupts (void);
 int query_scpage_map (word24 addr);
+void set_TEMPORARY_ABSOLUTE_mode (void);
 void clear_TEMPORARY_ABSOLUTE_mode (void);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 
