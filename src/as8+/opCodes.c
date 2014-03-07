@@ -533,9 +533,9 @@ void doSTC(opCode *o, word36 a, word36 b, int pr)
         //    o->encoding | (b & 077);
         //else
 
-        if (pr > 0) // no pr specified
+        if (pr >= 0) // no pr specified
         {
-            w |= ((pr & 07) << 15) | (b & 077777);
+            w |= (((pr & 07) << 15LL) | (a & 077777LL)) << 18LL;
             w |= (1LL << 6);    // set bit-29
         }
         else

@@ -159,7 +159,7 @@ instr
     | OPCODERPT     expr          ','   {bTermCond = true;} rptlst  { doRPT($1, 0, $2->value, $5);         }
 
     | OPCODESTC                 operand ',' {setOmode();} lexpr     { doSTC($1, $2->value, $5->value, -1);        }
-    | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2);   }
+    | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2 & 07);   }
     | OPCODEX       expr ',' operands                               { opnd.o = $1; doOpcodeX(&opnd, $2);  }
     | OPCODER       expr ',' operands                               { opnd.o = $1; doOpcodeR(&opnd, $2);  }
     ;
