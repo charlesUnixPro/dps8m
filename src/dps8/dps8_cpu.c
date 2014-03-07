@@ -1041,7 +1041,13 @@ static int simh_hooks (void)
     sim_interval --;
 
     // breakpoint? 
-    if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
+    //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
+    // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
+    // PPR.PSR into the high 12
+    if (sim_brk_summ &&
+        sim_brk_test ((PPR.IC & 0777777) |
+                      ((((t_addr) PPR.PSR) & 037777) << 18),
+                      SWMASK ('E')))  /* breakpoint? */
         return STOP_BKPT; /* stop simulation */
     return reason;
   }       
@@ -1097,11 +1103,6 @@ t_stat doIEFPLoop();
 //     load instruction pair into instruction buffer
 //     set EXEC_cyvle
 //  
-//  RPT_cycle
-//     load instruction into instruction buffer
-//     set repeat conditions
-//     set EXEC_cycle
-//
 // other extant cycles:
 //  ABORT_cycle
 
@@ -1374,7 +1375,7 @@ t_stat sim_instr (void)
                     //  a. Execute the repeated instruction
 
                     //  b. C(X0)0,7 - 1 → C(X0)0,7
-                    int x = bitfieldExtract(rX[0], 10, 8);
+                    uint x = bitfieldExtract(rX[0], 10, 8);
                     x -= 1;
                     rX[0] = bitfieldInsert(rX[0], x, 10, 8);
                     
@@ -1396,46 +1397,44 @@ t_stat sim_instr (void)
                         // termination condition is met and bits 0..7 of
                         // reg X[0] hits zero.
                       } 
-                    else
+                    //  d. If a terminate condition has been met, then set 
+                    //     the tally runout indicator OFF and terminate
+                    if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
                       {
-                        //  d. If a terminate condition has been met, then set 
-                        //     the tally runout indicator OFF and terminate
-                        if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          }
-                        else if (!TSTF(rIR, I_ZERO) && (rX[0] & 040))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          } 
-                        else if (TSTF(rIR, I_NEG) && (rX[0] & 020))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          } 
-                        else if (!TSTF(rIR, I_NEG) && (rX[0] & 010))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          } 
-                        else if (TSTF(rIR, I_CARRY) && (rX[0] & 04))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          } 
-                        else if (!TSTF(rIR, I_CARRY) && (rX[0] & 02))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          } 
-                        else if (TSTF(rIR, I_OFLOW) && (rX[0] & 01))
-                          {
-                            CLRF(rIR, I_TALLY);
-                            exit = true;
-                          }
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
                       }
+                    else if (!TSTF(rIR, I_ZERO) && (rX[0] & 040))
+                      {
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
+                      } 
+                    else if (TSTF(rIR, I_NEG) && (rX[0] & 020))
+                      {
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
+                      } 
+                    else if (!TSTF(rIR, I_NEG) && (rX[0] & 010))
+                      {
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
+                      } 
+                    else if (TSTF(rIR, I_CARRY) && (rX[0] & 04))
+                      {
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
+                      } 
+                    else if (!TSTF(rIR, I_CARRY) && (rX[0] & 02))
+                      {
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
+                      } 
+                    else if (TSTF(rIR, I_OFLOW) && (rX[0] & 01))
+                      {
+                        CLRF(rIR, I_TALLY);
+                        exit = true;
+                      }
+
                     //  e. Go to step a
                     // If termination condition not met, stay in EXEC_cycle
                     // and repeat the instruction
