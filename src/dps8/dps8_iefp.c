@@ -178,7 +178,6 @@ t_stat Read(DCDstruct *i, word18 address, word36 *result, _processor_cycle_type 
     
     switch (get_addr_mode())
     {
-        case TEMPORARY_ABSOLUTE_mode:
         case ABSOLUTE_MODE:
         
             core_read(address, result);
@@ -216,7 +215,6 @@ t_stat Write(DCDstruct *i, word18 address, word36 data, _processor_cycle_type cy
     
     switch (get_addr_mode())
     {
-        case TEMPORARY_ABSOLUTE_mode:
         case ABSOLUTE_MODE:
         
             core_write(address, data);
