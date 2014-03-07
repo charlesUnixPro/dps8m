@@ -587,7 +587,6 @@ t_stat cpu_reset (DEVICE *dptr)
     for (int i = 0; i < MEMSIZE; i ++)
       M [i] = MEM_UNINITIALIZED;
 
-    PPR.IC = 0;
     rA = 0;
     rQ = 0;
     XECD = 0;
@@ -1042,7 +1041,7 @@ static int simh_hooks (void)
     sim_interval --;
 
     // breakpoint? 
-    if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E')))
+    if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E')))
         return STOP_BKPT; /* stop simulation */
     return reason;
   }       
@@ -1146,7 +1145,6 @@ t_stat sim_instr (void)
             goto jmpRetry;
         case JMP_TRA:
             goto jmpTra;
-<<<<<<< HEAD
         case JMP_INTR:
             goto jmpIntr;
 #endif
@@ -1245,8 +1243,8 @@ t_stat sim_instr (void)
                   {
                      instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
-                     clear_TEMPORARY_ABSOLUTE_mode ();
-                     set_addr_mode (ABSOLUTE_mode);
+                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                       set_addr_mode (ABSOLUTE_mode);
                      break;
                   }
 
@@ -1284,11 +1282,11 @@ t_stat sim_instr (void)
                     processorCycle = INSTRUCTION_FETCH;
 
                     // fetch next instruction into current instruction struct
-                    ci = fetchInstruction(rIC, currentInstruction);
+                    ci = fetchInstruction(PPR.IC, currentInstruction);
                   }
 
                 // XXX The conditions are more rigorous: see AL39, pg 327
-                if (rIC % 2 == 0 && // Even address
+                if (PPR.IC % 2 == 0 && // Even address
                     ci -> i == 0) // Not inhibited
                   {
                     cpu . interrupt_flag = sample_interrupts ();
@@ -1348,26 +1346,25 @@ t_stat sim_instr (void)
 
             case EXEC_cycle:
               {
+                xec_side_effect = 0;
                 t_stat ret = executeInstruction (ci);
                 if (ret > 0)
                   {
                      reason = ret;
                      break;
                   }
+                if (ret == CONT_TRA)
+                  {
+                    cpu . cycle = FETCH_cycle;
+                    break;   // don't bump PPR.IC, instruction already did it
+                  }
+
                 if (ret < 0)
                   {
-                    switch (ret)
-                      {
-                        case CONT_TRA: // Instruction transferred
-                          break;   // don't bump rIC, instruction already did it
-
-                        // shouldn't happen; doFault never returns
-                        //case CONT_FAULT:
-                        default:
-                          sim_printf ("execute instruction returned %d?\n", ret);
-                          break;
-                      }
+                    sim_printf ("execute instruction returned %d?\n", ret);
+                    break;
                   }
+
                 if (cu . rpt)
                   {
                     // Delay this to here to so that CAF can see it.
@@ -1450,9 +1447,11 @@ t_stat sim_instr (void)
                   } // if (cu . rpt)
                 else // !rpt
                   {
-                    rIC ++;
+                    PPR.IC ++;
                     if (ci->info->ndes > 0)
-                      rIC += ci->info->ndes;
+                      PPR.IC += ci->info->ndes;
+                    PPR.IC += xec_side_effect;
+                    xec_side_effect = 0;
                   }
                 cpu . cycle = FETCH_cycle;
               }
@@ -1557,8 +1556,8 @@ t_stat sim_instr (void)
                      instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
                      clearFaultCycle ();
-                     clear_TEMPORARY_ABSOLUTE_mode ();
-                     set_addr_mode (ABSOLUTE_mode);
+                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                       set_addr_mode (ABSOLUTE_mode);
                      break;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
@@ -1598,258 +1597,9 @@ t_stat sim_instr (void)
 
 
 
-//--- // This is part of the simh interface
-//--- t_stat sim_instr (void)
-//--- {
-//---     // Heh. This needs to be static; longjmp resets the value to NULL
-//---     static DCDstruct *ci = NULL;
-//---     
-//---     /* Main instruction fetch/decode loop */
-//---     adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
-//---     apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
-//---     
-//---     cpu . interrupt_flag = false;
-//--- 
-//---     //currentInstruction = &_currentInstruction;
-//---     currentInstruction->e = &E;
-//---     
-//---     int val = setjmp(jmpMain);    // here's our main fault/interrupt return. Back to executing instructions....
-//---     switch (val)
-//---     {
-//---         case 0:
-//---             reason = 0;
-//---             cpuCycles = 0;
-//---             break;
-//---         case JMP_NEXT:
-//---             goto jmpNext;
-//---         case JMP_RETRY:
-//---             goto jmpRetry;
-//---         case JMP_TRA:
-//---             goto jmpTra;
-//---         case JMP_STOP:
-//---             return stop_reason;
-//--- 
-//---     }
-//--- //    if (val)
-//--- //    {
-//--- //        // if we're here, we're returning from a fault etc and we want to retry an instruction
-//--- //        goto retry;
-//--- //    } else {
-//--- //        reason = 0;
-//--- //        cpuCycles = 0;  // XXX This probably needs to be moved so our fault handler won't reset cpuCycles back to 0
-//--- //    }
-//---     
-//---     do {
-//--- jmpRetry:;
-//---         /* loop until halted */
-//---         if (sim_interval <= 0) {                                /* check clock queue */
-//---             if ((reason = sim_process_event ()))
-//---                 break;
-//---         }
-//---         
-//---         sim_interval --;
-//---         if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
-//---             reason = STOP_BKPT;                        /* stop simulation */
-//---             break;
-//---         }
-//---         
-//---         if (cpu . cycle == DIS_cycle)
-//---           {
-//---             cpu . interrupt_flag = sample_interrupts ();
-//---             if (cpu . interrupt_flag)
-//---               goto dis_entry;
-//---             continue;
-//---           }
-//--- 
-//---         // do group 7 fault processing
-//---         if (bG7Pending () && (rIR & 1) == 0)    // only process g7 fauts if available and on even instruction boundary
-//---             doG7Faults();
-//---             
-//---         //
-//---         // fetch instruction
-//---         processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
-//---         
-//--- 
-//---         ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
-//---         
-//--- // XXX The conditions are more rigorous: see AL39, pg 327
-//---         if (rIC % 2 == 0 && // Even address
-//---             ci -> i == 0) // Not inhibited
-//---           cpu . interrupt_flag = sample_interrupts ();
-//---         else
-//---           cpu . interrupt_flag = false;
-//--- 
-//---         // XXX: what if sim stops during XEC/XED? if user wants to re-step
-//---         // instruc, is this logic OK?
-//---         if(XECD == 1) {
-//---           ci->IWB = XECD1;
-//---         } else if(XECD == 2) {
-//---           ci->IWB = XECD2;
-//---         }
-//---         
-//---         t_stat ret = executeInstruction(ci);
-//---         
-//---         if (! ret)
-//---          {
-//---            if (cpu . interrupt_flag)
-//---               {
-//---                 // We should do this later, but doing it now allows us to
-//---                 // avoid clean up for no interrupt pending.
-//--- 
-//---                 uint intr_pair_addr;
-//--- dis_entry:
-//---                 intr_pair_addr = get_highest_intr ();
-//---                 if (intr_pair_addr != 1) // no interrupts 
-//---                   {
-//--- 
-//---               // In the INTERRUPT CYCLE, the processor safe-stores the
-//---               // Control Unit Data (see Section 3) into program-invisible
-//---               // holding registers in preparation for a Store Control
-//---               // Unit (scu) instruction, enters temporary absolute mode,
-//---               // and forces the current ring of execution C(PPR.PRR) to
-//---               // 0. It then issues an XEC system controller command to
-//---               // the system controller on the highest priority port for
-//---               // which there is a bit set in the interrupt present
-//---               // register.  
-//--- 
-//---                     // XXX safe store
-//---                     cu_safe_store ();
-//--- 
-//---                     addr_modes_t am = get_addr_mode();  // save address mode
-//--- 
-//---               // Temporary absolute mode
-//---               set_addr_mode (ABSOLUTE_mode);
-//--- 
-//---               // Set to ring 0
-//---               PPR . PRR = 0;
-//--- 
-//---                     // get intr_pair_addr
-//--- 
-//---                     // get interrupt pair
-//---                     word36 faultPair[2];
-//---                     core_read2(intr_pair_addr, faultPair, faultPair+1);
-//--- 
-//---                     t_stat xrv = doXED(faultPair);
-//--- 
-//---                     cpu . interrupt_flag = false;
-//--- 
-//---                     set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-//--- 
-//---                     sim_debug (DBG_MSG, & cpu_dev, "leaving DIS_cycle\n");
-//---                     sim_printf ("leaving DIS_cycle\n");
-//---                     cpu . cycle = FETCH_cycle;
-//--- 
-//---                     if (0 && xrv)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
-//---                         longjmp(jmpMain, JMP_RETRY);    // retry instruction
-//---                     longjmp(jmpMain, JMP_RETRY);     // execute next instruction
-//--- 
-//---                     ret = xrv;
-//---                 } // int_pair != 1
-//---             } // interrupt_flag
-//---         } // if (!ret)
-//--- 
-//---         if (ret)
-//---         {
-//---             if (ret > 0)
-//---             {
-//---                 reason = ret;
-//---                 break;
-//---             } else {
-//---                 switch (ret)
-//---                 {
-//---                     case CONT_TRA:
-//--- jmpTra:                 continue;   // don't bump rIC, instruction already did it
-//---                     case CONT_FAULT:
-//---                     {
-//---                         // XXX Instruction faulted.
-//---                     }
-//---                     break;
-//---                 }
-//---             }
-//---         }
-//---         
-//--- #if 0
-//---         // XXX Remove this when we actually can wait for an interrupt
-//---         if (ci->opcode == 0616) { // DIS
-//---             reason = STOP_DIS;
-//---             break;
-//---         }
-//--- #endif
-//--- 
-//--- jmpNext:;
-//---         // doesn't seem to work as advertized
-//---         if (sim_poll_kbd())
-//---             reason = STOP_BKPT;
-//---        
-//---         // XXX: what if sim stops during XEC/XED? if user wants to re-step
-//---         // instruc, is this logic OK?
-//---         if(XECD == 1) {
-//---           XECD = 2;
-//---         } else if(XECD == 2) {
-//---           XECD = 0;
-//---         } else if (cpu . cycle != DIS_cycle) // XXX maybe cycle == FETCH_cycle
-//---           rIC += 1;
-//---         
-//---         // is this a multiword EIS?
-//---         // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
-//---         if (ci->iwb->ndes > 0)
-//---           rIC += ci->iwb->ndes;
-//---         
-//---     } while (reason == 0);
-//---     
-//---     sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
-//---     
-//---     return reason;
-//--- }
-
-
-#if 0
-static void setDegenerate()
-{
-    sim_debug (DBG_DEBUG, & cpu_dev, "setDegenerate\n");
-    //TPR.TRR = 0;
-    //TPR.TSR = 0;
-    //TPR.TBR = 0;
-    
-    //PPR.PRR = 0;
-    //PPR.PSR = 0;
-    
-    //PPR.P = 1;
-}
-#endif
-
 #if 0
 static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK ('W') };
 #endif
-
-#define DOITSITP(indword, Tag) ((_TM(Tag) == TM_IR || _TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)))
-//bool DOITSITP(indword, Tag)
-//{
-//    return ((GET_TM(Tag) == TM_IR || GET_TM(Tag) == TM_RI) && (ISITP(indword) || ISITS(indword)));
-//}
-
-//PRIVATE
-//t_stat doAbsoluteRead(DCDstruct *i, word24 addr, word36 *dat, MemoryAccessType accessType, int32 Tag)
-//{
-//    sim_debug(DBG_TRACE, &cpu_dev, "doAbsoluteRead(Entry): accessType=%d IWB=%012llo A=%d\n", accessType, i->IWB, GET_A(i->IWB));
-//    
-//    rY = addr;
-//    TPR.CA = addr;  //XXX for APU
-//    
-//    switch (accessType)
-//    {
-//        case InstructionFetch:
-//            core_read(addr, dat);
-//            break;
-//        default:
-//            //if (i->a)
-//                doAppendCycle(i, accessType, Tag, -1, dat);
-//            //else
-//            //    core_read(addr, dat);
-//            break;
-//    }
-//    return SCPE_OK;
-//}
 
 /*!
  cd@libertyhaven.com - sez ....

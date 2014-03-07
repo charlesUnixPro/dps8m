@@ -5028,7 +5028,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
                 sim_printf ("entered DIS_cycle\n");
                 cpu.cycle = DIS_cycle;
-                //longjmp (jmpMain, JMP_ENTRY);
+                longjmp (jmpMain, JMP_ENTRY);
                 break;
               }
             else
