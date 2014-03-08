@@ -1546,7 +1546,11 @@ typedef enum _fault_subtype _fault_subtype;
 
 
 void fault_gen(int f);  // depreciate when ready
-void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, char *faultMsg); ///< fault handler
+void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, char *faultMsg) ///< fault handler
+#ifdef __GNUC__
+  __attribute__ ((noreturn))
+#endif
+;
 void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg);
 void doG7Faults();
 bool bG7Pending();
@@ -2156,7 +2160,7 @@ typedef struct {
     bool instr_fetch;     // our usage of this may match PI-AP
     
     /* word 2, continued */
-    uint delta;     // 6 bits at 2[30..35]; addr increment for repeats
+    word6 delta;     // 6 bits at 2[30..35]; addr increment for repeats
     
     /* word 5, continued */
     bool rpts;        // just executed a repeat instr;  bit 12 in word one of the CU history register
@@ -2984,6 +2988,7 @@ void clearFaultCycle (void);
 
 void cu_safe_store(void);
 void cu_safe_restore(void);
+void tidy_cu (void);
 t_stat executeInstruction(DCDstruct *ci);
 t_stat prepareComputedAddress(DCDstruct *ci);   // new
 

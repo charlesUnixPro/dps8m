@@ -641,9 +641,12 @@ R_MOD:;
             return SCPE_OK;
         }
         
-        TPR.CA += Cr;
-        TPR.CA &= MASK18;   // keep to 18-bits
-        
+        if (! cu . rpt)
+        {
+            TPR.CA += Cr;
+            TPR.CA &= MASK18;   // keep to 18-bits
+        }
+
         sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR.CA);
     
     R_MOD1:;
@@ -682,9 +685,12 @@ R_MOD:;
             
             sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Cr=%06o TPR.CA(Before)=%06o\n", Cr, TPR.CA);
             
-            TPR.CA += Cr;
-            TPR.CA &= MASK18;
-            
+            if (! cu . rpt)
+            {
+                TPR.CA += Cr;
+                TPR.CA &= MASK18;
+            }
+
             sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: TPR.CA(After)=%06o\n", TPR.CA);
         }
     

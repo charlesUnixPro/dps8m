@@ -149,7 +149,24 @@ void cu_safe_store(void)
     scu2words(scu_data);
 // XXX Lose this
     private_safe_store . saveCPUCycle = cpu . cycle;
+
+    tidy_cu ();
+
 }
+
+void tidy_cu (void)
+  {
+// The only places this is called is in fault and interrupt processing;
+// once the CU is saved, it needs to be set to a usable state. Refactoring
+// that code here so that there is only a single copy to maintain.
+
+    cu . delta = 0;
+    cu . rpts = false;
+    cu . repeat_first = false;
+    cu . rpt = false;
+    cu . xde = false;
+    cu . xdo = false;
+  }
 
 static void words2scu (word36 * words)
 {
@@ -416,183 +433,6 @@ t_stat displayTheMatrix (int32 arg, char * buf)
     return SCPE_OK;
 }
 
-#if OLD_WAY
-t_stat executeInstruction(DCDstruct *ci)
-{
-    const word36 IWB  = ci->IWB;          ///< instruction working buffer
-    const opCode *iwb = ci->iwb;          ///< opCode *
-    const int32  opcode = ci->opcode;     ///< opcode
-    const bool   opcodeX = ci->opcodeX;   ///< opcode extension
-    const word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
-    const bool   a = ci->a;               ///< bit-29 - addressing via pointer register
-    const bool   i = ci->i;               ///< interrupt inhibit bit.
-    const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
-    
-    addToTheMatrix (opcode, opcodeX, a, tag);
-
-    TPR.CA = ci->address;                 // address from opcode
-    //ry = ci->address;                     ///< 18-bit address field from instruction
-    rY = ci->address;
-    
-    ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
-    
-    if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
-    {
-        //if (processorAddressingMode == ABSOLUTE_MODE)
-        if (get_addr_mode() == ABSOLUTE_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
-        }
-        //if (processorAddressingMode == APPEND_MODE)
-        if (get_addr_mode() == APPEND_mode)
-        {
-            char * where = lookupAddress (PPR.PSR, PPR.IC);
-            if (where)
-              sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, PPR.IC, ans);
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
-        }
-        if (get_addr_mode() == BAR_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
-        }
-    }
-    
-    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
-    if ((iwb->flags & PRIV_INS) && !is_priv_mode())
-        doFault(ci, illproc_fault, 0, "Attempted execution of privileged instruction.");
-    
-    // check for illegal addressing mode(s) ...
-    
-    // No CI/SC/SCR allowed
-    if (iwb->mods == NO_CSS)
-    {
-        if (_nocss[tag])
-            doFault(ci, illproc_fault, 0, "Illegal CI/SC/SCR modification");
-    }
-    // No DU/DL/CI/SC/SCR allowed
-    else if (iwb->mods == NO_DDCSS)
-    {
-        if (_noddcss[tag])
-            doFault(ci, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
-    }
-    // No DL/CI/SC/SCR allowed
-    else if (iwb->mods == NO_DLCSS)
-    {
-        if (_nodlcss[tag])
-            doFault(ci, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
-    }
-    // No DU/DL allowed
-    else if (iwb->mods == NO_DUDL)
-    {
-        if (_nodudl[tag])
-            doFault(ci, illproc_fault, 0, "Illegal DU/DL modification");
-    }
-    
-    if (iwb->ndes == 0)
-    {
-        if (a && !(iwb->flags & IGN_B29))   // a should now always be correct so B29 tst may not be necesary....
-        {
-            //doAddrModPtrReg(ci);
-            doPtrReg(ci);
-            
-            // invoking bit-29 puts us into append mode ... usually
-            //processorAddressingMode = APPEND_MODE;
-            // XXX [CAC] I disagree. See AL39, pg 311.
-            
-            // HWR I agree with CAC that this should not set the processor into APPEND mode, but it breaks TestFXE just now. Fix TestFXE
-#if NOT_NEEDED
-//            if (switches . auto_append_disable == 0)
-//                 set_addr_mode(APPEND_mode);
-#endif
-        }
-// XXX Experimental code
-        if (! switches . append_after)
-        {
-            if (a && (iwb->flags & TRANSFER_INS))
-            {
-                set_addr_mode(APPEND_mode);
-            }
-        }
-        
-        // if instructions need an operand (CY) to operate, read it now. Else defer AM calcs until instruction execution
-        // do any address modifications (and fetch operand if necessary)
-        
-        /*
-         * TODO: make read/write all operands automagic based on instruction flags. If READ_YPAIR then read in YPAIR prior to instruction. If STORE_YPAIR then store automatically after instruction exec ala STORE_OPERAND, etc.....
-         
-         */
-        
-#ifdef USE_CONTINUATIONS
-//            eCAFoper op = prepareCA;
-//            if (iwb->flags & READ_OPERAND)
-//                op = readCY;
-//            else if (iwb->flags & STORE_OPERAND)
-//                op = writeCY;
-//            else if (iwb->flags & READ_YPAIR)
-//                op = readCYpair;
-//            else if (iwb->flags & STORE_YPAIR)
-//                op = writeCYpair;
-
-        if (cu . rpt)
-            doPreliminaryComputedAddressFormationRpt(ci);
-        else
-            doPreliminaryComputedAddressFormation(ci);  //, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
-#else
-        if (iwb->flags & (READ_OPERAND | PREPARE_CA))
-            doComputedAddressFormation(ci, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
-
-        // ToDo: Read72 is also used to read in 72-bits, but not into Ypair! Fix this
-        if (iwb->flags & READ_YPAIR)
-            Read2(ci, TPR.CA, &Ypair[0], &Ypair[1], DataRead, rTAG);
-        //finalAddress = (word24)CY; // why was this here???
-        finalAddress = TPR.CA;  // ??? iff ABS mode
-#endif
-        
-    }
-    // XXX this may be too simplistic ....
-  
-    //t_stat ret = opcodeX ? DoEISInstruction(ci) : DoBasicInstruction(ci);
-    t_stat ret = doInstruction(ci);
-    
-    
-    if (switches . append_after)
-    {
-        if (iwb->ndes == 0 && a && (iwb->flags & TRANSFER_INS))
-        {
-          set_addr_mode(APPEND_mode);
-        }
-    }
-
-#ifdef USE_CONTINUATIONS
-    if (WRITEOP(ci) || RMWOP(ci))
-        writeOperands(ci);
-#endif
-    
-    cpuCycles += 1; // bump cycle counter
-    
-    if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
-    {
-        sim_debug(DBG_REGDUMPAQI, &cpu_dev, "A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(rIR));
-        
-        sim_debug(DBG_REGDUMPFLT, &cpu_dev, "E=%03o A=%012llo Q=%012llo %.10Lg\n", rE, rA, rQ, EAQToIEEElongdouble());
-        
-        sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\n", rX[0], rX[1], rX[2], rX[3]);
-        sim_debug(DBG_REGDUMPIDX, &cpu_dev, "X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\n", rX[4], rX[5], rX[6], rX[7]);
-        for(int n = 0 ; n < 8 ; n++)
-        {
-            sim_debug(DBG_REGDUMPPR, &cpu_dev, "PR[%d]/%s: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\n",
-                      n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
-        }
-        for(int n = 0 ; n < 8 ; n++)
-            sim_debug(DBG_REGDUMPADR, &cpu_dev, "AR[%d]: WORDNO=%06o CHAR:%o BITNO:%02o\n",
-                      n, AR[n].WORDNO, GET_AR_CHAR (n) /* AR[n].CHAR */, GET_AR_BITNO (n) /* AR[n].ABITNO */);
-        sim_debug(DBG_REGDUMPPPR, &cpu_dev, "PRR:%o PSR:%05o P:%o IC:%06o\n", PPR.PRR, PPR.PSR, PPR.P, PPR.IC);
-        sim_debug(DBG_REGDUMPDSBR, &cpu_dev, "ADDR:%08o BND:%05o U:%o STACK:%04o\n", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
-    }
-    
-    return ret;
-}
-#endif
 
 /*
  * Setup TPR registers prior to instruction execution ...
@@ -729,9 +569,17 @@ t_stat executeInstruction(DCDstruct *ci)
     
     addToTheMatrix (opcode, opcodeX, a, tag);
     
-    TPR.CA = address;
-    rY = TPR.CA;
-    
+    // If we are doing a RPT instruction, all of the CA setup has been done.
+    if (cu .rpt)
+      {
+        rY = TPR.CA;
+      }
+    else
+      {
+        TPR.CA = address;
+        rY = TPR.CA;
+      }
+
     if (!switches . append_after)
     {
         if (info->ndes == 0 && a && (info->flags & TRANSFER_INS))
@@ -767,17 +615,6 @@ t_stat executeInstruction(DCDstruct *ci)
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
     }
-
-//    if (info->ndes > 0)
-//        for(int n = 0 ; n < info->ndes; n += 1)
-//            Read(ci, PPR.IC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
-//    else
-//    {
-//        if (ci->a)   // if A bit set set-up TPR stuff ...
-//            doPtrReg(ci);
-//        
-//        doComputedAddressFormation(ci);
-//    }
 
     setupForOperandRead (ci);
 
@@ -4431,6 +4268,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rX[0] = i->address;    // Entire 18 bits
               cu . rpt = 0;
               cu . repeat_first = 1;
+//sim_printf ("repeat first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
               // Setting cu.rpt will cause the instruction to be executed
               // until the termination is met.
               // See cpu.c for the rest of the handling.

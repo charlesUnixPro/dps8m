@@ -617,6 +617,8 @@ t_stat cpu_reset (DEVICE *dptr)
 
     initializeTheMatrix();
 
+    tidy_cu ();
+
     return SCPE_OK;
 }
 
@@ -1175,6 +1177,8 @@ t_stat sim_instr (void)
 
                 cpu . interrupt_flag = sample_interrupts ();
                 if (cpu . interrupt_flag)
+                  // XXX if interrupt inhbit
+                  // XXX then advance to the next instruction
                   cpu . cycle = INTERRUPT_cycle;
                 break;
 
@@ -1256,6 +1260,7 @@ t_stat sim_instr (void)
                   }
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
+                cpu . cycle = EXEC_cycle; // XXX XXX XXX cu_safe_restore should be catching this?
                 break;
 
             case FETCH_cycle:
@@ -1273,11 +1278,6 @@ t_stat sim_instr (void)
                     break;
                   }
 
-// XXX XXX XXX Make sure the rpt/repeat_first are cleared on interrupt
-// XXX XXX XXX or fault transfer
-// XXX XXX XXX Fix the int/fault safe store path to automagically set
-// XXX XXX XXX temporary_abs and clear rpt flags
-
                 if (! cu . rpt)
                   {
                     processorCycle = INSTRUCTION_FETCH;
@@ -1285,6 +1285,8 @@ t_stat sim_instr (void)
                     // fetch next instruction into current instruction struct
                     ci = fetchInstruction(PPR.IC, currentInstruction);
                   }
+
+// XXX Consider not checking for interrupts if cu.rpt
 
                 // XXX The conditions are more rigorous: see AL39, pg 327
                 if (PPR.IC % 2 == 0 && // Even address
@@ -1299,9 +1301,11 @@ t_stat sim_instr (void)
                     cpu . g7_flag = false;
                   }
 
-                static int Xn;
+                static int Xn; // XXX does this need to be kept over faults?
                 if (cu . repeat_first)
                   {
+//sim_printf ("cpu repeat_first\n");
+                    cu . repeat_first = false;
                     // check for illegal modifiers:
                     //    only R & RI are allowed 
                     //    only X1..X7
@@ -1330,6 +1334,7 @@ t_stat sim_instr (void)
                           // generate fault. Only Xn allowed
                           doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
                       }
+// XXX Does this need to also check for NO_RPL?
                     // repeat allowed for this instruction?
                     if (ci->info->flags & NO_RPT)
                       doFault(ci, FAULT_IPR, 0, "no rpt allowed for instruction");
@@ -1338,6 +1343,7 @@ t_stat sim_instr (void)
                     Xn = X(Td);  // Get Xn of next instruction
                     TPR.CA = (rX[Xn] + ci->address) & AMASK;
                     rX[Xn] = TPR.CA;
+//sim_printf ("cpu repeat_first Xn %o X[Xn] %06o\n", Xn, rX [Xn]);
 
                     cu . rpt = 1;
                   }
@@ -1368,6 +1374,7 @@ t_stat sim_instr (void)
 
                 if (cu . rpt)
                   {
+//sim_printf ("cu.rpt\n");
                     // Delay this to here to so that CAF can see it.
                     cu . repeat_first = 0;
                     bool exit = false;
@@ -1378,6 +1385,7 @@ t_stat sim_instr (void)
                     uint x = bitfieldExtract(rX[0], 10, 8);
                     x -= 1;
                     rX[0] = bitfieldInsert(rX[0], x, 10, 8);
+//sim_printf ("x %03o rX[0] %06o\n", x, rX[0]);
                     
                     // Modify C(Xn) as described below
                     //  The computed address, y, of the operand (in the case 
@@ -1386,51 +1394,59 @@ t_stat sim_instr (void)
                     
                     TPR.CA = (rX[Xn] + cu . delta) & AMASK;
                     rX[Xn] = TPR.CA;
+                    //rX[Xn] = (rX[Xn] + cu . delta) & AMASK;
+//sim_printf ("Xn %o rX[Xn] %06o\n", Xn, rX[Xn]);
 
                     //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON and terminate
                     if (x == 0)
                       {
+//sim_printf ("tally runout\n");
                         SETF(rIR, I_TALLY);
                         exit = true;
-                        // Note that the code in bootload_tape.alm expects that
-                        // the tally runout *not* be set when both the
-                        // termination condition is met and bits 0..7 of
-                        // reg X[0] hits zero.
                       } 
+
                     //  d. If a terminate condition has been met, then set 
                     //     the tally runout indicator OFF and terminate
+
                     if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
                       {
+//sim_printf ("is zero terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       }
                     else if (!TSTF(rIR, I_ZERO) && (rX[0] & 040))
                       {
+//sim_printf ("is not zero terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       } 
                     else if (TSTF(rIR, I_NEG) && (rX[0] & 020))
                       {
+//sim_printf ("is neg terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       } 
                     else if (!TSTF(rIR, I_NEG) && (rX[0] & 010))
                       {
+//sim_printf ("is not neg terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       } 
                     else if (TSTF(rIR, I_CARRY) && (rX[0] & 04))
                       {
+//sim_printf ("is carry terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       } 
                     else if (!TSTF(rIR, I_CARRY) && (rX[0] & 02))
                       {
+//sim_printf ("is not carry terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       } 
                     else if (TSTF(rIR, I_OFLOW) && (rX[0] & 01))
                       {
+//sim_printf ("is overflow terminate\n");
                         CLRF(rIR, I_TALLY);
                         exit = true;
                       }
@@ -1441,17 +1457,17 @@ t_stat sim_instr (void)
                     if ( ! exit)
                       break;
 
+//sim_printf ("leaving rpt\n");
                     cu . rpt = false;
 
                   } // if (cu . rpt)
-                else // !rpt
-                  {
-                    PPR.IC ++;
-                    if (ci->info->ndes > 0)
-                      PPR.IC += ci->info->ndes;
-                    PPR.IC += xec_side_effect;
-                    xec_side_effect = 0;
-                  }
+
+                PPR.IC ++;
+                if (ci->info->ndes > 0)
+                  PPR.IC += ci->info->ndes;
+                PPR.IC += xec_side_effect;
+                xec_side_effect = 0;
+
                 cpu . cycle = FETCH_cycle;
               }
               break;

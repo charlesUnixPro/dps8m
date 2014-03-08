@@ -419,7 +419,9 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     if (faultNumber & ~037)  // quicker?
     {
         sim_printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
-        return;
+        /* return;*/ /* doFault Never returns */
+        cpu . faultNumber = FAULT_TRB;
+        cpu . subFault = 0; // XXX ???
     }
 
     cpu . faultNumber = faultNumber;
@@ -467,7 +469,8 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         bFaultCycle = true;
         bTroubleFaultCycle = false;
         // safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
-        cu_safe_store ();
+        // this in done in FAULT_cycle
+        // cu_safe_store ();
       }
     
     cpu . cycle = FAULT_cycle;
