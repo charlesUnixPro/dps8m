@@ -4836,6 +4836,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             
         case 0616:  ///< dis
 
+#if 0
 // XXX Insight on DIS with interrupt inhibit set; wait for the interrupt;
 // when it occurs, if inhibit set, continue on; otherwise do the interrupt
 // handling thing. Getting this rihgt with breaking the Fake DIS cyvle used
@@ -4871,6 +4872,45 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
               }
             else
               return STOP_DIS;
+#endif
+// New dis logic.
+// No DIS cycle.
+// The DIS instruction hangs until an interrupt sensed. When it returns, 
+// the interrupt will be processed normally; The difference between DIS
+// with or without interrupt inhibit set is irrelevant. It only controls
+// the checking of interrupts prior to instruction execution.
+
+            if (! switches . dis_enable)
+              {
+                //stop_reason = STOP_DIS;
+                //longjmp (jmpMain, JMP_STOP);
+                return STOP_DIS;
+              }
+
+            if (events . int_pending == 0 &&
+                sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
+                                     // break this logic
+              {
+                sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
+                sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+                stop_reason = STOP_DIS;
+                longjmp (jmpMain, JMP_STOP);
+              }
+
+            sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
+            sim_printf ("entered DIS_cycle\n");
+
+            while (1)
+              {
+                t_stat rc = simh_hooks ();
+                if (rc)
+                  return rc;
+                if (sample_interrupts ())
+                  break;
+              }
+            sim_printf ("left DIS_cycle\n");
+            break;
+
  
             
         default:

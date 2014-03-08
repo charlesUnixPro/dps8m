@@ -1997,8 +1997,7 @@ typedef enum {
     INTERRUPT_cycle,
     INTERRUPT_EXEC_cycle,
     INTERRUPT_EXEC2_cycle,
-    FETCH_cycle = INSTRUCTION_FETCH,
-    DIS_cycle // A pseudo cycle for handling the DIS instruction
+    FETCH_cycle = INSTRUCTION_FETCH
     // CA FETCH OPSTORE, DIVIDE_EXEC
 } cycles_t;
 
@@ -2959,6 +2958,10 @@ void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
 void do_camp (word36 Y);
 void do_cams (word36 Y);
+
+/* dps8_cpu.c */
+
+t_stat simh_hooks (void);
 
 /* dps8_decimal.c */
 

@@ -1029,7 +1029,7 @@ bool sample_interrupts (void)
     return events . int_pending;
   }
 
-static int simh_hooks (void)
+t_stat simh_hooks (void)
   {
     int reason = 0;
     // check clock queue 
@@ -1058,10 +1058,6 @@ t_stat doIEFPLoop();
 
 //
 // Okay, lets treat this as a state machine
-//
-//  DIS_cycle
-//     spining wheels waiting for interrupt
-//     if interruot, set INTERRUPT_cycle
 //
 //  INTERRUPT_cycle
 //     clear interrupt, load interrupt pair into instruction buffer
@@ -1168,20 +1164,6 @@ t_stat sim_instr (void)
 
         switch (cpu . cycle)
           {
-            case DIS_cycle:
-                // spining wheels waiting for interrupt
-                // if interrupt, set INTERRUPT_cycle
-
-                // Are g7 faults addressed in dis? XXX
-                // e.g. time run out?
-
-                cpu . interrupt_flag = sample_interrupts ();
-                if (cpu . interrupt_flag)
-                  // XXX if interrupt inhbit
-                  // XXX then advance to the next instruction
-                  cpu . cycle = INTERRUPT_cycle;
-                break;
-
             case INTERRUPT_cycle:
                 // In the INTERRUPT CYCLE, the processor safe-stores
                 // the Control Unit Data (see Section 3) into 

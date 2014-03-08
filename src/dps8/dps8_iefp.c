@@ -33,6 +33,7 @@ typedef enum eIEFPState IEFPState;
 
 IEFPState iefpState = eIEFPUnknown;
 
+#ifndef QUIET_UNUSED
 PRIVATE
 t_stat IEFPInstructionFetch()
 {
@@ -47,7 +48,9 @@ t_stat IEFPInstructionFetch()
     
     return SCPE_OK;
 }
+#endif
 
+#ifndef QUIET_UNUSED
 PRIVATE
 IEFPState NextState()
 {
@@ -69,7 +72,9 @@ IEFPState NextState()
     }
   
 }
+#endif
 
+#ifndef QUIET_UNUSED
 PRIVATE
 t_stat IEFPExecuteInstruction()
 {
@@ -125,7 +130,9 @@ jmpNext:;
     
     return SCPE_OK;
 }
+#endif
 
+#ifndef QUIET_UNUSED
 PRIVATE
 t_stat doIEFP()
 {
@@ -152,7 +159,9 @@ t_stat doIEFP()
     }
     
 }
+#endif
 
+#ifndef QUIET_UNUSED
 /*
  * Herewith is the main loop ...
  */
@@ -164,7 +173,7 @@ t_stat doIEFPLoop()
     
     return lastResult;
 }
-
+#endif
 
 
 // new Read/Write stuff ...
