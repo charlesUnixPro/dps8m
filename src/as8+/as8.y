@@ -157,6 +157,7 @@ instr
     | OPCODERPT     expr ',' expr ','   {bTermCond = true;} rptlst  { doRPT($1, $2->value, $4->value, $7); }
     | OPCODERPT          ',' expr                                   { doRPT($1, 0, $3->value, NULL);       }
     | OPCODERPT     expr          ','   {bTermCond = true;} rptlst  { doRPT($1, 0, $2->value, $5);         }
+    | OPCODERPT     expr ',' expr                                   { doRPT($1, $2->value, $4->value, NULL); }
 
     | OPCODESTC                 operand ',' {setOmode();} lexpr     { doSTC($1, $2->value, $5->value, -1);        }
     | OPCODESTC     ptr_reg '|' operand ',' {setOmode();} lexpr     { doSTC($1, $4->value, $7->value, (int)$2 & 07);   }
