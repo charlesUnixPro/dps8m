@@ -4555,11 +4555,12 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             }
 #else
             {
-              // Which port is the sought SCU connected to?
-              int cpu_port_num = query_scpage_map (TPR.CA);
-              // What is the IDNUM of the SCU connected to that port?
-              int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME0, TPR.CA, & rA, & rQ);
+              // For the rscr instruction, the first 2 or 3 bits of the addr
+              // field of the instruction are used to specify which SCU.
+              // 2 bits for the DPS8M.
+              int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+
+              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, TPR.CA, & rA, & rQ);
               if (rc == CONT_FAULT)
                 doFault(i, store_fault, 0, "(rscr)");
               if (rc)
@@ -4755,7 +4756,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
                 t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, rA, rQ);
                 if (rc == CONT_FAULT)
-                    doFault(i, store_fault, 0, "(rscr)");
+                    doFault(i, store_fault, 0, "(smcm)");
                 if (rc)
                     return rc;
             }
@@ -4766,11 +4767,12 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
 
         case 0057:  ///< sscr
             {
-              // Which port is the sought SCU connected to?
-              int cpu_port_num = query_scpage_map (TPR.CA);
-              // What is the IDNUM of the SCU connected to that port?
-              int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
-              t_stat rc = scu_sscr (scu_unit_num, ASSUME0, TPR.CA, rA, rQ);
+              // For the sscr instruction, the first 2 or 3 bits of the addr
+              // field of the instruction are used to specify which SCU.
+              // 2 bits for the DPS8M.
+              int scu_unit_num = getbits36 (TPR.CA, 0, 2);
+
+              t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA, rA, rQ);
               if (rc == CONT_FAULT)
                 doFault(i, store_fault, 0, "(sscr)");
               if (rc)

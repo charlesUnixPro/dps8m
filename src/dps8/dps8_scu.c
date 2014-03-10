@@ -1056,7 +1056,6 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 rega,
                    __func__, scu_unit_num);
         return STOP_BUG;
       }
-    // scu_t * scup = scu + scu_unit_num;
 
     uint function = (addr >> 3) & 07777;
 
@@ -1101,7 +1100,9 @@ sim_printf ("sscr %o\n", function);
          
                   }
               }
-            up -> lower_store_size = (rega >> 24) & 07;
+            // [CAC] I can't believe that the CPU is allowed
+            // to override the configured store size
+            // up -> lower_store_size = (rega >> 24) & 07;
             up -> cyclic = (regq >> 8) & 0177;
             up -> nea = (rega >> 6) &  0377;
             up -> port_enable [0] = (rega >> 3) & 01;
@@ -1126,17 +1127,6 @@ sim_printf ("sscr %o\n", function);
           {
             uint port_num = (function >> 3) & 07;
             sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to %012llo,%012llo\n", port_num, rega, regq);
-            uint rcv_port;
-            // Determine which SCU port the indicated CPU is attached to
-            for (rcv_port = 0; rcv_port < N_SCU_PORTS; rcv_port ++)
-              if (cables_from_cpus [cpu_unit_num] [rcv_port] . cpu_unit_num == cpu_unit_num)
-                break;
-            if (rcv_port >= N_SCU_PORTS)
-              {
-                sim_debug (DBG_WARN, &scu_dev, "%s: rcv_port (%d) >= N_SCU_PORTS\n", __func__, rcv_port);
-                //doFault (NULL, storage_fault, 0, "sscr: no masks assigned to cpu on port");
-                //return CONT_FAULT;
-              }
 
             // Find mask reg assigned to specified port
             uint mask_num = -1;
@@ -1157,15 +1147,14 @@ sim_printf ("sscr %o\n", function);
             if (! n_masks_found)
               {
 // According to bootload_tape_label.alm, this condition is aok
-                sim_debug (DBG_WARN, & scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, rcv_port);
-                //doFault (NULL, storage_fault, 0, "sscr: no masks assigned to cpu obn port");
-                //return CONT_FAULT;
+                sim_debug (DBG_WARN, & scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, port_num);
                 return SCPE_OK;
               }
+
             if (n_masks_found > 1)
               {
                 // Not legal for Multics
-                sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, rcv_port);
+                sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, port_num);
                 return STOP_WARN;
               }
     
@@ -1210,9 +1199,6 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
                    __func__, scu_unit_num);
         return STOP_BUG;
       }
-
-    //scu_t * scup = scu + scu_unit_num;
-
 
     uint function = (addr >> 3) & 07777;
 
@@ -2177,6 +2163,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
       {
         // Not legal for Multics
         sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, scu_port_num);
+        // We will use the last one found.
       }
 
     // A reg:
