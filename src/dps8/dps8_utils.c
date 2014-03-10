@@ -575,7 +575,7 @@ word36 compl36(word36 op1, word18 *flags)
     
     word36 res = -op1 & DMASK;
     
-    const bool ovr = res == MAXNEG;
+    const bool ovr = op1 == MAXNEG;
     if (ovr)
         SETF(*flags, I_OFLOW);
         // should we continue operation if OVR fault?
