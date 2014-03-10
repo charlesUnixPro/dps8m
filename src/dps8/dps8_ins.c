@@ -72,30 +72,6 @@ static word18 getCrAR(word4 reg)
 
 static word36 scu_data[8];    // For SCU instruction
 
-// XXX This is to simplify processing of safe_restore; but
-// XXX shouldn't exist. The real h/w does this with out 
-// XXX this information.
-// XXX In the Control Unit data are:
-// XXX  FIF: Fault occured during instruction fetch
-// XXX  RFI: Restart this instruction
-// XXX  ITS: Execute ITS indirect cycle
-// XXX  ITP: Execute ITP indirect cycle
-// XXX  XDE: Execute instruction for Execute Double odd pair
-// XXX  XDO: Execute instruction for Execute Double even pair
-// XXX  RPT: Execute a Repeat instruction
-// XXX  RD:  Execute a  Repeat Double (rpd) instruction
-// XXX  RL:  Execute a Repeat Link (rpl) instruction
-// XXX  MIF: Mid-instruction interrupt indicator
-// XXX  F/I: Fault/interrupt flag
-// XXX            0 = interrupt
-// XXX            1 = fault
-// XXX  OOSB: For access violation fault - out of segment bounds
-
-static struct private_safe_store
-  {
-    cycles_t saveCPUCycle;
-  } private_safe_store;
-
 static void scu2words(word36 *words)
 {
     // BUG:  We don't track much of the data that should be tracked
@@ -149,8 +125,6 @@ void cu_safe_store(void)
     // in FAULT mode can save the state as it existed at the time of the fault rather than
     // as it exists at the time the scu instruction is executed.
     scu2words(scu_data);
-// XXX Lose this
-    private_safe_store . saveCPUCycle = cpu . cycle;
 
     tidy_cu ();
 
@@ -211,10 +185,6 @@ static void words2scu (word36 * words)
     //words[6] = ins;  // I think HWR
     
     cu.IRODD = words [7];
-// XXX Lose this
-    cpu . cycle = private_safe_store . saveCPUCycle;
-    // This bit of skullduggery cancels TEMPORARY_ABSOLUTE_mode
-    //set_addr_mode (get_addr_mode ());
 }
 
 void cu_safe_restore (void)
