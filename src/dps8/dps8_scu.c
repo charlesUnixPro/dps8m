@@ -1133,9 +1133,9 @@ sim_printf ("sscr %o\n", function);
                 break;
             if (rcv_port >= N_SCU_PORTS)
               {
-                sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, rcv_port);
-                fault_gen (FAULT_STR);
-                return CONT_FAULT;
+                sim_debug (DBG_WARN, &scu_dev, "%s: rcv_port (%d) >= N_SCU_PORTS\n", __func__, rcv_port);
+                //doFault (NULL, storage_fault, 0, "sscr: no masks assigned to cpu on port");
+                //return CONT_FAULT;
               }
 
             // Find mask reg assigned to specified port
@@ -1158,7 +1158,7 @@ sim_printf ("sscr %o\n", function);
               {
 // According to bootload_tape_label.alm, this condition is aok
                 sim_debug (DBG_WARN, & scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, rcv_port);
-                //fault_gen (FAULT_STR); // XXX we are the SCU, we can't do fault gen.
+                //doFault (NULL, storage_fault, 0, "sscr: no masks assigned to cpu obn port");
                 //return CONT_FAULT;
                 return SCPE_OK;
               }

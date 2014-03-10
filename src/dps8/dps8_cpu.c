@@ -1242,15 +1242,18 @@ t_stat sim_instr (void)
                   }
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
-                cpu . cycle = EXEC_cycle; // XXX XXX XXX cu_safe_restore should be catching this?
+// The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
+// we can safely assume that is the state that should be restored.
+                cpu . cycle = FETCH_cycle;
                 break;
 
             case FETCH_cycle:
 
                 if (cpu . interrupt_flag)
                   {
-// XXX this is wrong; the safe_save will save this value; safe_restore
-// will not be able to recover the correct state
+// This is the only place cycle is set to INTERRUPT_cycle; therefore
+// return from interrupt can safely assume the it should set the cycle
+// to FETCH_cycle.
                     cpu . cycle = INTERRUPT_cycle;
                     break;
                   }
@@ -1298,7 +1301,7 @@ t_stat sim_instr (void)
                           break;
                         default:
                           // generate fault. Only R & RI allowed
-                          doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
+                          doFault(ci, illproc_fault, 0, "ill addr mod from RPT");
                       }
                     word6 Td = GET_TD(ci->tag);
                     switch (Td)
@@ -1314,12 +1317,12 @@ t_stat sim_instr (void)
                           break;
                         default:
                           // generate fault. Only Xn allowed
-                          doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
+                          doFault(ci, illproc_fault, 0, "ill addr mod from RPT");
                       }
 // XXX Does this need to also check for NO_RPL?
                     // repeat allowed for this instruction?
                     if (ci->info->flags & NO_RPT)
-                      doFault(ci, FAULT_IPR, 0, "no rpt allowed for instruction");
+                      doFault(ci, illproc_fault, 0, "no rpt allowed for instruction");
                     // For the first execution of the repeated instruction: 
                     // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
                     Xn = X(Td);  // Get Xn of next instruction
@@ -1478,7 +1481,7 @@ t_stat sim_instr (void)
 
                 cu_safe_store ();
 
-#if 1
+#if 0
                 if (cpu . interrupt_flag)
                   {
                     cpu . cycle = INTERRUPT_cycle;
@@ -1534,7 +1537,16 @@ t_stat sim_instr (void)
 // The normal start state of the CPU is a trouble fault cascade until the
 // iom boot generates in interrupt; therefore, despite the fact that AL39
 // doesn't mention it, interrupts must be sampled during the fault cycle.
+//
+// The above is not correct. During the 20184 boot, the trouble fault 
+// cascade runs until the boot record installs a fault pair into the
+// trouble fault pair location. The loaded pair is 'SCU;DIS'. The DIS
+// should hang until an interrupt is signalled, and then return. The
+// fault pair should then be complete, and return to the original faulted
+// instruction stream at location 0. The interrupt should be sampled then,
+// as part of normal processing.
 
+#if 0
                 if (ci -> i == 0) // Not inhibited
                   {
                     cpu . interrupt_flag = sample_interrupts ();
@@ -1545,6 +1557,7 @@ t_stat sim_instr (void)
                     cpu . interrupt_flag = false;
                     cpu . g7_flag = false;
                   }
+#endif
 
                 t_stat ret = executeInstruction (ci);
 
@@ -1963,77 +1976,56 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 // MM stuff ...
 
-    /*
-     * is_priv_mode()
-     *
-     * Report whether or or not the CPU is in privileged mode.
-     * True if in absolute mode or if priv bit is on in segment TPR.TSR
-     * The processor executes instructions in privileged mode when forming addresses in absolute mode
-     * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
-     * and the execution ring is equal to zero.
-     *
-     * PPR.P A flag controlling execution of privileged instructions.
-     *
-     * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
-     */
+/*
+ * is_priv_mode()
+ *
+ * Report whether or or not the CPU is in privileged mode.
+ * True if in absolute mode or if priv bit is on in segment TPR.TSR
+ * The processor executes instructions in privileged mode when forming addresses in absolute mode
+ * or when forming addresses in append mode and the segment descriptor word (SDW) for the segment in execution specifies a privileged procedure
+ * and the execution ring is equal to zero.
+ *
+ * PPR.P A flag controlling execution of privileged instructions.
+ *
+ * Its value is 1 (permitting execution of privileged instructions) if PPR.PRR is 0 and the privileged bit in the segment descriptor word (SDW.P) for the procedure is 1; otherwise, its value is 0.
+ */
+ 
+int is_priv_mode(void)
+{
+    // TODO: fix this when time permits
     
-    int is_priv_mode(void)
+    // something has already set .P
+    if (PPR.P)
+        return 1;
+    
+    switch (get_addr_mode())
     {
-        // TODO: fix this when time permits
-        
-        // something has already set .P
-        if (PPR.P)
+        case ABSOLUTE_mode:
+            PPR.P = 1;
             return 1;
         
-        switch (get_addr_mode())
-        {
-            case ABSOLUTE_mode:
+        case APPEND_mode:
+            // XXX This is probably too simplistic, but it's a start
+            
+            if (switches . super_user)
+                return 1;
+
+            if (SDW->P && PPR.PRR == 0)
+            {
                 PPR.P = 1;
                 return 1;
-            
-            case APPEND_mode:
-                // XXX This is probably too simplistic, but it's a start
-                
-                if (switches . super_user)
-                    return 1;
-
-                if (SDW->P && PPR.PRR == 0)
-                {
-                    PPR.P = 1;
-                    return 1;
-                }
-                // [CAC] This generates a lot of traffic because is_priv_mode
-                // is frequntly called to get the state, and not just to trap
-                // priviledge violations.
-                //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
-                break;
-            default:
-                break;
-        }
-        
-        //if (!TSTF(rIR, I_ABS))       //IR.abs_mode)
-        //    return 1;
-        
-//        SDW_t *SDWp = get_sdw();    // Get SDW for segment TPR.TSR
-//        if (SDWp == NULL) {
-//            if (cpu.apu_state.fhld) {
-//                // TODO: Do we need to check cu.word1flags.oosb and other flags to
-//                // know what kind of fault to gen?
-//                fault_gen(acc_viol_fault);
-//                cpu.apu_state.fhld = 0;
-//            }
-//            sim_debug (DGB_WARN, & cpu_dev, "APU is-priv-mode: Segment does not exist?!?\n");
-//            cancel_run(STOP_BUG);
-//            return 0;   // arbitrary
-//        }
-//        if (SDWp->priv)
-//            return 1;
-//        if(opt_debug>0)
-//            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Priv check fails for segment %#o.\n", TPR.TSR);
-//        return 0;
-        
-        return 0;
+            }
+            // [CAC] This generates a lot of traffic because is_priv_mode
+            // is frequntly called to get the state, and not just to trap
+            // priviledge violations.
+            //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
+            break;
+        default:
+            break;
     }
+    
+    return 0;
+}
 
 
 static bool secret_addressing_mode;

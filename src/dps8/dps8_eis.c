@@ -5421,9 +5421,8 @@ void csl(DCDstruct *ins)
         SETF(rIR, I_TRUNC);
         if (e->T)
         {
-            // TODO: enable when things are working
-            // doFault(ins, overflow_fault, 0, "csl truncation fault");
-            sim_printf("fault: 0 0 'csl truncation fault'\n");
+            doFault(ins, overflow_fault, 0, "csl truncation fault");
+            //sim_printf("fault: 0 0 'csl truncation fault'\n");
         }
     }
 }
@@ -5600,9 +5599,8 @@ void csr(DCDstruct *ins)
         SETF(rIR, I_TRUNC);
         if (e->T)
         {
-            // TODO enable when things are working
-            //doFault(ins, FAULT_OFL, 0, "csr truncation fault");
-            sim_printf("fault: 0 0 'csr truncation fault'\n");
+            doFault(ins, overflow_fault, 0, "csr truncation fault");
+            //sim_printf("fault: 0 0 'csr truncation fault'\n");
         }
     }
 }
@@ -5733,7 +5731,7 @@ void sztl(DCDstruct *ins)
         if (e->T)
         {
             // XXX enable when things are working
-            doFault(ins, 0, 0, "sztl truncation fault");
+            doFault(ins, overflow_fault, 0, "sztl truncation fault");
         }
     }
 }

@@ -3158,14 +3158,14 @@ void mvn(DCDstruct *ins)
     
     if (e->T && Trunc)
     {
-        doFault(ins, 0, 0,"mvn truncation(overflow) fault");
+        doFault(ins, overflow_fault, 0,"mvn truncation(overflow) fault");
         SETF(rIR, I_OFLOW);
     }
     
     if (Ovr)
     {
         SETF(rIR, I_OFLOW);
-        doFault(ins, 0,0,"mvn overflow fault");
+        doFault(ins, overflow_fault, 0,"mvn overflow fault");
     }
 
 }

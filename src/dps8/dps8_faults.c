@@ -355,7 +355,6 @@ t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
 }
 #endif
 
-static bool bFaultCycle = false;       // when true then in FAULT CYCLE
 static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
 #ifndef QUIET_UNUSED
 static int nFaultNumber = -1;
@@ -366,7 +365,7 @@ static int g7Faults = 0;
 
 void clearFaultCycle (void)
   {
-    bFaultCycle = false;
+    bTroubleFaultCycle = false;
   }
 
 /*
@@ -413,7 +412,7 @@ For now, at least, we must remember a few things:
 
 void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
 {
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), fc %c, dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bFaultCycle ? 'Y' : 'N', bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+    sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037)  // quicker?
@@ -432,7 +431,8 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 //--    nFaultGroup = fault2group[faultNumber];
 //--    nFaultPriority = fault2prio[faultNumber];
     
-    if (bFaultCycle)  // if already in a FAULT CYCLE then signal trouble fault
+    if (cpu . cycle == FAULT_EXEC_cycle ||
+        cpu . cycle == FAULT_EXEC2_cycle)  // if already in a FAULT CYCLE then signal trouble fault
       {
         cpu . faultNumber = FAULT_TRB;
         cpu . subFault = 0; // XXX ???
@@ -466,7 +466,6 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
       }
     else
       {
-        bFaultCycle = true;
         bTroubleFaultCycle = false;
         // safe-store the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction,
         // this in done in FAULT_cycle

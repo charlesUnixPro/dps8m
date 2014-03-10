@@ -12,6 +12,8 @@
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
+// XXX Use this for places where is matters when we have multiple CPUs
+#define ASSUME_CPU0 0
 
 word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
@@ -4085,13 +4087,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                         break;
                     default:
                         // XXX generate fault. Only R & RI allowed
-                        doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
+                        doFault(i, illproc_fault, 0, "ill addr mod from RPT");
                 }
                 
                 int Xn = nxt->tag - 8;          // Get Xn of next instruction
     
                 if (nxt->info->flags & NO_RPT)   // repeat allowed for this instruction?
-                    doFault(i, FAULT_IPR, 0, "no rpt allowed for instruction");
+                    doFault(i, illproc_fault, 0, "no rpt allowed for instruction");
                                 
                 //If C = 1, then C(rpt instruction word)0,17 → C(X0); otherwise, C(X0) unchanged prior to execution.
                 bool c1 = TSTBIT(i->IWB, 25);
@@ -4155,7 +4157,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                             }
                             default:
                                 // XXX generate fault. Only R & RI allowed
-                                doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
+                                doFault(i, illproc_fault, 0, "ill addr mod from RPT");
                         }
                     }
                     else if (nxt->info->flags & READ_YPAIR)
@@ -4177,7 +4179,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                             }
                             default:
                                 // XXX generate fault. Only R & RI allowed
-                                doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
+                                doFault(i, illproc_fault, 0, "ill addr mod from RPT");
                         }
                     }
                     
@@ -4750,8 +4752,8 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 // specify which processor port (i.e., which system 
                 // controller) is used.
                 uint cpu_port_num = (TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
-                t_stat rc = scu_smcm (scu_unit_num, ASSUME0, rA, rQ);
+                int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+                t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, rA, rQ);
                 if (rc == CONT_FAULT)
                     doFault(i, store_fault, 0, "(rscr)");
                 if (rc)
