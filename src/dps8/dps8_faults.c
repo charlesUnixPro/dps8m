@@ -205,6 +205,7 @@ void check_events (void)
     return;
 }
 
+#if 0
 /*
  *  fault_gen()
  *
@@ -288,6 +289,7 @@ void fault_gen(int f)
     if (events.low_group == 0 || group < events.low_group)
         events.low_group = group;   // new highest priority fault group
 }
+#endif
 
 /*
  * fault_check_group
@@ -580,12 +582,6 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 //    if (ret == CONT_TRA)
 //        longjmp(jmpMain, JMP_TRA);
 }
-
-void fault_gen(int f)
-{
-    doFault(NULL, f, 0, "");
-}
-
 
 /*
  * return true if group 7 faules are pending ...
