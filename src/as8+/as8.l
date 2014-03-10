@@ -925,6 +925,14 @@ extern char *srcFile;
 char *LEXp = 0;
 char LEXline[2560];  // current input line
 
+bool bGetFromElsewhere = false; // when true get scanners input lines from elsewhere besides normal file stream.
+
+char *
+getFromElsewhere() // get input lines from elsewhere
+{
+    return NULL;
+}
+
 char *
 LEXCurrentFilename()
 {
@@ -995,7 +1003,10 @@ LEXgetcs(void)
         {
             if (!LEXp || *LEXp == '\0') // end of buffer ?
             {
-                LEXp = fgets(LEXline, sizeof(LEXline), FILEtos.fp);		/* get line from TOS	*/
+                if (bGetFromElsewhere)
+                    LEXp = getFromElsewhere(); // get input lines from elsewhere
+                else
+                    LEXp = fgets(LEXline, sizeof(LEXline), FILEtos.fp);		/* get line from TOS	*/
                 if (LEXp)
                 {
                     yylineno += 1;
@@ -1164,7 +1175,7 @@ LEXgetPush(char *fileToOpen)
     }
     if (isrc == NULL)
     {
-		fprintf(stderr, "WARNING: Unable to open file \"%s\". Sorry!\n", filename);
+		fprintf(stderr, "ERROR: Unable to open file \"%s\". Sorry!\n", filename);
 		exit(5);
 	}
     
