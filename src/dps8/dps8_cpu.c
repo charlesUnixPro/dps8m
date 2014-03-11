@@ -1070,11 +1070,11 @@ t_stat doIEFPLoop();
 //  INTERRUPT_cycle
 //     clear interrupt, load interrupt pair into instruction buffer
 //     set INTERRUPT_EXEC_cycle
-//  INTERUPT_EXEC_cycle
+//  INTERRUPT_EXEC_cycle
 //     execute instruction in instruction buffer
 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 //     else set FETCH_cycle
-//  INTERUPT_EXEC2_cycle
+//  INTERRUPT_EXEC2_cycle
 //     execute odd instruction in instruction buffer
 //     set INTERUPT_EXEC2_cycle 
 //
@@ -1602,18 +1602,13 @@ t_stat sim_instr (void)
                 cu_safe_restore ();
                 cpu . cycle = FETCH_cycle;
                 clearFaultCycle ();
-                // XXX This is not right. The case we are handling
-                // when an instruction faults during execution, the IC
-                // desn't get bumped. It may be that doFault needs to 
-                // return, rather then longjmp. This is a temporary hack
-                // since there all fault conditions where this should not
-                // happen... Also, it doesn't fix the proglem.
 
-                // Also, this doesn't address multiword instructions.
+                // cu_safe_restore should have restored CU.IWB, so
+                // we can determine the instruction length.
+                decodeInstruction (cu . IWB, ci);
+
+                PPR.IC += ci->info->ndes;
                 PPR.IC ++;
-                // ci is not correct at this point.
-                //if (ci->info->ndes > 0)
-                  //PPR.IC += ci->info->ndes;
                 break;
               }
 
