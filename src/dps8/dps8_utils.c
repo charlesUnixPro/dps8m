@@ -577,8 +577,11 @@ word36 compl36(word36 op1, word18 *flags)
     
     const bool ovr = op1 == MAXNEG;
     if (ovr)
+    {
         SETF(*flags, I_OFLOW);
-        // should we continue operation if OVR fault?
+        if (! TSTF (rIR, I_OMASK))
+            doFault(NULL, overflow_fault, 0,"compl36 overflow fault");
+    }
     if (res & SIGN36)
         SETF(*flags, I_NEG);
     else
