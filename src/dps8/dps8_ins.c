@@ -28,7 +28,7 @@ extern modificationContinuation _modCont, *modCont;
 static void
 writeOperands(DCDstruct *i)
 {
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(i->IWB), i->info->mne, i->info->flags);
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
     
     // TPR.CA may be different from instruction spec because of various addr mod operations.
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
@@ -111,9 +111,7 @@ static void scu2words(word36 *words)
     words[5] = setbits36(words[5], 24, 1, cu.xdo);
     words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
     
-    // XXX CAC word 6 is the current instuction, not the IR
-    // encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
-    //words[6] = ins;  // I think HWR
+    words[6] = cu.IWB; 
     
     words[7] = cu.IRODD;
 }
@@ -180,10 +178,8 @@ static void words2scu (word36 * words)
     cu.xdo   = getbits36(words[5], 24, 1);
     cu.CT_HOLD = getbits36(words[5], 30, 6);
     
-    // XXX This will take some thought
-    //encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
-    //words[6] = ins;  // I think HWR
-    
+    cu.IWB = words [6];
+
     cu.IRODD = words [7];
 }
 
@@ -439,7 +435,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     p->tag     = 0;
     
     p->info = 0;
-    p->IWB = 0;
+    //p->IWB = 0;
     
 
     //Read(NULL, addr, &p->IWB, lastTRA ? INSTRUCTION_FETCH : SEQUENTIAL_INSTRUCTION_FETCH, 0);
@@ -449,11 +445,11 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     TPR.TSR = PPR.PSR;
     
 
-    Read(NULL, addr, &p->IWB, INSTRUCTION_FETCH, 0);
+    Read(NULL, addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
     cpu.read_addr = addr;
     
-    DCDstruct *i = decodeInstruction(p->IWB, p);
+    DCDstruct *i = decodeInstruction(cu . IWB, p);
 
     lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transger
     
@@ -530,7 +526,7 @@ t_stat doCAF(DCDstruct *i);
 
 t_stat executeInstruction(DCDstruct *ci)
 {
-    const word36 IWB  = ci->IWB;          ///< instruction working buffer
+    const word36 IWB  = cu.IWB;          ///< instruction working buffer
     const opCode *info = ci->info;          ///< opCode *
     const int32  opcode = ci->opcode;     ///< opcode
     const bool   opcodeX = ci->opcodeX;   ///< opcode extension
@@ -3902,7 +3898,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 DCDstruct _xec;   // our decoded instruction struct
                 EISstruct _eis;
                 
-                _xec.IWB = CY;
+                //_xec.IWB = CY;
+                cu . IWB = CY;
                 _xec.e = &_eis;
                 
                 DCDstruct *xec = decodeInstruction(CY, &_xec);    // fetch instruction into current instruction
@@ -3936,7 +3933,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             DCDstruct _xec;   // our decoded instruction struct
             EISstruct _eis;
             
-            _xec.IWB = Ypair[0];
+            //_xec.IWB = Ypair[0];
+            cu.IWB = Ypair[0];
             _xec.e = &_eis;
             
             DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
@@ -3946,7 +3944,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if (ret)
                 return (ret);
 
-            _xec.IWB = Ypair[1];
+            //_xec.IWB = Ypair[1];
+            cu.IWB = Ypair[1];
             _xec.e = &_eis;
                 
             xec = decodeInstruction(Ypair[1], &_xec);               // fetch instruction into current instruction
@@ -5563,15 +5562,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
         // EIS - Address Register Special Arithmetic
         case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
 
                 int r = SIGNEXT18(getCrAR(reg));
 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu.IWB))
                 {
                     // If A = 0, then
                     //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
@@ -5601,9 +5600,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0501:  ///< a6bd        Add 6-bit Displacement to Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
@@ -5617,7 +5616,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 //   (9 * C(ARn.CHAR) + 6 * C(REG) + C(ARn.BITNO))mod9 → C(ARn.BITNO)
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu . IWB))
                 {
                     AR[ARn].WORDNO = address + r / 6;
                     // AR[ARn].CHAR = ((6 * r) % 36) / 9;
@@ -5641,15 +5640,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0502:  ///< a4bd        Add 4-bit Displacement to Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   ADDRESS + C(REG) / 4 → C(ARn.WORDNO)
@@ -5680,15 +5679,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0503:  ///< abd         Add   bit Displacement to Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   ADDRESS + C(REG) / 36 → C(ARn.WORDNO)
@@ -5721,9 +5720,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
         case 0507:  ///< awd         Add  word Displacement to Address Register
             {
             
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 
                 // If A = 0, then
@@ -5735,7 +5734,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                     AR[ARn].WORDNO = (address + SIGNEXT18(getCrAR(reg)));
                 else
                     AR[ARn].WORDNO += (address + SIGNEXT18(getCrAR(reg)));
@@ -5749,15 +5748,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0520:  ///< s9bd   Subtract 9-bit Displacement from Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
@@ -5787,15 +5786,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0521:  ///< s6bd   Subtract 6-bit Displacement from Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 6) → C(ARn.WORDNO)
@@ -5827,15 +5826,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
         case 0522:  ///< s4bd   Subtract 4-bit Displacement from Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 4) → C(ARn.WORDNO)
@@ -5868,15 +5867,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0523:  ///< sbd    Subtract   bit Displacement from Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG) / 36) → C(ARn.WORDNO)
@@ -5908,15 +5907,15 @@ static t_stat DoEISInstruction(DCDstruct *i)
             
         case 0527:  ///< swd    Subtract  word Displacement from Address Register
             {
-                int ARn = (int)bitfieldExtract36(i->IWB, 33, 3);// 3-bit register specifier
-                int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
-                int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
+                int ARn = (int)bitfieldExtract36(cu.IWB, 33, 3);// 3-bit register specifier
+                int address = SIGNEXT15((int)bitfieldExtract36(cu.IWB, 18, 15));// 15-bit Address (Signed?)
+                int reg = cu.IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
                 int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
-                if (! GET_A (i -> IWB))
+                if (! GET_A (cu. IWB))
                 {
                     // If A = 0, then
                     //   - (ADDRESS + C(REG)) → C(ARn.WORDNO)
@@ -6274,7 +6273,8 @@ t_stat doXED(word36 *Ypair)
     DCDstruct _xec;   // our decoded instruction struct
     EISstruct _eis;
     
-    _xec.IWB = Ypair[0];
+    //_xec.IWB = Ypair[0];
+    cu.IWB = Ypair[0];
     _xec.e = &_eis;
     
     DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
@@ -6296,7 +6296,8 @@ t_stat doXED(word36 *Ypair)
     if (cpu . interrupt_flag)
         return (CONT_INTR);
 
-    _xec.IWB = Ypair[1];
+    //_xec.IWB = Ypair[1];
+    cu.IWB = Ypair[1];
     _xec.e = &_eis;
     
     xec = decodeInstruction(Ypair[1], &_xec);               // fetch instruction into current instruction
@@ -6507,6 +6508,11 @@ emCall(DCDstruct *i)
             print_int128 (AQ);
             break;
         }
+
+       case 20:    // Report fault 
+       {
+           emCallReportFault ();
+       }
     }
     return 0;
 }

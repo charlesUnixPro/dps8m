@@ -1227,11 +1227,11 @@ t_stat sim_instr (void)
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu . cycle == INTERRUPT_EXEC_cycle)
-                  ci -> IWB = instr_buf [0];
+                  cu . IWB = instr_buf [0];
                 else
-                  ci -> IWB = instr_buf [1];
+                  cu . IWB = instr_buf [1];
 
-                decodeInstruction (ci -> IWB, ci);
+                decodeInstruction (cu . IWB, ci);
                 t_stat ret = executeInstruction (ci);
 
                 if (ret > 0)
@@ -1543,11 +1543,11 @@ t_stat sim_instr (void)
                 //     if (! transfer) set INTERUPT_EXEC2_cycle 
 
                 if (cpu . cycle == FAULT_EXEC_cycle)
-                  ci -> IWB = instr_buf [0];
+                  cu . IWB = instr_buf [0];
                 else
-                  ci -> IWB = instr_buf [1];
+                  cu . IWB = instr_buf [1];
 
-                decodeInstruction (ci -> IWB, ci);
+                decodeInstruction (cu . IWB, ci);
 
 // The normal start state of the CPU is a trouble fault cascade until the
 // iom boot generates in interrupt; therefore, despite the fact that AL39
@@ -1608,7 +1608,12 @@ t_stat sim_instr (void)
                 // return, rather then longjmp. This is a temporary hack
                 // since there all fault conditions where this should not
                 // happen... Also, it doesn't fix the proglem.
+
+                // Also, this doesn't address multiword instructions.
                 PPR.IC ++;
+                // ci is not correct at this point.
+                //if (ci->info->ndes > 0)
+                  //PPR.IC += ci->info->ndes;
                 break;
               }
 
@@ -1976,7 +1981,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
     
     // HWR 18 June 2013 
     p->info->opcode = p->opcode;
-    p->IWB = inst;
+    //p->IWB = inst;
     
     // HWR 21 Dec 2013
     if (p->info->flags & IGN_B29)
@@ -1989,7 +1994,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
         if (p->info->ndes > 1)
         {
             memset(p->e, 0, sizeof(EISstruct)); // clear out e
-            p->e->op0 = p->IWB;
+            p->e->op0 = inst;
         }
     }
     return p;

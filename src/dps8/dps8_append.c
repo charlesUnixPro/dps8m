@@ -63,8 +63,8 @@ void doAddrModPtrReg(DCDstruct *i)
 
 void doPtrReg(DCDstruct *i)
 {
-    word3 n = GET_PRN(i->IWB);  // get PRn
-    word15 offset = GET_OFFSET(i->IWB);
+    word3 n = GET_PRN(cu.IWB);  // get PRn
+    word15 offset = GET_OFFSET(cu.IWB);
     
     TPR.TSR = PAR[n].SNR;
     TPR.TRR = max3(PAR[n].RNR, TPR.TRR, PPR.PRR);

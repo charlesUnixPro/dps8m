@@ -365,6 +365,21 @@ static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 static int g7Faults = 0;
 
+// We stash a few things for debugging; they are accessed by emCall.
+static word18 fault_ic; 
+static word15 fault_psr;
+static char fault_msg [1024];
+
+
+void emCallReportFault (void)
+  {
+           sim_printf ("fault report:\n");
+           sim_printf ("  fault number %d (%o)\n", cpu . faultNumber, cpu . faultNumber);
+           sim_printf ("  subfault number %d (%o)\n", cpu . subFault, cpu . subFault);
+           sim_printf ("  faulting address %05o:%06o\n", fault_psr, fault_ic);
+           sim_printf ("  msg %s\n", fault_msg);
+  }
+
 void clearFaultCycle (void)
   {
     bTroubleFaultCycle = false;
@@ -415,6 +430,11 @@ For now, at least, we must remember a few things:
 void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
+
+    // some debugging support stuff
+    fault_psr = PPR.PSR;
+    fault_ic = PPR.IC;
+    strcpy (fault_msg, faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
     if (faultNumber & ~037)  // quicker?

@@ -811,7 +811,7 @@ typedef struct EISstruct EISstruct;
 /// Instruction decode structure. Used to represent instrucion information
 struct DCDstruct
 {
-    word36 IWB;         ///< instruction working buffer
+    //word36 IWB;         ///< instruction working buffer
     opCode *info;       ///< opCode *
     int32  opcode;      ///< opcode
     bool   opcodeX;     ///< opcode extension
@@ -2169,12 +2169,15 @@ typedef struct {
     bool xde;     // execute even instr from xed pair
     bool xdo;     // execute even instr from xed pair
     
-    /* word 6 */
+    /* word 4 */
     //instr_t IR;     /* Working instr register; addr & tag are modified */
     word18 IR;     /* Working instr register; addr & tag are modified */
     //word6 tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it) XXX Not true; CAF updates it.
 
     
+    /* word 6 */
+    word36 IWB;
+
     /* word 7 */
     // instr_t IRODD;   // Instr holding register; odd word of last pair fetched
     t_uint64 IRODD; /* Instr holding register; odd word of last pair fetched */
@@ -2987,6 +2990,7 @@ typedef struct dps8faults dps8faults;
 extern dps8faults _faults[];
 void check_events (void);
 void clearFaultCycle (void);
+void emCallReportFault (void);
 
 /* dps8_ins.c */
 
