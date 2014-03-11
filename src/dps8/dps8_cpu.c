@@ -570,6 +570,14 @@ int query_scpage_map (word24 addr)
     return -1;
   }
 
+// called once initialization
+
+void cpu_init (void)
+{
+  memset (& switches, 0, sizeof (switches));
+  switches . FLT_BASE = 2; // Some of the UnitTests assume this
+}
+
 t_stat cpu_reset (DEVICE *dptr)
 {
     if (M)
@@ -1226,6 +1234,12 @@ t_stat sim_instr (void)
                 decodeInstruction (ci -> IWB, ci);
                 t_stat ret = executeInstruction (ci);
 
+                if (ret > 0)
+                  {
+                     reason = ret;
+                     break;
+                  }
+
                 if (ret == CONT_TRA)
                   {
                      instr_buf_state = IB_EMPTY;
@@ -1340,6 +1354,7 @@ t_stat sim_instr (void)
               {
                 xec_side_effect = 0;
                 t_stat ret = executeInstruction (ci);
+
                 if (ret > 0)
                   {
                      reason = ret;
@@ -1560,6 +1575,12 @@ t_stat sim_instr (void)
 #endif
 
                 t_stat ret = executeInstruction (ci);
+
+                if (ret > 0)
+                  {
+                     reason = ret;
+                     break;
+                  }
 
                 if (ret == CONT_TRA)
                   {

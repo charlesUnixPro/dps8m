@@ -2951,6 +2951,7 @@ int query_scpage_map (word24 addr);
 void set_TEMPORARY_ABSOLUTE_mode (void);
 bool clear_TEMPORARY_ABSOLUTE_mode (void);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
+void cpu_init (void);
 
 /* dps8_append.c */
 

@@ -95,6 +95,7 @@ static void dps8_init(void)    //CustomCmds(void)
     mt_init ();
     //mpc_init ();
     scu_init ();
+    cpu_init ();
 }
 
 static int getval (char * * save, char * text)
