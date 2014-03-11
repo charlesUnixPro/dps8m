@@ -947,14 +947,17 @@ void ad2d(DCDstruct *i)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
-        //doFault(0,0,"ad2d truncation(overflow) fault");
+    {
         SETF(rIR, I_OFLOW);
+        doFault(i, overflow_fault, 0,"ad2d truncation(overflow) fault");
+    }
 
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-        
-    //    doFault(0,0,"ad2d overflow fault");
-    
+        if (! TSTF (rIR, I_OMASK))
+            doFault(i, overflow_fault, 0,"ad2d overflow fault");
+    }
 }
 
 
@@ -1226,14 +1229,17 @@ void ad3d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
-        //doFault(0,0,"ad2d truncation(overflow) fault");
+    {
         SETF(rIR, I_OFLOW);
+        doFault(ins, overflow_fault, 0,"ad3d truncation(overflow) fault");
+    }
     
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-    
-    //    doFault(0,0,"ad2d overflow fault");
-    
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"ad3d overflow fault");
+    }
 }
 
 /*
@@ -1478,11 +1484,17 @@ void sb2d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
+    {
         SETF(rIR, I_OFLOW);
+            doFault(ins, overflow_fault, 0,"sb2d truncation (overflow) fault");
+    }
     
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-        
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"sb2d overflow fault");
+    }
 }
 
 /*
@@ -1753,14 +1765,17 @@ void sb3d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
-        //doFault(0,0,"ad2d truncation(overflow) fault");
+    {
         SETF(rIR, I_OFLOW);
-    
+        doFault(ins, overflow_fault, 0,"sb3d truncation(overflow) fault");
+    }
+
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-    
-    //    doFault(0,0,"ad2d overflow fault");
-    
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"sb3d overflow fault");
+    }
 }
 
 /*
@@ -2003,10 +2018,17 @@ void mp2d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
+    {
         SETF(rIR, I_OFLOW);
-    
+        doFault(ins, overflow_fault, 0,"mp2d truncation(overflow) fault");
+    }
+
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"mp2d overflow fault");
+    }
     
 }
 
@@ -2266,14 +2288,17 @@ void mp3d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
-        //doFault(0,0,"ad2d truncation(overflow) fault");
+    {
         SETF(rIR, I_OFLOW);
-    
+        doFault(ins, overflow_fault, 0,"mp3d truncation(overflow) fault");
+    }
+
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-    
-    //    doFault(0,0,"ad2d overflow fault");
-    
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"mp3d overflow fault");
+    }
 }
 
 
@@ -2506,11 +2531,17 @@ void dv2d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
+    {
         SETF(rIR, I_OFLOW);
-    
+        doFault(ins, overflow_fault, 0,"dv2d truncation(overflow) fault");
+    }
+
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-    
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"dv2d overflow fault");
+    }
 }
 
 /*
@@ -2790,14 +2821,17 @@ void dv3d(DCDstruct *ins)
     SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
-        //doFault(0,0,"ad2d truncation(overflow) fault");
+    {
         SETF(rIR, I_OFLOW);
-    
+        doFault(ins, overflow_fault, 0,"dv3d truncation(overflow) fault");
+    }
+
     if (Ovr)
+    {
         SETF(rIR, I_OFLOW);
-    
-    //    doFault(0,0,"ad2d overflow fault");
-    
+        if (! TSTF (rIR, I_OMASK))
+            doFault(ins, overflow_fault, 0,"dv3d overflow fault");
+    }
 }
 
 /*
@@ -3158,14 +3192,15 @@ void mvn(DCDstruct *ins)
     
     if (e->T && Trunc)
     {
-        doFault(ins, overflow_fault, 0,"mvn truncation(overflow) fault");
         SETF(rIR, I_OFLOW);
+        doFault(ins, overflow_fault, 0,"mvn truncation(overflow) fault");
     }
     
     if (Ovr)
     {
         SETF(rIR, I_OFLOW);
-        doFault(ins, overflow_fault, 0,"mvn overflow fault");
+        if (! TSTF (rIR, I_OMASK))
+          doFault(ins, overflow_fault, 0,"mvn overflow fault");
     }
 
 }
