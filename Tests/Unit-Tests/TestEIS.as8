@@ -1,12 +1,3 @@
-	org	0
-	tra	entry
-
-	org	0132	" overflow fault 
-	emcall	20	" report fault
-	nop
-
-	org	010000
-entry:
 "
 "  EIS test code ...
 "
@@ -15,13 +6,10 @@ entry:
 
        call    ioa(msgHello, Date, Date+1)
         
-	ldi	ovr_mask
-
         tra BTD0
 
 msgHello:  acc         "This is TestEIS ...^g^g\r\n"
 msg1:      acc         "Date: ^g^g \r\n"
-ovr_mask:	oct	0"4000
 Ten:    dec 10
 TENmsg: acc     /This is ^d ... \r\n/
 
@@ -984,7 +972,6 @@ SZTL2b:
   
         call    ioa(msg30)
 
-	ldi	ovr_mask
         tra     SZTR0
         
 "
@@ -1043,7 +1030,6 @@ SZTR1b: call    ioa(msg31)
         call    ioa(msg24o, FLD1ar)
         
         
-	ldi	ovr_mask
         tra     EISdec0
 
                             " memory contents in octal
