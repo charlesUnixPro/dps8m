@@ -137,12 +137,12 @@ extern uint64 sim_deb_start;
 
 #define SIGN12          0x800U                             ///< sign mask 12-bit number
 #define SIGNMASK12      0xfffff800U                        ///< mask to sign extend a 12-bit number to a 32-bit integer
-#define SIGNEXT12(x)    ((x) & SIGN12) ? ((x) | SIGNMASK12) : (x)  ///< sign extend a 12-bit word to 18/32-bit word
+#define SIGNEXT12(x)    (((x) & SIGN12) ? ((x) | SIGNMASK12) : ((x) & ~SIGNMASK12))  ///< sign extend a 12-bit word to 18/32-bit word
 #define MASK12          07777U
 
-#define SIGNEXT18(x)    (((x) & SIGN18) ? ((x) | SIGNMASK18) : (x)) ///< sign extend a 18-bit word to 64-bit
-#define SIGNEXT36(x)    (((x) & SIGN36) ? ((x) |    SIGNEXT) : (x)) ///< sign extend a 36-bit word to 64-bit
-#define SIGNEXT15(x)    (((x) & SIGN15) ? ((x) | SIGNMASK15) : (x)) ///< sign extend a 15-bit word to 18/32-bit word
+#define SIGNEXT18(x)    (((x) & SIGN18) ? ((x) | SIGNMASK18) : ((x) & ~SIGNMASK18)) ///< sign extend a 18-bit word to 64-bit
+#define SIGNEXT36(x)    (((x) & SIGN36) ? ((x) |    SIGNEXT) : ((x) & ~SIGNEXT)) ///< sign extend a 36-bit word to 64-bit
+#define SIGNEXT15(x)    (((x) & SIGN15) ? ((x) | SIGNMASK15) : ((x) & ~SIGNMASK15)) ///< sign extend a 15-bit word to 18/32-bit word
 
 #define SIGN6           0040U     ///< sign bit of 6-bit signed numfer (e.g. Scaling Factor)
 #define SIGNMASK6       0340U     ///< sign mask for 6-bit number
@@ -154,7 +154,7 @@ extern uint64 sim_deb_start;
 
 // the 2 following may need some work........
 #define EXTMSK72        (((word72)-1) - ZEROEXT72)
-#define SIGNEXT72(x)    ((x) & SIGN72) ? ((x) | EXTMSK72) : (x) ///< sign extend a 72-bit word to 128-bit
+#define SIGNEXT72(x)    (((x) & SIGN72) ? ((x) | EXTMSK72) : ((x) & ~EXTMSK72)) ///< sign extend a 72-bit word to 128-bit
 
 #define SETS36(x)         ((x) | SIGN36)
 #define CLRS36(x)         ((x) & ~SIGN36)
@@ -258,31 +258,31 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define F_V_N            4      ///< Absolute Mode
 #define F_V_O            3      ///< Hex Mode
 
-#define F_A             (1U << F_V_A)
-#define F_B             (1U << F_V_B)
-#define F_C             (1U << F_V_C)
-#define F_D             (1U << F_V_D)
-#define F_E             (1U << F_V_E)
-#define F_F             (1U << F_V_F)
-#define F_G             (1U << F_V_G)
-#define F_H             (1U << F_V_H)
-#define F_I             (1U << F_V_I)
-#define F_J             (1U << F_V_J)
-#define F_K             (1U << F_V_K)
-#define F_L             (1U << F_V_L)
-#define F_M             (1U << F_V_M)
-#define F_N             (1U << F_V_N)
-#define F_O             (1U << F_V_O)
+#define F_A             (1LLU << F_V_A)
+#define F_B             (1LLU << F_V_B)
+#define F_C             (1LLU << F_V_C)
+#define F_D             (1LLU << F_V_D)
+#define F_E             (1LLU << F_V_E)
+#define F_F             (1LLU << F_V_F)
+#define F_G             (1LLU << F_V_G)
+#define F_H             (1LLU << F_V_H)
+#define F_I             (1LLU << F_V_I)
+#define F_J             (1LLU << F_V_J)
+#define F_K             (1LLU << F_V_K)
+#define F_L             (1LLU << F_V_L)
+#define F_M             (1LLU << F_V_M)
+#define F_N             (1LLU << F_V_N)
+#define F_O             (1LLU << F_V_O)
 
 #define SETF(flags, x)         flags = ((flags) |  (x))
 #define CLRF(flags, x)         flags = ((flags) & ~(x))
 #define TSTF(flags, x)         ((flags) & (x))
 #define SCF(cond, flags, x)    { if ((cond)) SETF((flags), x); else CLRF((flags), x); }
 
-#define SETBIT(dst, bitno)      ((dst) | (1U << (bitno)))
+#define SETBIT(dst, bitno)      ((dst) | (1LLU << (bitno)))
 //#define SETBIT(dst, bitno)      ((dst) = (1 << (bitno)))
-#define CLRBIT(dst, bitno)      ((dst) & ~(1U << (bitno)))
-#define TSTBIT(dst, bitno)      ((dst) &  (1U << (bitno)))
+#define CLRBIT(dst, bitno)      ((dst) & ~(1LLU << (bitno)))
+#define TSTBIT(dst, bitno)      ((dst) &  (1LLU << (bitno)))
 
 /* IR flags */
 
@@ -679,7 +679,7 @@ extern word36 Ypair[2];        ///< 2-words
 #define GETCHAR(src, pos) (word36)(((word36)src >> (word36)((5 - pos) * 6)) & 077)      ///< get 6-bit char @ pos
 #define GETBYTE(src, pos) (word36)(((word36)src >> (word36)((3 - pos) * 9)) & 0777)     ///< get 9-bit byte @ pos
 
-#define YPAIRTO72(ypair)    (((((word72)(ypair[0])) << 36) | ypair[1]) & MASK72)
+#define YPAIRTO72(ypair)    (((((word72)(ypair[0] & DMASK)) << 36) | (ypair[1] & DMASK)) & MASK72)
 
 void putByte(word36 *dst, word9 data, int posn);
 word9 getByte(int posn, word36 src);

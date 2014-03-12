@@ -178,178 +178,6 @@ char *getModString(int32 tag)
  */
 /* Single word integer routines */
 
-#ifdef PDP10_FLAGS_DONT_WORK
-/*! Integer add
- 
- Truth table for integer add
- 
- case    a       b       r       flags
- 1       +       +       +       none
- 2       +       +       -       AOV + C1
- 3       +       -       +       C0 + C1
- 4       +       -       -       -
- 5       -       +       +       C0 + C1
- 6       -       +       -       -
- 7       -       -       +       AOV + C0
- 8       -       -       -       C0 + C1
- */
-
-d8 add36PDP10 (char op, d8 a, d8 b, word18 *flags)
-{
-    
-    d8 r = 0;
-    switch (op)
-    {
-        case '+':
-            r = (a + b) & DMASK;
-            if (TSTS (a & b)) {                                     /* cases 7,8 */
-                if (TSTS (r))                                       /* case 8 */
-                    SETF (*flags, I_CARRY);
-                else
-                    SETF (*flags, (I_CARRY | I_OFLOW));             /* case 7 */
-                return r;
-            }
-            if (!TSTS (a | b)) {                                    /* cases 1,2 */
-                if (TSTS (r))                                       /* case 2 */
-                    SETF (*flags, (I_CARRY | I_OFLOW));
-                return r;                                           /* case 1 */
-            }
-            if (!TSTS (r))                                          /* cases 3,5 */
-                SETF (*flags, I_CARRY);
-            return r;
-
-        case '-':
-            r = (a - b) & DMASK;
-            if (TSTS (a & ~b)) {                                    /* cases 7,8 */
-                if (TSTS (r))                                       /* case 8 */
-                    SETF (*flags, I_CARRY);
-                else SETF (*flags, I_CARRY| I_OFLOW);                    /* case 7 */
-                return r;
-            }
-            if (!TSTS (a | ~b)) {                                   /* cases 1,2 */
-                if (TSTS (r))                                       /* case 2 */
-                    SETF (*flags, I_CARRY | I_OFLOW);
-                return r;                                           /* case 1 */
-            }
-            if (!TSTS (r))                                          /* cases 3,5 */
-                SETF (*flags, I_CARRY);
-            return r;
-    }
-   }
-#endif
-
-#ifndef QUIET_UNUSED
-word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
-{
-    word36 res = 0;
-    
-    // assuming these are proper 36-bit integers we may need todo some sign extension
-    // prior to any signed ops .....
-//
-//    if (isSigned)
-//    {
-//        // is op1 a 36-bit negative number?
-//        if (op1 & SIGN36) // sign bit set (<0)?
-//            op1 |= SIGNEXT;
-//        // is op2 a 36-bit negative number?
-//        if (op2 & SIGN36) // sign bit set (<0)?
-//            op2 |= SIGNEXT;
-//    } else {
-        // just in case .....
-        op1 &= ZEROEXT;
-        op2 &= ZEROEXT;
-    //}
-    //op1 &= DMASK;
-    //op2 &= DMASK;
-    
-    // perform requested operation
-#ifndef QUIET_UNUSED
-    bool overflow2 =   false;
-#endif
-    
-    switch (op)
-    {
-        case '+':
-            res = op1 + op2;
-            break;
-        case '-':
-            res = op1 - op2;
-            break;
-        // XXX make provisions for logicals
-    }
-    
-    // now let's set some flags...
-    
-    // carry
-    // NB: CARRY is not an overflow!
-    
-    if (flagsToSet & I_CARRY)
-    {
-        //bool carry = res & CARRY;
-        bool carry = false;
-        //bool neg1 = op1 & SIGN36;
-        //bool neg2 = op2 & SIGN36;
-        
-        //if(!neg1 && !neg2)
-            if(res & CARRY) {
-                carry = true;
-                //res &= 0377777777777LL;
-            }
-        if (carry)
-            SETF(*flags, I_CARRY);
-        else
-            CLRF(*flags, I_CARRY);
-    }
-    
-    /*
-     oVerflow rules .....
-     
-     oVerflow occurs for addition if the operands have the
-     same sign and the result has a different sign. MSB(a) = MSB(b) and MSB(r) <> MSB(a)
-     
-     oVerflow occurs for subtraction if the operands have
-     different signs and the sign of the result is different from the
-     sign of the first operand. MSB(a) <> MSB(b) and MSB(r) <> MSB(a)
-     */
-    if (flagsToSet & I_OFLOW)
-    {
-        bool ovr = false;       // arith overflow?
-
-        bool MSB1 = op1 & SIGN36;
-        bool MSB2 = op2 & SIGN36;
-        bool MSBr = res & SIGN36;
-            
-        if (op == '+')
-            ovr = (MSB1 == MSB2) && (MSBr != MSB1);
-        else // '-'
-            ovr = (MSB1 != MSB2) && (MSBr != MSB1);
-//        if (isSigned)
-//            ovr = (res > 34359738367) || (res < -34359738368) ;
-//        else
-//            ovr = res > 68719476736;
-        if (ovr)
-            SETF(*flags, I_OFLOW);      // overflow
-    }
-                
-    if (flagsToSet & I_ZERO)
-    {
-        if (res == 0)
-            SETF(*flags, I_ZERO);       // zero result
-        else
-            CLRF(*flags, I_ZERO);
-    }
-    
-    if (flagsToSet & I_NEG)
-    {
-        if (res & SIGN36)            // if negative (things seem to want this even if unsigned ops)
-            SETF(*flags, I_NEG);
-        else
-            CLRF(*flags, I_NEG);
-    }
-    
-    return res & DMASK;           // 64 => 36-bit. Mask off unnecessary bits ...
-}
-#endif
 
 word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
 {
@@ -424,6 +252,14 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
             CLRF(*flags, I_NEG);
     }
     
+    if (flagsToSet & I_OFLOW)
+    {
+        if (overflow && ! TSTF (*flags, I_OMASK))
+        {
+            doFault(NULL, overflow_fault, 0,"addsub36b overflow fault");
+        }
+    }
+
     return res & DMASK;           // 64 => 36-bit. Mask off unnecessary bits ...
 }
 
@@ -502,6 +338,14 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
             CLRF(*flags, I_NEG);
     }
     
+    if (flagsToSet & I_OFLOW)
+    {
+        if (overflow && ! TSTF (*flags, I_OMASK))
+        {
+            doFault(NULL, overflow_fault, 0,"addsub18b overflow fault");
+        }
+    }
+
     return res & MASK18;           // 32 => 18-bit. Mask off unnecessary bits ...
 }
 
@@ -564,6 +408,14 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
             CLRF(*flags, I_NEG);
     }
     
+    if (flagsToSet & I_OFLOW)
+    {
+        if (overflow)
+        {
+            doFault(NULL, overflow_fault, 0,"addsub72 overflow fault");
+        }
+    }
+    
     return res & MASK72;           // 128 => 72-bit. Mask off unnecessary bits ...
 }
 
@@ -577,11 +429,7 @@ word36 compl36(word36 op1, word18 *flags)
     
     const bool ovr = op1 == MAXNEG;
     if (ovr)
-    {
         SETF(*flags, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
-            doFault(NULL, overflow_fault, 0,"compl36 overflow fault");
-    }
     if (res & SIGN36)
         SETF(*flags, I_NEG);
     else
@@ -592,6 +440,11 @@ word36 compl36(word36 op1, word18 *flags)
     else
         CLRF(*flags, I_ZERO);
     
+    if (ovr && ! TSTF (*flags, I_OMASK))
+    {
+        doFault(NULL, overflow_fault, 0,"compl36 overflow fault");
+    }
+
     return res;
 }
 
@@ -603,11 +456,10 @@ word18 compl18(word18 op1, word18 *flags)
     
     word18 res = -op1 & MASK18;
     
-    const bool ovr = res == MAX18NEG;
+    const bool ovr = op1 == MAX18NEG;
     if (ovr)
         SETF(*flags, I_OFLOW);
-    // should we continue operation if OVR fault?
-    if (res & SIGN36)
+    if (res & SIGN18)
         SETF(*flags, I_NEG);
     else
         CLRF(*flags, I_NEG);
@@ -617,6 +469,9 @@ word18 compl18(word18 op1, word18 *flags)
     else
         CLRF(*flags, I_ZERO);
     
+    if (ovr && ! TSTF (*flags, I_OMASK))
+        doFault(NULL, overflow_fault, 0,"compl18 overflow fault");
+
     return res;
 }
 
@@ -762,6 +617,7 @@ word72 convertToWord72(word36 even, word36 odd)
 {
     return ((word72)even << 36) | (word72)odd;
 }
+
 void convertToWord36(word72 src, word36 *even, word36 *odd)
 {
     *even = (word36)(src >> 36) & DMASK;
