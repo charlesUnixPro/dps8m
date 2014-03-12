@@ -1491,18 +1491,17 @@ t_stat sim_instr (void)
 
                 sim_debug (DBG_FAULT, & cpu_dev, "fault cycle\n");
     
-// There is problem with interrupts inside faults; scu_words will get
-// overwritten... No; the interrupt handler will safe_restore
-
-                cu_safe_store ();
-
-#if 0
-                if (cpu . interrupt_flag)
+                if (switches . report_faults)
                   {
-                    cpu . cycle = INTERRUPT_cycle;
+                    emCallReportFault ();
+                    clearFaultCycle ();
+                    cpu . cycle = FETCH_cycle;
+                    PPR.IC += ci->info->ndes;
+                    PPR.IC ++;
                     break;
                   }
-#endif
+
+                cu_safe_store ();
 
                 // Temporary absolute mode
                 set_TEMPORARY_ABSOLUTE_mode ();
@@ -2283,6 +2282,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", switches . disable_wam);
     sim_printf("Bullet time:              %01o(8)\n", switches . bullet_time);
     sim_printf("Disable kbd bkpt:         %01o(8)\n", switches . disable_kbd_bkpt);
+    sim_printf("Report faults:            %01o(8)\n", switches . report_faults);
 
     return SCPE_OK;
 }
@@ -2314,6 +2314,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           disable_wam = n
 //           bullet_time = n
 //           disable_kbd_bkpt = n
+//           report_faults = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2408,6 +2409,7 @@ static config_list_t cpu_config_list [] =
     /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
     /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
     /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
+    /* 25 */ { "report_faults", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2538,6 +2540,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 24: // DISABLE_KBD_BKPT
               switches . disable_kbd_bkpt = v;
+              break;
+
+            case 25: // REPORT_FAULTS
+              switches . report_faults = v;
               break;
 
             default:

@@ -2229,6 +2229,7 @@ typedef struct {
     uint disable_wam; // If non-zero, disable PTWAM, STWAM
     uint bullet_time; // 
     uint disable_kbd_bkpt;
+    uint report_faults; // If set, faults are reported and ignored
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
