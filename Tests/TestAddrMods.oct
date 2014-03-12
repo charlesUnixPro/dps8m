@@ -1,1031 +1,1034 @@
-!SIZE 002031
-000000 xxxx 001302702000     tsx2	rd_clock
-000001 xxxx 000042757000     staq	Date        "MM/DD HH:MM
-000002 xxxx 001507701000     call    ioa(msgHello, Date, Date+1)
-000003 xxxx 000010710000 
-000004 xxxx 000000000000 
-000005 xxxx 000011000000 
-000006 xxxx 000042000000 
-000007 xxxx 000043000000 
-000010 xxxx 000050710000     tra     _main
-000011 xxxx 036124150151 msgHello:   acc         "This is TestAddrMods ...^g^g\r\n"
-000012 xxxx 163040151163 
-000013 xxxx 040124145163 
-000014 xxxx 164101144144 
-000015 xxxx 162115157144 
-000016 xxxx 163040056056 
-000017 xxxx 056136147136 
-000020 xxxx 147015012040 
-000021 xxxx 014122145163 msgResult:  acc         /Result: ^n\r\n/
-000022 xxxx 165154164072 
-000023 xxxx 040136156015 
-000024 xxxx 012040040040 
-000025 xxxx 017122145163 msgResult2: acc         /Result: ^n ^n\r\n/
-000026 xxxx 165154164072 
-000027 xxxx 040136156040 
-000030 xxxx 136156015012 
-000031 xxxx 016122145163 msgResulta: acc         /Result: '^a'\r\n/
-000032 xxxx 165154164072 
-000033 xxxx 040047136141 
-000034 xxxx 047015012040 
-000035 xxxx 016122145163 msgResultg: acc         /Result: '^g'\r\n/
-000036 xxxx 165154164072 
-000037 xxxx 040047136147 
-000040 xxxx 047015012040 
-000041 xxxx 000000011000         even "(allocating 1 nop)
-000042 xxxx 000000000000 Date:   bss     2
-000044 xxxx 000000000000 L1:     bss     1
-000045 xxxx 000000000000 L2:     bss     1
-000046 xxxx 000000000000 LA:     bss     1
-000047 xxxx 000000000000 LQ:     bss     1
-000050 xxxx 000204620000     eax0    _a
-000051 xxxx 001216621000     eax1    u
-000052 xxxx 001217622000     eax2    v
-000053 xxxx 001222623000     eax3    w
-000054 xxxx 001226624000     eax4    x
-000055 xxxx 001255625000     eax5    y
-000056 xxxx 001270626000     eax6    z
-000057 xxxx 000064710000     tra     R_mods
-000060 xxxx 014122040155 msgRmods:   acc /R mods ...\r\n/
-000061 xxxx 157144163040 
-000062 xxxx 056056056015 
-000063 xxxx 012040040040 
-000064 xxxx 001507701000     call    ioa(msgRmods)
-000065 xxxx 000070710000 
-000066 xxxx 000000000000 
-000067 xxxx 000060000000 
-000070 xxxx 001216235000     lda     u
-000071 xxxx 000044755000     sta     L1
-000072 xxxx 001507701000     call    ioa(msgResult, L1)  " 006000 0100 03
-000073 xxxx 000077710000 
-000074 xxxx 000000000000 
-000075 xxxx 000021000000 
-000076 xxxx 000044000000 
-000077 xxxx 000000236011     ldq     0,x1
-000100 xxxx 000044756000     stq     L1
-000101 xxxx 001507701000     call    ioa(msgResult, L1)  " 006000 0100 03
-000102 xxxx 000106710000 
-000103 xxxx 000000000000 
-000104 xxxx 000021000000 
-000105 xxxx 000044000000 
-000106 xxxx 000002235014     lda     2,x4
-000107 xxxx 000044755000     sta     L1
-000110 xxxx 001507701000     call    ioa(msgResult, L1)  " 400000000003
-000111 xxxx 000115710000 
-000112 xxxx 000000000000 
-000113 xxxx 000021000000 
-000114 xxxx 000044000000 
-000115 xxxx 001267236000     ldq     y+10
-000116 xxxx 000044756000     stq     L1
-000117 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000000012
-000120 xxxx 000124710000 
-000121 xxxx 000000000000 
-000122 xxxx 000021000000 
-000123 xxxx 000044000000 
-000124 xxxx 001213235000     lda     t                   " 000005 000004 => a
-000125 xxxx 000044755000     sta     L1
-000126 xxxx 000045755000     sta     L2
-000127 xxxx 001507701000     call    ioa(msgResult, L1)  " 000005000004
-000130 xxxx 000134710000 
-000131 xxxx 000000000000 
-000132 xxxx 000021000000 
-000133 xxxx 000044000000 
-000134 xxxx 000045235000     lda     L2      " restore A
-000135 xxxx 001255236001     ldq     y, au   " 5 => q
-000136 xxxx 000044756000     stq     L1
-000137 xxxx 001507701000     call    ioa(msgResult, L1)  " 5
-000140 xxxx 000144710000 
-000141 xxxx 000000000000 
-000142 xxxx 000021000000 
-000143 xxxx 000044000000 
-000144 xxxx 000045235000     lda     L2
-000145 xxxx 001270236005     ldq     z, al   " 017 => q
-000146 xxxx 000044756000     stq     L1
-000147 xxxx 001507701000     call    ioa(msgResult, L1)  " 17
-000150 xxxx 000154710000 
-000151 xxxx 000000000000 
-000152 xxxx 000021000000 
-000153 xxxx 000044000000 
-000154 xxxx 001214236000     ldq     t+1         
-000155 xxxx 000044756000     stq     L1
-000156 xxxx 001507701000     call    ioa(msgResult, L1)  " 000006777776   6, -2
-000157 xxxx 000163710000 
-000160 xxxx 000000000000 
-000161 xxxx 000021000000 
-000162 xxxx 000044000000 
-000163 xxxx 000044236000     ldq     L1
-000164 xxxx 001226235002     lda     x,qu    " 3 => a
-000165 xxxx 000046757000     staq    LAQ
-000166 xxxx 000044755000     sta     L1
-000167 xxxx 001507701000     call    ioa(msgResult, L1)  " 3
-000170 xxxx 000174710000 
-000171 xxxx 000000000000 
-000172 xxxx 000021000000 
-000173 xxxx 000044000000 
-000174 xxxx 000046237000     ldaq    LAQ
-000175 xxxx 001255235006     lda     y,ql    " y(-2) => a " 700
-000176 xxxx 000044755000     sta     L1
-000177 xxxx 001507701000     call    ioa(msgResult, L1)  "   700
-000200 xxxx 000204710000 
-000201 xxxx 000000000000 
-000202 xxxx 000021000000 
-000203 xxxx 000044000000 
-000204 xxxx 000000235004 _a: lda     0,ic   " 000000235004
-000205 xxxx 000044755000     sta     L1
-000206 xxxx 001507701000     call    ioa(msgResult, L1)  "   700
-000207 xxxx 000213710000 
-000210 xxxx 000000000000 
-000211 xxxx 000021000000 
-000212 xxxx 000044000000 
-000213 xxxx 123456236003     ldq  0123456,du   "0123456 => q -- none; operand has the form y || (00...0)18
-000214 xxxx 543210235007     lda  0543210,dl   "0543210 => a --  none; operand has the form (00...0)18 || y
-000215 xxxx 000046757000     staq    LAQ
-000216 xxxx 001507701000     call    ioa(msgResult, LQ)  " 123456000000
-000217 xxxx 000223710000 
-000220 xxxx 000000000000 
-000221 xxxx 000021000000 
-000222 xxxx 000047000000 
-000223 xxxx 001507701000     call    ioa(msgResult, LA)  " 000000543210
-000224 xxxx 000230710000 
-000225 xxxx 000000000000 
-000226 xxxx 000021000000 
-000227 xxxx 000046000000 
-000230 xxxx 000235710000     tra     RI_mods
-000231 xxxx 015122111040 msgRI:      acc     /RI mods ...\r\n/
-000232 xxxx 155157144163 
-000233 xxxx 040056056056 
-000234 xxxx 015012040040 
-000235 xxxx 001507701000     call    ioa(msgRI)
-000236 xxxx 000241710000 
-000237 xxxx 000000000000 
-000240 xxxx 000231000000 
-000241 xxxx 001205235020     lda     q,n*         " -2 => a
-000242 xxxx 001206236020     ldq     q+1,*        " 042 => a
-000243 xxxx 000046757000     staq    LAQ
-000244 xxxx 001507701000     call    ioa(msgResult, LQ)  " 123456000000
-000245 xxxx 000251710000 
-000246 xxxx 000000000000 
-000247 xxxx 000021000000 
-000250 xxxx 000047000000 
-000251 xxxx 001507701000     call    ioa(msgResult, LA)  " 000000543210
-000252 xxxx 000256710000 
-000253 xxxx 000000000000 
-000254 xxxx 000021000000 
-000255 xxxx 000046000000 
-000256 xxxx 000002235007     lda     2, dl       " 2 => AL
-000257 xxxx 000002221003     ldx1    2, du        " 2 => x1
-000260 xxxx 001205236031     ldq     q, 1*       " C(q+x1 + C(A)0,17) => 616 => q
-000261 xxxx 000044756000     stq     L1
-000262 xxxx 001507701000     call    ioa(msgResult, L1)  " 616
-000263 xxxx 000267710000 
-000264 xxxx 000000000000 
-000265 xxxx 000021000000 
-000266 xxxx 000044000000 
-000267 xxxx 000013235003     lda     11, du      " 11 => AU
-000270 xxxx 000003222003     ldx2    3, du        " 3 => x2
-000271 xxxx 001205236032     ldq     q, 2*       " C(q+x2 + C(A)0,17) => 77 => q
-000272 xxxx 000044756000     stq     L1
-000273 xxxx 001507701000     call    ioa(msgResult, L1)  " 77
-000274 xxxx 000300710000 
-000275 xxxx 000000000000 
-000276 xxxx 000021000000 
-000277 xxxx 000044000000 
-000300 xxxx 000004236024     ldq     4, ic*      " 02102 => q
-000301 xxxx 000305710000     tra     here        " jump over stuff ...
-000302 xxxx 000000000000     bss     2           " just waste 2 words
-000304 xxxx 001202000020     arg     m, *
-000305 xxxx 000044756000     stq     L1
-000306 xxxx 001507701000     call    ioa(msgResult, L1)  " 2012
-000307 xxxx 000313710000 
-000310 xxxx 000000000000 
-000311 xxxx 000021000000 
-000312 xxxx 000044000000 
-000313 xxxx 000002220003     ldx0    2, du       " 2 => x0
-000314 xxxx 000002221003     ldx1    2, du       " 2 => x1
-000315 xxxx 001174236030     ldq     l, 0*       " l + 2 => du(m) => q
-000316 xxxx 000044756000     stq     L1
-000317 xxxx 001507701000     call    ioa(msgResult, L1)  " since l+2 & m move we'll see what this works out to
-000320 xxxx 000324710000 
-000321 xxxx 000000000000 
-000322 xxxx 000021000000 
-000323 xxxx 000044000000 
-000324 xxxx 000001635000     eaa     1
-000325 xxxx 000002621000     eax1    2
-000326 xxxx 001172236021     ldq     k, au*      " x+2 => q (-3)
-000327 xxxx 000044756000     stq     L1
-000330 xxxx 001507701000     call    ioa(msgResult, L1)  " 400000000003
-000331 xxxx 000335710000 
-000332 xxxx 000000000000 
-000333 xxxx 000021000000 
-000334 xxxx 000044000000 
-000335 xxxx 000003636000     eaq     3
-000336 xxxx 001204235020     lda     p,*         " y + 3 => 3
-000337 xxxx 000044755000     sta     L1
-000340 xxxx 001507701000     call    ioa(msgResult, L1)  " 3
-000341 xxxx 000345710000 
-000342 xxxx 000000000000 
-000343 xxxx 000021000000 
-000344 xxxx 000044000000 
-000345 xxxx 000003623000     eax3    3
-000346 xxxx 000005625000     eax5    5
-000347 xxxx 001157236020     ldq     h,*     " x + 9 => 42
-000350 xxxx 000044756000     stq     L1
-000351 xxxx 001507701000     call    ioa(msgResult, L1)  " 42
-000352 xxxx 000356710000 
-000353 xxxx 000000000000 
-000354 xxxx 000021000000 
-000355 xxxx 000044000000 
-000356 xxxx 000362710000     tra     IR_mods
-000357 xxxx 011111122137 msgIR:  acc /IR_mods\r\n/
-000360 xxxx 155157144163 
-000361 xxxx 015012040040 
-000362 xxxx 001507701000     call    ioa(msgIR)
-000363 xxxx 000366710000 
-000364 xxxx 000000000000 
-000365 xxxx 000357000000 
-000366 xxxx 001156235060     lda     g, *n   " -1 => a
-000367 xxxx 000044755000     sta     L1
-000370 xxxx 001507701000     call    ioa(msgResult, L1)  " 400000000001
-000371 xxxx 000375710000 
-000372 xxxx 000000000000 
-000373 xxxx 000021000000 
-000374 xxxx 000044000000 
-000375 xxxx 001155236067     ldq    f, *dl   " &x => q
-000376 xxxx 000044756000     stq     L1
-000377 xxxx 001507701000     call    ioa(msgResult, L1)  " Yup, but this will move as x moves
-000400 xxxx 000404710000 
-000401 xxxx 000000000000 
-000402 xxxx 000021000000 
-000403 xxxx 000044000000 
-000404 xxxx 000015624000     eax4    13
-000405 xxxx 001152235071     lda     c,  *1  " x+13 => -255 (400000000255) => a
-000406 xxxx 000000531000     neg             " a = (377777777523)
-000407 xxxx 000044755000     sta     L1
-000410 xxxx 001507701000     call    ioa(msgResult, L1)  "
-000411 xxxx 000415710000 
-000412 xxxx 000000000000 
-000413 xxxx 000021000000 
-000414 xxxx 000044000000 
-000415 xxxx 000004621000     eax1    4
-000416 xxxx 000420720031 a:  lxl0    b,1*    " a + 5 => x0
-000417 xxxx 000426710000     tra     here_2
-000420 xxxx 000000000111 b:  oct     111,222,333,444
-000421 xxxx 000000000222 
-000422 xxxx 000000000333 
-000423 xxxx 000000000444 
-000424 xxxx 000425000064     arg     bb, *ic
-000425 xxxx 000005000007 bb: arg     5, dl
-000426 xxxx 000001236007     ldq     1, dl
-000427 xxxx 001151235066     lda     ir0, *QL    " C(b+1) (222) => a
-000430 xxxx 000044755000     sta     L1
-000431 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000000222
-000432 xxxx 000436710000 
-000433 xxxx 000000000000 
-000434 xxxx 000021000000 
-000435 xxxx 000044000000 
-000436 xxxx 000002623000     eax3    2
-000437 xxxx 000003625000     eax5    3
-000440 xxxx 001144235073     lda     ir1, *3     " C(b+2) (333) => a
-000441 xxxx 000044755000     sta     L1
-000442 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000000333
-000443 xxxx 000447710000 
-000444 xxxx 000000000000 
-000445 xxxx 000021000000 
-000446 xxxx 000044000000 
-000447 xxxx 000004623000     eax3    4
-000450 xxxx 000005625000     eax5    5
-000451 xxxx 000011636000     eaq     9
-000452 xxxx 000007627000     eax7    7
-000453 xxxx 001141235073     lda     ir2, *3     " C(x+9) (42) => a
-000454 xxxx 000044755000     sta     L1
-000455 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000000042
-000456 xxxx 000462710000 
-000457 xxxx 000000000000 
-000460 xxxx 000021000000 
-000461 xxxx 000044000000 
-000462 xxxx 000010623000     eax3    8
-000463 xxxx 000011236007     ldq     9, dl
-000464 xxxx 001127235067     lda     ir3, *dl    " C(A) = &w
-000465 xxxx 000044755000     sta     L1
-000466 xxxx 001507701000     call    ioa(msgResult, L1)  " Yup, &w. But, &w will change
-000467 xxxx 000473710000 
-000470 xxxx 000000000000 
-000471 xxxx 000021000000 
-000472 xxxx 000044000000 
-000473 xxxx 000012235007     lda     10, dl
-000474 xxxx 001126235065     lda     ir5, *al    " C(x + 10) (616) => a
-000475 xxxx 000044755000     sta     L1
-000476 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000000616
-000477 xxxx 000503710000 
-000500 xxxx 000000000000 
-000501 xxxx 000021000000 
-000502 xxxx 000044000000 
-000503 xxxx 000013623000     eax3    11
-000504 xxxx 001125236060     ldq     ir6, *n     " C(z) (13(8)) => q
-000505 xxxx 000044756000     stq     L1
-000506 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000000013
-000507 xxxx 000513710000 
-000510 xxxx 000000000000 
-000511 xxxx 000021000000 
-000512 xxxx 000044000000 
-000513 xxxx 000014625000     eax5    12
-000514 xxxx 001123235060     lda     ir7, *n     " C(x + 12) (02012) => a
-000515 xxxx 000044755000     sta     L1
-000516 xxxx 001507701000     call    ioa(msgResult, L1)  " 000000002012
-000517 xxxx 000523710000 
-000520 xxxx 000000000000 
-000521 xxxx 000021000000 
-000522 xxxx 000044000000 
-000523 xxxx 000015625000     eax5    13
-000524 xxxx 001121235020     lda     ir8, *      " C(x + 13) (-255 oct) => a
-000525 xxxx 000000531000     neg                 " -a => a
-000526 xxxx 000044755000     sta     L1
-000527 xxxx 001507701000     call    ioa(msgResult, L1)  " 377777777523
-000530 xxxx 000534710000 
-000531 xxxx 000000000000 
-000532 xxxx 000021000000 
-000533 xxxx 000044000000 
-000534 xxxx 000016621000     eax1    14
-000535 xxxx 001116236020     ldq     ir9, *      " C(ir9c + 14) (7777777) => q
-000536 xxxx 000044756000     stq     L1
-000537 xxxx 001507701000     call    ioa(msgResult, L1)  " 000007777777
-000540 xxxx 000544710000 
-000541 xxxx 000000000000 
-000542 xxxx 000021000000 
-000543 xxxx 000044000000 
-000544 xxxx 000551710000     tra IT_mods
-000545 xxxx 015111124040 msgIT:  acc /IT mods ...\r\n/
-000546 xxxx 155157144163 
-000547 xxxx 040056056056 
-000550 xxxx 015012040040 
-000551 xxxx 001507701000         call    ioa(msgIT)
-000552 xxxx 000555710000 
-000553 xxxx 000000000000 
-000554 xxxx 000545000000 
-000555 xxxx 000567236000 IT_1:   ldq it1
-000556 xxxx 000567235044         lda it1,sd
-000557 xxxx 000044755000         sta L1
-000560 xxxx 001507701000         call    ioa(msgResult, L1)  " 000000000046 .. 000000000034
-000561 xxxx 000565710000 
-000562 xxxx 000000000000 
-000563 xxxx 000021000000 
-000564 xxxx 000044000000 
-000565 xxxx 000555607000         ttf IT_1
-000566 xxxx 000641710000         tra IT_2
-000567 xxxx 000640777202 it1:    tallyd  it1b-1, -6, 2   "address, count, delta
-000570 xxxx 000000000000 it1a:   dec 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10
-000571 xxxx 000000000001 
-000572 xxxx 000000000002 
-000573 xxxx 000000000003 
-000574 xxxx 000000000004 
-000575 xxxx 000000000005 
-000576 xxxx 000000000006 
-000577 xxxx 000000000007 
-000600 xxxx 000000000010 
-000601 xxxx 000000000011 
-000602 xxxx 000000000012 
-000603 xxxx 000000000013         dec   11,12,13,14,15,16,17,18,19,20
-000604 xxxx 000000000014 
-000605 xxxx 000000000015 
-000606 xxxx 000000000016 
-000607 xxxx 000000000017 
-000610 xxxx 000000000020 
-000611 xxxx 000000000021 
-000612 xxxx 000000000022 
-000613 xxxx 000000000023 
-000614 xxxx 000000000024 
-000615 xxxx 000000000025         dec   21,22,23,24,25,26,27,28,29,30
-000616 xxxx 000000000026 
-000617 xxxx 000000000027 
-000620 xxxx 000000000030 
-000621 xxxx 000000000031 
-000622 xxxx 000000000032 
-000623 xxxx 000000000033 
-000624 xxxx 000000000034 
-000625 xxxx 000000000035 
-000626 xxxx 000000000036 
-000627 xxxx 000000000037         dec   31,32,33,34,35,36,37,38,39,40
-000630 xxxx 000000000040 
-000631 xxxx 000000000041 
-000632 xxxx 000000000042 
-000633 xxxx 000000000043 
-000634 xxxx 000000000044 
-000635 xxxx 000000000045 
-000636 xxxx 000000000046 
-000637 xxxx 000000000047 
-000640 xxxx 000000000050 
-000641 xxxx 000653236000 IT_2:   ldq it2
-000642 xxxx 000653235053         lda it2,ad
-000643 xxxx 000044755000         sta L1
-000644 xxxx 001507701000         call    ioa(msgResult, L1)  " 000000000013 .. 000000000025
-000645 xxxx 000651710000 
-000646 xxxx 000000000000 
-000647 xxxx 000021000000 
-000650 xxxx 000044000000 
-000651 xxxx 000641607000         ttf IT_2
-000652 xxxx 000654710000         tra IT_3
-000653 xxxx 000603000602 it2:    tallyd  it1a+11, 6, 2   "address, count, delta
-000654 xxxx 000665235052 IT_3:   lda it3,sc
-000655 xxxx 000044755000         sta L1
-000656 xxxx 001507701000         call    ioa(msgResulta, L1)  " 'This '
-000657 xxxx 000663710000 
-000660 xxxx 000000000000 
-000661 xxxx 000031000000 
-000662 xxxx 000044000000 
-000663 xxxx 000654607000         ttf IT_3
-000664 xxxx 000674710000         tra IT_4
-000665 xxxx 000666000540 it3:    tallyb  it3b, 5, 0   "address, count, byte offset
-000666 xxxx 124150151163 it3b:   aci /This is a test of scr.../
-000667 xxxx 040151163040 
-000670 xxxx 141040164145 
-000671 xxxx 163164040157 
-000672 xxxx 146040163143 
-000673 xxxx 162056056056 
-000674 xxxx 000705235045 IT_4:   lda it4,scr
-000675 xxxx 000044755000         sta L1
-000676 xxxx 001507701000         call    ioa(msgResulta, L1)  "gfedc
-000677 xxxx 000703710000 
-000700 xxxx 000000000000 
-000701 xxxx 000031000000 
-000702 xxxx 000044000000 
-000703 xxxx 000674607000         ttf IT_4
-000704 xxxx 000717710000         tra IT_5
-000705 xxxx 000707777343 it4:    tallyb  it4c+1, -5, 3   " same as vfd 18/it4c+1,12/-5,1/1,5/3
-000706 xxxx 141142143144 it4c:   aci     /abcdefgh/
-000707 xxxx 145146147150 
-000710 xxxx 000666000043 it5:    tallyb  it3b, , 3
-000711 xxxx 000713000002 it5b:   vfd 18/it5c+1,12/0,1/0,5/2
-000712 xxxx 212223242526 it5c:   bci "ABCDEFGHIJKLM"
-000713 xxxx 273031414243 
-000714 xxxx 442020202020 
-000715 xxxx 000712000001 it5d:   vfd 18/it5c,12/0,1/0,5/1
-000716 xxxx 000714000000 it5e:   vfd 18/it5c+2,12/0,1/0,5/0
-000717 xxxx 000710235050 IT_5:   lda it5,ci  " 163 => a
-000720 xxxx 000044755000         sta L1
-000721 xxxx 001507701000         call    ioa(msgResulta, L1) " s
-000722 xxxx 000726710000 
-000723 xxxx 000000000000 
-000724 xxxx 000031000000 
-000725 xxxx 000044000000 
-000726 xxxx 000711235050 it5a:   lda it5b,ci
-000727 xxxx 000044755000         sta L1
-000730 xxxx 001507701000         call    ioa(msgResultg, L1) " '00000I'
-000731 xxxx 000735710000 
-000732 xxxx 000000000000 
-000733 xxxx 000035000000 
-000734 xxxx 000044000000 
-000735 xxxx 000715235050         lda it5d,ci
-000736 xxxx 000044755000         sta L1
-000737 xxxx 001507701000         call    ioa(msgResultg, L1) " '00000B'
-000740 xxxx 000744710000 
-000741 xxxx 000000000000 
-000742 xxxx 000035000000 
-000743 xxxx 000044000000 
-000744 xxxx 000716235050         lda it5e,ci
-000745 xxxx 000044755000         sta L1
-000746 xxxx 001507701000         call    ioa(msgResultg, L1) " '00000M'
-000747 xxxx 000753710000 
-000750 xxxx 000000000000 
-000751 xxxx 000035000000 
-000752 xxxx 000044000000 
-000753 xxxx 000755710000         tra IT_6
-000754 xxxx 001237000000 it6:    arg x+9
-000755 xxxx 000754235051 IT_6:   lda it6,i   " 042 => a
-000756 xxxx 000044755000         sta L1
-000757 xxxx 001507701000         call    ioa(msgResult, L1) " 000000000042
-000760 xxxx 000764710000 
-000761 xxxx 000000000000 
-000762 xxxx 000021000000 
-000763 xxxx 000044000000 
-000764 xxxx 000765710000         tra IT_7
-000765 xxxx 000776236054 IT_7:   ldq it7, di
-000766 xxxx 000044756000         stq L1
-000767 xxxx 001507701000         call    ioa(msgResult, L1) " 616,42,5,4,3,2,1
-000770 xxxx 000774710000 
-000771 xxxx 000000000000 
-000772 xxxx 000021000000 
-000773 xxxx 000044000000 
-000774 xxxx 000765607000         ttf IT_7
-000775 xxxx 000777710000         tra IT_8
-000776 xxxx 001241777100 it7:    tallyd  x+11, -7
-000777 xxxx 001010235056 IT_8:   lda it8, id
-001000 xxxx 000044755000         sta L1
-001001 xxxx 001507701000         call    ioa(msgResult, L1) " 100, 200, ..., 700, 7777
-001002 xxxx 001006710000 
-001003 xxxx 000000000000 
-001004 xxxx 000021000000 
-001005 xxxx 000044000000 
-001006 xxxx 000777607000         ttf IT_8
-001007 xxxx 001011710000         tra IT_9
-001010 xxxx 001245001000 it8:    tallyd  x+15, 8
-001011 xxxx 001022235057 IT_9:   lda     it9, idc
-001012 xxxx 000044755000         sta L1
-001013 xxxx 001507701000         call    ioa(msgResult, L1) " o-1, o-2, o-3, 0, 1, 2, 3
-001014 xxxx 001020710000 
-001015 xxxx 000000000000 
-001016 xxxx 000021000000 
-001017 xxxx 000044000000 
-001020 xxxx 001011607000         ttf     IT_9
-001021 xxxx 001032710000         tra     IT_9B
-001022 xxxx 001023000720 it9:    tallyc  it9b, 7, 16 " * == n*
-001023 xxxx 001226000000 it9b:   arg     x + 0       " 1st ea
-001024 xxxx 001227000000         arg     x + 1       " 2nd ea
-001025 xxxx 001230000000         arg     x + 2       " 3rd ea
-001026 xxxx 001231000000         arg     x + 3
-001027 xxxx 001232000000         arg     x + 4
-001030 xxxx 001233000000         arg     x + 5
-001031 xxxx 001234000000         arg     x + 6
-001032 xxxx 001043235057 IT_9B:  lda     it9c, idc
-001033 xxxx 000044755000         sta L1
-001034 xxxx 001507701000         call    ioa(msgResult, L1) " 100 .. 700
-001035 xxxx 001041710000 
-001036 xxxx 000000000000 
-001037 xxxx 000021000000 
-001040 xxxx 000044000000 
-001041 xxxx 001032607000         ttf     IT_9B
-001042 xxxx 001053710000         tra     IT_10
-001043 xxxx 001044000751 it9c:   tallyc  it9d, 7, 41 "I
-001044 xxxx 001245000000 it9d:   arg     x + 15       " 1st ea
-001045 xxxx 001246000000         arg     x + 16       " 2nd ea
-001046 xxxx 001247000000         arg     x + 17       " 3rd ea
-001047 xxxx 001250000000         arg     x + 18
-001050 xxxx 001251000000         arg     x + 19
-001051 xxxx 001252000000         arg     x + 20
-001052 xxxx 001253000000         arg     x + 21
-001053 xxxx 001064235055 IT_10:  lda     it10, dic   " x, y, z ...
-001054 xxxx 000044755000         sta L1
-001055 xxxx 001507701000         call    ioa(msgResult, L1) " -1, 0, o13
-001056 xxxx 001062710000 
-001057 xxxx 000000000000 
-001060 xxxx 000021000000 
-001061 xxxx 000044000000 
-001062 xxxx 001053607000         ttf     IT_10
-001063 xxxx 001070710000         tra     IT_11
-001064 xxxx 001070777551 it10:   tallyc  it10b, -3, 41   "I
-001065 xxxx 001270000000         arg     z
-001066 xxxx 001255000000         arg     y
-001067 xxxx 001226000000         arg     x
-001070 xxxx 001101236055 IT_11:  ldq     it11, dic       " aa1, aa2, c, aa4
-001071 xxxx 000044756000         stq L1
-001072 xxxx 001507701000         call    ioa(msgResult, L1) " 012, 345, o-255, 670
-001073 xxxx 001077710000 
-001074 xxxx 000000000000 
-001075 xxxx 000021000000 
-001076 xxxx 000044000000 
-001077 xxxx 001070607000         ttf     IT_11
-001100 xxxx 001115710000         tra     IT_12
-001101 xxxx 001106777460 it11:   tallyc  adres3, -4, 48  "*n
-001102 xxxx 001111000020         arg     ad4, *
-001103 xxxx 001152000020         arg     c, *
-001104 xxxx 001110000060         arg     ad2, *n
-001105 xxxx 001107000060         arg     ad1, *n
-001106 xxxx 000000000000 adres3: bss     1
-001107 xxxx 001112000000 ad1:    arg     aa1
-001110 xxxx 001113000000 ad2:    arg     aa2
-001111 xxxx 001114000000 ad4:    arg     aa4
-001112 xxxx 000000000012 aa1:    oct     012
-001113 xxxx 000000000345 aa2:    oct     345
-001114 xxxx 000000000670 aa4:    oct     670
-001115 xxxx 000000616000     dis
-001116 xxxx 001117000071 ir9:    arg ir9b, *1
-001117 xxxx 001120000056 ir9b:   arg ir9c, id
-001120 xxxx 000204001200 ir9c:   tally   _a,10      " doesn't really figure into the CA
-001121 xxxx 001122000075 ir8:    arg ir8b, *5
-001122 xxxx 001226000003 ir8b:   arg x, du
-001123 xxxx 001124000075 ir7:    arg ir7b, *5
-001124 xxxx 001226000003 ir7b:   arg x, du
-001125 xxxx 001270000013 ir6:    arg z,3 
-001126 xxxx 001226000053 ir5:    arg x, AD
-001127 xxxx 001130000033 ir3:    arg ir3b, 3*
-001130 xxxx 000000000000 ir3b:   oct 0,1,2,3,4,5,7777777,7 " was bss 8
-001131 xxxx 000000000001 
-001132 xxxx 000000000002 
-001133 xxxx 000000000003 
-001134 xxxx 000000000004 
-001135 xxxx 000000000005 
-001136 xxxx 000007777777 
-001137 xxxx 000000000007 
-001140 xxxx 001222000006         arg w, ql
-001141 xxxx 001142000075 ir2:    arg ir2b,*5
-001142 xxxx 001143000062 ir2b:   arg ir2c, *qu
-001143 xxxx 001226000017 ir2c:   arg x,7
-001144 xxxx 001145000035 ir1:    arg ir1b, 5*
-001145 xxxx 000000000000 ir1b:   bss 3
-001150 xxxx 000420000004         arg b, IC
-001151 xxxx 000420000000 ir0:    arg b
-001152 xxxx 001153000020 c:      arg     d, n*
-001153 xxxx 001154000074 d:      arg     e, *4
-001154 xxxx 001226000006 e:      arg     x, ql
-001155 xxxx 001226000001 f:      arg     x, au
-001156 xxxx 001226000012 g:      arg     x,2
-001157 xxxx 001160000035 h:      arg     i,5*
-001160 xxxx 000000000000 i:      bss     5
-001165 xxxx 001166000033         arg     j,3*
-001166 xxxx 000000000000 j:      bss     3
-001171 xxxx 001237000000         zero    x+9 "m
-001172 xxxx 000000000000 k:      bss 1
-001173 xxxx 001226000011         arg     x,1
-001174 xxxx 000000000000 l:      bss     2
-001176 xxxx 001177000031         arg     l2,1*       " l2 + 2
-001177 xxxx 000000000000 l2:     bss     2
-001201 xxxx 001202000003         arg     m, du
-001202 xxxx 001242000000 m:      arg     x+12
-001203 xxxx 001202000020 n:      arg     m, *
-001204 xxxx 001255000002 p:      arg     y,qu
-001205 xxxx 001227000000 q:      arg     x+1 " -2
-001206 xxxx 001237000000         arg     x+9   " 042
-001207 xxxx 001236000005         arg     x+8,al
-001210 xxxx 001226000001         arg     x,au
-001211 xxxx 000000000000 r:      bss     1
-001212 xxxx 000000000000 s:      bss     1
-001213 xxxx 000005000004 t:      zero    5,4
-001214 xxxx 000006777776         zero    6, -2
-001215 xxxx 123456543210         zero    0123456, 0543210
-001216 xxxx 006000010003 u:      tally   3072,64,3   " should be 006000 0100 03
-001217 xxxx 004000000041 v:      TALLYB  2048,,41    "1 " should be 004000 0000 41
-001220 xxxx 001222001251         TALLYC  w,10,41 "I
-001221 xxxx 001000777712         TALLYD  512,4095,10 " should be 0 01000 7777 12
-001222 xxxx 000000000000 w:      bss	w2, 4
-001226 xxxx 400000000001 x:      oct -1,-2,-3,0,1,2,3,4,5,42,616,77, 02012, -255, 123, 100,200,300,400,500,600,700,7777
-001227 xxxx 400000000002 
-001230 xxxx 400000000003 
-001231 xxxx 000000000000 
-001232 xxxx 000000000001 
-001233 xxxx 000000000002 
-001234 xxxx 000000000003 
-001235 xxxx 000000000004 
-001236 xxxx 000000000005 
-001237 xxxx 000000000042 
-001240 xxxx 000000000616 
-001241 xxxx 000000000077 
-001242 xxxx 000000002012 
-001243 xxxx 400000000255 
-001244 xxxx 000000000123 
-001245 xxxx 000000000100 
-001246 xxxx 000000000200 
-001247 xxxx 000000000300 
-001250 xxxx 000000000400 
-001251 xxxx 000000000500 
-001252 xxxx 000000000600 
-001253 xxxx 000000000700 
-001254 xxxx 000000007777 
-001255 xxxx 000000000000 y:      dec 0,1,2,3,4,5,6,7,8,9,10
-001256 xxxx 000000000001 
-001257 xxxx 000000000002 
-001260 xxxx 000000000003 
-001261 xxxx 000000000004 
-001262 xxxx 000000000005 
-001263 xxxx 000000000006 
-001264 xxxx 000000000007 
-001265 xxxx 000000000010 
-001266 xxxx 000000000011 
-001267 xxxx 000000000012 
-001270 xxxx 000000000013 z:      dec 11,12,13,14,15,16,17,18,19,20
-001271 xxxx 000000000014 
-001272 xxxx 000000000015 
-001273 xxxx 000000000016 
-001274 xxxx 000000000017 
-001275 xxxx 000000000020 
-001276 xxxx 000000000021 
-001277 xxxx 000000000022 
-001300 xxxx 000000000023 
-001301 xxxx 000000000024 
-001302 xxxx 000000633000 rd_clock:	rccl                " read the clock
-001303 xxxx 001426757000 cv_clock:	staq	rdctime     " save clock reading
-001304 xxxx 001376742000 	stx2	datx2               " save XR's
-001305 xxxx 001377740000 	stx0	datx2+1             " ..
-001306 xxxx 000034235007 	lda     28,dl               " Initialize montab
-001307 xxxx 001431755000 	sta     montab+1			" to prime Feb
-001310 xxxx 001426237000 	ldaq	rdctime             " Get clock reading
-001311 xxxx 000001737000 	lls     1                   " Set for dvf
-001312 xxxx 002025507000 	dvf     =1000000			" Get seconds since 1900.
-001313 xxxx 000044777000 	llr     36                  " Into Q.
-001314 xxxx 000074506007 	div     60,dl               " Seconds since min to A, mins to Q.
-001315 xxxx 001411755000 	sta     rdclock.sec         " Save for inspection.
-001316 xxxx 000074506007 	div     60,dl               " Min since hr to A, hrs to Q.
-001317 xxxx 001410755000 	sta     rdclock.min
-001320 xxxx 000006627000 	eax7	6
-001321 xxxx 001401702000 	tsx2	datecv              " Convert the minutes.
-001322 xxxx 001421176000 	sbq     rdclock.zone_temp	" Adjust for GMT.
-001323 xxxx 000030506007 	div     24,dl               " Days since 1900 in q.
-001324 xxxx 001420756000 	stq     rdclock.day_of_century	" save for  later.
-001325 xxxx 001407755000 	sta     rdclock.hr          " Hours since daybreak.
-001326 xxxx 001401702000 	tsx2	datecv              " Convert the hours
-001327 xxxx 002665506007 	div     365*4+1,dl          " get leap year cycle
-001330 xxxx 002110115007 	cmpa	365*3+1,dl          " if in last year of cycle (the leap year)
-001331 xxxx 001333604000 	tmi     *+2                 " no
-001332 xxxx 001431054000 	aos     montab+1			" allow for feb 29
-001333 xxxx 000002736000 	qls     2                   " 4*# leap year cycles
-001334 xxxx 003555036007 	adlq	1901,dl
-001335 xxxx 001417756000 	stq     rdclock.year		" Save
-001336 xxxx 000044777000 	llr     36
-001337 xxxx 000555506007 	div     365,dl              " Years complete since l.y.c. =>Q
-001340 xxxx 000004116007 	cmpq	4,dl                " Dec 31st of leap year?
-001341 xxxx 001344601000 	tnz     *+3                 " No.
-001342 xxxx 000001176007 	sbq     1,dl                " Adjust year and
-001343 xxxx 000555235007 	lda     365,dl              " day numbers.
-001344 xxxx 001417056000 	asq     rdclock.year		" Add in years complete.
-001345 xxxx 000000626000 	eax6	0                   " search for correct month
-001346 xxxx 030220520201 	rpt     12,1,tmi			" ..
-001347 xxxx 001430175016 	sba     montab,6			" subtract off days for each month
-001350 xxxx 777777075016 	ada     -1,6                " put back last entry
-001351 xxxx 000001075007 	ada     1,dl                " plus one more
-001352 xxxx 001414755000 	sta     rdclock.day_of_month	" Day of month
-001353 xxxx 001401702000 	tsx2	datecv              " convert day
-001354 xxxx 000000635016 	eaa     0,6
-001355 xxxx 001430135003 	sbla	montab,du			" get index into month table
-001356 xxxx 000022771000 	arl     18                  "..
-001357 xxxx 001412755000 	sta     rdclock.month		" Save month number
-001360 xxxx 001455236005 	ldq     rdc.months-1,al		" Get name of month.
-001361 xxxx 001413756000 	stq     rdclock.month_name
-001362 xxxx 001401702000 	tsx2	datecv              " convert month
-001363 xxxx 000000024400 	mvne	(),(),()			" edit the date and time
-001364 xxxx 001424070010 	desc4ns	date,8
-001365 xxxx 001444000014 	desc9a	datedit,12
-001366 xxxx 001426020014 	desc6a	rdctime,12
-001367 xxxx 001420236000 	ldq     rdclock.day_of_century
-001370 xxxx 000002076007 	adq     2,dl                " Bump Tuesday into place.
-001371 xxxx 000007506007 	div     7,dl
-001372 xxxx 001415755000 	sta     rdclock.day_of_week
-001373 xxxx 001447236005 	ldq     rdc.days,al         " Get name of day.
-001374 xxxx 001416756000 	stq     rdclock.day_name
-001375 xxxx 001426237000 	ldaq	rdctime             " get conversion in AQ
-001376 xxxx 001376622000 datx2:	eax2	*			" restore XR's
-001377 xxxx 001377620000 	eax0    *               " ..
-001400 xxxx 000000710012 	tra     0,2             " return to caller
-001401 xxxx 001423755000 datecv:	sta	datenum			" save number
-001402 xxxx 000017301400 	btd     (),(x7)         " convert into proper place
-001403 xxxx 001423000004 	desc9a	datenum,4
-001404 xxxx 001424070002 	desc4ns	date,2
-001405 xxxx 777776627017 	eax7	-2,7			" move offset index
-001406 xxxx 000000710012 	tra     0,2             " and return
-001407 xxxx 000000000000 	bss	,1
-001410 xxxx 000000000000 	bss	,1
-001411 xxxx 000000000000 	bss	,1
-001412 xxxx 000000000000 	bss	,1
-001413 xxxx 000000000000 	bss	,1
-001414 xxxx 000000000000 	bss	,1
-001415 xxxx 000000000000 	bss	,1
-001416 xxxx 000000000000 	bss	,1
-001417 xxxx 000000000000 	bss	,1
-001420 xxxx 000000000000 	bss	,1
-001421 xxxx 000000000010     dec     8
-001422 xxxx 160144164040     aci     'pdt '
-001423 xxxx 000000000000 datenum:	bss	,1
-001424 xxxx 000000000000 date:	bss	,1
-001425 xxxx 000000011000 	even "(allocating 1 nop)
-001426 xxxx 000000000000 rdctime:	bss	,2
-001430 xxxx 000000000037 montab:	dec	31,28,31,30,31,30,31,31,30,31,30,31
-001431 xxxx 000000000034 
-001432 xxxx 000000000037 
-001433 xxxx 000000000036 
-001434 xxxx 000000000037 
-001435 xxxx 000000000036 
-001436 xxxx 000000000037 
-001437 xxxx 000000000037 
-001440 xxxx 000000000036 
-001441 xxxx 000000000037 
-001442 xxxx 000000000036 
-001443 xxxx 000000000037 
-001444 xxxx 401020102260 datedit:	vfd	9/lte+1,o9/20,9/mvzb+2,9/insp,o9/61,9/mvc+2,9/insm+1,9/mvc+2
-001445 xxxx 061322021322 
-001446 xxxx 260015322021 	vfd	9/insp,o9/15,9/mvc+2,9/insm+1
-001447 xxxx 163165156040 rdc.days: aci	'sun mon tue wed thurfri sat '
-001450 xxxx 155157156040 
-001451 xxxx 164165145040 
-001452 xxxx 167145144040 
-001453 xxxx 164150165162 
-001454 xxxx 146162151040 
-001455 xxxx 163141164040 
-001456 xxxx 152141156040 	aci	'jan feb mar apr may jun jul aug septoct nov dec '
-001457 xxxx 146145142040 
-001460 xxxx 155141162040 
-001461 xxxx 141160162040 
-001462 xxxx 155141171040 
-001463 xxxx 152165156040 
-001464 xxxx 152165154040 
-001465 xxxx 141165147040 
-001466 xxxx 163145160164 
-001467 xxxx 157143164040 
-001470 xxxx 156157166040 
-001471 xxxx 144145143040 
-001472 xxxx 001475710000 crlf:	save
-001473 xxxx 000000000000 
-001474 xxxx 001473630000 
-001475 xxxx 001473754000 
-001476 xxxx 001473741000 
-001477 xxxx 001506755000         sta     saveA
-001500 xxxx 002026235000         lda     =012
-001501 xxxx 000001420400         emCall  1
-001502 xxxx 002027235000         lda     =015
-001503 xxxx 000001420400         emcall  1
-001504 xxxx 001506235000         lda     saveA
-001505 xxxx 001474710000         return  crlf
-001506 xxxx 000000000000 saveA:  bss     1
-001507 xxxx 001516710000 ioa:    save    2, 4, 5, 6
-001510 xxxx 000000000000 
-001511 xxxx 000000222003 
-001512 xxxx 000001224003 
-001513 xxxx 000002225003 
-001514 xxxx 000003226003 
-001515 xxxx 001510630000 
-001516 xxxx 001510754000 
-001517 xxxx 001510741000 
-001520 xxxx 001511742000 
-001521 xxxx 001512744000 
-001522 xxxx 001513745000 
-001523 xxxx 001514746000 
-001524 xxxx 000002624031 ioa1:   eax4    2, 1*   " 1st arg is control string
-001525 xxxx 000003625011         eax5    3, 1    " next arg is the 1st of the numeric args. x5 points to next argument
-001526 xxxx 000000626015         eax6    0, x5
-001527 xxxx 000041235007         lda     041, dl " make a blank tallyb word .....
-001530 xxxx 001545755000         sta     i29
-001531 xxxx 000000235014     	lda     0, x4   " get 1st data word into A
-001532 xxxx 000033731000         ars     27      " determine word count
-001533 xxxx 000006735000     	als     6       " count to upper word of tally
-001534 xxxx 001545255000     	orsa    i29
-001535 xxxx 000000626014     	eax6    0, x4   " address of string into X6
-001536 xxxx 001545746000     	stx6    i29     " address to upper word of tally
-001537 xxxx 001545235052 inext:  lda     i29, sc
-001540 xxxx 000136115007         cmpa    =o000136,dl		" ^
-001541 xxxx 001546600000         tze     iernot      " if so, go process it
-001542 xxxx 000001420400 out1:  	emCall  1
-001543 xxxx 001537607000     	ttf     inext
-001544 xxxx 001511710000         return  ioa
-001545 xxxx 000000000041 i29:	tallyb  0, 0, 1
-001546 xxxx 001545235052 iernot: lda     i29, sc         " get next char ...
-001547 xxxx 000136115007         cmpa    =o000136,dl     " is it another "^"?
-001550 xxxx 001566600000         tze     i21             " No, just print it ...
-001551 xxxx 000167115007         cmpa    =o000167,dl     " is it a "w"?
-001552 xxxx 001570600000         tze     idoW            " do full word octal
-001553 xxxx 000157115007         cmpa    =o000157,dl     " is it an "o"?
-001554 xxxx 001616600000         tze     idoO            " print zero suppressed octal
-001555 xxxx 000156115007         cmpa    =o000156,dl     " is it a "n"?
-001556 xxxx 001641600000         tze     idoN            " octal w/ no spaces inserted
-001557 xxxx 000144115007         cmpa    =o000144,dl     " is it a "d"?
-001560 xxxx 001670600000         tze     idoD            " decimal
-001561 xxxx 000141115007         cmpa    =o000141,dl     " is it a ^a?
-001562 xxxx 001676600000         tze     idoA            " 4 char ascii display
-001563 xxxx 000147115007         cmpa    =o000147,dl     " is it a ^g?
-001564 xxxx 001707600000         tze     idoG            " 6 char GE BCD display
-001565 xxxx 001542710000         tra     out1        " unknown just print it....
-001566 xxxx 000001420400 i21:    emCall  1           " output A to console
-001567 xxxx 001537710000         tra     inext
-001570 xxxx 000000235035 idoW:   lda     0, 5*       " ^w - full-word octal xxxxxx xxxxxx
-001571 xxxx 001765702000         tsx2    octwd
-001572 xxxx 001666757000         staq    ioaSafe     " bcd in AQ
-001573 xxxx 000044773000         lrl     36          " A => Q
-001574 xxxx 000006622000         eax2    6
-001575 xxxx 000000235007 idoW2:  lda     =0, dl
-001576 xxxx 000006737000         lls     6
-001577 xxxx 000002420400         emCall  2           " output GE code char to console
-001600 xxxx 777777622012         eax2    -1, 2
-001601 xxxx 001575601000         tnz     idoW2
-001602 xxxx 001666237000         ldaq    ioaSafe
-001603 xxxx 000000235007         lda     =0, dl      " 0 => A
-001604 xxxx 000020235007         lda     =020 ,dl     " bcd ' ' => A
-001605 xxxx 000002420400         emcall  2
-001606 xxxx 000006622000         eax2    6
-001607 xxxx 000000235007 idoW3:  lda     =0,dl
-001610 xxxx 000006737000         lls     6
-001611 xxxx 000002420400         emCall  2
-001612 xxxx 777777622012         eax2    -1, 2
-001613 xxxx 001607601000         tnz     idoW3
-001614 xxxx 000001065003         adx5    1,du
-001615 xxxx 001537710000         tra     inext
-001616 xxxx 000000235035 idoO:   lda     0, 5*           " ^o - Zero-suppressed octal
-001617 xxxx 001765702000         tsx2    octwd
-001620 xxxx 001666757000         staq    ioaSafe         " bcd in AQ
-001621 xxxx 001637235000         lda     idOTly
-001622 xxxx 001640755000         sta     idOT
-001623 xxxx 001640235052 idO1:   lda     idOT, sc        " get char into A
-001624 xxxx 000000115007         cmpa    =0, dl          " a zero?
-001625 xxxx 001633601000         tnz     idONZ + 1       " nope
-001626 xxxx 001623607000         ttf     idO1            " Yes, a Zero. Go for more
-001627 xxxx 000002420400         emCall  2               " output a single 0
-001630 xxxx 000001065003         adx5    1,du
-001631 xxxx 001537710000         tra     inext
-001632 xxxx 001640235052 idONZ:  lda     idOT, sc        " get char into A
-001633 xxxx 000002420400         emCall  2
-001634 xxxx 001632607000         ttf     idONZ           " Yes, a Zero. Go for more
-001635 xxxx 000001065003         adx5    1,du
-001636 xxxx 001537710000         tra     inext
-001637 xxxx 001666001400 idOTly: tally   ioaSafe, 12, 0
-001640 xxxx 000000000000 idOT:   bss     1
-001641 xxxx 000000235035 idoN:   lda     0, 5*       " ^n - octal w/ no spaces inserted
-001642 xxxx 001765702000         tsx2    octwd
-001643 xxxx 001666757000         staq    ioaSafe     " bcd in AQ
-001644 xxxx 000044773000         lrl     36          " A => Q
-001645 xxxx 000006622000         eax2    6
-001646 xxxx 000000235007 idoN2:  lda     =0,dl
-001647 xxxx 000006737000         lls     6
-001650 xxxx 000002420400         emCall  2           " output GE code char to console
-001651 xxxx 777777622012         eax2    -1, 2
-001652 xxxx 001646601000         tnz     idoN2
-001653 xxxx 001666237000         ldaq    ioaSafe
-001654 xxxx 000000235007         lda     =0, dl      " 0 => A
-001655 xxxx 000006622000         eax2    6
-001656 xxxx 000000235007 idoN3:  lda     =0, dl
-001657 xxxx 000006737000         lls     6
-001660 xxxx 000002420400         emCall  2
-001661 xxxx 777777622012         eax2    -1, 2
-001662 xxxx 001656601000         tnz     idoN3
-001663 xxxx 000001065003         adx5    1,du
-001664 xxxx 001537710000         tra     inext
-001665 xxxx 000000011000         even "(allocating 1 nop)
-001666 xxxx 000000000000 ioaSafe:  bss 2
-001670 xxxx 000000236035 idoD:   ldq     0, 5*       " ^d
-001671 xxxx 001720701000         call    toDec
-001672 xxxx 001674710000 
-001673 xxxx 000000000000 
-001674 xxxx 000001065003         adx5    1,du
-001675 xxxx 001537710000         tra     inext
-001676 xxxx 000000236035 idoA:   ldq     0, 5*      " ^a (4 ascii chars into Q)
-001677 xxxx 000004622000         eax2    4
-001700 xxxx 000000235007 idoA2:  lda     =0,dl
-001701 xxxx 000011737000         lls     9
-001702 xxxx 000001420400         emCall  1
-001703 xxxx 777777622012         eax2    -1, 2
-001704 xxxx 001700601000         tnz     idoA2
-001705 xxxx 000001065003         adx5    1,du        " into next argument
-001706 xxxx 001537710000         tra     inext
-001707 xxxx 000000236035 idoG:   ldq     0, 5*        " ^g (6 GE BCD chars into Q)
-001710 xxxx 000006622000         eax2    6
-001711 xxxx 000000235007 idoG2:  lda     =0,dl
-001712 xxxx 000006737000         lls     6
-001713 xxxx 000002420400         emCall  2
-001714 xxxx 777777622012         eax2    -1, 2
-001715 xxxx 001711601000         tnz     idoG2
-001716 xxxx 000001065003         adx5    1,du        " into next argument
-001717 xxxx 001537710000         tra     inext
-001720 xxxx 001723710000 toDec:  save    "2,3,4,5,6,7
-001721 xxxx 000000000000 
-001722 xxxx 001721630000 
-001723 xxxx 001721754000 
-001724 xxxx 001721741000 
-001725 xxxx 002030116000         cmpq    =-34359738368       " the weird one?
-001726 xxxx 001732601000         tnz     toDec2
-001727 xxxx 001764235000         lda     decMTly             " just print it and be done with it
-001730 xxxx 001760755000         sta     decTly
-001731 xxxx 001750710000         tra     toDec1
-001732 xxxx 001754756000 toDec2: stq     decNo
-001733 xxxx 000000116007         cmpq    =0,dl       " Q < 0?
-001734 xxxx 001736605000         tpl     toDec0      " No
-001735 xxxx 001754336000         lcq     decNo       " -decNo => Q
-001736 xxxx 000012506007 toDec0: div     =10,dl      " divide Q by 10, remainder in A
-001737 xxxx 000060075007         ada     =o060,dl    " add ascii '0' (=1A0) to A
-001740 xxxx 001760755045         sta     decTly, scr " start writing characters backwards
-001741 xxxx 000000076007         adq     =0,dl       " set flags to test if Q == 0
-001742 xxxx 001736601000         tnz     toDec0      " if Q == 0 then we're essentially done with conversion
-001743 xxxx 001754235000         lda     decNo
-001744 xxxx 000000115007         cmpa    =0,dl
-001745 xxxx 001750605000         tpl     toDec1
-001746 xxxx 000055235007         lda     =o055,dl    " (-) => A
-001747 xxxx 001760755045         sta     decTly, scr " write (-) sign
-001750 xxxx 001760235052 toDec1: lda     decTly, sc
-001751 xxxx 000001420400         emCall  1
-001752 xxxx 001750607000         ttf     toDec1
-001753 xxxx 001722710000         return  toDec
-001754 xxxx 000000000000 decNo:  dec     0
-001755 xxxx 000000000000 decBuf: bss     3
-001760 xxxx 001757000040 decTly: tallyb  decBuf+2, , 0
-001761 xxxx 055063064063 decMM:  aci     "-34359738368"  " -2^^35
-001762 xxxx 065071067063 
-001763 xxxx 070063066070 
-001764 xxxx 001761001440 decMTly:tallyb  decMM, 12, 0
-001765 xxxx 002002742000 octwd:	stx2	octx2
-001766 xxxx 000006622000 	eax2	6
-001767 xxxx 000003736000 	qls     3
-001770 xxxx 000003777000 	llr     3
-001771 xxxx 777777622012 	eax2	-1,2
-001772 xxxx 001767605400 	tpnz	*-3
-001773 xxxx 002024756000 	stq     octtemp
-001774 xxxx 000006622000 	eax2	6
-001775 xxxx 000003736000 	qls     3
-001776 xxxx 000003777000 	llr     3
-001777 xxxx 777777622012 	eax2	-1,2
-002000 xxxx 001775605400 	tpnz	*-3
-002001 xxxx 002024235000 	lda     octtemp
-002002 xxxx 002002622000 octx2:	eax2	*
-002003 xxxx 000000710012 	tra     0,2
-002004 xxxx 002022742000 hexwd:	stx2	hexx2
-002005 xxxx 000044773000 	lrl     36          "shift to Q
-002006 xxxx 000006622000 	eax2	6           "	process 6 characters
-002007 xxxx 000000235007 hexloop:	lda	=0,dl	"	clear A
-002010 xxxx 000004737000 	lls     4           "shift in 4 bits
-002011 xxxx 000011115007 	cmpa	=9,dl		"greater than 9?
-002012 xxxx 002014604400 	tmoz	*+2
-002013 xxxx 000007035007 	adla	=7,dl       "if so, change to letter
-002014 xxxx 000006773000 	lrl     6
-002015 xxxx 002024235000 	lda     octtemp		"get temporary
-002016 xxxx 000006737000 	lls     6           "insert new character
-002017 xxxx 002024755000 	sta     octtemp		"and store
-002020 xxxx 777777622012 	eax2	-1,2		"decrement index
-002021 xxxx 002007605400 	tpnz	hexloop
-002022 xxxx 002022622000 hexx2:	eax2	*
-002023 xxxx 000000710012 	tra     0,2		"return to caller
-002024 xxxx 000000000000 octtemp:	oct	0
-002025 xxxx 000003641100 decimal literal (=1000000)
-002026 xxxx 000000000012 octal literal (=o12)
-002027 xxxx 000000000015 octal literal (=o15)
-002030 xxxx 400000000000 decimal literal (=-34359738368)
+!SIZE 012031
+000000 xxxx 010000710000 	tra	entry
+000132 xxxx 000024420400 	emcall	20	" report fault
+000133 xxxx 000000011000 	nop
+010000 xxxx 011302702000     tsx2	rd_clock
+010001 xxxx 010042757000     staq	Date        "MM/DD HH:MM
+010002 xxxx 011507701000     call    ioa(msgHello, Date, Date+1)
+010003 xxxx 010010710000 
+010004 xxxx 000000000000 
+010005 xxxx 010011000000 
+010006 xxxx 010042000000 
+010007 xxxx 010043000000 
+010010 xxxx 010050710000     tra     _main
+010011 xxxx 036124150151 msgHello:   acc         "This is TestAddrMods ...^g^g\r\n"
+010012 xxxx 163040151163 
+010013 xxxx 040124145163 
+010014 xxxx 164101144144 
+010015 xxxx 162115157144 
+010016 xxxx 163040056056 
+010017 xxxx 056136147136 
+010020 xxxx 147015012040 
+010021 xxxx 014122145163 msgResult:  acc         /Result: ^n\r\n/
+010022 xxxx 165154164072 
+010023 xxxx 040136156015 
+010024 xxxx 012040040040 
+010025 xxxx 017122145163 msgResult2: acc         /Result: ^n ^n\r\n/
+010026 xxxx 165154164072 
+010027 xxxx 040136156040 
+010030 xxxx 136156015012 
+010031 xxxx 016122145163 msgResulta: acc         /Result: '^a'\r\n/
+010032 xxxx 165154164072 
+010033 xxxx 040047136141 
+010034 xxxx 047015012040 
+010035 xxxx 016122145163 msgResultg: acc         /Result: '^g'\r\n/
+010036 xxxx 165154164072 
+010037 xxxx 040047136147 
+010040 xxxx 047015012040 
+010041 xxxx 000000011000         even "(allocating 1 nop)
+010042 xxxx 000000000000 Date:   bss     2
+010044 xxxx 000000000000 L1:     bss     1
+010045 xxxx 000000000000 L2:     bss     1
+010046 xxxx 000000000000 LA:     bss     1
+010047 xxxx 000000000000 LQ:     bss     1
+010050 xxxx 010204620000     eax0    _a
+010051 xxxx 011216621000     eax1    u
+010052 xxxx 011217622000     eax2    v
+010053 xxxx 011222623000     eax3    w
+010054 xxxx 011226624000     eax4    x
+010055 xxxx 011255625000     eax5    y
+010056 xxxx 011270626000     eax6    z
+010057 xxxx 010064710000     tra     R_mods
+010060 xxxx 014122040155 msgRmods:   acc /R mods ...\r\n/
+010061 xxxx 157144163040 
+010062 xxxx 056056056015 
+010063 xxxx 012040040040 
+010064 xxxx 011507701000     call    ioa(msgRmods)
+010065 xxxx 010070710000 
+010066 xxxx 000000000000 
+010067 xxxx 010060000000 
+010070 xxxx 011216235000     lda     u
+010071 xxxx 010044755000     sta     L1
+010072 xxxx 011507701000     call    ioa(msgResult, L1)  " 006000 0100 03
+010073 xxxx 010077710000 
+010074 xxxx 000000000000 
+010075 xxxx 010021000000 
+010076 xxxx 010044000000 
+010077 xxxx 000000236011     ldq     0,x1
+010100 xxxx 010044756000     stq     L1
+010101 xxxx 011507701000     call    ioa(msgResult, L1)  " 006000 0100 03
+010102 xxxx 010106710000 
+010103 xxxx 000000000000 
+010104 xxxx 010021000000 
+010105 xxxx 010044000000 
+010106 xxxx 000002235014     lda     2,x4
+010107 xxxx 010044755000     sta     L1
+010110 xxxx 011507701000     call    ioa(msgResult, L1)  " 400000000003
+010111 xxxx 010115710000 
+010112 xxxx 000000000000 
+010113 xxxx 010021000000 
+010114 xxxx 010044000000 
+010115 xxxx 011267236000     ldq     y+10
+010116 xxxx 010044756000     stq     L1
+010117 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000000012
+010120 xxxx 010124710000 
+010121 xxxx 000000000000 
+010122 xxxx 010021000000 
+010123 xxxx 010044000000 
+010124 xxxx 011213235000     lda     t                   " 000005 000004 => a
+010125 xxxx 010044755000     sta     L1
+010126 xxxx 010045755000     sta     L2
+010127 xxxx 011507701000     call    ioa(msgResult, L1)  " 000005000004
+010130 xxxx 010134710000 
+010131 xxxx 000000000000 
+010132 xxxx 010021000000 
+010133 xxxx 010044000000 
+010134 xxxx 010045235000     lda     L2      " restore A
+010135 xxxx 011255236001     ldq     y, au   " 5 => q
+010136 xxxx 010044756000     stq     L1
+010137 xxxx 011507701000     call    ioa(msgResult, L1)  " 5
+010140 xxxx 010144710000 
+010141 xxxx 000000000000 
+010142 xxxx 010021000000 
+010143 xxxx 010044000000 
+010144 xxxx 010045235000     lda     L2
+010145 xxxx 011270236005     ldq     z, al   " 017 => q
+010146 xxxx 010044756000     stq     L1
+010147 xxxx 011507701000     call    ioa(msgResult, L1)  " 17
+010150 xxxx 010154710000 
+010151 xxxx 000000000000 
+010152 xxxx 010021000000 
+010153 xxxx 010044000000 
+010154 xxxx 011214236000     ldq     t+1         
+010155 xxxx 010044756000     stq     L1
+010156 xxxx 011507701000     call    ioa(msgResult, L1)  " 000006777776   6, -2
+010157 xxxx 010163710000 
+010160 xxxx 000000000000 
+010161 xxxx 010021000000 
+010162 xxxx 010044000000 
+010163 xxxx 010044236000     ldq     L1
+010164 xxxx 011226235002     lda     x,qu    " 3 => a
+010165 xxxx 010046757000     staq    LAQ
+010166 xxxx 010044755000     sta     L1
+010167 xxxx 011507701000     call    ioa(msgResult, L1)  " 3
+010170 xxxx 010174710000 
+010171 xxxx 000000000000 
+010172 xxxx 010021000000 
+010173 xxxx 010044000000 
+010174 xxxx 010046237000     ldaq    LAQ
+010175 xxxx 011255235006     lda     y,ql    " y(-2) => a " 700
+010176 xxxx 010044755000     sta     L1
+010177 xxxx 011507701000     call    ioa(msgResult, L1)  "   700
+010200 xxxx 010204710000 
+010201 xxxx 000000000000 
+010202 xxxx 010021000000 
+010203 xxxx 010044000000 
+010204 xxxx 000000235004 _a: lda     0,ic   " 000000235004
+010205 xxxx 010044755000     sta     L1
+010206 xxxx 011507701000     call    ioa(msgResult, L1)  "   700
+010207 xxxx 010213710000 
+010210 xxxx 000000000000 
+010211 xxxx 010021000000 
+010212 xxxx 010044000000 
+010213 xxxx 123456236003     ldq  0123456,du   "0123456 => q -- none; operand has the form y || (00...0)18
+010214 xxxx 543210235007     lda  0543210,dl   "0543210 => a --  none; operand has the form (00...0)18 || y
+010215 xxxx 010046757000     staq    LAQ
+010216 xxxx 011507701000     call    ioa(msgResult, LQ)  " 123456000000
+010217 xxxx 010223710000 
+010220 xxxx 000000000000 
+010221 xxxx 010021000000 
+010222 xxxx 010047000000 
+010223 xxxx 011507701000     call    ioa(msgResult, LA)  " 000000543210
+010224 xxxx 010230710000 
+010225 xxxx 000000000000 
+010226 xxxx 010021000000 
+010227 xxxx 010046000000 
+010230 xxxx 010235710000     tra     RI_mods
+010231 xxxx 015122111040 msgRI:      acc     /RI mods ...\r\n/
+010232 xxxx 155157144163 
+010233 xxxx 040056056056 
+010234 xxxx 015012040040 
+010235 xxxx 011507701000     call    ioa(msgRI)
+010236 xxxx 010241710000 
+010237 xxxx 000000000000 
+010240 xxxx 010231000000 
+010241 xxxx 011205235020     lda     q,n*         " -2 => a
+010242 xxxx 011206236020     ldq     q+1,*        " 042 => a
+010243 xxxx 010046757000     staq    LAQ
+010244 xxxx 011507701000     call    ioa(msgResult, LQ)  " 123456000000
+010245 xxxx 010251710000 
+010246 xxxx 000000000000 
+010247 xxxx 010021000000 
+010250 xxxx 010047000000 
+010251 xxxx 011507701000     call    ioa(msgResult, LA)  " 000000543210
+010252 xxxx 010256710000 
+010253 xxxx 000000000000 
+010254 xxxx 010021000000 
+010255 xxxx 010046000000 
+010256 xxxx 000002235007     lda     2, dl       " 2 => AL
+010257 xxxx 000002221003     ldx1    2, du        " 2 => x1
+010260 xxxx 011205236031     ldq     q, 1*       " C(q+x1 + C(A)0,17) => 616 => q
+010261 xxxx 010044756000     stq     L1
+010262 xxxx 011507701000     call    ioa(msgResult, L1)  " 616
+010263 xxxx 010267710000 
+010264 xxxx 000000000000 
+010265 xxxx 010021000000 
+010266 xxxx 010044000000 
+010267 xxxx 000013235003     lda     11, du      " 11 => AU
+010270 xxxx 000003222003     ldx2    3, du        " 3 => x2
+010271 xxxx 011205236032     ldq     q, 2*       " C(q+x2 + C(A)0,17) => 77 => q
+010272 xxxx 010044756000     stq     L1
+010273 xxxx 011507701000     call    ioa(msgResult, L1)  " 77
+010274 xxxx 010300710000 
+010275 xxxx 000000000000 
+010276 xxxx 010021000000 
+010277 xxxx 010044000000 
+010300 xxxx 000004236024     ldq     4, ic*      " 02102 => q
+010301 xxxx 010305710000     tra     here        " jump over stuff ...
+010302 xxxx 000000000000     bss     2           " just waste 2 words
+010304 xxxx 011202000020     arg     m, *
+010305 xxxx 010044756000     stq     L1
+010306 xxxx 011507701000     call    ioa(msgResult, L1)  " 2012
+010307 xxxx 010313710000 
+010310 xxxx 000000000000 
+010311 xxxx 010021000000 
+010312 xxxx 010044000000 
+010313 xxxx 000002220003     ldx0    2, du       " 2 => x0
+010314 xxxx 000002221003     ldx1    2, du       " 2 => x1
+010315 xxxx 011174236030     ldq     l, 0*       " l + 2 => du(m) => q
+010316 xxxx 010044756000     stq     L1
+010317 xxxx 011507701000     call    ioa(msgResult, L1)  " since l+2 & m move we'll see what this works out to
+010320 xxxx 010324710000 
+010321 xxxx 000000000000 
+010322 xxxx 010021000000 
+010323 xxxx 010044000000 
+010324 xxxx 000001635000     eaa     1
+010325 xxxx 000002621000     eax1    2
+010326 xxxx 011172236021     ldq     k, au*      " x+2 => q (-3)
+010327 xxxx 010044756000     stq     L1
+010330 xxxx 011507701000     call    ioa(msgResult, L1)  " 400000000003
+010331 xxxx 010335710000 
+010332 xxxx 000000000000 
+010333 xxxx 010021000000 
+010334 xxxx 010044000000 
+010335 xxxx 000003636000     eaq     3
+010336 xxxx 011204235020     lda     p,*         " y + 3 => 3
+010337 xxxx 010044755000     sta     L1
+010340 xxxx 011507701000     call    ioa(msgResult, L1)  " 3
+010341 xxxx 010345710000 
+010342 xxxx 000000000000 
+010343 xxxx 010021000000 
+010344 xxxx 010044000000 
+010345 xxxx 000003623000     eax3    3
+010346 xxxx 000005625000     eax5    5
+010347 xxxx 011157236020     ldq     h,*     " x + 9 => 42
+010350 xxxx 010044756000     stq     L1
+010351 xxxx 011507701000     call    ioa(msgResult, L1)  " 42
+010352 xxxx 010356710000 
+010353 xxxx 000000000000 
+010354 xxxx 010021000000 
+010355 xxxx 010044000000 
+010356 xxxx 010362710000     tra     IR_mods
+010357 xxxx 011111122137 msgIR:  acc /IR_mods\r\n/
+010360 xxxx 155157144163 
+010361 xxxx 015012040040 
+010362 xxxx 011507701000     call    ioa(msgIR)
+010363 xxxx 010366710000 
+010364 xxxx 000000000000 
+010365 xxxx 010357000000 
+010366 xxxx 011156235060     lda     g, *n   " -1 => a
+010367 xxxx 010044755000     sta     L1
+010370 xxxx 011507701000     call    ioa(msgResult, L1)  " 400000000001
+010371 xxxx 010375710000 
+010372 xxxx 000000000000 
+010373 xxxx 010021000000 
+010374 xxxx 010044000000 
+010375 xxxx 011155236067     ldq    f, *dl   " &x => q
+010376 xxxx 010044756000     stq     L1
+010377 xxxx 011507701000     call    ioa(msgResult, L1)  " Yup, but this will move as x moves
+010400 xxxx 010404710000 
+010401 xxxx 000000000000 
+010402 xxxx 010021000000 
+010403 xxxx 010044000000 
+010404 xxxx 000015624000     eax4    13
+010405 xxxx 011152235071     lda     c,  *1  " x+13 => -255 (400000000255) => a
+010406 xxxx 000000531000     neg             " a = (377777777523)
+010407 xxxx 010044755000     sta     L1
+010410 xxxx 011507701000     call    ioa(msgResult, L1)  "
+010411 xxxx 010415710000 
+010412 xxxx 000000000000 
+010413 xxxx 010021000000 
+010414 xxxx 010044000000 
+010415 xxxx 000004621000     eax1    4
+010416 xxxx 010420720031 a:  lxl0    b,1*    " a + 5 => x0
+010417 xxxx 010426710000     tra     here_2
+010420 xxxx 000000000111 b:  oct     111,222,333,444
+010421 xxxx 000000000222 
+010422 xxxx 000000000333 
+010423 xxxx 000000000444 
+010424 xxxx 010425000064     arg     bb, *ic
+010425 xxxx 000005000007 bb: arg     5, dl
+010426 xxxx 000001236007     ldq     1, dl
+010427 xxxx 011151235066     lda     ir0, *QL    " C(b+1) (222) => a
+010430 xxxx 010044755000     sta     L1
+010431 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000000222
+010432 xxxx 010436710000 
+010433 xxxx 000000000000 
+010434 xxxx 010021000000 
+010435 xxxx 010044000000 
+010436 xxxx 000002623000     eax3    2
+010437 xxxx 000003625000     eax5    3
+010440 xxxx 011144235073     lda     ir1, *3     " C(b+2) (333) => a
+010441 xxxx 010044755000     sta     L1
+010442 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000000333
+010443 xxxx 010447710000 
+010444 xxxx 000000000000 
+010445 xxxx 010021000000 
+010446 xxxx 010044000000 
+010447 xxxx 000004623000     eax3    4
+010450 xxxx 000005625000     eax5    5
+010451 xxxx 000011636000     eaq     9
+010452 xxxx 000007627000     eax7    7
+010453 xxxx 011141235073     lda     ir2, *3     " C(x+9) (42) => a
+010454 xxxx 010044755000     sta     L1
+010455 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000000042
+010456 xxxx 010462710000 
+010457 xxxx 000000000000 
+010460 xxxx 010021000000 
+010461 xxxx 010044000000 
+010462 xxxx 000010623000     eax3    8
+010463 xxxx 000011236007     ldq     9, dl
+010464 xxxx 011127235067     lda     ir3, *dl    " C(A) = &w
+010465 xxxx 010044755000     sta     L1
+010466 xxxx 011507701000     call    ioa(msgResult, L1)  " Yup, &w. But, &w will change
+010467 xxxx 010473710000 
+010470 xxxx 000000000000 
+010471 xxxx 010021000000 
+010472 xxxx 010044000000 
+010473 xxxx 000012235007     lda     10, dl
+010474 xxxx 011126235065     lda     ir5, *al    " C(x + 10) (616) => a
+010475 xxxx 010044755000     sta     L1
+010476 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000000616
+010477 xxxx 010503710000 
+010500 xxxx 000000000000 
+010501 xxxx 010021000000 
+010502 xxxx 010044000000 
+010503 xxxx 000013623000     eax3    11
+010504 xxxx 011125236060     ldq     ir6, *n     " C(z) (13(8)) => q
+010505 xxxx 010044756000     stq     L1
+010506 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000000013
+010507 xxxx 010513710000 
+010510 xxxx 000000000000 
+010511 xxxx 010021000000 
+010512 xxxx 010044000000 
+010513 xxxx 000014625000     eax5    12
+010514 xxxx 011123235060     lda     ir7, *n     " C(x + 12) (02012) => a
+010515 xxxx 010044755000     sta     L1
+010516 xxxx 011507701000     call    ioa(msgResult, L1)  " 000000002012
+010517 xxxx 010523710000 
+010520 xxxx 000000000000 
+010521 xxxx 010021000000 
+010522 xxxx 010044000000 
+010523 xxxx 000015625000     eax5    13
+010524 xxxx 011121235020     lda     ir8, *      " C(x + 13) (-255 oct) => a
+010525 xxxx 000000531000     neg                 " -a => a
+010526 xxxx 010044755000     sta     L1
+010527 xxxx 011507701000     call    ioa(msgResult, L1)  " 377777777523
+010530 xxxx 010534710000 
+010531 xxxx 000000000000 
+010532 xxxx 010021000000 
+010533 xxxx 010044000000 
+010534 xxxx 000016621000     eax1    14
+010535 xxxx 011116236020     ldq     ir9, *      " C(ir9c + 14) (7777777) => q
+010536 xxxx 010044756000     stq     L1
+010537 xxxx 011507701000     call    ioa(msgResult, L1)  " 000007777777
+010540 xxxx 010544710000 
+010541 xxxx 000000000000 
+010542 xxxx 010021000000 
+010543 xxxx 010044000000 
+010544 xxxx 010551710000     tra IT_mods
+010545 xxxx 015111124040 msgIT:  acc /IT mods ...\r\n/
+010546 xxxx 155157144163 
+010547 xxxx 040056056056 
+010550 xxxx 015012040040 
+010551 xxxx 011507701000         call    ioa(msgIT)
+010552 xxxx 010555710000 
+010553 xxxx 000000000000 
+010554 xxxx 010545000000 
+010555 xxxx 010567236000 IT_1:   ldq it1
+010556 xxxx 010567235044         lda it1,sd
+010557 xxxx 010044755000         sta L1
+010560 xxxx 011507701000         call    ioa(msgResult, L1)  " 000000000046 .. 000000000034
+010561 xxxx 010565710000 
+010562 xxxx 000000000000 
+010563 xxxx 010021000000 
+010564 xxxx 010044000000 
+010565 xxxx 010555607000         ttf IT_1
+010566 xxxx 010641710000         tra IT_2
+010567 xxxx 010640777202 it1:    tallyd  it1b-1, -6, 2   "address, count, delta
+010570 xxxx 000000000000 it1a:   dec 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10
+010571 xxxx 000000000001 
+010572 xxxx 000000000002 
+010573 xxxx 000000000003 
+010574 xxxx 000000000004 
+010575 xxxx 000000000005 
+010576 xxxx 000000000006 
+010577 xxxx 000000000007 
+010600 xxxx 000000000010 
+010601 xxxx 000000000011 
+010602 xxxx 000000000012 
+010603 xxxx 000000000013         dec   11,12,13,14,15,16,17,18,19,20
+010604 xxxx 000000000014 
+010605 xxxx 000000000015 
+010606 xxxx 000000000016 
+010607 xxxx 000000000017 
+010610 xxxx 000000000020 
+010611 xxxx 000000000021 
+010612 xxxx 000000000022 
+010613 xxxx 000000000023 
+010614 xxxx 000000000024 
+010615 xxxx 000000000025         dec   21,22,23,24,25,26,27,28,29,30
+010616 xxxx 000000000026 
+010617 xxxx 000000000027 
+010620 xxxx 000000000030 
+010621 xxxx 000000000031 
+010622 xxxx 000000000032 
+010623 xxxx 000000000033 
+010624 xxxx 000000000034 
+010625 xxxx 000000000035 
+010626 xxxx 000000000036 
+010627 xxxx 000000000037         dec   31,32,33,34,35,36,37,38,39,40
+010630 xxxx 000000000040 
+010631 xxxx 000000000041 
+010632 xxxx 000000000042 
+010633 xxxx 000000000043 
+010634 xxxx 000000000044 
+010635 xxxx 000000000045 
+010636 xxxx 000000000046 
+010637 xxxx 000000000047 
+010640 xxxx 000000000050 
+010641 xxxx 010653236000 IT_2:   ldq it2
+010642 xxxx 010653235053         lda it2,ad
+010643 xxxx 010044755000         sta L1
+010644 xxxx 011507701000         call    ioa(msgResult, L1)  " 000000000013 .. 000000000025
+010645 xxxx 010651710000 
+010646 xxxx 000000000000 
+010647 xxxx 010021000000 
+010650 xxxx 010044000000 
+010651 xxxx 010641607000         ttf IT_2
+010652 xxxx 010654710000         tra IT_3
+010653 xxxx 010603000602 it2:    tallyd  it1a+11, 6, 2   "address, count, delta
+010654 xxxx 010665235052 IT_3:   lda it3,sc
+010655 xxxx 010044755000         sta L1
+010656 xxxx 011507701000         call    ioa(msgResulta, L1)  " 'This '
+010657 xxxx 010663710000 
+010660 xxxx 000000000000 
+010661 xxxx 010031000000 
+010662 xxxx 010044000000 
+010663 xxxx 010654607000         ttf IT_3
+010664 xxxx 010674710000         tra IT_4
+010665 xxxx 010666000540 it3:    tallyb  it3b, 5, 0   "address, count, byte offset
+010666 xxxx 124150151163 it3b:   aci /This is a test of scr.../
+010667 xxxx 040151163040 
+010670 xxxx 141040164145 
+010671 xxxx 163164040157 
+010672 xxxx 146040163143 
+010673 xxxx 162056056056 
+010674 xxxx 010705235045 IT_4:   lda it4,scr
+010675 xxxx 010044755000         sta L1
+010676 xxxx 011507701000         call    ioa(msgResulta, L1)  "gfedc
+010677 xxxx 010703710000 
+010700 xxxx 000000000000 
+010701 xxxx 010031000000 
+010702 xxxx 010044000000 
+010703 xxxx 010674607000         ttf IT_4
+010704 xxxx 010717710000         tra IT_5
+010705 xxxx 010707777343 it4:    tallyb  it4c+1, -5, 3   " same as vfd 18/it4c+1,12/-5,1/1,5/3
+010706 xxxx 141142143144 it4c:   aci     /abcdefgh/
+010707 xxxx 145146147150 
+010710 xxxx 010666000043 it5:    tallyb  it3b, , 3
+010711 xxxx 010713000002 it5b:   vfd 18/it5c+1,12/0,1/0,5/2
+010712 xxxx 212223242526 it5c:   bci "ABCDEFGHIJKLM"
+010713 xxxx 273031414243 
+010714 xxxx 442020202020 
+010715 xxxx 010712000001 it5d:   vfd 18/it5c,12/0,1/0,5/1
+010716 xxxx 010714000000 it5e:   vfd 18/it5c+2,12/0,1/0,5/0
+010717 xxxx 010710235050 IT_5:   lda it5,ci  " 163 => a
+010720 xxxx 010044755000         sta L1
+010721 xxxx 011507701000         call    ioa(msgResulta, L1) " s
+010722 xxxx 010726710000 
+010723 xxxx 000000000000 
+010724 xxxx 010031000000 
+010725 xxxx 010044000000 
+010726 xxxx 010711235050 it5a:   lda it5b,ci
+010727 xxxx 010044755000         sta L1
+010730 xxxx 011507701000         call    ioa(msgResultg, L1) " '00000I'
+010731 xxxx 010735710000 
+010732 xxxx 000000000000 
+010733 xxxx 010035000000 
+010734 xxxx 010044000000 
+010735 xxxx 010715235050         lda it5d,ci
+010736 xxxx 010044755000         sta L1
+010737 xxxx 011507701000         call    ioa(msgResultg, L1) " '00000B'
+010740 xxxx 010744710000 
+010741 xxxx 000000000000 
+010742 xxxx 010035000000 
+010743 xxxx 010044000000 
+010744 xxxx 010716235050         lda it5e,ci
+010745 xxxx 010044755000         sta L1
+010746 xxxx 011507701000         call    ioa(msgResultg, L1) " '00000M'
+010747 xxxx 010753710000 
+010750 xxxx 000000000000 
+010751 xxxx 010035000000 
+010752 xxxx 010044000000 
+010753 xxxx 010755710000         tra IT_6
+010754 xxxx 011237000000 it6:    arg x+9
+010755 xxxx 010754235051 IT_6:   lda it6,i   " 042 => a
+010756 xxxx 010044755000         sta L1
+010757 xxxx 011507701000         call    ioa(msgResult, L1) " 000000000042
+010760 xxxx 010764710000 
+010761 xxxx 000000000000 
+010762 xxxx 010021000000 
+010763 xxxx 010044000000 
+010764 xxxx 010765710000         tra IT_7
+010765 xxxx 010776236054 IT_7:   ldq it7, di
+010766 xxxx 010044756000         stq L1
+010767 xxxx 011507701000         call    ioa(msgResult, L1) " 616,42,5,4,3,2,1
+010770 xxxx 010774710000 
+010771 xxxx 000000000000 
+010772 xxxx 010021000000 
+010773 xxxx 010044000000 
+010774 xxxx 010765607000         ttf IT_7
+010775 xxxx 010777710000         tra IT_8
+010776 xxxx 011241777100 it7:    tallyd  x+11, -7
+010777 xxxx 011010235056 IT_8:   lda it8, id
+011000 xxxx 010044755000         sta L1
+011001 xxxx 011507701000         call    ioa(msgResult, L1) " 100, 200, ..., 700, 7777
+011002 xxxx 011006710000 
+011003 xxxx 000000000000 
+011004 xxxx 010021000000 
+011005 xxxx 010044000000 
+011006 xxxx 010777607000         ttf IT_8
+011007 xxxx 011011710000         tra IT_9
+011010 xxxx 011245001000 it8:    tallyd  x+15, 8
+011011 xxxx 011022235057 IT_9:   lda     it9, idc
+011012 xxxx 010044755000         sta L1
+011013 xxxx 011507701000         call    ioa(msgResult, L1) " o-1, o-2, o-3, 0, 1, 2, 3
+011014 xxxx 011020710000 
+011015 xxxx 000000000000 
+011016 xxxx 010021000000 
+011017 xxxx 010044000000 
+011020 xxxx 011011607000         ttf     IT_9
+011021 xxxx 011032710000         tra     IT_9B
+011022 xxxx 011023000720 it9:    tallyc  it9b, 7, 16 " * == n*
+011023 xxxx 011226000000 it9b:   arg     x + 0       " 1st ea
+011024 xxxx 011227000000         arg     x + 1       " 2nd ea
+011025 xxxx 011230000000         arg     x + 2       " 3rd ea
+011026 xxxx 011231000000         arg     x + 3
+011027 xxxx 011232000000         arg     x + 4
+011030 xxxx 011233000000         arg     x + 5
+011031 xxxx 011234000000         arg     x + 6
+011032 xxxx 011043235057 IT_9B:  lda     it9c, idc
+011033 xxxx 010044755000         sta L1
+011034 xxxx 011507701000         call    ioa(msgResult, L1) " 100 .. 700
+011035 xxxx 011041710000 
+011036 xxxx 000000000000 
+011037 xxxx 010021000000 
+011040 xxxx 010044000000 
+011041 xxxx 011032607000         ttf     IT_9B
+011042 xxxx 011053710000         tra     IT_10
+011043 xxxx 011044000751 it9c:   tallyc  it9d, 7, 41 "I
+011044 xxxx 011245000000 it9d:   arg     x + 15       " 1st ea
+011045 xxxx 011246000000         arg     x + 16       " 2nd ea
+011046 xxxx 011247000000         arg     x + 17       " 3rd ea
+011047 xxxx 011250000000         arg     x + 18
+011050 xxxx 011251000000         arg     x + 19
+011051 xxxx 011252000000         arg     x + 20
+011052 xxxx 011253000000         arg     x + 21
+011053 xxxx 011064235055 IT_10:  lda     it10, dic   " x, y, z ...
+011054 xxxx 010044755000         sta L1
+011055 xxxx 011507701000         call    ioa(msgResult, L1) " -1, 0, o13
+011056 xxxx 011062710000 
+011057 xxxx 000000000000 
+011060 xxxx 010021000000 
+011061 xxxx 010044000000 
+011062 xxxx 011053607000         ttf     IT_10
+011063 xxxx 011070710000         tra     IT_11
+011064 xxxx 011070777551 it10:   tallyc  it10b, -3, 41   "I
+011065 xxxx 011270000000         arg     z
+011066 xxxx 011255000000         arg     y
+011067 xxxx 011226000000         arg     x
+011070 xxxx 011101236055 IT_11:  ldq     it11, dic       " aa1, aa2, c, aa4
+011071 xxxx 010044756000         stq L1
+011072 xxxx 011507701000         call    ioa(msgResult, L1) " 012, 345, o-255, 670
+011073 xxxx 011077710000 
+011074 xxxx 000000000000 
+011075 xxxx 010021000000 
+011076 xxxx 010044000000 
+011077 xxxx 011070607000         ttf     IT_11
+011100 xxxx 011115710000         tra     IT_12
+011101 xxxx 011106777460 it11:   tallyc  adres3, -4, 48  "*n
+011102 xxxx 011111000020         arg     ad4, *
+011103 xxxx 011152000020         arg     c, *
+011104 xxxx 011110000060         arg     ad2, *n
+011105 xxxx 011107000060         arg     ad1, *n
+011106 xxxx 000000000000 adres3: bss     1
+011107 xxxx 011112000000 ad1:    arg     aa1
+011110 xxxx 011113000000 ad2:    arg     aa2
+011111 xxxx 011114000000 ad4:    arg     aa4
+011112 xxxx 000000000012 aa1:    oct     012
+011113 xxxx 000000000345 aa2:    oct     345
+011114 xxxx 000000000670 aa4:    oct     670
+011115 xxxx 000000616000     dis
+011116 xxxx 011117000071 ir9:    arg ir9b, *1
+011117 xxxx 011120000056 ir9b:   arg ir9c, id
+011120 xxxx 010204001200 ir9c:   tally   _a,10      " doesn't really figure into the CA
+011121 xxxx 011122000075 ir8:    arg ir8b, *5
+011122 xxxx 011226000003 ir8b:   arg x, du
+011123 xxxx 011124000075 ir7:    arg ir7b, *5
+011124 xxxx 011226000003 ir7b:   arg x, du
+011125 xxxx 011270000013 ir6:    arg z,3 
+011126 xxxx 011226000053 ir5:    arg x, AD
+011127 xxxx 011130000033 ir3:    arg ir3b, 3*
+011130 xxxx 000000000000 ir3b:   oct 0,1,2,3,4,5,7777777,7 " was bss 8
+011131 xxxx 000000000001 
+011132 xxxx 000000000002 
+011133 xxxx 000000000003 
+011134 xxxx 000000000004 
+011135 xxxx 000000000005 
+011136 xxxx 000007777777 
+011137 xxxx 000000000007 
+011140 xxxx 011222000006         arg w, ql
+011141 xxxx 011142000075 ir2:    arg ir2b,*5
+011142 xxxx 011143000062 ir2b:   arg ir2c, *qu
+011143 xxxx 011226000017 ir2c:   arg x,7
+011144 xxxx 011145000035 ir1:    arg ir1b, 5*
+011145 xxxx 000000000000 ir1b:   bss 3
+011150 xxxx 010420000004         arg b, IC
+011151 xxxx 010420000000 ir0:    arg b
+011152 xxxx 011153000020 c:      arg     d, n*
+011153 xxxx 011154000074 d:      arg     e, *4
+011154 xxxx 011226000006 e:      arg     x, ql
+011155 xxxx 011226000001 f:      arg     x, au
+011156 xxxx 011226000012 g:      arg     x,2
+011157 xxxx 011160000035 h:      arg     i,5*
+011160 xxxx 000000000000 i:      bss     5
+011165 xxxx 011166000033         arg     j,3*
+011166 xxxx 000000000000 j:      bss     3
+011171 xxxx 011237000000         zero    x+9 "m
+011172 xxxx 000000000000 k:      bss 1
+011173 xxxx 011226000011         arg     x,1
+011174 xxxx 000000000000 l:      bss     2
+011176 xxxx 011177000031         arg     l2,1*       " l2 + 2
+011177 xxxx 000000000000 l2:     bss     2
+011201 xxxx 011202000003         arg     m, du
+011202 xxxx 011242000000 m:      arg     x+12
+011203 xxxx 011202000020 n:      arg     m, *
+011204 xxxx 011255000002 p:      arg     y,qu
+011205 xxxx 011227000000 q:      arg     x+1 " -2
+011206 xxxx 011237000000         arg     x+9   " 042
+011207 xxxx 011236000005         arg     x+8,al
+011210 xxxx 011226000001         arg     x,au
+011211 xxxx 000000000000 r:      bss     1
+011212 xxxx 000000000000 s:      bss     1
+011213 xxxx 000005000004 t:      zero    5,4
+011214 xxxx 000006777776         zero    6, -2
+011215 xxxx 123456543210         zero    0123456, 0543210
+011216 xxxx 006000010003 u:      tally   3072,64,3   " should be 006000 0100 03
+011217 xxxx 004000000041 v:      TALLYB  2048,,41    "1 " should be 004000 0000 41
+011220 xxxx 011222001251         TALLYC  w,10,41 "I
+011221 xxxx 001000777712         TALLYD  512,4095,10 " should be 0 01000 7777 12
+011222 xxxx 000000000000 w:      bss	w2, 4
+011226 xxxx 400000000001 x:      oct -1,-2,-3,0,1,2,3,4,5,42,616,77, 02012, -255, 123, 100,200,300,400,500,600,700,7777
+011227 xxxx 400000000002 
+011230 xxxx 400000000003 
+011231 xxxx 000000000000 
+011232 xxxx 000000000001 
+011233 xxxx 000000000002 
+011234 xxxx 000000000003 
+011235 xxxx 000000000004 
+011236 xxxx 000000000005 
+011237 xxxx 000000000042 
+011240 xxxx 000000000616 
+011241 xxxx 000000000077 
+011242 xxxx 000000002012 
+011243 xxxx 400000000255 
+011244 xxxx 000000000123 
+011245 xxxx 000000000100 
+011246 xxxx 000000000200 
+011247 xxxx 000000000300 
+011250 xxxx 000000000400 
+011251 xxxx 000000000500 
+011252 xxxx 000000000600 
+011253 xxxx 000000000700 
+011254 xxxx 000000007777 
+011255 xxxx 000000000000 y:      dec 0,1,2,3,4,5,6,7,8,9,10
+011256 xxxx 000000000001 
+011257 xxxx 000000000002 
+011260 xxxx 000000000003 
+011261 xxxx 000000000004 
+011262 xxxx 000000000005 
+011263 xxxx 000000000006 
+011264 xxxx 000000000007 
+011265 xxxx 000000000010 
+011266 xxxx 000000000011 
+011267 xxxx 000000000012 
+011270 xxxx 000000000013 z:      dec 11,12,13,14,15,16,17,18,19,20
+011271 xxxx 000000000014 
+011272 xxxx 000000000015 
+011273 xxxx 000000000016 
+011274 xxxx 000000000017 
+011275 xxxx 000000000020 
+011276 xxxx 000000000021 
+011277 xxxx 000000000022 
+011300 xxxx 000000000023 
+011301 xxxx 000000000024 
+011302 xxxx 000000633000 rd_clock:	rccl                " read the clock
+011303 xxxx 011426757000 cv_clock:	staq	rdctime     " save clock reading
+011304 xxxx 011376742000 	stx2	datx2               " save XR's
+011305 xxxx 011377740000 	stx0	datx2+1             " ..
+011306 xxxx 000034235007 	lda     28,dl               " Initialize montab
+011307 xxxx 011431755000 	sta     montab+1			" to prime Feb
+011310 xxxx 011426237000 	ldaq	rdctime             " Get clock reading
+011311 xxxx 000001737000 	lls     1                   " Set for dvf
+011312 xxxx 012025507000 	dvf     =1000000			" Get seconds since 1900.
+011313 xxxx 000044777000 	llr     36                  " Into Q.
+011314 xxxx 000074506007 	div     60,dl               " Seconds since min to A, mins to Q.
+011315 xxxx 011411755000 	sta     rdclock.sec         " Save for inspection.
+011316 xxxx 000074506007 	div     60,dl               " Min since hr to A, hrs to Q.
+011317 xxxx 011410755000 	sta     rdclock.min
+011320 xxxx 000006627000 	eax7	6
+011321 xxxx 011401702000 	tsx2	datecv              " Convert the minutes.
+011322 xxxx 011421176000 	sbq     rdclock.zone_temp	" Adjust for GMT.
+011323 xxxx 000030506007 	div     24,dl               " Days since 1900 in q.
+011324 xxxx 011420756000 	stq     rdclock.day_of_century	" save for  later.
+011325 xxxx 011407755000 	sta     rdclock.hr          " Hours since daybreak.
+011326 xxxx 011401702000 	tsx2	datecv              " Convert the hours
+011327 xxxx 002665506007 	div     365*4+1,dl          " get leap year cycle
+011330 xxxx 002110115007 	cmpa	365*3+1,dl          " if in last year of cycle (the leap year)
+011331 xxxx 011333604000 	tmi     *+2                 " no
+011332 xxxx 011431054000 	aos     montab+1			" allow for feb 29
+011333 xxxx 000002736000 	qls     2                   " 4*# leap year cycles
+011334 xxxx 003555036007 	adlq	1901,dl
+011335 xxxx 011417756000 	stq     rdclock.year		" Save
+011336 xxxx 000044777000 	llr     36
+011337 xxxx 000555506007 	div     365,dl              " Years complete since l.y.c. =>Q
+011340 xxxx 000004116007 	cmpq	4,dl                " Dec 31st of leap year?
+011341 xxxx 011344601000 	tnz     *+3                 " No.
+011342 xxxx 000001176007 	sbq     1,dl                " Adjust year and
+011343 xxxx 000555235007 	lda     365,dl              " day numbers.
+011344 xxxx 011417056000 	asq     rdclock.year		" Add in years complete.
+011345 xxxx 000000626000 	eax6	0                   " search for correct month
+011346 xxxx 030220520201 	rpt     12,1,tmi			" ..
+011347 xxxx 011430175016 	sba     montab,6			" subtract off days for each month
+011350 xxxx 777777075016 	ada     -1,6                " put back last entry
+011351 xxxx 000001075007 	ada     1,dl                " plus one more
+011352 xxxx 011414755000 	sta     rdclock.day_of_month	" Day of month
+011353 xxxx 011401702000 	tsx2	datecv              " convert day
+011354 xxxx 000000635016 	eaa     0,6
+011355 xxxx 011430135003 	sbla	montab,du			" get index into month table
+011356 xxxx 000022771000 	arl     18                  "..
+011357 xxxx 011412755000 	sta     rdclock.month		" Save month number
+011360 xxxx 011455236005 	ldq     rdc.months-1,al		" Get name of month.
+011361 xxxx 011413756000 	stq     rdclock.month_name
+011362 xxxx 011401702000 	tsx2	datecv              " convert month
+011363 xxxx 000000024400 	mvne	(),(),()			" edit the date and time
+011364 xxxx 011424070010 	desc4ns	date,8
+011365 xxxx 011444000014 	desc9a	datedit,12
+011366 xxxx 011426020014 	desc6a	rdctime,12
+011367 xxxx 011420236000 	ldq     rdclock.day_of_century
+011370 xxxx 000002076007 	adq     2,dl                " Bump Tuesday into place.
+011371 xxxx 000007506007 	div     7,dl
+011372 xxxx 011415755000 	sta     rdclock.day_of_week
+011373 xxxx 011447236005 	ldq     rdc.days,al         " Get name of day.
+011374 xxxx 011416756000 	stq     rdclock.day_name
+011375 xxxx 011426237000 	ldaq	rdctime             " get conversion in AQ
+011376 xxxx 011376622000 datx2:	eax2	*			" restore XR's
+011377 xxxx 011377620000 	eax0    *               " ..
+011400 xxxx 000000710012 	tra     0,2             " return to caller
+011401 xxxx 011423755000 datecv:	sta	datenum			" save number
+011402 xxxx 000017301400 	btd     (),(x7)         " convert into proper place
+011403 xxxx 011423000004 	desc9a	datenum,4
+011404 xxxx 011424070002 	desc4ns	date,2
+011405 xxxx 777776627017 	eax7	-2,7			" move offset index
+011406 xxxx 000000710012 	tra     0,2             " and return
+011407 xxxx 000000000000 	bss	,1
+011410 xxxx 000000000000 	bss	,1
+011411 xxxx 000000000000 	bss	,1
+011412 xxxx 000000000000 	bss	,1
+011413 xxxx 000000000000 	bss	,1
+011414 xxxx 000000000000 	bss	,1
+011415 xxxx 000000000000 	bss	,1
+011416 xxxx 000000000000 	bss	,1
+011417 xxxx 000000000000 	bss	,1
+011420 xxxx 000000000000 	bss	,1
+011421 xxxx 000000000010     dec     8
+011422 xxxx 160144164040     aci     'pdt '
+011423 xxxx 000000000000 datenum:	bss	,1
+011424 xxxx 000000000000 date:	bss	,1
+011425 xxxx 000000011000 	even "(allocating 1 nop)
+011426 xxxx 000000000000 rdctime:	bss	,2
+011430 xxxx 000000000037 montab:	dec	31,28,31,30,31,30,31,31,30,31,30,31
+011431 xxxx 000000000034 
+011432 xxxx 000000000037 
+011433 xxxx 000000000036 
+011434 xxxx 000000000037 
+011435 xxxx 000000000036 
+011436 xxxx 000000000037 
+011437 xxxx 000000000037 
+011440 xxxx 000000000036 
+011441 xxxx 000000000037 
+011442 xxxx 000000000036 
+011443 xxxx 000000000037 
+011444 xxxx 401020102260 datedit:	vfd	9/lte+1,o9/20,9/mvzb+2,9/insp,o9/61,9/mvc+2,9/insm+1,9/mvc+2
+011445 xxxx 061322021322 
+011446 xxxx 260015322021 	vfd	9/insp,o9/15,9/mvc+2,9/insm+1
+011447 xxxx 163165156040 rdc.days: aci	'sun mon tue wed thurfri sat '
+011450 xxxx 155157156040 
+011451 xxxx 164165145040 
+011452 xxxx 167145144040 
+011453 xxxx 164150165162 
+011454 xxxx 146162151040 
+011455 xxxx 163141164040 
+011456 xxxx 152141156040 	aci	'jan feb mar apr may jun jul aug septoct nov dec '
+011457 xxxx 146145142040 
+011460 xxxx 155141162040 
+011461 xxxx 141160162040 
+011462 xxxx 155141171040 
+011463 xxxx 152165156040 
+011464 xxxx 152165154040 
+011465 xxxx 141165147040 
+011466 xxxx 163145160164 
+011467 xxxx 157143164040 
+011470 xxxx 156157166040 
+011471 xxxx 144145143040 
+011472 xxxx 011475710000 crlf:	save
+011473 xxxx 000000000000 
+011474 xxxx 011473630000 
+011475 xxxx 011473754000 
+011476 xxxx 011473741000 
+011477 xxxx 011506755000         sta     saveA
+011500 xxxx 012026235000         lda     =012
+011501 xxxx 000001420400         emCall  1
+011502 xxxx 012027235000         lda     =015
+011503 xxxx 000001420400         emcall  1
+011504 xxxx 011506235000         lda     saveA
+011505 xxxx 011474710000         return  crlf
+011506 xxxx 000000000000 saveA:  bss     1
+011507 xxxx 011516710000 ioa:    save    2, 4, 5, 6
+011510 xxxx 000000000000 
+011511 xxxx 000000222003 
+011512 xxxx 000001224003 
+011513 xxxx 000002225003 
+011514 xxxx 000003226003 
+011515 xxxx 011510630000 
+011516 xxxx 011510754000 
+011517 xxxx 011510741000 
+011520 xxxx 011511742000 
+011521 xxxx 011512744000 
+011522 xxxx 011513745000 
+011523 xxxx 011514746000 
+011524 xxxx 000002624031 ioa1:   eax4    2, 1*   " 1st arg is control string
+011525 xxxx 000003625011         eax5    3, 1    " next arg is the 1st of the numeric args. x5 points to next argument
+011526 xxxx 000000626015         eax6    0, x5
+011527 xxxx 000041235007         lda     041, dl " make a blank tallyb word .....
+011530 xxxx 011545755000         sta     i29
+011531 xxxx 000000235014     	lda     0, x4   " get 1st data word into A
+011532 xxxx 000033731000         ars     27      " determine word count
+011533 xxxx 000006735000     	als     6       " count to upper word of tally
+011534 xxxx 011545255000     	orsa    i29
+011535 xxxx 000000626014     	eax6    0, x4   " address of string into X6
+011536 xxxx 011545746000     	stx6    i29     " address to upper word of tally
+011537 xxxx 011545235052 inext:  lda     i29, sc
+011540 xxxx 000136115007         cmpa    =o000136,dl		" ^
+011541 xxxx 011546600000         tze     iernot      " if so, go process it
+011542 xxxx 000001420400 out1:  	emCall  1
+011543 xxxx 011537607000     	ttf     inext
+011544 xxxx 011511710000         return  ioa
+011545 xxxx 000000000041 i29:	tallyb  0, 0, 1
+011546 xxxx 011545235052 iernot: lda     i29, sc         " get next char ...
+011547 xxxx 000136115007         cmpa    =o000136,dl     " is it another "^"?
+011550 xxxx 011566600000         tze     i21             " No, just print it ...
+011551 xxxx 000167115007         cmpa    =o000167,dl     " is it a "w"?
+011552 xxxx 011570600000         tze     idoW            " do full word octal
+011553 xxxx 000157115007         cmpa    =o000157,dl     " is it an "o"?
+011554 xxxx 011616600000         tze     idoO            " print zero suppressed octal
+011555 xxxx 000156115007         cmpa    =o000156,dl     " is it a "n"?
+011556 xxxx 011641600000         tze     idoN            " octal w/ no spaces inserted
+011557 xxxx 000144115007         cmpa    =o000144,dl     " is it a "d"?
+011560 xxxx 011670600000         tze     idoD            " decimal
+011561 xxxx 000141115007         cmpa    =o000141,dl     " is it a ^a?
+011562 xxxx 011676600000         tze     idoA            " 4 char ascii display
+011563 xxxx 000147115007         cmpa    =o000147,dl     " is it a ^g?
+011564 xxxx 011707600000         tze     idoG            " 6 char GE BCD display
+011565 xxxx 011542710000         tra     out1        " unknown just print it....
+011566 xxxx 000001420400 i21:    emCall  1           " output A to console
+011567 xxxx 011537710000         tra     inext
+011570 xxxx 000000235035 idoW:   lda     0, 5*       " ^w - full-word octal xxxxxx xxxxxx
+011571 xxxx 011765702000         tsx2    octwd
+011572 xxxx 011666757000         staq    ioaSafe     " bcd in AQ
+011573 xxxx 000044773000         lrl     36          " A => Q
+011574 xxxx 000006622000         eax2    6
+011575 xxxx 000000235007 idoW2:  lda     =0, dl
+011576 xxxx 000006737000         lls     6
+011577 xxxx 000002420400         emCall  2           " output GE code char to console
+011600 xxxx 777777622012         eax2    -1, 2
+011601 xxxx 011575601000         tnz     idoW2
+011602 xxxx 011666237000         ldaq    ioaSafe
+011603 xxxx 000000235007         lda     =0, dl      " 0 => A
+011604 xxxx 000020235007         lda     =020 ,dl     " bcd ' ' => A
+011605 xxxx 000002420400         emcall  2
+011606 xxxx 000006622000         eax2    6
+011607 xxxx 000000235007 idoW3:  lda     =0,dl
+011610 xxxx 000006737000         lls     6
+011611 xxxx 000002420400         emCall  2
+011612 xxxx 777777622012         eax2    -1, 2
+011613 xxxx 011607601000         tnz     idoW3
+011614 xxxx 000001065003         adx5    1,du
+011615 xxxx 011537710000         tra     inext
+011616 xxxx 000000235035 idoO:   lda     0, 5*           " ^o - Zero-suppressed octal
+011617 xxxx 011765702000         tsx2    octwd
+011620 xxxx 011666757000         staq    ioaSafe         " bcd in AQ
+011621 xxxx 011637235000         lda     idOTly
+011622 xxxx 011640755000         sta     idOT
+011623 xxxx 011640235052 idO1:   lda     idOT, sc        " get char into A
+011624 xxxx 000000115007         cmpa    =0, dl          " a zero?
+011625 xxxx 011633601000         tnz     idONZ + 1       " nope
+011626 xxxx 011623607000         ttf     idO1            " Yes, a Zero. Go for more
+011627 xxxx 000002420400         emCall  2               " output a single 0
+011630 xxxx 000001065003         adx5    1,du
+011631 xxxx 011537710000         tra     inext
+011632 xxxx 011640235052 idONZ:  lda     idOT, sc        " get char into A
+011633 xxxx 000002420400         emCall  2
+011634 xxxx 011632607000         ttf     idONZ           " Yes, a Zero. Go for more
+011635 xxxx 000001065003         adx5    1,du
+011636 xxxx 011537710000         tra     inext
+011637 xxxx 011666001400 idOTly: tally   ioaSafe, 12, 0
+011640 xxxx 000000000000 idOT:   bss     1
+011641 xxxx 000000235035 idoN:   lda     0, 5*       " ^n - octal w/ no spaces inserted
+011642 xxxx 011765702000         tsx2    octwd
+011643 xxxx 011666757000         staq    ioaSafe     " bcd in AQ
+011644 xxxx 000044773000         lrl     36          " A => Q
+011645 xxxx 000006622000         eax2    6
+011646 xxxx 000000235007 idoN2:  lda     =0,dl
+011647 xxxx 000006737000         lls     6
+011650 xxxx 000002420400         emCall  2           " output GE code char to console
+011651 xxxx 777777622012         eax2    -1, 2
+011652 xxxx 011646601000         tnz     idoN2
+011653 xxxx 011666237000         ldaq    ioaSafe
+011654 xxxx 000000235007         lda     =0, dl      " 0 => A
+011655 xxxx 000006622000         eax2    6
+011656 xxxx 000000235007 idoN3:  lda     =0, dl
+011657 xxxx 000006737000         lls     6
+011660 xxxx 000002420400         emCall  2
+011661 xxxx 777777622012         eax2    -1, 2
+011662 xxxx 011656601000         tnz     idoN3
+011663 xxxx 000001065003         adx5    1,du
+011664 xxxx 011537710000         tra     inext
+011665 xxxx 000000011000         even "(allocating 1 nop)
+011666 xxxx 000000000000 ioaSafe:  bss 2
+011670 xxxx 000000236035 idoD:   ldq     0, 5*       " ^d
+011671 xxxx 011720701000         call    toDec
+011672 xxxx 011674710000 
+011673 xxxx 000000000000 
+011674 xxxx 000001065003         adx5    1,du
+011675 xxxx 011537710000         tra     inext
+011676 xxxx 000000236035 idoA:   ldq     0, 5*      " ^a (4 ascii chars into Q)
+011677 xxxx 000004622000         eax2    4
+011700 xxxx 000000235007 idoA2:  lda     =0,dl
+011701 xxxx 000011737000         lls     9
+011702 xxxx 000001420400         emCall  1
+011703 xxxx 777777622012         eax2    -1, 2
+011704 xxxx 011700601000         tnz     idoA2
+011705 xxxx 000001065003         adx5    1,du        " into next argument
+011706 xxxx 011537710000         tra     inext
+011707 xxxx 000000236035 idoG:   ldq     0, 5*        " ^g (6 GE BCD chars into Q)
+011710 xxxx 000006622000         eax2    6
+011711 xxxx 000000235007 idoG2:  lda     =0,dl
+011712 xxxx 000006737000         lls     6
+011713 xxxx 000002420400         emCall  2
+011714 xxxx 777777622012         eax2    -1, 2
+011715 xxxx 011711601000         tnz     idoG2
+011716 xxxx 000001065003         adx5    1,du        " into next argument
+011717 xxxx 011537710000         tra     inext
+011720 xxxx 011723710000 toDec:  save    "2,3,4,5,6,7
+011721 xxxx 000000000000 
+011722 xxxx 011721630000 
+011723 xxxx 011721754000 
+011724 xxxx 011721741000 
+011725 xxxx 012030116000         cmpq    =-34359738368       " the weird one?
+011726 xxxx 011732601000         tnz     toDec2
+011727 xxxx 011764235000         lda     decMTly             " just print it and be done with it
+011730 xxxx 011760755000         sta     decTly
+011731 xxxx 011750710000         tra     toDec1
+011732 xxxx 011754756000 toDec2: stq     decNo
+011733 xxxx 000000116007         cmpq    =0,dl       " Q < 0?
+011734 xxxx 011736605000         tpl     toDec0      " No
+011735 xxxx 011754336000         lcq     decNo       " -decNo => Q
+011736 xxxx 000012506007 toDec0: div     =10,dl      " divide Q by 10, remainder in A
+011737 xxxx 000060075007         ada     =o060,dl    " add ascii '0' (=1A0) to A
+011740 xxxx 011760755045         sta     decTly, scr " start writing characters backwards
+011741 xxxx 000000076007         adq     =0,dl       " set flags to test if Q == 0
+011742 xxxx 011736601000         tnz     toDec0      " if Q == 0 then we're essentially done with conversion
+011743 xxxx 011754235000         lda     decNo
+011744 xxxx 000000115007         cmpa    =0,dl
+011745 xxxx 011750605000         tpl     toDec1
+011746 xxxx 000055235007         lda     =o055,dl    " (-) => A
+011747 xxxx 011760755045         sta     decTly, scr " write (-) sign
+011750 xxxx 011760235052 toDec1: lda     decTly, sc
+011751 xxxx 000001420400         emCall  1
+011752 xxxx 011750607000         ttf     toDec1
+011753 xxxx 011722710000         return  toDec
+011754 xxxx 000000000000 decNo:  dec     0
+011755 xxxx 000000000000 decBuf: bss     3
+011760 xxxx 011757000040 decTly: tallyb  decBuf+2, , 0
+011761 xxxx 055063064063 decMM:  aci     "-34359738368"  " -2^^35
+011762 xxxx 065071067063 
+011763 xxxx 070063066070 
+011764 xxxx 011761001440 decMTly:tallyb  decMM, 12, 0
+011765 xxxx 012002742000 octwd:	stx2	octx2
+011766 xxxx 000006622000 	eax2	6
+011767 xxxx 000003736000 	qls     3
+011770 xxxx 000003777000 	llr     3
+011771 xxxx 777777622012 	eax2	-1,2
+011772 xxxx 011767605400 	tpnz	*-3
+011773 xxxx 012024756000 	stq     octtemp
+011774 xxxx 000006622000 	eax2	6
+011775 xxxx 000003736000 	qls     3
+011776 xxxx 000003777000 	llr     3
+011777 xxxx 777777622012 	eax2	-1,2
+012000 xxxx 011775605400 	tpnz	*-3
+012001 xxxx 012024235000 	lda     octtemp
+012002 xxxx 012002622000 octx2:	eax2	*
+012003 xxxx 000000710012 	tra     0,2
+012004 xxxx 012022742000 hexwd:	stx2	hexx2
+012005 xxxx 000044773000 	lrl     36          "shift to Q
+012006 xxxx 000006622000 	eax2	6           "	process 6 characters
+012007 xxxx 000000235007 hexloop:	lda	=0,dl	"	clear A
+012010 xxxx 000004737000 	lls     4           "shift in 4 bits
+012011 xxxx 000011115007 	cmpa	=9,dl		"greater than 9?
+012012 xxxx 012014604400 	tmoz	*+2
+012013 xxxx 000007035007 	adla	=7,dl       "if so, change to letter
+012014 xxxx 000006773000 	lrl     6
+012015 xxxx 012024235000 	lda     octtemp		"get temporary
+012016 xxxx 000006737000 	lls     6           "insert new character
+012017 xxxx 012024755000 	sta     octtemp		"and store
+012020 xxxx 777777622012 	eax2	-1,2		"decrement index
+012021 xxxx 012007605400 	tpnz	hexloop
+012022 xxxx 012022622000 hexx2:	eax2	*
+012023 xxxx 000000710012 	tra     0,2		"return to caller
+012024 xxxx 000000000000 octtemp:	oct	0
+012025 xxxx 000003641100 decimal literal (=1000000)
+012026 xxxx 000000000012 octal literal (=o12)
+012027 xxxx 000000000015 octal literal (=o15)
+012030 xxxx 400000000000 decimal literal (=-34359738368)

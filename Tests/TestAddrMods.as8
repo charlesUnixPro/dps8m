@@ -2,6 +2,15 @@
 " Test of address modifications for new CA stuff ...
 "
 "
+	org	0
+	tra	entry
+
+	org	0132	" overflow fault 
+	emcall	20	" report fault
+	nop
+
+	org	010000
+entry:
 
     tsx2	rd_clock
     staq	Date        "MM/DD HH:MM
