@@ -1,12 +1,3 @@
-	org	0
-	tra	entry
-
-	org	0132	" overflow fault 
-	emcall	20	" report fault
-	nop
-
-	org	010000
-entry:
 "
 "  EIS test code ...
 "
