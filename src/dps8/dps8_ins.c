@@ -1913,10 +1913,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0531:  ///< neg
             /// -C(A) → C(A) if C(A) ≠ 0
             /// XXX: what if C(A) == 0? Are flags affected? Assume yes, for now.
-            
+
+            rA &= DMASK;
             if (rA != 0)
             {
-                bool ov = rA & 0400000000000LL;
+                // bool ov = rA & 0400000000000LL;
+                bool ov = rA == 0400000000000ULL;
                 
                 rA = -rA;
  
@@ -1935,9 +1937,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 if (ov)
                 {
                     SETF(rIR, I_OFLOW);
-// XXX This crashed 20184
-                    //if (! TSTF (rIR, I_OMASK))
-                        //doFault(i, overflow_fault, 0,"neg overflow fault");
+                    if (! TSTF (rIR, I_OMASK))
+                        doFault(i, overflow_fault, 0,"neg overflow fault");
                 }
             }
             break;
@@ -1946,10 +1947,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// -C(AQ) → C(AQ) if C(AQ) ≠ 0
             /// XXX same problem as neg above - fixed
             
+            rA &= DMASK;
+            rQ &= DMASK;
             tmp72 = convertToWord72(rA, rQ);
             if (tmp72 != 0)
             {
-                bool ov = (rA & 0400000000000LL) & (rQ == 0);
+                //bool ov = (rA & 0400000000000LL) & (rQ == 0);
+                bool ov = (rA == 0400000000000ULL) & (rQ == 0);
                 
                 tmp72 = -tmp72;
                 
@@ -1963,7 +1967,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 else
                     CLRF(rIR, I_NEG);
                 
-                //if (tmp72 > MAX72)
                 if (ov)
                 {
                     SETF(rIR, I_OFLOW);
@@ -1982,8 +1985,17 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Zero:     If | C(A) | = | C(Y) | , then ON; otherwise OFF
             /// Negative: If | C(A) | < | C(Y) | , then ON; otherwise OFF
             {
-                word36 a = rA & SIGN36 ? -rA : rA;
-                word36 y = CY & SIGN36 ? -CY : CY;
+                // This is wrong for MAXNEG
+                //word36 a = rA & SIGN36 ? -rA : rA;
+                //word36 y = CY & SIGN36 ? -CY : CY;
+
+                // If we do the 64 math, the MAXNEG case works
+                t_int64 a = SIGNEXT36 (rA);
+                if (a < 0)
+                  a = -a;
+                t_int64 y = SIGNEXT36 (CY);
+                if (y < 0)
+                  y = -y;
                 
                 SCF(a == y, rIR, I_ZERO);
                 SCF(a < y,  rIR, I_NEG);
@@ -2002,6 +2014,17 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 word36 Z = ~rQ & (rA ^ CY);
                 
+// Q  A  Y   ~Q   A^Y   Z
+// 0  0  0    1     0   0
+// 0  0  1    1     1   1
+// 0  1  0    1     1   1
+// 0  1  1    1     0   0
+// 1  0  0    0     0   0
+// 1  0  1    0     1   0
+// 1  1  0    0     1   0
+// 1  1  1    0     0   0
+
+
                 SCF(Z == 0, rIR, I_ZERO);
                 SCF(Z & SIGN36, rIR, I_NEG);
             }
