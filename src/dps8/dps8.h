@@ -132,6 +132,7 @@ extern uint64 sim_deb_start;
 
 #define SIGN64         ((uint64)1U << 63)
 
+#define MASK3           03U
 #define MASK6           077U
 #define MASK8           0377U                              ///< 8-bit mask
 
@@ -611,8 +612,6 @@ enum _processor_operating_mode {
     PRIVILEGED_MODE,
 } processorOperatingMode;
 typedef enum _processor_operating_mode _processor_operating_mode;
-
-extern bool bPuls2;
 
 extern int xec_side_effect;
 

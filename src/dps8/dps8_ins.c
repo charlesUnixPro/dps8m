@@ -667,8 +667,6 @@ static int32 n;
 
 //extern word18 stiTally;         ///< in dps8_cpu.c (only used for sti instruction)
 
-bool bPuls2 = false;
-
 static t_stat DoBasicInstruction(DCDstruct *i)
 {
     uint opcode  = i->opcode;  // get opcode
@@ -1021,7 +1019,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0554:  ///< stc1
             // "C(Y)25 reflects the state of the tally runout indicator
             // prior to modification.
-            SETHI(CY, (PPR.IC + 1) & 0777777);
+            SETHI(CY, (PPR.IC + 1) & MASK18);
             SETLO(CY, rIR & 0777760);
             if (i -> stiTally)
               SETF(CY, I_TALLY);
@@ -1030,7 +1028,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0750:  ///< stc2
-            SETHI(CY, (PPR.IC + 2) & 0777777);
+            SETHI(CY, (PPR.IC + 2) & MASK18);
 
             break;
             
@@ -2008,6 +2006,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
              */
             {
                 word36 Z = ~rQ & (rA ^ CY);
+                Z &= DMASK;
                 
 // Q  A  Y   ~Q   A^Y   Z
 // 0  0  0    1     0   0
@@ -2067,6 +2066,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
                 word72 trAQ = convertToWord72(rA, rQ);
+                trAQ &= MASK72;
             
                 cmp72(trAQ, tmp72, &rIR);
             }
@@ -2075,6 +2075,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         /// Fixed-Point Miscellaneous
         case 0234:  ///< szn
             /// Set indicators according to C(Y)
+            CY &= DMASK;
             if (CY == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2089,6 +2090,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0214:  ///< sznc
             /// Set indicators according to C(Y)
+            CY &= DMASK;
             if (CY == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2109,6 +2111,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0375:  ///< ana
             /// C(A)i & C(Y)i → C(A)i for i = (0, 1, ..., 35)
             rA = rA & CY;
+            rA &= DMASK;
             
             if (rA == 0)
                 SETF(rIR, I_ZERO);
@@ -2131,6 +2134,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
                 word72 trAQ = convertToWord72(rA, rQ);
                 trAQ = trAQ & tmp72;
+                trAQ &= MASK72;
             
                 if (trAQ == 0)
                     SETF(rIR, I_ZERO);
@@ -2149,6 +2153,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0376:  ///< anq
             /// C(Q)i & C(Y)i → C(Q)i for i = (0, 1, ..., 35)
             rQ = rQ & CY;
+            rQ &= DMASK;
+
             if (rQ == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2164,38 +2170,36 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0355:  ///< ansa
             /// C(A)i & C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             {
-                word36 tmp36 = rA & CY;
+                CY = rA & CY;
+                CY &= DMASK;
             
-                if (tmp36 == 0)
+                if (CY == 0)
                     SETF(rIR, I_ZERO);
                 else
                     CLRF(rIR, I_ZERO);
             
-                if (tmp36 & SIGN36)
+                if (CY & SIGN36)
                     SETF(rIR, I_NEG);
                 else
                     CLRF(rIR, I_NEG);
-            
-                CY = tmp36;
             }
             break;
         
         case 0356:  ///< ansq
             /// C(Q)i & C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             {
-                word36 tmp36 = rQ & CY;
+                CY = rQ & CY;
+                CY &= DMASK;
             
-                if (tmp36 == 0)
+                if (CY == 0)
                     SETF(rIR, I_ZERO);
                 else
                     CLRF(rIR, I_ZERO);
             
-                if (tmp36 & SIGN36)
+                if (CY & SIGN36)
                     SETF(rIR, I_NEG);
                 else
                     CLRF(rIR, I_NEG);
-            
-                CY = tmp36;
             }
             break;
 
@@ -2212,6 +2216,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = rX[n] & GETHI(CY);
+                tmp18 &= MASK18;
             
                 if (tmp18 == 0)
                     SETF(rIR, I_ZERO);
@@ -2241,6 +2246,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] &= GETHI(CY);
+                rX[n] &= MASK18;
             
                 if (rX[n] == 0)
                     SETF(rIR, I_ZERO);
@@ -2258,6 +2264,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0275:  ///< ora
             /// C(A)i | C(Y)i → C(A)i for i = (0, 1, ..., 35)
             rA = rA | CY;
+            rA &= DMASK;
             
             if (rA == 0)
                 SETF(rIR, I_ZERO);
@@ -2279,6 +2286,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
                 word72 trAQ = convertToWord72(rA, rQ);
                 trAQ = trAQ | tmp72;
+                trAQ &= MASK72;
             
                 if (trAQ == 0)
                     SETF(rIR, I_ZERO);
@@ -2297,6 +2305,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0276:  ///< orq
             /// C(Q)i | C(Y)i → C(Q)i for i = (0, 1, ..., 35)
             rQ = rQ | CY;
+            rQ &= DMASK;
+
             if (rQ == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2312,6 +2322,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0255:  ///< orsa
             /// C(A)i | C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             CY = rA | CY;
+            CY &= DMASK;
             
             if (CY == 0)
                 SETF(rIR, I_ZERO);
@@ -2329,7 +2340,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Q)i | C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             
             CY = rQ | CY;
-            
+            CY &= DMASK;
+
             if (CY == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2356,7 +2368,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 uint32 n = opcode & 07;  // get n
             
                 word18 tmp18 = rX[n] | GETHI(CY);
-            
+                tmp18 &= MASK18;
+           
                 if (tmp18 == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2384,7 +2397,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {   
                 uint32 n = opcode & 07;  // get n
                 rX[n] |= GETHI(CY);
-            
+                rX[n] &= MASK18;
+           
                 if (rX[n] == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2401,7 +2415,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0675:  ///< era
             /// C(A)i ⊕ C(Y)i → C(A)i for i = (0, 1, ..., 35)
             rA = rA ^ CY;
-            
+            rA &= DMASK;
+
             if (rA == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2422,6 +2437,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
                 word72 trAQ = convertToWord72(rA, rQ);
                 trAQ = trAQ ^ tmp72;
+                trAQ &= MASK72;
             
                 if (trAQ == 0)
                     SETF(rIR, I_ZERO);
@@ -2440,6 +2456,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0676:  ///< erq
             /// C(Q)i ⊕ C(Y)i → C(Q)i for i = (0, 1, ..., 35)
             rQ = rQ ^ CY;
+            rQ &= DMASK;
             if (rQ == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2456,7 +2473,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(A)i ⊕ C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             
             CY = rA ^ CY;
-            
+            CY &= DMASK;
+
             if (CY == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2475,7 +2493,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Q)i ⊕ C(Y)i → C(Y)i for i = (0, 1, ..., 35)
             
             CY = rQ ^ CY;
-            
+            CY &= DMASK;
+
             if (CY == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -2504,7 +2523,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 uint32 n = opcode & 07;  // get n
             
                 word18 tmp18 = rX[n] ^ GETHI(CY);
-            
+                tmp18 &= MASK18;
+
                 if (tmp18 == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2532,6 +2552,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] ^= GETHI(CY);
+                rX[n] &= MASK18;
             
                 if (rX[n] == 0)
                     SETF(rIR, I_ZERO);
@@ -2551,7 +2572,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Z)i = C(A)i & C(Y)i for i = (0, 1, ..., 35)
             {
                 word36 trZ = rA & CY;
-            
+                trZ &= MASK36;
+
                 if (trZ == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2573,7 +2595,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
                 word72 trAQ = convertToWord72(rA, rQ);
                 trAQ = trAQ & tmp72;
-            
+                trAQ &= MASK72;
+
                 if (trAQ == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2590,6 +2613,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Z)i = C(Q)i & C(Y)i for i = (0, 1, ..., 35)
             {
                 word36 trZ = rQ & CY;
+                trZ &= DMASK;
+
                 if (trZ == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2615,7 +2640,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = rX[n] & GETHI(CY);
-            
+                tmp18 &= MASK18;
+
                 if (tmp18 == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2633,7 +2659,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Z)i = C(A)i & ~C(Y)i for i = (0, 1, ..., 35)
             {
                 word36 trZ = rA & ~CY;
-            
+                trZ &= DMASK;
+
                 if (trZ == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2653,7 +2680,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
                 word72 trAQ = convertToWord72(rA, rQ);
                 trAQ = trAQ & ~tmp72;
-            
+                trAQ &= MASK72;
+
                 if (trAQ == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2670,6 +2698,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Z)i = C(Q)i & ~C(Y)i for i = (0, 1, ..., 35)
             {
                 word36 trZ = rQ & ~CY;
+                trZ &= DMASK;
                 if (trZ == 0)
                     SETF(rIR, I_ZERO);
                 else
@@ -2694,6 +2723,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = rX[n] & ~GETHI(CY);
+                tmp18 &= MASK18;
             
                 if (tmp18 == 0)
                     SETF(rIR, I_ZERO);
@@ -2716,15 +2746,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Zero: If C(AQ) = 0, then ON; otherwise OFF
             /// Neg: If C(AQ)0 = 1, then ON; otherwise OFF
             
-            // XXX Why is this here?
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
+            rE = (Ypair[0] >> 28) & MASK8;
             
-            rE = (Ypair[0] >> 28) & 0377;
+            rA = (Ypair[0] & FLOAT36MASK) << 8;
+            rA |= (Ypair[1] >> 28) & MASK8;
             
-            rA = (Ypair[0] & 01777777777LL) << 8;
-            rA |= (Ypair[1] >> 28) & 0377;
-            
-            rQ = (Ypair[1] & 01777777777LL) << 8;
+            rQ = (Ypair[1] & FLOAT36MASK) << 8;
             
             SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
             SCF(rA & SIGN36, rIR, I_NEG);
@@ -2737,8 +2764,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Zero: If C(AQ) = 0, then ON; otherwise OFF
             /// Neg: If C(AQ)0 = 1, then ON; otherwise OFF
             
+            CY &= DMASK;
             rE = (CY >> 28) & 0377;
-            rA = (CY & 01777777777LL) << 8;
+            rA = (CY & FLOAT36MASK) << 8;
             rQ = 0;
             
             SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
@@ -2749,24 +2777,21 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(E) → C(Y-pair)0,7
             /// C(AQ)0,63 → C(Y-pair)8,71
             
-            Ypair[0] = ((word36)rE << 28) | ((rA & 0777777777400LL) >> 8);
-            Ypair[1] = ((rA & 0377) << 28) | ((rQ & 0777777777400LL) >> 8);
+            Ypair[0] = ((word36)rE << 28) | ((rA & 0777777777400LLU) >> 8);
+            Ypair[1] = ((rA & 0377) << 28) | ((rQ & 0777777777400LLU) >> 8);
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             break;
             
         case 0472:  ///< dfstr
             
             dfstr(i, Ypair);
-            
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             break;
-            
-            //return STOP_UNIMP;
             
         case 0455:  ///< fst
             /// C(E) → C(Y)0,7
             /// C(A)0,27 → C(Y)8,35
+            rE &= MASK18;
+            rA &= DMASK;
             CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
             break;
             
@@ -2799,17 +2824,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0477:  ///< dfad
             /// The dfad instruction may be thought of as a dufa instruction followed by a fno instruction.
 
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
-
             dufa(i);
             fno(i);
             break;
             
         case 0437:  ///< dufa
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
-
             dufa(i);
             break;
             
@@ -2863,9 +2882,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0463:  ///< dfmp
             /// The dfmp instruction may be thought of as a dufm instruction followed by a
             /// fno instruction.
-            
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufm(i);
             fno(i);
@@ -2873,8 +2889,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0423:  ///< dufm
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dufm(i);
             break;
@@ -2894,15 +2908,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
         case 0527:  ///< dfdi
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfdi(i);
             break;
             
         case 0567:  ///< dfdv
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfdv(i);
             break;
@@ -2951,18 +2961,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(E) :: C(Y-pair)0,7
             /// | C(AQ)0,63 | :: | C(Y-pair)8,71 |
 
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
-
             dfcmg(i);
             break;
             
         case 0517:  ///< dfcmp
             /// C(E) :: C(Y-pair)0,7
             /// C(AQ)0,63 :: C(Y-pair)8,71
-
-            // XXX Why is this here???
-            //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
             dfcmp(i);
             break;
@@ -3032,7 +3036,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 return CONT_FAULT; // access violation fault (outward call)
             }
             if (TPR.TRR < PPR.PRR)
-                PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & 077777; // keep to 15-bits
+                PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & MASK15; // keep to 15-bits
             if (TPR.TRR == PPR.PRR)
                 PR[7].SNR = PR[6].SNR;
             PR[7].RNR = TPR.TRR;
@@ -3067,10 +3071,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0610:  ///< rtcd
             /*
              TODO: Complete RTCD
-             If an access violation fault occurs when fetching the SDW for the Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.
-             If the rtcd instruction is executed with the processor in absolute mode with bit 29 of the instruction word set OFF and without indirection through an ITP or ITS pair, then:
-             appending mode is entered for address preparation for the rtcd operand and is retained if the instruction executes successfully,
-             and the effective segment number generated for the SDW fetch and subsequent loading into C(TPR.TSR) is equal to C(PPR.PSR) and may be undefined in absolute mode, and the effective ring number loaded into C(TPR.TRR) prior to the SDW fetch is equal to C(PPR.PRR) (which is 0 in absolute mode) implying that control is always transferred into ring 0.
+             If an access violation fault occurs when fetching the SDW for the 
+             Y-pair, the C(PPR.PSR) and C(PPR.PRR) are not altered.  If the 
+             rtcd instruction is executed with the processor in absolute mode 
+             with bit 29 of the instruction word set OFF and without 
+             indirection through an ITP or ITS pair, then:
+
+                 appending mode is entered for address preparation for the 
+                 rtcd operand and is retained if the instruction executes 
+                 successfully, and the effective segment number generated for 
+                 the SDW fetch and subsequent loading into C(TPR.TSR) is equal 
+                 to C(PPR.PSR) and may be undefined in absolute mode, and the 
+                 effective ring number loaded into C(TPR.TRR) prior to the SDW 
+                 fetch is equal to C(PPR.PRR) (which is 0 in absolute mode) 
+                 implying that control is always transferred into ring 0.
              */
             
             /// C(Y-pair)3,17 → C(PPR.PSR)
@@ -3082,8 +3096,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             processorCycle = RTCD_OPERAND_FETCH;
 
-            //Read2(i, TPR.CA, &Ypair[0], &Ypair[1], OperandRead, rTAG);
-            
             /// C(Y-pair)3,17 → C(PPR.PSR)
             PPR.PSR = GETHI(Ypair[0]) & 077777LL;
             
@@ -3121,7 +3133,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
             /// otherwise, no change to C(PPR)
-            /// XXX Not completely implemented
             if (rIR & I_EOFL)
             {
                 PPR.IC = TPR.CA;
@@ -3136,7 +3147,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If exponent underflow indicator ON then
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            /// XXX Not completely implemented
             if (rIR & I_EUFL)
             {
                 PPR.IC = TPR.CA;
@@ -3242,6 +3252,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0271:  ///< tsp1
         case 0272:  ///< tsp2
         case 0273:  ///< tsp3
+
         case 0670:  ///< tsp4
         case 0671:  ///< tsp5
         case 0672:  ///< tsp6
@@ -3263,7 +3274,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // XXX According to figure 8.1, all of this is done by the append unit.
                 PR[n].RNR = PPR.PRR;
                 PR[n].SNR = PPR.PSR;
-                PR[n].WORDNO = (PPR.IC + 1) & 0777777;
+                PR[n].WORDNO = (PPR.IC + 1) & MASK18;
                 PR[n].BITNO = 0;
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3298,7 +3309,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(TPR.TSR) → C(PPR.PSR)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = (PPR.IC + 1) & 0777777;
+                rX[n] = (PPR.IC + 1) & MASK18;
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
             }
@@ -3478,8 +3489,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(Y-pair)36,53 → C(PRn.WORDNO)
             ///  C(Y-pair)57,62 → C(PRn.BITNO)
             
-            //ReadN(i, 16, TPR.CA, Yblock16, OperandRead, rTAG);  // read 16-words from memory
-
             for(uint32 n = 0 ; n < 8 ; n ++)
             {
                 //word36 Ypair[2];
@@ -3491,7 +3500,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                   PR[n].RNR = max3(Crr, SDW->R1, TPR.TRR) ;
                 else
                   PR[n].RNR = Crr;
-                PR[n].SNR = (Ypair[0] >> 18) & 077777;
+                PR[n].SNR = (Ypair[0] >> 18) & MASK15;
                 PR[n].WORDNO = GETHI(Ypair[1]);
                 PR[n].BITNO = (GETLO(Ypair[1]) >> 9) & 077;
             }
@@ -3661,8 +3670,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[1] = (word36) PR[0].WORDNO << 18;
             Ypair[1]|= (word36) PR[0].BITNO << 9;
             
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
-            
             break;
             
         case 0252:  ///< spri2
@@ -3682,8 +3689,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             Ypair[1] = (word36) PR[2].WORDNO << 18;
             Ypair[1]|= (word36) PR[2].BITNO << 9;
-            
-            //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
             
             break;
   
@@ -3749,7 +3754,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 //If C(PRn.SNR)0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, then a store fault (illegal pointer) will occur and C(Y) will not be changed.
             
                 // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
-                if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
+                if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != MASK15)
                   doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
                 if (switches . lprp_highonly)
@@ -3779,7 +3784,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 uint32 n = opcode & 03;  // get n
                 PR[n].WORDNO += GETHI(CY);
-                PR[n].WORDNO &= 0777777;
+                PR[n].WORDNO &= MASK18;
                 PR[n].BITNO = 0;
             }
             break;
@@ -3792,9 +3797,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///   C(Y)0,17 + C(PRn.WORDNO) → C(PRn.WORDNO)
             ///   00...0 → C(PRn.BITNO)
             {
-                uint32 n = (opcode & 03) + 4;  // get n
+                uint32 n = (opcode & MASK3) + 4U;  // get n
                 PR[n].WORDNO += GETHI(CY);
-                PR[n].WORDNO &= 0777777;
+                PR[n].WORDNO &= MASK18;
                 PR[n].BITNO = 0;
             }
             break;
@@ -3809,11 +3814,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// 00...0 → C(AQ)54,65
             /// C(TPR.TBR) → C(AQ)66,71
             
-            rA = TPR.TRR & 7;
-            rA |= (word36) (TPR.TSR & 077777) << 18LL;
+            rA = TPR.TRR & MASK3;
+            rA |= (word36) (TPR.TSR & MASK15) << 18;
             
-            rQ = TPR.TBR & 077;
-            rQ |= (word36) (TPR.CA & 0777777) << 18LL;
+            rQ = TPR.TBR & MASK6;
+            rQ |= (word36) (TPR.CA & MASK18) << 18;
             
             break;
         
@@ -3836,10 +3841,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
         case 002:   ///< drl
             /// Causes a fault which fetches and executes, in absolute mode, the instruction pair at main memory location C+(14)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-
-            /// XXX not completed
-            /// generate fault...
-            
+            doFault (i, derail_fault, 0, "drl");
             break;
          
         case 0716:  ///< xec
@@ -3873,7 +3875,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
             
-        case opcode0_xed:   // 0717:  ///< xed
+        case 0717:  ///< xed
             {
             /// The xed instruction itself does not affect any indicator. However, the execution of the instruction pair from C(Y-pair) may affect indicators.
             /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
@@ -3922,270 +3924,55 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             break;
             
-        case 001:   ///< mme
+        case 0001:   ///< mme
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+4. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(i, mme1_fault, 0, "Master Mode Entry (mme)");
             break;
             
-        case 004:   ///< mme2
+        case 0004:   ///< mme2
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(52)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(i, mme2_fault, 0, "Master Mode Entry 2 (mme2)");
             break;
 
-        case 005:   ///< mme3
+        case 0005:   ///< mme3
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(54)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(i, mme3_fault, 0, "Master Mode Entry 3 (mme3)");
             break;
 
-        case 007:   ///< mme4
+        case 0007:   ///< mme4
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(56)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(i, mme4_fault, 0, "Master Mode Entry 4 (mme4)");
             break;
 
-        case 011:   ///< nop
+        case 0011:   ///< nop
             break;
 
-        case 012:   ///< puls1
+        case 0012:   ///< puls1
+            // For emulation purposes, a nop
             {
+#if 0
             // just generate a register dump
-            printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(rIR));
-            printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
-            printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
+            sim_printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(rIR));
+            sim_printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
+            sim_printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
                 for(uint32 n = 0 ; n < 8 ; n++)
-                    printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\r\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
-
+                    sim_printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\r\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
+#endif
             }
             break;
 
-        case 013:   ///< puls2
-            bPuls2 = true;
+        case 0013:   ///< puls2
+            // For emulation purposes, a nop
             break;
          
             // TODO: implement RPD/RPL
         case 0560:  ///< rpd
+            return STOP_UNIMP;
+
         case 0500:  ///< rpl
             return STOP_UNIMP;
 
-        case 7770520:  ///< rpt
-        {
-            // MM's rpt implementation seems quite complex (with interactions with the control unit and all) and not
-            // certain if is better than mine. More complex is better, right? Dunno. May revisit this later.
-            
-            cu.rpts = 1;
-            // AL39, page 209
-#ifndef QUIET_UNUSED
-            uint tally = (i->address >> 10);
-#endif
-            uint c = (i->address >> 7) & 1;
-#ifndef QUIET_UNUSED
-            uint term = i->address & 0177;
-#endif
-            cu.delta = i->tag;
-            if (c)
-                rX[0] = i->address;    // Entire 18 bits
-            cu.rpt = 0;
-            cu.repeat_first = 1;
-            // Setting cu.rpt will cause the instruction to be executed
-            // until the termination is met.
-            // See cpu.c for the rest of the handling.
-            sim_debug (DBG_TRACE, & cpu_dev, "OPU: RPT instruction found\n");
-            return 0;
-        }
-
         case 0520:  ///< rpt
-#if 0
-            {
-                //Execute the instruction at C(PPR.IC)+1 either a specified number of times
-                //or until a specified termination condition is met.
-
-                int delta = i->IWB & 077;
-                
-                // fetch next instruction ...
-                
-                DCDstruct _nxt;   // our decoded instruction struct
-                DCDstruct *nxt = fetchInstruction(PPR.IC+1, &_nxt);    // fetch next instruction into current instruction
-
-                // XXX check for illegal modifiers only R & RI are allowed and only X1..X7
-                switch (GET_TM(nxt->tag))
-                {
-                    case TM_R:
-                    case TM_RI:
-                        break;
-                    default:
-                        // XXX generate fault. Only R & RI allowed
-                        doFault(i, illproc_fault, 0, "ill addr mod from RPT");
-                }
-                
-                int Xn = nxt->tag - 8;          // Get Xn of next instruction
-    
-                if (nxt->info->flags & NO_RPT)   // repeat allowed for this instruction?
-                    doFault(i, illproc_fault, 0, "no rpt allowed for instruction");
-                                
-                //If C = 1, then C(rpt instruction word)0,17 → C(X0); otherwise, C(X0) unchanged prior to execution.
-                bool c1 = TSTBIT(i->IWB, 25);
-                if (c1)
-                    rX[0] = GET_ADDR(i->IWB);
-                
-                // For the first execution of the repeated instruction: C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-                TPR.CA = (rX[Xn] + nxt->address) & AMASK;
-                rX[Xn] = TPR.CA;
-
-                if (nxt->info->flags & STORE_OPERAND)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_OPERAND\n");
-                }
-                if (nxt->info->flags & STORE_YPAIR)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_YPAIR\n");
-                }
-                if (nxt->info->flags & READ_YBLOCK8)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! READ_YBLOCK8\n");
-                }
-                if (nxt->info->flags & STORE_YBLOCK8)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_YBLOCK8\n");
-                }
-                if (nxt->info->flags & READ_YBLOCK16)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! READ_YBLOCK16\n");
-                }
-                if (nxt->info->flags & STORE_YBLOCK16)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! STORE_YBLOCK16\n");
-                }
-                if (nxt->info->flags & PREPARE_CA)
-                {
-                    sim_debug (DBG_ERR, & cpu_dev, "RPT fails! PREPARE_CA\n");
-                }
-
-                bool exit = false;  // when true terminate rpt instruction
-                do 
-                {                   
-                    // fetch operand into CY (if necessary)
-                    
-                    // XXX This is probably soooo wrong, but let's see what happens ......
-                    // what about instructions that need more that 1 word?????
-                    if (nxt->info->flags & READ_OPERAND)
-                    {
-                        switch (GET_TM(nxt->tag))
-                        {
-                            case TM_R:
-                                Read(nxt, TPR.CA, &CY, OPERAND_READ, 0);
-                                break;
-                            case TM_RI:
-                            {
-                                //In the case of RI modification, only one indirect reference is made per repeated execution. The TAG field of the indirect word is not interpreted. The indirect word is treated as though it had R modification with R = N.
-                                word36 tmp;
-                                Read(nxt, TPR.CA, &tmp, OPERAND_READ, 0);     // XXX can append mode be invoked here?
-                                Read(nxt, GETHI(tmp), &CY, OPERAND_READ, 0);  // XXX ""
-                                break;
-                            }
-                            default:
-                                // XXX generate fault. Only R & RI allowed
-                                doFault(i, illproc_fault, 0, "ill addr mod from RPT");
-                        }
-                    }
-                    else if (nxt->info->flags & READ_YPAIR)
-                    {
-                        switch (GET_TM(nxt->tag))
-                        {
-                            case TM_R:
-                                Read(nxt, TPR.CA, &Ypair[0], OPERAND_READ, 0);
-                                Read(nxt, TPR.CA+1, &Ypair[1], OPERAND_READ, 0);
-                                break;
-                            case TM_RI:
-                            {
-                                //In the case of RI modification, only one indirect reference is made per repeated execution. The TAG field of the indirect word is not interpreted. The indirect word is treated as though it had R modification with R = N.
-                                word36 tmp;
-                                Read(nxt, TPR.CA, &tmp, OPERAND_READ, 0);     // XXX can append mode be invoked here?
-                                Read(nxt, GETHI(tmp),  &Ypair[0], OPERAND_READ, 0); // XXX ""
-                                Read(nxt, GETHI(tmp)+1,  &Ypair[1], OPERAND_READ, 0); // XXX ""
-                                break;
-                            }
-                            default:
-                                // XXX generate fault. Only R & RI allowed
-                                doFault(i, illproc_fault, 0, "ill addr mod from RPT");
-                        }
-                    }
-                    
-
-                    // The repetition cycle consists of the following steps:
-                    //  a. Execute the repeated instruction
-
-                    t_stat ret = doInstruction(nxt);
-                    if (ret)
-                    {
-                        cpuCycles += 1; // XXX remove later when we can get this into the main loop
-                        return (ret);   
-                    }
-                    
-                    //  b. C(X0)0,7 - 1 → C(X0)0,7
-                    int x = bitfieldExtract(rX[0], 10, 8);
-                    x -= 1;
-                    rX[0] = bitfieldInsert(rX[0], x, 10, 8);
-                    
-                    //  Modify C(Xn) as described below
-                    //The computed address, y, of the operand (in the case of R modification) or indirect word (in the case of RI modification) is determined as follows:
-                    
-                    TPR.CA = (rX[Xn] + delta) & AMASK;
-                    rX[Xn] = TPR.CA;
-
-                    //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON and terminate
-                    if (x == 0)
-                    {
-                        SETF(rIR, I_TALLY);
-                        exit = true;
-                        // Note that the code in bootload_tape.alm expects that
-                        // the tally runout *not* be set when both the
-                        // termination condition is met and bits 0..7 of
-                        // reg X[0] hits zero.
-                        // CAC: bootload_tape.alm doesn't have a RPT in it,
-                        // so this comment is probably related to a ,id
-                        // addressing mode issue. Commenting out the else.
-                    } //else
-                    
-                    //  d. If a terminate condition has been met, then set the tally runout indicator OFF and terminate
-                    if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    } else if (!TSTF(rIR, I_ZERO) && (rX[0] & 040))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    } else if (TSTF(rIR, I_NEG) && (rX[0] & 020))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    } else if (!TSTF(rIR, I_NEG) && (rX[0] & 010))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    } else if (TSTF(rIR, I_CARRY) && (rX[0] & 04))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    } else if (!TSTF(rIR, I_CARRY) && (rX[0] & 02))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    } else if (TSTF(rIR, I_OFLOW) && (rX[0] & 01))
-                    {
-                        CLRF(rIR, I_TALLY);
-                        exit = true;
-                    }
-
-                    //  e. Go to step a
-                    cpuCycles += 1; // XXX remove later when/if we can get this into the main loop
-
-                } while (exit == false);
-                
-                // Note: when using MMs fault code / ControlUnit() we don't do this here ...
-                PPR.IC += 1;   // bump instruction counter
-            }
-            break;
-#endif
             {
             // AL39, page 209
               //uint tally = (i->address >> 10);
@@ -4242,7 +4029,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
            
-        case 9774:  ///< gtb
+        case 0774:  ///< gtb
             /// C(A)0 → C(A)0
             /// C(A)i ⊕ C(A)i-1 → C(A)i for i = 1, 2, ..., 35
             {
@@ -4335,8 +4122,6 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 
         case 0637:  ///< ldt
-            //  rTR = (CY << 9) && 0777777777000LL;
-
             rTR = (CY << 9) & 0777777777000LL;
             break;
 
@@ -4351,43 +4136,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             return STOP_UNIMP;
 
         case 0657:  ///< scu
-            
-            // ToDo: need to decode i into cu.IR
-            // No! do not cu_safe_store here! The scu command stores a copy
-            // of the data that the processor saved when entering the
-            // the interrupt or fault cycle.
-            //cu_safe_store();
-#if 0
-            cu_safe_store();
->>>>>>> origin/master
-            // XXX STORE_YBLOCK8 not yet in; fix this code when it is
-            sim_debug (DBG_ERR, & cpu_dev, "Fixme: SCU STORE_YBLOCK8 workaround\n");
-sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
-            // XXX this may be way too simplistic ..... 
-            // XXX Write sets TPR.CA to the address passed in.... Gahh
-            word18 tprca = TPR.CA;
-            Write (i, tprca + 0, scu_data [0], STORE_OPERAND, i->tag);
-            Write (i, tprca + 1, scu_data [1], STORE_OPERAND, i->tag);
-            Write (i, tprca + 2, scu_data [2], STORE_OPERAND, i->tag);
-            Write (i, tprca + 3, scu_data [3], STORE_OPERAND, i->tag);
-// Bug DIS@0013060 31184718 blk10 absolute mode bit inverted in SCU instruction
-#if 1
-            word36 tmp = scu_data [4];
-            if (switches . invert_absolute)
-              tmp ^= I_ABS;
-            Write (i, tprca + 4, tmp, STORE_OPERAND, i->tag);
-#else
-            Write (i, tprca + 4, scu_data [4], STORE_OPERAND, i->tag);
-#endif
-            Write (i, tprca + 5, scu_data [5], STORE_OPERAND, i->tag);
-            Write (i, tprca + 6, scu_data [6], STORE_OPERAND, i->tag);
-            Write (i, tprca + 7, scu_data [7], STORE_OPERAND, i->tag);
-            TPR.CA = tprca;
-#else
             scu2words (Yblock8);
-            //if (switches . invert_absolute)
-              //Yblock8 [4]  ^= I_ABS;
-#endif
             break;
             
         case 0154:  ///< sdbr
@@ -4396,6 +4145,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
 
         case 0557:  ///< sdp
             return STOP_UNIMP;
+
         case 0532:  ///< cams
             do_cams (TPR.CA);
             break;
@@ -4420,66 +4170,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             break;
 
         case 0413:  ///< rscr
-#if 0
-            //The final computed address, C(TPR.CA), is used to select a system
-            //controller and the function to be performed as follows:
-            //EffectiveAddress Function
-            // y0000x C(system controller mode register) → C(AQ)
-            // y0001x C(system controller configuration switches) → C(AQ) y0002x C(mask register assigned to port 0) → C(AQ)
-            // y0012x C(mask register assigned to port 1) → C(AQ)
-            // y0022x C(mask register assigned to port 2) → C(AQ)
-            // y0032x C(mask register assigned to port 3) → C(AQ)
-            // y0042x C(mask register assigned to port 4) → C(AQ)
-            // y0052x C(mask register assigned to port 5) → C(AQ)
-            // y0062x C(mask register assigned to port 6) → C(AQ)
-            // y0072x C(mask register assigned to port 7) → C(AQ)
-            // y0003x C(interrupt cells) → C(AQ)
-            // y0004x
-            //   or C(calendar clock) → C(AQ)
-            // y0005x
-            // y0006x
-            //   or C(store unit mode register) → C(AQ)
-            // y0007x
-            //where: y = value of C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) used to select the system controller
-            //x = any octal digit
-            {
-                int hi = GETHI(i->IWB);
-#ifndef QUIET_UNUSED
-                int Ysc = (hi >> 15) & 03;
-#endif
-                
-                int EAF = hi & 077770;
-                switch (EAF)
-                {
-                    case 0030: // Interrupt cells A
-                      
-                    case 0031: // Interrupt cells A
-                    case 0000:
-                    case 0010:
-                    case 0120:
-                    case 0220:
-                    case 0320:
-                    case 0420:
-                    case 0520:
-                    case 0620:
-                    case 0720:
-                        return STOP_UNIMP;
-                    case 0040:
-                    case 0050:  // return clock/calendar in AQ
-                        if (! switches . steady_clock)
-                          goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
-                        rA = 0;
-                        rQ = cpuCycles;
-                        break;
-                        
-                        
-                    case 0060:
-                    case 0070:
-                    default:
-                        return STOP_UNIMP;
-                }
-            }
-#else
             {
               // For the rscr instruction, the first 2 or 3 bits of the addr
               // field of the instruction are used to specify which SCU.
@@ -4490,7 +4180,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
               if (rc)
                 return rc;
             }
-#endif
             
             break;
             
@@ -4703,54 +4392,9 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 return rc;
             }
             break;
-#if 0
-            {
-                int hi = GETHI(i->IWB);
-                int Ysc = (hi >> 15) & 03;
-                
-                int EAF = hi & 077770;
-                switch (EAF)
-                {
-                    case 0000:
-                    case 0010:
-                        return STOP_UNIMP;
-                    case 0020:
-                    case 0120:
-                    case 0220:
-                    case 0320:
-                    case 0420:
-                    case 0520:
-                    case 0620:
-                    case 0720:
-                       
-                        return STOP_UNIMP;
-                    case 0040:
-                    case 0050:  // return clock/calendar in AQ
-                        goto c_0633;    // Goto's are sometimes necesary. I like them ... sosueme.
-                        
-                        
-                    case 0060:
-                    case 0070:
-                    default:
-                        return STOP_UNIMP;
-                }
-            }
-#endif
-            
 
         // Privileged - Miscellaneous
         case 0212:  ///< absa
-#if 0
-#if 0
-            if (get_addr_mode () == ABSOLUTE_mode)
-              // XXX t4d implies that the definition of undefined is 400000000000;
-              rA = 0400000000000;
-            else
-#endif
-              rA = 0;
-              SETHI(rA, finalAddress);
-              rA |= ((word36) PTW0.OSDATA) << 12;
-#endif
           {
             word36 result;
             int rc = doABSA (i, & result);
@@ -4764,43 +4408,6 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             
         case 0616:  ///< dis
 
-#if 0
-// XXX Insight on DIS with interrupt inhibit set; wait for the interrupt;
-// when it occurs, if inhibit set, continue on; otherwise do the interrupt
-// handling thing. Getting this rihgt with breaking the Fake DIS cyvle used
-// by iom_boot may be tricky
-
-            if (i->i) {
-                sim_debug (DBG_WARN, & cpu_dev, "OPU dis: DIS with inhibit set\n");
-                // [CAC] XXX t4d requires this to be interruptable.
-                //return STOP_DIS;
-            } 
-
-// XXX "return STOP_DIS" fails in the case of a DIS instruction in the fault 
-// doXED(); doFault doesn't check for the STOP_ case, and places that call 
-// doFault don't reliably check it's return value
-            //sim_printf ("events . int_pending %d, sim_qcount %d\n", events . int_pending, sim_qcount ());
-            if (switches . dis_enable)
-              {
-                if (events . int_pending == 0 &&
-                    sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
-                                         // break this logic
-                  {
-                    sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
-                    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
-                    //return STOP_DIS;
-                    stop_reason = STOP_DIS;
-                    longjmp (jmpMain, JMP_STOP);
-                  }
-                sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
-                sim_printf ("entered DIS_cycle\n");
-                cpu.cycle = DIS_cycle;
-                longjmp (jmpMain, JMP_ENTRY);
-                break;
-              }
-            else
-              return STOP_DIS;
-#endif
 // New dis logic.
 // No DIS cycle.
 // The DIS instruction hangs until an interrupt sensed. When it returns, 
@@ -4845,18 +4452,8 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             if (switches . halt_on_unimp)
                 return STOP_UNIMP;
             else
-                doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
-            
+                doFault(i, illproc_fault, ill_op, "Illegal instruction");
     }
-    
-//#ifndef USE_CONTINUATIONS
-//    if (i->iwb->flags & STORE_YPAIR)
-//        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
-//    else
-//    if (i->iwb->flags & STORE_OPERAND)
-//        writeOperand(i);  // write C(Y) to TPR.CA for any instructions that needs it .....
-//#endif
-    
     return 0;
 }
 
@@ -5508,11 +5105,14 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         case 0447:  ///< spl - Store Pointers and Lengths
+#if 0
 // XXX Unimplemented; dummy handler here.
             sim_debug (DBG_ERR, & cpu_dev, "XXX Faking SPL instruction\n");
             memset (Yblock8, 0, sizeof (Yblock8));
             sim_debug (DBG_ERR, & cpu_dev, "XXX Faking SPL instruction\n");
             break;
+#endif
+            return STOP_UNIMP;
             
         // EIS - Address Register Special Arithmetic
         case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register
@@ -5900,11 +5500,11 @@ static t_stat DoEISInstruction(DCDstruct *i)
             dtb (i);
             break;
             
-        case 024:   ///< mvne
+        case 0024:   ///< mvne
             mvne(i);
             break;
          
-        case 020:   ///< mve
+        case 0020:   ///< mve
             mve(i);
             break;
 
@@ -5949,23 +5549,23 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
           
         // bit-string operations
-        case 066:   ///< cmpb
+        case 0066:   ///< cmpb
             cmpb(i);
             break;
 
-        case 060:   ///< csl
+        case 0060:   ///< csl
             csl(i);
             break;
 
-        case 061:   ///< csr
+        case 0061:   ///< csr
             csr(i);
             break;
 
-        case 064:   ///< sztl
+        case 0064:   ///< sztl
             sztl(i);
             break;
 
-        case 065:   ///< sztr
+        case 0065:   ///< sztr
             sztr(i);
             break;
 
@@ -6019,170 +5619,29 @@ static t_stat DoEISInstruction(DCDstruct *i)
               return ret;
             break;
         }
-
-#ifdef DEPRECIATED
-            /*
-             * a proposal for PUSHT, POPT from MIT AI memoramdum AIM-072 ...
-             
-             A single instruction for entering a procedure and reserving a block of storage on the push down stack must be capable of incrementing the push down pointer, checking to determine if the push down stack has been exhausted, placing the saved instruction location and the size of the push down block at the end of the block, and transferring to the entry point of the procedure. The proposed instructions PUSHT, and POPT will probably have to be modified to accomodate the program segment scheme.
-             
-             
-             PUSHT:
-             
-             The instruction has an address subject to all normal modifications. The address determines the location of a data word which is interpreted according to format I.
-             
-             0    entry        11 t 22    blk      3
-                               78   12             5
-             
-             Format I
-             
-             After the data word has been obtained, the instruction proceeds as follows.
-             1) The contents of blk are added to Xt (The field blk is made into an 18-bit field
-             by preceeding it with bits having the same sign as the left-most bit on blk. This permits negative indexing.)
-             2) A word is formed using the contents of the instruction counter (ic) and the block size (blk) as shown by format II.
-             
-             0      ic        1    2     blk    3
-                              7    2            5
-             
-             Format II
-             
-             3) If C(Xt) > C(Xt+1) then the format II word is stored at the address determined by X(t), otherwise control goes to trap.
-             4) A transfer is made to the address specified in the entry field.
-             
-             TRAP:
-             A trap is made to a fixed location relocated within the segment containing the PUSHT instruction. THe processor does not leave slave mode.
-             
-             POPT:
-             
-             0       y        11 P 2         3 t 3
-                              78 O 1         2   5
-                                 P
-                                 T
-             
-             1) The data word addressed by Xt is obtained and interpreted according to format II.
-             2) The blk field is subtracted from Xt
-             3) A transfer is made to the location which is the sum of the y field of the instruction and the ic field of the format II word.
-             
-             
-             HWR 29 Nov 2012 
-             
-             Interesting proposal. I wonder if the author really thought about this much. It seems that the format I/II words
-             are not terribly useful outside of these instructions. If, however, blk is reduced to 12-bits and the fields reorganized
-             to match a standard indirect word then the instructions become much more useful... giving us the ability to use the
-             fmt 1/2 words more like modern fp/sp/bp's, Of course, I'm a noob to the 645/dps8 so who am I to judge?
-             
-             new Format  I word... Entry (0-17), blk(18-29), Tag (30-35)    // to where we're going
-             mew Format II word...    IC (0-17), blk(18-29), Tag (30-35)    // whence we came from
-             */
-
-        case 0421:  ///< callx    (call using index register as SP)
-            {
-                
-                word18 entry = GET_ADDR(CY);
-                int blk = SIGNEXT12(GET_TALLY(CY));
-                word4 t = X(GET_TAG(CY));
-                
-                //sim_debug(DBG_TRACE, &cpu_dev,  "pusht():C(Y)=%012llo\n", CY);
-                //sim_debug(DBG_TRACE, &cpu_dev,  "pusht():entry:%06o t:%o blk:%o X[%o]=%06o\n", entry, t, blk, t, rX[t]);
-                
-                //if (rX[t] > rX[t+1]) // too big!
-                //    break;
-                
-                rX[t] += blk;
-                
-                word36 fmt2 = (((PPR.IC + 1) & AMASK) << 18) | ((word36) blk << 6);     ///< | t;
-                //sim_debug(DBG_TRACE, &cpu_dev,  "pusht():writine fmt2=%012llo to X[%o]=%06o\n", fmt2, t, rX[t]);
-                
-                Write(rX[t], fmt2, OperandWrite, 0);    // write fmt 2 word to X[n] + blk
-                
-                rX[t] += 1;
-                
-                PPR.IC = entry;
-                
-                return CONT_TRA;
-            }
-            break;
-        case 0422:  ///< exit n, x - exit subroutine removing n args via x
-            {
-                uint32 n = X(tag);    // n
-                word18 y = GETHI(IWB);
-                
-                rX[n] -= 1;
-                
-                word36 fmt2;
-                //sim_debug(DBG_TRACE, &cpu_dev,  "popt(): reading fmt2 from X[%o]=%06o\n", n, rX[n]);
-                Read(rX[n], &fmt2, OperandRead, 0);
-                //sim_debug(DBG_TRACE, &cpu_dev,  "popt(): fmt2=%012llo\n", fmt2);
-                
-                word18 ic =  GETHI(fmt2);
-                int blk = SIGNEXT12(GET_TALLY(fmt2));
-            
-                rX[n] -= blk;
-                
-                //word18 rICx = (y + ic) & AMASK;
-                //sim_debug(DBG_TRACE, &cpu_dev, "popt() y=%06o n=%o ic:%06o blk=%d rICx=%06o\n", y, n, ic, blk, rICx);
-                
-                PPR.IC = (y + ic) & AMASK;
-                //sim_debug(DBG_TRACE, &cpu_dev,  "popt() new IC = %06o X[%o]=%06o\n", PPR.IC, n, rX[n]);
-                
-                return CONT_TRA;
-                
-            }
-            break;
-            
-        case 0423:  ///< pusha
-            {
-                uint32 n = X(tag);    // n
-                Write(rX[n], rA, OperandWrite, 0);    // write A to TOS
-                rX[n] += 1;
-            }
-            break;
-            
-        case 0424:  ///< popa
-            {
-                uint32 n = X(tag);    // n
-                rX[n] -= 1;
-                Read(rX[n], &rA, OperandRead, 0);    // read A from TOS-1
-            }
-            break;
-            
-        case 0425:  ///< pushq
-            {
-                uint32 n = X(tag);    // n
-                Write(rX[n], rQ, OperandWrite, 0);    // write Q to TOS
-                rX[n] += 1;
-            }
-            break;
-
-        case 0426:  ///< popq
-            {
-                uint32 n = X(tag);    // n
-                rX[n] -= 1;
-                Read(rX[n], &rQ, OperandRead, 0);    // read A from TOS-1
-            }
-            break;
-#endif  /* DEPRECIATED */
-            
 #endif
         // priviledged instructions
             
         case 0173:  ///< lptr
             doFault(i, illproc_fault, 0, "lptr is illproc on DPS8M");
-            return CONT_FAULT;
 
         case 0232:  ///< lsdr
             doFault(i, illproc_fault, 0, "lsdr is illproc on DPS8M");
-            return CONT_FAULT;
 
         case 0257:  ///< lptp
             doFault(i, illproc_fault, 0, "lptp is illproc on DPS8M");
-            return CONT_FAULT;
 
-        //case 0774:  ///< lra
-        //case 0232:  ///< ldsr
-        //case 0557:  ///< sptp
-        //case 0154:  ///< sptr
-        //case 0254:  ///< ssdr
+        case 0774:  ///< lra
+            return STOP_UNIMP;
+
+        case 0557:  ///< sptp
+            return STOP_UNIMP;
+
+        case 0154:  ///< sptr
+            return STOP_UNIMP;
+
+        case 0254:  ///< ssdr
+            return STOP_UNIMP;
             
         // Privileged - Clear Associative Memory
         case 0532:  ///< camp
@@ -6196,13 +5655,6 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
     }
 
-//#ifndef USE_CONTINUATIONS
-//    if (i->iwb->flags & STORE_OPERAND)
-//        writeOperand(i); // write C(Y) to TPR.CA for any instructions that needs it .....
-//    else if (i->iwb->flags & STORE_YPAIR)
-//        writeOperand2(i); // write YPair to TPR.CA/TPR.CA+1 for any instructions that needs it .....
-//#endif
-    
     return 0;
 
 }

@@ -147,6 +147,7 @@ static bool port_interrupts[8] = {false, false, false, false, false, false, fals
 //-----------------------------------------------------------------------------
 // ***  Constants, unchanging lookup tables, etc
 
+#ifndef QUIET_UNUSED
 static int fault2group[32] = {
     // from AL39, page 7-3
     7, 4, 5, 5, 7, 4, 5, 4,
@@ -162,7 +163,7 @@ static int fault2prio[32] = {
     20, 21, 22, 23, 24, 12, 13, 14,
     18, 19,  0,  0,  0,  0,  0,  3
 };
-
+#endif
 // Fault conditions as stored in the "FR" Fault Register
 // C99 and C++ would allow 64bit enums, but bits past 32 are related to (unimplemented) parity faults.
 typedef enum {
@@ -360,9 +361,9 @@ t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
 static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
 #ifndef QUIET_UNUSED
 static int nFaultNumber = -1;
-#endif
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
+#endif
 static int g7Faults = 0;
 
 // We stash a few things for debugging; they are accessed by emCall.

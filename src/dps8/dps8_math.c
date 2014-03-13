@@ -517,6 +517,8 @@ void fno(DCDstruct *ins)
     //!  Normalization is performed by shifting C(AQ)1,71 one place to the left and reducing C(E) by 1, repeatedly, until the conditions for C(AQ)0 and C(AQ)1 are met. Bits shifted out of AQ1 are lost.
     //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
+    rA &= DMASK;
+    rQ &= DMASK;
     float72 m = ((word72)rA << 36) | (word72)rQ;
     if (TSTF(rIR, I_OFLOW))
     {
@@ -552,7 +554,7 @@ void fno(DCDstruct *ins)
     }
     int8   e = rE;
 
-    bool s = m & SIGN72;    ///< save sign bit
+    bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
     //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
     while (bitfieldExtract72(m, 71, 1) == bitfieldExtract72(m, 70, 1)) // until C(AQ)0 ≠ C(AQ)1?
     {
@@ -1056,7 +1058,10 @@ void fstr(DCDstruct *ins, word36 *Y)
     
     word36 A = rA, Q = rQ;
     word8 E = rE;
-    
+    A &= DMASK;
+    Q &= DMASK;
+    E &= MASK8;
+   
     float72 m = ((word72)A << 36) | (word72)Q;
     if (m == 0)
     {
@@ -1069,7 +1074,7 @@ void fstr(DCDstruct *ins, word36 *Y)
     }
     
     // C(AQ) + (11...1)29,71 → C(AQ)
-    bool s1 = m & SIGN72;
+    bool s1 = (m & SIGN72) != (word72)0;
     
     m += (word72)0177777777777777LL; // add 1's into lower 43-bits
     
@@ -1082,7 +1087,7 @@ void fstr(DCDstruct *ins, word36 *Y)
     //m &= (word72)0777777777400LL << 36; // 28-71 => 0 per DH02-01/Bull DPS9000
     m = bitfieldInsert72(m, 0, 0, 44);    // 28-71 => 0 per DH02
     
-    bool s2 = (bool)(m & SIGN72);
+    bool s2 = (m & SIGN72) != (word72)0;
     
     bool ov = s1 != s2;   // sign change denotes overflow
     if (ov)
@@ -1297,6 +1302,10 @@ void dufa(DCDstruct *ins)
     //! *  C(AQ)0 is inverted to restore the sign.
     //! *  C(E) is increased by one.
     
+    rA &= DMASK;
+    rQ &= DMASK;
+    rE &= MASK8;
+
     float72 m1 = ((word72)rA << 36) | (word72)rQ;
     int8   e1 = rE;
     
@@ -1865,7 +1874,10 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
     
     word36 A = rA, Q = rQ;
     word8 E = rE;
-    
+    A &= DMASK;
+    Q &= DMASK;
+    E &= MASK8;
+
     float72 m = ((word72)A << 36) | (word72)rQ;
     if (m == 0)
     {
@@ -1873,17 +1885,17 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
-        Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LL) >> 8);
-        Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
+        Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LLU) >> 8);
+        Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
 
         return;
     }
     
     
     // C(AQ) + (11...1)65,71 → C(AQ)
-    bool s1 = m & SIGN72;
+    bool s1 = (m & SIGN72) != (word72)0;
     
-    m += (word72)0177LL; // add 1's into lower 43-bits
+    m += (word72)0177LLU; // add 1's into lower 43-bits
     
     // If C(AQ)0 = 0, then a carry is added at AQ71
     if (s1 == 0)
@@ -1893,7 +1905,7 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
     //m &= (word72)0777777777777LL << 36 | 0777777777400LL; // 64-71 => 0 per DH02-01/Bull DPS9000
     m = bitfieldInsert72(m, 0, 0, 8);
     
-    bool s2 = (bool)(m & SIGN72);
+    bool s2 = (m & SIGN72) != (word72)0;
     
     bool ov = s1 != s2;   ///< sign change denotes overflow
     if (ov)
