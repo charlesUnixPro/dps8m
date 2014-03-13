@@ -2196,7 +2196,9 @@ static struct
 
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
-    return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
+      return cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num;
+    return -1;
   }
 
 void cpu_reset_array (void)

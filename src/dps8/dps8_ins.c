@@ -340,10 +340,10 @@ void initializeTheMatrix (void)
     memset (theMatrix, 0, sizeof (theMatrix));
 }
 
-void addToTheMatrix (int32 opcode, bool opcodeX, bool a, word6 tag)
+void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
 {
     // safety
-    int _opcode = opcode & 01777;
+    uint _opcode = opcode & 01777;
     int _opcodeX = opcodeX ? 1 : 0;
     int _a = a ? 1 : 0;
     int _tag = tag & 077;
@@ -528,7 +528,7 @@ t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = cu.IWB;          ///< instruction working buffer
     const opCode *info = ci->info;          ///< opCode *
-    const int32  opcode = ci->opcode;     ///< opcode
+    const uint32  opcode = ci->opcode;     ///< opcode
     const bool   opcodeX = ci->opcodeX;   ///< opcode extension
     const word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
     const bool   a = ci->a;               ///< bit-29 - addressing via pointer register
@@ -663,35 +663,6 @@ static t_stat doInstruction(DCDstruct *i)
     return i->opcodeX ? DoEISInstruction(i) : DoBasicInstruction(i);
 }
 
-//
-//t_stat DoInstructionPair(DCDstruct *i, word18 CA)
-//{
-//    word36 Ypair[2];
-//    core_read2(CA, &Ypair[0], &Ypair[1]);
-//    
-//    word18 thisIC = PPR.IC;
-//    t_stat retEven = DoInstruction(i, Ypair[0]);
-//    
-//    if (PPR.IC != thisIC)   // last instruction changed PPR.IC so don't execute odd word.
-//        return retEven;
-//    
-//    return DoInstruction(i, Ypair[1]);
-//}
-
-//static word72 CYpair = 0;
-
-//static word18 tmp18 = 0;
-
-static word36 tmp36 = 0;
-static word36 tmp36q = 0;      ///< tmp quotent
-static word36 tmp36r = 0;      ///< tmp remainder
-static word36 tmpSign = 0;
-
-static word72 tmp72 = 0;
-static word72 trAQ = 0;     ///< a temporary C(AQ)
-static word36 trZ = 0;     ///< a temporary C(Z)
-static word1  tmp1 = 0;
-
 static int32 n;
 
 //extern word18 stiTally;         ///< in dps8_cpu.c (only used for sti instruction)
@@ -700,7 +671,7 @@ bool bPuls2 = false;
 
 static t_stat DoBasicInstruction(DCDstruct *i)
 {
-    int opcode  = i->opcode;  // get opcode
+    uint opcode  = i->opcode;  // get opcode
     
     switch (opcode)
     {
@@ -732,11 +703,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case opcode0_eax5:  // 0625:  ///< eax5
         case opcode0_eax6:  // 0626:  ///< eax6
         case opcode0_eax7:  // 0627:  ///< eax7
-            n = opcode & 07;  ///< get n
-            rX[n] = TPR.CA;
+            {
+                uint32 n = opcode & 07;  ///< get n
+                rX[n] = TPR.CA;
 
-            SCF(TPR.CA == 0, rIR, I_ZERO);
-            SCF(TPR.CA & SIGN18, rIR, I_NEG);
+                SCF(TPR.CA == 0, rIR, I_ZERO);
+                SCF(TPR.CA & SIGN18, rIR, I_NEG);
+            }
             break;
             
         case opcode0_lca:   // 0335:  ///< lca
@@ -756,9 +729,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0326:  ///< lcx6
         case 0327:  ///< lcx7
             // ToDo: Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
-            
-            n = opcode & 07;  // get n
-            rX[n] = compl18(GETHI(CY), &rIR);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = compl18(GETHI(CY), &rIR);
+            }
             break;
             
         case 0337:  ///< lcaq
@@ -782,7 +756,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             else
             {
-                tmp72 = 0;
+                word72 tmp72 = 0;
 
                 tmp72 = bitfieldInsert72(tmp72, Ypair[0], 36, 36);
                 tmp72 = bitfieldInsert72(tmp72, Ypair[1],  0, 36);
@@ -926,18 +900,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0225:  ///< ldx5
         case 0226:  ///< ldx6
         case 0227:  ///< ldx7
-            n = opcode & 07;  // get n
-            rX[n] = GETHI(CY);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = GETHI(CY);
             
-            if (rX[n] == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            if (rX[n] & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (rX[n] == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rX[n] & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0073:   ///< lreg
@@ -965,21 +940,18 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0725:  ///< lxl5
         case 0726:  ///< lxl6
         case 0727:  ///< lxl7
-            n = opcode & 07;  // get n
-            rX[n] = GETLO(CY);
-            
-//if (n == 4)
-//printf ("cac %06o:%06o X4 %06o\r\n", PPR.PSR, PPR.IC, rX[n]);
-
-            if (rX[n] == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            if (rX[n] & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = GETLO(CY);
+                if (rX[n] == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rX[n] & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         /// Fixed-Point Data Movement Store
@@ -1142,9 +1114,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0745:  ///< stx5
         case 0746:  ///< stx6
         case 0747:  ///< stx7
-            n = opcode & 07;  // get n
-            SETHI(CY, rX[n]);
-
+            {
+                uint32 n = opcode & 07;  // get n
+                SETHI(CY, rX[n]);
+            }
             break;
         
         case 0450: ///< stz
@@ -1159,82 +1132,85 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0445:  ///< sxl5
         case 0446:  ///< sxl6
         case 0447:  ///< sxl7
-            n = opcode & 07;  // get n
+            {
+                uint32 n = opcode & 07;  // get n
             
-            SETLO(CY, rX[n]);
-
+                SETLO(CY, rX[n]);
+            }
             break;
         
         /// Fixed-Point Data Movement Shift
         case 0775:  ///< alr
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a0 = rA & SIGN36;    ///< A0
-                rA <<= 1;               // shift left 1
-                if (a0)                 // rotate A0 -> A35
-                    rA |= 1;
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    bool a0 = rA & SIGN36;    ///< A0
+                    rA <<= 1;               // shift left 1
+                    if (a0)                 // rotate A0 -> A35
+                        rA |= 1;
+                }
+                rA &= DMASK;    // keep to 36-bits
+            
+                if (rA == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+            
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
-            rA &= DMASK;    // keep to 36-bits
-            
-            if (rA == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
             break;
         
         case 0735:  ///< als
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            
-            tmpSign = rA & SIGN36;
-            CLRF(rIR, I_CARRY);
-
-            for (int i = 0; i < tmp36; i ++)
             {
-                rA <<= 1;
-                if (tmpSign != (rA & SIGN36))
-                    SETF(rIR, I_CARRY);
-            }
-            rA &= DMASK;    // keep to 36-bits 
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            
+                word36 tmpSign = rA & SIGN36;
+                CLRF(rIR, I_CARRY);
 
-            if (rA == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                for (int i = 0; i < tmp36; i ++)
+                {
+                    rA <<= 1;
+                    if (tmpSign != (rA & SIGN36))
+                        SETF(rIR, I_CARRY);
+                }
+                rA &= DMASK;    // keep to 36-bits 
+
+                if (rA == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0771:  ///< arl
             /// Shift C(A) right the number of positions given in C(TPR.CA)11,17; filling
             /// vacated positions with zeros.
+            {
+                rA &= DMASK; // Make sure the shifted in bits are 0
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+
+                rA >>= tmp36;
+                rA &= DMASK;    // keep to 36-bits
+
+                if (rA == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            rA &= DMASK; // Make sure the shifted in bits are 0
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            
-            rA >>= tmp36;
-            rA &= DMASK;    // keep to 36-bits
-            
-            if (rA == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
             
         case 0731:  ///< ars
@@ -1272,232 +1248,241 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Shift C(AQ) left by the number of positions given in C(TPR.CA)11,17;
             /// entering each bit leaving AQ0 into AQ71.
 
-            tmp36 = TPR.CA & 0177;      // CY bits 11-17
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a0 = rA & SIGN36;    ///< A0
+                word36 tmp36 = TPR.CA & 0177;      // CY bits 11-17
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    bool a0 = rA & SIGN36;    ///< A0
                 
-                rA <<= 1;               // shift left 1
+                    rA <<= 1;               // shift left 1
                 
-                bool b0 = rQ & SIGN36;    ///< Q0
-                if (b0)
-                    rA |= 1;            // Q0 => A35
+                    bool b0 = rQ & SIGN36;    ///< Q0
+                    if (b0)
+                        rA |= 1;            // Q0 => A35
                 
-                rQ <<= 1;               // shift left 1
+                    rQ <<= 1;               // shift left 1
                 
-                if (a0)                 // propagate A sign bit
-                    rQ |= 1;
+                    if (a0)                 // propagate A sign bit
+                        rQ |= 1;
+                }
+            
+                rA &= DMASK;    // keep to 36-bits
+                rQ &= DMASK;
+            
+                if (rA == 0 && rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
-            
-            rA &= DMASK;    // keep to 36-bits
-            rQ &= DMASK;
-            
-            if (rA == 0 && rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-
             break;
             
         case 0737:  ///< lls
             /// Shift C(AQ) left the number of positions given in C(TPR.CA)11,17; filling
             /// vacated positions with zeros.
-            
-            CLRF(rIR, I_CARRY);
- 
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            tmpSign = rQ & SIGN36;
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                rA <<= 1;               // shift left 1
+                CLRF(rIR, I_CARRY);
+ 
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmpSign = rQ & SIGN36;
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    rA <<= 1;               // shift left 1
             
-                if (tmpSign != (rA & SIGN36))
-                    SETF(rIR, I_CARRY);
+                    if (tmpSign != (rA & SIGN36))
+                        SETF(rIR, I_CARRY);
                 
-                bool b0 = rQ & SIGN36;    ///< Q0
-                if (b0)
-                    rA |= 1;            // Q0 => A35
+                    bool b0 = rQ & SIGN36;    ///< Q0
+                    if (b0)
+                        rA |= 1;            // Q0 => A35
+                    
+                    rQ <<= 1;               // shift left 1
+                }
+                                
+                rA &= DMASK;    // keep to 36-bits
+                rQ &= DMASK;
                 
-                rQ <<= 1;               // shift left 1
+                if (rA == 0 && rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
-                            
-            rA &= DMASK;    // keep to 36-bits
-            rQ &= DMASK;
-            
-            if (rA == 0 && rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-
             break;
 
         case 0773:  ///< lrl
             /// Shift C(AQ) right the number of positions given in C(TPR.CA)11,17; filling
             /// vacated positions with zeros.
-            rA &= DMASK; // Make sure the shifted in bits are 0
-            rQ &= DMASK; // Make sure the shifted in bits are 0
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a35 = rA & 1;      ///< A35
-                rA >>= 1;               // shift right 1
+                rA &= DMASK; // Make sure the shifted in bits are 0
+                rQ &= DMASK; // Make sure the shifted in bits are 0
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    bool a35 = rA & 1;      ///< A35
+                    rA >>= 1;               // shift right 1
+                    
+                    rQ >>= 1;               // shift right 1
+                    
+                    if (a35)                // propagate sign bit
+                        rQ |= SIGN36;
+                }
+                rA &= DMASK;    // keep to 36-bits
+                rQ &= DMASK;
                 
-                rQ >>= 1;               // shift right 1
-                
-                if (a35)                // propagate sign bit
-                    rQ |= SIGN36;
+                if (rA == 0 && rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
-            rA &= DMASK;    // keep to 36-bits
-            rQ &= DMASK;
-            
-            if (rA == 0 && rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-
             break;
 
         case 0733:  ///< lrs
             /// Shift C(AQ) right the number of positions given in C(TPR.CA)11,17; filling
             /// vacated positions with initial C(AQ)0.
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            rA &= DMASK; // Make sure the shifted in bits are 0
-            rQ &= DMASK; // Make sure the shifted in bits are 0
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a0 = rA & SIGN36;    ///< A0
-                bool a35 = rA & 1;      ///< A35
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                rA &= DMASK; // Make sure the shifted in bits are 0
+                rQ &= DMASK; // Make sure the shifted in bits are 0
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    bool a0 = rA & SIGN36;    ///< A0
+                    bool a35 = rA & 1;      ///< A35
+                    
+                    rA >>= 1;               // shift right 1
+                    if (a0)
+                        rA |= SIGN36;
+                    
+                    rQ >>= 1;               // shift right 1
+                    if (a35)                // propagate sign bit1
+                        rQ |= SIGN36;
+                }
+                rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
+                rQ &= DMASK;
                 
-                rA >>= 1;               // shift right 1
-                if (a0)
-                    rA |= SIGN36;
-                
-                rQ >>= 1;               // shift right 1
-                if (a35)                // propagate sign bit1
-                    rQ |= SIGN36;
+                if (rA == 0 && rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
-            rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
-            rQ &= DMASK;
-            
-            if (rA == 0 && rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-
             break;
          
         case 0776:  ///< qlr
             /// Shift C(Q) left the number of positions given in C(TPR.CA)11,17; entering
             /// each bit leaving Q0 into Q35.
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool q0 = rQ & SIGN36;    ///< Q0
-                rQ <<= 1;               // shift left 1
-                if (q0)                 // rotate A0 -> A35
-                    rQ |= 1;
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    bool q0 = rQ & SIGN36;    ///< Q0
+                    rQ <<= 1;               // shift left 1
+                    if (q0)                 // rotate A0 -> A35
+                        rQ |= 1;
+                }
+                rQ &= DMASK;    // keep to 36-bits
+                
+                if (rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                
+                if (rQ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
-            rQ &= DMASK;    // keep to 36-bits
-            
-            if (rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
             break;
     
         case 0736:  ///< qls
             // Shift C(Q) left the number of positions given in C(TPR.CA)11,17; fill vacated positions with zeros.
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            tmpSign = rQ & SIGN36;
-            CLRF(rIR, I_CARRY);
-
-            for (int i = 0; i < tmp36; i ++)
             {
-                rQ <<= 1;
-                if (tmpSign != (rQ & SIGN36))
-                    SETF(rIR, I_CARRY);
-            }
-            rQ &= DMASK;    // keep to 36-bits 
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                word36 tmpSign = rQ & SIGN36;
+                CLRF(rIR, I_CARRY);
 
-            if (rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                for (int i = 0; i < tmp36; i ++)
+                {
+                    rQ <<= 1;
+                    if (tmpSign != (rQ & SIGN36))
+                        SETF(rIR, I_CARRY);
+                }
+                rQ &= DMASK;    // keep to 36-bits 
+    
+                if (rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                
+                if (rQ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0772:  ///< qrl
             /// Shift C(Q) right the number of positions specified by Y11,17; fill vacated
             /// positions with zeros.
-        
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
+            {
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
             
-            rQ &= DMASK;    // Make sure the shifted in bits are 0
-            rQ >>= tmp36;
-            rQ &= DMASK;    // keep to 36-bits
+                rQ &= DMASK;    // Make sure the shifted in bits are 0
+                rQ >>= tmp36;
+                rQ &= DMASK;    // keep to 36-bits
             
-            if (rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                
+                if (rQ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+            }
             break;
 
         case 0732:  ///< qrs
             /// Shift C(Q) right the number of positions given in C(TPR.CA)11,17; filling
             /// vacated positions with initial C(Q)0.
-            rQ &= DMASK; // Make sure the shifted in bits are 0
-            tmp36 = TPR.CA & 0177;   // CY bits 11-17
-            for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool q0 = rQ & SIGN36;    ///< Q0
-                rQ >>= 1;               // shift right 1
-                if (q0)                 // propagate sign bit
-                    rQ |= SIGN36;
+                rQ &= DMASK; // Make sure the shifted in bits are 0
+                word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
+                for(int i = 0 ; i < tmp36 ; i++)
+                {
+                    bool q0 = rQ & SIGN36;    ///< Q0
+                    rQ >>= 1;               // shift right 1
+                    if (q0)                 // propagate sign bit
+                        rQ |= SIGN36;
+                }
+                rQ &= DMASK;    // keep to 36-bits
+                
+                if (rQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
+                
+                if (rQ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+                
             }
-            rQ &= DMASK;    // keep to 36-bits
-            
-            if (rQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
             break;
 
         /// Fixed-Point Addition
@@ -1522,33 +1507,33 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 077:   ///< adaq
             // C(AQ) + C(Y-pair) → C(AQ)
-            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            tmp72 = YPAIRTO72(Ypair);
+            {
+                word72 tmp72 = YPAIRTO72(Ypair);
         
-            tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            convertToWord36(tmp72, &rA, &rQ);
-            
+                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                convertToWord36(tmp72, &rA, &rQ);
+            }
             break;
             
         case 033:   ///< adl
             // C(AQ) + C(Y) sign extended → C(AQ)
-            tmp72 = SIGNEXT72(CY); // sign extend Cy
-            tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            convertToWord36(tmp72, &rA, &rQ);
-            
+            {
+                word72 tmp72 = SIGNEXT72(CY); // sign extend Cy
+                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                convertToWord36(tmp72, &rA, &rQ);
+            }
             break;
             
             
         case 037:   ///< adlaq
             /// The adlaq instruction is identical to the adaq instruction with the exception that the overflow indicator is not affected by the adlaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
             /// C(AQ) + C(Y-pair) → C(AQ)
-            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
+            {
+                word72 tmp72 = YPAIRTO72(Ypair);
         
-            tmp72 = YPAIRTO72(Ypair);
-        
-            tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &rIR);
-            convertToWord36(tmp72, &rA, &rQ);
-            
+                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &rIR);
+                convertToWord36(tmp72, &rA, &rQ);
+            }
             break;
             
         case 035:   ///< adla
@@ -1569,8 +1554,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 025:   ///< adlx5
         case 026:   ///< adlx6
         case 027:   ///< adlx7
-            n = opcode & 07;  // get n
-            rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
+            }
             break;
             
         case 076:   ///< adq
@@ -1585,8 +1572,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 065:   ///< adx5
         case 066:   ///< adx6
         case 067:   ///< adx7
-            n = opcode & 07;  // get n
-            rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            }
             break;
         
         case 054:   ///< aos
@@ -1617,9 +1606,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///    \brief C(Xn) + C(Y)0,17 → C(Y)0,17
             
-            n = opcode & 07;  // get n
-            word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            SETHI(CY, tmp18);
+                uint32 n = opcode & 07;  // get n
+                word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                SETHI(CY, tmp18);
             }
 
             break;
@@ -1652,11 +1641,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 0177:  ///< sbaq
             /// C(AQ) - C(Y-pair) → C(AQ)
-            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            tmp72 = YPAIRTO72(Ypair);   //
+            {
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
-            tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            convertToWord36(tmp72, &rA, &rQ);
+                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                convertToWord36(tmp72, &rA, &rQ);
+            }
             break;
           
         case 0135:  ///< sbla
@@ -1667,11 +1657,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0137:  ///< sblaq
             /// The sblaq instruction is identical to the sbaq instruction with the exception that the overflow indicator is not affected by the sblaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
             /// \brief C(AQ) - C(Y-pair) → C(AQ)
-            //Read72(i, TPR.CA, &tmp72, OperandRead, rTAG);
-            tmp72 = YPAIRTO72(Ypair);   //
+            {
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
-            tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &rIR);
-            convertToWord36(tmp72, &rA, &rQ);
+                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &rIR);
+                convertToWord36(tmp72, &rA, &rQ);
+            }
             break;
             
         case 0136:  ///< sblq
@@ -1689,8 +1680,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0127:  ///< sblx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief     C(Xn) - C(Y)0,17 → C(Xn)
-            n = opcode & 07;  // get n
-            rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
+            }
             break;
          
         case 0176:  ///< sbq
@@ -1708,8 +1701,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0167:  ///< sbx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief  C(Xn) - C(Y)0,17 → C(Xn)
-            n = opcode & 07;  // get n
-            rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            }
             break;
 
         case 0155:  ///< ssa
@@ -1733,11 +1728,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0146:  ///< ssx6
         case 0147:  ///< ssx7
             {
-            /// For n = 0, 1, ..., or 7 as determined by operation code
+            /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn) - C(Y)0,17 → C(Y)0,17
-            n = opcode & 07;  // get n
-            word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            SETHI(CY, tmp18);
+                n = opcode & 07;  // get n
+                word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                SETHI(CY, tmp18);
             }
 
             break;
@@ -1768,25 +1763,25 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /**
              * Two 36-bit fractional factors (including sign) are multiplied to form a 71- bit fractional product (including sign), which is stored left-adjusted in the AQ register. AQ71 contains a zero. Overflow can occur only in the case of A and Y containing negative 1 and the result exceeding the range of the AQ register.
              */
-            
-            tmp72 = (word72)rA * (word72)CY;
-            tmp72 &= MASK72;
-            tmp72 <<= 1;    // left adjust so AQ71 contains 0
-            bool isovr = false;
-            if (rA == MAXNEG && CY == MAXNEG) // Overflow can occur only in the case of A and Y containing negative 1
             {
-                SETF(rIR, I_OFLOW);
-                isovr = true;
-            }
+                word72 tmp72 = (word72)rA * (word72)CY;
+                tmp72 &= MASK72;
+                tmp72 <<= 1;    // left adjust so AQ71 contains 0
+                bool isovr = false;
+                if (rA == MAXNEG && CY == MAXNEG) // Overflow can occur only in the case of A and Y containing negative 1
+                {
+                    SETF(rIR, I_OFLOW);
+                    isovr = true;
+                }
 
-            convertToWord36(tmp72, &rA, &rQ);
-            SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-            SCF(rA & SIGN36, rIR, I_NEG);
+                convertToWord36(tmp72, &rA, &rQ);
+                SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
+                SCF(rA & SIGN36, rIR, I_NEG);
             
-            if (isovr && ! TSTF (rIR, I_OMASK))
-                doFault(i, overflow_fault, 0,"mpf overflow fault");
+                if (isovr && ! TSTF (rIR, I_OMASK))
+                    doFault(i, overflow_fault, 0,"mpf overflow fault");
+                }
             }
-
             break;
 
         case 0402:  ///< mpy
@@ -1946,37 +1941,37 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0533:  ///< negl
             /// -C(AQ) → C(AQ) if C(AQ) ≠ 0
             /// XXX same problem as neg above - fixed
-            
-            rA &= DMASK;
-            rQ &= DMASK;
-            tmp72 = convertToWord72(rA, rQ);
-            if (tmp72 != 0)
             {
-                //bool ov = (rA & 0400000000000LL) & (rQ == 0);
-                bool ov = (rA == 0400000000000ULL) & (rQ == 0);
-                
-                tmp72 = -tmp72;
-                
-                if (tmp72 == 0)
-                    SETF(rIR, I_ZERO);
-                else
-                    CLRF(rIR, I_ZERO);
-                
-                if (tmp72 & SIGN72)
-                    SETF(rIR, I_NEG);
-                else
-                    CLRF(rIR, I_NEG);
-                
-                if (ov)
+                rA &= DMASK;
+                rQ &= DMASK;
+                word72 tmp72 = convertToWord72(rA, rQ);
+                if (tmp72 != 0)
                 {
-                    SETF(rIR, I_OFLOW);
-                    if (! TSTF (rIR, I_OMASK))
-                        doFault(i, overflow_fault, 0,"negl overflow fault");
-                }
+                    //bool ov = (rA & 0400000000000LL) & (rQ == 0);
+                    bool ov = (rA == 0400000000000ULL) & (rQ == 0);
                 
-                convertToWord36(tmp72, &rA, &rQ);
+                    tmp72 = -tmp72;
+                
+                    if (tmp72 == 0)
+                        SETF(rIR, I_ZERO);
+                    else
+                        CLRF(rIR, I_ZERO);
+                
+                    if (tmp72 & SIGN72)
+                        SETF(rIR, I_NEG);
+                    else
+                        CLRF(rIR, I_NEG);
+                
+                    if (ov)
+                    {
+                        SETF(rIR, I_OFLOW);
+                        if (! TSTF (rIR, I_OMASK))
+                            doFault(i, overflow_fault, 0,"negl overflow fault");
+                    }
+                
+                    convertToWord36(tmp72, &rA, &rQ);
+                }
             }
-
             break;
             
         /// Fixed-Point Comparison
@@ -2051,8 +2046,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0107:  ///< cmpx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief  C(Xn) :: C(Y)0,17
-            n = opcode & 07;  // get n
-            cmp18(rX[n], GETHI(CY), &rIR);
+            {
+                uint32 n = opcode & 07;  // get n
+                cmp18(rX[n], GETHI(CY), &rIR);
+            }
             break;
             
         case 0111:  ///< cwl
@@ -2066,14 +2063,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0117:  ///< cmpaq
             /// C(AQ) :: C(Y-pair)
-            
-            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+            {
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
-            tmp72 = YPAIRTO72(Ypair);   //
-        
-            trAQ = convertToWord72(rA, rQ);
+                word72 trAQ = convertToWord72(rA, rQ);
             
-            cmp72(trAQ, tmp72, &rIR);
+                cmp72(trAQ, tmp72, &rIR);
+            }
             break;
             
         /// Fixed-Point Miscellaneous
@@ -2128,26 +2124,26 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0377:  ///< anaq
             /// C(AQ)i & C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
-            
-            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            //!!!
-            tmp72 = YPAIRTO72(Ypair);   //
+            {
+                //!!!
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
         
-            trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ & tmp72;
+                word72 trAQ = convertToWord72(rA, rQ);
+                trAQ = trAQ & tmp72;
             
-            if (trAQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trAQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trAQ & SIGN72)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (trAQ & SIGN72)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
 
-            convertToWord36(trAQ, &rA, &rQ);
+                convertToWord36(trAQ, &rA, &rQ);
+            }
             break;
             
         case 0376:  ///< anq
@@ -2167,37 +2163,40 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0355:  ///< ansa
             /// C(A)i & C(Y)i → C(Y)i for i = (0, 1, ..., 35)
-            tmp36 = rA & CY;
+            {
+                word36 tmp36 = rA & CY;
             
-            if (tmp36 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (tmp36 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp36 & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (tmp36 & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            CY = tmp36;
+                CY = tmp36;
+            }
             break;
         
         case 0356:  ///< ansq
             /// C(Q)i & C(Y)i → C(Y)i for i = (0, 1, ..., 35)
-            tmp36 = rQ & CY;
+            {
+                word36 tmp36 = rQ & CY;
             
-            if (tmp36 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (tmp36 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp36 & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (tmp36 & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            CY = tmp36;
-
+                CY = tmp36;
+            }
             break;
 
         case 0340:  ///< asnx0
@@ -2208,23 +2207,23 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0345:  ///< asnx5
         case 0346:  ///< asnx6
         case 0347:  ///< asnx7
-            {
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn)i & C(Y)i → C(Y)i for i = (0, 1, ..., 17)
-            n = opcode & 07;  // get n
-            word18 tmp18 = rX[n] & GETHI(CY);
+            {
+                uint32 n = opcode & 07;  // get n
+                word18 tmp18 = rX[n] & GETHI(CY);
             
-            if (tmp18 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (tmp18 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp18 & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (tmp18 & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            SETHI(CY, tmp18);
+                SETHI(CY, tmp18);
             }
 
             break;
@@ -2239,20 +2238,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0367:  ///< anx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn)i & C(Y)i → C(Xn)i for i = (0, 1, ..., 17)
-            n = opcode & 07;  // get n
-            rX[n] &= GETHI(CY);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] &= GETHI(CY);
             
-            if (rX[n] == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (rX[n] == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (rX[n] & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
-            
+                if (rX[n] & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         /// Boolean Or
@@ -2274,24 +2273,25 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 0277:  ///< oraq
             /// C(AQ)i | C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
-            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            //!!!
-            tmp72 = YPAIRTO72(Ypair);   //
+            {
+                //!!!
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
-            trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ | tmp72;
+                word72 trAQ = convertToWord72(rA, rQ);
+                trAQ = trAQ | tmp72;
             
-            if (trAQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trAQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trAQ & SIGN72)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (trAQ & SIGN72)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            convertToWord36(trAQ, &rA, &rQ);
+                convertToWord36(trAQ, &rA, &rQ);
+            }
             break;
 
         case 0276:  ///< orq
@@ -2350,24 +2350,24 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0245:  ///< orsx5
         case 0246:  ///< orsx6
         case 0247:  ///< orsx7
-            {
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn)i | C(Y)i → C(Y)i for i = (0, 1, ..., 17)
-            n = opcode & 07;  // get n
+            {
+                uint32 n = opcode & 07;  // get n
             
-            word18 tmp18 = rX[n] | GETHI(CY);
+                word18 tmp18 = rX[n] | GETHI(CY);
             
-            if (tmp18 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (tmp18 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp18 & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (tmp18 & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            SETHI(CY, tmp18);
+                SETHI(CY, tmp18);
             }
             break;
 
@@ -2381,20 +2381,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0267:  ///< orx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn)i | C(Y)i → C(Xn)i for i = (0, 1, ..., 17)
+            {   
+                uint32 n = opcode & 07;  // get n
+                rX[n] |= GETHI(CY);
             
-            n = opcode & 07;  // get n
-            rX[n] |= GETHI(CY);
+                if (rX[n] == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (rX[n] == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (rX[n] & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (rX[n] & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
            
         /// Boolean Exclusive Or
@@ -2416,24 +2416,25 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
         case 0677:  ///< eraq
             /// C(AQ)i ⊕ C(Y-pair)i → C(AQ)i for i = (0, 1, ..., 71)
-            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            //!!!
-            tmp72 = YPAIRTO72(Ypair);   //
+            {
+                //!!!
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
-            trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ ^ tmp72;
+                word72 trAQ = convertToWord72(rA, rQ);
+                trAQ = trAQ ^ tmp72;
             
-            if (trAQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trAQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trAQ & SIGN72)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (trAQ & SIGN72)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            convertToWord36(trAQ, &rA, &rQ);
+                convertToWord36(trAQ, &rA, &rQ);
+            }
             break;
 
         case 0676:  ///< erq
@@ -2497,27 +2498,24 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0645:   ///< ersx5
         case 0646:   ///< ersx6
         case 0647:   ///< ersx7
-            {
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn)i ⊕ C(Y)i → C(Y)i for i = (0, 1, ..., 17)
+            {
+                uint32 n = opcode & 07;  // get n
             
-            n = opcode & 07;  // get n
+                word18 tmp18 = rX[n] ^ GETHI(CY);
             
-            word18 tmp18 = rX[n] ^ GETHI(CY);
+                if (tmp18 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp18 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (tmp18 & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             
-            if (tmp18 & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
-            SETHI(CY, tmp18);
-            
-            //Write(i, TPR.CA, CY, DataWrite, rTAG);
+                SETHI(CY, tmp18);
             }
             break;
 
@@ -2531,76 +2529,77 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0667:  ///< erx7
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn)i ⊕ C(Y)i → C(Xn)i for i = (0, 1, ..., 17)
-        
-            n = opcode & 07;  // get n
-            rX[n] ^= GETHI(CY);
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] ^= GETHI(CY);
             
-            if (rX[n] == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (rX[n] == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (rX[n] & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (rX[n] & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         /// Boolean Comparative And
             
         case 0315:  ///< cana
             /// C(Z)i = C(A)i & C(Y)i for i = (0, 1, ..., 35)
-            trZ = rA & CY;
+            {
+                word36 trZ = rA & CY;
             
-            if (trZ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trZ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trZ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (trZ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0317:  ///< canaq
             /// C(Z)i = C(AQ)i & C(Y-pair)i for i = (0, 1, ..., 71)
-            
-            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
-            //!!!
-            tmp72 = YPAIRTO72(Ypair);   //
+            {
+                //!!!
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
         
-            trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ & tmp72;
+                word72 trAQ = convertToWord72(rA, rQ);
+                trAQ = trAQ & tmp72;
             
-            if (trAQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trAQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trAQ & SIGN72)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (trAQ & SIGN72)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0316:  ///< canq
             /// C(Z)i = C(Q)i & C(Y)i for i = (0, 1, ..., 35)
-            trZ = rQ & CY;
-            if (trZ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+            {
+                word36 trZ = rQ & CY;
+                if (trZ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trZ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (trZ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
             
         case 0300:  ///< canx0
@@ -2611,76 +2610,76 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0305:  ///< canx5
         case 0306:  ///< canx6
         case 0307:  ///< canx7
-            {
             /// For n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Z)i = C(Xn)i & C(Y)i for i = (0, 1, ..., 17)
+            {
+                uint32 n = opcode & 07;  // get n
+                word18 tmp18 = rX[n] & GETHI(CY);
             
-            n = opcode & 07;  // get n
-            word18 tmp18 = rX[n] & GETHI(CY);
+                if (tmp18 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp18 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (tmp18 & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (tmp18 & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
             break;
             
         /// Boolean Comparative Not
         case 0215:  ///< cnaa
             /// C(Z)i = C(A)i & ~C(Y)i for i = (0, 1, ..., 35)
-            trZ = rA & ~CY;
+            {
+                word36 trZ = rA & ~CY;
             
-            if (trZ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trZ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (rA & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0217:  ///< cnaaq
             /// C(Z)i = C (AQ)i & ~C(Y-pair)i for i = (0, 1, ..., 71)
-            //Read72(i, TPR.CA, &CYpair, OperandRead, rTAG);
+            {
+                word72 tmp72 = YPAIRTO72(Ypair);   //
         
-            tmp72 = YPAIRTO72(Ypair);   //
-        
-            trAQ = convertToWord72(rA, rQ);
-            trAQ = trAQ & ~tmp72;
+                word72 trAQ = convertToWord72(rA, rQ);
+                trAQ = trAQ & ~tmp72;
             
-            if (trAQ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+                if (trAQ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trAQ & SIGN72)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (trAQ & SIGN72)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0216:  ///< cnaq
             /// C(Z)i = C(Q)i & ~C(Y)i for i = (0, 1, ..., 35)
-            trZ = rQ & ~CY;
-            if (trZ == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
+            {
+                word36 trZ = rQ & ~CY;
+                if (trZ == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (trZ & SIGN36)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
-            
+                if (trZ & SIGN36)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
+            }
             break;
 
         case 0200:  ///< cnax0
@@ -2691,21 +2690,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0205:  ///< cnax5
         case 0206:  ///< cnax6
         case 0207:  ///< cnax7
-            {
             /// C(Z)i = C(Xn)i & ~C(Y)i for i = (0, 1, ..., 17)
+            {
+                uint32 n = opcode & 07;  // get n
+                word18 tmp18 = rX[n] & ~GETHI(CY);
             
-            n = opcode & 07;  // get n
-            word18 tmp18 = rX[n] & ~GETHI(CY);
+                if (tmp18 == 0)
+                    SETF(rIR, I_ZERO);
+                else
+                    CLRF(rIR, I_ZERO);
             
-            if (tmp18 == 0)
-                SETF(rIR, I_ZERO);
-            else
-                CLRF(rIR, I_ZERO);
-            
-            if (tmp18 & SIGN18)
-                SETF(rIR, I_NEG);
-            else
-                CLRF(rIR, I_NEG);
+                if (tmp18 & SIGN18)
+                    SETF(rIR, I_NEG);
+                else
+                    CLRF(rIR, I_NEG);
             }
             break;
             
@@ -3255,22 +3253,23 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  00...0 → C(PRn.BITNO)
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            
-            if (opcode <= 0273)
-                n = (opcode & 3);
-            else
-                n = (opcode & 3) + 4;
+            {
+                uint32 n;
+                if (opcode <= 0273)
+                    n = (opcode & 3);
+                else
+                    n = (opcode & 3) + 4;
 
-// XXX According to figure 8.1, all of this is done by the append unit.
-            PR[n].RNR = PPR.PRR;
-            PR[n].SNR = PPR.PSR;
-            PR[n].WORDNO = (PPR.IC + 1) & 0777777;
-            PR[n].BITNO = 0;
-            PPR.IC = TPR.CA;
-            PPR.PSR = TPR.TSR;
-            
+            // XXX According to figure 8.1, all of this is done by the append unit.
+                PR[n].RNR = PPR.PRR;
+                PR[n].SNR = PPR.PSR;
+                PR[n].WORDNO = (PPR.IC + 1) & 0777777;
+                PR[n].BITNO = 0;
+                PPR.IC = TPR.CA;
+                PPR.PSR = TPR.TSR;
+            }
             return CONT_TRA;
-        
+
         case 0715:  ///< tss
             if (TPR.CA >= ((word18) BAR.BOUND) << 9)
             {
@@ -3297,11 +3296,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///   C(PPR.IC) + 1 → C(Xn)
             /// C(TPR.CA) → C(PPR.IC)
             /// C(TPR.TSR) → C(PPR.PSR)
-            n = opcode & 07;  // get n
-            rX[n] = (PPR.IC + 1) & 0777777;
-            PPR.IC = TPR.CA;
-            PPR.PSR = TPR.TSR;
-            
+            {
+                uint32 n = opcode & 07;  // get n
+                rX[n] = (PPR.IC + 1) & 0777777;
+                PPR.IC = TPR.CA;
+                PPR.PSR = TPR.TSR;
+            }
             return CONT_TRA;
         
         case 0607:  ///< ttf
@@ -3480,7 +3480,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             //ReadN(i, 16, TPR.CA, Yblock16, OperandRead, rTAG);  // read 16-words from memory
 
-            for(n = 0 ; n < 8 ; n ++)
+            for(uint32 n = 0 ; n < 8 ; n ++)
             {
                 //word36 Ypair[2];
                 Ypair[0] = Yblock16[n * 2 + 0]; // Even word of ITS pointer pair
@@ -3517,33 +3517,34 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// 000 → C(PRn.SNR)0,2
             /// C(Y)6,17 → C(PRn.SNR)3,14
             /// C(Y)18,35 → C(PRn.WORDNO)
-            
-            n = opcode & 07;  // get n
-            PR[n].RNR = TPR.TRR;
+            {
+                uint32 n = opcode & 07;  // get n
+                PR[n].RNR = TPR.TRR;
 
 // [CAC] sprpn says: If C(PRn.SNR) 0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, 
 // then a store fault (illegal pointer) will occur and C(Y) will not be changed.
 // I interpret this has meaning that only the high bits should be set here
 
-            if (((CY >> 34) & 3) != 3)
-                PR[n].BITNO = (CY >> 30) & 077;
-            else
-              doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+                if (((CY >> 34) & 3) != 3)
+                    PR[n].BITNO = (CY >> 30) & 077;
+                else
+                  doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
 
-            //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
-            if ((CY & 07777000000LLU) == 07777000000LLU)
-                PR[n].SNR |= 070000; // XXX check to see if this is correct
-            else // otherwise, 000 → C(PRn.SNR)0,2
-                PR[n].SNR &= 007777;
-            // XXX completed, but needs testing
-            //C(Y)6,17 → C(PRn.SNR)3,14
-            //PR[n].SNR &= 3; -- huh? Never code when tired
-            PR[n].SNR &=             070000; // [CAC] added this
-            PR[n].SNR |= GETHI(CY) & 007777;
-            //C(Y)18,35 → C(PRn.WORDNO)
-            PR[n].WORDNO = GETLO(CY);
+                //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
+                if ((CY & 07777000000LLU) == 07777000000LLU)
+                    PR[n].SNR |= 070000; // XXX check to see if this is correct
+                else // otherwise, 000 → C(PRn.SNR)0,2
+                    PR[n].SNR &= 007777;
+                // XXX completed, but needs testing
+                //C(Y)6,17 → C(PRn.SNR)3,14
+                //PR[n].SNR &= 3; -- huh? Never code when tired
+                PR[n].SNR &=             070000; // [CAC] added this
+                PR[n].SNR |= GETHI(CY) & 007777;
+                //C(Y)18,35 → C(PRn.WORDNO)
+                PR[n].WORDNO = GETLO(CY);
 
-            sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
+                sim_debug (DBG_APPENDING, & cpu_dev, "lprp%d CY 0%012llo, PR[n].RNR 0%o, PR[n].BITNO 0%o, PR[n].SNR 0%o, PR[n].WORDNO %o\n", n, CY, PR[n].RNR, PR[n].BITNO, PR[n].SNR, PR[n].WORDNO);
+            }
             break;
          
         case 0251:  ///< spbp1
@@ -3629,7 +3630,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y-pair)57,62
             ///  00...0 → C(Y-pair)63,71
         
-            for(n = 0 ; n < 8 ; n++)
+            for(uint32 n = 0 ; n < 8 ; n++)
             {
                 Yblock16[2 * n] = 043;
                 Yblock16[2 * n] |= (word36) PR[n].SNR << 18;
@@ -3742,30 +3743,30 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(PRn.BITNO) → C(Y)0,5
             ///  C(PRn.SNR)3,14 → C(Y)6,17
             //  C(PRn.WORDNO) → C(Y)18,35
+            {
+                uint32 n = opcode & 07;  // get n
             
-            n = opcode & 07;  // get n
+                //If C(PRn.SNR)0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, then a store fault (illegal pointer) will occur and C(Y) will not be changed.
             
-            //If C(PRn.SNR)0,2 are nonzero, and C(PRn.SNR) ≠ 11...1, then a store fault (illegal pointer) will occur and C(Y) will not be changed.
+                // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
+                if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
+                  doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
-            // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
-            if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != 077777)
-              doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
+                if (switches . lprp_highonly)
+                  {
+                    CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
+                    CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
+                    CY |=  PR[n].WORDNO & PAMASK;
+                  }
+                else
+                  {
+                    CY  =  (word36) PR[n].BITNO << 30;
+                    CY |=  (word36) (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
+                    CY |=  PR[n].WORDNO;
+                  }
             
-            if (switches . lprp_highonly)
-              {
-                CY  =  ((word36) (PR[n].BITNO & 077)) << 30;
-                CY |=  ((word36) (PR[n].SNR & 07777)) << 18; // lower 12- of 15-bits
-                CY |=  PR[n].WORDNO & PAMASK;
-              }
-            else
-              {
-                CY  =  (word36) PR[n].BITNO << 30;
-                CY |=  (word36) (PR[n].SNR & 07777) << 18; // lower 12- of 15-bits
-                CY |=  PR[n].WORDNO;
-              }
-            
-            CY &= DMASK;    // keep to 36-bits
-            
+                CY &= DMASK;    // keep to 36-bits
+            }
             break;
             
         case 050:   ///< adwp0
@@ -3775,11 +3776,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///   C(Y)0,17 + C(PRn.WORDNO) → C(PRn.WORDNO)
             ///   00...0 → C(PRn.BITNO)
-            
-            n = opcode & 03;  // get n
-            PR[n].WORDNO += GETHI(CY);
-            PR[n].WORDNO &= 0777777;
-            PR[n].BITNO = 0;
+            {
+                uint32 n = opcode & 03;  // get n
+                PR[n].WORDNO += GETHI(CY);
+                PR[n].WORDNO &= 0777777;
+                PR[n].BITNO = 0;
+            }
             break;
             
         case 0150:   ///< adwp4
@@ -3789,11 +3791,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///   C(Y)0,17 + C(PRn.WORDNO) → C(PRn.WORDNO)
             ///   00...0 → C(PRn.BITNO)
-            
-            n = (opcode & 03) + 4;  // get n
-            PR[n].WORDNO += GETHI(CY);
-            PR[n].WORDNO &= 0777777;
-            PR[n].BITNO = 0;
+            {
+                uint32 n = (opcode & 03) + 4;  // get n
+                PR[n].WORDNO += GETHI(CY);
+                PR[n].WORDNO &= 0777777;
+                PR[n].BITNO = 0;
+            }
             break;
         
         case 0213:  ///< epaq
@@ -3817,36 +3820,17 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0633:  ///< rccl
             /// 00...0 → C(AQ)0,19
             /// C(calendar clock) → C(AQ)20,71
-            // XXX This code belongs in scu.c; ASSUME0
-            
-            //c_0633:;    // for rscr clock/cal call.
-            
             {
-              /* t_stat rc = */ scu_rscr (/*scu_unit_num*/ 0, ASSUME0, 040, & rA, & rQ);
-#if 0
-                /// The calendar clock consists of a 52-bit register which counts microseconds and is readable as a double-precision integer by a single instruction from any central processor. This rate is in the same order of magnitude as the instruction processing rate of the GE-645, so that timing of 10-instruction subroutines is meaningful. The register is wide enough that overflow requires several tens of years; thus it serves as a calendar containing the number of microseconds since 0000 GMT, January 1, 1901
-                ///  Secs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800          Seconds
-                /// uSecs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800 000 000 uSeconds
- 
-                struct timeval now;                
-                gettimeofday(&now, NULL);
-                
-                t_uint64 UnixSecs = now.tv_sec;                            // get uSecs since Jan 1, 1970
-                t_uint64 UnixuSecs = UnixSecs * 1000000LL + now.tv_usec;
-                
-                // now determine uSecs since Jan 1, 1901 ...
-                t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
-                
-                static t_uint64 lastRccl;                    //  value from last call
-                
-                if (MulticsuSecs == lastRccl)
-                    lastRccl = MulticsuSecs + 1;
-                else
-                    lastRccl = MulticsuSecs;
-
-                rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
-                rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
-#endif
+              // For the rccl instruction, the first 2 or 3 bits of the addr
+              // field of the instruction are used to specify which SCU.
+              // 2 bits for the DPS8M.
+              int cpu_port_num = getbits36 (TPR.CA, 0, 2);
+              int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+              if (scu_unit_num < 0)
+                scu_unit_num = 0; // XXX print message
+              t_stat rc = scu_rscr (scu_unit_num, ASSUME_CPU0, 040, & rA, & rQ);
+              if (rc > 0)
+                return rc;
             }
             break;
         
@@ -3967,7 +3951,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(rIR));
             printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
             printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
-                for(int n = 0 ; n < 8 ; n++)
+                for(uint32 n = 0 ; n < 8 ; n++)
                     printf("PR[%d]: SNR=%05o RNR=%o WORDNO=%06o BITNO:%02o\r\n", n, PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
 
             }
@@ -4235,48 +4219,48 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// remainder → C(A)
             
             /// XXX Tested. Seems to work OK
+            {
+                word36 tmp1 = rA & SIGN36; // A0
             
-            tmp1 = rA & SIGN36; // A0
+                rA <<= 3;       // Shift C(A) left three positions
+                rA &= DMASK;    // keep to 36-bits
             
-            rA <<= 3;       // Shift C(A) left three positions
-            rA &= DMASK;    // keep to 36-bits
+                word36 tmp36 = llabs(SIGNEXT36(rA));
+                word36 tmp36q = tmp36 / CY; // | C(A) | / C(Y) → 4-bit quotient plus remainder
+                word36 tmp36r = tmp36 % CY;
             
-            tmp36 = llabs(SIGNEXT36(rA));
-            tmp36q = tmp36 / CY; // | C(A) | / C(Y) → 4-bit quotient plus remainder
-            tmp36r = tmp36 % CY;
+                rQ <<= 6;       // Shift C(Q) left six positions
+                rQ &= DMASK;
             
-            rQ <<= 6;       // Shift C(Q) left six positions
-            rQ &= DMASK;
+                rQ &= ~017;     // 4-bit quotient → C(Q)32,35
+                rQ |= (tmp36q & 017);
             
-            rQ &= ~017;     // 4-bit quotient → C(Q)32,35
-            rQ |= (tmp36q & 017);
+                rA = tmp36r;    // remainder → C(A)
             
-            rA = tmp36r;    // remainder → C(A)
-            
-            SCF(rA == 0, rIR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
-            SCF(tmp1,    rIR, I_NEG);   // If C(A)0 = 1 before execution, then ON; otherwise OFF
-            
+                SCF(rA == 0, rIR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
+                SCF(tmp1,    rIR, I_NEG);   // If C(A)0 = 1 before execution, then ON; otherwise OFF
+            }
             break;
            
         case 9774:  ///< gtb
             /// C(A)0 → C(A)0
             /// C(A)i ⊕ C(A)i-1 → C(A)i for i = 1, 2, ..., 35
+            {
+                /// TODO: untested.
             
-            /// TODO: untested.
+                word36 tmp1 = rA & SIGN36; // save A0
             
-            tmp1 = rA & SIGN36; // save A0
+                word36 tmp36 = rA >> 1;
+                rA = rA ^ tmp36;
             
-            tmp36 = rA >> 1;
-            rA = rA ^ tmp36;
+                if (tmp1)
+                    rA |= SIGN36;   // set A0
+                else
+                    rA &= ~SIGN36;  // reset A0
             
-            if (tmp1)
-                rA |= SIGN36;   // set A0
-            else
-                rA &= ~SIGN36;  // reset A0
-            
-            SCF(rA == 0,    rIR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
-            SCF(rA & SIGN36,rIR, I_NEG);   // If C(A)0 = 1, then ON; otherwise OFF
-
+                SCF(rA == 0,    rIR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
+                SCF(rA & SIGN36,rIR, I_NEG);   // If C(A)0 = 1, then ON; otherwise OFF
+            }
             break;
          
         /// REGISTER LOAD
@@ -4424,8 +4408,10 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 // specify which processor port (i.e., which system 
                 // controller) is used.
                 uint cpu_port_num = (TPR.CA >> 15) & 03;
-                int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
-                t_stat rc = scu_rmcm (scu_unit_num, ASSUME0, & rA, & rQ);
+                int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+                if (scu_unit_num < 0)
+                  scu_unit_num = 0; // XXX print message
+                t_stat rc = scu_rmcm (scu_unit_num, ASSUME_CPU0, & rA, & rQ);
                 if (rc)
                     return rc;
                 SCF (rA == 0, rIR, I_ZERO);
@@ -4692,6 +4678,8 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 // controller) is used.
                 uint cpu_port_num = (TPR.CA >> 15) & 03;
                 int scu_unit_num = query_scu_unit_num (ASSUME_CPU0, cpu_port_num);
+                if (scu_unit_num < 0)
+                  scu_unit_num = 0; // XXX print message
                 t_stat rc = scu_smcm (scu_unit_num, ASSUME_CPU0, rA, rQ);
                 if (rc)
                     return rc;
@@ -5264,7 +5252,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             {
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 
-                n = opcode & 07;  // get
+                uint32 n = opcode & 07;  // get
 
                 // C(Y)0,17 → C(ARn.WORDNO)
                 AR[n].WORDNO = GETHI(CY);
@@ -5313,13 +5301,13 @@ static t_stat DoEISInstruction(DCDstruct *i)
         case 0766:
         case 0767:
             // For n = 0, 1, ..., or 7 as determined by operation code C(Y)0,23 → C(ARn)
-            
-            n = opcode & 07;  // get n
-            AR[n].WORDNO = GETHI(CY);
-            //AR[n].ABITNO = (word6)bitfieldExtract36(CY, 12, 4);
-            //AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
-            SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(CY, 12, 4), (word2)bitfieldExtract36(CY, 16, 2));
-            
+            {
+                uint32 n = opcode & 07;  // get n
+                AR[n].WORDNO = GETHI(CY);
+                //AR[n].ABITNO = (word6)bitfieldExtract36(CY, 12, 4);
+                //AR[n].CHAR  = (word2)bitfieldExtract36(CY, 16, 2);
+                SET_AR_CHAR_BIT (n, (word6)bitfieldExtract36(CY, 12, 4), (word2)bitfieldExtract36(CY, 16, 2));
+            }
             break;
             
         case 0463:  ///< lareg - Load Address Registers
@@ -5327,9 +5315,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
             // XXX This will eventually be done automagically
             //ReadN(i, 8, TPR.CA, Yblock8, OperandRead, rTAG); // read 8-words from memory
             
-            for(n = 0 ; n < 8 ; n += 1)
+            for(uint32 n = 0 ; n < 8 ; n += 1)
             {
-                tmp36 = Yblock8[n];
+                word36 tmp36 = Yblock8[n];
 
                 AR[n].WORDNO = GETHI(tmp36);
                 // AR[n].ABITNO = (word6)bitfieldExtract36(tmp36, 12, 4);
@@ -5352,7 +5340,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             {
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 
-                n = opcode & 07;  // get
+                uint32 n = opcode & 07;  // get
                 
                 // C(Y)0,17 → C(ARn.WORDNO)
                 AR[n].WORDNO = GETHI(CY);
@@ -5397,7 +5385,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 int TA = (int)bitfieldExtract36(CY, 13, 2); // C(Y) 21,22
                 
-                n = opcode & 07;  // get
+                uint32 n = opcode & 07;  // get
                 // For n = 0, 1, ..., or 7 as determined by operation code
                 
                 // C(ARn.WORDNO) → C(Y)0,17
@@ -5448,7 +5436,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
         case 0646:
         case 0647:
             {
-                n = opcode & 07;  // get register #
+                uint32 n = opcode & 07;  // get register #
                 
                 // The Numeric descriptor is fetched from Y and C(Y)21,22 (TA field) is examined to determine the data type described.
                 
@@ -5495,17 +5483,17 @@ static t_stat DoEISInstruction(DCDstruct *i)
             //For n = 0, 1, ..., or 7 as determined by operation code
             //  C(ARn) → C(Y)0,23
             //  C(Y)24,35 → unchanged
-            
-            n = opcode & 07;  // get n
-            CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
-            CY = bitfieldInsert36(CY, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
-            CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
-            
+            {
+                uint32 n = opcode & 07;  // get n
+                CY = bitfieldInsert36(CY, AR[n].WORDNO, 18, 18);
+                CY = bitfieldInsert36(CY, GET_AR_BITNO (n) /* AR[n].ABITNO */,  12,  4);
+                CY = bitfieldInsert36(CY, GET_AR_CHAR (n) /* AR[n].CHAR */,   16,  2);
+            }
             break;
             
         case 0443:  ///< sareg - Store Address Registers
             memset(Yblock8, 0, sizeof(Yblock8));
-            for(n = 0 ; n < 8 ; n += 1)
+            for(uint32 n = 0 ; n < 8 ; n += 1)
             {
                 word36 arx = 0;
                 arx = bitfieldInsert36(arx, AR[n].WORDNO, 18, 18);
@@ -6116,7 +6104,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
         case 0422:  ///< exit n, x - exit subroutine removing n args via x
             {
-                n = X(tag);    // n
+                uint32 n = X(tag);    // n
                 word18 y = GETHI(IWB);
                 
                 rX[n] -= 1;
@@ -6143,27 +6131,35 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         case 0423:  ///< pusha
-            n = X(tag);    // n
-            Write(rX[n], rA, OperandWrite, 0);    // write A to TOS
-            rX[n] += 1;
+            {
+                uint32 n = X(tag);    // n
+                Write(rX[n], rA, OperandWrite, 0);    // write A to TOS
+                rX[n] += 1;
+            }
             break;
             
         case 0424:  ///< popa
-            n = X(tag);    // n
-            rX[n] -= 1;
-            Read(rX[n], &rA, OperandRead, 0);    // read A from TOS-1
+            {
+                uint32 n = X(tag);    // n
+                rX[n] -= 1;
+                Read(rX[n], &rA, OperandRead, 0);    // read A from TOS-1
+            }
             break;
             
         case 0425:  ///< pushq
-            n = X(tag);    // n
-            Write(rX[n], rQ, OperandWrite, 0);    // write Q to TOS
-            rX[n] += 1;
+            {
+                uint32 n = X(tag);    // n
+                Write(rX[n], rQ, OperandWrite, 0);    // write Q to TOS
+                rX[n] += 1;
+            }
             break;
 
         case 0426:  ///< popq
-            n = X(tag);    // n
-            rX[n] -= 1;
-            Read(rX[n], &rQ, OperandRead, 0);    // read A from TOS-1
+            {
+                uint32 n = X(tag);    // n
+                rX[n] -= 1;
+                Read(rX[n], &rQ, OperandRead, 0);    // read A from TOS-1
+            }
             break;
 #endif  /* DEPRECIATED */
             

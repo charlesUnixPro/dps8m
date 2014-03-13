@@ -4125,6 +4125,9 @@ static int send_general_interrupt(int iom_unit_num, int chan, int pic)
       scu_unit_num = query_scu_unit_num (ASSUME_CPU_0, cpu_port_num);
     else
       scu_unit_num = 0;
+    // XXX Print warning
+    if (scu_unit_num < 0)
+      scu_unit_num = 0;
     return scu_set_interrupt (scu_unit_num, interrupt_num);
   }
 

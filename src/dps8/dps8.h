@@ -813,7 +813,7 @@ struct DCDstruct
 {
     //word36 IWB;         ///< instruction working buffer
     opCode *info;       ///< opCode *
-    int32  opcode;      ///< opcode
+    uint32  opcode;      ///< opcode
     bool   opcodeX;     ///< opcode extension
     word18 address;     ///< bits 0-17 of instruction XXX replace with rY
     bool   a;           ///< bit-29 - address via pointer register. Usually.
@@ -3004,7 +3004,7 @@ t_stat prepareComputedAddress(DCDstruct *ci);   // new
 t_stat doXED(word36 *Ypair);
 void cu_safe_restore (void);
 void initializeTheMatrix (void);
-void addToTheMatrix (int32 opcode, bool opcodeX, bool a, word6 tag);
+void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag);
 t_stat displayTheMatrix (int32 arg, char * buf);
 t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29);
 
