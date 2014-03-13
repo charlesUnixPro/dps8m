@@ -676,7 +676,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         //    FIXED-POINT ARITHMETIC INSTRUCTIONS
         
         /// ￼Fixed-Point Data Movement Load
-        case opcode0_eaa:   // 0635:  ///< eaa
+        case 0635:  ///< eaa
             rA = 0;
             SETHI(rA, TPR.CA);
             
@@ -685,7 +685,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             break;
             
-        case opcode0_eaq:   // 0636:  ///< eaq
+        case 0636:  ///< eaq
             rQ = 0;
             SETHI(rQ, TPR.CA);
 
@@ -693,14 +693,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             SCF(TPR.CA & SIGN18, rIR, I_NEG);
             break;
 
-        case opcode0_eax0:  // 0620:  ///< eax0
-        case opcode0_eax1:  // 0621:  ///< eax1
-        case opcode0_eax2:  // 0622:  ///< eax2
-        case opcode0_eax3:  // 0623:  ///< eax3
-        case opcode0_eax4:  // 0624:  ///< eax4
-        case opcode0_eax5:  // 0625:  ///< eax5
-        case opcode0_eax6:  // 0626:  ///< eax6
-        case opcode0_eax7:  // 0627:  ///< eax7
+        case 0620:  ///< eax0
+        case 0621:  ///< eax1
+        case 0622:  ///< eax2
+        case 0623:  ///< eax3
+        case 0624:  ///< eax4
+        case 0625:  ///< eax5
+        case 0626:  ///< eax6
+        case 0627:  ///< eax7
             {
                 uint32 n = opcode & 07;  ///< get n
                 rX[n] = TPR.CA;
@@ -710,11 +710,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
             
-        case opcode0_lca:   // 0335:  ///< lca
+        case 0335:  ///< lca
             rA = compl36(CY, &rIR);
             break;
             
-        case opcode0_lcq:   // 0336:  ///< lcq
+        case 0336:  ///< lcq
             rQ = compl36(CY, &rIR);
             break;
             
@@ -789,7 +789,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             break;
 
-        case 034: ///< ldac
+        case 0034: ///< ldac
             rA = CY;
             
             if (rA == 0)
@@ -1503,7 +1503,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             break;
          
-        case 077:   ///< adaq
+        case 0077:   ///< adaq
             // C(AQ) + C(Y-pair) → C(AQ)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
@@ -1513,7 +1513,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
             
-        case 033:   ///< adl
+        case 0033:   ///< adl
             // C(AQ) + C(Y) sign extended → C(AQ)
             {
                 word72 tmp72 = SIGNEXT72(CY); // sign extend Cy
@@ -1523,7 +1523,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
             
-        case 037:   ///< adlaq
+        case 0037:   ///< adlaq
             /// The adlaq instruction is identical to the adaq instruction with the exception that the overflow indicator is not affected by the adlaq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers.
             /// C(AQ) + C(Y-pair) → C(AQ)
             {
@@ -1534,72 +1534,72 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
             
-        case 035:   ///< adla
+        case 0035:   ///< adla
             /** The adla instruction is identical to the ada instruction with the exception that the overflow indicator is not affected by the adla instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
             rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &rIR);
             break;
             
-        case 036:   ///< adlq
+        case 0036:   ///< adlq
             /** The adlq instruction is identical to the adq instruction with the exception that the overflow indicator is not affected by the adlq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
             rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &rIR);
             break;
             
-        case 020:   ///< adlx0
-        case 021:   ///< adlx1
-        case 022:   ///< adlx2
-        case 023:   ///< adlx3
-        case 024:   ///< adlx4
-        case 025:   ///< adlx5
-        case 026:   ///< adlx6
-        case 027:   ///< adlx7
+        case 0020:   ///< adlx0
+        case 0021:   ///< adlx1
+        case 0022:   ///< adlx2
+        case 0023:   ///< adlx3
+        case 0024:   ///< adlx4
+        case 0025:   ///< adlx5
+        case 0026:   ///< adlx6
+        case 0027:   ///< adlx7
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
             }
             break;
             
-        case 076:   ///< adq
+        case 0076:   ///< adq
             rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             break;
 
-        case 060:   ///< adx0
-        case 061:   ///< adx1
-        case 062:   ///< adx2
-        case 063:   ///< adx3
-        case 064:   ///< adx4
-        case 065:   ///< adx5
-        case 066:   ///< adx6
-        case 067:   ///< adx7
+        case 0060:   ///< adx0
+        case 0061:   ///< adx1
+        case 0062:   ///< adx2
+        case 0063:   ///< adx3
+        case 0064:   ///< adx4
+        case 0065:   ///< adx5
+        case 0066:   ///< adx6
+        case 0067:   ///< adx7
             {
                 uint32 n = opcode & 07;  // get n
                 rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             }
             break;
         
-        case 054:   ///< aos
+        case 0054:   ///< aos
             /// C(Y)+1→C(Y)
             
             CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             break;
         
-        case 055:   ///< asa
+        case 0055:   ///< asa
             /// C(A) + C(Y) → C(Y)
             CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             break;
             
-        case 056:   ///< asq
+        case 0056:   ///< asq
             /// C(Q) + C(Y) → C(Y)
             CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
             break;
          
-        case 040:   ///< asx0
-        case 041:   ///< asx1
-        case 042:   ///< asx2
-        case 043:   ///< asx3
-        case 044:   ///< asx4
-        case 045:   ///< asx5
-        case 046:   ///< asx6
-        case 047:   ///< asx7
+        case 0040:   ///< asx0
+        case 0041:   ///< asx1
+        case 0042:   ///< asx2
+        case 0043:   ///< asx3
+        case 0044:   ///< asx4
+        case 0045:   ///< asx5
+        case 0046:   ///< asx6
+        case 0047:   ///< asx7
             {
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///    \brief C(Xn) + C(Y)0,17 → C(Y)0,17
@@ -1611,7 +1611,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
             break;
 
-        case 071:   ///< awca
+        case 0071:   ///< awca
             /// If carry indicator OFF, then C(A) + C(Y) → C(A)
             /// If carry indicator ON, then C(A) + C(Y) + 1 → C(A)
             if (TSTF(rIR, I_CARRY))
@@ -1621,7 +1621,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
             
             
-        case 072:   ///< awcq
+        case 0072:   ///< awcq
             /// If carry indicator OFF, then C(Q) + C(Y) → C(Q)
             /// If carry indicator ON, then C(Q) + C(Y) + 1 → C(Q)
             if (TSTF(rIR, I_CARRY))
@@ -3774,10 +3774,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
             
-        case 050:   ///< adwp0
-        case 051:   ///< adwp1
-        case 052:   ///< adwp2
-        case 053:   ///< adwp3
+        case 0050:   ///< adwp0
+        case 0051:   ///< adwp1
+        case 0052:   ///< adwp2
+        case 0053:   ///< adwp3
             /// For n = 0, 1, ..., or 7 as determined by operation code
             ///   C(Y)0,17 + C(PRn.WORDNO) → C(PRn.WORDNO)
             ///   00...0 → C(PRn.BITNO)
@@ -3839,7 +3839,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             }
             break;
         
-        case 002:   ///< drl
+        case 0002:   ///< drl
             /// Causes a fault which fetches and executes, in absolute mode, the instruction pair at main memory location C+(14)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault (i, derail_fault, 0, "drl");
             break;
@@ -4143,7 +4143,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             do_sdbr (Ypair);
             break;
 
-        case 0557:  ///< sdp
+        case 0557:  ///< ssdp
             return STOP_UNIMP;
 
         case 0532:  ///< cams
@@ -5492,7 +5492,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             break;
             
         /// Multiword EIS ...
-        case opcode1_btd:   // 0301:  ///< btd
+        case 0301:  ///< btd
             btd (i);
             break;
             
@@ -5770,7 +5770,7 @@ emCall(DCDstruct *i)
                 sim_putchar(c);
             break; 
         }
-        case 100:     ///< putc9 - put 9-bit char in A(0) to stdout
+        case 0100:     ///< putc9 - put 9-bit char in A(0) to stdout
         {
             char c = (rA >> 27) & 0x7f;
             if (isascii(c))  // ignore NULL chars.
