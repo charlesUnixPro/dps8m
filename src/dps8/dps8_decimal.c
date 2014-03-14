@@ -154,7 +154,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
     
     // skip leading zero bytes [final byte is always non-zero, due to sign]
     for (first=bcd; *first==0;) first++;
-    digits=(last-first)+1;              // calculate digits ..
+    digits=(Int)(last-first)+1;              // calculate digits ..
     //if ((*first & 0xf0)==0) digits--;     // adjust for leading zero nibble
     if (digits!=0) dn->digits=digits;     // count of actual digits [if 0,
     // leave as 1]
@@ -271,7 +271,7 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
             u=u/10;
 #endif
             //obyte|=(nib<<4);
-            obyte=nib;
+            obyte=nib & 255U;
             indigs--;
             cut--;
         }
@@ -354,8 +354,8 @@ static int calcOD(int lengthOfDividend,
 }
 #endif
 
-static char *CS[] = {"CSFL", "CSLS", "CSTS", "CSNS"};
-static char *CTN[] = {"CTN9", "CTN4"};
+static const char *CS[] = {"CSFL", "CSLS", "CSTS", "CSNS"};
+static const char *CTN[] = {"CTN9", "CTN4"};
 
 static int calcSF(int sf1, int sf2, int sf3)
 {
@@ -433,7 +433,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
         
         // XXX what do we fill in here? Sign and exp?
         *OVR = true;
-        return ("");
+        return (char *)"";
     }
     
     // scale result (if not floating)
@@ -507,14 +507,14 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             {
                 //PRINTDEC("Value 1", r2)
                 
-                decNumber _s, *s;
+                decNumber _s, *sc;
                 int rescaleFactor = r2->exponent - (adjLen - r2->digits);
-                s = decNumberFromInt32(&_s, rescaleFactor); //r2->exponent - (adjLen - r2->digits));
-                //s = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));
-                //PRINTDEC("Value s", s)
+                sc = decNumberFromInt32(&_s, rescaleFactor); //r2->exponent - (adjLen - r2->digits));
+                //sc = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));
+                //PRINTDEC("Value sc", sc)
 
                 if (rescaleFactor > (adjLen - r2->digits))
-                    r2 = decNumberRescale(r2, r2, s, set);
+                    r2 = decNumberRescale(r2, r2, sc, set);
                 
                 //PRINTDEC("Value 2", r2)
             }
@@ -606,8 +606,8 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                 char outi[256];
                 bzero(outi, sizeof(outi));
                 decBCDFromNumber((uint8_t *)outi, adjLen, &scale, i);
-                for(int i = 0 ; i < adjLen; i += 1 )
-                    outi[i] += '0';
+                for(int j = 0 ; j < adjLen; j += 1 )
+                    outi[j] += '0';
                 sim_debug (DBG_TRACEEXT, & cpu_dev, "i=%s\n", outi);
             }
         }
@@ -625,7 +625,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             
             if (s == CSFL)
             {
-                int safeR = decContextGetRounding(set);         // save rounding mode
+                enum rounding safeR = decContextGetRounding(set);         // save rounding mode
                 decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
                 
                 int safe = set->digits;
@@ -647,7 +647,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             {
                 if (r2->digits < r->digits)
                 {
-                    int safeR = decContextGetRounding(set);         // save rounding mode
+                    enum rounding safeR = decContextGetRounding(set);         // save rounding mode
                     decContextSetRounding(set, DEC_ROUND_DOWN);     // Round towards 0 (truncation).
                     
                     // re-rescale r with an eye towards truncation notrounding
@@ -717,9 +717,9 @@ void ad2d(DCDstruct *i)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -876,16 +876,16 @@ void ad2d(DCDstruct *i)
     }
     
     // 2nd, write the characteristic .....
-    for(int i = 0 ; i < n2 ; i++)
+    for(int j = 0 ; j < n2 ; j++)
         switch(e->dstTN)
         {
             case CTN4:
-                //write49(e, &dstAddr, &pos, e->dstTN, res[i] - '0');
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, res[i] - '0');
+                //write49(e, &dstAddr, &pos, e->dstTN, res[j] - '0');
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, res[j] - '0');
                 break;
             case CTN9:
-                //write49(e, &dstAddr, &pos, e->dstTN, res[i]);
-                EISwrite49(&e->ADDR3, &pos, e->dstTN, res[i]);
+                //write49(e, &dstAddr, &pos, e->dstTN, res[j]);
+                EISwrite49(&e->ADDR3, &pos, e->dstTN, res[j]);
                 break;
         }
     
@@ -976,9 +976,9 @@ void ad3d(DCDstruct *ins)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -1255,9 +1255,9 @@ void sb2d(DCDstruct *ins)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -1512,9 +1512,9 @@ void sb3d(DCDstruct *ins)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -1791,9 +1791,9 @@ void mp2d(DCDstruct *ins)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -2047,9 +2047,9 @@ void mp3d(DCDstruct *ins)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -2316,9 +2316,9 @@ void dv2d(DCDstruct *ins)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -2561,9 +2561,9 @@ void dv3d(DCDstruct *ins)
     parseNumericOperandDescriptor(2, e);
     parseNumericOperandDescriptor(3, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
@@ -2998,9 +2998,9 @@ void mvn(DCDstruct *ins)
     parseNumericOperandDescriptor(1, e);
     parseNumericOperandDescriptor(2, e);
     
-    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
-    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
-    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    e->P = bitfieldExtract36(e->op0, 35, 1) != 0;  // 4-bit data sign character control
+    e->T = bitfieldExtract36(e->op0, 26, 1) != 0;  // truncation bit
+    e->R = bitfieldExtract36(e->op0, 25, 1) != 0;  // rounding bit
     
     e->srcTN = e->TN1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN

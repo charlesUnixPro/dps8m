@@ -48,7 +48,7 @@ strupr(char *str)
     char *s;
     
     for(s = str; *s; s++)
-        *s = toupper((unsigned char)*s);
+        *s = (char) toupper((unsigned char)*s);
     return str;
 }
 
@@ -57,7 +57,7 @@ strupr(char *str)
 
 //! get instruction info for IWB ...
 
-opCode UnImp = {"(unimplemented)", 0, 0};
+opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
 
 struct opCode *getIWBInfo(DCDstruct *i)
 {
@@ -627,24 +627,24 @@ void convertToWord36(word72 src, word36 *even, word36 *odd)
 //! XXX the following compare routines probably need sign extension
 void cmp36(word36 oP1, word36 oP2, word18 *flags)
 {
-    word36s op1 = SIGNEXT36(oP1 & DMASK);
-    word36s op2 = SIGNEXT36(oP2 & DMASK);
+    word36s op1 = (word36s) SIGNEXT36(oP1 & DMASK);
+    word36s op2 = (word36s) SIGNEXT36(oP2 & DMASK);
     
-    if (!(op1 & SIGN36) && (op2 & SIGN36) && (op1 > op2))
+    if (!((word36)op1 & SIGN36) && ((word36)op2 & SIGN36) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if ((op1 & SIGN36) == (op2 & SIGN36) && (op1 > op2))
+    else if (((word36)op1 & SIGN36) == ((word36)op2 & SIGN36) && (op1 > op2))
     {
         SETF(*flags, I_CARRY);
         CLRF(*flags, I_ZERO | I_NEG);
-    } else if (((op1 & SIGN36) == (op2 & SIGN36)) && (op1 == op2))
+    } else if ((((word36)op1 & SIGN36) == ((word36)op2 & SIGN36)) && (op1 == op2))
     {
         SETF(*flags, I_ZERO | I_CARRY);
         CLRF(*flags, I_NEG);
-    } else if (((op1 & SIGN36) == (op2 & SIGN36)) && (op1 < op2))
+    } else if ((((word36)op1 & SIGN36) == ((word36)op2 & SIGN36)) && (op1 < op2))
     {
         SETF(*flags, I_NEG);
         CLRF(*flags, I_ZERO | I_CARRY);
-    } else if (((op1 & SIGN36) && !(op2 & SIGN36)) && (op1 < op2))
+    } else if ((((word36)op1 & SIGN36) && !((word36)op2 & SIGN36)) && (op1 < op2))
     {
         SETF(*flags, I_CARRY | I_NEG);
         CLRF(*flags, I_ZERO);
@@ -652,24 +652,24 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
 }
 void cmp18(word18 oP1, word18 oP2, word18 *flags)
 {
-    word18s op1 = SIGNEXT18(oP1 & MASK18);
-    word18s op2 = SIGNEXT18(oP2 & MASK18);
+    word18s op1 = (word18s) SIGNEXT18(oP1 & MASK18);
+    word18s op2 = (word18s) SIGNEXT18(oP2 & MASK18);
 
-    if (!(op1 & SIGN18) && (op2 & SIGN18) && (op1 > op2))
+    if (!((word18)op1 & SIGN18) && ((word18)op2 & SIGN18) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if ((op1 & SIGN18) == (op2 & SIGN18) && (op1 > op2))
+    else if (((word18)op1 & SIGN18) == ((word18)op2 & SIGN18) && (op1 > op2))
     {
         SETF(*flags, I_CARRY);
         CLRF(*flags, I_ZERO | I_NEG);
-    } else if (((op1 & SIGN18) == (op2 & SIGN18)) && (op1 == op2))
+    } else if ((((word18)op1 & SIGN18) == ((word18)op2 & SIGN18)) && (op1 == op2))
     {
         SETF(*flags, I_ZERO | I_CARRY);
         CLRF(*flags, I_NEG);
-    } else if (((op1 & SIGN18) == (op2 & SIGN18)) && (op1 < op2))
+    } else if ((((word18)op1 & SIGN18) == ((word18)op2 & SIGN18)) && (op1 < op2))
     {
         SETF(*flags, I_NEG);
         CLRF(*flags, I_ZERO | I_CARRY);
-    } else if (((op1 & SIGN18) && !(op2 & SIGN18)) && (op1 < op2))
+    } else if ((((word18)op1 & SIGN18) && !((word18)op2 & SIGN18)) && (op1 < op2))
     {
         SETF(*flags, I_CARRY | I_NEG);
         CLRF(*flags, I_ZERO);
@@ -681,9 +681,9 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
 
     //bool Z = (A <= Y && Y <= Q) || (A >= Y && Y >= Q);
 
-    word36s As = SIGNEXT36(A & DMASK);
-    word36s Ys = SIGNEXT36(Y & DMASK);
-    word36s Qs = SIGNEXT36(Q & DMASK);
+    word36s As = (word36s) SIGNEXT36(A & DMASK);
+    word36s Ys = (word36s) SIGNEXT36(Y & DMASK);
+    word36s Qs = (word36s) SIGNEXT36(Q & DMASK);
     bool Z = (As <= Ys && Ys <= Qs) || (As >= Ys && Ys >= Qs);
 
     SCF(Z, *flags, I_ZERO);
@@ -727,8 +727,8 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
         CLRF(*flags, I_ZERO);
     }
 #else
-    word72s op1s = SIGNEXT72 (op1 & MASK72);
-    word72s op2s = SIGNEXT72 (op2 & MASK72);
+    word72s op1s = (word72s) SIGNEXT72 (op1 & MASK72);
+    word72s op2s = (word72s) SIGNEXT72 (op2 & MASK72);
     if (op1s > op2s)
       {
         if (op2 & SIGN72)
@@ -769,7 +769,7 @@ strlower(char *q)
     
 	while (*s) {
 		if (isupper(*s))
-			*s = tolower(*s);
+			*s = (char) tolower(*s);
 		s++;
 	}
 	return q;
@@ -943,7 +943,7 @@ int bitfieldInsert(int a, int b, int c, int d)
  */
 int bitfieldExtract(int a, int b, int c)
 {
-    int mask = ~(0xffffffff << c);
+    int mask = ~((int)0xffffffff << c);
     if (b > 0)
         return (a >> b) & mask; // original pseudocode had b-1
     else
@@ -988,7 +988,7 @@ int bitCount(int x)
     int res = 0;
     for(i = 0; i < 32; i++) {
         uint32 mask = 1 << i;
-        if (x & mask)
+        if (x & (int) mask)
             res ++;
     }
     return res;
@@ -1031,7 +1031,7 @@ int findMSB(int x)
     int res = -1;
     if (x < 0) x = ~x;
     for(i = 0; i < 32; i++) {
-        mask = 0x80000000 >> i;
+        mask = (int) 0x80000000 >> i;
         if (x & mask) {
             res = 31 - i;
             break;
@@ -1070,15 +1070,15 @@ int bitfieldReverse(int x)
  * Extract a range of bits from a 36-bit word.
  */
 
-inline word36 getbits36(word36 x, int i, unsigned n) {
+inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
-    int shift = 35-i-n+1;
+    int shift = 35-(int)i-(int)n+1;
     if (shift < 0 || shift > 35) {
 //        sim_debug (DBG_ERR, & cpu_dev, "getbits36: bad args (%012llo,i=%d,n=%d)\n", x, i, n);
 //        cancel_run(STOP_BUG);
         return 0;
     } else
-        return (x >> (unsigned) shift) & ~ (~0 << n);
+        return (x >> (unsigned) shift) & ~ (~0U << n);
 }
 
 // ============================================================================
@@ -1090,15 +1090,15 @@ inline word36 getbits36(word36 x, int i, unsigned n) {
  * starting at p set to the n lowest bits of val
  */
 
-inline word36 setbits36(word36 x, int p, unsigned n, word36 val)
+inline word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
-    int shift = 36 - p - n;
+    int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35) {
 //        sim_debug (DBG_ERR, & cpu_dev, "setbits36: bad args (%012llo,pos=%d,n=%d)\n", x, p, n);
 //        cancel_run(STOP_BUG);
         return 0;
     }
-    word36 mask = ~ (~0<<n);  // n low bits on
+    word36 mask = ~ (~0U<<n);  // n low bits on
     mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
@@ -1178,7 +1178,7 @@ void sim_printf( const char * format, ... )
       sim_ttcmd ();
 #endif
 
-    for(int i = 0 ; i < sizeof(buffer); i += 1)
+    for(uint i = 0 ; i < sizeof(buffer); i += 1)
     {
         if (buffer[i]) {
 #ifdef USE_PUTCHAR
@@ -1207,7 +1207,7 @@ void sim_printf( const char * format, ... )
 // XXX what about config=addr7=123, where clist has a "addr%"?
 
 // return -2: error; -1: done; >= 0 option found
-int cfgparse (char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
+int cfgparse (const char * tag, char * cptr, config_list_t * clist, config_state_t * state, int64_t * result)
   {
     if (! cptr)
       return -2;
@@ -1265,7 +1265,7 @@ int cfgparse (char * tag, char * cptr, config_list_t * clist, config_state_t * s
         // means that a missing value is ok
         if (p -> min > p -> max && ! p -> value_list)
           {
-            return p - clist;
+            return (int) (p - clist);
           }
         sim_printf ("error: %s: can't parse value\n", tag);
         goto done;
@@ -1286,7 +1286,7 @@ int cfgparse (char * tag, char * cptr, config_list_t * clist, config_state_t * s
         if (v -> value_name)
           {
             * result = v -> value;
-            return p - clist;
+            return (int) (p - clist);
           }
       }
 
@@ -1319,7 +1319,7 @@ int cfgparse (char * tag, char * cptr, config_list_t * clist, config_state_t * s
       } 
     
     * result = n;
-    return p - clist;
+    return (int) (p - clist);
 
 done:
     free (state -> copy);

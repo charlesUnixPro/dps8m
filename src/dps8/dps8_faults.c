@@ -428,7 +428,7 @@ For now, at least, we must remember a few things:
  
 */
 
-void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *faultMsg)
+void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 
@@ -438,7 +438,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     strcpy (fault_msg, faultMsg);
 
     //if (faultNumber < 0 || faultNumber > 31)
-    if (faultNumber & ~037)  // quicker?
+    if (faultNumber & ~037U)  // quicker?
     {
         sim_printf("fault(out-of-range): %d %d '%s'\r\n", faultNumber, subFault, faultMsg ? faultMsg : "?");
         /* return;*/ /* doFault Never returns */
@@ -470,16 +470,6 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
-            // return;
-#ifdef CHASING_BOOT
-            // If we have faulted in a trouble fault, then there is no reason
-            // to return;
-            // RETRY doesn't help; it keeps trying to execute [0]
-            // longjmp(jmpMain, JMP_RETRY);    // retry instruction
-#else
-            // Double fault with interrupts pending
-            //return;
-#endif
           }
         else
           {
@@ -497,111 +487,6 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     
     cpu . cycle = FAULT_cycle;
     longjmp (jmpMain, JMP_ENTRY);
-#if 0
-    if (nFaultGroup == 7) {
-        // Recognition of group 7 faults is delayed and we can have
-        // multiple group 7 faults pending.
-        g7Faults |= (1 << faultNumber);
-        return;
-    }
-#endif
-    
-#if 0
-    int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
-    word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
-  
-    bFaultCycle = true;                 // enter FAULT CYCLE
-    
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault pair address %08o\n", addr);
-
-    word36 faultPair[2];
-    core_read2(addr, faultPair, faultPair+1);
-    // In the FAULT CYCLE, the processor safe-stores the Control Unit Data (see Section 3) into program-invisible holding registers in preparation for a Store Control Unit (scu) instruction, then enters temporary absolute mode, forces the current ring of execution C(PPR.PRR) to 0, and generates a computed address for the fault trap pair by concatenating the setting of the FAULT BASE switches on the processor configuration panel with twice the fault number (see Table 7-1). This computed address and the operation code for the Execute Double (xed) instruction are forced into the instruction register and executed as an instruction. Note that the execution of the instruction is not done in a normal EXECUTE CYCLE but in the FAULT CYCLE with the processor in temporary absolute mode.
-    
-    // addr_modes_t am = get_addr_mode();  // save address mode
-    
-    PPR.PRR = 0;
-    
-    set_TEMPORARY_ABSOLUTE_mode ();
-    
-    // MME expects the IC to point to the code being XEDed
-    //if (f == &_faults[FAULT_MME] ||
-        //f == &_faults[FAULT_MME2] ||
-        //f == &_faults[FAULT_MME3] ||
-        //f == &_faults[FAULT_MME4])
-        //PPR.IC = addr;
-    
-     // Don't! T4D says the IC remains pointing at the faulting
-     // instruction
-     // PPR.IC = addr;
-
-    t_stat xrv = doXED(faultPair);
-    
-    bFaultCycle = false;                // exit FAULT CYCLE
-    bTroubleFaultCycle = false;
-
-    if (xrv == CONT_TRA)
-    {
-        // set_addr_mode(ABSOLUTE_mode);
-// The tricky case: We entered the fault in appending mode, and the fault
-// pair transfered in absolute mode. According to AL39 and T&D, we should
-// stay in absolute mode, not return to appending mode.
-        if (!clear_TEMPORARY_ABSOLUTE_mode ())
-          set_addr_mode (ABSOLUTE_mode);
-        sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
-        longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
-    }
-    
-    // XXX more better to do the safe_restore, and get the saved mode from the restored data; but remember that the SECRET_TEMPORARY has to be cleared
-    clear_TEMPORARY_ABSOLUTE_mode ();
-    //set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-    cu_safe_restore ();
-    
-    sim_debug (DBG_FAULT, & cpu_dev, "Fault pair resumes\n");
-    if (xrv == 0)
-        longjmp(jmpMain, JMP_NEXT);     // execute next instruction
-    else if (xrv == CONT_INTR)
-        longjmp(jmpMain, JMP_INTR);     // execute next instruction
-    else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
-        longjmp(jmpMain, JMP_RETRY);    // retry instruction
-#endif
-    
-//    printf("fault(): %d %d %s (%s) '%s'\r\n", f->fault_number, f->fault_group,  f->fault_name, f->fault_mnemonic, faultMsg ? faultMsg : "?");
-//
-//    if (f->fault_group == 7 && i && i->a)
-//        return;
-//
-//    return;
-//    longjmp(jmpMain, JMP_NEXT); // causes cpuCycles to not count the current instruction
-//
-//    pending_fault = true;
-//    bool retry = false;
-//    
-//    int fltAddress = rFAULTBASE & 07740; // (12-bits of which the top-most 7-bits are used)
-//    fltAddress += 2 * f->fault_number;
-//    
-//    f->fault_pending = true;        // this particular fault is pending, waiting for processing
-//    
-//    _processor_addressing_mode modeTemp = processorAddressingMode;
-//    
-//    processorAddressingMode = ABSOLUTE_MODE;
-//    word24 rIC_temp = PPR.IC;
-//    
-//    t_stat ret = doFaultInstructionPair(i, fltAddress);
-//    
-//    f->fault_pending = false;        
-//    pending_fault = false;
-//    
-//    processorAddressingMode = modeTemp;
-//    
-//    // XXX we really only want to do this in extreme conditions since faults can be returned from *more-or-less*
-//    // XXX do it properly - later..
-//    
-//    if (retry)
-//        longjmp(jmpMain, JMP_RETRY);    // this will retry the faulted instruction
-//    
-//    if (ret == CONT_TRA)
-//        longjmp(jmpMain, JMP_TRA);
 }
 
 /*

@@ -1260,7 +1260,7 @@ t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
 // address of the UNIT? Would it be better to use sim_unit.u3 (or some such 
 // as a word width?
 
-    if (!(sw & SWMASK ('M')))
+    if (!((uint) sw & SWMASK ('M')))
         return SCPE_ARG;
     
     if (uptr == &cpu_unit[0])
@@ -1338,7 +1338,7 @@ static char * encode_timing (int timing)
   {
     static char buf [64];
     if (timing < 0)
-      return "Off";
+      return (char *) "Off";
     sprintf (buf, "%d", timing);
     return buf;
   }
@@ -1362,7 +1362,7 @@ static t_stat sys_show_config (FILE * st, UNIT * uptr, int val, void * desc)
 static config_value_list_t cfg_timing_list [] =
   {
     { "disable", -1 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_list_t sys_config_list [] =
@@ -1376,7 +1376,7 @@ static config_list_t sys_config_list [] =
 
 static t_stat sys_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
   {
-    config_state_t cfg_state = { NULL };
+    config_state_t cfg_state = { NULL, NULL };
 
     for (;;)
       {
@@ -1392,23 +1392,23 @@ static t_stat sys_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
               break;
 
             case  0: // CONNECT_TIME
-              sys_opts . iom_times . connect = v;
+              sys_opts . iom_times . connect = (int) v;
               break;
 
             case  1: // ACTIVATE_TIME
-              sys_opts . iom_times . chan_activate = v;
+              sys_opts . iom_times . chan_activate = (int) v;
               break;
 
             case  2: // MT_READ_TIME
-              sys_opts . mt_times . read = v;
+              sys_opts . mt_times . read = (int) v;
               break;
 
             case  3: // MT_XFER_TIME
-              sys_opts . mt_times . xfer = v;
+              sys_opts . mt_times . xfer = (int) v;
               break;
 
             case  4: // IOM_BOOT_TIME
-              sys_opts . iom_times . boot_time = v;
+              sys_opts . iom_times . boot_time = (int) v;
               break;
 
             default:
@@ -1430,13 +1430,14 @@ static MTAB sys_mod [] =
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
       0,            /* match */
-      "CONFIG",     /* print string */
-      "CONFIG",         /* match string */
+      (char *) "CONFIG",     /* print string */
+      (char *) "CONFIG",         /* match string */
       sys_set_config,         /* validation routine */
       sys_show_config, /* display routine */
-      NULL          /* value descriptor */
+      NULL,          /* value descriptor */
+      NULL,            /* help */
     },
-    { 0 }
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
 
@@ -1447,7 +1448,7 @@ static t_stat sys_reset (DEVICE *dptr)
   }
 
 DEVICE sys_dev = {
-    "SYS",       /* name */
+    (char *) "SYS",       /* name */
     NULL,        /* units */
     NULL,        /* registers */
     sys_mod,     /* modifiers */
@@ -1468,7 +1469,11 @@ DEVICE sys_dev = {
     0,           /* debug control flags */
     0,           /* debug flag names */
     NULL,        /* memory size change */
-    NULL         /* logical name */
+    NULL,        /* logical name */
+    NULL,        /* help */
+    NULL,        /* attach_help */
+    NULL,        /* help_ctx */
+    NULL         /* description */
 };
 
 

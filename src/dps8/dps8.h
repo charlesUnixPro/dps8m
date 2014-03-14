@@ -97,6 +97,7 @@ extern uint64 sim_deb_start;
 #define VASIZE          18                              /*!< virtual addr width */
 #define AMASK           ((1U << VASIZE) - 1U)             /*!< virtual addr mask */
 #define SEGSIZE         (1U << VASIZE)                   ///< size of segment in words
+#define MAX18           0777777U
 #define MAX18POS        0377777U                           /*!<  2**17-1 */
 #define MAX18NEG        0400000U                           /*!< -2**17 */  
 #define SIGN18          0400000U
@@ -200,7 +201,7 @@ extern uint64 sim_deb_start;
 #define GET_TD(x)       ((int32)(GET_TAG(x) & 017U))
 
 //#define GET_ADDR(x)     ((a8) ((x) & AMASK))
-#define GET_ADDR(x)     ((int32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
+#define GET_ADDR(x)     ((uint32) (((x) >> INST_V_ADDR) & INST_M_ADDR))
 
 // tag defines ...
 #define TAG_R       0U     ///< The contents of the register specified in C(Td) are added to the current computed address,
@@ -1545,7 +1546,7 @@ typedef enum _fault_subtype _fault_subtype;
 
 
 //void fault_gen(int f);  // depreciate when ready
-void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, char *faultMsg) ///< fault handler
+void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, const char *faultMsg) ///< fault handler
 #ifdef __GNUC__
   __attribute__ ((noreturn))
 #endif
@@ -1724,8 +1725,8 @@ word72 bitfieldExtract72(word72 a, int b, int c);
 
 #define getbit18(x,n)  ((((x) >> (17-n)) & 1U) != 0U) // return nth bit of an 18bit half word
 
-word36 getbits36(word36 x, int i, unsigned n);
-word36 setbits36(word36 x, int p, unsigned n, word36 val);
+word36 getbits36(word36 x, uint i, uint n);
+word36 setbits36(word36 x, uint p, uint n, word36 val);
 
 
 // single precision fp stuff...
@@ -1813,7 +1814,7 @@ int removeSegdef(char *seg, char *sym);
 int removeSegref(char *seg, char *sym);
 int resolveLinks(bool);
 int loadDeferredSegments(bool);
-int getAddress(int, int);  // return the 24-bit absolute address of segment + offset
+int getAddress(int segno, int offset);  // return the 24-bit absolute address of segment + offset
 bool getSegmentAddressString(int addr, char *msg);
 t_stat createLOT(bool);     // create link offset table segment
 t_stat snapLOT(bool);       // fill in link offset table segment
