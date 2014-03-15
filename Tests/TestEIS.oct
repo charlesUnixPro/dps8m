@@ -1,4 +1,4 @@
-!INFO date Sun Mar  9 06:03:37 2014 UTC
+!INFO date Sat Mar  1 04:44:10 2014 UTC
 !INFO src TestEIS.as8
 !SIZE 005050
 000000 xxxx 004320702000        tsx2	rd_clock
@@ -981,7 +981,7 @@
 001760 xxxx 001763710000 
 001761 xxxx 000000000000 
 001762 xxxx 001753000000 
-001763 xxxx 007000060400         CSL     (),(),bool(07)  ",enablefault " OR - truncation enable option
+001763 xxxx 007400060400         CSL     (),(),bool(07),enablefault " OR - truncation enable option
 001764 xxxx 001774230030         descb   FLD1aj(12), 24      " FLD1 operand descriptor
 001765 xxxx 001775000022         descb   FLD2aj, 18          " FLD2 operand descriptor
 001766 xxxx 004525701000         call    ioa (msg24o, FLD2aj)
@@ -1031,7 +1031,7 @@
 002042 xxxx 002045710000 
 002043 xxxx 000000000000 
 002044 xxxx 002035000000 
-002045 xxxx 014000061400         CSR     (),(),bool(14)",enablefault  " invert with truncation fault enable option
+002045 xxxx 014400061400         CSR     (),(),bool(14),enablefault  " invert with truncation fault enable option
 002046 xxxx 002056400022         descb   FLD1am(18),18   " FLD1 operand descriptor
 002047 xxxx 002057000014         descb   FLD2am,12       " FLD2 operand descriptor
 002050 xxxx 004525701000         call    ioa(msg24o, FLD2am)
@@ -1109,7 +1109,7 @@
 002160 xxxx 002163710000 
 002161 xxxx 000000000000 
 002162 xxxx 002144000000 
-002163 xxxx 003000065400        SZTR     (),(),bool(3)",enablefault       " evaluate FLD1 as is (move)
+002163 xxxx 003400065400        SZTR     (),(),bool(3),enablefault       " evaluate FLD1 as is (move)
 002164 xxxx 002170410001        descb    FLD1aq(19),1    " FLD1 operand descr. (bit 19)
 002165 xxxx 000000000001        descb    0,1             " FLD2 operand descriptor
 002166 xxxx 001337600000        TZE      NO.GOT          " if ZERO it's an error
@@ -1206,7 +1206,7 @@
 002321 xxxx 064065060055 
 002322 xxxx 053060060071 FLD2as:     aci     /+009/
 002323 xxxx 070067066002             vfd     a27/876,9/2
-002324 xxxx 000000202400             AD2D    (), ()  ", enablefault "with truncation enable option
+002324 xxxx 000400202400             AD2D    (), (), enablefault "with truncation enable option
 002325 xxxx 002336067610             NDSC4   FLD1at,0,8,2,-2     "FLD1 addend operand descriptor
 002326 xxxx 002337000006             NDSC9   FLD2at,0,6          "FLD2 addend operand descriptor memory contents
 002327 xxxx 004525701000             call    ioa(msg34, FLD2at, FLD2at+1)
@@ -1337,7 +1337,7 @@
 002525 xxxx 022133000000 FLD1ax: ac4      /125+/         " 125+
 002526 xxxx 053066065064 FLD2ax: vfd     a36/+654, a27/321, 9/-2
 002527 xxxx 063062061776 
-002530 xxxx 000000203400         SB2D    (),()",enablefault   " with truncation enable option
+002530 xxxx 000400203400         SB2D    (),(),enablefault   " with truncation enable option
 002531 xxxx 002542077410         NDSC4   FLD1ay,0,8,3,-4       " minuend operand descriptor
 002532 xxxx 002543037610         NDSC9   FLD2ay,0,8,3,-2       " subtrahend operand descriptor
 002533 xxxx 004525701000         call    ioa(msg39, FLD2ay, FLD2ay+1)
@@ -1398,7 +1398,7 @@
 002622 xxxx 022075000000 FLD1az: ac4     /123-/         " 123-
 002623 xxxx 321043000000 FLD2az: ac4     /-123/         " -123
 002624 xxxx 000000000000 FLD3az: BSS     2              " XXX+000+127 (Result) zero indicator ON
-002626 xxxx 000000223400         SB3D    (),(),()",enablefault   " with truncation enable option
+002626 xxxx 000400223400         SB3D    (),(),(),enablefault   " with truncation enable option
 002627 xxxx 002642000010         desc9fl FLD1ba, 8              " minuend operand descriptor
 002630 xxxx 002644000010         desc9fl FLD2ba, 8              " subtrahend operand descriptor
 002631 xxxx 002646057610         desc4ls FLD3ba, 8, -2          " result operand descriptor
@@ -1509,7 +1509,7 @@
 003002 xxxx 000000000133 FLD1bd:  ac4      /0000005+/      " 0000005+
 003003 xxxx 261043105147 FLD2bd:  ac4      /+1234567/      " +1234567
 003004 xxxx 000000000000 FLD3bd:  BSS      2               " +617284    (Product)
-003006 xxxx 000000226400         MP3D    (),(),()", enablefault
+003006 xxxx 000400226400         MP3D    (),(),(), enablefault
 003007 xxxx 003022077602         desc4ns FLD1be, 2, -2   " multiplier operand descriptor
 003010 xxxx 003023057510         desc4ls FLD2be, 8, -3   " multiplicand op descriptor
 003011 xxxx 003024140007         desc4fl FLD3be(1), 7    " product operand descriptor
@@ -1775,7 +1775,7 @@
 003415 xxxx 000000000000 
 003416 xxxx 003316000000 
 003417 xxxx 003367000000 
-003420 xxxx 000000300400         MVN     (),()",t             ",,,,1 truncation fault enable option
+003420 xxxx 000400300400         MVN     (),(),t             ",,,,1 truncation fault enable option
 003421 xxxx 003370627611         NDSC9   FLD1bn,3,9,2,-2     "sending field operand descr.
 003422 xxxx 003373040010         NDSC4   FLD2bn,0,8,0        "receiving field operand descr.
 003423 xxxx 004525701000         call    ioa(MVNmsg2, FLD2bn)

@@ -793,7 +793,7 @@ CSL0:
 "        USE                         " 777777235012  (Result)
 
         " REM BITS 0-17 OF FLD2 FORCED ON
-        CSL     (),(),bool(07)  ",enablefault " OR - truncation enable option
+        CSL     (),(),bool(07),enablefault " OR - truncation enable option
         descb   FLD1aj(12), 24      " FLD1 operand descriptor
         descb   FLD2aj, 18          " FLD2 operand descriptor
                                     
@@ -878,7 +878,7 @@ CSR1:
 "FLD1   OCT      444444          " 000000444444
 "FLD2   DEC          0           " 333300000000  (Result)
 
-        CSR     (),(),bool(14)",enablefault  " invert with truncation fault enable option
+        CSR     (),(),bool(14),enablefault  " invert with truncation fault enable option
         descb   FLD1am(18),18   " FLD1 operand descriptor
         descb   FLD2am,12       " FLD2 operand descriptor
                                 " memory contents in octal
@@ -996,7 +996,7 @@ SZTR0:
 "       USE                  " indicators set? - zero
 
 SZTR1:
-       SZTR     (),(),bool(3)",enablefault       " evaluate FLD1 as is (move)
+       SZTR     (),(),bool(3),enablefault       " evaluate FLD1 as is (move)
        descb    FLD1aq(19),1    " FLD1 operand descr. (bit 19)
        descb    0,1             " FLD2 operand descriptor
        TZE      NO.GOT          " if ZERO it's an error
@@ -1078,7 +1078,7 @@ AD2D2:
 "FLD2        EDEC    6A+1E+2         +00012
 "            USE                     +13340 (Sum) (truncation fault)
 
-            AD2D    (), ()  ", enablefault "with truncation enable option
+            AD2D    (), (), enablefault "with truncation enable option
             NDSC4   FLD1at,0,8,2,-2     "FLD1 addend operand descriptor
             NDSC9   FLD2at,0,6          "FLD2 addend operand descriptor memory contents
 
@@ -1240,7 +1240,7 @@ SB2D2:
 "
 "*INSTRUCTION FAULT? YES
 
-        SB2D    (),()",enablefault   " with truncation enable option
+        SB2D    (),(),enablefault   " with truncation enable option
         NDSC4   FLD1ay,0,8,3,-4       " minuend operand descriptor
         NDSC9   FLD2ay,0,8,3,-2       " subtrahend operand descriptor
 
@@ -1289,7 +1289,7 @@ FLD3az: BSS     2              " XXX+000+127 (Result) zero indicator ON
 
 SB3D2:
 
-"       SB3D   (),(),()",enablefault  " with truncation enable option
+"       SB3D   (),(),(),enablefault  " with truncation enable option
 "       NDSC9  FLD1,0,8              " subtrahend operand descriptor
 "       NDSC9  FLD2,0,8              " minuend operand descriptor
 "       NDSC4  FLD3,0,8,1,-2         " esult operand descriptor
@@ -1301,7 +1301,7 @@ SB3D2:
 "FLD2  EDEC  8A-987654E-3   - 9 8 7 6 5 4 -3
 "FLD3   BSS      1   -0086419   (Result)
 
-        SB3D    (),(),()",enablefault   " with truncation enable option
+        SB3D    (),(),(),enablefault   " with truncation enable option
         desc9fl FLD1ba, 8              " minuend operand descriptor
         desc9fl FLD2ba, 8              " subtrahend operand descriptor
         desc4ls FLD3ba, 8, -2          " result operand descriptor
@@ -1453,7 +1453,7 @@ MP3D2:
 "        USE  instruction fault?    no
 "* indicators on? truncation and negative
 
-        MP3D    (),(),()", enablefault
+        MP3D    (),(),(), enablefault
         desc4ns FLD1be, 2, -2   " multiplier operand descriptor
         desc4ls FLD2be, 8, -3   " multiplicand op descriptor
         desc4fl FLD3be(1), 7    " product operand descriptor
@@ -1783,7 +1783,7 @@ MVN0:
 
         call    ioa(MVNmsg1, FLD2bm)
 
-        MVN     (),()",t             ",,,,1 truncation fault enable option
+        MVN     (),(),t             ",,,,1 truncation fault enable option
         NDSC9   FLD1bn,3,9,2,-2     "sending field operand descr.
         NDSC4   FLD2bn,0,8,0        "receiving field operand descr.
 
