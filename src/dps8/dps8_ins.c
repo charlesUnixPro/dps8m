@@ -424,7 +424,11 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     // if a pointer to a malloc is getting zapped
     // Yep, I was right
     // HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
-    
+    // CAC The DCDstruct * is not the problem; the DCDstruct contains a pointer
+    // to a malloc'd structure. After the memset zero'd the pointer, no one set
+    // it back to point to anything, so the code dies later dereferencing a 
+    // NULL pointer.
+
     //memset (p, 0, sizeof (struct DCDstruct));
     // Try the obvious ones
     p->opcode  = 0;
@@ -451,7 +455,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     
     DCDstruct *i = decodeInstruction(cu . IWB, p);
 
-    lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transger
+    lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((i->info->flags & PRIV_INS) && !is_priv_mode())
@@ -3846,6 +3850,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
          
         case 0716:  ///< xec
             {
+#if 0
             /// XXX partially implemented
             
             /// The xec instruction itself does not affect any indicator. However, the execution of the instruction from C(Y) may affect indicators.
@@ -3872,8 +3877,50 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
                 if (ret)
                     return (ret);
+#endif
+                // Copied from fetchInstruction
+                cu . IWB = CY;
+
+                cpu.read_addr = TPR.CA;
+    
+                DCDstruct *i = decodeInstruction(cu . IWB, currentInstruction);
+
+                lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
+    
+                // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
+                if ((i->info->flags & PRIV_INS) && !is_priv_mode())
+                    doFault(i, illproc_fault, 0, "Attempted execution of privileged instruction.");
+    
+                // check for illegal addressing mode(s) ...
+    
+                // No CI/SC/SCR allowed
+                if (i->info->mods == NO_CSS)
+                {
+                    if (_nocss[i->tag])
+                        doFault(i, illproc_fault, 0, "Illegal CI/SC/SCR modification");
+                }
+                // No DU/DL/CI/SC/SCR allowed
+                else if (i->info->mods == NO_DDCSS)
+                {
+                    if (_noddcss[i->tag])
+                        doFault(i, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+                }
+                // No DL/CI/SC/SCR allowed
+                else if (i->info->mods == NO_DLCSS)
+                {
+                    if (_nodlcss[i->tag])
+                        doFault(i, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+                }
+                // No DU/DL allowed
+                else if (i->info->mods == NO_DUDL)
+                {
+                    if (_nodudl[i->tag])
+                        doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
+                }
+
+                cpu . cycle = EXEC_cycle;
+                longjmp (jmpMain, JMP_ENTRY);
             }
-            break;
             
         case 0717:  ///< xed
             {
