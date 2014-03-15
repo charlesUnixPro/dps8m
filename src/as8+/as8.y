@@ -27,7 +27,6 @@
     void setOmode();
     
     tuple *newTuple();
-    list *newList();
     
     //yydebug = 1;
     
@@ -56,15 +55,16 @@
 
 %start input
 %token LABEL SYMBOL PSEUDOOP OCT SEGDEF SEGREF VFD STROP PSEUDOOP2 DEC DESC DESC2 PSEUDOOPD2 BOOL EQU BSS
-%token DECIMAL OCTAL HEX STRING AH REG NAME CALL SAVE RETURN TALLY ARG ZERO ORG ITS ITP OCTLIT DECLIT DECLIT2 NULLOP MOD
+%token DECIMAL OCTAL HEX STRING AH REG NAME CALL SAVE SAVEH SAVEM RETURN TALLY ARG ZERO ORG ITS ITP OCTLIT DECLIT DECLIT2 NULLOP MOD
 %token OPCODE OPCODEMW OPCODERPT OPCODEARS OPCODESTC OPCODEX OPCODER
 %token L To Ta Th TERMCOND
 %token SINGLE DOUBLE SGLLIT DBLLIT ITSLIT ITPLIT VFDLIT DOUBLEINT
 %token SHORT_CALL SHORT_RETURN ENTRY PUSH TEMP CALLH CALLM OPTIONS INTEGER LINK INHIBIT ENTRYPOINT
+%token DUP DUPEND
 
 %type <s> SYMBOL STRING LABEL TERMCOND
 %type <p> PSEUDOOP STROP OCT VFD PSEUDOOP2 SEGDEF DEC DESC DESC2 PSEUDOOPD2 BSS TALLY ITS ITP TEMP
-%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM INTEGER
+%type <i> DECIMAL OCTAL HEX integer ptr_reg modifier L BOOL EQU REG rexpr OCTLIT DECLIT arg CALL CALLH CALLM INTEGER SAVE SAVEH SAVEM
 %type <i72> DOUBLEINT DECLIT2
 %type <c> AH Ta Th To
 %type <r> SINGLE DOUBLE SGLLIT DBLLIT
@@ -448,7 +448,10 @@ pop
     | CALLH          SYMBOL ',' modifier '(' optarglist ')' opterrlist { doHCall($2, $4,   $6,   $8); }
     | CALLH          SYMBOL              '(' optarglist ')' opterrlist { doHCall($2,  0,   $4,   $6); }
 
-    | SAVE           optintlist                                        { doSave ($2);                }
+    | SAVEM           expr                                             { doPush($2->value);           }
+    | SAVEM                                                            { doPush(0);                   }
+
+    | SAVEH           optintlist                                        { doSave ($2);                }
 
     | RETURN         SYMBOL                                            { doReturn($2, 0);            }
     | RETURN         SYMBOL ',' integer                                { doReturn($2, $4);           }
@@ -485,6 +488,9 @@ pop
     
     | INHIBIT        SYMBOL                          { doInhibit($2);               }
     | ENTRYPOINT     expr                            { doEntryPoint($2);            }
+
+    | DUP            expr                            { doDup($2);                   }
+    | DUPEND                                         { doDup(NULL);                 } /**/
     ;
 
 entry

@@ -45,6 +45,11 @@
     
     char *currentNonLocalLabel = "???"; //NULL;
     
+    list *dupList = NULL;           // list of statment for DUP pseudo-op
+    list *dupListSafe = NULL;       // duplist safe-store
+    bool bGetFromElsewhere = false; // when true get scanners input lines from elsewhere besides normal file stream.
+    int nDupCount = 0;
+    
     /*
      * let's rewrite the LEX I/O routines to work in our environment ...
      */
@@ -65,7 +70,7 @@
 %x InLiteral InLiteral1 InLiteral2 InLiteral3
 %x Junk
 %x InVFD InVFD2 expOct
-%x OPT
+%x OPT InDUP
 
 %option noyywrap
 /*%option yylineno*/
@@ -191,7 +196,8 @@ everythingelse	.
                         // clear state stack if necessary
                         while (yy_start_stack_ptr > 0)
                             yy_pop_state();
-                        BEGIN(INITIAL); 
+                            if (YYSTATE != InDUP)
+                        BEGIN(INITIAL);
                         return '\n'; 
                     }
 
@@ -379,6 +385,13 @@ everythingelse	.
                                     return CALLM;   // Multics calling convention
                             }
                             
+                            if (po->token == SAVE)
+                            {
+                                if (callingConvention == 1)
+                                    return SAVEH;   // Honeywell calling convention
+                                else
+                                    return SAVEM;   // Multics calling convention
+                            }
                             if (po->token)
                                 return po->token;
                             
@@ -672,7 +685,30 @@ everythingelse	.
     return VFDLIT;
 }
 
-^.+ { litPosInLine = 0; REJECT; }
+<InDUP>^[^\n]*$             {
+                            // TODO: need a better way for DUPEND, but'll do for now
+                            if (strcasestr(yytext, "dupend"))
+                            {
+                                if (debug)
+                                    fprintf(stderr, "found DUPEND\n");
+                                return DUPEND;
+                            } else {
+                                char temp[2560];
+                                strcpy(temp, yytext);
+                                strcat(temp, "\n");
+                                
+                                list *l = newList();
+                                l->p = strdup(temp);    //yytext);
+                                
+                                DL_APPEND(dupList, l);
+                                if (debug)
+                                    fprintf(stderr, "DUP: adding line to listDup:<%s>\n", l->p);
+                                dupListSafe = dupList;
+                            }
+                        }
+<InDUP>{nl}         {}
+
+^.+ { litPosInLine = 0; REJECT; }   /* perhaps YY_AT_BOL could be used here */
 
 <*>{comment}       {}  /* keep at the end */
 <*>{linecomment}   {}  /* keep at the end */
@@ -925,12 +961,39 @@ extern char *srcFile;
 char *LEXp = 0;
 char LEXline[2560];  // current input line
 
-bool bGetFromElsewhere = false; // when true get scanners input lines from elsewhere besides normal file stream.
-
 char *
 getFromElsewhere() // get input lines from elsewhere
 {
-    return NULL;
+    if (bGetFromElsewhere == false)
+        return NULL;
+   
+   while (1)
+   {
+        if (dupList)
+        {
+           list *elt = 0; int count = -1;
+           DL_COUNT(dupList, elt, count);
+           if (debug) fprintf(stderr, "Count=%d (%d)", count, nDupCount);
+        
+           char *p = dupList->p;
+           dupList = dupList->next;
+           if (debug) fprintf(stderr, "<%s> %p\n", p, dupList);
+           return p;
+        }
+
+        nDupCount -= 1;
+        dupList = dupListSafe;
+
+        // duplist is null. Check dupCount
+        if (nDupCount == 0)
+        {
+            YY_FLUSH_BUFFER;
+            LEXp = NULL;
+            bGetFromElsewhere = false;
+            BEGIN(0);
+            return NULL;
+        }
+   }
 }
 
 char *
@@ -941,6 +1004,8 @@ LEXCurrentFilename()
     
 	return FILEtos.fname;
 }
+
+#ifdef NO_LONGER_USED
 
 int
 LEXgetc(void)
@@ -977,7 +1042,11 @@ LEXgetc(void)
         return c;
 	} while (1);
 }
+#endif
 
+/*
+  * LEX getc() - string/line oriented
+ */
 int
 LEXgetcs(void)
 {
@@ -1001,33 +1070,47 @@ LEXgetcs(void)
             return EOF;			// nothing left to read
 		else
         {
-            if (!LEXp || *LEXp == '\0') // end of buffer ?
+            if (bGetFromElsewhere && (!LEXp || *LEXp == '\0'))
             {
-                if (bGetFromElsewhere)
-                    LEXp = getFromElsewhere(); // get input lines from elsewhere
-                else
-                    LEXp = fgets(LEXline, sizeof(LEXline), FILEtos.fp);		/* get line from TOS	*/
+                LEXp = getFromElsewhere();
                 if (LEXp)
                 {
-                    yylineno += 1;
+                    strcpy(LEXline, LEXp);
                     if (!strchr(LEXline, '\n'))
                         strcat(LEXline, "\n");
-                }
+                } else
+                    continue;
                 //  if (nPass == 1 && debug && LEXp)
                 //      fprintf(stderr, "LEXfgetcs(%d): %s", yylineno, LEXline);
-            }
-            
-            if (LEXp == NULL) { /* no more left. Close file	*/
-                if (LEXgetPop() == -1)
+            } //else
+            {
+                if (!LEXp || *LEXp == '\0') // end of buffer ?
                 {
-                    first_call = true;  // reset
-                    return EOF;
+                    LEXp = fgets(LEXline, sizeof(LEXline), FILEtos.fp);		/* get line from TOS	*/
+                    if (LEXp)
+                    {
+                        yylineno += 1;
+                        if (!strchr(LEXline, '\n'))
+                            strcat(LEXline, "\n");
+                    }
+                    //  if (nPass == 1 && debug && LEXp)
+                    //      fprintf(stderr, "LEXfgetcs(%d): %s", yylineno, LEXline);
                 }
-                else
-                    continue;
+                
+                if (LEXp == NULL) { /* no more left. Close file	*/
+                    if (LEXgetPop() == -1)
+                    {
+                        first_call = true;  // reset
+                        return EOF;
+                    }
+                    else
+                        continue;
+                }
+ 
             }
-            c = *LEXp++;   // get next char from buffer
             
+            c = *LEXp++;   // get next char from buffer
+            //fprintf(stderr, "returning '%c' %d\n", c, bGetFromElsewhere);
             return c;
         }
 	} while (1);
@@ -1209,4 +1292,19 @@ void setOmode()
 {
     dMode = false;
     oMode = true;
+}
+
+
+void setState(int state)
+{
+    switch (state)
+    {
+        case 0:
+            BEGIN(INITIAL);
+            break;
+        case 1:
+            BEGIN(InDUP);
+            YY_FLUSH_BUFFER;
+            break;
+    }
 }

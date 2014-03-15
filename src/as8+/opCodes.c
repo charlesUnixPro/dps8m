@@ -725,25 +725,30 @@ outRec *outas8Direct(char *dir, ...)
         time_t t;
         
         t = time(NULL);
-        //local = localtime(&t);
+        
+        local = localtime(&t);
         //printf("Local time and date: %s\n", asctime(local));
-        local = gmtime(&t);
+        //local = gmtime(&t);
         //asprintf(&p->dirStr, "!INFO DATE %s", asctime(local));
         
-        static const char wday_name[][4] = {
-            "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
-        };
-        static const char mon_name[][4] = {
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-        };
-        asprintf(&p->dirStr, "!INFO date %.3s %.3s%3d %.2d:%.2d:%.2d %d UTC",
-                wday_name[local->tm_wday],
-                mon_name[local->tm_mon],
-                local->tm_mday, local->tm_hour,
-                local->tm_min, local->tm_sec,
-                1900 + local->tm_year);
-        
+//        static const char wday_name[][4] = {
+//            "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
+//        };
+//        static const char mon_name[][4] = {
+//            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+//            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+//        };
+//        asprintf(&p->dirStr, "!INFO date %.3s %.3s%3d %.2d:%.2d:%.2d %d UTC",
+//                wday_name[local->tm_wday],
+//                mon_name[local->tm_mon],
+//                local->tm_mday, local->tm_hour,
+//                local->tm_min, local->tm_sec,
+//                1900 + local->tm_year);
+//        
+        char time_string[1024];
+        //strftime(time_string, 1024, "%a %m/%d/%Y %H:%M:%S %Z", localtime(&t));
+        strftime(time_string, sizeof(time_string), "%a %d %b %Y %H:%M:%S %Z", localtime(&t));
+        asprintf(&p->dirStr, "!INFO date %s", time_string);
         
         DL_APPEND(as8output, p);
 
