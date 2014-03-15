@@ -1,58 +1,39 @@
-
-
-     "BEGIN INCLUDE FILE fault_vector.incl.alm
-
-"	Modified February 1981 by J. Bongiovanni to add fault types
+"
+"	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+"
+" Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+" Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+" Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+"
+	equ	stack_frame.prev_sp,16
+	equ	stack_frame.condition_word,16
+	equ	stack_frame.next_sp,18
+	equ	stack_frame.signaller_word,18
+	equ	stack_frame.return_ptr,20
+	equ	stack_frame.entry_ptr,22
+	equ	stack_frame.operator_ptr,24
+	equ	stack_frame.lp_ptr,24
+	equ	stack_frame.arg_ptr,26
+	equ	stack_frame.static_ptr,28
+	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+	equ	stack_frame.on_unit_rel_ptrs,30
+	equ	stack_frame.operator_ret_ptr,31
+	equ	stack_frame.translator_id,31
+	equ	stack_frame.regs,32
+	equ	stack_frame.min_length,48
+	equ	stack_frame.flag_word,16
+	bool	stack_frame.main_proc_bit,020000	" (DL)
+	bool	stack_frame.run_unit_manager,010000	" (DL)
+	bool	stack_frame.signal_bit,004000		" (DL)
+	bool	stack_frame.crawl_out_bit,002000	" (DL)
+	bool	stack_frame.signaller_bit,001000	" (DL)
+	bool	stack_frame.link_trap_bit,000400	" (DL)
+	bool	stack_frame.support_bit,000200		" (DL)
+	bool	stack_frame.condition_bit,000100	" (DL)
 
 "
-"	Structure fv
+"	END INCLUDE FILE  ... stack_frame.incl.alm
 "
-	equ	fv_size,384
-
-
-	equ	fv.ipair,0		"LEVEL 2
-
-	equ	fv.ipair.scu,0
-	equ	fv.ipair.tra,1
-	equ	fv.fpair,64		"LEVEL 2
-
-	equ	fv.fpair.scu,64
-	equ	fv.fpair.tra,65
-	equ	fv.i_tra_ptr,128
-	equ	fv.i_scu_ptr,192
-	equ	fv.f_tra_ptr,256
-	equ	fv.f_scu_ptr,320
-
-	equ	FAULT_NO_SDF,0		" Shutdown
-	equ	FAULT_NO_STR,1		" Store
-	equ	FAULT_NO_MME,2		" Master Mode Entry 1
-	equ	FAULT_NO_F1,3		" Fault Tag 1
-	equ	FAULT_NO_TRO,4		" Timer Runout
-	equ	FAULT_NO_CMD,5		" Command
-	equ	FAULT_NO_DRL,6		" Derail
-	equ	FAULT_NO_LUF,7		" Lockup
-	equ	FAULT_NO_CON,8		" Connect
-	equ	FAULT_NO_PAR,9		" Parity
-	equ	FAULT_NO_IPR,10		" Illegal Procedure
-	equ	FAULT_NO_ONC,11		" Operation Not Complete
-	equ	FAULT_NO_SUF,12		" Startup
-	equ	FAULT_NO_OFL,13		" Overflow
-	equ	FAULT_NO_DIV,14		" Divide Check
-	equ	FAULT_NO_EXF,15		" Execute
-	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
-	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
-	equ	FAULT_NO_DF2,18		" Directed Fault 2
-	equ	FAULT_NO_DF3,19		" Directed Fault 3
-	equ	FAULT_NO_ACV,20		" Access Violation
-	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
-	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
-	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
-	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
-	equ	FAULT_NO_F3,25		" Fault Tag 3
-					" Fault No. 26-30 are Undefined
-	equ	FAULT_NO_TRB,31		" Trouble
-
-     "END INCLUDE FILE fault_vector.incl.alm
 "
 "
 "                                          -----------------------------------------------------------
