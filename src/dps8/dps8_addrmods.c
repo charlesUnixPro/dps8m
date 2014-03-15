@@ -570,12 +570,14 @@ doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
         doITP(Tag); 
     
     didITSITP = true;
+    set_went_appending ();
     return true;
     
 }
 
 t_stat doComputedAddressFormation(DCDstruct *i)
 {
+    didITSITP = false;
     eCAFoper operType = prepareCA;  // just for now
     if (RMWOP(i))
         operType = rmwCY;           // r/m/w cycle

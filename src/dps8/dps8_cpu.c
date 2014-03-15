@@ -2050,6 +2050,12 @@ int is_priv_mode(void)
 
 static bool secret_addressing_mode;
 static bool went_appending; // we will go....
+
+void set_went_appending (void)
+  {
+    went_appending = true;
+  }
+
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -2104,7 +2110,7 @@ void set_addr_mode(addr_modes_t mode)
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
 //   case, and ITx if added.
     if (secret_addressing_mode && mode == APPEND_mode)
-      went_appending = true;
+      set_went_appending ();
 
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
