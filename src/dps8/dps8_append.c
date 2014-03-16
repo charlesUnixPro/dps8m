@@ -186,7 +186,7 @@ void do_camp (word36 Y)
       {
         PTWAM [i] . F = 0;
       }
-    sim_debug (DBG_ERR, & cpu_dev, "do_camp: punt\n");
+    //sim_debug (DBG_ERR, & cpu_dev, "do_camp: punt\n");
   }
 
 /**
@@ -206,7 +206,7 @@ void do_cams (word36 Y)
       {
         SDWAM [i] . F = 0;
       }
-    sim_debug (DBG_ERR, & cpu_dev, "do_cams: punt\n");
+    //sim_debug (DBG_ERR, & cpu_dev, "do_cams: punt\n");
   }
 
     
