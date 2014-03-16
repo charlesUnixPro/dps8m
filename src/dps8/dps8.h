@@ -332,11 +332,12 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_DEBUG       (1U << 13)   
 #define DBG_INFO        (1U << 14)   
 #define DBG_NOTIFY      (1U << 15)   
-#define DBG_ERR         (1U << 16)   
+// simh uses 16,17,18
+#define DBG_ERR         (1U << 19)   
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
-#define DBG_FAULT       (1U << 17)  ///< follow fault handling
-#define DBG_INTR        (1U << 18)  // follow interrupt handling
-//#define DBG_CAC         (1 << 19)
+#define DBG_FAULT       (1U << 20)  ///< follow fault handling
+#define DBG_INTR        (1U << 21)  // follow interrupt handling
+//#define DBG_CAC         (1 << 22)
 
 /* Global data */
 
