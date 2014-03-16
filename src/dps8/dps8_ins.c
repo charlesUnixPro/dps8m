@@ -106,9 +106,10 @@ static void scu2words(word36 *words)
     words[5] = setbits36(0, 0, 18, TPR.CA);
     words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
     words[5] = setbits36(words[5], 19, 1, cu.rpt);
+    words[5] = setbits36(words[5], 20, 1, cu.rd);
     // BUG: Not all of CU data exists and/or is saved
     words[5] = setbits36(words[5], 24, 1, cu.xde);
-    words[5] = setbits36(words[5], 24, 1, cu.xdo);
+    words[5] = setbits36(words[5], 25, 1, cu.xdo);
     words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
     
     words[6] = cu.IWB; 
@@ -138,6 +139,7 @@ void tidy_cu (void)
     cu . rpts = false;
     cu . repeat_first = false;
     cu . rpt = false;
+    cu . rd = false;
     cu . xde = false;
     cu . xdo = false;
   }
@@ -173,9 +175,10 @@ static void words2scu (word36 * words)
     TPR.CA   = getbits36(words[5], 0, 18);
     cu.repeat_first = getbits36(words[5], 18, 1);
     cu.rpt   = getbits36(words[5], 19, 1);
+    cu.rd    = getbits36(words[5], 29, 1);
     // BUG: Not all of CU data exists and/or is saved
     cu.xde   = getbits36(words[5], 24, 1);
-    cu.xdo   = getbits36(words[5], 24, 1);
+    cu.xdo   = getbits36(words[5], 25, 1);
     cu.CT_HOLD = getbits36(words[5], 30, 6);
     
     cu.IWB = words [6];
@@ -542,7 +545,7 @@ t_stat executeInstruction(DCDstruct *ci)
     addToTheMatrix (opcode, opcodeX, a, tag);
     
     // If we are doing a RPT instruction, all of the CA setup has been done.
-    if (cu .rpt)
+    if ((! cu . repeat_first) && (cu .rpt || cu . rd))
       {
         rY = TPR.CA;
       }
@@ -4012,28 +4015,31 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // For emulation purposes, a nop
             break;
          
-            // TODO: implement RPD/RPL
         case 0560:  ///< rpd
-            return STOP_UNIMP;
+            {
+              uint c = (i->address >> 7) & 1;
+              cu . delta = i->tag;
+              if (c)
+                rX[0] = i->address;    // Entire 18 bits
+              cu . rd = 1;
+              cu . repeat_first = 1;
+//sim_printf ("repeat first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
+            }
+            break;
 
         case 0500:  ///< rpl
             return STOP_UNIMP;
 
         case 0520:  ///< rpt
-            {
             // AL39, page 209
-              //uint tally = (i->address >> 10);
+            {
               uint c = (i->address >> 7) & 1;
-              //uint term = i->address & 0177;
               cu . delta = i->tag;
               if (c)
                 rX[0] = i->address;    // Entire 18 bits
-              cu . rpt = 0;
+              cu . rpt = 1;
               cu . repeat_first = 1;
-//sim_printf ("repeat first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
-              // Setting cu.rpt will cause the instruction to be executed
-              // until the termination is met.
-              // See cpu.c for the rest of the handling.
+//sim_printf ("repeatd first; delta %02o c %d X0:%06o\n", cu.delta, c, rX[0]);
             }
             break;
             

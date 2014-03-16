@@ -643,7 +643,14 @@ R_MOD:;
             return SCPE_OK;
         }
         
-        if (! cu . rpt)
+// possible states
+// repeat_first rpt rd    do it?
+//       f       f   f      y
+//       t       x   x      y
+//       f       t   x      n
+//       f       x   t      n
+//sim_debug (DBG_TRACE, & cpu_dev, "addrmode rf rpt rd tst %d %d %d %d\n", cu.repeat_first,cu.rpt,cu.rd, (! ((! cu . repeat_first) && (cu . rpt || cu . rd))));
+        if (! ((! cu . repeat_first) && (cu . rpt || cu . rd)))
         {
             TPR.CA += Cr;
             TPR.CA &= MASK18;   // keep to 18-bits
@@ -687,7 +694,14 @@ R_MOD:;
             
             sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Cr=%06o TPR.CA(Before)=%06o\n", Cr, TPR.CA);
             
-            if (! cu . rpt)
+// possible states
+// repeat_first rpt rd    do it?
+//       f       f   f      y
+//       t       x   x      y
+//       f       t   x      n
+//       f       x   t      n
+//sim_debug (DBG_TRACE, & cpu_dev, "addrmode rf rpt rd tst %d %d %d %d\n", cu.repeat_first,cu.rpt,cu.rd, (! ((! cu . repeat_first) && (cu . rpt || cu . rd))));
+            if (! ((! cu . repeat_first) && (cu . rpt || cu . rd)))
             {
                 TPR.CA += Cr;
                 TPR.CA &= MASK18;

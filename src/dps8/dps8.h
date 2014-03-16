@@ -894,6 +894,7 @@ void freeDCDstruct(DCDstruct *p);
 extern	word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 extern	word8	tCF;	/*!< character position field [3b] */
 
+// XXX get rid of these globals.
 extern word6 Td, Tm;
 //extern word4 CT_HOLD;
 
@@ -2166,6 +2167,7 @@ typedef struct {
     bool rpts;        // just executed a repeat instr;  bit 12 in word one of the CU history register
     bool repeat_first;        // "RF" flag -- first cycle of a repeat instruction; We also use with xed
     bool rpt;     // execute an rpt instruction
+    bool rd;     // execute an rpd instruction
     uint CT_HOLD;   // 6 bits at 5[30..35]; contents of the "remember modifier" register
     bool xde;     // execute even instr from xed pair
     bool xdo;     // execute even instr from xed pair
