@@ -136,7 +136,6 @@ void tidy_cu (void)
 // that code here so that there is only a single copy to maintain.
 
     cu . delta = 0;
-    cu . rpts = false;
     cu . repeat_first = false;
     cu . rpt = false;
     cu . rd = false;

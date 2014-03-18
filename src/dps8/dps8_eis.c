@@ -846,7 +846,7 @@ int EISget469r(EISaddr *p, int *pos, int ta)
     {
         *pos = maxPos;
         p->address = (p->address - 1) & AMASK;          // bump source to prev address
-        p->data = EISRead(p);    // read it from memory
+        //p->data = EISRead(p);    // read it from memory
     }
     
     //if (p->lastAddress != p->address) {                // read from memory if different address
@@ -4401,14 +4401,21 @@ void tctr(DCDstruct *ins)
             e->srcSZ = 9;
             break;
     }
-    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "tctr srcCN %d srcT %d srcSz %d\n",
+               e -> srcCN, e -> srcTA, e -> srcSZ);    
     // adjust addresses & offsets for reading in reverse ....
     int nSrcWords = 0;
     int newSrcCN = 0;
     getOffsets(e->N1, e->srcCN, e->srcTA, &nSrcWords, &newSrcCN);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "tctr nSrcWords %d newSrcCN %d\n",
+               nSrcWords, nSrcWords);
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "tctr address was %06o\n",
+               e -> ADDR1 . address);
     //word18 newSrcAddr = e->srcAddr + nSrcWords;
     e->ADDR1.address += nSrcWords;
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "tctr address is %06o\n",
+               e -> ADDR1 . address);
 
     // fetch 2nd operand ...
     
@@ -4416,9 +4423,9 @@ void tctr(DCDstruct *ins)
     int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
     int xREG = xlat & 0xf;
     
-    int r = SIGNEXT18 ((word18)getMFReg(xREG, true));
+    word36s r = (word36s) SIGNEXT18 ((word18)getMFReg(xREG, true));
     
-    int xAddress = GETHI(xlat);
+    word18 xAddress = GETHI(xlat);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -4432,6 +4439,8 @@ void tctr(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+// XXX CAC this check doesn't seem right; the address is from a PR register,
+// therefore, it is a virtual address, regardless of get_addr_mode().
         if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;
@@ -4499,6 +4508,8 @@ void tctr(DCDstruct *ins)
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
         
+// XXX CAC this check doesn't seem right; the address is from a PR register,
+// therefore, it is a virtual address, regardless of get_addr_mode().
         if (get_addr_mode() == APPEND_mode)
         {
             //TPR.TSR = PR[n].SNR;

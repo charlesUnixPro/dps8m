@@ -2147,24 +2147,35 @@ typedef struct {
      * of this control unit data struct.
      */
     
-    /* word 0, continued */
-    bool SD_ON;   // SDWAM enabled
-    bool PT_ON;   // PTWAM enabled
+    /* word 0 */
+                   // 0-2   PRR is stored in PPR
+                   // 3-17  PSR is stored in PPR
+                   // 18    P   is stored in PPR
+                   // 19    XSF External segment flag -- not implemented
+                   // 20    SDWAMM Match on SDWAM -- not implemented
+    word1 SD_ON;   // 21    SDWAM enabled
+                   // 22    PTWAMM Match on PTWAM -- not implemented
+    word1 PT_ON;   // 23    PTWAM enabled
+                   // 24    PI-AP Instruction fetch append cycle
+                   // 25    DSPTW Fetch descriptor segment PTW
+                   // 26    SDWNP Fetch SDW non paged
+                   // 27    SDWP  Fetch SDW paged
+                   // 28    PTW   Fetch PTW
+                   // 29    PTW2  Fetch prepage PTW
+                   // 30    FAP   Fetch final address - paged
+                   // 31    FANP  Fetch final address - nonpaged
+                   // 32    FABS  Fetch final address - absolute
+                   // 33-35 FCT   Fault counter - counts retries
+
+    /* word 1 */
     
-    /* word 1, continued  */
-    struct {
-        unsigned oosb:1;    // out of segment bounds
-        unsigned ocall:1;   // outward call
-        // unsigned boc:1;      // bad outward call
-        // unsigned ocb:1;      // out of call brackets
-    } word1flags;
-    bool instr_fetch;     // our usage of this may match PI-AP
-    
-    /* word 2, continued */
+    /* word 2 */
     word6 delta;     // 6 bits at 2[30..35]; addr increment for repeats
     
-    /* word 5, continued */
-    bool rpts;        // just executed a repeat instr;  bit 12 in word one of the CU history register
+    /* word 4 */
+    word18 IR;     /* Working instr register; addr & tag are modified */
+
+    /* word 5 */
     bool repeat_first;        // "RF" flag -- first cycle of a repeat instruction; We also use with xed
     bool rpt;     // execute an rpt instruction
     bool rd;     // execute an rpd instruction
@@ -2172,18 +2183,12 @@ typedef struct {
     bool xde;     // execute even instr from xed pair
     bool xdo;     // execute even instr from xed pair
     
-    /* word 4 */
-    //instr_t IR;     /* Working instr register; addr & tag are modified */
-    word18 IR;     /* Working instr register; addr & tag are modified */
-    //word6 tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it) XXX Not true; CAF updates it.
-
     
     /* word 6 */
     word36 IWB;
 
     /* word 7 */
-    // instr_t IRODD;   // Instr holding register; odd word of last pair fetched
-    t_uint64 IRODD; /* Instr holding register; odd word of last pair fetched */
+    word36 IRODD; /* Instr holding register; odd word of last pair fetched */
     
 } ctl_unit_data_t;
 
