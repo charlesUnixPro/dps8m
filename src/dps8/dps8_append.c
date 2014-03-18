@@ -11,7 +11,6 @@
 /**
  * \brief the appending unit ...
  */
-bool apndTrace = false;     ///< when true do appending unit tracing
 
 static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
 
@@ -54,10 +53,7 @@ void doAddrModPtrReg(DCDstruct *i)
     
     //rY = TPR.CA;    // why do I muck with i->address?
     
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAddrModPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
-    }
+   sim_debug(DBG_APPENDING, &cpu_dev, "doAddrModPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }
 #endif
 
@@ -261,10 +257,7 @@ static _ptw0* modifyDSPTW(word15 segno)
 /// \brief XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
 static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
 {
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
     if (switches . disable_wam)
     {
@@ -306,10 +299,7 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
         //if (SDWAM[_n]._initialized && segno == SDWAM[_n].POINTER)
         if (SDWAM[_n].F && segno == SDWAM[_n].POINTER)
         {
-            if (apndTrace)
-            {
-                sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
-            }
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(1):found match for segno %05o at _n=%d\n", segno, _n);
             
             SDW = &SDWAM[_n];
             
@@ -323,17 +313,11 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
             }
             SDW->USE = 63;
             
-            if (apndTrace)
-            {
-                sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(SDW));
-            }
+            sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(SDW));
             return SDW;
         }
     }
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(3):SDW for segment %05o not found in SDWAM\n", segno);
     return NULL;    // segment not referenced in SDWAM
 }
 
@@ -342,14 +326,10 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
  */
 static _sdw0* fetchPSDW(word15 segno)
 {
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
     
     _ptw0 *p = fetchDSPTW(segno); // XXX [CAC] is this redundant??
 
-    //if (apndTrace)
     //    sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(1):PTW:%s\n",
 
     word24 y1 = (2 * segno) % 1024;
@@ -388,23 +368,15 @@ static _sdw0* fetchPSDW(word15 segno)
 /// Fetches an SDW from an unpaged descriptor segment.
 static _sdw0 *fetchNSDW(word15 segno)
 {
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
+
     if (2 * segno >= 16 * (DSBR.BND + 1))
     {
-        if (apndTrace)
-        {
-            sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
-        }
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
         // generate access violation, out of segment bounds fault
         doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault fetchNSDW: out of segment bounds fault");
     }
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
     word36 SDWeven, SDWodd;
     
     core_read2(DSBR.ADDR + 2 * segno, &SDWeven, &SDWodd);
@@ -430,10 +402,7 @@ static _sdw0 *fetchNSDW(word15 segno)
     
     PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
     
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&SDW0));
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&SDW0));
     return &SDW0;
 }
 
@@ -523,10 +492,7 @@ static void loadSDWAM(word15 segno)
         //if (!p->_initialized || p->USE == 0)
         if (!p->F || p->USE == 0)
         {
-            if (apndTrace)
-            {
-                sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] p->USE=0\n", _n);
-            }
+            sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(1):SDWAM[%d] p->USE=0\n", _n);
             
             p->ADDR = SDW0.ADDR;
             p->R1 = SDW0.R1;
@@ -560,18 +526,12 @@ static void loadSDWAM(word15 segno)
             
             SDW = p;
             
-            if (apndTrace)
-            {
-                sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(p));
-            }
+            sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(2):SDWAM[%d]=%s\n", _n, strSDW(p));
             
             return;
         }
     }
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(3) no USE=0 found for segment=%d\n", segno);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM(3) no USE=0 found for segment=%d\n", segno);
     
     sim_printf("loadSDWAM(%05o): no USE=0 found!\n", segno);
     dumpSDWAM();
@@ -783,10 +743,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg)
     //acvFaults |= (1 << acvfault);   // or 'em all together
     acvFaults |= acvfault;   // or 'em all together
 
-    if (apndTrace)
-    {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvFault, acvFaults, msg);
-    }
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvFault, acvFaults, msg);
     
     doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
 }

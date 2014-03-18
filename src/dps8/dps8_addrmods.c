@@ -10,18 +10,10 @@
 #include <stdio.h>
 #include "dps8.h"
 
-
 // Computed Address Formation Flowcharts
-
-word6 Tm = 0;
-word6 Td = 0;
-//word6 CT_HOLD = 0;
 
 static bool directOperandFlag = false;
 static word36 directOperand = 0;
-
-
-bool adrTrace = false;   ///< when true do address modifications traceing
 
 #ifndef QUIET_UNUSED
 static char *strCAFoper(eCAFoper o)
@@ -316,10 +308,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         else
             data = CY;
         
-        if (adrTrace)
-        {
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
-        }
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
         // set byte/char
         switch (tTB)
@@ -577,6 +566,8 @@ doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
 
 t_stat doComputedAddressFormation(DCDstruct *i)
 {
+    word6 Tm = 0;
+    word6 Td = 0;
     didITSITP = false;
     eCAFoper operType = prepareCA;  // just for now
     if (RMWOP(i))
@@ -994,10 +985,7 @@ R_MOD:;
                         CY = GETCHAR(CY, tCF);
                     else
                         CY = GETBYTE(CY, tCF);
-                    if (adrTrace)
-                    {
-                        sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
-                    }
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read operand from %06o char/byte=%llo\n", TPR.CA, CY);
                 }
             
                 if (operType == writeCY || operType == rmwCY) //WRITEOP(i))

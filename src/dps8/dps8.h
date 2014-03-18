@@ -894,10 +894,6 @@ void freeDCDstruct(DCDstruct *p);
 extern	word8	tTB;	/*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 extern	word8	tCF;	/*!< character position field [3b] */
 
-// XXX get rid of these globals.
-extern word6 Td, Tm;
-//extern word4 CT_HOLD;
-
 // XXX these ought to moved to DCDstruct 
 extern word36 CY;
 extern word36 Ypair[2];
@@ -1790,9 +1786,6 @@ char *strlower(char *q);
 extern word24 finalAddress; ///< final 24-bit address for appending unit
 
 extern t_stat loadSpecial(char *buff);
-
-extern bool adrTrace;   ///< when true perform address modification tracing
-extern bool apndTrace;  ///< when true do appending unit tracing
 
 //extern t_uint64 cpuCycles; ///< # of instructions executed in this run...
 #define cpuCycles sys_stats.total_cycles

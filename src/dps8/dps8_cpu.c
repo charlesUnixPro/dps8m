@@ -1126,9 +1126,6 @@ t_stat sim_instr (void)
     //static DCDstruct _ci;
     static DCDstruct * ci = NULL;
     
-    adrTrace  = (cpu_dev.dctrl & DBG_ADDRMOD  ) && sim_deb; // perform address mod tracing
-    apndTrace = (cpu_dev.dctrl & DBG_APPENDING) && sim_deb; // perform APU tracing
-    
     cpu . interrupt_flag = false;
     cpu . g7_flag = false;
 
@@ -1397,6 +1394,7 @@ t_stat sim_instr (void)
                     //  of R modification) or indirect word (in the case of RI 
                     //  modification) is determined as follows:
                     
+                    word6 Td = GET_TD(ci -> tag);
                     uint Xn = X(Td);  // Get Xn of instruction
                     TPR.CA = (rX[Xn] + cu . delta) & AMASK;
                     rX[Xn] = TPR.CA;
