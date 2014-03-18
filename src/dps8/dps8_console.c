@@ -29,7 +29,9 @@ reading from the console, if no character is typed within 30 seconds, the read
 operation is terminated. The timer is controlled by an enable switch, must be
 set to enabled during Multics and BCE */
 
-MTAB opcon_mod[] = {
+static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
+static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
+static MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
         0, NULL, "AUTOINPUT",
         opcon_autoinput_set, opcon_autoinput_show, NULL },
@@ -54,7 +56,7 @@ static DEBTAB opcon_dt [] =
 #define N_OPCON_UNITS 1
 #define OPCON_UNIT_NUM 0
 
-UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0) }};
+static UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0) }};
 
 static t_stat opcon_reset (DEVICE * dptr);
 
@@ -164,7 +166,7 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
     return SCPE_OK;
   }
 
-int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
+static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
 {
 //--     DEVICE *devp = find_opcon();
 //--     if (devp == NULL)
@@ -186,7 +188,7 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
     return SCPE_OK;
 }
 
-int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
+static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 {
 //--     sim_debug (DBG_NOTIFY, & opcon_dev, "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
 //--             __func__, st, uptr, val, desc);

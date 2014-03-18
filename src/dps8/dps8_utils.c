@@ -42,7 +42,7 @@ char * dumpFlags(word18 flags)
     
 }
 
-char *
+static char *
 strupr(char *str)
 {
     char *s;
@@ -57,7 +57,7 @@ strupr(char *str)
 
 //! get instruction info for IWB ...
 
-opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
+static opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
 
 struct opCode *getIWBInfo(DCDstruct *i)
 {

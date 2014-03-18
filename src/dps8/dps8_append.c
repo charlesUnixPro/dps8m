@@ -17,9 +17,6 @@ static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
 word24 finalAddress = 0;    ///< final, 24-bit address that comes out of the APU
 word36 CY = 0;              ///< C(Y) operand data from memory
                             // XXX do we need to make CY part of DCDstruct ?
-//word36 CY1 = 0;             ///< C(Y+1) operand data .....
-//word36 YPair[2];            ///< Ypair
-
 
 /**
 
@@ -265,34 +262,6 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
         return NULL;
     }
     
-#if 0
-    if (switches . degenerate_mode && (! i -> a) && (get_addr_mode () == ABSOLUTE_mode))
-      {
-        sim_debug (DBG_APPENDING, & cpu_dev, "fetchSDWfromSDWAM: degenerate case\n");
-        static _sdw degenerate_SDW =
-          {
-            0, // ADDR;
-            0, // R1;
-            0, // R2;
-            0, // R3;
-            037777, // BOUND;
-            1, // R
-            1, // E
-            1, // W
-            1, // P
-            1, // U
-            1, // G
-            1, // C,
-            037777, // CL
-            0, // POINTER
-            1, // F
-            0, // USE
-          };
-        SDW = & degenerate_SDW;
-        return SDW;
-      }
-#endif
-
     for(int _n = 0 ; _n < 64 ; _n++)
     {
         // make certain we initialize SDWAM prior to use!!!
@@ -748,26 +717,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg)
     doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
 }
 
-/*
- extern enum _processor_cycle_type {
- UNKNOWN_CYCLE = 0,
- APPEND_CYCLE,
- CA_CYCLE,
- OPERAND_STORE,
- DIVIDE_EXECUTION,
- FAULT,
- INDIRECT_WORD_FETCH,
- RTCD_OPERAND_FETCH,
- SEQUENTIAL_INSTRUCTION_FETCH,
- INSTRUCTION_FETCH,
- APU_DATA_MOVEMENT,
- ABORT_CYCLE,
- FAULT_CYCLE
- } processorCycle;
- typedef enum _processor_cycle_type _processor_cycle_type;
-*/
-
-char *strPCT(_processor_cycle_type t)
+static char *strPCT(_processor_cycle_type t)
 {
     switch (t)
     {
@@ -813,7 +763,7 @@ char *strPCT(_processor_cycle_type t)
 
 //_processor_cycle_type lastCycle = UNKNOWN_CYCLE;
 
-bool bPrePageMode = false;
+static bool bPrePageMode = false;
 
 /*
  * recoding APU functions to more closely match Fig 5,6 & 8 ...
@@ -1158,7 +1108,6 @@ G:;
     
     // is prepage mode???
     // XXX: don't know what todo with this yet ...
-    // [CAC] This comment appears to be relevant to the NovaScale 9000.
     // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
     if (bPrePageMode)
     {

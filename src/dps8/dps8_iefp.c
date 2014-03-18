@@ -16,6 +16,7 @@
  * LOOP
  */
 
+#ifndef QUIET_UNUSED
 DCDstruct *ci = 0;
 
 EISstruct e;
@@ -32,6 +33,7 @@ typedef enum eIEFPState IEFPState;
 
 
 IEFPState iefpState = eIEFPUnknown;
+#endif
 
 #ifndef QUIET_UNUSED
 PRIVATE

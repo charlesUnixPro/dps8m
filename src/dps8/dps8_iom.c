@@ -824,6 +824,7 @@ t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type
   }
 
 
+#ifndef QUIET_UNUSED
 /*
  * get_iom_channel_dev ()
  *
@@ -843,6 +844,7 @@ static DEVICE * get_iom_channel_dev (uint iom_unit_num, int chan, int dev_code, 
 
     return iom [iom_unit_num] .channels [chan] [dev_code] . dev;
   }
+#endif
 
 static uint mbx_loc (int iom_unit_num, int chan_num)
   {
@@ -1222,6 +1224,7 @@ static t_stat boot_svc (UNIT * unitp)
 
     sim_debug (DBG_DEBUG, &iom_dev, "%s finished\n", __func__);
 
+#if 0
 //  Hack to make t4d testing easier. Advence the tape after booting to
 //  allow skipping over working test blocks
 
@@ -1240,6 +1243,7 @@ static t_stat boot_svc (UNIT * unitp)
             sim_tape_sprecf (& mt_unit [tape_unit_num], & tbc);
           }
       }
+#endif
 
     // returning OK from the simh BOOT command causes simh to start the CPU
     return SCPE_OK;

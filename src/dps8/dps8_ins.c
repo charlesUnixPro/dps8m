@@ -21,9 +21,7 @@ word36 Yblock16[16];    ///< 16-words
 static int doABSA (DCDstruct * i, word36 * result);
 
 static t_stat doInstruction(DCDstruct *i);
-
-extern modificationContinuation _modCont, *modCont;
-
+static int emCall(DCDstruct *i);
 
 static void
 writeOperands(DCDstruct *i)
@@ -528,8 +526,6 @@ t_stat setupForOperandRead(DCDstruct *i)
     return SCPE_OK;
 }
 
-t_stat doCAF(DCDstruct *i);
-
 t_stat executeInstruction(DCDstruct *ci)
 {
     const word36 IWB  = cu.IWB;          ///< instruction working buffer
@@ -668,10 +664,6 @@ static t_stat doInstruction(DCDstruct *i)
     
     return i->opcodeX ? DoEISInstruction(i) : DoBasicInstruction(i);
 }
-
-static int32 n;
-
-//extern word18 stiTally;         ///< in dps8_cpu.c (only used for sti instruction)
 
 static t_stat DoBasicInstruction(DCDstruct *i)
 {
@@ -1734,7 +1726,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
             /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn) - C(Y)0,17 → C(Y)0,17
-                n = opcode & 07;  // get n
+                uint32 n = opcode & 07;  // get n
                 word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
                 SETHI(CY, tmp18);
             }
@@ -5806,10 +5798,8 @@ static void print_int128 (__int128_t n)
 /**
  * emulator call instruction. Do whatever address field sez' ....
  */
-int
-emCall(DCDstruct *i)
+static int emCall(DCDstruct *i)
 {
-    //fprintf(stderr, "emCall()... %d\n", TPR.CA);
     switch (i->address) /// address field
     {
         case 1:     ///< putc9 - put 9-bit char in AL to stdout

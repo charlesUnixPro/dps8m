@@ -635,7 +635,6 @@ extern int xec_side_effect;
 #define STOP_WARN   7
 #define STOP_FLT_CASCADE   8
 #define STOP_HALT   9
-extern const char *sim_stop_messages[];
 
 
 // not really STOP codes, but get returned from instruction loops
@@ -710,8 +709,6 @@ extern DEVICE iom_dev;
 extern DEVICE tape_dev;
 extern DEVICE disk_dev;
 extern DEVICE *sim_devices[];
-extern UNIT mt_unit [];
-extern UNIT cpu_unit [];
 extern FILE *sim_deb;
 
 void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
@@ -974,10 +971,6 @@ typedef enum eCAFoper eCAFoper;
 #define TRANSOP(i) ((bool) (i->info->flags & (TRANSFER_INS) ))
 
 word24 doFinalAddressCalculation(DCDstruct *i, MemoryAccessType accessType, word15 segno, word18 offset, word36 *ACVfaults);
-
-extern bool didITSITP; ///< true after an ITS/ITP processing
-
-
 
 //
 // EIS stuff ...
@@ -1280,24 +1273,6 @@ struct MOPstruct
     int (*f)(EISstruct *e);    // pointer to mop() [returns character to be stored]
 };
 
-
-int mopINSM (EISstruct *);
-int mopENF  (EISstruct *);
-int mopSES  (EISstruct *);
-int mopMVZB (EISstruct *);
-int mopMVZA (EISstruct *);
-int mopMFLS (EISstruct *);
-int mopMFLC (EISstruct *);
-int mopINSB (EISstruct *);
-int mopINSA (EISstruct *);
-int mopINSN (EISstruct *);
-int mopINSP (EISstruct *);
-int mopIGN  (EISstruct *);
-int mopMVC  (EISstruct *);
-int mopMSES (EISstruct *);
-int mopMORS (EISstruct *);
-int mopLTE  (EISstruct *);
-int mopCHT  (EISstruct *);
 
 void setupOperandDescriptor(int k, EISstruct *e);
 
@@ -1701,7 +1676,9 @@ extern struct adrMods extMods[0100]; ///< extended address modifiers
 extern char *moc[040];               ///< micro operation codes
 
 extern char GEBcdToASCII[64];   ///< GEBCD => ASCII map
+#ifndef QUIET_UNUSED
 extern char ASCIIToGEBcd[128];  ///< ASCII => GEBCD map
+#endif
 
 void doAddrMods(d8);
 t_stat spec_disp (FILE *st, UNIT *uptr, int value, void *desc);
@@ -1728,12 +1705,16 @@ word36 setbits36(word36 x, uint p, uint n, word36 val);
 
 
 // single precision fp stuff...
+#ifndef QUIET_UNUSED
 double float36ToIEEEdouble(float36 f36);
 float36 IEEEdoubleTofloat36(double f);
+#endif
 // double precision stuff ...
 long double EAQToIEEElongdouble(void);
+#ifndef QUIET_UNUSED
 float72 IEEElongdoubleToFloat72(long double f);
 void IEEElongdoubleToEAQ(long double f0);
+#endif
 
 void ufa(DCDstruct *);
 void ufs(DCDstruct *);
@@ -1777,7 +1758,6 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags);
 void cmp18(word18 op1, word18 op2, word18 *flags);
 void cmp72(word72 op1, word72 op2, word18 *flags);
 
-int emCall(DCDstruct *);  ///< execute locally defined "emulator call" instruction (emcall)
 char *getModString(int32 tag);
 
 int strmask(char *str, char *mask);
@@ -2296,9 +2276,11 @@ void cancel_run(t_stat reason);
 
 // MM's opcode stuff ...
 
+#ifndef QUIET_UNUSED
 extern char *op0text[512];
 extern char *op1text[512];
 extern char *opcodes2text[1024];
+#endif
 
 // Opcodes with low bit (bit 27) == 0.  Enum value is value of upper 9 bits.
 typedef enum {
@@ -2906,14 +2888,10 @@ extern DEVICE clk_dev;
 
 /* dps8_console.c */
 
-int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc);
-int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 int con_iom_fault(int chan, bool pre);
-
 void console_init(void);
 t_stat cable_opcon (int iom_unit_num, int chan_num);
 extern DEVICE opcon_dev;
-extern UNIT opcon_unit [];
 
 /* dps8_cpu.c */
 
@@ -2932,8 +2910,6 @@ t_stat Read (DCDstruct *i, word18 addr, word36 *dat, _processor_cycle_type cycty
 t_stat Write (DCDstruct *i, word18 addr, word36 dat, _processor_cycle_type cyctyp, bool b29);
 
 
-t_stat ReadOP (DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
-t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
 
 // RAW, core stuff ...
 int core_read(word24 addr, word36 *data);
@@ -2948,7 +2924,6 @@ int is_priv_mode(void);
 addr_modes_t get_addr_mode(void);
 void set_addr_mode(addr_modes_t mode);
 
-void ic_history_init(void);
 t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 
 bool sample_interrupts (void);
@@ -2958,6 +2933,7 @@ bool clear_TEMPORARY_ABSOLUTE_mode (void);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 void cpu_init (void);
 void set_went_appending (void);
+int OPSIZE(DCDstruct *i);
 
 /* dps8_append.c */
 
@@ -2990,13 +2966,12 @@ struct dps8faults
     bool        fault_pending;        // when true fault is pending and waiting to be processed
 };
 typedef struct dps8faults dps8faults;
-extern dps8faults _faults[];
 void check_events (void);
 void clearFaultCycle (void);
 void emCallReportFault (void);
 
 /* dps8_ins.c */
-
+extern modificationContinuation _modCont, *modCont;
 void cu_safe_store(void);
 void cu_safe_restore(void);
 void tidy_cu (void);
@@ -3009,6 +2984,7 @@ void initializeTheMatrix (void);
 void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag);
 t_stat displayTheMatrix (int32 arg, char * buf);
 t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29);
+t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
 
 /* dps8_iom.c */
 

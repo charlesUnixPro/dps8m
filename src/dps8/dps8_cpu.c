@@ -14,7 +14,7 @@
 // XXX Use this when we assume there is only a single unit
 #define ASSUME0 0
 
-void cpu_reset_array (void);
+static void cpu_reset_array (void);
 
 /* CPU data structures
  
@@ -27,14 +27,14 @@ void cpu_reset_array (void);
 #define N_CPU_UNITS 1
 // The DPS8M had only 4 ports
 
-UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
+static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
 
 /*! CPU modifier list */
-MTAB cpu_mod[] = {
+static MTAB cpu_mod[] = {
     /* { UNIT_V_UF, 0, "STD", "STD", NULL }, */
     //{ MTAB_XTD|MTAB_VDV, 0, "SPECIAL", NULL, NULL, &spec_disp },
     {
@@ -478,6 +478,7 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
     return SCPE_ARG;
 }
 
+static void ic_history_init(void);
 /*! Reset routine */
 t_stat cpu_reset_mm (DEVICE *dptr)
 {
@@ -949,18 +950,6 @@ DEVICE cpu_dev = {
     NULL            /*!< logical name */
 };
 
-//word36 IWB;         ///< instruction working buffer
-//opCode *iwb = NULL; ///< opCode *
-//int32  opcode;      ///< opcode
-//bool   opcodeX;     ///< opcode extension
-//word18 address;     ///< bits 0-17 of instruction XXX replace with rY
-//bool   a;           ///< bin-29 - indirect addressing mode?
-//bool   i;           ///< interrupt inhinit bit.
-//word6  tag;         ///< instruction tag XXX replace with rTAG
-
-//word18 stiTally;    ///< for sti instruction
-
-
 static DCDstruct *newDCDstruct(void);
 
 static t_stat reason;
@@ -971,7 +960,6 @@ static DCDstruct _currentInstruction;
 DCDstruct *currentInstruction  = &_currentInstruction;;
 
 static EISstruct E;
-//EISstruct *e = &E;
 
 events_t events;
 switches_t switches;
@@ -1214,8 +1202,11 @@ t_stat sim_instr (void)
                 // If we get here, there was no interrupt
 
                 clear_TEMPORARY_ABSOLUTE_mode ();
-                // Restores addressing mode and cpu.cycle
+                // Restores addressing mode 
                 cu_safe_restore ();
+// The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
+// we can safely assume that is the state that should be restored.
+                cpu . cycle = FETCH_cycle;
                 break;
 
             case INTERRUPT_EXEC_cycle:
@@ -1519,7 +1510,10 @@ t_stat sim_instr (void)
                 PPR . PRR = 0;
 
                 int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
-                word24 addr = fltAddress + _faults [cpu . faultNumber] . fault_address;    // absolute address of fault YPair
+// XXX this seems an overly complicated way or colculating that the fault
+// address is twice the fault number.
+                //word24 addr = fltAddress + _faults [cpu . faultNumber] . fault_address;    // absolute address of fault YPair
+                word24 addr = fltAddress +  2 * cpu . faultNumber;    // absolute address of fault YPair
   
                 // XXX using core_read2 means decode instruction isn't used
                 core_read2(addr, instr_buf, instr_buf + 1);
@@ -1655,6 +1649,7 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 // read N words in a non-aligned fashion for EIS
 //
 // XXX here is where we probably need to to the prepage thang...
+#ifndef QUIET_UNUSED
 t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
@@ -1667,6 +1662,7 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     
     return SCPE_OK;
 }
+#endif
 
 int OPSIZE(DCDstruct *i)
 {
@@ -1878,6 +1874,7 @@ int core_write2(word24 addr, word36 even, word36 odd) {
 #if 1   //def MM
 
 
+#ifndef QUIET_UNUSED
 //=============================================================================
 
 /*
@@ -1907,7 +1904,7 @@ void encode_instr(const instr_t *ip, word36 *wordp)
         *wordp = setbits36(*wordp, 32, 4, ip->mods.mf1.reg);
     }
 }
-
+#endif
 
 
 #endif // MM
@@ -2159,7 +2156,7 @@ void set_addr_mode(addr_modes_t mode)
 static int ic_hist_max = 0;
 static int ic_hist_ptr;
 static int ic_hist_wrapped;
-enum hist_enum { h_instruction, h_fault, h_intr } htype;
+enum hist_enum { h_instruction, h_fault, h_intr };
 struct ic_hist_t {
     addr_modes_t addr_mode;
     uint seg;
@@ -2177,7 +2174,7 @@ typedef struct ic_hist_t ic_hist_t;
 
 static ic_hist_t *ic_hist;
 
-void ic_history_init(void)
+static void ic_history_init(void)
 {
     ic_hist_wrapped = 0;
     ic_hist_ptr = 0;
@@ -2207,8 +2204,6 @@ static struct
 
   } cpu_array [N_CPU_UNITS_MAX];
 
-// XXX when multiple cpus are supported, merge this into cpu_reset
-
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
   {
     if (cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse)
@@ -2216,7 +2211,9 @@ int query_scu_unit_num (int cpu_unit_num, int cpu_port_num)
     return -1;
   }
 
-void cpu_reset_array (void)
+// XXX when multiple cpus are supported, merge this into cpu_reset
+
+static void cpu_reset_array (void)
   {
     for (int i = 0; i < N_CPU_UNITS_MAX; i ++)
       for (int p = 0; p < N_CPU_UNITS; p ++)
@@ -2576,7 +2573,7 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
     return SCPE_OK;
   }
 
-int words2its (word36 word1, word36 word2, struct _par * prp)
+static int words2its (word36 word1, word36 word2, struct _par * prp)
   {
     if ((word1 & MASKBITS(6)) != 043)
       {

@@ -78,7 +78,6 @@ word18 getCr(word4 Tdes)
 /*
  * New address stuff (EXPERIMENTAL)
  */
-extern int OPSIZE(DCDstruct *i);    // dps8_cpu.c
 
 PRIVATE
 char *
@@ -387,7 +386,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
             ///< For each reference to the indirect word, the ADDRESS field is increased by 1 and the TALLY field is reduced by 1 after the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field is reduced to 0, the tally runout indicator is set ON, otherwise it is set OFF. The TAG field of the indirect word is ignored. The computed address is the value of the unmodified ADDRESS field.
         
         //if (operType == writeCY)
-        //{
+
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): restoring continuation '%s'\n", modContSTR(modCont));
         
             TPR.CA = modCont->address;
@@ -437,9 +436,9 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
 /*
  * new stuff ...
  */
-word36 itxPair[2];   // a Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
+static word36 itxPair[2];   // a Y-pair for ITS/ITP operations (so we don't have to muck with the real Ypair)
 
-bool didITSITP = false; ///< true after an ITS/ITP processing
+static bool didITSITP = false; ///< true after an ITS/ITP processing
 
 static void doITP(word4 Tag)
 {

@@ -59,7 +59,7 @@ static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * des
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read);
 static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-UNIT disk_unit [N_DISK_UNITS_MAX] =
+static UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
     {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
     {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
@@ -79,7 +79,7 @@ UNIT disk_unit [N_DISK_UNITS_MAX] =
     {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)}
   };
 
-#define DISK_UNIT_NUM(uptr) ((uptr) - mt_unit)
+#define DISK_UNIT_NUM(uptr) ((uptr) - disk_unit)
 
 static DEBTAB disk_dt [] =
   {

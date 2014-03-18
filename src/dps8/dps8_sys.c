@@ -46,7 +46,7 @@ static t_stat virtAddrN (int address);
 static t_stat virtAddr (int32 arg, char * buf);
 static t_stat sbreak (int32 arg, char * buf);
 
-CTAB dps8_cmds[] =
+static CTAB dps8_cmds[] =
 {
     {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n"},
     {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n"},
@@ -389,7 +389,7 @@ static t_stat setSearchPath (int32 arg, char * buf)
 
 static t_stat test (int32 arg, char * buf)
   {
-    listSource (buf, 0);
+    //listSource (buf, 0);
     return SCPE_OK;
   }
 
@@ -1263,7 +1263,7 @@ t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
     if (!((uint) sw & SWMASK ('M')))
         return SCPE_ARG;
     
-    if (uptr == &cpu_unit[0])
+    if (uptr == &cpu_dev . units [0])
     {
         word36 word1 = *val;
         
@@ -1447,7 +1447,7 @@ static t_stat sys_reset (DEVICE *dptr)
     return SCPE_OK;
   }
 
-DEVICE sys_dev = {
+static DEVICE sys_dev = {
     (char *) "SYS",       /* name */
     NULL,        /* units */
     NULL,        /* registers */

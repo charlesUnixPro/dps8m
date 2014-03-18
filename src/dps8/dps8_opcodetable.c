@@ -551,7 +551,6 @@ struct opCode NonEISopcodes[01000] = {
 
 };
 
-/* TODO: bit27=1 opcodes, EIS */
 struct opCode EISopcodes[01000] = {
      /* 000 - 017 */ 
     {},
@@ -1230,6 +1229,7 @@ char GEBcdToASCII[64] = ///< from pg 271 CPB1004F_GE635pgmRef_Jul69
 /* 070 - 077 */    'Y', 'Z', '_', ',', '%', '=', '"', '!'
 };
 
+#ifndef QUIET_UNUSED
 char ASCIIToGEBcd[128] =
 {
 /* 000 - 007 */    -1, -1, -1, -1, -1, -1, -1, -1,
@@ -1249,11 +1249,9 @@ char ASCIIToGEBcd[128] =
 /* 160 - 167 */    39, 40, 41, 50, 51, 52, 53, 54,
 /* 170 - 177 */    55, 56, 57, -1, -1, -1, -1, -1,
 };
+#endif
 
-// MM
-//#ifndef NULL
-//#define NULL ((void*) 0)
-//#endif
+#ifndef QUIET_UNUSED
 char *op0text[512] = {
 	// index by upper 9 bits of those opcodes with bit 27 == 0
 	NULL,    "mme",   "drl",   NULL,    "mme2",  "mme3",  NULL,    "mme4",
@@ -1321,7 +1319,9 @@ char *op0text[512] = {
 	"lprp0", "lprp1", "lprp2", "lprp3", "lprp4", "lprp5", "lprp6", "lprp7",
 	NULL,    "arl",   "qrl",   "lrl",   "gtb",   "alr",   "qlr",   "llr"
 };
+#endif
 
+#ifndef QUIET_UNUSED
 char *op1text[512] = {
 	// index by upper 9 bits of those opcodes with bit 27 == 1
 	NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,    NULL,
@@ -1389,7 +1389,9 @@ char *op1text[512] = {
 	"lar0",  "lar1",  "lar2",  "lar3",  "lar4",  "lar5",  "lar6",  "lar7",
 	NULL,    NULL,    NULL,    NULL,    "lra",   NULL,    NULL,    NULL
 };
+#endif
 
+#ifndef QUIET_UNUSED
 char *opcodes2text[1024] = {
 	// index by all 10 bits of all opcodes
 	NULL,    NULL,    "mme",   NULL,    "drl",   NULL,    NULL,    NULL,
@@ -1521,3 +1523,4 @@ char *opcodes2text[1024] = {
 	NULL,    NULL,    "arl",   NULL,    "qrl",   NULL,    "lrl",   NULL,
 	"gtb",   "lra",   "alr",   NULL,    "qlr",   NULL,    "llr",   NULL
 };
+#endif

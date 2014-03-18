@@ -99,7 +99,7 @@ static int mt_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint *
 #define N_MT_UNITS_MAX 16
 #define N_MT_UNITS 1 // default
 
-UNIT mt_unit [N_MT_UNITS_MAX] = {
+static UNIT mt_unit [N_MT_UNITS_MAX] = {
     // NOTE: other SIMH tape sims don't set UNIT_SEQ
     // CAC: Looking at SIMH source, the only place UNIT_SEQ is used
     // by the "run" command's reset sequence; units that have UNIT_SEQ

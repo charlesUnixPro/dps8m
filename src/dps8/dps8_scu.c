@@ -537,7 +537,7 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
                           // The phys addr width is 24 bits, and 2^24 = 16M
 
 #define N_SCU_UNITS 1 // Default
-UNIT scu_unit [N_SCU_UNITS_MAX] =
+static UNIT scu_unit [N_SCU_UNITS_MAX] =
   {
     { UDATA(NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };

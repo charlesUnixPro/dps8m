@@ -2025,6 +2025,24 @@ char* mopCodes[040] = {
 };
 #endif
 
+static int mopINSM (EISstruct *);
+static int mopENF  (EISstruct *);
+static int mopSES  (EISstruct *);
+static int mopMVZB (EISstruct *);
+static int mopMVZA (EISstruct *);
+static int mopMFLS (EISstruct *);
+static int mopMFLC (EISstruct *);
+static int mopINSB (EISstruct *);
+static int mopINSA (EISstruct *);
+static int mopINSN (EISstruct *);
+static int mopINSP (EISstruct *);
+static int mopIGN  (EISstruct *);
+static int mopMVC  (EISstruct *);
+static int mopMSES (EISstruct *);
+static int mopMORS (EISstruct *);
+static int mopLTE  (EISstruct *);
+static int mopCHT(EISstruct *e);
+
 PRIVATE
 MOPstruct mopTab[040] = {
     {NULL, 0},
@@ -2082,7 +2100,7 @@ char* defaultEditInsertionTable = " *+-$,.0";
  * FLAGS: None affected
  * NOTE: C(IF) is not interpreted for this operation.
  ￼￼￼*/
-int mopCHT(EISstruct *e)
+static int mopCHT(EISstruct *e)
 {
     memset(&e->editInsertionTable, 0, sizeof(e->editInsertionTable)); // XXX do we really need this?
     for(int i = 0 ; i < 8 ; i += 1)
@@ -2117,7 +2135,7 @@ int mopCHT(EISstruct *e)
  *      ES - If OFF, then set ON
  *      BZ - If bit 1 of C(IF) = 1, then set ON; otherwise, unchanged
  */
-int mopENF(EISstruct *e)
+static int mopENF(EISstruct *e)
 {
     // For IF(0) = 0 (end floating-sign operation),
     if (!(e->mopIF & 010))
@@ -2159,7 +2177,7 @@ int mopENF(EISstruct *e)
  * The next IF characters in the source data field are ignored and the sending tally is reduced accordingly.
  * FLAGS: None affected
  */
-int mopIGN(EISstruct *e)
+static int mopIGN(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2182,7 +2200,7 @@ int mopIGN(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
-int mopINSA(EISstruct *e)
+static int mopINSA(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
@@ -2230,7 +2248,7 @@ int mopINSA(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
-int mopINSB(EISstruct *e)
+static int mopINSB(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
@@ -2274,7 +2292,7 @@ int mopINSB(EISstruct *e)
  * Edit insertion table entry 1 is moved to the next IF (1-16) receiving field characters.
  * FLAGS: None affected
  */
-int mopINSM(EISstruct *e)
+int static mopINSM(EISstruct *e)
 {
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
@@ -2293,7 +2311,7 @@ int mopINSM(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
-int mopINSN(EISstruct *e)
+static int mopINSN(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
@@ -2336,7 +2354,7 @@ int mopINSN(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
-int mopINSP(EISstruct *e)
+static int mopINSP(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
     if (e->mopIF >= 9 && e->mopIF <= 15)
@@ -2375,7 +2393,7 @@ int mopINSP(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 0 or C(IF) = 9-15, an Illegal Procedure fault occurs.
  */
-int mopLTE(EISstruct *e)
+static int mopLTE(EISstruct *e)
 {
     if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
     {
@@ -2406,7 +2424,7 @@ int mopLTE(EISstruct *e)
  unchanged.
  * NOTE: Since the number of characters moved to the receiving string is data-dependent, a possible IPR fault may be avoided by ensuring that the Z and BZ flags are ON.
  */
-int mopMFLC(EISstruct *e)
+static int mopMFLC(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2476,7 +2494,7 @@ int mopMFLC(EISstruct *e)
  *     ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it is unchanged.
  * NOTE: Since the number of characters moved to the receiving string is data-dependent, a possible Illegal Procedure fault may be avoided by ensuring that the Z and BZ flags are ON.
  */
-int mopMFLS(EISstruct *e)
+static int mopMFLS(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2563,7 +2581,7 @@ int mopMFLS(EISstruct *e)
  * MORS can be used to generate a negative overpunch for a receiving field to be used later as a sending field.
  * FLAGS: None affected
  */
-int mopMORS(EISstruct *e)
+static int mopMORS(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2596,7 +2614,7 @@ int mopMORS(EISstruct *e)
  * FLAGS: (Flags not listed are not affected.)
  * SN If edit insertion table entry 4 is found in C(Y-1), then ON; otherwise, it is unchanged.
  */
-int mopMSES(EISstruct *e)
+static int mopMSES(EISstruct *e)
 {
     if (e->mvne == true)
         return mopMVC(e);   // XXX I think!
@@ -2672,7 +2690,7 @@ int mopMSES(EISstruct *e)
  * The next IF characters in the source data field are moved to the receiving data field.
  * FLAGS: None affected
  */
-int mopMVC(EISstruct *e)
+static int mopMVC(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2701,7 +2719,7 @@ int mopMVC(EISstruct *e)
  * FLAGS: (Flags not listed are not affected.)
  * ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it is unchanged.
  */
-int mopMVZA(EISstruct *e)
+static int mopMVZA(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2752,7 +2770,7 @@ int mopMVZA(EISstruct *e)
  * FLAGS: (Flags not listed are not affected.)
  *   ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it is unchanged.
  */
-int mopMVZB(EISstruct *e)
+static int mopMVZB(EISstruct *e)
 {
     if (e->mopIF == 0)
         e->mopIF = 16;
@@ -2803,7 +2821,7 @@ int mopMVZB(EISstruct *e)
  * ES set by this micro operation
  * BZ If bit 1 of C(IF) = 1, then ON; otherwise, it is unchanged.
  */
-int mopSES(EISstruct *e)
+static int mopSES(EISstruct *e)
 {
     if (e->mopIF & 010)
         e->mopES = true;
@@ -3481,7 +3499,7 @@ void mrl(DCDstruct *ins)
     }
 }
 
-word9 xlate(word36 *xlatTbl, int dstTA, int c)
+static word9 xlate(word36 *xlatTbl, int dstTA, int c)
 {
     int idx = (c / 4) & 0177;      // max 128-words (7-bit index)
     word36 entry = xlatTbl[idx];

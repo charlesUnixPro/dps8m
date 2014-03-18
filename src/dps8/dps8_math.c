@@ -60,6 +60,7 @@ long double EAQToIEEElongdouble(void)
     return (S ? -1 : 1) * ldexpl(m, e);
 }
 
+#ifndef QUIET_UNUSED
 /*!
  * return normalized dps8 representation of IEEE double f0 ...
  */
@@ -115,8 +116,10 @@ float72 IEEElongdoubleToFloat72(long double f0)
     
     return result;
 }
+#endif
 
 
+#ifndef QUIET_UNUSED
 static long double
 MYfrexpl(long double x, int *exp)
 {
@@ -168,7 +171,9 @@ MYfrexpl(long double x, int *exp)
     *exp = exponent;
     return x;
 }
+#endif
 
+#ifndef QUIET_UNUSED
 /*!
  * Store EAQ with normalized dps8 representation of IEEE double f0 ...
  */
@@ -218,7 +223,9 @@ void IEEElongdoubleToEAQ(long double f0)
     rA = (result >> 36) & MASK36;
     rQ = result & MASK36;
 }
+#endif
 
+#ifndef QUIET_UNUSED
 /*!
  * return IEEE double version dps8 single-precision number ...
  */
@@ -261,7 +268,9 @@ double float36ToIEEEdouble(float36 f36)
     
     return (S ? -1 : 1) * ldexp(m, e);
 }
+#endif
 
+#ifndef QUIET_UNUSED
 /*!
  * return normalized dps8 representation of IEEE double f0 ...
  */
@@ -311,6 +320,7 @@ float36 IEEEdoubleTofloat36(double f0)
     
     return result;
 }
+#endif
 
 /*
  * single-precision arithmetic routines ...
@@ -709,7 +719,6 @@ void fneg(DCDstruct *ins)
     //bool ov = ((m & FLOAT72SIGN) == (mc & FLOAT72SIGN)); // the "weird" number!
     bool ov = ((m & ((word72)1 << 71)) == (mc & ((word72)1 << 71))); // the "weird" number!
 //    if (ov)
-//    {
 //    bool ov = ((m & 01000000000LL) == (mc & 01000000000LL)); // the "weird" number.
     if (ov && m != 0)
     {
@@ -1269,7 +1278,7 @@ void fcmg(DCDstruct *ins)
  */
 
 //! extract mantissa + exponent from a YPair ....
-void YPairToExpMant(word36 Ypair[], word72 *mant, int8 *exp)
+static void YPairToExpMant(word36 Ypair[], word72 *mant, int8 *exp)
 {
     *mant = (word72)bitfieldExtract36(Ypair[0], 0, 28) << 44;   // 28-bit mantissa (incl sign)
     *mant |= (Ypair[1] & DMASK) << 8;
@@ -1277,7 +1286,7 @@ void YPairToExpMant(word36 Ypair[], word72 *mant, int8 *exp)
 }
 
 //! combine mantissa + exponent intoa YPair ....
-void ExpMantToYpair(word72 mant, int8 exp, word36 *yPair)
+static void ExpMantToYpair(word72 mant, int8 exp, word36 *yPair)
 {
     yPair[0] = (word36)exp << 28;
     yPair[0] |= (mant >> 44) & 01777777777LL;

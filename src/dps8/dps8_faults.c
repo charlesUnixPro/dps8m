@@ -99,7 +99,8 @@ static dps8faults _faultsP[] = { // sorted by priority
     {   -1,     -1,     NULL,   NULL,                       -1,     -1,     false }
 };
 #endif
-dps8faults _faults[] = {    // sorted by number
+#ifndef QUIET_UNUSED
+static dps8faults _faults[] = {    // sorted by number
     //  number  address  mnemonic   name                 Priority    Group
     {   0,       0 ,    "sdf",  "Shutdown",             	27,	     7,     false },
     {   1,       2 ,    "str",  "Store",                	10,	     4,     false },
@@ -136,6 +137,7 @@ dps8faults _faults[] = {    // sorted by number
 
     {   -1,     -1,     NULL,   NULL,                       -1,     -1,     false }
 };
+#endif
 
 //bool pending_fault = false;     // true when a fault has been signalled, but not processed
 
@@ -164,6 +166,7 @@ static int fault2prio[32] = {
     18, 19,  0,  0,  0,  0,  0,  3
 };
 #endif
+#ifndef QUIET_UNUSED
 // Fault conditions as stored in the "FR" Fault Register
 // C99 and C++ would allow 64bit enums, but bits past 32 are related to (unimplemented) parity faults.
 typedef enum {
@@ -174,6 +177,7 @@ typedef enum {
     fr_ill_proc = 1 << 3 // illegal procedure other than the above three
     // fr_ill_dig = 1 << 6 // illegal decimal digit
 } fault_cond_t;
+#endif
 
 #if 0 // DPS8M
 // "MR" Mode Register, L68
