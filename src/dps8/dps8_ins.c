@@ -416,6 +416,57 @@ t_stat prepareComputedAddress(DCDstruct *i)
 
 static bool lastTRA = false;
 
+DCDstruct * setupInstruction (void)
+{
+    cpu.read_addr = TPR.CA;
+    
+    DCDstruct *i = decodeInstruction(cu . IWB, currentInstruction);
+
+    lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
+    
+    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
+    if ((i->info->flags & PRIV_INS) && !is_priv_mode())
+        doFault(i, illproc_fault, 0, "Attempted execution of privileged instruction.");
+    
+    // check for illegal addressing mode(s) ...
+    
+    // No CI/SC/SCR allowed
+    if (i->info->mods == NO_CSS)
+    {
+        if (_nocss[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal CI/SC/SCR modification");
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (i->info->mods == NO_DDCSS)
+    {
+        if (_noddcss[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (i->info->mods == NO_DLCSS)
+    {
+        if (_nodlcss[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+    }
+    // No DU/DL allowed
+    else if (i->info->mods == NO_DUDL)
+    {
+        if (_nodudl[i->tag])
+            doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
+    }
+    if (cu . xdo == 1) // Execute even or odd of XED
+    {
+        if (i->info->flags == NO_XED)
+            doFault(i, illproc_fault, 0, "Instruction not allowed in XED");
+    }
+    if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
+    {
+        if (i->info->flags == NO_XEC)
+            doFault(i, illproc_fault, 0, "Instruction not allowed in XEC");
+    }
+    return i;
+}
+
 DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution at address
 {
     DCDstruct *p = ins; //(ins == NULL) ? newDCDstruct() : ins;
@@ -451,6 +502,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
 
     Read(NULL, addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
+#if 0
     cpu.read_addr = addr;
     
     DCDstruct *i = decodeInstruction(cu . IWB, p);
@@ -489,7 +541,9 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     }
 
     // TODO: Need to add no DL restrictions?
-    
+#else
+    DCDstruct *i = setupInstruction ();
+#endif
     return i;
 }
 
@@ -3872,49 +3926,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 if (ret)
                     return (ret);
 #endif
-                // Copied from fetchInstruction
                 cu . IWB = CY;
-
-                cpu.read_addr = TPR.CA;
-    
-                DCDstruct *i = decodeInstruction(cu . IWB, currentInstruction);
-
-                lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
-    
-                // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
-                if ((i->info->flags & PRIV_INS) && !is_priv_mode())
-                    doFault(i, illproc_fault, 0, "Attempted execution of privileged instruction.");
-    
-                // check for illegal addressing mode(s) ...
-    
-                // No CI/SC/SCR allowed
-                if (i->info->mods == NO_CSS)
-                {
-                    if (_nocss[i->tag])
-                        doFault(i, illproc_fault, 0, "Illegal CI/SC/SCR modification");
-                }
-                // No DU/DL/CI/SC/SCR allowed
-                else if (i->info->mods == NO_DDCSS)
-                {
-                    if (_noddcss[i->tag])
-                        doFault(i, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
-                }
-                // No DL/CI/SC/SCR allowed
-                else if (i->info->mods == NO_DLCSS)
-                {
-                    if (_nodlcss[i->tag])
-                        doFault(i, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
-                }
-                // No DU/DL allowed
-                else if (i->info->mods == NO_DUDL)
-                {
-                    if (_nodudl[i->tag])
-                        doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
-                }
-
-                cpu . cycle = EXEC_cycle;
-                longjmp (jmpMain, JMP_ENTRY);
+                cu . xde = 1;
+                cu . xdo = 0;
+                //cpu . cycle = EXEC_cycle;
+                //longjmp (jmpMain, JMP_ENTRY);
             }
+            break;
             
         case 0717:  ///< xed
             {
@@ -3929,6 +3947,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             // XXX This is probably way wrong and too simplistic, but it's a start ...
                
+#if 0
 #ifdef XEC_MOVED_OUT_OF_SWITCH
             DCDstruct _xec;   // our decoded instruction struct
             EISstruct _eis;
@@ -3961,8 +3980,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 if (ret)
                     return (ret);
 
+#endif
+                cu . IWB = Ypair [0];
+                cu . IRODD = Ypair [1];
+                cu . xde = 1;
+                cu . xdo = 1;
             }
-            
             break;
             
         case 0001:   ///< mme
@@ -5704,6 +5727,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
 
 }
 
+#if 0
 /*
  * Perform a XED instruction according to Ypair.
  * (It has been borken out of the main instruction execution switch to facilitate it's use
@@ -5766,6 +5790,7 @@ t_stat doXED(word36 *Ypair)
     
     return (ret);
 }
+#endif
 
 static void print_uint128_r (__uint128_t n)
 {

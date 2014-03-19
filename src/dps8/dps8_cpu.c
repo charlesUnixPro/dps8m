@@ -1265,10 +1265,28 @@ t_stat sim_instr (void)
                     break;
                   }
 
-                //if ((! cu . rpt) && (! cu . rd))
+                // If we have done the even of an XED, do the odd
+                if (cu . xde == 0 && cu . xdo == 1)
+                  {
+                    // Get the odd
+                    cu . IWB = cu . IRODD;
+                    ci = setupInstruction ();
+                    cu . xde = cu . xdo = 0; // and done
+                  }
+                else if (cu . xde == 1 && cu . xdo == 1)
+                  {
+                    ci = setupInstruction ();
+                    cu . xde = 0; // do the odd next time
+                    cu . xdo = 1;
+                  }
+                else if (cu . xde == 1)
+                  {
+                    ci = setupInstruction ();
+                    cu . xde = cu . xdo = 0; // and done
+                  }
+                else
                   {
                     processorCycle = INSTRUCTION_FETCH;
-
                     // fetch next instruction into current instruction struct
                     ci = fetchInstruction(PPR.IC, currentInstruction);
                   }
@@ -1288,7 +1306,6 @@ t_stat sim_instr (void)
                     cpu . g7_flag = false;
                   }
 
-                //static int Xn; // XXX does this need to be kept over faults?
                 if (cu . rpt || cu .rd)
                   {
 //sim_debug (DBG_TRACE, & cpu_dev, "cpu repeat\n");
@@ -1355,6 +1372,7 @@ t_stat sim_instr (void)
                   }
                 if (ret == CONT_TRA)
                   {
+                    cu . xde = cu . xdo = 0;
                     cpu . cycle = FETCH_cycle;
                     break;   // don't bump PPR.IC, instruction already did it
                   }
@@ -1462,6 +1480,17 @@ t_stat sim_instr (void)
 
                   } // if (cu . rpt || cu . rd & (PPR.IC & 1))
 
+                if (cu . xde == 1 && cu . xdo == 1) // we just did the even of an XED
+                  {
+                    cpu . cycle = FETCH_cycle;
+                    break;
+                  }
+                if (cu . xde) // We just did a xec or xed instruction
+                  {
+                    cpu . cycle = FETCH_cycle;
+                    break;
+                  }
+                cu . xde = cu . xdo = 0;
                 PPR.IC ++;
                 if (ci->info->ndes > 0)
                   PPR.IC += ci->info->ndes;
@@ -1549,7 +1578,8 @@ t_stat sim_instr (void)
                 else
                   cu . IWB = instr_buf [1];
 
-                decodeInstruction (cu . IWB, ci);
+                //decodeInstruction (cu . IWB, ci);
+                ci = setupInstruction ();
 
 // The normal start state of the CPU is a trouble fault cascade until the
 // iom boot generates in interrupt; therefore, despite the fact that AL39

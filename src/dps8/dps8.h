@@ -2157,6 +2157,12 @@ typedef struct {
     bool rpt;     // execute an rpt instruction
     bool rd;     // execute an rpd instruction
     uint CT_HOLD;   // 6 bits at 5[30..35]; contents of the "remember modifier" register
+
+    //xde xdo
+    // 0   0   no execute           -> 0 0
+    // 1   0   execute XEC          -> 0 0
+    // 1   1   execute even of XED  -> 0 1
+    // 0   1   execute odd of XED   -> 0 0
     bool xde;     // execute even instr from xed pair
     bool xdo;     // execute even instr from xed pair
     
@@ -2979,6 +2985,7 @@ extern modificationContinuation _modCont, *modCont;
 void cu_safe_store(void);
 void cu_safe_restore(void);
 void tidy_cu (void);
+DCDstruct * setupInstruction (void);
 t_stat executeInstruction(DCDstruct *ci);
 t_stat prepareComputedAddress(DCDstruct *ci);   // new
 
