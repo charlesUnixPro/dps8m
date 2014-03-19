@@ -40,9 +40,9 @@ static t_stat loadSystemBook (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
 static t_stat setSearchPath (int32 arg, char * buf);
-static t_stat absAddrN (int segno, int offset);
+static t_stat absAddrN (int segno, uint offset);
 static t_stat test (int32 arg, char * buf);
-static t_stat virtAddrN (int address);
+static t_stat virtAddrN (uint address);
 static t_stat virtAddr (int32 arg, char * buf);
 static t_stat sbreak (int32 arg, char * buf);
 
@@ -228,7 +228,8 @@ struct bookComponent
   {
     char * compname;
     int bookSegmentNum;
-    int txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length;
+    uint txt_start, txt_length;
+    int intstat_start, intstat_length, symbol_start, symbol_length;
   } bookComponents [bookComponentsMax];
 
 static int nBookComponents = 0;
@@ -255,7 +256,7 @@ static int addBookSegment (char * name, int segno)
     return n;
   }
  
-static int addBookComponent (int segnum, char * name, int txt_start, int txt_length, int intstat_start, int intstat_length, int symbol_start, int symbol_length)
+static int addBookComponent (int segnum, char * name, uint txt_start, uint txt_length, int intstat_start, int intstat_length, int symbol_start, int symbol_length)
   {
     if (nBookComponents >= bookComponentsMax)
       return -1;
@@ -298,7 +299,7 @@ char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, 
       return NULL;
 
     int best = -1;
-    int bestoffset = 0;
+    uint bestoffset = 0;
 
     for (int j = 0; j < nBookComponents; j ++)
       {
@@ -552,13 +553,14 @@ fileDone:
 
 static t_stat absAddr (int32 arg, char * buf)
   {
-    int segno, offset;
+    int segno;
+    uint offset;
     if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
       return SCPE_ARG;
     return absAddrN (segno, offset);
   }
 
-t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset)
+t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
   {
     word24 res;
 
@@ -579,8 +581,8 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset)
         // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
 
         word36 SDWe, SDWo;
-        core_read (DSBR . ADDR + 2 * /*TPR . TSR*/ segno, & SDWe);
-        core_read (DSBR . ADDR + 2 * /*TPR . TSR*/ segno  + 1, & SDWo);
+        core_read (DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno, & SDWe);
+        core_read (DSBR . ADDR + 2U * /*TPR . TSR*/ (uint) segno  + 1, & SDWo);
 
         // 3. If SDW.F = 0, then generate directed fault n where n is given in
         // SDW.FC. The value of n used here is the value assigned to define a
@@ -628,8 +630,8 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset)
         //       y1 = (2 * segno) modulo 1024
         //       x1 = (2 * segno ­ y1) / 1024
 
-        word24 y1 = (2 * segno) % 1024;
-        word24 x1 = (2 * segno - y1) / 1024;
+        word24 y1 = (2 * (uint) segno) % 1024;
+        word24 x1 = (2 * (uint) segno - y1) / 1024;
 
         // 3. Fetch the descriptor segment PTW(x1) from DSBR.ADR + x1.
 
@@ -761,7 +763,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset)
     return SCPE_OK;
   }
 
-static t_stat absAddrN (int segno, int offset)
+static t_stat absAddrN (int segno, uint offset)
   {
     word24 res;
 
@@ -798,13 +800,13 @@ static t_stat sbreak (int32 arg, char * buf)
 
 static t_stat virtAddr (int32 arg, char * buf)
   {
-    int address;
+    uint address;
     if (sscanf (buf, "%i", & address) != 1)
       return SCPE_ARG;
     return virtAddrN (address);
   }
 
-static t_stat virtAddrN (int address)
+static t_stat virtAddrN (uint address)
   {
     if (DSBR.U) {
         for(word15 segno = 0; 2 * segno < 16 * (DSBR.BND + 1); segno += 1)
@@ -1035,7 +1037,8 @@ static t_stat loadSystemBook (int32 arg, char * buf)
             continue;
           }
 
-        int txt_start, txt_length, intstat_start, intstat_length, symbol_start, symbol_length;
+        uint txt_start, txt_length;
+        int intstat_start, intstat_length, symbol_start, symbol_length;
         cnt = sscanf (filebuf, "%32s %o %o %o %o %o %o", name, & txt_start, & txt_length, & intstat_start, & intstat_length, & symbol_start, & symbol_length);
 
         if (cnt == 7)
@@ -1145,7 +1148,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         
         // determine if segment is numeric or symbolic...
         char *endp;
-        int PRoffset = 0;   // offset from PR[n] register (if any)
+        word18 PRoffset = 0;   // offset from PR[n] register (if any)
         int segno = (int)strtoll(seg, &endp, 8);
         if (endp == seg)
         {
@@ -1158,7 +1161,6 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
                 {
                     segno = PR[prt->n].SNR;
                     PRoffset = PR[prt->n].WORDNO;
-                    
                     break;
                 }
                 
@@ -1180,7 +1182,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         }
         
         // determine if offset is numeric or symbolic entry point/segdef...
-        int offset = (int)strtoll(off, &endp, 8);
+        uint offset = (uint)strtoll(off, &endp, 8);
         if (endp == off)
         {
             // not numeric...
@@ -1192,14 +1194,14 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
 
                 return 0;
             }
-            offset = s->value;
+            offset = (uint) s->value;
         }
         
         // if we get here then seg contains a segment# and offset.
         // So, fetch the actual address given the segment & offset ...
         // ... and return this absolute, 24-bit address
         
-        t_addr absAddr = getAddress(segno, offset + PRoffset);
+        word24 absAddr = (word24) getAddress(segno, (int) (offset + PRoffset));
         
         // TODO: only luckily does this work FixMe
         *optr = endp;   //cptr + strlen(cptr);
@@ -1210,7 +1212,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
     {
         // a PR or alias thereof
         int segno = 0;
-        int offset = 0;
+        word24 offset = 0;
         struct PRtab *prt = _prtab;
         while (prt->alias)
         {
@@ -1225,7 +1227,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
         }
         if (prt->alias)    // a PR or alias
         {
-            t_addr absAddr = getAddress(segno, offset);
+            word24 absAddr = (word24) getAddress(segno, (int) offset);
             *optr = cptr + strlen(prt->alias);
         
             return absAddr;
@@ -1239,7 +1241,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
 static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr simh_addr)
 {
     char temp[256];
-    bool bFound = getSegmentAddressString(simh_addr, temp);
+    bool bFound = getSegmentAddressString((int)simh_addr, temp);
     if (bFound)
         fprintf(stream, "%s (%08o)", temp, simh_addr);
     else

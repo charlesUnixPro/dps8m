@@ -26,21 +26,21 @@ enum { max_channels = 32 }; // enums are more constant than consts...
 
 typedef struct pcw_s
   {
-    int dev_cmd;    // 6 bits; 0..5
-    int dev_code;   // 6 bits; 6..11
-    int ext;        // 6 bits; 12..17; address extension
-    int cp;         // 3 bits; 18..20, must be all ones
-    bool mask;    // extension control or mask; 1 bit; bit 21
-    int control;    // 2 bits; bit 22..23
-    int chan_cmd;   // 6 bits; bit 24..29;
+    uint dev_cmd;    // 6 bits; 0..5
+    uint dev_code;   // 6 bits; 6..11
+    uint ext;        // 6 bits; 12..17; address extension
+    uint cp;         // 3 bits; 18..20, must be all ones
+    uint mask;    // extension control or mask; 1 bit; bit 21
+    uint control;    // 2 bits; bit 22..23
+    uint chan_cmd;   // 6 bits; bit 24..29;
     // AN87 says: 00 single record xfer, 02 non data xfer,
     // 06 multi-record xfer, 10 single char record xfer
-    int chan_data;  // 6 bits; bit 30..35; often some sort of count
+    uint chan_data;  // 6 bits; bit 30..35; often some sort of count
     //
-    int chan;       // 6 bits; bits 3..8 of word 2
+    uint chan;       // 6 bits; bits 3..8 of word 2
   } pcw_t;
 
 
 typedef int iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-typedef int iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
+typedef int iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io);

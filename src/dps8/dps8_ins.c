@@ -5789,7 +5789,7 @@ static void print_int128 (__int128_t n)
         sim_printf ("-");
         n = -n;
     }
-    print_uint128_r (n);
+    print_uint128_r ((__uint128_t)n);
 }
 
 
@@ -5958,8 +5958,8 @@ static int emCall(DCDstruct *i)
 
         case 19:     ///< putdecaq - put decimal contents of AQ to stdout
         {
-            int64_t t0 = rA;
-            if (t0 & SIGN36)
+            int64_t t0 = (int64_t)rA;
+            if (rA & SIGN36)
                t0 |= SIGNEXT; // propagte word36 sign to 64 bits
             __int128_t AQ = ((__int128_t) t0) << 36;
             AQ |= (rQ & DMASK);

@@ -35,7 +35,7 @@ long double EAQToIEEElongdouble(void)
         M = (-M) & MASK72;  //((1LL << 63) - 1); // 63 bits (not 28!)
     
     long double m = 0;  ///< mantissa value;
-    int8 e = (uint8)E;  ///< make signed
+    int8 e = (int8)E;  ///< make signed
     
     long double v = 0.5;
     for(int n = 70 ; n >= 0 ; n -= 1)
@@ -183,7 +183,7 @@ void IEEElongdoubleToEAQ(long double f0)
     {
         rA = 0;
         rQ = 0;
-        rE = -128;
+        rE = (word8)-128;
         return;
     }
     
@@ -343,9 +343,9 @@ void ufa(DCDstruct *ins)
     float72 m1 = ((word72)rA << 36) | (word72)rQ;
     float72 op2 = CY;
             
-    int8   e1 = rE; 
+    int8   e1 = (int8)rE; 
     
-    int8   e2 = bitfieldExtract36(op2, 28, 8) & 0377;      ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(op2, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
     word72 m2 = (word72)bitfieldExtract36(op2, 0, 28) << 44; ///< 28-bit mantissa (incl sign)
     
     int8 e3 = -1;
@@ -442,7 +442,7 @@ void ufa(DCDstruct *ins)
     
     if (m3 == 0)
     {
-        rE = -128;
+        rE = (word8)-128;
         rA = 0;
         rQ = 0;
     }
@@ -491,7 +491,7 @@ void ufs(DCDstruct *ins)
     if (ov && m2 != 0)
     {
         //fprintf(stderr, "OV\n");
-        int8   e = bitfieldExtract36(CY, 28, 8) & 0377;      ///< 8-bit signed integer (incl sign)
+        int8   e = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
 
         m2c >>= 1;
         m2c &= FLOAT36MASK;
@@ -501,7 +501,7 @@ void ufs(DCDstruct *ins)
         else // XXX my interpretation
             e += 1;
         
-        CY = bitfieldInsert36(CY, e, 28, 8) & DMASK;
+        CY = bitfieldInsert36(CY, (word36)e, 28, 8) & DMASK;
         
     }
 
@@ -562,7 +562,7 @@ void fno(DCDstruct *ins)
         
         return;
     }
-    int8   e = rE;
+    int8   e = (int8)rE;
 
     bool s = (m & SIGN72) != (word72)0;    ///< save sign bit
     //while ((bool)(m & SIGN72) == (bool)(m & (SIGN72 >> 1))) // until C(AQ)0 ≠ C(AQ)1?
@@ -581,7 +581,7 @@ void fno(DCDstruct *ins)
         
         if (m == 0) // XXX: necessary??
         {
-            rE = -128;
+            rE = (word8)-128;
             break;
         }
     }
@@ -591,7 +591,7 @@ void fno(DCDstruct *ins)
     rQ = m & MASK36;
 
     if (rA == 0)    // set to normalized 0
-        rE = -128;
+        rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
     SCF(rA == 0, rIR, I_ZERO);
@@ -643,7 +643,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         
         return;
     }
-    int8   e = *E;
+    int8   e = (int8)*E;
     
     
     bool s = m & SIGN72;    ///< save sign bit
@@ -662,7 +662,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         
         if (m == 0) // XXX: necessary??
         {
-            *E = -128;
+            *E = (word8)-128;
             break;
         }
     }
@@ -672,7 +672,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     *Q = m & MASK36;
     
     if (*A == 0)    // set to normalized 0
-        *E = -128;
+        *E = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
     SCF(*A == 0, rIR, I_ZERO);
@@ -699,7 +699,7 @@ void fneg(DCDstruct *ins)
         return; //XXX: ????
     }
     
-    int8 e = rE;
+    int8 e = (int8)rE;
     
     word72 mc = 0;
     if (m == FLOAT72SIGN)
@@ -756,17 +756,17 @@ void ufm(DCDstruct *ins)
     //! Exp Undr: If exponent is less than -128, then ON
     
     uint64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; 
-    int8   e1 = rE;
+    int8   e1 = (int8)rE;
 
     uint64 m2 = bitfieldExtract36(CY, 0, 28) << (8 + 28); ///< 28-bit mantissa (incl sign)
-    int8   e2 = bitfieldExtract36(CY, 28, 8) & 0377;      ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
     
     if (m1 == 0 || m2 == 0)
     {
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
-        rE = -128;
+        rE = (word8)-128;
         rA = 0;
         rQ = 0;
         
@@ -852,16 +852,16 @@ void fdvX(DCDstruct *ins, bool bInvert)
     if (!bInvert)
     {
         m1 = rA;    // & 0777777777400LL;
-        e1 = rE;
+        e1 = (int8)rE;
     
         m2 = bitfieldExtract36(CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        e2 = bitfieldExtract36(CY, 28, 8) & 0377;    // 8-bit signed integer (incl sign)
+        e2 = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     } else { // invert
         m2 = rA;    //& 0777777777400LL ;
-        e2 = rE;
+        e2 = (int8)rE;
     
         m1 = bitfieldExtract36(CY, 0, 28) << 8 ;     // 28-bit mantissa (incl sign)
-        e1 = bitfieldExtract36(CY, 28, 8) & 0377;    // 8-bit signed integer (incl sign)
+        e1 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     }
 
     // make everything positive, but save sign info for later....
@@ -931,7 +931,7 @@ void fdvX(DCDstruct *ins, bool bInvert)
     SCF(rA & SIGN36, rIR, I_NEG);
     
     if (rA == 0)    // set to normalized 0
-        rE = -128;
+        rE = (word8)-128;
 }
 
 void fdv(DCDstruct *ins)
@@ -1000,7 +1000,7 @@ void frd(DCDstruct *ins)
     float72 m = ((word72)rA << 36) | (word72)rQ;
     if (m == 0)
     {
-        rE = -128;
+        rE = (word8)-128;
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
@@ -1050,7 +1050,7 @@ void frd(DCDstruct *ins)
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     if (rA == 0 && rQ == 0)
     {
-        rE = -128;
+        rE = (word8)-128;
         SETF(rIR, I_ZERO);
     }
     
@@ -1074,7 +1074,7 @@ void fstr(DCDstruct *ins, word36 *Y)
     float72 m = ((word72)A << 36) | (word72)Q;
     if (m == 0)
     {
-        E = -128;
+        E = (word8)-128;
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
@@ -1125,7 +1125,7 @@ void fstr(DCDstruct *ins, word36 *Y)
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     if (A == 0 && Q == 0)
     {
-        E = -128;
+        E = (word8)-128;
         SETF(rIR, I_ZERO);
     }
     
@@ -1150,10 +1150,10 @@ void fcmp(DCDstruct *ins)
     //! The aligned mantissas are compared and the indicators set accordingly.
     
     word36 m1 = rA & 0777777777400LL;
-    int8   e1 = rE;
+    int8   e1 = (int8)rE;
     
     word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    int8   e2 = bitfieldExtract36(CY, 28, 8) & 0377;    ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //int8 e3 = -1;
        
@@ -1216,10 +1216,10 @@ void fcmg(DCDstruct *ins)
     //! The aligned mantissas are compared and the indicators set accordingly.
     
     word36 m1 = rA & 0777777777400LL;
-    int8   e1 = rE;
+    int8   e1 = (int8)rE;
     
     word36 m2 = bitfieldExtract36(CY, 0, 28) << 8;      ///< 28-bit mantissa (incl sign)
-    int8   e2 = bitfieldExtract36(CY, 28, 8) & 0377;    ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8) (bitfieldExtract36(CY, 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //int8 e3 = -1;
     
@@ -1282,7 +1282,7 @@ static void YPairToExpMant(word36 Ypair[], word72 *mant, int8 *exp)
 {
     *mant = (word72)bitfieldExtract36(Ypair[0], 0, 28) << 44;   // 28-bit mantissa (incl sign)
     *mant |= (Ypair[1] & DMASK) << 8;
-    *exp = bitfieldExtract36(Ypair[0], 28, 8) & 0377;           // 8-bit signed integer (incl sign)
+    *exp = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);           // 8-bit signed integer (incl sign)
 }
 
 //! combine mantissa + exponent intoa YPair ....
@@ -1316,7 +1316,7 @@ void dufa(DCDstruct *ins)
     rE &= MASK8;
 
     float72 m1 = ((word72)rA << 36) | (word72)rQ;
-    int8   e1 = rE;
+    int8   e1 = (int8)rE;
     
     float72 m2 = 0;
     int8 e2 = -128;
@@ -1403,7 +1403,7 @@ void dufa(DCDstruct *ins)
     
     if (m3 == 0)
     {
-        rE = -128;
+        rE = (word8)-128;
         rA = 0;
         rQ = 0;
     }
@@ -1491,12 +1491,12 @@ void dufm(DCDstruct *ins)
     //! * Exp Undr: If exponent is less than -128, then ON
     
     uint64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; ///< only keep the 1st 64-bits :(
-    int8   e1 = rE;
+    int8   e1 = (int8)rE;
     
     uint64 m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
            m2 |= Ypair[1];
     
-    int8   e2 = bitfieldExtract36(Ypair[0], 28, 8) & 0377;    ///< 8-bit signed integer (incl sign)
+    int8   e2 = (int8)(bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
 
     
     //float72 m2 = 0;
@@ -1509,7 +1509,7 @@ void dufm(DCDstruct *ins)
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
-        rE = -128 & 0377;
+        rE = (word8)-128;
         rA = 0;
         rQ = 0;
         
@@ -1593,20 +1593,20 @@ void dfdvX(DCDstruct *ins, bool bInvert)
     if (!bInvert)
     {
         m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ;  // only keep the 1st 64-bits :(
-        e1 = rE;
+        e1 = (int8)rE;
         
         m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
         m2 |= Ypair[1];
         
-        e2 = bitfieldExtract36(Ypair[0], 28, 8) & 0377;    // 8-bit signed integer (incl sign)
+        e2 = (int8)(bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     } else { // invert
         m2 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ; // only keep the 1st 64-bits :(
-        e2 = rE;
+        e2 = (int8)rE;
         
         m1  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    // 64-bit mantissa (incl sign)
         m1 |= Ypair[1];
         
-        e1 = bitfieldExtract36(Ypair[0], 28, 8) & 0377;    // 8-bit signed integer (incl sign)
+        e1 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    // 8-bit signed integer (incl sign)
     }
     
     if (m1 == 0)
@@ -1615,7 +1615,7 @@ void dfdvX(DCDstruct *ins, bool bInvert)
         SETF(rIR, I_ZERO);
         SCF(rA & SIGN36, rIR, I_NEG);
         
-        rE = -128;
+        rE = (word8)-128;
         rA = 0;
         rQ = 0;
         
@@ -1686,7 +1686,7 @@ void dfdvX(DCDstruct *ins, bool bInvert)
     //uint128 m3 = M1 / M2;
     //uint128 m3 = (uint128)m1 << 35 / (uint128)m2;
     uint128 m3 = ((uint128)m1 << 63) / (uint128)m2;
-    uint64 m3b = m3 & ((int64)-1);  ///< only keep last 64-bits :-(
+    uint64 m3b = m3 & ((uint64)-1);  ///< only keep last 64-bits :-(
     
     if (sign == -1)
         m3b = (~m3b + 1); // & (((uint64)1 << 63) - 1);
@@ -1699,7 +1699,7 @@ void dfdvX(DCDstruct *ins, bool bInvert)
     SCF(rA & SIGN36, rIR, I_NEG);
     
     if (rA == 0 && rQ == 0)    // set to normalized 0
-        rE = -128;
+        rE = (word8)-128;
 }
 
 void dfdv(DCDstruct *ins)
@@ -1767,8 +1767,8 @@ void dvf(DCDstruct *ins)
     
     //uint128 m3  = ((uint128)m1 << 63) / (uint128)m2;
     //uint128 m3r = ((uint128)m1 << 63) % (uint128)m2;
-    int128 m3  = dividend / divisor;
-    int128 m3r = dividend % divisor;
+    int128 m3  = (int128)(dividend / divisor);
+    int128 m3r = (int128)(dividend % divisor);
 
     if (sign == -1) 
         m3 = -m3;   //(~m3 + 1);
@@ -1804,7 +1804,7 @@ void dfrd(DCDstruct *ins)
     float72 m = ((word72)rA << 36) | (word72)rQ;
     if (m == 0)
     {
-        rE = -128;
+        rE = (word8)-128;
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
@@ -1853,7 +1853,7 @@ void dfrd(DCDstruct *ins)
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     if (rA == 0 && rQ == 0)
     {
-        rE = -128;
+        rE = (word8)-128;
         SETF(rIR, I_ZERO);
     }
     
@@ -1890,7 +1890,7 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
     float72 m = ((word72)A << 36) | (word72)rQ;
     if (m == 0)
     {
-        E = -128;
+        E = (word8)-128;
         SETF(rIR, I_ZERO);
         CLRF(rIR, I_NEG);
         
@@ -1943,7 +1943,7 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
     if (A == 0 && Q == 0)
     {
-        E = -128;
+        E = (word8)-128;
         SETF(rIR, I_ZERO);
     }
     
@@ -1970,13 +1970,13 @@ void dfcmp(DCDstruct *ins)
     //! The mantissas are aligned by shifting the mantissa of the operand with the algebraically smaller exponent to the right the number of places equal to the difference in the two exponents.
     //! The aligned mantissas are compared and the indicators set accordingly.
     
-    int64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ;  ///< only keep the 1st 64-bits :(
-    int8  e1 = rE;
+    int64 m1 = (int64) ((rA << 28) | ((rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
+    int8  e1 = (int8)rE;
     
-    int64 m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
+    int64 m2  = (int64) (bitfieldExtract36(Ypair[0], 0, 28) << 36);    ///< 64-bit mantissa (incl sign)
           m2 |= Ypair[1];
     
-    int8 e2 = bitfieldExtract36(Ypair[0], 28, 8) & 0377;    ///< 8-bit signed integer (incl sign)
+    int8 e2 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
 
     //which exponent is smaller???
     
@@ -2018,13 +2018,13 @@ void dfcmg(DCDstruct *ins)
     
     //! The dfcmg instruction is identical to the dfcmp instruction except that the magnitudes of the mantissas are compared instead of the algebraic values.
     
-    int64 m1 = (rA << 28) | ((rQ & 0777777777400LL) >> 8) ;  ///< only keep the 1st 64-bits :(
-    int8  e1 = rE;
+    int64 m1 = (int64) ((rA << 28) | ((rQ & 0777777777400LL) >> 8));  ///< only keep the 1st 64-bits :(
+    int8  e1 = (int8)rE;
     
-    int64 m2  = bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
+    int64 m2  = (int64) bitfieldExtract36(Ypair[0], 0, 28) << 36;    ///< 64-bit mantissa (incl sign)
     m2 |= Ypair[1];
     
-    int8 e2 = bitfieldExtract36(Ypair[0], 28, 8) & 0377;    ///< 8-bit signed integer (incl sign)
+    int8 e2 = (int8) (bitfieldExtract36(Ypair[0], 28, 8) & 0377U);    ///< 8-bit signed integer (incl sign)
     
     //which exponent is smaller???
     

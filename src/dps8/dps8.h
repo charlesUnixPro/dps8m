@@ -135,6 +135,10 @@ extern uint64 sim_deb_start;
 
 #define MASK3           03U
 #define MASK6           077U
+
+#define SIGN8          0400U         //sign mask 8-bit number
+#define SIGNMASK8      0xffffff40U                        ///< mask to sign extend a 8-bit number to a 32-bit integer
+#define SIGNEXT8(x)    (((x) & SIGN8) ? ((x) | SIGNMASK8) : ((x) & ~SIGNMASK8))  ///< sign extend a 8-bit word to 18/32-bit word
 #define MASK8           0377U                              ///< 8-bit mask
 
 #define SIGN12          0x800U                             ///< sign mask 12-bit number
@@ -3005,7 +3009,7 @@ extern word36 *M;
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffst);
 void listSource (char * compname, word18 offset);
-t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset);
+t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset);
 
 /* dps8_utils.c */
 
