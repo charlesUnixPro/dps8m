@@ -113,7 +113,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Include path: <%s>\n", includePath);
     
     
-    
     if (debug)
     {
         printf("argc: %d\n", argc);

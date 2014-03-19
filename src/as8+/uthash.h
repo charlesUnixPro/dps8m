@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2003-2013, Troy D. Hanson     http://troydhanson.github.com/uthash/
+Copyright (c) 2003-2014, Troy D. Hanson     http://troydhanson.github.com/uthash/
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@ typedef unsigned char uint8_t;
 #include <inttypes.h>   /* uint32_t */
 #endif
 
-#define UTHASH_VERSION 1.9.8
+#define UTHASH_VERSION 1.9.9
 
 #ifndef uthash_fatal
 #define uthash_fatal(msg) exit(-1)        /* fatal error (out of memory,etc) */
@@ -174,8 +174,8 @@ do {                                                                            
 do {                                                                             \
  unsigned _ha_bkt;                                                               \
  (add)->hh.next = NULL;                                                          \
- (add)->hh.key = (char*)keyptr;                                                  \
- (add)->hh.keylen = (unsigned)keylen_in;                                                   \
+ (add)->hh.key = (char*)(keyptr);                                                \
+ (add)->hh.keylen = (unsigned)(keylen_in);                                       \
  if (!(head)) {                                                                  \
     head = (add);                                                                \
     (head)->hh.prev = NULL;                                                      \
@@ -252,7 +252,7 @@ do {                                                                            
 #define HASH_FIND_STR(head,findstr,out)                                          \
     HASH_FIND(hh,head,findstr,strlen(findstr),out)
 #define HASH_ADD_STR(head,strfield,add)                                          \
-    HASH_ADD(hh,head,strfield,strlen(add->strfield),add)
+    HASH_ADD(hh,head,strfield[0],strlen(add->strfield),add)
 #define HASH_REPLACE_STR(head,strfield,add,replaced)                             \
   HASH_REPLACE(hh,head,strfield,strlen(add->strfield),add,replaced)
 #define HASH_FIND_INT(head,findint,out)                                          \
@@ -265,7 +265,7 @@ do {                                                                            
     HASH_FIND(hh,head,findptr,sizeof(void *),out)
 #define HASH_ADD_PTR(head,ptrfield,add)                                          \
     HASH_ADD(hh,head,ptrfield,sizeof(void *),add)
-#define HASH_REPLACE_PTR(head,ptrfield,add)                                      \
+#define HASH_REPLACE_PTR(head,ptrfield,add,replaced)                             \
     HASH_REPLACE(hh,head,ptrfield,sizeof(void *),add,replaced)
 #define HASH_DEL(head,delptr)                                                    \
     HASH_DELETE(hh,head,delptr)
@@ -419,7 +419,7 @@ do {                                                                            
   unsigned char *_hj_key=(unsigned char*)(key);                                  \
   hashv = 0xfeedbeef;                                                            \
   _hj_i = _hj_j = 0x9e3779b9;                                                    \
-  _hj_k = (unsigned)keylen;                                                      \
+  _hj_k = (unsigned)(keylen);                                                      \
   while (_hj_k >= 12) {                                                          \
     _hj_i +=    (_hj_key[0] + ( (unsigned)_hj_key[1] << 8 )                      \
         + ( (unsigned)_hj_key[2] << 16 )                                         \
@@ -751,18 +751,22 @@ do {                                                                            
                       _hs_qsize--;                                               \
                   } else if ( (_hs_qsize == 0) || !(_hs_q) ) {                   \
                       _hs_e = _hs_p;                                             \
-                      _hs_p = (UT_hash_handle*)((_hs_p->next) ?                  \
-                              ((void*)((char*)(_hs_p->next) +                    \
-                              (head)->hh.tbl->hho)) : NULL);                     \
+                      if (_hs_p){                                                \
+                        _hs_p = (UT_hash_handle*)((_hs_p->next) ?                \
+                                ((void*)((char*)(_hs_p->next) +                  \
+                                (head)->hh.tbl->hho)) : NULL);                   \
+                       }                                                         \
                       _hs_psize--;                                               \
                   } else if ((                                                   \
                       cmpfcn(DECLTYPE(head)(ELMT_FROM_HH((head)->hh.tbl,_hs_p)), \
                              DECLTYPE(head)(ELMT_FROM_HH((head)->hh.tbl,_hs_q))) \
                              ) <= 0) {                                           \
                       _hs_e = _hs_p;                                             \
-                      _hs_p = (UT_hash_handle*)((_hs_p->next) ?                  \
-                              ((void*)((char*)(_hs_p->next) +                    \
-                              (head)->hh.tbl->hho)) : NULL);                     \
+                      if (_hs_p){                                                \
+                        _hs_p = (UT_hash_handle*)((_hs_p->next) ?                \
+                               ((void*)((char*)(_hs_p->next) +                   \
+                               (head)->hh.tbl->hho)) : NULL);                    \
+                       }                                                         \
                       _hs_psize--;                                               \
                   } else {                                                       \
                       _hs_e = _hs_q;                                             \
@@ -777,13 +781,17 @@ do {                                                                            
                   } else {                                                       \
                       _hs_list = _hs_e;                                          \
                   }                                                              \
+                  if (_hs_e) {                                                   \
                   _hs_e->prev = ((_hs_tail) ?                                    \
                      ELMT_FROM_HH((head)->hh.tbl,_hs_tail) : NULL);              \
+                  }                                                              \
                   _hs_tail = _hs_e;                                              \
               }                                                                  \
               _hs_p = _hs_q;                                                     \
           }                                                                      \
-          _hs_tail->next = NULL;                                                 \
+          if (_hs_tail){                                                         \
+            _hs_tail->next = NULL;                                               \
+          }                                                                      \
           if ( _hs_nmerges <= 1 ) {                                              \
               _hs_looping=0;                                                     \
               (head)->hh.tbl->tail = _hs_tail;                                   \

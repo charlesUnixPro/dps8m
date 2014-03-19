@@ -3008,9 +3008,8 @@ void mvn(DCDstruct *ins)
     e->dstTN = e->TN2;    // type of chars in dst
     e->dstCN = e->CN2;    // starting at char pos CN
     
-    sim_debug (DBG_TRACEEXT, & cpu_dev,
-      "TN1 %d CN1 %d TN2 %d CN2 %d\n",
-      e->TN1, e->CN1, e->TN2, e->CN2);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "mvn(1): TN1 %d CN1 %d N1 %d TN2 %d CN2 %d N2 %d\n", e->TN1, e->CN1, e->N1, e->TN2, e->CN2, e->N2);
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "mvn(2): OP1 %012llo OP2 %012llo\n", e->OP1, e->OP2);
 
     decContext set;
     decContextDefault(&set, DEC_INIT_BASE);         // initialize
