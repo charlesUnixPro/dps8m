@@ -645,6 +645,10 @@ R_MOD:;
             TPR.CA += Cr;
             TPR.CA &= MASK18;   // keep to 18-bits
         }
+        else
+        {
+            sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: rpt special case\n");
+        }
 
         sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR.CA);
     
@@ -695,6 +699,10 @@ R_MOD:;
             {
                 TPR.CA += Cr;
                 TPR.CA &= MASK18;
+            }
+            else
+            {
+                sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: rpt special case\n");
             }
 
             sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: TPR.CA(After)=%06o\n", TPR.CA);
