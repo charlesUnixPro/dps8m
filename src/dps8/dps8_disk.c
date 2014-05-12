@@ -57,7 +57,7 @@ static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read);
-static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
+static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
@@ -243,7 +243,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
     return 1;   // not reached
   }
 
-static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
+static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
   {
 sim_printf ("disk_iom_io called\n");
     //int disk_unit_num = DISK_UNIT_NUM (unitp);

@@ -128,7 +128,7 @@ static struct
 static void check_keyboard (void);
 
 static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
+static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static t_stat opcon_reset (DEVICE * dptr)
   {
@@ -374,7 +374,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
  * Handle an I/O request.  Invoked by the IOM while processing a DDCW.
  */
 
-static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
+static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
 {
     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o\n", __func__, chan);
     
