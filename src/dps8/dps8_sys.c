@@ -30,6 +30,7 @@ char sim_name[] = "dps-8/m";
 int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
+static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
 
 stats_t sys_stats;
@@ -224,7 +225,7 @@ struct bookSegment
 
 static int nBookSegments = 0;
 
-struct bookComponent
+static struct bookComponent
   {
     char * compname;
     int bookSegmentNum;
@@ -284,7 +285,7 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
   }
 
 // Warning: returns ptr to static buffer
-char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
+static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
   {
     static char buf [129];
     int i;

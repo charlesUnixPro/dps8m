@@ -547,6 +547,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     return i;
 }
 
+#ifndef QUIET_UNUSED
 // read operands (if any)
 //t_stat ReadOPs(DCDstruct *i)
 //{
@@ -554,7 +555,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
 //    return SCPE_OK;
 //}
 
-DCDstruct *fetchOperands(DCDstruct *i)
+static DCDstruct *fetchOperands(DCDstruct *i)
 {
     
     if (i->info->ndes > 0)
@@ -566,11 +567,12 @@ DCDstruct *fetchOperands(DCDstruct *i)
     
     return i;
 }
+#endif
 
 /*
  * initializes the TPR registers.
  */
-t_stat setupForOperandRead(DCDstruct *i)
+static t_stat setupForOperandRead(DCDstruct *i)
 {
     if (!i->a)   // if A bit set set-up TPR stuff ...
     {

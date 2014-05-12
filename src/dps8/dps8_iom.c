@@ -260,6 +260,8 @@
 #include "dps8_scu.h"
 #include "dps8_iom.h"
  
+static t_stat iom_boot (int32 unit_num, DEVICE * dptr);
+
 // Much of this is from AN87 as 43A23985 lacked details of 0..11 and 22..36
 
 typedef struct dcw_t
@@ -340,6 +342,7 @@ static t_stat iom_show_config (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat iom_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat iom_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static t_stat iom_reset(DEVICE *dptr);
 
 // Hardware limit
 #define N_IOM_UNITS_MAX 4
@@ -1251,7 +1254,7 @@ static t_stat boot_svc (UNIT * unitp)
     return SCPE_OK;
   }
 
-t_stat iom_boot (int32 unit_num, DEVICE * dptr)
+static t_stat iom_boot (int32 unit_num, DEVICE * dptr)
   {
     sim_activate (& boot_channel_unit [unit_num], sys_opts . iom_times . boot_time );
 
@@ -1417,7 +1420,7 @@ void iom_init (void)
  *
  */
 
-t_stat iom_reset(DEVICE *dptr)
+static t_stat iom_reset(DEVICE *dptr)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
 

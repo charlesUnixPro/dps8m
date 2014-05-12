@@ -20,9 +20,11 @@
 static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
 static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
 
+#ifndef QUIET_UNUSED
 bool bdeferLoad = false;    // defer load to after symbol resolution
+#endif
 
-segdef *newSegdef(char *sym, int val)
+static segdef *newSegdef(char *sym, int val)
 {
     segdef *p = calloc(1, sizeof(segdef));
     p->symbol = strdup(sym);
@@ -34,7 +36,7 @@ segdef *newSegdef(char *sym, int val)
     return p;
 }
 
-void freeSegdef(segdef *p)
+static void freeSegdef(segdef *p)
 {
     if (p->symbol)
         free(p->symbol);
@@ -42,7 +44,7 @@ void freeSegdef(segdef *p)
 }
 
 
-segref *newSegref(char *seg, char *sym, int val, int off)
+static segref *newSegref(char *seg, char *sym, int val, int off)
 {
     segref *p = calloc(1, sizeof(segref));
     if (seg && strlen(seg) > 0)
@@ -72,7 +74,7 @@ void freeSegref(segref *p)
     p->symbol = NULL;
 }
 
-segment *newSegment(char *name, int size, bool bDeferred)
+static segment *newSegment(char *name, int size, bool bDeferred)
 {
     segment *s = calloc(1, sizeof(segment));
     if (name && strlen(name) > 0)
@@ -126,8 +128,8 @@ void freeSegment(segment *s)
         free(s->filename);
 }
 
-segment *segments = NULL;   // segment for current load unit
-segment *currSegment = NULL;
+static segment *segments = NULL;   // segment for current load unit
+static segment *currSegment = NULL;
 
 // remove segment from list of deferred segments
 
@@ -241,9 +243,9 @@ int removeSegref(char *seg, char *sym)
 }
 
 
-int objSize = -1;
+static int objSize = -1;
 
-int segNamecmp(segment *a, segment *b)
+static int segNamecmp(segment *a, segment *b)
 {
     if (*a->name && *b->name)
       return strcmp(a->name, b->name);
@@ -251,7 +253,8 @@ int segNamecmp(segment *a, segment *b)
       return 1;
     return -1;
 }
-int segdefNamecmp(segdef *a, segdef *b)
+
+static int segdefNamecmp(segdef *a, segdef *b)
 {
     return strcmp(a->symbol, b->symbol);
 }
@@ -260,6 +263,7 @@ int segrefNamecmp(segref *a, segref *b)
     return strcmp(a->symbol, b->symbol);
 }
 
+#ifndef QUIET_UNUSED
 segment *findSegment(char *segname)
 {
     segment *sg;
@@ -268,6 +272,8 @@ segment *findSegment(char *segname)
             return sg;
     return NULL;
 }
+#endif
+
 segment *findSegmentNoCase(char *segname)
 {
     segment *sg;
@@ -277,6 +283,7 @@ segment *findSegmentNoCase(char *segname)
     return NULL;
 }
 
+#ifndef QUIET_UNUSED
 segdef *findSegdef(char *seg, char *sgdef)
 {
     segment *s = findSegment(seg);
@@ -290,6 +297,7 @@ segdef *findSegdef(char *seg, char *sgdef)
     
     return NULL;
 }
+#endif
 segdef *findSegdefNoCase(char *seg, char *sgdef)
 {
     segment *s = findSegmentNoCase(seg);
@@ -435,7 +443,7 @@ bool getSegmentAddressString(int addr, char *msg)
  * try to resolve external references for all deferred segments
  */
 
-const int StartingSegment = 8;
+static const int StartingSegment = 8;
 
 int resolveLinks(bool bVerbose)
 {
@@ -788,6 +796,7 @@ t_stat createStack(int n, bool bVerbose)
     return SCPE_OK;
 }
 
+#ifndef QUIET_UNUSED
 /*
  * setup faux execution environment ...
  */
@@ -795,11 +804,12 @@ t_stat setupFXE()
 {
     return SCPE_OK;
 }
+#endif
 
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
+static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
 {
     long curpos = ftell(f);
     

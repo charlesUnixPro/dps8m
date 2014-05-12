@@ -93,7 +93,7 @@ static int activate_timer (void)
 }
 #endif
 
-#ifdef QUIET_UNUSED
+#ifndef QUIET_UNUSED
 t_stat XX_clk_svc(UNIT *up)
 {
     // only valid for TR

@@ -15,6 +15,8 @@
 #define ASSUME0 0
 
 static void cpu_reset_array (void);
+static bool clear_TEMPORARY_ABSOLUTE_mode (void);
+static void set_TEMPORARY_ABSOLUTE_mode (void);
 
 /* CPU data structures
  
@@ -145,7 +147,7 @@ const char *sim_stop_messages[] = {
  * BUG: unimplemented instructions may not be represented
  */
 
-int is_eis[1024];    // hack
+static int is_eis[1024];    // hack
 int xec_side_effect; // hack
 
 void init_opcodes (void)
@@ -180,7 +182,7 @@ void init_opcodes (void)
 /*!
  * initialize segment table according to the contents of DSBR ...
  */
-t_stat dpsCmd_InitUnpagedSegmentTable ()
+static t_stat dpsCmd_InitUnpagedSegmentTable ()
 {
     if (DSBR.U == 0)
     {
@@ -210,7 +212,7 @@ t_stat dpsCmd_InitUnpagedSegmentTable ()
     return SCPE_OK;
 }
 
-t_stat dpsCmd_InitSDWAM ()
+static t_stat dpsCmd_InitSDWAM ()
 {
     memset(SDWAM, 0, sizeof(SDWAM));
     
@@ -253,7 +255,7 @@ _sdw0 *fetchSDW(word15 segno)
     return SDW;
 }
 
-char *strDSBR(void)
+static char *strDSBR(void)
 {
     static char buff[256];
     sprintf(buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
@@ -287,7 +289,7 @@ void printSDW0(_sdw0 *SDW)
     sim_printf("%s\n", strSDW0(SDW));
 }
 
-t_stat dpsCmd_DumpSegmentTable()
+static t_stat dpsCmd_DumpSegmentTable()
 {
     sim_printf("*** Descriptor Segment Base Register (DSBR) ***\n");
     printDSBR();
@@ -480,7 +482,7 @@ t_stat dpsCmd_Segments (int32 arg, char *buf)
 
 static void ic_history_init(void);
 /*! Reset routine */
-t_stat cpu_reset_mm (DEVICE *dptr)
+static t_stat cpu_reset_mm (DEVICE *dptr)
 {
     
 #ifdef USE_IDLE
@@ -513,7 +515,7 @@ t_stat cpu_reset_mm (DEVICE *dptr)
     return 0;
 }
 
-t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
+static t_stat cpu_boot (int32 unit_num, DEVICE *dptr)
 {
     // The boot button on the cpu is conneted to the boot button on the IOM
     // XXX is this true? Which IOM is it connected to?
@@ -579,7 +581,7 @@ void cpu_init (void)
   switches . FLT_BASE = 2; // Some of the UnitTests assume this
 }
 
-t_stat cpu_reset (DEVICE *dptr)
+static t_stat cpu_reset (DEVICE *dptr)
 {
     if (M)
         free(M);
@@ -637,7 +639,7 @@ t_stat cpu_reset (DEVICE *dptr)
 //  variable has bit<n> set if the n’th letter was specified as a switch to the examine command. 
 // Not true...
 
-t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT *uptr, int32 sw)
+static t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT *uptr, int32 sw)
 {
     if (addr>= MEMSIZE)
         return SCPE_NXM;
@@ -649,7 +651,7 @@ t_stat cpu_ex (t_value *vptr, t_addr addr, UNIT *uptr, int32 sw)
 }
 
 /*! Memory deposit */
-t_stat cpu_dep (t_value val, t_addr addr, UNIT *uptr, int32 sw)
+static t_stat cpu_dep (t_value val, t_addr addr, UNIT *uptr, int32 sw)
 {
     if (addr >= MEMSIZE) return SCPE_NXM;
     M[addr] = val & DMASK;
@@ -2102,13 +2104,13 @@ void set_went_appending (void)
  *
  */
 
-void set_TEMPORARY_ABSOLUTE_mode (void)
+static void set_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = true;
     went_appending = false;
 }
 
-bool clear_TEMPORARY_ABSOLUTE_mode (void)
+static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = false;
     return went_appending;

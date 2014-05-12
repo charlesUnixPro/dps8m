@@ -14,6 +14,8 @@
 static t_uint64 FR;
 #endif
 
+static void doG7Faults();
+
 /*
  FAULT RECOGNITION
  For the discussion following, the term "function" is defined as a major processor functional cycle. Examples are: APPEND CYCLE, CA CYCLE, INSTRUCTION FETCH CYCLE, OPERAND STORE CYCLE, DIVIDE EXECUTION CYCLE. Some of these cycles are discussed in various sections of this manual.
@@ -501,7 +503,7 @@ bool bG7Pending()
     return g7Faults;
 }
 
-void doG7Faults()
+static void doG7Faults()
 {
     
 }

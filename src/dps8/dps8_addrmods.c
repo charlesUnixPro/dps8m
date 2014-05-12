@@ -32,7 +32,7 @@ static char *strCAFoper(eCAFoper o)
 /*!
  * return contents of register indicated by Td
  */
-word18 getCr(word4 Tdes)
+static word18 getCr(word4 Tdes)
 {
     directOperandFlag = false;
     

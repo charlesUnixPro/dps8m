@@ -977,6 +977,8 @@ word72 bitfieldExtract72(word72 a, int b, int c)
     else
         return a & mask;
 }
+
+#ifndef QUIET_UNUSED
 /*!
  @param[in] x Bitfield to count bits in.
  
@@ -993,7 +995,9 @@ int bitCount(int x)
     }
     return res;
 }
+#endif 
 
+#ifndef QUIET_UNUSED
 /*!
  @param[in] x Bitfield to find LSB in.
  
@@ -1013,7 +1017,10 @@ int findLSB(int x)
     }
     return res;
 }
+#endif
 
+
+#ifndef QUIET_UNUSED
 /*!
  @param[in] x  Bitfield to find MSB in.
  
@@ -1039,7 +1046,9 @@ int findMSB(int x)
     }
     return res;
 }
+#endif
 
+#ifndef QUIET_UNUSED
 /*!
  @param[in] x Bitfield to reverse.
  
@@ -1060,6 +1069,7 @@ int bitfieldReverse(int x)
     
     return res;
 }
+#endif
 
 
 //#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones

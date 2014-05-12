@@ -1569,7 +1569,7 @@ void dufm(DCDstruct *ins)
 /*!
  * floating divide ...
  */
-void dfdvX(DCDstruct *ins, bool bInvert)
+static void dfdvX(DCDstruct *ins, bool bInvert)
 {
     //! C(EAQ) / C (Y) → C(EA)
     //! C(Y) / C(EAQ) → C(EA) (Inverted)

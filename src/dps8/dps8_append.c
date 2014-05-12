@@ -12,6 +12,8 @@
  * \brief the appending unit ...
  */
 
+static char *strSDW(_sdw *SDW);
+
 static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
 
 word24 finalAddress = 0;    ///< final, 24-bit address that comes out of the APU
@@ -375,7 +377,7 @@ static _sdw0 *fetchNSDW(word15 segno)
     return &SDW0;
 }
 
-char *strSDW(_sdw *SDW)
+static char *strSDW(_sdw *SDW)
 {
     static char buff[256];
     

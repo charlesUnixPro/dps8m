@@ -510,7 +510,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
 
 // Multics humor: this is idiotic
 
-t_uint64 extr36 (uint8 * bits, uint woffset)
+static t_uint64 extr36 (uint8 * bits, uint woffset)
   {
     uint isOdd = woffset % 2;
     uint dwoffset = woffset / 2;
