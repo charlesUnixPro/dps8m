@@ -242,7 +242,7 @@ tags : $(C_SRCS) $(H_SRCS)
 .PHONY : clean cleaner 
 
 clean:
-	-$(RM) $(OBJS)$(C_DEPS)$(EXECUTABLES) dps8 tags
+	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags
 
 cleaner: clean
 	(cd ../simh; $(MAKE) clean)
