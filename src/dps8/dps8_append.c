@@ -16,7 +16,6 @@ static char *strSDW(_sdw *SDW);
 
 static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
 
-word24 finalAddress = 0;    ///< final, 24-bit address that comes out of the APU
 word36 CY = 0;              ///< C(Y) operand data from memory
                             // XXX do we need to make CY part of DCDstruct ?
 
@@ -791,7 +790,7 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
     char * acvFaultsMsg = "<unknown>";
 
     
-    finalAddress = -1;  // not everything requires a final address
+    word24 finalAddress = -1;  // not everything requires a final address
     
 //    if (thisCycle == EIS_OPERAND_READ || thisCycle == EIS_OPERAND_STORE)
 //    {

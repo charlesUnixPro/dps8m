@@ -182,6 +182,7 @@ t_stat doIEFPLoop()
 
 t_stat Read(DCDstruct *i, word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
 {
+    word24 finalAddress;
     if (b29)
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
@@ -218,6 +219,7 @@ B29:        //finalAddress = doAppendRead(i, accessType, address);
 
 t_stat Write(DCDstruct *i, word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
+    word24 finalAddress;
     if (b29)
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);

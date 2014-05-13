@@ -1761,8 +1761,6 @@ char *getModString(int32 tag);
 int strmask(char *str, char *mask);
 char *strlower(char *q);
 
-extern word24 finalAddress; ///< final 24-bit address for appending unit
-
 extern t_stat loadSpecial(char *buff);
 
 //extern t_uint64 cpuCycles; ///< # of instructions executed in this run...

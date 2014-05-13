@@ -58,7 +58,7 @@ word18 getBARaddress(word18 addr)
         doFault (NULL, store_fault, 0, "BAR store fault; out of bounds");
     
     word18 barAddr = (addr + (((word18) BAR.BASE) << 9)) & 0777777;
-    finalAddress = barAddr;
+    //finalAddress = barAddr;
     return barAddr;
     //return (addr + (BAR.BASE << 9)) & 0777777;
 }
