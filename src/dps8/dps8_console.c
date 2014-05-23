@@ -12,6 +12,8 @@
 #include "dps8.h"
 #include "dps8_iom.h"
 #include "dps8_console.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 /*
  console.c -- operator's console
@@ -95,10 +97,6 @@ DEVICE opcon_dev = {
  */
 
 #include <ctype.h>
-//-- #include <time.h>
-//-- #include <unistd.h>
-//-- //#include "hw6180.h"
-//-- 
 typedef struct s_console_state
   {
     // Hangs off the device structure

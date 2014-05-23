@@ -11,6 +11,16 @@
 //  Copyright (c) IBM Corporation, 2000, 2009.  All rights reserved.
 //
 
+#include <stdio.h>
+
+#include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_decimal.h"
+#include "dps8_eis.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
+#include "dps8_faults.h"
+
 #define DECUSE64    1
 #define DECSUBSET   1
 #define DECDPUN     8
@@ -21,9 +31,7 @@
 #include "decNumber.h"        // base number library
 #include "decNumberLocal.h"   // decNumber local types, etc.
 
-#include "dps8.h"
 
-#include <stdio.h>
 
 //void write49(EISstruct *e, word18 *dstAddr, int *pos, int tn, int c49);
 //void loadInputBufferNumeric(EISstruct *e, int k);
@@ -936,26 +944,26 @@ void ad2d(DCDstruct *i)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(i, overflow_fault, 0,"ad2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(i, overflow_fault, 0,"ad2d overflow fault");
     }
 }
@@ -1218,26 +1226,26 @@ void ad3d(DCDstruct *ins)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"ad3d truncation(overflow) fault");
     }
     
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"ad3d overflow fault");
     }
 }
@@ -1473,26 +1481,26 @@ void sb2d(DCDstruct *ins)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
             doFault(ins, overflow_fault, 0,"sb2d truncation (overflow) fault");
     }
     
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"sb2d overflow fault");
     }
 }
@@ -1754,26 +1762,26 @@ void sb3d(DCDstruct *ins)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"sb3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"sb3d overflow fault");
     }
 }
@@ -2007,26 +2015,26 @@ void mp2d(DCDstruct *ins)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"mp2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"mp2d overflow fault");
     }
     
@@ -2277,26 +2285,26 @@ void mp3d(DCDstruct *ins)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"mp3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"mp3d overflow fault");
     }
 }
@@ -2520,26 +2528,26 @@ void dv2d(DCDstruct *ins)
     if (e->S2 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"dv2d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"dv2d overflow fault");
     }
 }
@@ -2810,26 +2818,26 @@ void dv3d(DCDstruct *ins)
     if (e->S3 == CSFL)
     {
         if (op3->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op3->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op3), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op3), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op3), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op3), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"dv3d truncation(overflow) fault");
     }
 
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
             doFault(ins, overflow_fault, 0,"dv3d overflow fault");
     }
 }
@@ -2972,9 +2980,9 @@ void cmpn(DCDstruct *ins)
     // Negative If C(Y-charn1) > C(Y-charn2), then ON; otherwise OFF
     // Carry If | C(Y-charn1) | > | C(Y-charn2) | , then OFF, otherwise ON
 
-    SCF(cSigned == 0, rIR, I_ZERO);
-    SCF(cSigned == 1, rIR, I_NEG);
-    SCF(cMag == 1, rIR, I_CARRY);
+    SCF(cSigned == 0, cu.IR, I_ZERO);
+    SCF(cSigned == 1, cu.IR, I_NEG);
+    SCF(cMag == 1, cu.IR, I_CARRY);
 }
 
 /*
@@ -3179,26 +3187,26 @@ void mvn(DCDstruct *ins)
     if (e->S2 == CSFL)
     {
         if (op1->exponent > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         if (op1->exponent < -128)
-            SETF(rIR, I_EUFL);
+            SETF(cu.IR, I_EUFL);
     }
     
-    SCF(decNumberIsNegative(op1), rIR, I_NEG);  // set negative indicator if op3 < 0
-    SCF(decNumberIsZero(op1), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    SCF(decNumberIsNegative(op1), cu.IR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op1), cu.IR, I_ZERO);     // set zero indicator if op3 == 0
     
-    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    SCF(!e->R && Trunc, cu.IR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
     
     if (e->T && Trunc)
     {
-        SETF(rIR, I_OFLOW);
+        SETF(cu.IR, I_OFLOW);
         doFault(ins, overflow_fault, 0,"mvn truncation(overflow) fault");
     }
     
     if (Ovr)
     {
-        SETF(rIR, I_OFLOW);
-        if (! TSTF (rIR, I_OMASK))
+        SETF(cu.IR, I_OFLOW);
+        if (! TSTF (cu.IR, I_OMASK))
           doFault(ins, overflow_fault, 0,"mvn overflow fault");
     }
 

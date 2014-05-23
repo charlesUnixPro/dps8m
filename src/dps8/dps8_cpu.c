@@ -8,8 +8,17 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_addrmods.h"
+#include "dps8_append.h"
+#include "dps8_cpu.h"
+#include "dps8_ins.h"
+#include "dps8_loader.h"
+#include "dps8_math.h"
 #include "dps8_scu.h"
+#include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_iefp.h"
+#include "dps8_faults.h"
 
 // XXX Use this when we assume there is only a single unit
 #define ASSUME0 0
@@ -262,8 +271,7 @@ static char *strDSBR(void)
     return buff;
 }
 
-PRIVATE
-void printDSBR()
+static void printDSBR()
 {
     sim_printf("%s\n", strDSBR());
 }
@@ -283,8 +291,7 @@ char *strSDW0(_sdw0 *SDW)
     return buff;
 }
 
-PRIVATE
-void printSDW0(_sdw0 *SDW)
+static void printSDW0(_sdw0 *SDW)
 {
     sim_printf("%s\n", strSDW0(SDW));
 }
@@ -506,7 +513,7 @@ static t_stat cpu_reset_mm (DEVICE *dptr)
     
     cpu.cycle = FETCH_cycle;
 
-    cpuCycles = 0;
+    sys_stats . total_cycles = 0;
 
 //#if FEAT_INSTR_STATS
     memset(&sys_stats, 0, sizeof(sys_stats));
@@ -581,6 +588,10 @@ void cpu_init (void)
   switches . FLT_BASE = 2; // Some of the UnitTests assume this
 }
 
+// DPS8 Memory of 36 bit words is implemented as an array of 64 bit words.
+// Put state information into the unused high order bits.
+#define MEM_UNINITIALIZED 0x4000000000000000LLU
+
 static t_stat cpu_reset (DEVICE *dptr)
 {
     if (M)
@@ -600,7 +611,6 @@ static t_stat cpu_reset (DEVICE *dptr)
 
     rA = 0;
     rQ = 0;
-    XECD = 0;
     
     PPR.IC = 0;
     PPR.PRR = 0;
@@ -613,7 +623,7 @@ static t_stat cpu_reset (DEVICE *dptr)
     
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
-    cpuCycles = 0;
+    sys_stats . total_cycles = 0;
     
     CMR.luf = 3;    // default of 16 mS
     
@@ -675,67 +685,22 @@ word8  rE;      /*!< exponent [map: rE, 28 0's] */
 word18 rX[8];   /*!< index */
 
 
-
-//word18 rBAR;  /*!< base address [map: BAR, 18 0's] */
-/* format: 9b base, 9b bound */
-
-int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o PPR.IC fetch */
-word36 XECD1; /*!< XEC instr / XED instr#1 */
-word36 XECD2; /*!< XED instr#2 */
-
-
 word27 rTR; /*!< timer [map: TR, 9 0's] */
-
-//word18 ry;     /*!< address operand */
 word24 rY;     /*!< address operand */
 word8 rTAG; /*!< instruction tag */
 
 word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 word8 tCF; /*!< character position field [3b] */
 
-/* GE-645 */
 
-
-//word36 rDBR; /*!< descriptor base */
-//!<word27 rABR[8];/*!< address base */
-//
 ///* H6180; L68; DPS-8M */
 //
 word8 rRALR; /*!< ring alarm [3b] [map: 33 0's, RALR] */
-//word36 rPRE[8];/*!< pointer, even word */
-//word36 rPRO[8];/*!< pointer, odd word */
-//word27 rAR[8]; /*!< address [24b] [map: ARn, 12 0's] */
-//word36 rPPRE; /*!< procedure pointer, even word */
-//word36 rPPRO; /*!< procedure pointer, odd word */
-//word36 rTPRE; /*!< temporary pointer, even word */
-//word36 rTPRO; /*!< temporary pointer, odd word */
-//word36 rDSBRE; /*!< descriptor segment base, even word */
-//word36 rDSBRO; /*!< descriptor segment base, odd word */
-//word36 mSE[16];/*!< word-assoc-mem: seg descrip regs, even word */
-//word36 mSO[16];/*!< word-assoc-mem: seg descrip regs, odd word */
-//word36 mSP[16];/*!< word-assoc-mem: seg descrip ptrs */
-//word36 mPR[16];/*!< word-assoc-mem: page tbl regs */
-//word36 mPP[16];/*!< word-assoc-mem: page tbl ptrs */
-//word36 rFRE; /*!< fault, even word */
-//word36 rFRO; /*!< fault, odd word */
-//word36 rMR; /*!< mode */
-//word36 rCMR; /*!< cache mode */
-//word36 hCE[16];/*!< history: control unit, even word */
-//word36 hCO[16];/*!< history: control unit, odd word */
-//word36 hOE[16];/*!< history: operations unit, even word */
-//word36 hOO[16];/*!< history: operations unit, odd word */
-//word36 hDE[16];/*!< history: decimal unit, even word */
-//word36 hDO[16];/*!< history: decimal unit, odd word */
-//word36 hAE[16];/*!< history: appending unit, even word */
-//word36 hAO[16];/*!< history: appending unit, odd word */
-//word36 rSW[5]; /*!< switches */
 
 // end h6180 stuff
 
 struct _tpr TPR;    ///< Temporary Pointer Register
 struct _ppr PPR;    ///< Procedure Pointer Register
-//struct _prn PR[8];  ///< Pointer Registers
-//struct _arn AR[8];  ///< Address Registers
 struct _par PAR[8]; ///< pointer/address resisters
 struct _bar BAR;    ///< Base Address Register
 struct _dsbr DSBR;  ///< Descriptor Segment Base Register
@@ -779,24 +744,24 @@ static BITFIELD dps8_IR_bits[] = {
 
 static REG cpu_reg[] = {
     { ORDATA (IC, PPR.IC, VASIZE) },
-    //{ ORDATA (IR, rIR, 18) },
-    { ORDATADF (IR, rIR, 18, "Indicator Register", dps8_IR_bits) },
+    //{ ORDATA (IR, cu.IR, 18) },
+    { ORDATADF (IR, cu.IR, 18, "Indicator Register", dps8_IR_bits) },
     
-    //    { FLDATA (Zero, rIR, F_V_A) },
-    //    { FLDATA (Negative, rIR, F_V_B) },
-    //    { FLDATA (Carry, rIR, F_V_C) },
-    //    { FLDATA (Overflow, rIR, F_V_D) },
-    //    { FLDATA (ExpOvr, rIR, F_V_E) },
-    //    { FLDATA (ExpUdr, rIR, F_V_F) },
-    //    { FLDATA (OvrMask, rIR, F_V_G) },
-    //    { FLDATA (TallyRunOut, rIR, F_V_H) },
-    //    { FLDATA (ParityErr, rIR, F_V_I) }, ///< Yeah, right!
-    //    { FLDATA (ParityMask, rIR, F_V_J) },
-    //    { FLDATA (NotBAR, rIR, F_V_K) },
-    //    { FLDATA (Trunc, rIR, F_V_L) },
-    //    { FLDATA (MidInsFlt, rIR, F_V_M) },
-    //    { FLDATA (AbsMode, rIR, F_V_N) },
-    //    { FLDATA (HexMode, rIR, F_V_O) },
+    //    { FLDATA (Zero, cu.IR, F_V_A) },
+    //    { FLDATA (Negative, cu.IR, F_V_B) },
+    //    { FLDATA (Carry, cu.IR, F_V_C) },
+    //    { FLDATA (Overflow, cu.IR, F_V_D) },
+    //    { FLDATA (ExpOvr, cu.IR, F_V_E) },
+    //    { FLDATA (ExpUdr, cu.IR, F_V_F) },
+    //    { FLDATA (OvrMask, cu.IR, F_V_G) },
+    //    { FLDATA (TallyRunOut, cu.IR, F_V_H) },
+    //    { FLDATA (ParityErr, cu.IR, F_V_I) }, ///< Yeah, right!
+    //    { FLDATA (ParityMask, cu.IR, F_V_J) },
+    //    { FLDATA (NotBAR, cu.IR, F_V_K) },
+    //    { FLDATA (Trunc, cu.IR, F_V_L) },
+    //    { FLDATA (MidInsFlt, cu.IR, F_V_M) },
+    //    { FLDATA (AbsMode, cu.IR, F_V_N) },
+    //    { FLDATA (HexMode, cu.IR, F_V_O) },
     
     { ORDATA (A, rA, 36) },
     { ORDATA (Q, rQ, 36) },
@@ -970,12 +935,6 @@ cpu_state_t cpu;
 ctl_unit_data_t cu;
 
 
-// This is an out-of-band flag for the APU. User commands to
-// display or modify memory can invoke much the APU. Howeveer, we don't
-// want interactive attempts to access non-existant memory locations
-// to register a fault.
-bool fault_gen_no_fault;
-
 int stop_reason; // sim_instr return value for JMP_STOP
 
 /*
@@ -1052,8 +1011,6 @@ t_stat simh_hooks (void)
     return reason;
   }       
 
-t_stat doIEFPLoop();
-
 //
 // Okay, lets treat this as a state machine
 //
@@ -1121,7 +1078,7 @@ t_stat sim_instr (void)
 
     currentInstruction->e = &E;
     instr_buf_state = IB_EMPTY;
-    // cpuCycles = 0; // XXX this should be done by reset(), messes up count on breakpoint
+    // sys_stats . total_cycles = 0; // XXX this should be done by reset(), messes up count on breakpoint
 
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
@@ -1130,7 +1087,7 @@ t_stat sim_instr (void)
     {
         case JMP_ENTRY:
             reason = 0;
-            //cpuCycles = 0;
+            //sys_stats . total_cycles = 0;
             break;
 #if 0
         case JMP_NEXT:
@@ -1415,53 +1372,53 @@ t_stat sim_instr (void)
                     if (x == 0)
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
-                        SETF(rIR, I_TALLY);
+                        SETF(cu.IR, I_TALLY);
                         exit = true;
                       } 
 
                     //  d. If a terminate condition has been met, then set 
                     //     the tally runout indicator OFF and terminate
 
-                    if (TSTF(rIR, I_ZERO) && (rX[0] & 0100))
+                    if (TSTF(cu.IR, I_ZERO) && (rX[0] & 0100))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is zero terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       }
-                    else if (!TSTF(rIR, I_ZERO) && (rX[0] & 040))
+                    else if (!TSTF(cu.IR, I_ZERO) && (rX[0] & 040))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       } 
-                    else if (TSTF(rIR, I_NEG) && (rX[0] & 020))
+                    else if (TSTF(cu.IR, I_NEG) && (rX[0] & 020))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       } 
-                    else if (!TSTF(rIR, I_NEG) && (rX[0] & 010))
+                    else if (!TSTF(cu.IR, I_NEG) && (rX[0] & 010))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       } 
-                    else if (TSTF(rIR, I_CARRY) && (rX[0] & 04))
+                    else if (TSTF(cu.IR, I_CARRY) && (rX[0] & 04))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       } 
-                    else if (!TSTF(rIR, I_CARRY) && (rX[0] & 02))
+                    else if (!TSTF(cu.IR, I_CARRY) && (rX[0] & 02))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       } 
-                    else if (TSTF(rIR, I_OFLOW) && (rX[0] & 01))
+                    else if (TSTF(cu.IR, I_OFLOW) && (rX[0] & 01))
                       {
 //sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
-                        CLRF(rIR, I_TALLY);
+                        CLRF(cu.IR, I_TALLY);
                         exit = true;
                       }
 
@@ -1655,7 +1612,7 @@ t_stat sim_instr (void)
 
       } while (reason == 0);
 
-    sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+    sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
     
     return reason;
   }
@@ -1963,35 +1920,6 @@ void freeDCDstruct(DCDstruct *p)
  * instruction fetcher ...
  * fetch + decode instruction at 18-bit address 'addr'
  */
-#ifdef OLD_WAY
-DCDstruct *fetchInstructionOLD(word18 addr, DCDstruct *i)  // fetch instrcution at address
-{
-    DCDstruct *p = (i == NULL) ? newDCDstruct() : i;
-
-// XXX experimental code; there may be a better way to do this, especially
-// if a pointer to a malloc is getting zapped
-// Yep, I was right
-// HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
-    
-    //memset (p, 0, sizeof (struct DCDstruct));
-// Try the obivous ones
-    p->opcode  = 0;
-    p->opcodeX = 0;
-    p->address = 0;
-    p->a       = 0;
-    p->i       = 0;
-    p->tag     = 0;
-    
-    p->iwb = 0;
-    p->IWB = 0;
-    
-    Read(p, addr, &p->IWB, InstructionFetch, 0);
-    
-    cpu.read_addr = addr;
-    
-    return decodeInstruction(p->IWB, p);
-}
-#endif
 
 /*
  * instruction decoder .....
@@ -2122,11 +2050,11 @@ addr_modes_t get_addr_mode(void)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
     //if (IR.abs_mode)
-    if (TSTF(rIR, I_ABS))
+    if (TSTF(cu.IR, I_ABS))
         return ABSOLUTE_mode;
     
     //if (IR.not_bar_mode == 0)
-    if (! TSTF(rIR, I_NBAR))
+    if (! TSTF(cu.IR, I_NBAR))
         return BAR_mode;
     
     return APPEND_mode;
@@ -2152,23 +2080,23 @@ void set_addr_mode(addr_modes_t mode)
 
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
-        SETF(rIR, I_ABS);
-        SETF(rIR, I_NBAR);
+        SETF(cu.IR, I_ABS);
+        SETF(cu.IR, I_NBAR);
         
         PPR.P = 1;
         
         sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting absolute mode.\n");
     } else if (mode == APPEND_mode) {
-        if (! TSTF (rIR, I_ABS) && TSTF (rIR, I_NBAR))
+        if (! TSTF (cu.IR, I_ABS) && TSTF (cu.IR, I_NBAR))
           sim_debug (DBG_DEBUG, & cpu_dev, "APU: Keeping append mode.\n");
         else
            sim_debug (DBG_DEBUG, & cpu_dev, "APU: Setting append mode.\n");
-        CLRF(rIR, I_ABS);
+        CLRF(cu.IR, I_ABS);
         
-        SETF(rIR, I_NBAR);
+        SETF(cu.IR, I_NBAR);
     } else if (mode == BAR_mode) {
-        CLRF(rIR, I_ABS);
-        CLRF(rIR, I_NBAR);
+        CLRF(cu.IR, I_ABS);
+        CLRF(cu.IR, I_NBAR);
         
         sim_debug (DBG_WARN, & cpu_dev, "APU: Setting bar mode.\n");
     } else {

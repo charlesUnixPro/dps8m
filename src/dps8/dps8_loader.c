@@ -8,6 +8,10 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_loader.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 #include "utlist.h" // for linked list ops
 
@@ -64,7 +68,7 @@ static segref *newSegref(char *seg, char *sym, int val, int off)
     return p;
 }
 
-void freeSegref(segref *p)
+static void freeSegref(segref *p)
 {
     if (p->segname)
         free(p->segname);
@@ -104,7 +108,7 @@ static segment *newSegment(char *name, int size, bool bDeferred)
 }
 
 
-void freeSegment(segment *s)
+static void freeSegment(segment *s)
 {
     segdef *d, *dtmp;
     DL_FOREACH_SAFE(s->defs, d, dtmp)
@@ -312,8 +316,7 @@ segdef *findSegdefNoCase(char *seg, char *sgdef)
     return NULL;
 }
 
-PRIVATE
-void makeITS(int segno, int offset, int tag, word36 *Ypair)
+static void makeITS(int segno, int offset, int tag, word36 *Ypair)
 {
     word36 even = 0, odd = 0;
     
@@ -327,7 +330,7 @@ void makeITS(int segno, int offset, int tag, word36 *Ypair)
     Ypair[1] = odd;
 }
 
-//PRIVATE
+//static
 //_sdw0 *fetchSDW(int segno)
 //{
 //    int sdwAddr = DSBR.ADDR + (2 * segno);
@@ -398,7 +401,7 @@ bool getSegmentAddressString(int addr, char *msg)
     return false;
 }
 
-//PRIVATE
+//static
 //int getMaxSegno()
 //{
 //    int maxSegno = -1;
@@ -410,7 +413,7 @@ bool getSegmentAddressString(int addr, char *msg)
 //    return maxSegno;
 //}
 
-//PRIVATE
+//static
 //void writeSDW(int segno, _sdw0 *s0)
 //{
 //    int addr = DSBR.ADDR + (2 * segno);
@@ -515,8 +518,7 @@ int resolveLinks(bool bVerbose)
     return 0;
 }
 
-PRIVATE
-int loadDeferredSegment(segment *sg, int addr24)
+static int loadDeferredSegment(segment *sg, int addr24)
 {
     if (!sim_quiet) sim_printf("    loading %s as segment# 0%o\n", sg->name, sg->segno);
         

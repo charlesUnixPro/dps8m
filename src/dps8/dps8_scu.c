@@ -515,9 +515,13 @@
 
 // ============================================================================
 
-#include "dps8.h"
-#include "dps8_utils.h"
 #include <sys/time.h>
+#include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_scu.h"
+#include "dps8_utils.h"
+#include "dps8_sys.h"
+#include "dps8_iom.h"
 
 static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -1274,11 +1278,11 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
               {
                 // The is a bit of code that is waiting for 5000 ms; this
                 // fools into going faster
-                __uint128_t big = cpuCycles;
+                __uint128_t big = sys_stats . total_cycles;
                 if (switches . bullet_time)
                   big *= 50000;
                 rA = (big >> 36) & DMASK;
-                rQ = cpuCycles & DMASK;
+                rQ = sys_stats . total_cycles & DMASK;
                 break;
               }
             /// The calendar clock consists of a 52-bit register which counts

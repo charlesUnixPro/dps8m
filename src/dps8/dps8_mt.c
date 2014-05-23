@@ -9,6 +9,9 @@
 
 #include <stdio.h>
 #include "dps8.h"
+#include "dps8_mt.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 /*
  mt.c -- mag tape

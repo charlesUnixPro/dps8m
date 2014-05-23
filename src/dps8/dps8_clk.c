@@ -1,5 +1,7 @@
 
 #include "dps8.h"
+#include "dps8_clk.h"
+#include "dps8_sys.h"
 
 #define N_CLK_UNITS 1
 static t_stat clk_svc(UNIT *up);

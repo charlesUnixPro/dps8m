@@ -9,25 +9,18 @@
 
 #include <stdio.h>
 #include "dps8.h"
+#include "dps8_addrmods.h"
+#include "dps8_cpu.h"
+#include "dps8_ins.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
+#include "dps8_iefp.h"
+#include "dps8_faults.h"
 
 // Computed Address Formation Flowcharts
 
 static bool directOperandFlag = false;
 static word36 directOperand = 0;
-
-#ifndef QUIET_UNUSED
-static char *strCAFoper(eCAFoper o)
-{
-    switch (o)
-    {
-        case unknown:           return "Unknown";
-        case readCY:            return "readCY";
-        case writeCY:           return "writeCY";
-        case prepareCA:         return "prepareCA";
-        default:                return "???";
-    }
-}
-#endif
 
 /*!
  * return contents of register indicated by Td
@@ -79,9 +72,7 @@ static word18 getCr(word4 Tdes)
  * New address stuff (EXPERIMENTAL)
  */
 
-PRIVATE
-char *
-opDescSTR(DCDstruct *i)
+static char * opDescSTR (DCDstruct *i)
 {
     static char temp[256];
     
@@ -144,9 +135,7 @@ opDescSTR(DCDstruct *i)
     return temp;    //"opDescSTR(???)";
 }
 
-PRIVATE
-char *
-operandSTR(DCDstruct *i)
+static char * operandSTR(DCDstruct *i)
 {
     if (i->info->ndes > 0)
         return "operandSTR(): MWEIS not handled yet";
@@ -173,8 +162,7 @@ operandSTR(DCDstruct *i)
 
 modificationContinuation _modCont, *modCont = &_modCont;
 
-PRIVATE
-char *modContSTR(modificationContinuation *i)
+static char * modContSTR(modificationContinuation *i)
 {
     if (!i)
         return "modCont is null";
@@ -510,8 +498,7 @@ static void doITS(word4 Tag)
 }
 
 
-static bool
-doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
+static bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
 {
     word6 indTag = GET_TAG(indword);
     
@@ -1094,7 +1081,7 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): tally now %o\n", tally);
             
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
                 Write(i, tmp18, indword, OPERAND_STORE, i->a);
@@ -1140,7 +1127,7 @@ R_MOD:;
             
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 //if (operType != prepareCA)
                 {
@@ -1270,7 +1257,7 @@ R_MOD:;
             
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
                 Write(i, tmp18, indword, OPERAND_STORE, i->a);
@@ -1299,7 +1286,7 @@ R_MOD:;
             
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 //if (operType != prepareCA)
                 {
@@ -1360,7 +1347,7 @@ R_MOD:;
             
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 // if (operType != prepareCA)
                 {
@@ -1457,7 +1444,7 @@ R_MOD:;
             
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 // write back out indword
                 indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
@@ -1495,7 +1482,7 @@ R_MOD:;
             
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 // if (operType != prepareCA)
                 {
@@ -1565,7 +1552,7 @@ R_MOD:;
             
                 tally -= 1;
                 tally &= 07777; // keep to 12-bits
-                SCF(tally == 0, rIR, I_TALLY);
+                SCF(tally == 0, cu.IR, I_TALLY);
             
                 //if (operType != prepareCA)
                 {

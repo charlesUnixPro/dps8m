@@ -1,3 +1,4 @@
+extern DEVICE iom_dev;
 // I/O Multiplexer
 enum { max_channels = 32 }; // enums are more constant than consts...
 
@@ -40,7 +41,18 @@ typedef struct pcw_s
     uint chan;       // 6 bits; bits 3..8 of word 2
   } pcw_t;
 
+enum chan_type { chan_type_CPI, chan_type_PSI };
+typedef enum chan_type chan_type;
+
+// Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
+enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC };
 
 typedef int iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
 typedef int iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io);
+void iom_init(void);
+void iom_interrupt(int iom_unit_num);
+t_stat iom_svc(UNIT* up);
+t_stat channel_svc(UNIT *up);
+t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
+

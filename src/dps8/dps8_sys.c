@@ -9,8 +9,15 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_console.h"
+#include "dps8_clk.h"
+#include "dps8_cpu.h"
+#include "dps8_ins.h"
 #include "dps8_iom.h"
+#include "dps8_loader.h"
+#include "dps8_math.h"
 #include "dps8_scu.h"
+#include "dps8_sys.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
@@ -30,6 +37,7 @@ char sim_name[] = "dps-8/m";
 int32 sim_emax = 4; ///< some EIS can take up to 4-words
 static void dps8_init(void);
 void (*sim_vm_init) (void) = & dps8_init;    //CustomCmds;
+
 static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
 

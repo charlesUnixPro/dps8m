@@ -1,5 +1,8 @@
+// Devices connected to a SCU
+enum active_dev { ADEV_NONE, ADEV_CPU, ADEV_IOM };
+
+
 extern DEVICE scu_dev;
-extern UNIT scu_unit [];
 int scu_set_interrupt(uint scu_unit_num, uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);

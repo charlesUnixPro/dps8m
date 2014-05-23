@@ -7,6 +7,11 @@
 
 #include <stdio.h>
 #include "dps8.h"
+#include "dps8_append.h"
+#include "dps8_cpu.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
+#include "dps8_faults.h"
 
 /**
  * \brief the appending unit ...
@@ -15,9 +20,6 @@
 static char *strSDW(_sdw *SDW);
 
 static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
-
-word36 CY = 0;              ///< C(Y) operand data from memory
-                            // XXX do we need to make CY part of DCDstruct ?
 
 /**
 
@@ -31,29 +33,6 @@ word36 CY = 0;              ///< C(Y) operand data from memory
  5. C(PRn.BITNO) → TPR.BITNO
  */
 
-#if REDUNDANT
-void doAddrModPtrReg(DCDstruct *i)
-{
-    word3 n = GET_PRN(i->IWB);  // get PRn
-    word15 offset = GET_OFFSET(i->IWB);
-#ifndef QUIET_UNUSED
-    int soffset = SIGNEXT15(GET_OFFSET(i->IWB));
-#endif
-    
-    TPR.TSR = PR[n].SNR;
-    TPR.TRR = max3(PR[n].RNR, TPR.TRR, PPR.PRR);
-    
-    TPR.CA = (PR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
-    TPR.TBR = PR[n].BITNO;  // TPR.BITNO = PR[n].BITNO;
-    
-    //i->address = TPR.CA;    // why do I muck with i->address?
-    //rY = i->address;    // is this right?
-    
-    //rY = TPR.CA;    // why do I muck with i->address?
-    
-   sim_debug(DBG_APPENDING, &cpu_dev, "doAddrModPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
-}
-#endif
 
 void doPtrReg(DCDstruct *i)
 {
@@ -745,25 +724,6 @@ static char *strPCT(_processor_cycle_type t)
   
 }
 
-//// is instruction a STR-OP?
-//static bool isSTROP(DCDstruct *i)
-//{
-//    if (i->info->flags & (STORE_OPERAND | STORE_YBLOCK8 | STORE_YBLOCK16))
-//        return true;
-//    return false;
-//}
-//
-//// is instruction a read-OP?
-//static bool isREADOP(DCDstruct *i)
-//{
-//    if (i->info->flags & (READ_OPERAND | READ_YBLOCK8 | READ_YBLOCK16))
-//        return true;
-//    return false;
-//}
-
-
-//_processor_cycle_type lastCycle = UNKNOWN_CYCLE;
-
 static bool bPrePageMode = false;
 
 /*
@@ -771,8 +731,7 @@ static bool bPrePageMode = false;
  * Returns final address suitable for core_read/write
  */
 
-word24
-doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
+word24 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
 {
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));

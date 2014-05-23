@@ -12,6 +12,11 @@
 #include <math.h>
 
 #include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_ins.h"
+#include "dps8_math.h"
+#include "dps8_utils.h"
+#include "dps8_faults.h"
 
 //! floating-point stuff ....
 //! quad to octal
@@ -120,8 +125,7 @@ float72 IEEElongdoubleToFloat72(long double f0)
 
 
 #ifndef QUIET_UNUSED
-static long double
-MYfrexpl(long double x, int *exp)
+static long double MYfrexpl(long double x, int *exp)
 {
     long double exponents[20], *next;
     int exponent, bit;
@@ -424,21 +428,21 @@ void ufa(DCDstruct *ins)
     
 //here:;
     // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SCF(m3 > MASK72, rIR, I_CARRY);
+    SCF(m3 > MASK72, cu.IR, I_CARRY);
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SCF(m3 == 0, rIR, I_ZERO);
+    SCF(m3 == 0, cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(m3 & SIGN72, rIR, I_NEG);
+    SCF(m3 & SIGN72, cu.IR, I_NEG);
 
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-        SETF(rIR, I_EOFL);
+        SETF(cu.IR, I_EOFL);
     
     // EUFL: If exponent is less than -128, then ON
     if(e3 < -128)
-        SETF(rIR, I_EUFL);
+        SETF(cu.IR, I_EUFL);
     
     if (m3 == 0)
     {
@@ -497,7 +501,7 @@ void ufs(DCDstruct *ins)
         m2c &= FLOAT36MASK;
         
         if ((e + 1) > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else // XXX my interpretation
             e += 1;
         
@@ -530,21 +534,21 @@ void fno(DCDstruct *ins)
     rA &= DMASK;
     rQ &= DMASK;
     float72 m = ((word72)rA << 36) | (word72)rQ;
-    if (TSTF(rIR, I_OFLOW))
+    if (TSTF(cu.IR, I_OFLOW))
     {
         m >>= 1;
         m &= MASK72;
         
         m ^= ((word72)1 << 71);
 
-        SCF(rA && SIGN72, rIR, I_NEG);
-        CLRF(rIR, I_OFLOW);
+        SCF(rA && SIGN72, cu.IR, I_NEG);
+        CLRF(cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(rE == -128 && m == 0, rIR, I_ZERO);
-        SCF(rE == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
+        //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
+        SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
         // Neg:
-        CLRF(rIR, I_NEG);
+        CLRF(cu.IR, I_NEG);
         return; // XXX: ???
     }
     
@@ -555,10 +559,10 @@ void fno(DCDstruct *ins)
         rQ = m & MASK36;
 
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(rE == -128 && m == 0, rIR, I_ZERO);
-        SCF(rE == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
+        //SCF(rE == -128 && m == 0, cu.IR, I_ZERO);
+        SCF(rE == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
         // Neg:
-        CLRF(rIR, I_NEG);
+        CLRF(cu.IR, I_NEG);
         
         return;
     }
@@ -575,7 +579,7 @@ void fno(DCDstruct *ins)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else    // XXX: my interpretation
             e -= 1;
         
@@ -594,10 +598,10 @@ void fno(DCDstruct *ins)
         rE = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(rA == 0, rIR, I_ZERO);
+    SCF(rA == 0, cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(rA & SIGN36, rIR, I_NEG);
+    SCF(rA & SIGN36, cu.IR, I_NEG);
 
 }
 
@@ -612,20 +616,20 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
     //!  If C(AQ) = 0, then C(E) is set to -128 and the zero indicator is set ON.
     
     float72 m = ((word72)*A << 36) | (word72)*Q;
-    if (TSTF(rIR, I_OFLOW))
+    if (TSTF(cu.IR, I_OFLOW))
     {
         m >>= 1;
         m &= MASK72;
         
         m ^= ((word72)1 << 71);
         
-        CLRF(rIR, I_OFLOW);
+        CLRF(cu.IR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(*E == -128 && m == 0, rIR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
+        //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
+        SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
         // Neg:
-        CLRF(rIR, I_NEG);
+        CLRF(cu.IR, I_NEG);
         return; // XXX: ???
     }
     
@@ -636,10 +640,10 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *Q = m & MASK36;
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        //SCF(*E == -128 && m == 0, rIR, I_ZERO);
-        SCF(*E == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
+        //SCF(*E == -128 && m == 0, cu.IR, I_ZERO);
+        SCF(*E == 0200U /*-128*/ && m == 0, cu.IR, I_ZERO);
         // Neg:
-        CLRF(rIR, I_NEG);
+        CLRF(cu.IR, I_NEG);
         
         return;
     }
@@ -656,7 +660,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
             m |= SIGN72;
         
         if ((e - 1) < -128)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else    // XXX: my interpretation
             e -= 1;
         
@@ -675,10 +679,10 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *E = (word8)-128;
     
     // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-    SCF(*A == 0, rIR, I_ZERO);
+    SCF(*A == 0, cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(*A & SIGN36, rIR, I_NEG);
+    SCF(*A & SIGN36, cu.IR, I_NEG);
     
 }
 
@@ -694,8 +698,8 @@ void fneg(DCDstruct *ins)
     
     if (m == 0) // (if C(AQ) ≠ 0)
     {
-        SETF(rIR, I_ZERO);      // it's zero
-        CLRF(rIR, I_NEG);       // it ain't negative
+        SETF(cu.IR, I_ZERO);      // it's zero
+        CLRF(cu.IR, I_NEG);       // it ain't negative
         return; //XXX: ????
     }
     
@@ -727,7 +731,7 @@ void fneg(DCDstruct *ins)
         mc &= ((word72)1 << 72) - 1;
         
         if ((e + 1) > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else    // XXX: this is my interpretation
             rE += 1;
     }
@@ -763,8 +767,8 @@ void ufm(DCDstruct *ins)
     
     if (m1 == 0 || m2 == 0)
     {
-        SETF(rIR, I_ZERO);
-        CLRF(rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        CLRF(cu.IR, I_NEG);
         
         rE = (word8)-128;
         rA = 0;
@@ -816,12 +820,12 @@ void ufm(DCDstruct *ins)
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno(ins);
     
-    SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-    //SCF(rA && SIGN72, rIR, I_NEG);
-    SCF(rA && SIGN36, rIR, I_NEG);
+    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+    //SCF(rA && SIGN72, cu.IR, I_NEG);
+    SCF(rA && SIGN36, cu.IR, I_NEG);
     
-    if (e1 + e2 >  127) SETF(rIR, I_EOFL);
-    if (e1 - e2 < -128) SETF(rIR, I_EUFL);
+    if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
+    if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
 }
 
 /*!
@@ -895,8 +899,8 @@ void fdvX(DCDstruct *ins, bool bInvert)
         
         // NB: If C(Y)8,35 ==0 then the alignment loop will never exit! That's why it been moved before the alignment
         
-        SETF(rIR, I_ZERO);
-        SCF(rA & SIGN36, rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        SCF(rA & SIGN36, cu.IR, I_NEG);
         
         rA = m1;
         
@@ -909,7 +913,7 @@ void fdvX(DCDstruct *ins, bool bInvert)
         m1 >>= 1;
         
         if (e1 + 1 > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else // XXX: this is my interpretation
             e1 += 1;
     }
@@ -927,8 +931,8 @@ void fdvX(DCDstruct *ins, bool bInvert)
     rA = m3b & MASK36;
     rQ = 0;
     
-    SCF(rA == 0, rIR, I_ZERO);
-    SCF(rA & SIGN36, rIR, I_NEG);
+    SCF(rA == 0, cu.IR, I_ZERO);
+    SCF(rA & SIGN36, cu.IR, I_NEG);
     
     if (rA == 0)    // set to normalized 0
         rE = (word8)-128;
@@ -1001,8 +1005,8 @@ void frd(DCDstruct *ins)
     if (m == 0)
     {
         rE = (word8)-128;
-        SETF(rIR, I_ZERO);
-        CLRF(rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        CLRF(cu.IR, I_NEG);
         
         return;
     }
@@ -1035,7 +1039,7 @@ void frd(DCDstruct *ins)
         rQ = m & MASK36;
         
         if (rE + 1 > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         rE +=  1;
     }
     else
@@ -1051,10 +1055,10 @@ void frd(DCDstruct *ins)
     if (rA == 0 && rQ == 0)
     {
         rE = (word8)-128;
-        SETF(rIR, I_ZERO);
+        SETF(cu.IR, I_ZERO);
     }
     
-    SCF(rA & SIGN36, rIR, I_NEG);
+    SCF(rA & SIGN36, cu.IR, I_NEG);
     
 }
 
@@ -1075,8 +1079,8 @@ void fstr(DCDstruct *ins, word36 *Y)
     if (m == 0)
     {
         E = (word8)-128;
-        SETF(rIR, I_ZERO);
-        CLRF(rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        CLRF(cu.IR, I_NEG);
         
         *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
         return;
@@ -1110,7 +1114,7 @@ void fstr(DCDstruct *ins, word36 *Y)
         Q = m & MASK36;
         
         if (E + 1 > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         E +=  1;
     }
     else
@@ -1126,10 +1130,10 @@ void fstr(DCDstruct *ins, word36 *Y)
     if (A == 0 && Q == 0)
     {
         E = (word8)-128;
-        SETF(rIR, I_ZERO);
+        SETF(cu.IR, I_ZERO);
     }
     
-    SCF(A & SIGN36, rIR, I_NEG);
+    SCF(A & SIGN36, cu.IR, I_NEG);
     
     *Y = bitfieldInsert36(A >> 8, E, 28, 8) & MASK36;
 }
@@ -1197,8 +1201,8 @@ void fcmp(DCDstruct *ins)
     }
     
     // need todo algebraic comparisons of mantissae
-    SCF((word36s)SIGNEXT36(m1) == (word36s)SIGNEXT36(m2), rIR, I_ZERO);
-    SCF((word36s)SIGNEXT36(m1) <  (word36s)SIGNEXT36(m2), rIR, I_NEG);
+    SCF((word36s)SIGNEXT36(m1) == (word36s)SIGNEXT36(m2), cu.IR, I_ZERO);
+    SCF((word36s)SIGNEXT36(m1) <  (word36s)SIGNEXT36(m2), cu.IR, I_NEG);
 }
 
 /*!
@@ -1269,8 +1273,8 @@ void fcmg(DCDstruct *ins)
     if (m2 & SIGN36)
         m2 = (~m2 + 1) & MASK36;
     
-    SCF(m1 == m2, rIR, I_ZERO);
-    SCF(m1 < m2, rIR, I_NEG);
+    SCF(m1 == m2, cu.IR, I_ZERO);
+    SCF(m1 < m2, cu.IR, I_NEG);
 }
 
 /*
@@ -1385,21 +1389,21 @@ void dufa(DCDstruct *ins)
     
     //here:;
     // Carry: If a carry out of AQ0 is generated, then ON; otherwise OFF
-    SCF(m3 > MASK72, rIR, I_CARRY);
+    SCF(m3 > MASK72, cu.IR, I_CARRY);
     
     // Zero: If C(AQ) = 0, then ON; otherwise OFF
-    SCF(m3 == 0, rIR, I_ZERO);
+    SCF(m3 == 0, cu.IR, I_ZERO);
     
     // Neg: If C(AQ)0 = 1, then ON; otherwise OFF
-    SCF(m3 & SIGN72, rIR, I_NEG);
+    SCF(m3 & SIGN72, cu.IR, I_NEG);
     
     // EOFL: If exponent is greater than +127, then ON
     if (e3 > 127)
-        SETF(rIR, I_EOFL);
+        SETF(cu.IR, I_EOFL);
     
     // EUFL: If exponent is less than -128, then ON
     if(e3 < -128)
-        SETF(rIR, I_EUFL);
+        SETF(cu.IR, I_EUFL);
     
     if (m3 == 0)
     {
@@ -1448,7 +1452,7 @@ void dufs(DCDstruct *ins)
         m2c &= MASK72;
         
         if ((e2 + 1) > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else // XXX my interpretation
             e2 += 1;
     }
@@ -1506,8 +1510,8 @@ void dufm(DCDstruct *ins)
     
     if (m1 == 0 || m2 == 0)
     {
-        SETF(rIR, I_ZERO);
-        CLRF(rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        CLRF(cu.IR, I_NEG);
         
         rE = (word8)-128;
         rA = 0;
@@ -1558,12 +1562,12 @@ void dufm(DCDstruct *ins)
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
         fno(ins);
     
-    SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-    //SCF(rA && SIGN72, rIR, I_NEG);
-    SCF(rA && SIGN36, rIR, I_NEG);
+    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+    //SCF(rA && SIGN72, cu.IR, I_NEG);
+    SCF(rA && SIGN36, cu.IR, I_NEG);
     
-    if (e1 + e2 >  127) SETF(rIR, I_EOFL);
-    if (e1 - e2 < -128) SETF(rIR, I_EUFL);
+    if (e1 + e2 >  127) SETF(cu.IR, I_EOFL);
+    if (e1 - e2 < -128) SETF(cu.IR, I_EUFL);
 }
 
 /*!
@@ -1612,8 +1616,8 @@ static void dfdvX(DCDstruct *ins, bool bInvert)
     if (m1 == 0)
     {
         // XXX check flags
-        SETF(rIR, I_ZERO);
-        SCF(rA & SIGN36, rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        SCF(rA & SIGN36, cu.IR, I_NEG);
         
         rE = (word8)-128;
         rA = 0;
@@ -1654,8 +1658,8 @@ static void dfdvX(DCDstruct *ins, bool bInvert)
         
         // NB: If C(Y-pair)8,71 == 0 then the alignment loop will never exit! That's why it been moved before the alignment
         
-        SETF(rIR, I_ZERO);
-        SCF(rA & SIGN36, rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        SCF(rA & SIGN36, cu.IR, I_NEG);
         
         rA = m1;
         
@@ -1669,7 +1673,7 @@ static void dfdvX(DCDstruct *ins, bool bInvert)
         m1 >>= 1;
         
         if (e1 + 1 > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         else // XXX: this is my interpretation
             e1 += 1;
     }
@@ -1695,8 +1699,8 @@ static void dfdvX(DCDstruct *ins, bool bInvert)
     rA = (m3b >> 28) & MASK36;
     rQ = (m3b & 01777777777LL) << 8;//MASK36;
     
-    SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-    SCF(rA & SIGN36, rIR, I_NEG);
+    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+    SCF(rA & SIGN36, cu.IR, I_NEG);
     
     if (rA == 0 && rQ == 0)    // set to normalized 0
         rE = (word8)-128;
@@ -1727,8 +1731,8 @@ void dvf(DCDstruct *ins)
     if (m2 == 0)
     {
         // XXX check flags
-        SETF(rIR, I_ZERO);
-        SCF(rA & SIGN36, rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        SCF(rA & SIGN36, cu.IR, I_NEG);
         
         rA = 0;
         rQ = 0;
@@ -1754,8 +1758,8 @@ void dvf(DCDstruct *ins)
     
     if (m2 == 0)
     {        
-        SETF(rIR, I_ZERO);
-        SCF(rA & SIGN36, rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        SCF(rA & SIGN36, cu.IR, I_NEG);
         
         rA = m1;
         
@@ -1779,8 +1783,8 @@ void dvf(DCDstruct *ins)
     rA = (m3 >> 64) & MASK36;
     rQ = m3r & MASK36;   //01777777777LL;
     
-    SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-    SCF(rA & SIGN36, rIR, I_NEG);
+    SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+    SCF(rA & SIGN36, cu.IR, I_NEG);
 }
 
 
@@ -1805,8 +1809,8 @@ void dfrd(DCDstruct *ins)
     if (m == 0)
     {
         rE = (word8)-128;
-        SETF(rIR, I_ZERO);
-        CLRF(rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        CLRF(cu.IR, I_NEG);
         
         return;
     }
@@ -1838,7 +1842,7 @@ void dfrd(DCDstruct *ins)
         rQ = m & MASK36;
         
         if (rE + 1 > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         rE +=  1;
     }
     else
@@ -1854,10 +1858,10 @@ void dfrd(DCDstruct *ins)
     if (rA == 0 && rQ == 0)
     {
         rE = (word8)-128;
-        SETF(rIR, I_ZERO);
+        SETF(cu.IR, I_ZERO);
     }
     
-    SCF(rA & SIGN36, rIR, I_NEG);
+    SCF(rA & SIGN36, cu.IR, I_NEG);
 }
 
 void dfstr(DCDstruct *ins, word36 *Ypair)
@@ -1891,8 +1895,8 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
     if (m == 0)
     {
         E = (word8)-128;
-        SETF(rIR, I_ZERO);
-        CLRF(rIR, I_NEG);
+        SETF(cu.IR, I_ZERO);
+        CLRF(cu.IR, I_NEG);
         
         Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LLU) >> 8);
         Ypair[1] = ((A & MASK8) << 28) | ((Q & 0777777777400LLU) >> 8);
@@ -1928,7 +1932,7 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
         Q = m & MASK36;
         
         if (E + 1 > 127)
-            SETF(rIR, I_EOFL);
+            SETF(cu.IR, I_EOFL);
         E +=  1;
     }
     else
@@ -1944,10 +1948,10 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
     if (A == 0 && Q == 0)
     {
         E = (word8)-128;
-        SETF(rIR, I_ZERO);
+        SETF(cu.IR, I_ZERO);
     }
     
-    SCF(A & SIGN36, rIR, I_NEG);
+    SCF(A & SIGN36, cu.IR, I_NEG);
     
     Ypair[0] = ((word36)E << 28) | ((A & 0777777777400LL) >> 8);
     Ypair[1] = ((A & 0377) << 28) | ((Q & 0777777777400LL) >> 8);
@@ -1998,8 +2002,8 @@ void dfcmp(DCDstruct *ins)
     }
     
     // need to do algebraic comparisons of mantissae
-    SCF(m1 == m2, rIR, I_ZERO);
-    SCF(m1 <  m2, rIR, I_NEG);
+    SCF(m1 == m2, cu.IR, I_ZERO);
+    SCF(m1 <  m2, cu.IR, I_NEG);
 }
 
 /*!
@@ -2050,6 +2054,6 @@ void dfcmg(DCDstruct *ins)
     m1 = llabs(m1);
     m2 = llabs(m2);
     
-    SCF(m1 == m2, rIR, I_ZERO);
-    SCF(m1 < m2, rIR, I_NEG);
+    SCF(m1 == m2, cu.IR, I_ZERO);
+    SCF(m1 < m2, cu.IR, I_NEG);
 }

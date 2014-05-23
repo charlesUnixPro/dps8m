@@ -6,10 +6,7 @@
 //#include <string.h>
 
 #include "dps8.h"
-
-#ifndef VM_DPS8
-#define EMULATOR_ONLY
-#endif
+#include "dps8_opcodetable.h"
 
 /*
  * struct opCode {
@@ -841,7 +838,7 @@ struct opCode EISopcodes[01000] = {
     {},
     {},
     {},
-#ifdef EMULATOR_ONLY
+#if EMULATOR_ONLY 
      /* 420 - 437 */
     {"emcall", IGN_B29, 0},  // we add a emulator call instruction for SIMH use ONLY! (opcode 0420(1))
   

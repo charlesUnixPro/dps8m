@@ -9,13 +9,18 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_cpu.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
+#include "dps8_iefp.h"
+#include "dps8_faults.h"
 
-#ifdef TESTER
-#ifdef rIC
-#undef rIC
-extern word18 rIC;
-#endif
-#endif
+struct MOPstruct
+{
+    char *mopName;             // name of microoperation
+    int (*f)(EISstruct *e);    // pointer to mop() [returns character to be stored]
+};
+
 
 
 static void EISWrite(EISaddr *p, word36 data)
@@ -78,8 +83,7 @@ static void EISReadN(EISaddr *p, int N, word36 *dst)
 
 
 
-PRIVATE
-word36 getMFReg(int n, bool RType)
+static word36 getMFReg(int n, bool RType)
 {
     switch (n)
     {
@@ -93,7 +97,7 @@ word36 getMFReg(int n, bool RType)
             // XXX: IPR generate Illegal Procedure Fault
             return 0;
         case 4: ///< ic - The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
-            return rIC;
+            return PPR.IC;
         case 5: ///< al / a
             return RType ? GETLO(rA) : rA;
         case 6: ///< ql / a
@@ -209,8 +213,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
     }
 }
 
-PRIVATE
-void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
+static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
 {
     word18 MFk = e->MF[k-1];
     
@@ -429,8 +432,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
 }
 
 
-PRIVATE
-void parseBitstringOperandDescriptor(int k, EISstruct *e)
+static void parseBitstringOperandDescriptor(int k, EISstruct *e)
 {
     word18 MFk = e->MF[k-1];
     
@@ -505,8 +507,7 @@ void parseBitstringOperandDescriptor(int k, EISstruct *e)
 /*!
  * determine sign of N*9-bit length word
  */
-PRIVATE
-bool sign9n(word72 n128, int N)
+static bool sign9n(word72 n128, int N)
 {
     
     // sign bit of  9-bit is bit 8  (1 << 8)
@@ -527,8 +528,7 @@ bool sign9n(word72 n128, int N)
 /*!
  * sign extend a N*9 length word to a (word72) 128-bit word
  */
-PRIVATE
-word72 signExt9(word72 n128, int N)
+static word72 signExt9(word72 n128, int N)
 {
     // ext mask for  9-bit = 037777777777777777777777777777777777777400  8 0's
     // ext mask for 18-bit = 037777777777777777777777777777777777400000 17 0's
@@ -548,8 +548,7 @@ word72 signExt9(word72 n128, int N)
 /**
  * get sign to buffer position p
  */
-PRIVATE
-int getSign(word72s n128, EISstruct *e)
+static int getSign(word72s n128, EISstruct *e)
 {
     // 4- or 9-bit?
     if (e->TN2 == CTN4) // 4-bit
@@ -586,8 +585,7 @@ int getSign(word72s n128, EISstruct *e)
  * add sign to buffer position p
  */
 #ifndef QUIET_UNUSED
-PRIVATE
-void addSign(word72s n128, EISstruct *e)
+static void addSign(word72s n128, EISstruct *e)
 {
     *(e->p++) = getSign(n128, e);
 }
@@ -596,9 +594,7 @@ void addSign(word72s n128, EISstruct *e)
 /*!
  * load a 9*n bit integer into e->x ...
  */
-PRIVATE
-//void load9x(int n, word18 sourceAddr, int pos, EISstruct *e)
-void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
+static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
 {
     int128 x = 0;
     
@@ -629,8 +625,7 @@ void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
     e->x = signExt9(x, n);  // form proper 2's-complement integer
 }
 
-PRIVATE
-word4 get4(word36 w, int pos)
+static word4 get4(word36 w, int pos)
 {
     switch (pos)
     {
@@ -663,8 +658,7 @@ word4 get4(word36 w, int pos)
     return 0;
 }
 
-PRIVATE
-word4 get6(word36 w, int pos)
+static word4 get6(word36 w, int pos)
 {
     switch (pos)
     {
@@ -691,8 +685,7 @@ word4 get6(word36 w, int pos)
     return 0;
 }
 
-PRIVATE
-word9 get9(word36 w, int pos)
+static word9 get9(word36 w, int pos)
 {
     
     switch (pos)
@@ -718,8 +711,7 @@ word9 get9(word36 w, int pos)
 /*!
  * return a 4- or 9-bit character at memory "*address" and position "*pos". Increment pos (and address if necesary)
  */
-PRIVATE
-int EISget49(EISaddr *p, int *pos, int tn)
+static int EISget49(EISaddr *p, int *pos, int tn)
 {
     if (!p)
     //{
@@ -818,8 +810,7 @@ static int EISget469(EISaddr *p, int *pos, int ta)
  * NB: must be initialized before use or else unpredictable side-effects may result. Not thread safe
  */
 
-PRIVATE
-int EISget469r(EISaddr *p, int *pos, int ta)
+static int EISget469r(EISaddr *p, int *pos, int ta)
 {
     //static word18 lastAddress;// try to keep memory access' down
     //static word36 data;
@@ -876,8 +867,7 @@ int EISget469r(EISaddr *p, int *pos, int ta)
 /*!
  * load a decimal number into e->x ...
  */
-PRIVATE
-void loadDec(EISaddr *p, int pos, EISstruct *e)
+static void loadDec(EISaddr *p, int pos, EISstruct *e)
 {
     int128 x = 0;
     
@@ -1022,8 +1012,7 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
 /*!
  * write 9-bit bytes to memory @ pos (in reverse)...
  */
-PRIVATE
-void EISwrite9r(EISaddr *p, int *pos, int char9)
+static void EISwrite9r(EISaddr *p, int *pos, int char9)
 {
     word36 w;
     if (*pos < 0)    // out-of-range?
@@ -1060,8 +1049,7 @@ void EISwrite9r(EISaddr *p, int *pos, int char9)
 /*!
  * write 6-bit chars to memory @ pos (in reverse)...
  */
-PRIVATE
-void EISwrite6r(EISaddr *p, int *pos, int char6)
+static void EISwrite6r(EISaddr *p, int *pos, int char6)
 {
     word36 w;
     if (*pos < 0)    // out-of-range?
@@ -1106,8 +1094,7 @@ void EISwrite6r(EISaddr *p, int *pos, int char6)
 /*!
  * write 4-bit digits to memory @ pos (in reverse) ...
  */
-PRIVATE
-void EISwrite4r(EISaddr *p, int *pos, int char4)
+static void EISwrite4r(EISaddr *p, int *pos, int char4)
 {
     word36 w;
     
@@ -1156,8 +1143,7 @@ void EISwrite4r(EISaddr *p, int *pos, int char4)
 /*!
  * write 4-bit chars to memory @ pos ...
  */
-PRIVATE
-void EISwrite4(EISaddr *p, int *pos, int char4)
+static void EISwrite4(EISaddr *p, int *pos, int char4)
 {
     word36 w;
     if (*pos > 7)    // out-of-range?
@@ -1205,8 +1191,7 @@ void EISwrite4(EISaddr *p, int *pos, int char4)
 /*!
  * write 6-bit digits to memory @ pos ...
  */
-PRIVATE
-void EISwrite6(EISaddr *p, int *pos, int char6)
+static void EISwrite6(EISaddr *p, int *pos, int char6)
 {
     word36 w;
     
@@ -1248,8 +1233,7 @@ void EISwrite6(EISaddr *p, int *pos, int char6)
 /*!
  * write 9-bit bytes to memory @ pos ...
  */
-PRIVATE
-void EISwrite9(EISaddr *p, int *pos, int char9)
+static void EISwrite9(EISaddr *p, int *pos, int char9)
 {
     word36 w;
     if (*pos > 3)    // out-of-range?
@@ -1284,8 +1268,7 @@ void EISwrite9(EISaddr *p, int *pos, int char9)
 /*!
  * write a 4-, 6-, or 9-bit char to dstAddr ....
  */
-PRIVATE
-void EISwrite469(EISaddr *p, int *pos, int ta, int c469)
+static void EISwrite469(EISaddr *p, int *pos, int ta, int c469)
 {
     switch(ta)
     {
@@ -1302,7 +1285,7 @@ void EISwrite469(EISaddr *p, int *pos, int ta, int c469)
 /*!
  * write a 4-, 6-, or 9-bit char to dstAddr (in reverse)....
  */
-PRIVATE
+static 
 void EISwrite469r(EISaddr *p, int *pos, int ta, int c469)
 {
     switch(ta)
@@ -1420,8 +1403,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     N -= 1;
 }
 
-PRIVATE
-void EISwriteToBinaryStringReverse(EISaddr *p, int k)
+static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 {
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
     
@@ -1469,8 +1451,7 @@ void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 /// characters directly into the output string taking into account the output string length.....
 
 
-PRIVATE
-void _btd(EISstruct *e)
+static void _btd(EISstruct *e)
 {
     word72s n128 = e->x;    ///< signExt9(e->x, e->N1);          ///< adjust for +/-
     int sgn = (n128 < 0) ? -1 : 1;  ///< sgn(x)
@@ -1529,112 +1510,6 @@ void _btd(EISstruct *e)
     }
 }
 
-#ifndef QUIET_UNUSED
-char *_btdOld(EISstruct *e)
-{
-    word72s n128 = e->x;    //signExt9(e->x, e->N1);          // adjust for +/-
-    int sgn = (n128 < 0) ? -1 : 1;  // sgn(x)
-    if (n128 < 0)
-        n128 = -n128;
-    
-    memset(e->buff, 0, sizeof(e->buff));       // fill buff with all 1's so we know where we stopped
-    e->p = e->buff;
-    
-    // handle any leading sign stuff ...
-    if (e->S2 == CSLS)  // a trailing sign
-        addSign(sgn, e);
-    
-    char bcd[23];   // 2^72 = ~22 digits
-    memset(bcd, 0, sizeof(bcd));
-    
-#ifdef ALG2 // determine which is faster
-    // less elegant but simpler operations
-    if (n128 > 0)
-    {
-        
-        // Xilinx XAPP029 Serial Code Conversion between BCD and Binary application note v1 1 (10/97)
-        // http://www.eng.utah.edu/~nmcdonal/Tutorials/BCDTutorial/BCDConversion.html
-        
-        for(int i = 71 ; i >= 0 ; i -= 1)
-        {
-            // add 3 to columns >= 5
-            for(int j = 0 ; j < sizeof(bcd); j += 1)
-                if (bcd[j] >= 5)
-                    bcd[j] += 3;
-            
-            // shift all binary digits left 1
-            for(int j = sizeof(bcd) - 1; j >= 0 ; j -= 1)
-            {
-                if (j > 0)
-                {
-                    bcd[j] = (bcd[j] << 1) & 0xf;
-                    if (bcd[j - 1] & 8)
-                        bcd[j] |= 1;
-                } else {
-                    bcd[j] = (bcd[j] << 1) & 0xf;
-                    if (n & ((uint128)1 << 71))
-                        bcd[0] |= 1;
-                    n = (n << 1);
-                }
-            }
-            //        for(int j = 0 ; j < sizeof(bcd) ; j += 1)
-            //        {
-            //            if (j < sizeof(bcd) - 1)
-            //            {
-            //                bcd[j] = (bcd[j] << 1) & 0xf;
-            //                if (bcd[j + 1] & 8)
-            //                    bcd[j] |= 1;
-            //            } else {
-            //                bcd[j] = (bcd[j] << 1) & 0xf;
-            //                if (n & ((uint128)1 << 71))
-            //                    bcd[sizeof(bcd)-1] |= 1;
-            //                n = (n << 1);
-            //            }
-            //        }
-        }
-    } else
-        // just a single 0
-        bcd[0] = '0';
-    
-#else
-    
-    // elegant but slower?
-    char *q = bcd;
-    do
-    {
-        int n = n128 % 10;
-        
-        *q++ = n + '0'; // write as ascii to keep tract of what we've generated
-        
-        n128 /= 10;
-    } while (n128);
-    
-#endif
-    
-    // copy bcd to e->buff ....
-    //    int i = 0;
-    //    for(; i < sizeof(bcd) ; i ++)
-    //        if (bcd[i])
-    //            break;
-    //    for(; i < sizeof(bcd) ; i ++)
-    //        *(e->p++) = bcd[i];
-    int i = sizeof(bcd)-1;
-    for(; i >= 0 ; i -= 1)
-        if (bcd[i])
-            break;
-    for(; i >= 0 ; i -= 1)
-        *(e->p++) = (bcd[i] & 017) + ((e->TN2 == CTN4) ? 0 : '0');    // write as 4- or 9-bit
-    
-    
-    // handle any trailing sign stuff ...
-    if (e->S2 == CSTS)  // a leading sign
-        addSign(sgn, e);
-    
-    return e->buff;
-    
-    // e->p points to just after last char of converted data
-}
-#endif
 
 void btd(DCDstruct *ins)
 {
@@ -1677,15 +1552,15 @@ void btd(DCDstruct *ins)
     
     EISwriteToOutputStringReverse(e, 2, 0);    // initialize output writer .....
     
-    e->_flags = rIR;
+    e->_flags = cu.IR;
     
     CLRF(e->_flags, I_NEG);     // If a minus sign character is moved to C(Y-charn2), then ON; otherwise OFF
     CLRF(e->_flags, I_ZERO);    // If C(Y-charn2) = decimal 0, then ON: otherwise OFF
 
     _btd(e);
     
-    rIR = e->_flags;
-    if (TSTF(rIR, I_OFLOW))
+    cu.IR = e->_flags;
+    if (TSTF(cu.IR, I_OFLOW))
         doFault(ins, overflow_fault, 0, "btd() overflow!");   // XXX generate overflow fault
     
 }
@@ -1705,7 +1580,7 @@ void dtb(DCDstruct *ins)
     if (e->S1 == 0 || e->SF1 != 0 || e->N2 == 0 || e->N2 > 8)
         ; // generate ill proc fault
     
-    e->_flags = rIR;
+    e->_flags = cu.IR;
     
     // Negative: If a minus sign character is found in C(Y-charn1), then ON; otherwise OFF
     CLRF(e->_flags, I_NEG);
@@ -1718,9 +1593,9 @@ void dtb(DCDstruct *ins)
     
     EISwriteToBinaryStringReverse(&e->ADDR2, 2);
     
-    rIR = e->_flags;
+    cu.IR = e->_flags;
 
-    if (TSTF(rIR, I_OFLOW))
+    if (TSTF(cu.IR, I_OFLOW))
         ;   // XXX generate overflow fault
     
 }
@@ -1728,8 +1603,7 @@ void dtb(DCDstruct *ins)
 /*!
  * Edit instructions & support code ...
  */
-PRIVATE
-void EISwriteOutputBufferToMemory(EISaddr *p)
+static void EISwriteOutputBufferToMemory(EISaddr *p)
 {
     //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
     //5. If the receiving string is 9-bit characters, high-order fill the (4-bit) digits from the input buffer with bits 0-4 of character 8 of the edit insertion table. If the receiving string is 6-bit characters, high-order fill the digits with "00"b.
@@ -1758,8 +1632,7 @@ void EISwriteOutputBufferToMemory(EISaddr *p)
     }
 }
 
-PRIVATE
-void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int szDst, int c49)
+static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int szDst, int c49)
 {
     //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
     //5. If the receiving string is 9-bit characters, high-order fill the (4-bit) digits from the input buffer with bits 0-4 of character 8 of the edit insertion table. If the receiving string is 6-bit characters, high-order fill the digits with "00"b.
@@ -1968,8 +1841,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 /*!
  * Load decimal unit input buffer with sending string characters. Data is read from main memory in unaligned units (not modulo 8 boundary) of Y-block8 words. The number of characters loaded is the minimum of the remaining sending string count, the remaining receiving string count, and 64.
  */
-PRIVATE
-void EISloadInputBufferAlphnumeric(EISstruct *e, int k)
+static void EISloadInputBufferAlphnumeric(EISstruct *e, int k)
 {
     word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
     memset(e->inBuffer, 0, sizeof(e->inBuffer));   // initialize to all 0's
@@ -2015,7 +1887,7 @@ void EISloadInputBufferAlphnumeric(EISstruct *e, int k)
 ///< MicroOperations ...
 ///< Table 4-9. Micro Operation Code Assignment Map
 #ifndef QUIET_UNUSED
-PRIVATE
+static 
 char* mopCodes[040] = {
     //        0       1       2       3       4       5       6       7
     /* 00 */  0,     "insm", "enf",  "ses",  "mvzb", "mvza", "mfls", "mflc",
@@ -2043,7 +1915,7 @@ static int mopMORS (EISstruct *);
 static int mopLTE  (EISstruct *);
 static int mopCHT(EISstruct *e);
 
-PRIVATE
+static 
 MOPstruct mopTab[040] = {
     {NULL, 0},
     {"insm", mopINSM },
@@ -2079,11 +1951,11 @@ MOPstruct mopTab[040] = {
     {NULL, 0}
 };
 
-PRIVATE
+static 
 char* defaultEditInsertionTable = " *+-$,.0";
 
 
-//PRIVATE
+//static 
 //MOPstruct* getMop(EISstruct *e);
 
 // Edit Flags
@@ -2292,7 +2164,7 @@ static int mopINSB(EISstruct *e)
  * Edit insertion table entry 1 is moved to the next IF (1-16) receiving field characters.
  * FLAGS: None affected
  */
-int static mopINSM(EISstruct *e)
+static int mopINSM(EISstruct *e)
 {
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
@@ -2886,8 +2758,7 @@ static MOPstruct* EISgetMop(EISstruct *e)
 /*!
  * This is the Micro Operation Executor/Interpreter
  */
-PRIVATE
-void mopExecutor(EISstruct *e, int kMop)
+static void mopExecutor(EISstruct *e, int kMop)
 {
     //e->mopAddr = e->YChar9[kMop-1];    // get address of microoperations
     e->mopAddress = &e->addr[kMop-1];
@@ -3090,8 +2961,7 @@ void mve(DCDstruct *ins)
  * does 6-bit char represent a GEBCD negative overpuch? if so, whice numeral?
  * Refer to Bull NovaScale 9000 RJ78 Rev2 p11-178
  */
-PRIVATE
-bool isOvp(int c, int *on)
+static bool isOvp(int c, int *on)
 {
     // look for GEBCD -' 'A B C D E F G H I (positive overpunch)
     // look for GEBCD - ^ J K L M N O P Q R (negative overpunch)
@@ -3197,7 +3067,7 @@ void mlr(DCDstruct *ins)
     
     /// XXX when do we do a truncation fault?
     
-    SCF(e->N1 > e->N2, rIR, I_TRUNC);
+    SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -3284,8 +3154,7 @@ void mlr(DCDstruct *ins)
  *  'initPos' initial char position (CN)
  *  'ta' alphanumeric type (if ta < 0 then size = abs(ta))
  */
-PRIVATE
-void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
+static void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
 {
     int maxPos = 0;
     
@@ -3422,7 +3291,7 @@ void mrl(DCDstruct *ins)
     
     /// XXX when do we do a truncation fault?
     
-    SCF(e->N1 > e->N2, rIR, I_TRUNC);
+    SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     
     bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
@@ -3669,8 +3538,8 @@ void mvt(DCDstruct *ins)
 
     /// XXX when do we do a truncation fault?
     
-    SCF(e->N1 > e->N2, rIR, I_TRUNC);
-    SCF(e->N1 > e->N2, rIR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
+    SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
+    SCF(e->N1 > e->N2, cu.IR, I_TALLY);   // HWR 7 Feb 2014. Possibly undocumented behavior. TRO may be set also!
 
     //get469(NULL, 0, 0, 0);    // initialize char getter buffer
     
@@ -3778,8 +3647,7 @@ void mvt(DCDstruct *ins)
     }
 }
 
-PRIVATE
-word18 getMF2Reg(int n, word18 data)
+static word18 getMF2Reg(int n, word18 data)
 {
     switch (n)
     {
@@ -3991,7 +3859,7 @@ void scm(DCDstruct *ins)
     }
     word36 CY3 = bitfieldInsert36(0, i, 0, 24);
     
-    SCF(i == e->N1, rIR, I_TALLY);
+    SCF(i == e->N1, cu.IR, I_TALLY);
     
     // write Y3 .....
     //Write(e->ins, y3, CY3, OperandWrite, 0);
@@ -4171,7 +4039,7 @@ void scmr(DCDstruct *ins)
     }
     word36 CY3 = bitfieldInsert36(0, i, 0, 24);
     
-    SCF(i == e->N1, rIR, I_TALLY);
+    SCF(i == e->N1, cu.IR, I_TALLY);
     
     // write Y3 .....
     //Write(e->ins, y3, CY3, OperandWrite, 0);
@@ -4365,7 +4233,7 @@ void tct(DCDstruct *ins)
         }
     }
     
-    SCF(i == e->N1, rIR, I_TALLY);
+    SCF(i == e->N1, cu.IR, I_TALLY);
     
     CY3 = bitfieldInsert36(CY3, i, 0, 24);
     
@@ -4578,7 +4446,7 @@ void tctr(DCDstruct *ins)
         }
     }
     
-    SCF(i == e->N1, rIR, I_TALLY);
+    SCF(i == e->N1, cu.IR, I_TALLY);
     
     CY3 = bitfieldInsert36(CY3, i, 0, 24);
     
@@ -4655,8 +4523,8 @@ void cmpc(DCDstruct *ins)
       __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcSZ, 
       fill);
 
-    SETF(rIR, I_ZERO);  // set ZERO flag assuming strings are are equal ...
-    SETF(rIR, I_CARRY); // set CARRY flag assuming strings are are equal ...
+    SETF(cu.IR, I_ZERO);  // set ZERO flag assuming strings are are equal ...
+    SETF(cu.IR, I_CARRY); // set CARRY flag assuming strings are are equal ...
     
     int i = 0;
     for(; i < min(e->N1, e->N2); i += 1)
@@ -4668,9 +4536,9 @@ void cmpc(DCDstruct *ins)
         
         if (c1 != c2)
         {
-            CLRF(rIR, I_ZERO);  // an inequality found
+            CLRF(cu.IR, I_ZERO);  // an inequality found
             
-            SCF(c1 < c2, rIR, I_CARRY);
+            SCF(c1 < c2, cu.IR, I_CARRY);
             
             return;
         }
@@ -4684,9 +4552,9 @@ void cmpc(DCDstruct *ins)
             
             if (c1 != c2)
             {
-                CLRF(rIR, I_ZERO);  // an inequality found
+                CLRF(cu.IR, I_ZERO);  // an inequality found
                 
-                SCF(c1 < c2, rIR, I_CARRY);
+                SCF(c1 < c2, cu.IR, I_CARRY);
                 
                 return;
             }
@@ -4700,9 +4568,9 @@ void cmpc(DCDstruct *ins)
             
             if (c1 != c2)
             {
-                CLRF(rIR, I_ZERO);  // an inequality found
+                CLRF(cu.IR, I_ZERO);  // an inequality found
                 
-                SCF(c1 < c2, rIR, I_CARRY);
+                SCF(c1 < c2, cu.IR, I_CARRY);
                 
                 return;
             }
@@ -4886,7 +4754,7 @@ void scd(DCDstruct *ins)
     
     word36 CY3 = bitfieldInsert36(0, i, 0, 24);
     
-    SCF(i == e->N1-1, rIR, I_TALLY);
+    SCF(i == e->N1-1, cu.IR, I_TALLY);
     
     // write Y3 .....
     //Write(e->ins, y3, CY3, OperandWrite, 0);
@@ -5078,7 +4946,7 @@ void scdr(DCDstruct *ins)
     
     word36 CY3 = bitfieldInsert36(0, i, 0, 24);
     
-    SCF(i == e->N1-1, rIR, I_TALLY);
+    SCF(i == e->N1-1, cu.IR, I_TALLY);
     
     // write Y3 .....
     //Write(e->ins, y3, CY3, OperandWrite, 0);
@@ -5089,8 +4957,7 @@ void scdr(DCDstruct *ins)
  * get a bit from memory ....
  */
 // XXX this is terribly ineffecient, but it'll do for now ......
-PRIVATE
-bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
+static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 {
     //static word18 lastAddress;  // try to keep memory access' down
     
@@ -5133,8 +5000,7 @@ bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
  */
 
 #ifndef QUIET_UNUSED
-PRIVATE
-void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
+static void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
 {
     if (*bpos > 8)      // bits 0-8
     {
@@ -5161,8 +5027,7 @@ void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
 }
 #endif
 
-PRIVATE
-bool EISgetBitRW(EISaddr *p)
+static bool EISgetBitRW(EISaddr *p)
 {
     // make certain we have a valid address
     if (p->bPos > 8)      // bits 0-8
@@ -5262,8 +5127,8 @@ void cmpb(DCDstruct *ins)
     
     e->F = (bool)bitfieldExtract36(e->op0, 25, 1) & 1;     // fill bit
 
-    SETF(rIR, I_ZERO);  // assume all =
-    SETF(rIR, I_CARRY); // assume all >=
+    SETF(cu.IR, I_ZERO);  // assume all =
+    SETF(cu.IR, I_CARRY); // assume all >=
     
     //getBit (0, 0, 0);   // initialize bit getter 1
     //getBit2(0, 0, 0);   // initialize bit getter 2
@@ -5277,9 +5142,9 @@ void cmpb(DCDstruct *ins)
         
         if (b1 != b2)
         {
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
             if (!b1 && b2)  // 0 < 1
-                CLRF(rIR, I_CARRY);
+                CLRF(cu.IR, I_CARRY);
             return;
         }
         
@@ -5292,9 +5157,9 @@ void cmpb(DCDstruct *ins)
         
         if (b1 != b2)
         {
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
             if (!b1 && b2)  // 0 < 1
-                CLRF(rIR, I_CARRY);
+                CLRF(cu.IR, I_CARRY);
             return;
         }
         
@@ -5306,9 +5171,9 @@ void cmpb(DCDstruct *ins)
         
         if (b1 != b2)
         {
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
             if (!b1 && b2)  // 0 < 1
-                CLRF(rIR, I_CARRY);
+                CLRF(cu.IR, I_CARRY);
             return;
         }
     }
@@ -5378,8 +5243,8 @@ void csl(DCDstruct *ins)
     e->ADDR1.incr = true;
     e->ADDR1.mode = eRWreadBit;
 
-    SETF(rIR, I_ZERO);      // assume all Y-bit2 == 0
-    CLRF(rIR, I_TRUNC);     // assume N1 <= N2
+    SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
     
@@ -5393,7 +5258,7 @@ void csl(DCDstruct *ins)
         bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
         
         if (b2)
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
         
         if (!b1 && !b2)
             bR = B5;
@@ -5423,7 +5288,7 @@ void csl(DCDstruct *ins)
             bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
             
             if (b1)
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (!b1 && !b2)
                 bR = B5;
@@ -5447,7 +5312,7 @@ void csl(DCDstruct *ins)
         //
         // If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
         
-        SETF(rIR, I_TRUNC);
+        SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
             doFault(ins, overflow_fault, 0, "csl truncation fault");
@@ -5463,8 +5328,7 @@ void csl(DCDstruct *ins)
  *  'initC' initial char position (C)
  *  'initB' initial bit position
  */
-PRIVATE
-void getBitOffsets(int length, int initC, int initB, int *nWords, int *newC, int *newB)
+static void getBitOffsets(int length, int initC, int initB, int *nWords, int *newC, int *newB)
 {
     if (length == 0)
         return;
@@ -5556,8 +5420,8 @@ void csr(DCDstruct *ins)
     e->ADDR1.decr = true;
     e->ADDR1.mode = eRWreadBit;
     
-    SETF(rIR, I_ZERO);      // assume all Y-bit2 == 0
-    CLRF(rIR, I_TRUNC);     // assume N1 <= N2
+    SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
     
@@ -5571,7 +5435,7 @@ void csr(DCDstruct *ins)
         bool b2 = EISgetBitRW(&e->ADDR2);  // read w/ no addr incr from src2 to in anticipation of a write
         
         if (b2)
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
         
         if (!b1 && !b2)
             bR = B5;
@@ -5601,7 +5465,7 @@ void csr(DCDstruct *ins)
             bool b2 = EISgetBitRW(&e->ADDR2); // read w/ no addr incr from src2 to in anticipation of a write
             
             if (b1)
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (!b1 && !b2)
                 bR = B5;
@@ -5625,7 +5489,7 @@ void csr(DCDstruct *ins)
         //
         // If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
         
-        SETF(rIR, I_TRUNC);
+        SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
             doFault(ins, overflow_fault, 0, "csr truncation fault");
@@ -5701,8 +5565,8 @@ void sztl(DCDstruct *ins)
     e->ADDR2.incr = false;
     e->ADDR2.mode = eRWreadBit;
     
-    SETF(rIR, I_ZERO);      // assume all C(BOLR) == 0
-    CLRF(rIR, I_TRUNC);     // N1 >= N2
+    SETF(cu.IR, I_ZERO);      // assume all C(BOLR) == 0
+    CLRF(cu.IR, I_TRUNC);     // N1 >= N2
     
     bool bR = false; // result bit
     
@@ -5723,7 +5587,7 @@ void sztl(DCDstruct *ins)
         
         if (bR)
         {
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
             break;
         }
     }
@@ -5746,7 +5610,7 @@ void sztl(DCDstruct *ins)
             
             if (bR)
             {
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
                 break;
             }
         }
@@ -5756,7 +5620,7 @@ void sztl(DCDstruct *ins)
         //
         // If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
         
-        SETF(rIR, I_TRUNC);
+        SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
             // XXX enable when things are working
@@ -5842,8 +5706,8 @@ void sztr(DCDstruct *ins)
     e->ADDR2.decr = true;
     e->ADDR2.mode = eRWreadBit;
     
-    SETF(rIR, I_ZERO);      // assume all Y-bit2 == 0
-    CLRF(rIR, I_TRUNC);     // assume N1 <= N2
+    SETF(cu.IR, I_ZERO);      // assume all Y-bit2 == 0
+    CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
     
@@ -5864,7 +5728,7 @@ void sztr(DCDstruct *ins)
         
         if (bR)
         {
-            CLRF(rIR, I_ZERO);
+            CLRF(cu.IR, I_ZERO);
             break;
         }
     }
@@ -5887,7 +5751,7 @@ void sztr(DCDstruct *ins)
             
             if (bR)
             {
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
                 break;
             }
         }
@@ -5897,7 +5761,7 @@ void sztr(DCDstruct *ins)
         //
         // If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
         
-        SETF(rIR, I_TRUNC);
+        SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
             // XXX enable when things are working

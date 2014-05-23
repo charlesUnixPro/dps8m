@@ -8,13 +8,26 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_addrmods.h"
+#include "dps8_append.h"
+#include "dps8_eis.h"
+#include "dps8_ins.h"
+#include "dps8_math.h"
+#include "dps8_opcodetable.h"
 #include "dps8_scu.h"
+#include "dps8_cpu.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
+#include "dps8_decimal.h"
+#include "dps8_iefp.h"
+#include "dps8_faults.h"
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
 // XXX Use this for places where is matters when we have multiple CPUs
 #define ASSUME_CPU0 0
 
+word36 CY = 0;              ///< C(Y) operand data from memory
 word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
 word36 Yblock16[16];    ///< 16-words
@@ -23,8 +36,7 @@ static int doABSA (DCDstruct * i, word36 * result);
 static t_stat doInstruction(DCDstruct *i);
 static int emCall(DCDstruct *i);
 
-static void
-writeOperands(DCDstruct *i)
+static void writeOperands(DCDstruct *i)
 {
     sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
     
@@ -98,7 +110,7 @@ static void scu2words(word36 *words)
     words[3] = setbits36(words[3], 30, 6, TPR.TBR);
     
     //save_IR(&words[4]);
-    words[4] = rIR; // HWR
+    words[4] = cu.IR; // HWR
     words[4] = setbits36(words[4], 0, 18, PPR.IC);
     
     words[5] = setbits36(0, 0, 18, TPR.CA);
@@ -166,7 +178,7 @@ static void words2scu (word36 * words)
     TPR.TBR  = getbits36(words[3], 30, 6);
     
     //save_IR(&words[4]);
-    rIR      = getbits36(words[4], 18, 18); // HWR
+    cu.IR      = getbits36(words[4], 18, 18); // HWR
     PPR.IC   = getbits36(words[4], 0, 18);
     
     TPR.CA   = getbits36(words[5], 0, 18);
@@ -188,7 +200,7 @@ void cu_safe_restore (void)
     words2scu (scu_data);
   }
 
-PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
+static char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
 
 
 //=============================================================================
@@ -238,8 +250,7 @@ PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
  */
 // No DUDL
 
-PRIVATE
-bool _nodudl[] = {
+static bool _nodudl[] = {
     // Tm = 0 (register) R
     // --   au     qu     du     ic     al     ql     dl     0      1      2      3      4      5      6      7
     false, false, false, true,  false, false, false, true, false, false, false, false, false, false, false, false,
@@ -260,8 +271,7 @@ bool _nodudl[] = {
 
 
 // (NO_CI | NO_SC | NO_SCR)
-PRIVATE
-bool _nocss[] = {
+static bool _nocss[] = {
     // Tm = 0 (register) R
     // *    au     qu     du     ic     al     ql     dl      0      1      2      3      4      5      6      7
     false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
@@ -277,8 +287,7 @@ bool _nocss[] = {
 };
 
 // (NO_DUDL | NO_CISCSCR)
-PRIVATE
-bool _noddcss[] = {
+static bool _noddcss[] = {
     // Tm = 0 (register) R
     // *    au     qu     du     ic     al     ql    dl     0      1      2      3      4      5      6      7
     false, false, false, true, false, false, false, true, false, false, false, false, false, false, false, false,
@@ -294,8 +303,7 @@ bool _noddcss[] = {
 };
 
 // (NO_DUDL | NO_CISCSCR)
-PRIVATE
-bool _nodlcss[] = {
+static bool _nodlcss[] = {
     // Tm = 0 (register) R
     // *    au     qu     du      ic     al     ql    dl     0      1      2      3      4      5      6      7
     false, false, false, false, false, false, false, true, false, false, false, false, false, false, false, false,
@@ -311,8 +319,7 @@ bool _nodlcss[] = {
 };
 
 #ifndef QUIET_UNUSED
-PRIVATE
-bool _illmod[] = {
+static bool _illmod[] = {
     // Tm = 0 (register) R
     // *    au     qu     du     ic     al     ql     dl     0      1      2      3      4      5      6      7
     false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false,
@@ -614,7 +621,7 @@ t_stat executeInstruction(DCDstruct *ci)
         }
     }
 
-    ci->stiTally = rIR & I_TALLY;   //TSTF(rIR, I_TALLY);  // for sti instruction
+    ci->stiTally = cu.IR & I_TALLY;   //TSTF(cu.IR, I_TALLY);  // for sti instruction
     
     if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
     {
@@ -623,22 +630,22 @@ t_stat executeInstruction(DCDstruct *ci)
         char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
         if (where)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, PPR.IC, where);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, where);
             if_sim_debug (DBG_TRACE, &cpu_dev)
               listSource (compname, compoffset);
         }
 
         if (get_addr_mode() == ABSOLUTE_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == APPEND_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == BAR_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, BAR.BASE, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
     }
 
@@ -672,11 +679,11 @@ t_stat executeInstruction(DCDstruct *ci)
     if (modCont->bActive)
         writeOperands(ci);
     
-    cpuCycles += 1; // bump cycle counter
+    sys_stats . total_cycles += 1; // bump cycle counter
     
     if ((cpu_dev.dctrl & DBG_REGDUMP) && sim_deb)
     {
-        sim_debug(DBG_REGDUMPAQI, &cpu_dev, "A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(rIR));
+        sim_debug(DBG_REGDUMPAQI, &cpu_dev, "A=%012llo Q=%012llo IR:%s\n", rA, rQ, dumpFlags(cu.IR));
         
         sim_debug(DBG_REGDUMPFLT, &cpu_dev, "E=%03o A=%012llo Q=%012llo %.10Lg\n", rE, rA, rQ, EAQToIEEElongdouble());
         
@@ -703,7 +710,7 @@ static t_stat DoBasicInstruction(DCDstruct *i), DoEISInstruction(DCDstruct *i); 
 static t_stat doInstruction(DCDstruct *i)
 {
     
-    CLRF(rIR, I_MIIF);
+    CLRF(cu.IR, I_MIIF);
     
     //if (i->e)
     if (i->info->ndes > 0)
@@ -734,8 +741,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA = 0;
             SETHI(rA, TPR.CA);
             
-            SCF(TPR.CA == 0, rIR, I_ZERO);
-            SCF(TPR.CA & SIGN18, rIR, I_NEG);
+            SCF(TPR.CA == 0, cu.IR, I_ZERO);
+            SCF(TPR.CA & SIGN18, cu.IR, I_NEG);
             
             break;
             
@@ -743,8 +750,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rQ = 0;
             SETHI(rQ, TPR.CA);
 
-            SCF(TPR.CA == 0, rIR, I_ZERO);
-            SCF(TPR.CA & SIGN18, rIR, I_NEG);
+            SCF(TPR.CA == 0, cu.IR, I_ZERO);
+            SCF(TPR.CA & SIGN18, cu.IR, I_NEG);
             break;
 
         case 0620:  ///< eax0
@@ -759,17 +766,17 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 uint32 n = opcode & 07;  ///< get n
                 rX[n] = TPR.CA;
 
-                SCF(TPR.CA == 0, rIR, I_ZERO);
-                SCF(TPR.CA & SIGN18, rIR, I_NEG);
+                SCF(TPR.CA == 0, cu.IR, I_ZERO);
+                SCF(TPR.CA & SIGN18, cu.IR, I_NEG);
             }
             break;
             
         case 0335:  ///< lca
-            rA = compl36(CY, &rIR);
+            rA = compl36(CY, &cu.IR);
             break;
             
         case 0336:  ///< lcq
-            rQ = compl36(CY, &rIR);
+            rQ = compl36(CY, &cu.IR);
             break;
             
         case 0320:  ///< lcx0
@@ -783,7 +790,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // ToDo: Attempted repetition with the rpl instruction and with the same register given as target and modifier causes an illegal procedure fault.
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = compl18(GETHI(CY), &rIR);
+                rX[n] = compl18(GETHI(CY), &cu.IR);
             }
             break;
             
@@ -794,8 +801,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             if (Ypair[0] == 0400000000000LL && Ypair[1] == 0)
             {
-                SETF(rIR, I_OFLOW);
-                if (! TSTF (rIR, I_OMASK))
+                SETF(cu.IR, I_OFLOW);
+                if (! TSTF (cu.IR, I_OMASK))
                     doFault(i, overflow_fault, 0,"lcaq overflow fault");
             }
             else if (Ypair[1] == 0 && Ypair[1] == 0)
@@ -803,8 +810,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rA = 0;
                 rQ = 0;
                 
-                SETF(rIR, I_ZERO);
-                CLRF(rIR, I_NEG);
+                SETF(cu.IR, I_ZERO);
+                CLRF(cu.IR, I_NEG);
             }
             else
             {
@@ -819,13 +826,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ = bitfieldExtract72(tmp72,  0, 36);
             
                 if (rA == 0 && rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -833,13 +840,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA = CY;
             
             if (rA == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -847,13 +854,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA = CY;
             
             if (rA == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             CY = 0;
             
@@ -864,13 +871,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rQ = Ypair[1];
             
             if (rA == 0 && rQ == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             break;
             
             
@@ -882,21 +889,21 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
             bool bAbsPriv = (get_addr_mode() == ABSOLUTE_mode) || is_priv_mode();
 
-            SCF(tmp18 & I_ZERO,  rIR, I_ZERO);
-            SCF(tmp18 & I_NEG,   rIR, I_NEG);
-            SCF(tmp18 & I_CARRY, rIR, I_CARRY);
-            SCF(tmp18 & I_OFLOW, rIR, I_OFLOW);
-            SCF(tmp18 & I_EOFL,  rIR, I_EOFL);
-            SCF(tmp18 & I_EUFL,  rIR, I_EUFL);
-            SCF(tmp18 & I_OMASK, rIR, I_OMASK);
-            SCF(tmp18 & I_TALLY, rIR, I_TALLY);
-            SCF(tmp18 & I_PERR,  rIR, I_PERR);
-            //SCF(bAbsPriv && (rIR & I_PMASK), rIR, I_PMASK);
+            SCF(tmp18 & I_ZERO,  cu.IR, I_ZERO);
+            SCF(tmp18 & I_NEG,   cu.IR, I_NEG);
+            SCF(tmp18 & I_CARRY, cu.IR, I_CARRY);
+            SCF(tmp18 & I_OFLOW, cu.IR, I_OFLOW);
+            SCF(tmp18 & I_EOFL,  cu.IR, I_EOFL);
+            SCF(tmp18 & I_EUFL,  cu.IR, I_EUFL);
+            SCF(tmp18 & I_OMASK, cu.IR, I_OMASK);
+            SCF(tmp18 & I_TALLY, cu.IR, I_TALLY);
+            SCF(tmp18 & I_PERR,  cu.IR, I_PERR);
+            //SCF(bAbsPriv && (cu.IR & I_PMASK), cu.IR, I_PMASK);
             if (bAbsPriv)
-              SCF(tmp18 & I_PMASK, rIR, I_PMASK);
-            SCF(tmp18 & I_TRUNC, rIR, I_TRUNC);
+              SCF(tmp18 & I_PMASK, cu.IR, I_PMASK);
+            SCF(tmp18 & I_TRUNC, cu.IR, I_TRUNC);
             if (bAbsPriv)
-              SCF(rIR & I_MIIF, rIR, I_MIIF);
+              SCF(cu.IR & I_MIIF, cu.IR, I_MIIF);
 
             // Indicators:
             //  Parity Mask:
@@ -918,13 +925,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rQ = CY;
             
             if (rQ == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
             
@@ -934,13 +941,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             CY = 0;
             
             if (rQ == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -957,13 +964,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rX[n] = GETHI(CY);
             
                 if (rX[n] == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rX[n] & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -996,13 +1003,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 uint32 n = opcode & 07;  // get n
                 rX[n] = GETLO(CY);
                 if (rX[n] == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rX[n] & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -1035,20 +1042,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0354:  ///< stac
             if (CY == 0)
             {
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
                 CY = rA;
             } else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             break;
             
         case 0654:  ///< stacq
             if (CY == rQ)
             {
                 CY = rA;
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
                 
             } else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             break;
             
         case 0757:  ///< staq
@@ -1074,7 +1081,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // "C(Y)25 reflects the state of the tally runout indicator
             // prior to modification.
             SETHI(CY, (PPR.IC + 1) & MASK18);
-            SETLO(CY, rIR & 0777760);
+            SETLO(CY, cu.IR & 0777760);
             if (i -> stiTally)
               SETF(CY, I_TALLY);
             else
@@ -1138,7 +1145,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// preparation. The relation between C(Y)18,31 and the indicators 
             /// is given in Table 4-5.
             
-            SETLO(CY, (rIR & 0000000777760LL));
+            SETLO(CY, (cu.IR & 0000000777760LL));
             if (i -> stiTally)
               SETF(CY, I_TALLY);
             else
@@ -1205,14 +1212,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rA &= DMASK;    // keep to 36-bits
             
                 if (rA == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
         
@@ -1221,25 +1228,25 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
             
                 word36 tmpSign = rA & SIGN36;
-                CLRF(rIR, I_CARRY);
+                CLRF(cu.IR, I_CARRY);
 
                 for (int i = 0; i < tmp36; i ++)
                 {
                     rA <<= 1;
                     if (tmpSign != (rA & SIGN36))
-                        SETF(rIR, I_CARRY);
+                        SETF(cu.IR, I_CARRY);
                 }
                 rA &= DMASK;    // keep to 36-bits 
 
                 if (rA == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -1254,14 +1261,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rA &= DMASK;    // keep to 36-bits
 
                 if (rA == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
             
@@ -1283,14 +1290,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA &= DMASK;    // keep to 36-bits
             
             if (rA == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             }
 
             break;
@@ -1322,13 +1329,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;
             
                 if (rA == 0 && rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
             
@@ -1336,7 +1343,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Shift C(AQ) left the number of positions given in C(TPR.CA)11,17; filling
             /// vacated positions with zeros.
             {
-                CLRF(rIR, I_CARRY);
+                CLRF(cu.IR, I_CARRY);
  
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
                 word36 tmpSign = rQ & SIGN36;
@@ -1345,7 +1352,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                     rA <<= 1;               // shift left 1
             
                     if (tmpSign != (rA & SIGN36))
-                        SETF(rIR, I_CARRY);
+                        SETF(cu.IR, I_CARRY);
                 
                     bool b0 = rQ & SIGN36;    ///< Q0
                     if (b0)
@@ -1358,13 +1365,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;
                 
                 if (rA == 0 && rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -1389,13 +1396,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;
                 
                 if (rA == 0 && rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -1423,13 +1430,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;
                 
                 if (rA == 0 && rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
          
@@ -1448,14 +1455,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;    // keep to 36-bits
                 
                 if (rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 
                 if (rQ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
     
@@ -1464,25 +1471,25 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
                 word36 tmpSign = rQ & SIGN36;
-                CLRF(rIR, I_CARRY);
+                CLRF(cu.IR, I_CARRY);
 
                 for (int i = 0; i < tmp36; i ++)
                 {
                     rQ <<= 1;
                     if (tmpSign != (rQ & SIGN36))
-                        SETF(rIR, I_CARRY);
+                        SETF(cu.IR, I_CARRY);
                 }
                 rQ &= DMASK;    // keep to 36-bits 
     
                 if (rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 
                 if (rQ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -1497,14 +1504,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;    // keep to 36-bits
             
                 if (rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 
                 if (rQ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             
             }
             break;
@@ -1525,14 +1532,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ &= DMASK;    // keep to 36-bits
                 
                 if (rQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 
                 if (rQ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
                 
             }
             break;
@@ -1554,7 +1561,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
              
             */
         
-            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0077:   ///< adaq
@@ -1562,7 +1569,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
@@ -1571,7 +1578,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // C(AQ) + C(Y) sign extended → C(AQ)
             {
                 word72 tmp72 = SIGNEXT72(CY); // sign extend Cy
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
@@ -1583,19 +1590,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);
         
-                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &rIR);
+                tmp72 = AddSub72b('+', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
         case 0035:   ///< adla
             /** The adla instruction is identical to the ada instruction with the exception that the overflow indicator is not affected by the adla instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &rIR);
+            rA = AddSub36b('+', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0036:   ///< adlq
             /** The adlq instruction is identical to the adq instruction with the exception that the overflow indicator is not affected by the adlq instruction, nor does an overflow fault occur. Operands and results are treated as unsigned, positive binary integers. */
-            rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &rIR);
+            rQ = AddSub36b('+', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0020:   ///< adlx0
@@ -1608,12 +1615,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0027:   ///< adlx7
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
+                rX[n] = AddSub18b('+', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
             }
             break;
             
         case 0076:   ///< adq
-            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
 
         case 0060:   ///< adx0
@@ -1626,24 +1633,24 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0067:   ///< adx7
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                rX[n] = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             }
             break;
         
         case 0054:   ///< aos
             /// C(Y)+1→C(Y)
             
-            CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            CY = AddSub36b('+', true, CY, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
         
         case 0055:   ///< asa
             /// C(A) + C(Y) → C(Y)
-            CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            CY = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0056:   ///< asq
             /// C(Q) + C(Y) → C(Y)
-            CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            CY = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0040:   ///< asx0
@@ -1659,7 +1666,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///    \brief C(Xn) + C(Y)0,17 → C(Y)0,17
             
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                word18 tmp18 = AddSub18b('+', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
             }
 
@@ -1668,9 +1675,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0071:   ///< awca
             /// If carry indicator OFF, then C(A) + C(Y) → C(A)
             /// If carry indicator ON, then C(A) + C(Y) + 1 → C(A)
-            if (TSTF(rIR, I_CARRY))
-                rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            if (TSTF(cu.IR, I_CARRY))
+                rA = AddSub36b('+', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = AddSub36b('+', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
             
@@ -1678,9 +1685,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0072:   ///< awcq
             /// If carry indicator OFF, then C(Q) + C(Y) → C(Q)
             /// If carry indicator ON, then C(Q) + C(Y) + 1 → C(Q)
-            if (TSTF(rIR, I_CARRY))
-                rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            if (TSTF(cu.IR, I_CARRY))
+                rQ = AddSub36b('+', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = AddSub36b('+', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
            
@@ -1688,7 +1695,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0175:  ///< sba
             /// C(A) - C(Y) → C(A)
-            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
          
         case 0177:  ///< sbaq
@@ -1696,14 +1703,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
-                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
           
         case 0135:  ///< sbla
             /// C(A) - C(Y) → C(A) logical
-            rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &rIR);
+            rA = AddSub36b('-', false, rA, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0137:  ///< sblaq
@@ -1712,14 +1719,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 word72 tmp72 = YPAIRTO72(Ypair);   //
         
-                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &rIR);
+                tmp72 = AddSub72b('-', true, convertToWord72(rA, rQ), tmp72, I_ZERO|I_NEG| I_CARRY, &cu.IR);
                 convertToWord36(tmp72, &rA, &rQ);
             }
             break;
             
         case 0136:  ///< sblq
             ///< C(Q) - C(Y) → C(Q)
-            rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &rIR);
+            rQ = AddSub36b('-', false, rQ, CY, I_ZERO|I_NEG|I_CARRY, &cu.IR);
             break;
             
         case 0120:  ///< sblx0
@@ -1734,13 +1741,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// \brief     C(Xn) - C(Y)0,17 → C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &rIR);
+                rX[n] = AddSub18b('-', false, rX[n], GETHI(CY), I_ZERO|I_NEG|I_CARRY, &cu.IR);
             }
             break;
          
         case 0176:  ///< sbq
             /// C(Q) - C(Y) → C(Q)
-            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             break;
             
         case 0160:  ///< sbx0
@@ -1755,19 +1762,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// \brief  C(Xn) - C(Y)0,17 → C(Xn)
             {
                 uint32 n = opcode & 07;  // get n
-                rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                rX[n] = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             }
             break;
 
         case 0155:  ///< ssa
             /// C(A) - C(Y) → C(Y)
-            CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            CY = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
 
         case 0156:  ///< ssq
             /// C(Q) - C(Y) → C(Y)
-            CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            CY = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
 
             break;
         
@@ -1783,7 +1790,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// For uint32 n = 0, 1, ..., or 7 as determined by operation code
             /// \brief C(Xn) - C(Y)0,17 → C(Y)0,17
                 uint32 n = opcode & 07;  // get n
-                word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+                word18 tmp18 = AddSub18b('-', true, rX[n], GETHI(CY), I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
                 SETHI(CY, tmp18);
             }
 
@@ -1793,18 +1800,18 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0171:  ///< swca
             /// If carry indicator ON, then C(A)- C(Y) → C(A)
             /// If carry indicator OFF, then C(A) - C(Y) - 1 → C(A)
-            if (!TSTF(rIR, I_CARRY))
-                rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            if (!TSTF(cu.IR, I_CARRY))
+                rA = AddSub36b('-', true, rA, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rA = AddSub36b('-', true, rA, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
          
         case 0172:  ///< swcq
             /// If carry indicator ON, then C(Q) - C(Y) → C(Q)
             /// If carry indicator OFF, then C(Q) - C(Y) - 1 → C(Q)
-            if (!TSTF(rIR, I_CARRY))
-                rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
-            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &rIR);
+            if (!TSTF(cu.IR, I_CARRY))
+                rQ = AddSub36b('-', true, rQ, 1, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
+            rQ = AddSub36b('-', true, rQ, CY, I_ZERO|I_NEG|I_OFLOW|I_CARRY, &cu.IR);
             
             break;
         
@@ -1822,15 +1829,15 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 bool isovr = false;
                 if (rA == MAXNEG && CY == MAXNEG) // Overflow can occur only in the case of A and Y containing negative 1
                 {
-                    SETF(rIR, I_OFLOW);
+                    SETF(cu.IR, I_OFLOW);
                     isovr = true;
                 }
 
                 convertToWord36(tmp72, &rA, &rQ);
-                SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-                SCF(rA & SIGN36, rIR, I_NEG);
+                SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+                SCF(rA & SIGN36, cu.IR, I_NEG);
             
-                if (isovr && ! TSTF (rIR, I_OMASK))
+                if (isovr && ! TSTF (cu.IR, I_OMASK))
                     doFault(i, overflow_fault, 0,"mpf overflow fault");
                 }
             }
@@ -1852,8 +1859,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
                 convertToWord36((word72)prod, &rA, &rQ);
 
-                SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-                SCF(rA & SIGN36, rIR, I_NEG);
+                SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+                SCF(rA & SIGN36, cu.IR, I_NEG);
             }
             break;
             
@@ -1869,8 +1876,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if ((rQ == MAXNEG && CY == NEG136) || (CY == 0))
             {
                 // no division takes place
-                SCF(CY == 0, rIR, I_ZERO);
-                SCF(rQ & SIGN36, rIR, I_NEG);
+                SCF(CY == 0, cu.IR, I_ZERO);
+                SCF(rQ & SIGN36, cu.IR, I_NEG);
                 // XXX divide check fault
                 doFault(i, div_fault, 0, "div divide check");
             }
@@ -1936,8 +1943,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 sim_printf ("rQ (quot) %012llo\n", rQ);
 #endif
 
-                SCF(rQ == 0, rIR, I_ZERO);
-                SCF(rQ & SIGN36, rIR, I_NEG);
+                SCF(rQ == 0, cu.IR, I_ZERO);
+                SCF(rQ & SIGN36, cu.IR, I_NEG);
             }
             
             break;
@@ -1972,19 +1979,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rA &= DMASK;    // keep to 36-bits
                 
                 if (rA == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
                 
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
                 
                 if (ov)
                 {
-                    SETF(rIR, I_OFLOW);
-                    if (! TSTF (rIR, I_OMASK))
+                    SETF(cu.IR, I_OFLOW);
+                    if (! TSTF (cu.IR, I_OMASK))
                         doFault(i, overflow_fault, 0,"neg overflow fault");
                 }
             }
@@ -2005,19 +2012,19 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                     tmp72 = -tmp72;
                 
                     if (tmp72 == 0)
-                        SETF(rIR, I_ZERO);
+                        SETF(cu.IR, I_ZERO);
                     else
-                        CLRF(rIR, I_ZERO);
+                        CLRF(cu.IR, I_ZERO);
                 
                     if (tmp72 & SIGN72)
-                        SETF(rIR, I_NEG);
+                        SETF(cu.IR, I_NEG);
                     else
-                        CLRF(rIR, I_NEG);
+                        CLRF(cu.IR, I_NEG);
                 
                     if (ov)
                     {
-                        SETF(rIR, I_OFLOW);
-                        if (! TSTF (rIR, I_OMASK))
+                        SETF(cu.IR, I_OFLOW);
+                        if (! TSTF (cu.IR, I_OMASK))
                             doFault(i, overflow_fault, 0,"negl overflow fault");
                     }
                 
@@ -2044,8 +2051,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 if (y < 0)
                   y = -y;
                 
-                SCF(a == y, rIR, I_ZERO);
-                SCF(a < y,  rIR, I_NEG);
+                SCF(a == y, cu.IR, I_ZERO);
+                SCF(a < y,  cu.IR, I_NEG);
             }
             break;
             
@@ -2073,20 +2080,20 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 // 1  1  1    0     0   0
 
 
-                SCF(Z == 0, rIR, I_ZERO);
-                SCF(Z & SIGN36, rIR, I_NEG);
+                SCF(Z == 0, cu.IR, I_ZERO);
+                SCF(Z & SIGN36, cu.IR, I_NEG);
             }
             break;
             
         case 0115:  ///< cmpa
             /// C(A) :: C(Y)
         
-            cmp36(rA, CY, &rIR);
+            cmp36(rA, CY, &cu.IR);
             break;
             
         case 0116:  ///< cmpq
             /// C(Q) :: C(Y)
-            cmp36(rQ, CY, &rIR);
+            cmp36(rQ, CY, &cu.IR);
             break;
             
         case 0100:  ///< cmpx0
@@ -2101,7 +2108,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// \brief  C(Xn) :: C(Y)0,17
             {
                 uint32 n = opcode & 07;  // get n
-                cmp18(rX[n], GETHI(CY), &rIR);
+                cmp18(rX[n], GETHI(CY), &cu.IR);
             }
             break;
             
@@ -2111,7 +2118,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
              The cwl instruction tests the value of C(Y) to determine if it is within the range of values set by C(A) and C(Q). The comparison of C(Y) with C(Q) locates C(Y) with respect to the interval if C(Y) is not contained within the
              interval.
              */
-            cmp36wl(rA, CY, rQ, &rIR);
+            cmp36wl(rA, CY, rQ, &cu.IR);
             break;
             
         case 0117:  ///< cmpaq
@@ -2122,7 +2129,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 word72 trAQ = convertToWord72(rA, rQ);
                 trAQ &= MASK72;
             
-                cmp72(trAQ, tmp72, &rIR);
+                cmp72(trAQ, tmp72, &cu.IR);
             }
             break;
             
@@ -2131,14 +2138,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Set indicators according to C(Y)
             CY &= DMASK;
             if (CY == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (CY & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
             
@@ -2146,14 +2153,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Set indicators according to C(Y)
             CY &= DMASK;
             if (CY == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (CY & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
 
             // ... and clear
             CY = 0;
@@ -2168,14 +2175,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA &= DMASK;
             
             if (rA == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
             
@@ -2191,14 +2198,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trAQ &= MASK72;
             
                 if (trAQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trAQ & SIGN72)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
 
                 convertToWord36(trAQ, &rA, &rQ);
             }
@@ -2210,14 +2217,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rQ &= DMASK;
 
             if (rQ == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -2228,14 +2235,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 CY &= DMASK;
             
                 if (CY == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (CY & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
         
@@ -2246,14 +2253,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 CY &= DMASK;
             
                 if (CY == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (CY & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2273,14 +2280,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 tmp18 &= MASK18;
             
                 if (tmp18 == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (tmp18 & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             
                 SETHI(CY, tmp18);
             }
@@ -2303,14 +2310,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rX[n] &= MASK18;
             
                 if (rX[n] == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rX[n] & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2321,14 +2328,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA &= DMASK;
             
             if (rA == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
          
@@ -2343,14 +2350,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trAQ &= MASK72;
             
                 if (trAQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trAQ & SIGN72)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             
                 convertToWord36(trAQ, &rA, &rQ);
             }
@@ -2362,14 +2369,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rQ &= DMASK;
 
             if (rQ == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -2379,14 +2386,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             CY &= DMASK;
             
             if (CY == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (CY & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -2397,14 +2404,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             CY &= DMASK;
 
             if (CY == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (CY & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -2425,14 +2432,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 tmp18 &= MASK18;
            
                 if (tmp18 == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (tmp18 & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             
                 SETHI(CY, tmp18);
             }
@@ -2454,14 +2461,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rX[n] &= MASK18;
            
                 if (rX[n] == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rX[n] & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
            
@@ -2472,14 +2479,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA &= DMASK;
 
             if (rA == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rA & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -2494,14 +2501,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trAQ &= MASK72;
             
                 if (trAQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trAQ & SIGN72)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             
                 convertToWord36(trAQ, &rA, &rQ);
             }
@@ -2512,14 +2519,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rQ = rQ ^ CY;
             rQ &= DMASK;
             if (rQ == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (rQ & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             break;
 
@@ -2530,14 +2537,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             CY &= DMASK;
 
             if (CY == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (CY & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             //Write(i, TPR.CA, CY, DataWrite, rTAG);
 
@@ -2550,14 +2557,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             CY &= DMASK;
 
             if (CY == 0)
-                SETF(rIR, I_ZERO);
+                SETF(cu.IR, I_ZERO);
             else
-                CLRF(rIR, I_ZERO);
+                CLRF(cu.IR, I_ZERO);
             
             if (CY & SIGN36)
-                SETF(rIR, I_NEG);
+                SETF(cu.IR, I_NEG);
             else
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_NEG);
             
             //Write(i, TPR.CA, CY, DataWrite, rTAG);
 
@@ -2580,14 +2587,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 tmp18 &= MASK18;
 
                 if (tmp18 == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (tmp18 & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             
                 SETHI(CY, tmp18);
             }
@@ -2609,14 +2616,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rX[n] &= MASK18;
             
                 if (rX[n] == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rX[n] & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2629,14 +2636,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trZ &= MASK36;
 
                 if (trZ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trZ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2652,14 +2659,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trAQ &= MASK72;
 
                 if (trAQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trAQ & SIGN72)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2670,14 +2677,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trZ &= DMASK;
 
                 if (trZ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trZ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
             
@@ -2697,14 +2704,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 tmp18 &= MASK18;
 
                 if (tmp18 == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (tmp18 & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
             
@@ -2716,14 +2723,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trZ &= DMASK;
 
                 if (trZ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (rA & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2737,14 +2744,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 trAQ &= MASK72;
 
                 if (trAQ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trAQ & SIGN72)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2754,14 +2761,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 word36 trZ = rQ & ~CY;
                 trZ &= DMASK;
                 if (trZ == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (trZ & SIGN36)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
 
@@ -2780,14 +2787,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 tmp18 &= MASK18;
             
                 if (tmp18 == 0)
-                    SETF(rIR, I_ZERO);
+                    SETF(cu.IR, I_ZERO);
                 else
-                    CLRF(rIR, I_ZERO);
+                    CLRF(cu.IR, I_ZERO);
             
                 if (tmp18 & SIGN18)
-                    SETF(rIR, I_NEG);
+                    SETF(cu.IR, I_NEG);
                 else
-                    CLRF(rIR, I_NEG);
+                    CLRF(cu.IR, I_NEG);
             }
             break;
             
@@ -2807,8 +2814,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             rQ = (Ypair[1] & FLOAT36MASK) << 8;
             
-            SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-            SCF(rA & SIGN36, rIR, I_NEG);
+            SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+            SCF(rA & SIGN36, cu.IR, I_NEG);
             break;
             
         case 0431:  ///< fld
@@ -2823,8 +2830,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             rA = (CY & FLOAT36MASK) << 8;
             rQ = 0;
             
-            SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-            SCF(rA & SIGN36, rIR, I_NEG);
+            SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
+            SCF(rA & SIGN36, cu.IR, I_NEG);
             break;
 
         case 0457:  ///< dfst
@@ -2859,13 +2866,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 //            CY = ((word36)rE << 28) | (((rA >> 8) & 01777777777LL));
 //
 //            /// Zero: If C(Y) = floating point 0, then ON; otherwise OFF
-//            //SCF((CY & 01777777777LL) == 0, rIR, I_ZERO);
+//            //SCF((CY & 01777777777LL) == 0, cu.IR, I_ZERO);
 //            bool isZero = rE == -128 && rA == 0;
-//            SCF(isZero, rIR, I_ZERO);
+//            SCF(isZero, cu.IR, I_ZERO);
 //            
 //            /// Neg: If C(Y)8 = 1, then ON; otherwise OFF
-//            //SCF(CY & 01000000000LL, rIR, I_NEG);
-//            SCF(rA & SIGN36, rIR, I_NEG);
+//            //SCF(CY & 01000000000LL, cu.IR, I_NEG);
+//            SCF(rA & SIGN36, cu.IR, I_NEG);
 //            
 //            /// Exp Ovr: If exponent is greater than +127, then ON
 //            /// Exp Undr: If exponent is less than -128, then ON
@@ -3043,11 +3050,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(E) + C(Y)0,7 → C(E)
             {
                 int8 e = (CY >> 28) & 0377;
-                SCF((rE + e) >  127, rIR, I_EOFL);
-                SCF((rE + e) < -128, rIR, I_EUFL);
+                SCF((rE + e) >  127, cu.IR, I_EOFL);
+                SCF((rE + e) < -128, cu.IR, I_EUFL);
                 
-                CLRF(rIR, I_ZERO);
-                CLRF(rIR, I_NEG);
+                CLRF(cu.IR, I_ZERO);
+                CLRF(cu.IR, I_NEG);
                 
                 rE += e;    // add
                 rE &= 0377; // keep to 8-bits
@@ -3059,8 +3066,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Zero: If C(Y)8,35 = 0, then ON; otherwise OFF
             /// Negative: If C(Y)8 = 1, then ON; otherwise OFF
             
-            SCF((CY & 001777777777LL) == 0, rIR, I_ZERO);
-            SCF(CY & 001000000000LL, rIR, I_NEG);
+            SCF((CY & 001777777777LL) == 0, cu.IR, I_ZERO);
+            SCF(CY & 001000000000LL, cu.IR, I_NEG);
             
             break;
             
@@ -3068,7 +3075,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Y)0,7 → C(E)
             
             rE = (CY >> 28) & 0377;
-            CLRF(rIR, I_ZERO | I_NEG);
+            CLRF(cu.IR, I_ZERO | I_NEG);
     
             break;
             
@@ -3118,7 +3125,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(Y)18,31 → C(IR)
             // XXX Not completely implemented
             PPR.IC = GETHI(CY);
-            rIR = GETLO(CY) & 0777760;
+            cu.IR = GETLO(CY) & 0777760;
             
             return CONT_TRA;
             
@@ -3187,11 +3194,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
             /// otherwise, no change to C(PPR)
-            if (rIR & I_EOFL)
+            if (cu.IR & I_EOFL)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
-                CLRF(rIR, I_EOFL);
+                CLRF(cu.IR, I_EOFL);
                 
                 return CONT_TRA;
             }
@@ -3201,12 +3208,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If exponent underflow indicator ON then
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            if (rIR & I_EUFL)
+            if (cu.IR & I_EUFL)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
-                CLRF(rIR, I_EUFL);
+                CLRF(cu.IR, I_EUFL);
                 
                 return CONT_TRA;
             }
@@ -3217,7 +3224,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If negative indicator ON then
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            if (rIR & I_NEG)
+            if (cu.IR & I_NEG)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3230,7 +3237,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If carry indicator OFF then
             ///   C(TPR.CA) → C(PPR.IC)
             ///   C(TPR.TSR) → C(PPR.PSR)
-            if (!(rIR & I_CARRY))
+            if (!(cu.IR & I_CARRY))
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3243,7 +3250,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If zero indicator OFF then
             ///     C(TPR.CA) → C(PPR.IC)
             ///     C(TPR.TSR) → C(PPR.PSR)
-            if (!(rIR & I_ZERO))
+            if (!(cu.IR & I_ZERO))
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3256,12 +3263,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If overflow indicator ON then
             ///   C(TPR.CA) → C(PPR.IC)
             ///   C(TPR.TSR) → C(PPR.PSR)
-            if (rIR & I_OFLOW)
+            if (cu.IR & I_OFLOW)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
-                CLRF(rIR, I_OFLOW);
+                CLRF(cu.IR, I_OFLOW);
                 
                 return CONT_TRA;
             }
@@ -3271,7 +3278,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If negative indicator OFF, then
             ///   C(TPR.CA) → C(PPR.IC)
             ///   C(TPR.TSR) → C(PPR.PSR)
-            if (!(rIR & I_NEG)) 
+            if (!(cu.IR & I_NEG)) 
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3293,7 +3300,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///  If carry indicator ON then
             ///    C(TPR.CA) → C(PPR.IC)
             ///    C(TPR.TSR) → C(PPR.PSR)
-            if (rIR & I_CARRY)
+            if (cu.IR & I_CARRY)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3374,7 +3381,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///   C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
             /// otherwise, no change to C(PPR)
-            if ((rIR & I_TALLY) == 0)
+            if ((cu.IR & I_TALLY) == 0)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -3388,7 +3395,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///   C(TPR.CA) → C(PPR.IC)
             ///   C(TPR.TSR) → C(PPR.PSR)
             /// otherwise, no change to C(PPR)
-            if (rIR & I_ZERO)
+            if (cu.IR & I_ZERO)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -4018,7 +4025,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
 #if 0
             // just generate a register dump
-            sim_printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(rIR));
+            sim_printf("A=%012llo Q=%012llo IR:%s\r\n", rA, rQ, dumpFlags(cu.IR));
             sim_printf("X[0]=%06o X[1]=%06o X[2]=%06o X[3]=%06o\r\n", rX[0], rX[1], rX[2], rX[3]);
             sim_printf("X[4]=%06o X[5]=%06o X[6]=%06o X[7]=%06o\r\n", rX[4], rX[5], rX[6], rX[7]);
                 for(uint32 n = 0 ; n < 8 ; n++)
@@ -4093,8 +4100,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
                 rA = tmp36r;    // remainder → C(A)
             
-                SCF(rA == 0, rIR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
-                SCF(tmp1,    rIR, I_NEG);   // If C(A)0 = 1 before execution, then ON; otherwise OFF
+                SCF(rA == 0, cu.IR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
+                SCF(tmp1,    cu.IR, I_NEG);   // If C(A)0 = 1 before execution, then ON; otherwise OFF
             }
             break;
            
@@ -4114,8 +4121,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 else
                     rA &= ~SIGN36;  // reset A0
             
-                SCF(rA == 0,    rIR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
-                SCF(rA & SIGN36,rIR, I_NEG);   // If C(A)0 = 1, then ON; otherwise OFF
+                SCF(rA == 0,    cu.IR, I_ZERO);  // If C(A) = 0, then ON; otherwise OFF
+                SCF(rA & SIGN36,cu.IR, I_NEG);   // If C(A)0 = 1, then ON; otherwise OFF
             }
             break;
          
@@ -4233,8 +4240,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 t_stat rc = scu_rmcm (scu_unit_num, ASSUME_CPU0, & rA, & rQ);
                 if (rc)
                     return rc;
-                SCF (rA == 0, rIR, I_ZERO);
-                SCF (rA & SIGN36, rIR, I_NEG);
+                SCF (rA == 0, cu.IR, I_ZERO);
+                SCF (rA & SIGN36, cu.IR, I_NEG);
             }
             break;
 
@@ -4404,8 +4411,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                   // XXX Guessing values; also don't know if this is actually a fault
                   doFault(i, illproc_fault, 0, "Illegal register select value");
               }
-            SCF (rA == 0, rIR, I_ZERO);
-            SCF (rA & SIGN36, rIR, I_NEG);
+            SCF (rA == 0, cu.IR, I_ZERO);
+            SCF (rA & SIGN36, cu.IR, I_NEG);
           }
           break;
 
@@ -4470,8 +4477,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if (rc)
               return rc;
             rA = result;
-            SCF (rA == 0, rIR, I_ZERO);
-            SCF (rA & SIGN36, rIR, I_NEG);
+            SCF (rA == 0, cu.IR, I_ZERO);
+            SCF (rA & SIGN36, cu.IR, I_NEG);
           }
           break;
             
@@ -4496,7 +4503,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                                      // break this logic
               {
                 sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
-                sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+                sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 stop_reason = STOP_DIS;
                 longjmp (jmpMain, JMP_STOP);
               }
@@ -4540,7 +4547,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             /// If negative or zero indicator ON then
             /// C(TPR.CA) → C(PPR.IC)
             /// C(TPR.TSR) → C(PPR.PSR)
-            if (rIR & (I_NEG | I_ZERO))
+            if (cu.IR & (I_NEG | I_ZERO))
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -4552,7 +4559,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             /// If negative and zero indicators are OFF then
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            if (!(rIR & I_NEG) && !(rIR & I_ZERO))
+            if (!(cu.IR & I_NEG) && !(cu.IR & I_ZERO))
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -4565,7 +4572,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             /// If truncation indicator OFF then
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            if (!(rIR & I_TRUNC))
+            if (!(cu.IR & I_TRUNC))
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -4578,12 +4585,12 @@ static t_stat DoEISInstruction(DCDstruct *i)
             /// If truncation indicator ON then
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
-            if (rIR & I_TRUNC)
+            if (cu.IR & I_TRUNC)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
-                CLRF(rIR, I_TRUNC);
+                CLRF(cu.IR, I_TRUNC);
                 
                 return CONT_TRA;
             }
@@ -4594,7 +4601,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(TPR.CA) → C(PPR.IC)
             ///  C(TPR.TSR) → C(PPR.PSR)
             /// otherwise, no change to C(PPR)
-            if (rIR & I_TALLY)
+            if (cu.IR & I_TALLY)
             {
                 PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
@@ -5680,7 +5687,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             cmpn(i);
             break;
 
-#ifdef EMULATOR_ONLY
+#if EMULATOR_ONLY
             
         case 0420:  ///< emcall instruction Custom, for an emulator call for simh stuff ...
         {

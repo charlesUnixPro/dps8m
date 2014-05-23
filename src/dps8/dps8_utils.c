@@ -10,7 +10,10 @@
 #include <ctype.h>
 
 #include "dps8.h"
+#include "dps8_cpu.h"
 #include "dps8_utils.h"
+#include "dps8_opcodetable.h"
+#include "dps8_faults.h"
 
 /*
  * misc utility routines used by simulator
@@ -42,8 +45,7 @@ char * dumpFlags(word18 flags)
     
 }
 
-static char *
-strupr(char *str)
+static char * strupr(char *str)
 {
     char *s;
     
@@ -762,8 +764,7 @@ void cmp72(word72 op1, word72 op2, word18 *flags)
 
 /* ------------------------------------------------------------------------- */
 
-char *
-strlower(char *q)
+char * strlower(char *q)
 {
 	char *s = q;
     

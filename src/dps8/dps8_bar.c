@@ -14,6 +14,9 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_bar.h"
+#include "dps8_cpu.h"
+#include "dps8_faults.h"
 
 /*
  * The Base Address Register provides automatic hardware Address relocation and

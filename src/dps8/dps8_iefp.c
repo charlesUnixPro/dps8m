@@ -6,6 +6,11 @@
  */
 
 #include "dps8.h"
+#include "dps8_append.h"
+#include "dps8_bar.h"
+#include "dps8_cpu.h"
+#include "dps8_sys.h"
+#include "dps8_iefp.h"
 
 /*
  * Code that handles the main
@@ -36,8 +41,7 @@ IEFPState iefpState = eIEFPUnknown;
 #endif
 
 #ifndef QUIET_UNUSED
-PRIVATE
-t_stat IEFPInstructionFetch()
+static t_stat IEFPInstructionFetch()
 {
     ci = fetchInstruction(PPR.IC, currentInstruction);    // fetch instruction into current instruction struct
     
@@ -53,8 +57,7 @@ t_stat IEFPInstructionFetch()
 #endif
 
 #ifndef QUIET_UNUSED
-PRIVATE
-IEFPState NextState()
+static IEFPState NextState()
 {
     switch(iefpState)
     {
@@ -76,67 +79,9 @@ IEFPState NextState()
 }
 #endif
 
-#ifndef QUIET_UNUSED
-PRIVATE
-t_stat IEFPExecuteInstruction()
-{
-    t_stat ret = executeInstruction(ci);
-    
-    if (ret)
-    {
-        if (ret > 0)
-        {
-            return ret;
-        } else {
-            switch (ret)
-            {
-                case CONT_TRA:
-                    return SCPE_OK;   // don't bump PPR.IC, instruction already did it
-                case CONT_FAULT:
-                {
-                    // XXX Instruction faulted.
-                }
-                break;
-            }
-        }
-    }
-    
-    // XXX Remove this when we actually can wait for an interrupt
-    if (ci->opcode == 0616) // DIS
-    {
-        return STOP_DIS;
-    }
-    
-#ifndef QUIET_UNUSED
-jmpNext:;
-#endif
-    // doesn't seem to work as advertized
-    if (sim_poll_kbd())
-        return STOP_BKPT;
-    
-    // XXX: what if sim stops during XEC/XED? if user wants to re-step
-    // instruc, is this logic OK?
-    if(XECD == 1) {
-        XECD = 2;
-    } else if(XECD == 2) {
-        XECD = 0;
-    } else if (cpu . cycle != DIS_cycle) // XXX maybe cycle == FETCH_cycle
-    
-    
-    PPR.IC += 1;
-    
-    // is this a multiword EIS?
-    // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
-    if (ci->info->ndes > 0)
-        PPR.IC += ci->info->ndes;
-    
-    return SCPE_OK;
-}
-#endif
 
 #ifndef QUIET_UNUSED
-PRIVATE
-t_stat doIEFP()
+static t_stat doIEFP()
 {
     switch(iefpState)
     {

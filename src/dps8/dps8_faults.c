@@ -9,12 +9,18 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_append.h"
+#include "dps8_cpu.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 #ifndef QUIET_UNUSED
 static t_uint64 FR;
 #endif
 
+#ifndef QUIET_UNUSED
 static void doG7Faults();
+#endif
 
 /*
  FAULT RECOGNITION
@@ -472,7 +478,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, const ch
                                      // break this logic
               {
                 sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
-                sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
+                sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
               }
@@ -503,7 +509,9 @@ bool bG7Pending()
     return g7Faults;
 }
 
+#ifndef QUIET_UNUSED
 static void doG7Faults()
 {
     
 }
+#endif

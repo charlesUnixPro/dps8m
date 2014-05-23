@@ -11,6 +11,8 @@
 #include "dps8.h"
 #include "dps8_iom.h"
 #include "dps8_disk.h"
+#include "dps8_sys.h"
+#include "dps8_utils.h"
 
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
@@ -235,7 +237,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
         default:
           {
             * stati = 04501;
-            sim_debug (DBG_ERR, & tape_dev,
+            sim_debug (DBG_ERR, & disk_dev,
                        "%s: Unknown command 0%o\n", __func__, pcwp -> dev_cmd);
             return 1;
           }
