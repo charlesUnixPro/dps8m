@@ -181,7 +181,8 @@ char *getModString(int32 tag)
 /* Single word integer routines */
 
 
-word36 AddSub36b(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
+// XXX ticket #3 isSigned
+word36 AddSub36b(char op, bool __attribute__((unused)) isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
 {
     word36 res = 0;
     op1 &= ZEROEXT;
@@ -265,7 +266,8 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     return res & DMASK;           // 64 => 36-bit. Mask off unnecessary bits ...
 }
 
-word18 AddSub18b(char op, bool isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags)
+// XXX ticket #3 isSigned
+word18 AddSub18b(char op, bool __attribute__((unused)) isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags)
 {
     word18 res = 0;
     op1 &= ZEROEXT18;
@@ -351,7 +353,8 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     return res & MASK18;           // 32 => 18-bit. Mask off unnecessary bits ...
 }
 
-word72 AddSub72b(char op, bool isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
+// XXX ticket #3 isSigned
+word72 AddSub72b(char op, bool __attribute__((unused)) isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
 {
     word72 res = 0;
     op1 &= ZEROEXT72;

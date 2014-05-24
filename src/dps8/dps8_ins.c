@@ -357,7 +357,7 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
     theMatrix [_opcode] [_opcodeX] [_a] [_tag] ++;
 }
 
-t_stat displayTheMatrix (int32 arg, char * buf)
+t_stat displayTheMatrix (int32 __attribute__((unused)) arg, char * __attribute__((unused)) buf)
 {
     long long count;
     for (int opcode = 0; opcode < 1024; opcode ++)
@@ -416,7 +416,7 @@ t_stat displayTheMatrix (int32 arg, char * buf)
 t_stat prepareComputedAddress(DCDstruct *i)
 {
     if (i->a)   // if A bit set up TPR stuff ...
-        doPtrReg(i);
+        doPtrReg();
 
     return SCPE_OK;
 }
@@ -662,7 +662,7 @@ t_stat executeInstruction(DCDstruct *ci)
     else
     {
         if (ci->a)   // if A bit set set-up TPR stuff ...
-            doPtrReg(ci);
+            doPtrReg();
         doComputedAddressFormation(ci);
     }
     t_stat ret = doInstruction(ci);
@@ -1959,7 +1959,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// If | dividend | >= | divisor | or if the divisor = 0, division does not take place. Instead, a divide check fault occurs, C(AQ) contains the dividend magnitude in absolute, and the negative indicator reflects the dividend sign.
             
             // XXX Untested, needs further testing.
-            dvf(i);
+            dvf ();
             
             break;
             
@@ -2845,7 +2845,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0472:  ///< dfstr
             
-            dfstr(i, Ypair);
+            dfstr (Ypair);
             break;
             
         case 0455:  ///< fst
@@ -2878,34 +2878,34 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 //            /// Exp Undr: If exponent is less than -128, then ON
 //            /// XXX: not certain how these can occur here ....
             
-            fstr(i, &CY);
+            fstr(&CY);
             
             break;
             
         case 0477:  ///< dfad
             /// The dfad instruction may be thought of as a dufa instruction followed by a fno instruction.
 
-            dufa(i);
-            fno(i);
+            dufa ();
+            fno ();
             break;
             
         case 0437:  ///< dufa
-            dufa(i);
+            dufa ();
             break;
             
         case 0475:  ///< fad
             /// The fad instruction may be thought of a an ufa instruction followed by a fno instruction.
             /// (Heh, heh. We'll see....)
             
-            ufa(i);
-            fno(i);
+            ufa();
+            fno ();
             
             break;
   
         case 0435:  ///< ufa
             /// C(EAQ) + C(Y) → C(EAQ)
             
-            ufa(i);
+            ufa();
             break;
             
         case 0577:  ///< dfsb
@@ -2916,83 +2916,83 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // XXX Why is this here???
             //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufs(i);
-            fno(i);
+            dufs ();
+            fno ();
             break;
 
         case 0537:  ///< dufs
             // XXX Why is this here???
             //ReadYPair(i, TPR.CA, Ypair, OperandRead, rTAG);
 
-            dufs(i);
+            dufs ();
             break;
             
         case 0575:  ///< fsb
             ///< The fsb instruction may be thought of as an ufs instruction followed by a fno instruction.
-            ufs(i);
-            fno(i);
+            ufs ();
+            fno ();
             
             break;
             
         case 0535:  ///< ufs
             ///< C(EAQ) - C(Y) → C(EAQ)
             
-            ufs(i);
+            ufs ();
             break;
             
         case 0463:  ///< dfmp
             /// The dfmp instruction may be thought of as a dufm instruction followed by a
             /// fno instruction.
 
-            dufm(i);
-            fno(i);
+            dufm ();
+            fno ();
             
             break;
             
         case 0423:  ///< dufm
 
-            dufm(i);
+            dufm ();
             break;
             
         case 0461:  ///< fmp
             /// The fmp instruction may be thought of as a ufm instruction followed by a
             /// fno instruction.
  
-            ufm(i);
-            fno(i);
+            ufm ();
+            fno ();
             
             break;
             
         case 0421:  ///< ufm
             /// C(EAQ) × C(Y) → C(EAQ)
-            ufm(i);
+            ufm ();
             break;
             
         case 0527:  ///< dfdi
 
-            dfdi(i);
+            dfdi ();
             break;
             
         case 0567:  ///< dfdv
 
-            dfdv(i);
+            dfdv ();
             break;
             
         case 0525:  ///< fdi
             /// C(Y) / C(EAQ) → C(EA)
             
-            fdi(i);
+            fdi ();
             break;
             
         case 0565:  ///< fdv
             /// C(EAQ) /C(Y) → C(EA)
             /// 00...0 → C(Q)
-            fdv(i);
+            fdv ();
             break;
             
         case 0513:  ///< fneg
             /// -C(EAQ) normalized → C(EAQ)
-            fneg(i);
+            fneg ();
             break;
             
         case 0573:  ///< fno
@@ -3001,49 +3001,49 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             ///Charles Is the coolest
             ///true story y'all
             //you should get me darksisers 2 for christmas
-            fno(i);
+            fno ();
             break;
             
         case 0473:  ///< dfrd
             /// C(EAQ) rounded to 64 bits → C(EAQ)
             /// 0 → C(AQ)64,71 (See notes in dps8_math.c on dfrd())
 
-            dfrd(i);
+            dfrd ();
             break;
             
         case 0471:  ///< frd
             /// C(EAQ) rounded to 28 bits → C(EAQ)
             /// 0 → C(AQ)28,71 (See notes in dps8_math.c on frd())
             
-            frd(i);
+            frd ();
             break;
             
         case 0427:  ///< dfcmg
             /// C(E) :: C(Y-pair)0,7
             /// | C(AQ)0,63 | :: | C(Y-pair)8,71 |
 
-            dfcmg(i);
+            dfcmg ();
             break;
             
         case 0517:  ///< dfcmp
             /// C(E) :: C(Y-pair)0,7
             /// C(AQ)0,63 :: C(Y-pair)8,71
 
-            dfcmp(i);
+            dfcmp ();
             break;
 
         case 0425:  ///< fcmg
             /// C(E) :: C(Y)0,7
             /// | C(AQ)0,27 | :: | C(Y)8,35 |
             
-            fcmg(i);
+            fcmg ();
             break;
             
         case 0515:  ///< fcmp
             /// C(E) :: C(Y)0,7
             /// C(AQ)0,27 :: C(Y)8,35
             
-            fcmp(i);
+            fcmp();
             break;
             
         case 0415:  ///< ade
@@ -3093,7 +3093,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             if (TPR.TRR > PPR.PRR)
             {
-                acvFault(i, OCALL, "call6 access violation fault (outward call)");
+                acvFault(OCALL, "call6 access violation fault (outward call)");
                 return CONT_FAULT; // access violation fault (outward call)
             }
             if (TPR.TRR < PPR.PRR)

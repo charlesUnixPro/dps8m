@@ -56,7 +56,7 @@ DEVICE clk_dev = {
 };
 
 
-static t_stat clk_svc(UNIT *up)
+static t_stat clk_svc (UNIT * __attribute__((unused)) up)
 {
     // only valid for TR
 #ifdef USE_IDLE

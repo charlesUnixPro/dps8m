@@ -333,7 +333,7 @@ float36 IEEEdoubleTofloat36(double f0)
 /*!
  * unnormalized floating single-precision add
  */
-void ufa(DCDstruct *ins)
+void ufa (void)
 {
     //! C(EAQ) + C(Y) → C(EAQ)
     //! The ufa instruction is executed as follows:
@@ -462,7 +462,7 @@ void ufa(DCDstruct *ins)
 /*!
  * unnormalized floating single-precision subtract
  */
-void ufs(DCDstruct *ins)
+void ufs (void)
 {
     //! The ufs instruction is identical to the ufa instruction with the exception that the twos complement of the mantissa of the operand from main memory (op2) is used.
     
@@ -514,7 +514,7 @@ void ufs(DCDstruct *ins)
     else
         CY = bitfieldInsert36(CY, m2c & FLOAT36MASK, 0, 28) & MASK36;
    
-    ufa(ins);
+    ufa();
 
 }
 
@@ -522,7 +522,7 @@ void ufs(DCDstruct *ins)
  * floating normalize ...
  */
 
-void fno(DCDstruct *ins)
+void fno (void)
 {
     //! The fno instruction normalizes the number in C(EAQ) if C(AQ) ≠ 0 and the overflow indicator is OFF.
     //!    A normalized floating number is defined as one whose mantissa lies in the interval [0.5,1.0) such that
@@ -689,7 +689,7 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
 /*!
  * floating negate ...
  */
-void fneg(DCDstruct *ins)
+void fneg (void)
 {
     //! This instruction changes the number in C(EAQ) to its normalized negative (if C(AQ) ≠ 0). The operation is executed by first forming the twos complement of C(AQ), and then normalizing C(EAQ).
     //! Even if originally C(EAQ) were normalized, an exponent overflow can still occur, namely when C(E) = +127 and C(AQ) = 100...0 which is the twos complement approximation for the decimal value -1.0.
@@ -740,13 +740,13 @@ void fneg(DCDstruct *ins)
     rA = (mc >> 36) & MASK36;
     rQ = mc & MASK36;
 
-    fno(ins);  // normalize
+    fno ();  // normalize
 }
 
 /*!
  * Unnormalized Floating Multiply ...
  */
-void ufm(DCDstruct *ins)
+void ufm (void)
 {
     //! The ufm instruction is executed as follows:
     //!      C(E) + C(Y)0,7 → C(E)
@@ -818,7 +818,7 @@ void ufm(DCDstruct *ins)
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
     //if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
-        fno(ins);
+        fno ();
     
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     //SCF(rA && SIGN72, cu.IR, I_NEG);
@@ -831,7 +831,7 @@ void ufm(DCDstruct *ins)
 /*!
  * floating divide ...
  */
-void fdvX(DCDstruct *ins, bool bInvert)
+static void fdvX(bool bInvert)
 {
     //! C(EAQ) / C (Y) → C(EA)
     //! C(Y) / C(EAQ) → C(EA) (Inverted)
@@ -938,19 +938,19 @@ void fdvX(DCDstruct *ins, bool bInvert)
         rE = (word8)-128;
 }
 
-void fdv(DCDstruct *ins)
+void fdv (void)
 {
-    fdvX(ins, false);    // no inversion
+    fdvX(false);    // no inversion
 }
-void fdi(DCDstruct *ins)
+void fdi (void)
 {
-    fdvX(ins, true);
+    fdvX(true);
 }
 
 /*!
  * single precision floating round ...
  */
-void frd(DCDstruct *ins)
+void frd (void)
 {
     //! If C(AQ) ≠ 0, the frd instruction performs a true round to a precision of 28 bits and a normalization on C(EAQ).
     //! A true round is a rounding operation such that the sum of the result of applying the operation to two numbers of equal magnitude but opposite sign is exactly zero.
@@ -1048,7 +1048,7 @@ void frd(DCDstruct *ins)
         rA = (m >> 36) & MASK36;
         rQ = m & MASK36;
         
-        fno(ins);
+        fno ();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
@@ -1062,7 +1062,7 @@ void frd(DCDstruct *ins)
     
 }
 
-void fstr(DCDstruct *ins, word36 *Y)
+void fstr(word36 *Y)
 {
     //The fstr instruction performs a true round and normalization on C(EAQ) as it is stored.
     //The definition of true round is located under the description of the frd instruction.
@@ -1141,7 +1141,7 @@ void fstr(DCDstruct *ins, word36 *Y)
 /*!
  * single precision Floating Compare ...
  */
-void fcmp(DCDstruct *ins)
+void fcmp(void)
 {
     //! C(E) :: C(Y)0,7
     //! C(AQ)0,27 :: C(Y)8,35
@@ -1208,7 +1208,7 @@ void fcmp(DCDstruct *ins)
 /*!
  * single precision Floating Compare magnitude ...
  */
-void fcmg(DCDstruct *ins)
+void fcmg ()
 {
     //! C(E) :: C(Y)0,7
     //! | C(AQ)0,27 | :: | C(Y)8,35 |
@@ -1301,7 +1301,7 @@ static void ExpMantToYpair(word72 mant, int8 exp, word36 *yPair)
 /*!
  * unnormalized floating double-precision add
  */
-void dufa(DCDstruct *ins)
+void dufa (void)
 {
     //! Except for the precision of the mantissa of the operand from main memory,
     //! the dufa instruction is identical to the ufa instruction.
@@ -1422,7 +1422,7 @@ void dufa(DCDstruct *ins)
 /*!
  * unnormalized floating double-precision subtract
  */
-void dufs(DCDstruct *ins)
+void dufs (void)
 {
     //! Except for the precision of the mantissa of the operand from main memory,
     //! the dufs instruction is identical with the ufs instruction.
@@ -1471,14 +1471,14 @@ void dufs(DCDstruct *ins)
         ExpMantToYpair(m2c, e2, Ypair);
     }
     
-    dufa(ins);
+    dufa ();
     
 }
 
 /*!
  * double-precision Unnormalized Floating Multiply ...
  */
-void dufm(DCDstruct *ins)
+void dufm (void)
 {
     //! Except for the precision of the mantissa of the operand from main memory,
     //!    the dufm instruction is identical to the ufm instruction.
@@ -1560,7 +1560,7 @@ void dufm(DCDstruct *ins)
     // A normalization is performed only in the case of both factor mantissas being 100...0 which is the twos complement approximation to the decimal value -1.0.
     //if ((rE == -128 && rA == 0 && rQ == 0) && (m2 == 0 && e2 == -128)) // XXX FixMe
     if ((m1 == ((uint64)1 << 63)) && (m2 == ((uint64)1 << 63)))
-        fno(ins);
+        fno ();
     
     SCF(rA == 0 && rQ == 0, cu.IR, I_ZERO);
     //SCF(rA && SIGN72, cu.IR, I_NEG);
@@ -1573,7 +1573,7 @@ void dufm(DCDstruct *ins)
 /*!
  * floating divide ...
  */
-static void dfdvX(DCDstruct *ins, bool bInvert)
+static void dfdvX (bool bInvert)
 {
     //! C(EAQ) / C (Y) → C(EA)
     //! C(Y) / C(EAQ) → C(EA) (Inverted)
@@ -1706,16 +1706,16 @@ static void dfdvX(DCDstruct *ins, bool bInvert)
         rE = (word8)-128;
 }
 
-void dfdv(DCDstruct *ins)
+void dfdv (void)
 {
-    dfdvX(ins, false);    // no inversion
+    dfdvX (false);    // no inversion
 }
-void dfdi(DCDstruct *ins)
+void dfdi (void)
 {
-    dfdvX(ins, true);
+    dfdvX (true);
 }
 
-void dvf(DCDstruct *ins)
+void dvf (void)
 {
     //! C(AQ) / (Y)
     //!  fractional quotient → C(A)
@@ -1791,7 +1791,7 @@ void dvf(DCDstruct *ins)
 /*!
  * double precision floating round ...
  */
-void dfrd(DCDstruct *ins)
+void dfrd (void)
 {
     //! The dfrd instruction is identical to the frd instruction except that the rounding constant used is (11...1)65,71 instead of (11...1)29,71.
     
@@ -1851,7 +1851,7 @@ void dfrd(DCDstruct *ins)
         rA = (m >> 36) & MASK36;
         rQ = m & MASK36;
         
-        fno(ins);
+        fno ();
     }
     
     // If C(AQ) = 0, C(E) is set to -128 and the zero indicator is set ON.
@@ -1864,7 +1864,7 @@ void dfrd(DCDstruct *ins)
     SCF(rA & SIGN36, cu.IR, I_NEG);
 }
 
-void dfstr(DCDstruct *ins, word36 *Ypair)
+void dfstr (word36 *Ypair)
 {
     //! The dfstr instruction performs a double-precision true round and normalization on C(EAQ) as it is stored.
     //! The definition of true round is located under the description of the frd instruction.
@@ -1960,7 +1960,7 @@ void dfstr(DCDstruct *ins, word36 *Ypair)
 /*!
  * double precision Floating Compare ...
  */
-void dfcmp(DCDstruct *ins)
+void dfcmp (void)
 {
     //! C(E) :: C(Y-pair)0,7
     //! C(AQ)0,63 :: C(Y-pair)8,71
@@ -2009,7 +2009,7 @@ void dfcmp(DCDstruct *ins)
 /*!
  * double precision Floating Compare magnitude ...
  */
-void dfcmg(DCDstruct *ins)
+void dfcmg (void)
 {
     //! C(E) :: C(Y)0,7
     //! | C(AQ)0,27 | :: | C(Y)8,35 |

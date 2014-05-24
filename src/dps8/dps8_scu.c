@@ -690,7 +690,7 @@ typedef struct
 
 static scu_t scu [N_SCU_UNITS_MAX];
 
-static t_stat scu_reset (DEVICE *dptr)
+static t_stat scu_reset (DEVICE * __attribute__((unused)) dptr)
   {
     // On reset, instantiate the config switch settings
 
@@ -702,13 +702,13 @@ static t_stat scu_reset (DEVICE *dptr)
         up -> mode = sw -> mode;
         for (int i = 0; i < N_SCU_PORTS; i ++)
           {
-            up ->  port_enable [i] = sw -> port_enable [i];
+            up -> port_enable [i] = sw -> port_enable [i];
           }
 
         for (int i = 0; i < N_ASSIGNMENTS; i ++)
           {
-            up ->  mask_enable [i] = sw -> mask_enable [i];
-            up ->  mask_assignment [i] = sw -> mask_assignment [i];
+            up -> mask_enable [i] = sw -> mask_enable [i];
+            up -> mask_assignment [i] = sw -> mask_assignment [i];
           }
         up -> lower_store_size = sw -> lower_store_size;
         up -> cyclic = sw -> cyclic;
@@ -775,8 +775,8 @@ static int scu_hw_arg_check(const char *tag, word36 addr, uint scu_unit_num, int
     // We only have one CPU, so...
     int rcv_port = cpu_ports.scu_port;
     
-    if (rcv_port < 0 || rcv_port > 7)  {
-        sim_debug (DBG_ERR, &scu_dev, "%s: CPU is not connected to any port.  Port %d does nto exist on the SCU.\n", tag, rcv_port);
+    if (rcv_port < 0 || rcv_port > 7) {
+        sim_debug (DBG_ERR, &scu_dev, "%s: CPU is not connected to any port. Port %d does nto exist on the SCU.\n", tag, rcv_port);
         cancel_run(STOP_WARN);
         return 1;
     }
@@ -983,7 +983,7 @@ static int scu_get_mode_register(t_uint64 addr)
 // x = any octal digit
 //
 
-t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 rega, word36 regq)
+t_stat scu_sscr (uint scu_unit_num, uint __attribute__((unused)) cpu_unit_num, word36 addr, word36 rega, word36 regq)
   {
     // Only valid for a 4MW SCU
 
@@ -1041,7 +1041,7 @@ sim_printf ("sscr %o\n", function);
             // to override the configured store size
             // up -> lower_store_size = (rega >> 24) & 07;
             up -> cyclic = (regq >> 8) & 0177;
-            up -> nea = (rega >> 6) &  0377;
+            up -> nea = (rega >> 6) & 0377;
             up -> port_enable [0] = (rega >> 3) & 01;
             up -> port_enable [1] = (rega >> 2) & 01;
             up -> port_enable [2] = (rega >> 1) & 01;
@@ -1298,10 +1298,10 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
             /// uSecs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800 000 000
             //  uSeconds
  
-            struct timeval now;                
+            struct timeval now;
             gettimeofday(&now, NULL);
                 
-            t_uint64 UnixSecs = (t_uint64) now.tv_sec;                            // get uSecs since Jan 1, 1970
+            t_uint64 UnixSecs = (t_uint64) now.tv_sec;
             t_uint64 UnixuSecs = UnixSecs * 1000000LL + (t_uint64) now.tv_usec;
    
             // now determine uSecs since Jan 1, 1901 ...
@@ -1456,13 +1456,13 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
 
 // ============================================================================
 
-static t_stat scu_show_nunits (FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat scu_show_nunits (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
   {
     sim_printf("Number of SCU units in system is %d\n", scu_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat scu_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_SCU_UNITS_MAX)
@@ -1473,7 +1473,7 @@ static t_stat scu_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
     return SCPE_OK;
   }
 
-static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat scu_show_state (FILE * __attribute__((unused)) st, UNIT *uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
@@ -1518,7 +1518,7 @@ static t_stat scu_show_state (FILE *st, UNIT *uptr, int val, void *desc)
     return SCPE_OK;
   }
 
-static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat scu_show_config(FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
 {
     static const char * map [N_SCU_PORTS] = {"0", "1", "2", "3", "4", "5", "6", "7" };
     long scu_unit_num = UNIT_NUM (uptr);
@@ -1646,7 +1646,7 @@ static config_list_t scu_config_list [] =
     { NULL, 0, 0, NULL }
   };
 
-static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat scu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     long scu_unit_num = UNIT_NUM (uptr);
     if (scu_unit_num < 0 || scu_unit_num >= (int) scu_dev . numunits)
@@ -1905,7 +1905,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * r
         mask |= enabled;
       }
     * regq = setbits36(0, 0, 16, 
-        (scu [scu_unit_num] . exec_intr_mask [mask_num] >>  0) & 0177777);
+        (scu [scu_unit_num] . exec_intr_mask [mask_num] >> 0) & 0177777);
     * regq |= mask;
     
     return SCPE_OK;

@@ -14,6 +14,13 @@ CFLAGS += -D_GNU_SOURCE -DUSE_READER_THREAD -DHAVE_DLOPEN=so
 CFLAGS += -Wall 
 CFLAGS += -DUSE_INT64
 
+CFLAGS += -Wunused-argument \
+-Wunused-function \
+-Wunused-label \
+-Wunused-parameter \
+-Wunused-value \
+-Wunused-variable \
+-Wunused
 #CFLAGS += -Wsign-conversion
 zzzCFLAGS += \
 -Wabi \

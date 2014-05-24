@@ -128,7 +128,7 @@ static void check_keyboard (void);
 static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
 static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
-static t_stat opcon_reset (DEVICE * dptr)
+static t_stat opcon_reset (DEVICE * __attribute__((unused)) dptr)
   {
     console_state . io_mode = no_mode;
     console_state . tailp = console_state . buf;
@@ -164,7 +164,7 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
     return SCPE_OK;
   }
 
-static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
+static int opcon_autoinput_set(UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) val, char * __attribute__((unused)) cptr, void * __attribute__((unused)) desc)
 {
 //--     DEVICE *devp = find_opcon();
 //--     if (devp == NULL)
@@ -186,7 +186,7 @@ static int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
     return SCPE_OK;
 }
 
-static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
+static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
 {
 //--     sim_debug (DBG_NOTIFY, & opcon_dev, "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
 //--             __func__, st, uptr, val, desc);
@@ -273,7 +273,7 @@ static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
  * or IDCW.
  */
 
-static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
+static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
   {
     * need_data = false;
     * is_read = true;
@@ -372,7 +372,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
  * Handle an I/O request.  Invoked by the IOM while processing a DDCW.
  */
 
-static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
+static int con_iom_io (UNIT * __attribute__((unused)) unitp, uint chan, uint __attribute__((unused)) dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
 {
     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o\n", __func__, chan);
     

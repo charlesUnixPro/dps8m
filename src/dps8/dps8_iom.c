@@ -1256,7 +1256,7 @@ static t_stat boot_svc (UNIT * unitp)
     return SCPE_OK;
   }
 
-static t_stat iom_boot (int32 unit_num, DEVICE * dptr)
+static t_stat iom_boot (int32 unit_num, DEVICE * __attribute__((unused)) dptr)
   {
     sim_activate (& boot_channel_unit [unit_num], sys_opts . iom_times . boot_time );
 
@@ -1422,7 +1422,7 @@ void iom_init (void)
  *
  */
 
-static t_stat iom_reset(DEVICE *dptr)
+static t_stat iom_reset(DEVICE * __attribute__((unused)) dptr)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
 
@@ -3526,9 +3526,10 @@ static char * pcw2text (const pcw_t * p)
  * Parse word at "addr" into a dcw_t.
  */
 
-static void fetch_and_parse_dcw (int iom_unit_num, uint chan, dcw_t * p, uint32 addr, int read_only)
+static void fetch_and_parse_dcw (int iom_unit_num, uint chan, dcw_t * p, uint32 addr, int __attribute__((unused)) read_only)
   {
 // XXX do the read_only thang
+// XXX ticket #4
     word36 word;
 
     sim_debug (DBG_DEBUG, & iom_dev, "%s: addr: 0%06o\n", __func__, addr);
@@ -4191,7 +4192,7 @@ static void iom_show_channel_mbx (int iom_unit_num, uint chan)
     sim_printf ("\n");
   }
 
-static int iom_show_mbx (FILE * st, UNIT * uptr, int val, void * desc)
+static int iom_show_mbx (FILE * __attribute__((unused)) st, UNIT * uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
   {
     int iom_unit_num = IOM_UNIT_NUM (uptr);
 
@@ -4261,13 +4262,13 @@ static int iom_show_mbx (FILE * st, UNIT * uptr, int val, void * desc)
     return 0;
   }
 
-static t_stat iom_show_nunits (FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat iom_show_nunits (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
   {
     sim_printf("Number of IOM units in system is %d\n", iom_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat iom_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat iom_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_IOM_UNITS_MAX)
@@ -4278,7 +4279,7 @@ static t_stat iom_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc
     return SCPE_OK;
   }
 
-static t_stat iom_show_config(FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat iom_show_config(FILE *__attribute__((unused)) st, UNIT *uptr, int __attribute__((unused)) val, void *__attribute__((unused)) desc)
   {
     int unit_num = IOM_UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= iom_dev . numunits)
@@ -4443,7 +4444,7 @@ static config_list_t iom_config_list [] =
     { NULL }
   };
 
-static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat iom_set_config (UNIT * uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     int unit_num = IOM_UNIT_NUM (uptr);
     if (unit_num < 0 || unit_num >= iom_dev . numunits)

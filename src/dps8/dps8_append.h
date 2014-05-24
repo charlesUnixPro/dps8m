@@ -32,9 +32,9 @@ enum _appendingUnit_cycle_type {
 
 
 void doAddrModPtrReg(DCDstruct *);
-void doPtrReg (DCDstruct *);        ///< used by EIS stuff
+void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
-void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg);
+void acvFault(_fault_subtype acvfault, char * msg);
 word24 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);

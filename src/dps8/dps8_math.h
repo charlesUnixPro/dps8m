@@ -7,31 +7,31 @@ void IEEElongdoubleToEAQ(long double f0);
 double float36ToIEEEdouble(float36 f36);
 float36 IEEEdoubleTofloat36(double f);
 #endif
-void ufa(DCDstruct *);
-void ufs(DCDstruct *);
-void fno(DCDstruct *);
+void ufa (void);
+void ufs (void);
+void fno (void);
 void fnoEAQ(word8 *E, word36 *A, word36 *Q);
 
-void fneg(DCDstruct *);
-void ufm(DCDstruct *);
-void fdv(DCDstruct *);
-void fdi(DCDstruct *);
-void frd(DCDstruct *);
-void fcmp(DCDstruct *);
-void fcmg(DCDstruct *);
+void fneg (void);
+void ufm (void);
+void fdv (void);
+void fdi (void);
+void frd (void);
+void fcmp(void);
+void fcmg(void);
 
-void dufa(DCDstruct *);
-void dufs(DCDstruct *);
-void dufm(DCDstruct *);
-void dfdv(DCDstruct *);
-void dfdi(DCDstruct *);
-void dfrd(DCDstruct *);
-void dfcmp(DCDstruct *);
-void dfcmg(DCDstruct *);
+void dufa (void);
+void dufs (void);
+void dufm (void);
+void dfdv (void);
+void dfdi (void);
+void dfrd (void);
+void dfcmp (void);
+void dfcmg (void);
 
-void dvf(DCDstruct *);
+void dvf (void);
 
-void dfstr(DCDstruct *, word36 *Ypair);
-void fstr(DCDstruct *, word36 *CY);
+void dfstr (word36 *Ypair);
+void fstr(word36 *CY);
 
 

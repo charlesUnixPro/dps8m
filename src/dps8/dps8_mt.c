@@ -559,7 +559,7 @@ static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_pro
     return 0;
   }
 
-static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
+static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_code, uint * tally, uint * __attribute__((unused)) cp, word36 * wordp, word12 * stati)
   {
     //sim_debug (DBG_DEBUG, & tape_dev, "%s\n", __func__);
     int mt_unit_num = MT_UNIT_NUM (unitp);
@@ -674,18 +674,18 @@ static const char *simh_tape_msg(int code)
         return "Unknown SIMH tape error";
   }
 
-static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat mt_rewind (UNIT * uptr, int32 __attribute__((unused)) value, char * __attribute__((unused)) cptr, void * __attribute__((unused)) desc)
   {
     return sim_tape_rewind (uptr);
   }
 
-static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc)
+static t_stat mt_show_nunits (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
   {
     sim_printf("Number of TAPE units in system is %d\n", tape_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat mt_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_MT_UNITS_MAX)

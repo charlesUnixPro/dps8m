@@ -34,7 +34,7 @@ static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
  */
 
 
-void doPtrReg(DCDstruct *i)
+void doPtrReg(void)
 {
     word3 n = GET_PRN(cu.IWB);  // get PRn
     word15 offset = GET_OFFSET(cu.IWB);
@@ -148,13 +148,14 @@ void do_sdbr (word36 * Ypair)
  * implement camp instruction
  */
 
-void do_camp (word36 Y)
+void do_camp (word36 __attribute__((unused)) Y)
   {
     // C(TPR.CA) 16,17 control disabling or enabling the associative memory.
     // This may be done to either or both halves.
     // The full/empty bit of cache PTWAM register is set to zero and the LRU
     // counters are initialized.
     // XXX enable/disable and LRU don't seem to be implemented; punt
+    // XXX ticket #1
     for (int i = 0; i < 64; i ++)
       {
         PTWAM [i] . F = 0;
@@ -166,7 +167,7 @@ void do_camp (word36 Y)
  * implement cams instruction
  */
 
-void do_cams (word36 Y)
+void do_cams (word36 __attribute__((unused)) Y)
   {
     // The full/empty bit of each SDWAM register is set to zero and the LRU
     // counters are initialized. The remainder of the contents of the registers
@@ -175,6 +176,7 @@ void do_cams (word36 Y)
     // C(TPR.CA) 16,17 control disabling or enabling the associative memory.
     // This may be done to either or both halves.
     // XXX enable/disable and LRU don't seem to be implemented; punt
+    // XXX ticket #2
     for (int i = 0; i < 64; i ++)
       {
         SDWAM [i] . F = 0;
@@ -232,7 +234,7 @@ static _ptw0* modifyDSPTW(word15 segno)
 
 
 /// \brief XXX SDW0 is the in-core representation of a SDW. Need to have a SDWAM struct as current SDW!!!
-static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
+static _sdw* fetchSDWfromSDWAM(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     
@@ -681,7 +683,7 @@ static char *strACV(_fault_subtype acv)
 
 static int acvFaults = 0;   ///< pending ACV faults
 
-void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg)
+void acvFault(_fault_subtype acvfault, char * msg)
 {
     
     char temp[256];
@@ -692,7 +694,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg)
     //acvFaults |= (1 << acvfault);   // or 'em all together
     acvFaults |= acvfault;   // or 'em all together
 
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvFault, acvFaults, msg);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvfault, acvFaults, msg);
     
     doFault(acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
 }
@@ -786,7 +788,7 @@ A:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
     // is SDW for C(TPR.TSR) in SDWAM?
-    if (!fetchSDWfromSDWAM(i, TPR.TSR))
+    if (!fetchSDWfromSDWAM(TPR.TSR))
     {
         // No
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A):SDW for segment %05o not in SDWAM\n", TPR.TSR);
@@ -833,7 +835,7 @@ B:;
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
-        acvFault(i, ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
+        acvFault(ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
     
     // No
     
@@ -859,11 +861,11 @@ B:;
         // C(TPR.TRR) > C(SDW .R2)?
         if (TPR.TRR > SDW->R2)
             //Set fault ACV5 = OWB
-            acvFault(i, ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
+            acvFault(ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
         
         if (!SDW->W)
             // Set fault ACV6 = W-OFF
-            acvFault(i, ACV6, "doAppendCycle(B) ACV6 = W-OFF");
+            acvFault(ACV6, "doAppendCycle(B) ACV6 = W-OFF");
         goto G;
         
     } else {

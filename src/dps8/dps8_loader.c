@@ -627,7 +627,7 @@ int loadDeferredSegments(bool bVerbose)
 /*
  * create a linkage Offset Table segment ...
  */
-t_stat createLOT(bool bVerbose)
+t_stat createLOT(bool __attribute__((unused)) bVerbose)
 {
     segment *s;
     
@@ -811,7 +811,7 @@ t_stat setupFXE()
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
+static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool __attribute__((unused)) bVerbose)
 {
     long curpos = ftell(f);
     
@@ -1029,7 +1029,7 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose
  * "standard" simh/dps8 loader (.oct files) ....
  * Will do real binary files - later.
  */
-static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose)
+static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool __attribute__((unused)) bVerbose)
 {
     /*
      * we'll support the following type of loads
@@ -1256,7 +1256,7 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     return NULL;
 }
 
-t_stat sim_dump (FILE *fileref, char *cptr, char *fnam, int flag)
+t_stat sim_dump (FILE *fileref, char * __attribute__((unused)) cptr, char * __attribute__((unused)) fnam, int __attribute__((unused)) flag)
 {
     size_t rc = fwrite (M, sizeof (word36), MEMSIZE, fileref);
     if (rc != MEMSIZE)

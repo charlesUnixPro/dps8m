@@ -145,7 +145,7 @@ static int getval (char * * save, char * text)
 //   cable OPCON <iom_unit_num>,<chan_num>,0,0
 //
 
-static t_stat sys_cable (int32 arg, char * buf)
+static t_stat sys_cable (int32 __attribute__((unused)) arg, char * buf)
   {
 // XXX Minor bug; this code doesn't check for trailing garbage
 
@@ -214,7 +214,7 @@ exit:
 
 uint64 sim_deb_start;
 
-static t_stat dps_debug_start (int32 arg, char * buf)
+static t_stat dps_debug_start (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
@@ -389,7 +389,7 @@ static char * sourceSearchPath = NULL;
 
 // search path is path:path:path....
 
-static t_stat setSearchPath (int32 arg, char * buf)
+static t_stat setSearchPath (int32 __attribute__((unused)) arg, char * buf)
   {
     if (sourceSearchPath)
       free (sourceSearchPath);
@@ -397,7 +397,7 @@ static t_stat setSearchPath (int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat test (int32 arg, char * buf)
+static t_stat test (int32 __attribute__((unused)) arg, char *  __attribute__((unused)) buf)
   {
     //listSource (buf, 0);
     return SCPE_OK;
@@ -560,7 +560,7 @@ fileDone:
 
 // ABS segno:offset
 
-static t_stat absAddr (int32 arg, char * buf)
+static t_stat absAddr (int32 __attribute__((unused)) arg, char * buf)
   {
     int segno;
     uint offset;
@@ -807,7 +807,7 @@ static t_stat sbreak (int32 arg, char * buf)
 
 // VIRTUAL address
 
-static t_stat virtAddr (int32 arg, char * buf)
+static t_stat virtAddr (int32 __attribute__((unused)) arg, char * buf)
   {
     uint address;
     if (sscanf (buf, "%i", & address) != 1)
@@ -917,7 +917,7 @@ static t_stat virtAddrN (uint address)
 //           given a segment name, component name and offset, return
 //           the segment number and offset
    
-static t_stat lookupSystemBook (int32 arg, char * buf)
+static t_stat lookupSystemBook (int32  __attribute__((unused)) arg, char * buf)
   {
     char w1 [strlen (buf)];
     char w2 [strlen (buf)];
@@ -989,7 +989,7 @@ static t_stat lookupSystemBook (int32 arg, char * buf)
     return SCPE_OK;
   }
 
-static t_stat loadSystemBook (int32 arg, char * buf)
+static t_stat loadSystemBook (int32  __attribute__((unused)) arg, char * buf)
   {
   
 #define bufSz 257
@@ -1136,7 +1136,7 @@ static struct PRtab {
     
 };
 
-static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
+static t_addr parse_addr(DEVICE * __attribute__((unused)) dptr, char *cptr, char **optr)
 {
     // a segment reference?
     if (strchr(cptr, '|'))
@@ -1247,7 +1247,7 @@ static t_addr parse_addr(DEVICE *dptr, char *cptr, char **optr)
     return (t_addr)strtol(cptr, optr, 8);
 }
 
-static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr simh_addr)
+static void fprint_addr(FILE *stream, DEVICE * __attribute__((unused)) dptr, t_addr simh_addr)
 {
     char temp[256];
     bool bFound = getSegmentAddressString((int)simh_addr, temp);
@@ -1264,7 +1264,7 @@ static void fprint_addr(FILE *stream, DEVICE *dptr, t_addr simh_addr)
  * simh "fprint_sym" – Based on the switch variable, symbolically output to stream ofile the data in array val at the specified addr in unit uptr.
  */
 
-t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
+t_stat fprint_sym (FILE *ofile, t_addr __attribute__((unused)) addr, t_value *val, UNIT *uptr, int32 sw)
 {
 // XXX Bug: assumes single cpu
 // XXX CAC: This seems rather bogus; deciding the output format based on the
@@ -1313,7 +1313,7 @@ t_stat fprint_sym (FILE *ofile, t_addr addr, t_value *val, UNIT *uptr, int32 sw)
 /*!  – Based on the switch variable, parse character string cptr for a symbolic value val at the specified addr
  in unit uptr.
  */
-t_stat parse_sym (char *cptr, t_addr addr, UNIT *uptr, t_value *val, int32 sswitch)
+t_stat parse_sym (char * __attribute__((unused)) cptr, t_addr __attribute__((unused))addr, UNIT * __attribute__((unused)) uptr, t_value * __attribute__((unused)) val, int32 __attribute__((unused)) sswitch)
 {
     return SCPE_ARG;
 }
@@ -1354,7 +1354,7 @@ static char * encode_timing (int timing)
     return buf;
   }
 
-static t_stat sys_show_config (FILE * st, UNIT * uptr, int val, void * desc)
+static t_stat sys_show_config (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
   {
     sim_printf ("IOM connect time:         %s\n",
                 encode_timing (sys_opts . iom_times . connect));
@@ -1385,7 +1385,7 @@ static config_list_t sys_config_list [] =
     /*  4 */ { "iom_boot_time", -1, 100000, cfg_timing_list }, // set sim_activate timing
  };
 
-static t_stat sys_set_config (UNIT * uptr, int32 value, char * cptr, void * desc)
+static t_stat sys_set_config (UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     config_state_t cfg_state = { NULL, NULL };
 
@@ -1453,7 +1453,7 @@ static MTAB sys_mod [] =
 
 
 
-static t_stat sys_reset (DEVICE *dptr)
+static t_stat sys_reset (DEVICE __attribute__((unused)) * dptr)
   {
     return SCPE_OK;
   }
