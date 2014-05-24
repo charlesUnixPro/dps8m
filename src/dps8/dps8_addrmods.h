@@ -10,7 +10,7 @@ struct modificationContinuation
     int cf;         // 3-bit character/byte position value,
     word36 indword; // indirect word
     int tmp18;      // temporary address used by some instructions
-    DCDstruct *i;   // instruction that elicited continuation
+    //DCDstruct *i;   // instruction that elicited continuation
 };
 typedef struct modificationContinuation modificationContinuation;
 

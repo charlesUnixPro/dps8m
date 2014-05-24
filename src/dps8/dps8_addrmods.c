@@ -653,7 +653,7 @@ R_MOD:;
             modCont->bActive = true;    // will continue the write operation after instruction implementation
             modCont->address = TPR.CA;
             modCont->mod = TM_R;
-            modCont->i = i;
+            //modCont->i = i;
             modCont->segment = TPR.TSR;
             
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(i), modContSTR(modCont));
@@ -764,7 +764,7 @@ R_MOD:;
                 modCont->bActive = true;    // will continue the write operatio
                 modCont->address = TPR.CA;
                 modCont->mod = iTAG;    //TM_R;
-                modCont->i = i;
+                //modCont->i = i;
                 modCont->segment = TPR.TSR;
             }
             return SCPE_OK;
@@ -832,7 +832,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
                     modCont->mod = TM_R;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->segment = TPR.TSR;
                     
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(): saving continuation '%s'\n", modContSTR(modCont));
@@ -911,7 +911,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
                     modCont->mod = iTAG;    //TM_R;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->segment = TPR.TSR;
                     
                     sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
@@ -987,7 +987,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
                     modCont->mod = IT_CI;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->tb = tTB;
                     modCont->cf = tCF;
                     modCont->segment = TPR.TSR;
@@ -1047,7 +1047,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = Yi;
                     modCont->mod = IT_SC;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->tb = tTB;
                     modCont->cf = tCF;
                     modCont->indword = indword;
@@ -1166,7 +1166,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = Yi;
                     modCont->mod = IT_SCR;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->tb = tTB;
                     modCont->cf = tCF;
                     modCont->indword = indword;
@@ -1199,7 +1199,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
                     modCont->mod = IT_I;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
                 
@@ -1238,7 +1238,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
                     modCont->mod = IT_AD;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
                 
@@ -1312,7 +1312,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = Yi;
                     modCont->mod = IT_SD;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
                 
@@ -1377,7 +1377,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = Yi;
                     modCont->mod = IT_DI;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
                 
@@ -1425,7 +1425,7 @@ R_MOD:;
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
                     modCont->address = TPR.CA;
                     modCont->mod = IT_DI;
-                    modCont->i = i;
+                    //modCont->i = i;
                     modCont->indword = indword;
                     modCont->tmp18 = tmp18;
                     modCont->segment = TPR.TSR;
