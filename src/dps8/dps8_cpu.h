@@ -1029,7 +1029,7 @@ struct DCDstruct
     
     word18 stiTally;    ///< for sti instruction
     
-    EISstruct *e;       ///< info: if instruction is a MW EIS instruction
+    EISstruct e;       ///< info: if instruction is a MW EIS instruction
 };
 
 extern DCDstruct *currentInstruction;

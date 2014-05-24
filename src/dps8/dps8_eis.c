@@ -1513,7 +1513,7 @@ static void _btd(EISstruct *e)
 
 void btd(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     
     //! \brief C(Y-char91) converted to decimal → C(Y-charn2)
@@ -1567,7 +1567,7 @@ void btd(DCDstruct *ins)
 
 void dtb(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -1692,7 +1692,7 @@ static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int sz
  */
 void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
     
     word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
     memset(e->inBuffer, 0, sizeof(e->inBuffer));   // initialize to all 0's
@@ -2811,7 +2811,7 @@ static void mopExecutor(EISstruct *e, int kMop)
 
 void mvne(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -2889,7 +2889,7 @@ void mvne(DCDstruct *ins)
 
 void mve(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -2989,7 +2989,7 @@ static bool isOvp(int c, int *on)
  */
 void mlr(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //     C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -3200,7 +3200,7 @@ static void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
  */
 void mrl(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //   C(Y-charn1)N1-i → C(Y-charn2)N2-i
@@ -3394,7 +3394,7 @@ static word9 xlate(word36 *xlatTbl, int dstTA, int c)
  */
 void mvt(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //    m = C(Y-charn1)i-1
@@ -3685,7 +3685,7 @@ static word18 getMF2Reg(int n, word18 data)
  */
 void scm(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
@@ -3871,7 +3871,7 @@ void scm(DCDstruct *ins)
  */
 void scmr(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For characters i = 1, 2, ..., N1
     //   For bits j = 0, 1, ..., 8
@@ -4051,7 +4051,7 @@ void scmr(DCDstruct *ins)
  */
 void tct(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)i-1
@@ -4247,7 +4247,7 @@ void tct(DCDstruct *ins)
  */
 void tctr(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., N1
     //   m = C(Y-charn1)N1-i
@@ -4458,7 +4458,7 @@ void tctr(DCDstruct *ins)
 
 void cmpc(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., minimum (N1,N2)
     //    C(Y-charn1)i-1 :: C(Y-charn2)i-1
@@ -4582,7 +4582,7 @@ void cmpc(DCDstruct *ins)
  */
 void scd(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)i-1,i :: C(Y-charn2)0,1
@@ -4765,7 +4765,7 @@ void scd(DCDstruct *ins)
  */
 void scdr(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = 1, 2, ..., N1-1
     //   C(Y-charn1)N1-i-1,N1-i :: C(Y-charn2)0,1
@@ -5096,7 +5096,7 @@ static bool EISgetBitRW(EISaddr *p)
  */
 void cmpb(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     
     // For i = 1, 2, ..., minimum (N1,N2)
@@ -5181,7 +5181,7 @@ void cmpb(DCDstruct *ins)
 
 void csl(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
@@ -5349,7 +5349,7 @@ static void getBitOffsets(int length, int initC, int initB, int *nWords, int *ne
 
 void csr(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //   m = C(Y-bit1)N1-i || C(Y-bit2)N2-i (a 2-bit number)
@@ -5501,7 +5501,7 @@ void csr(DCDstruct *ins)
 
 void sztl(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // For i = bits 1, 2, ..., minimum (N1,N2)
     //    m = C(Y-bit1)i-1 || C(Y-bit2)i-1 (a 2-bit number)
@@ -5632,7 +5632,7 @@ void sztl(DCDstruct *ins)
 
 void sztr(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     //
     // For i = bits 1, 2, ..., minimum (N1,N2)

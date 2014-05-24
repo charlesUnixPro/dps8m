@@ -1076,7 +1076,7 @@ t_stat sim_instr (void)
     cpu . interrupt_flag = false;
     cpu . g7_flag = false;
 
-    currentInstruction->e = &E;
+    //currentInstruction->e = &E;
     instr_buf_state = IB_EMPTY;
     // sys_stats . total_cycles = 0; // XXX this should be done by reset(), messes up count on breakpoint
 
@@ -1901,7 +1901,7 @@ void encode_instr(const instr_t *ip, word36 *wordp)
 static DCDstruct *newDCDstruct(void)
 {
     DCDstruct *p = malloc(sizeof(DCDstruct));
-    p->e = malloc(sizeof(EISstruct));
+    //p->e = malloc(sizeof(EISstruct));
     
     return p;
 }
@@ -1911,8 +1911,8 @@ void freeDCDstruct(DCDstruct *p)
     if (!p)
         return; // Uh-Uh...
     
-    if (p->e)
-        free(p->e);
+    //if (p->e)
+    //    free(p->e);
     free(p);
 }
 
@@ -1953,8 +1953,8 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
         p->tag = 0;
         if (p->info->ndes > 1)
         {
-            memset(p->e, 0, sizeof(EISstruct)); // clear out e
-            p->e->op0 = inst;
+            memset(&p->e, 0, sizeof(EISstruct)); // clear out e
+            p->e.op0 = inst;
         }
     }
     return p;

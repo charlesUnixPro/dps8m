@@ -718,7 +718,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
  */
 void ad2d(DCDstruct *i)
 {
-    EISstruct *e = i->e;
+    EISstruct *e = &i->e;
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
     
@@ -974,7 +974,7 @@ void ad2d(DCDstruct *i)
  */
 void ad3d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -1255,7 +1255,7 @@ void ad3d(DCDstruct *ins)
  */
 void sb2d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -1510,7 +1510,7 @@ void sb2d(DCDstruct *ins)
  */
 void sb3d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -1791,7 +1791,7 @@ void sb3d(DCDstruct *ins)
  */
 void mp2d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -2045,7 +2045,7 @@ void mp2d(DCDstruct *ins)
  */
 void mp3d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -2316,7 +2316,7 @@ void mp3d(DCDstruct *ins)
 // XXX need to put in divide checks, etc ...
 void dv2d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -2559,7 +2559,7 @@ void dv2d(DCDstruct *ins)
 
 void dv3d(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -2847,7 +2847,7 @@ void dv3d(DCDstruct *ins)
  */
 void cmpn(DCDstruct *ins)
 {
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
 
     // C(Y-charn1) :: C(Y-charn2) as numeric values
     
@@ -2998,7 +2998,7 @@ void mvn(DCDstruct *ins)
      * Provided that string 1 and string 2 are not overlapped, the contents of the decimal number that starts in location YC1 remain unchanged.
      */
 
-    EISstruct *e = ins->e;
+    EISstruct *e = &ins->e;
     
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);

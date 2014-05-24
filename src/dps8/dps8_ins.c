@@ -657,7 +657,7 @@ t_stat executeInstruction(DCDstruct *ci)
         for(int n = 0 ; n < info->ndes; n += 1)
         {
             //setupForOperandRead (ci);
-            Read(ci, PPR.IC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
+            Read(ci, PPR.IC + 1 + n, &ci->e.op[n], OPERAND_READ, 0); // I think.
         }
     }
     else
@@ -716,14 +716,14 @@ static t_stat doInstruction(DCDstruct *i)
     //if (i->e)
     if (i->info->ndes > 0)
     {
-        i->e->ins = i;
-        i->e->addr[0].e = i->e;
-        i->e->addr[1].e = i->e;
-        i->e->addr[2].e = i->e;
+        i->e.ins = i;
+        i->e.addr[0].e = &i->e;
+        i->e.addr[1].e = &i->e;
+        i->e.addr[2].e = &i->e;
         
-        i->e->addr[0].mat = OperandRead;   // no ARs involved yet
-        i->e->addr[1].mat = OperandRead;   // no ARs involved yet
-        i->e->addr[2].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[0].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[1].mat = OperandRead;   // no ARs involved yet
+        i->e.addr[2].mat = OperandRead;   // no ARs involved yet
     }
     
     return i->opcodeX ? DoEISInstruction(i) : DoBasicInstruction(i);
@@ -4539,8 +4539,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
     // XXX not complete .....
     
     int32 opcode = i->opcode;
-    if (i->e)
-        i->e->ins = i;
+    //if (i->e)
+        i->e.ins = i;
 
     switch (opcode)
     {
