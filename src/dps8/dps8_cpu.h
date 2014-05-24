@@ -1032,7 +1032,7 @@ struct DCDstruct
     EISstruct e;       ///< info: if instruction is a MW EIS instruction
 };
 
-extern DCDstruct *currentInstruction;
+extern DCDstruct currentInstruction;
 
 // Emulator-only interrupt and fault info
 typedef struct {
@@ -1238,9 +1238,9 @@ extern int stop_reason;     ///< sim_instr return value for JMP_STOP
 void cancel_run(t_stat reason);
 bool sample_interrupts (void);
 t_stat simh_hooks (void);
-int OPSIZE(DCDstruct *i);
-t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29);
-t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
+int OPSIZE (void);
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29);
+t_stat WriteOP (word18 addr, _processor_cycle_type acctyp, bool b29);
 // RAW, core stuff ...
 int core_read(word24 addr, word36 *data);
 int core_write(word24 addr, word36 data);
@@ -1250,7 +1250,6 @@ int core_readN(word24 addr, word36 *data, int n);
 int core_writeN(word24 addr, word36 *data, int n);
 int core_read72(word24 addr, word72 *dst);
 
-void freeDCDstruct(DCDstruct *p);
 int is_priv_mode(void);
 void set_went_appending (void);
 addr_modes_t get_addr_mode(void);
@@ -1259,7 +1258,7 @@ int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 void init_opcodes (void);
 void encode_instr(const instr_t *ip, word36 *wordp);
-DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst);     // decode instruction into structure
+void decodeInstruction (word36 inst, DCDstruct * p);
 t_stat dpsCmd_Dump (int32 arg, char *buf);
 t_stat dpsCmd_Init (int32 arg, char *buf);
 t_stat dpsCmd_Segment (int32 arg, char *buf);

@@ -733,8 +733,9 @@ static bool bPrePageMode = false;
  * Returns final address suitable for core_read/write
  */
 
-word24 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
+word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 {
+    DCDstruct * i = & currentInstruction;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);

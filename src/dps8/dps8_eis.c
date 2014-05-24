@@ -31,7 +31,7 @@ static void EISWrite(EISaddr *p, word36 data)
         TPR.TSR = p->SNR;
         
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, p -> SNR, p -> address);
-        Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, true); // write data
+        Write (p->address, data, EIS_OPERAND_STORE, true); // write data
     }
     else
     {
@@ -42,7 +42,7 @@ static void EISWrite(EISaddr *p, word36 data)
         }
         
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: write %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
-        Write(p->e->ins, p->address, data, EIS_OPERAND_STORE, false); // write data
+        Write (p->address, data, EIS_OPERAND_STORE, false); // write data
     }
 }
 
@@ -54,7 +54,7 @@ static word36 EISRead(EISaddr *p)
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
         
-        Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
+        Read (p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
     else
@@ -65,7 +65,7 @@ static word36 EISRead(EISaddr *p)
             TPR.TSR = PPR.PSR;
         }
         
-        Read(p->e->ins, p->address, &data, EIS_OPERAND_READ, false);  // read operand
+        Read (p->address, &data, EIS_OPERAND_READ, false);  // read operand
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
     return data;
@@ -207,7 +207,7 @@ void setupOperandDescriptor(int k, EISstruct *e)
         
         e->addr[k-1].address = address;
         
-        //Read(e->ins, address, &e->op[k-1], OperandRead, 0);  // read operand
+        //Read (address, &e->op[k-1], OperandRead, 0);  // read operand
         e->op[k-1] = EISRead(&e->addr[k-1]);  // read EIS operand .. this should be an indirectread
         //e->addr[k-1].mat = OperandRead;
     }
@@ -599,7 +599,7 @@ static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
     int128 x = 0;
     
     //word36 data;
-    //Read(e->ins, sourceAddr, &data, OperandRead, 0);    // read data word from memory
+    //Read (sourceAddr, &data, OperandRead, 0);    // read data word from memory
     word36 data = EISRead(addr);
     
     int m = n;
@@ -611,7 +611,7 @@ static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
         {   // yep....
             pos = 0;        // reset to 1st byte
             //sourceAddr = (sourceAddr + 1) & AMASK;          // bump source to next address
-            //Read(e->ins, sourceAddr, &data, OperandRead, 0);    // read it from memory
+            //Read (sourceAddr, &data, OperandRead, 0);    // read it from memory
             addr->address = (addr->address + 1) & AMASK;          // bump source to next address
             data = EISRead(addr);    // read it from memory
         }
@@ -874,7 +874,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
     
     // XXX use get49() for this later .....
     //word36 data;
-    //Read(e->ins, sourceAddr, &data, OperandRead, 0);    // read data word from memory
+    //Read (sourceAddr, &data, OperandRead, 0);    // read data word from memory
     p->data = EISRead(p);    // read data word from memory
     
     int maxPos = e->TN1 == CTN4 ? 7 : 3;
@@ -889,7 +889,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
         {   // yep....
             pos = 0;        // reset to 1st byte
             //sourceAddr = (sourceAddr + 1) & AMASK;      // bump source to next address
-            //Read(e->ins, sourceAddr, &data, OperandRead, 0);    // read it from memory
+            //Read (sourceAddr, &data, OperandRead, 0);    // read it from memory
             p->address = (p->address + 1) & AMASK;      // bump source to next address
             p->data = EISRead(p);    // read it from memory
         }
@@ -1021,7 +1021,7 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
         p->address = (p->address - 1) & AMASK;        // goto next dstAddr in memory
     }
     
-    //Read(e->ins, *dstAddr, &w, OperandRead, 0);      // read dst memory into w
+    //Read (*dstAddr, &w, OperandRead, 0);      // read dst memory into w
     w = EISRead(p);      // read dst memory into w
     
     switch (*pos)
@@ -1040,7 +1040,7 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
             break;
     }
     
-    //Write(e->ins, *dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
     EISWrite(p, w); // XXX this is the ineffecient part!
     
     *pos -= 1;       // to prev byte.
@@ -1058,7 +1058,7 @@ static void EISwrite6r(EISaddr *p, int *pos, int char6)
         p->address = (p->address - 1) & AMASK;        // goto next dstAddr in memory
     }
     
-    //Read(e->ins, *dstAddr, &w, OperandRead, 0);      // read dst memory into w
+    //Read (*dstAddr, &w, OperandRead, 0);      // read dst memory into w
     w = EISRead(p);      // read dst memory into w
     
     switch (*pos)
@@ -1083,7 +1083,7 @@ static void EISwrite6r(EISaddr *p, int *pos, int char6)
             break;
     }
     
-    //Write(e->ins, *dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
     EISWrite(p, w); // XXX this is the ineffecient part!
     
     *pos -= 1;       // to prev byte.
@@ -1103,7 +1103,7 @@ static void EISwrite4r(EISaddr *p, int *pos, int char4)
         *pos = 7;    // reset to 1st byte
         p->address = (p->address - 1) & AMASK;         // goto prev dstAddr in memory
     }
-    //Read(e->ins, *dstAddr, &w, OperandRead, 0);      // read dst memory into w
+    //Read (*dstAddr, &w, OperandRead, 0);      // read dst memory into w
     w = EISRead(p);
     
     switch (*pos)
@@ -1134,7 +1134,7 @@ static void EISwrite4r(EISaddr *p, int *pos, int char4)
             break;
     }
     
-    //Write(e->ins, *dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
+    //Write (*dstAddr, w, OperandWrite, 0); // XXX this is the ineffecient part!
     EISWrite(p, w); // XXX this is the ineffecient part!
     
     *pos -= 1;       // to prev byte.
@@ -3512,7 +3512,7 @@ void mvt(DCDstruct *ins)
     memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
     
     // XXX here is where we probably need to to the prepage thang...
-    //ReadNnoalign(currentInstruction,  xlatSize, xAddress, xlatTbl, OperandRead, 0);
+    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR3, xlatSize, xlatTbl);
     
     int fill = (int)bitfieldExtract36(e->op0, 27, 9);
@@ -3862,7 +3862,7 @@ void scm(DCDstruct *ins)
     SCF(i == e->N1, cu.IR, I_TALLY);
     
     // write Y3 .....
-    //Write(e->ins, y3, CY3, OperandWrite, 0);
+    //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
 }
 
@@ -4042,7 +4042,7 @@ void scmr(DCDstruct *ins)
     SCF(i == e->N1, cu.IR, I_TALLY);
     
     // write Y3 .....
-    //Write(e->ins, y3, CY3, OperandWrite, 0);
+    //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
 }
 
@@ -4160,7 +4160,7 @@ void tct(DCDstruct *ins)
     memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
     
     // XXX here is where we probably need to to the prepage thang...
-    //ReadNnoalign(currentInstruction,  xlatSize, xAddress, xlatTbl, OperandRead, 0);
+    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR2, xlatSize, xlatTbl);
     
     // fetch 3rd operand ...
@@ -4238,7 +4238,7 @@ void tct(DCDstruct *ins)
     CY3 = bitfieldInsert36(CY3, i, 0, 24);
     
     // write Y3 .....
-    //Write(e->ins, y3, CY3, OperandWrite, 0);
+    //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
 }
 
@@ -4371,7 +4371,7 @@ void tctr(DCDstruct *ins)
     memset(xlatTbl, 0, sizeof(xlatTbl));    // 0 it out just in case
     
     // XXX here is where we probably need to to the prepage thang...
-    //ReadNnoalign(currentInstruction,  xlatSize, xAddress, xlatTbl, OperandRead, 0);
+    //ReadNnoalign(xlatSize, xAddress, xlatTbl, OperandRead, 0);
     EISReadN(&e->ADDR2, xlatSize, xlatTbl);
     
     // fetch 3rd operand ...
@@ -4451,7 +4451,7 @@ void tctr(DCDstruct *ins)
     CY3 = bitfieldInsert36(CY3, i, 0, 24);
     
     // write Y3 .....
-    //Write(e->ins, y3, CY3, OperandWrite, 0);
+    //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
 }
 
@@ -4757,7 +4757,7 @@ void scd(DCDstruct *ins)
     SCF(i == e->N1-1, cu.IR, I_TALLY);
     
     // write Y3 .....
-    //Write(e->ins, y3, CY3, OperandWrite, 0);
+    //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
 }
 /*
@@ -4949,7 +4949,7 @@ void scdr(DCDstruct *ins)
     SCF(i == e->N1-1, cu.IR, I_TALLY);
     
     // write Y3 .....
-    //Write(e->ins, y3, CY3, OperandWrite, 0);
+    //Write (y3, CY3, OperandWrite, 0);
     EISWrite(&e->ADDR3, CY3);
 }
 

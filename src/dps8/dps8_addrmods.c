@@ -72,15 +72,16 @@ static word18 getCr(word4 Tdes)
  * New address stuff (EXPERIMENTAL)
  */
 
-static char * opDescSTR (DCDstruct *i)
+static char * opDescSTR (void)
 {
     static char temp[256];
+    DCDstruct * i = & currentInstruction;
     
     strcpy(temp, "");
     
     if (READOP(i))
     {
-        switch (OPSIZE(i))
+        switch (OPSIZE ())
         {
             case 1:
                 strcat (temp, "readCY");
@@ -101,7 +102,7 @@ static char * opDescSTR (DCDstruct *i)
         if (strlen(temp))
             strcat(temp, "/");
         
-        switch (OPSIZE(i))
+        switch (OPSIZE ())
         {
             case 1:
                 strcat(temp, "writeCY");
@@ -135,14 +136,15 @@ static char * opDescSTR (DCDstruct *i)
     return temp;    //"opDescSTR(???)";
 }
 
-static char * operandSTR(DCDstruct *i)
+static char * operandSTR(void)
 {
+    DCDstruct * i = & currentInstruction;
     if (i->info->ndes > 0)
         return "operandSTR(): MWEIS not handled yet";
         
     static char temp[1024];
     
-    int n = OPSIZE(i);
+    int n = OPSIZE ();
     switch (n)
     {
         case 1:
@@ -179,14 +181,15 @@ static char * modContSTR(modificationContinuation *i)
 }
 
 
-void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
+void doComputedAddressContinuation (void)
 {
+    DCDstruct * i = & currentInstruction;
     if (modCont->bActive == false)
         return; // no continuation available
     
     //    if (operType == writeCY)
     //    {
-    //        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR(i));
+    //        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR());
     //        return;
     //    }
     
@@ -214,8 +217,8 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
             word36 data;
         
             // read data where chars/bytes now live
-            //Read(i, Yi, &data, INDIRECT_WORD_FETCH, i->a); //TM_IT);
-            Read(i, Yi, &data, OPERAND_READ, i->a); //TM_IT);
+            //Read(Yi, &data, INDIRECT_WORD_FETCH, i->a); //TM_IT);
+            Read(Yi, &data, OPERAND_READ, i->a); //TM_IT);
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, Yi, tTB, tCF);
         
@@ -234,7 +237,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         }
         
         // write it
-        Write(i, Yi, data, OPERAND_STORE, i->a);   //TM_IT);
+        Write (Yi, data, OPERAND_STORE, i->a);   //TM_IT);
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
@@ -252,7 +255,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
         // read data where chars/bytes now live (if it hasn't already been read in)
         if (!(i->info->flags & READ_OPERAND))
-            Read(i, Yi, &data, OPERAND_READ, i->a); //TM_IT);
+            Read(Yi, &data, OPERAND_READ, i->a); //TM_IT);
         else
             data = CY;
         
@@ -273,7 +276,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         }
         
         // write it
-        Write(i, Yi, data, OPERAND_STORE, i->a);   //TM_IT);
+        Write (Yi, data, OPERAND_STORE, i->a);   //TM_IT);
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
@@ -291,7 +294,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
         // read data where chars/bytes now live (if it hasn't already been read in)
         if (!(i->info->flags & READ_OPERAND))
-            Read(i, Yi, &data, OPERAND_READ, i->a); //TM_IT);
+            Read(Yi, &data, OPERAND_READ, i->a); //TM_IT);
         else
             data = CY;
         
@@ -312,7 +315,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         }
         
             // write it
-            Write(i, Yi, data, OPERAND_STORE, i->a);   //TM_IT);
+            Write (Yi, data, OPERAND_STORE, i->a);   //TM_IT);
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
@@ -324,7 +327,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): restoring continuation '%s'\n", modContSTR(modCont));
             TPR.CA = modCont->address;
         
-            Write(i, TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
+            Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): wrote operand %012llo to %06o\n", CY, TPR.CA);
             return;
@@ -337,7 +340,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
             TPR.CA = modCont->address;
         
-            Write(i, TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
+            Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote operand %012llo to %06o\n", CY, TPR.CA);
             return;
@@ -349,7 +352,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
             Yi = modCont->address;
         
-            Write(i, Yi, CY, OPERAND_STORE, i->a); //TM_IT);
+            Write (Yi, CY, OPERAND_STORE, i->a); //TM_IT);
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
             return;
@@ -364,7 +367,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
         
-            Write(i, Yi, CY, OPERAND_STORE, i->a); //TM_IT);
+            Write (Yi, CY, OPERAND_STORE, i->a); //TM_IT);
         
             return;
         
@@ -381,7 +384,7 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
         
-            Write(i, TPR.CA, CY, STORE_OPERAND, i->a); //TM_IT);
+            Write (TPR.CA, CY, STORE_OPERAND, i->a); //TM_IT);
         
             return;
         
@@ -391,28 +394,28 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
             //sim_debug(DBG_ADDRMOD, &cpu_dev, "default: restoring continuation '%s'\n", modContSTR(modCont));
             TPR.CA = modCont->address;
             
-            //Write(i, TPR.CA, CY, DataWrite, TM_IT);
-            WriteOP(i, TPR.CA, OPERAND_STORE, i->a);    //modCont->mod);
+            //Write (TPR.CA, CY, DataWrite, TM_IT);
+            WriteOP(TPR.CA, OPERAND_STORE, i->a);    //modCont->mod);
         
             
-            switch (OPSIZE(i))
+            switch (OPSIZE ())
             {
                 case 1:
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(i), CY, TPR.TSR, TPR.CA);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(), CY, TPR.TSR, TPR.CA);
                     break;
                 case 2:
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(i), Ypair[0], TPR.TSR, TPR.CA + 0);
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %05o:%06o\n", opDescSTR(i), Ypair[1], TPR.TSR, TPR.CA + 1);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(), Ypair[0], TPR.TSR, TPR.CA + 0);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %05o:%06o\n", opDescSTR(), Ypair[1], TPR.TSR, TPR.CA + 1);
                     break;
                 case 8:
-                    sim_debug(DBG_ADDRMOD, &cpu_dev,     "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(i), Yblock8[0], TPR.TSR, TPR.CA + 0);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev,     "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(), Yblock8[0], TPR.TSR, TPR.CA + 0);
                     for (int j = 1 ; j < 8 ; j += 1)
-                        sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %05o:%06o\n", opDescSTR(i), Yblock8[j], TPR.TSR, TPR.CA + j);
+                        sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %05o:%06o\n", opDescSTR(), Yblock8[j], TPR.TSR, TPR.CA + j);
                     break;
                 case 16:
-                    sim_debug(DBG_ADDRMOD, &cpu_dev,     "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(i), Yblock16[0], TPR.TSR, TPR.CA + 0);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev,     "default: %s wrote operand %012llo to %05o:%06o\n", opDescSTR(), Yblock16[0], TPR.TSR, TPR.CA + 0);
                     for (int j = 1 ; j < 16 ; j += 1)
-                        sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %05o:%06o\n", opDescSTR(i), Yblock16[j], TPR.TSR, TPR.CA + j);
+                        sim_debug(DBG_ADDRMOD, &cpu_dev, "         %s               %012llo to %05o:%06o\n", opDescSTR(), Yblock16[j], TPR.TSR, TPR.CA + j);
                     break;
             }
             break;
@@ -498,8 +501,9 @@ static void doITS(word4 Tag)
 }
 
 
-static bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
+static bool doITSITP(word18 address, word36 indword, word6 Tag)
 {
+    DCDstruct * i = & currentInstruction;
     word6 indTag = GET_TAG(indword);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: indword:%012llo Tag:%o\n", indword, Tag);
@@ -535,7 +539,7 @@ static bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     // this is probably sooo wrong, but it's a start ...
     itxPair[0] = indword;
     
-    Read(i, address + 1, &itxPair[1], INDIRECT_WORD_FETCH, i->a);
+    Read( address + 1, &itxPair[1], INDIRECT_WORD_FETCH, i->a);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012llo %012llo\n", itxPair[0], itxPair[1]);
     
@@ -550,8 +554,9 @@ static bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     
 }
 
-t_stat doComputedAddressFormation(DCDstruct *i)
+t_stat doComputedAddressFormation (void)
 {
+    DCDstruct * i = & currentInstruction;
     word6 Tm = 0;
     word6 Td = 0;
     didITSITP = false;
@@ -578,7 +583,7 @@ t_stat doComputedAddressFormation(DCDstruct *i)
     else
         rTAG = i->tag;
         
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressFormation(Entry): operType:%s TPR.CA=%06o\n", opDescSTR(i), TPR.CA);
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressFormation(Entry): operType:%s TPR.CA=%06o\n", opDescSTR(), TPR.CA);
     
 startCA:;
         
@@ -643,9 +648,9 @@ R_MOD:;
     
         if (operType == readCY || operType == rmwCY)
         {
-            ReadOP(i, TPR.CA, OPERAND_READ, i->a);  // read appropriate operand(s)
+            ReadOP(TPR.CA, OPERAND_READ, i->a);  // read appropriate operand(s)
           
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: %s: C(%06o)=%012llo\n", opDescSTR(i), TPR.CA, CY);
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: %s: C(%06o)=%012llo\n", opDescSTR(), TPR.CA, CY);
         }
     
         if (operType == writeCY || operType == rmwCY)
@@ -656,7 +661,7 @@ R_MOD:;
             //modCont->i = i;
             modCont->segment = TPR.TSR;
             
-            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(i), modContSTR(modCont));
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(), modContSTR(modCont));
         }
         
         return SCPE_OK;
@@ -699,11 +704,11 @@ R_MOD:;
         iCA = TPR.CA;
         iTAG = rTAG;
         
-        Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a); //TM_RI);
+        Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a); //TM_RI);
     
         if (ISITP(indword) || ISITS(indword))
         {
-           if (!doITSITP(i, iCA, indword, iTAG))
+           if (!doITSITP(iCA, indword, iTAG))
                return SCPE_UNK;    // some problem with ITS/ITP stuff
            // doITSITP set TPR.CA, rTag, ry
         }
@@ -741,14 +746,14 @@ R_MOD:;
         iCA = TPR.CA;
         iTAG = rTAG;
     
-        Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+        Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
     
         if (ISITP(indword) || ISITS(indword))
 #if 0
             goto IT_MOD;
 #else
         {
-            if (!doITSITP(i, iCA, indword, iTAG))
+            if (!doITSITP(iCA, indword, iTAG))
                return SCPE_UNK;    // some problem with ITS/ITP stuff
         
             if (operType == prepareCA)
@@ -757,7 +762,7 @@ R_MOD:;
             }
             if (operType == readCY || operType == rmwCY)
             {
-                ReadOP(i, TPR.CA, OPERAND_READ, true);
+                ReadOP(TPR.CA, OPERAND_READ, true);
             }
             if (operType == writeCY || operType == rmwCY)
             {
@@ -820,9 +825,9 @@ R_MOD:;
             
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
-                    ReadOP(i, TPR.CA, OPERAND_READ, i->a);
+                    ReadOP(TPR.CA, OPERAND_READ, i->a);
                 
-                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): %s: C(Y)=%012llo\n", opDescSTR(i), CY);
+                    sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(TM_R): %s: C(Y)=%012llo\n", opDescSTR(), CY);
                     
                 }
             
@@ -887,7 +892,7 @@ R_MOD:;
                     // XXX illegal procedure, illegal modifier, fault
                     doFault(illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
 
-                if (!doITSITP(i, iCA, indword, iTAG))
+                if (!doITSITP(iCA, indword, iTAG))
                     return SCPE_UNK;    // some problem with ITS/ITP stuff
 
                 sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP: TPR.TSR:%06o TPR.CA:%06o\n", TPR.TSR, TPR.CA);
@@ -899,11 +904,11 @@ R_MOD:;
                 }
                 if (operType == readCY || operType == rmwCY)
                 {
-                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP (%s):\n", opDescSTR(i));
+                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP (%s):\n", opDescSTR());
 
-                    ReadOP(i, TPR.CA, OPERAND_READ, true);
+                    ReadOP(TPR.CA, OPERAND_READ, true);
                     
-                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
+                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP (%s): Operand contents: %s\n", opDescSTR(), operandSTR());
                 }
             
                 if (operType == writeCY || operType == rmwCY)
@@ -951,8 +956,8 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): reading indirect word from %06o\n", TPR.CA);
             
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);  //TM_IT);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);  //TM_IT);
+                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);  //TM_IT);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);  //TM_IT);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): indword=%012llo\n", indword);
             
@@ -973,8 +978,8 @@ R_MOD:;
             
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
-                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                    ReadOP(i, TPR.CA, OPERAND_READ, i->a);
+                    //Read(TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(TPR.CA, OPERAND_READ, i->a);
                     if (tTB == TB6)
                         CY = GETCHAR(CY, tCF);
                     else
@@ -1003,8 +1008,8 @@ R_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): indword=%012llo\n", indword);
             
@@ -1025,7 +1030,7 @@ R_MOD:;
                 // read data where chars/bytes live
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
-                    Read(i, TPR.CA, &data, OPERAND_READ, i->a);
+                    Read(TPR.CA, &data, OPERAND_READ, i->a);
                 
                     switch (tTB)
                     {
@@ -1084,7 +1089,7 @@ R_MOD:;
                 SCF(tally == 0, cu.IR, I_TALLY);
             
                 indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
-                Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                Write (tmp18, indword, OPERAND_STORE, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n", indword, tmp18);
             
@@ -1096,8 +1101,8 @@ R_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
 
@@ -1134,7 +1139,7 @@ R_MOD:;
                     // Only update the tally and address if not prepareCA
                     // XXX can this be moved to the continuation?
                     indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | tTB | tCF);
-                    Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                    Write (tmp18, indword, OPERAND_STORE, i->a);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote tally word %012llo to %06o\n", indword, tmp18);
                 }
@@ -1144,7 +1149,7 @@ R_MOD:;
                 {
                     // read data where chars/bytes now live
                 
-                    Read(i, Yi, &data, OPERAND_READ, i->a);
+                    Read(Yi, &data, OPERAND_READ, i->a);
                 
                     switch (tTB)
                     {
@@ -1180,7 +1185,7 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): reading indirect word from %06o\n", TPR.CA);
             
-                Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): indword=%012llo\n", indword);
             
@@ -1188,8 +1193,8 @@ R_MOD:;
             
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
-                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                    ReadOP(i, TPR.CA, OPERAND_READ, i->a);
+                    //Read(TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(TPR.CA, OPERAND_READ, i->a);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
@@ -1214,8 +1219,8 @@ R_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //            Read(i, TPR.CA, &indword, IndirectRead, TM_IT);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //            Read(TPR.CA, &indword, IndirectRead, TM_IT);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 tally = GET_TALLY(indword); // 12-bits
                 delta = GET_DELTA(indword); // 6-bits
@@ -1228,8 +1233,8 @@ R_MOD:;
                 // read data
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
-                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                    ReadOP(i, TPR.CA, OPERAND_READ, i->a);
+                    //Read(TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(TPR.CA, OPERAND_READ, currentInstruction.a);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
@@ -1260,7 +1265,7 @@ R_MOD:;
                 SCF(tally == 0, cu.IR, I_TALLY);
             
                 indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-                Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                Write (tmp18, indword, OPERAND_STORE, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): wrote tally word %012llo to %06o\n", indword, tmp18);
                 return SCPE_OK;
@@ -1269,8 +1274,8 @@ R_MOD:;
                 ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
             
                 tmp18 = TPR.CA;
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
                 tally = GET_TALLY(indword); // 12-bits
@@ -1293,7 +1298,7 @@ R_MOD:;
                     // Only update the tally and address if not prepareCA
                     // write back out indword
                     indword = (word36) (((word36) Yi << 18) | (((word36) tally & 07777) << 6) | delta);
-                    Write(i, tmp18, indword, OPERAND_STORE, 0);
+                    Write (tmp18, indword, OPERAND_STORE, 0);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote tally word %012llo to %06o\n", indword, tmp18);
                 }
@@ -1301,8 +1306,8 @@ R_MOD:;
                 // read data
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
-                    //Read(i, Yi, &CY, DataRead, TM_IT);
-                    ReadOP(i, Yi, OPERAND_READ, i->a);
+                    //Read(Yi, &CY, DataRead, TM_IT);
+                    ReadOP(Yi, OPERAND_READ, currentInstruction.a);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
@@ -1331,8 +1336,8 @@ R_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
                 tally = GET_TALLY(indword); // 12-bits
@@ -1358,7 +1363,7 @@ R_MOD:;
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
                     
-                    Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                    Write (tmp18, indword, OPERAND_STORE, i->a);
                 }
             
                 // read data
@@ -1366,8 +1371,8 @@ R_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
                 
-                    //Read(i, Yi, &CY, DataRead, TM_IT);
-                    ReadOP(i, Yi, OPERAND_READ, i->a);
+                    //Read(Yi, &CY, DataRead, TM_IT);
+                    ReadOP(Yi, OPERAND_READ, i->a);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
                 }
@@ -1398,8 +1403,8 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
             
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
                 tally = GET_TALLY(indword); // 12-bits
@@ -1414,8 +1419,8 @@ R_MOD:;
                 {
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): reading operand from %06o\n", TPR.CA);
                 
-                    //Read(i, TPR.CA, &CY, DataRead, TM_IT);
-                    ReadOP(i, Yi, OPERAND_READ, i->a);
+                    //Read (TPR.CA, &CY, DataRead, TM_IT);
+                    ReadOP(Yi, OPERAND_READ, i->a);
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): operand = %012llo\n", CY);
                 
@@ -1451,7 +1456,7 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing indword=%012llo to addr %06o\n", indword, tmp18);
             
-                Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                Write (tmp18, indword, OPERAND_STORE, i->a);
             
                 //TPR.CA = Yi;
             
@@ -1464,8 +1469,8 @@ R_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read (TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read (TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
                 tally = GET_TALLY(indword); // 12-bits
@@ -1492,7 +1497,7 @@ R_MOD:;
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): writing indword=%012llo to addr %06o\n", indword, tmp18);
                     
-                    Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                    Write (tmp18, indword, OPERAND_STORE, i->a);
                 }
             
                 // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.
@@ -1536,8 +1541,8 @@ R_MOD:;
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
-                Read(i, TPR.CA, &indword, OPERAND_READ, i->a);
+                //Read (TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
+                Read (TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
                 tally = GET_TALLY(indword); // 12-bits
@@ -1562,7 +1567,7 @@ R_MOD:;
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): writing indword=%012llo to addr %06o\n", indword, tmp18);
                 
-                    Write(i, tmp18, indword, OPERAND_STORE, i->a);
+                    Write (tmp18, indword, OPERAND_STORE, i->a);
                 }
             
                 // If the TAG of the indirect word invokes a register, that is, specifies r, ri, or ir modification, the effective Td value for the register is forced to "null" before the next computed address is formed.

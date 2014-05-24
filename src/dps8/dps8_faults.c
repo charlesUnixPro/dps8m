@@ -334,42 +334,6 @@ static int fault_check_group(int group)
  * fault handler(s).
  */
 
-#ifdef NOT_USED
-t_stat doFaultInstructionPair(DCDstruct *i, word24 fltAddress)
-{
-    // XXX stolen from xed instruction
-    
-    DCDstruct _xip;   // our decoded instruction struct
-    EISstruct _eis;
-
-    word36 insPair[2];
-    Read2(i, fltAddress, &insPair[0], &insPair[1], InstructionFetch, 0);
-    
-    _xip.IWB = insPair[0];
-    _xip.e = &_eis;
-    
-    DCDstruct *xec = decodeInstruction(insPair[0], &_xip);    // fetch instruction into current instruction
-    
-    t_stat ret = executeInstruction(xec);
-    
-    if (ret)
-        return (ret);
-    
-    _xip.IWB = insPair[1];
-    _xip.e = &_eis;
-    
-    xec = decodeInstruction(insPair[1], &_xip);               // fetch instruction into current instruction
-    
-    ret = executeInstruction(xec);
-    
-    //if (ret)
-    //    return (ret);
-    //
-    //return SCPE_OK;
-    return ret;
-}
-#endif
-
 static bool bTroubleFaultCycle = false;       // when true then in TROUBLE FAULT CYCLE
 #ifndef QUIET_UNUSED
 static int nFaultNumber = -1;

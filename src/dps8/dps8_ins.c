@@ -31,22 +31,23 @@ word36 CY = 0;              ///< C(Y) operand data from memory
 word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
 word36 Yblock16[16];    ///< 16-words
-static int doABSA (DCDstruct * i, word36 * result);
+static int doABSA (word36 * result);
 
-static t_stat doInstruction(DCDstruct *i);
-static int emCall(DCDstruct *i);
+static t_stat doInstruction (void);
+static int emCall (void);
 
-static void writeOperands(DCDstruct *i)
+static void writeOperands (void)
 {
+    DCDstruct * i = & currentInstruction;
     sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
     
     // TPR.CA may be different from instruction spec because of various addr mod operations.
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
     
     if (modCont->bActive)
-        doComputedAddressContinuation(i);    //, writeCY);
+        doComputedAddressContinuation ();
     else
-        WriteOP(i, TPR.CA, OPERAND_STORE, i->tag);
+        WriteOP(TPR.CA, OPERAND_STORE, i->tag);
     modCont->bActive = false;
 }
 
@@ -413,8 +414,9 @@ t_stat displayTheMatrix (int32 __attribute__((unused)) arg, char * __attribute__
  * Setup TPR registers prior to instruction execution ...
  */
 
-t_stat prepareComputedAddress(DCDstruct *i)
+t_stat prepareComputedAddress (void)
 {
+    DCDstruct * i = & currentInstruction;
     if (i->a)   // if A bit set up TPR stuff ...
         doPtrReg();
 
@@ -423,11 +425,12 @@ t_stat prepareComputedAddress(DCDstruct *i)
 
 static bool lastTRA = false;
 
-DCDstruct * setupInstruction (void)
+void setupInstruction (void)
 {
     cpu.read_addr = TPR.CA;
     
-    DCDstruct *i = decodeInstruction(cu . IWB, currentInstruction);
+    DCDstruct * i = & currentInstruction;
+    decodeInstruction(cu . IWB, i);
 
     lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
     
@@ -471,13 +474,12 @@ DCDstruct * setupInstruction (void)
         if (i->info->flags == NO_XEC)
             doFault(illproc_fault, 0, "Instruction not allowed in XEC");
     }
-    return i;
 }
 
 // fetch instrcution at address
-DCDstruct * fetchInstruction (word18 addr, DCDstruct * ins)
+void fetchInstruction (word18 addr)
 {
-    DCDstruct *p = ins;
+    DCDstruct * p = & currentInstruction;
     
     // XXX experimental code; there may be a better way to do this, especially
     // if a pointer to a malloc is getting zapped
@@ -508,7 +510,7 @@ DCDstruct * fetchInstruction (word18 addr, DCDstruct * ins)
     TPR.TSR = PPR.PSR;
     
 
-    Read(NULL, addr, & cu . IWB, INSTRUCTION_FETCH, 0);
+    Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
 #if 0
     cpu.read_addr = addr;
@@ -550,9 +552,8 @@ DCDstruct * fetchInstruction (word18 addr, DCDstruct * ins)
 
     // TODO: Need to add no DL restrictions?
 #else
-    DCDstruct *i = setupInstruction ();
+    setupInstruction ();
 #endif
-    return i;
 }
 
 #ifndef QUIET_UNUSED
@@ -563,8 +564,9 @@ DCDstruct * fetchInstruction (word18 addr, DCDstruct * ins)
 //    return SCPE_OK;
 //}
 
-static DCDstruct *fetchOperands(DCDstruct *i)
+void fetchOperands (void)
 {
+    DCDstruct * p = & currentInstruction;
     
     if (i->info->ndes > 0)
         for(int n = 0 ; n < i->info->ndes; n += 1)
@@ -573,15 +575,15 @@ static DCDstruct *fetchOperands(DCDstruct *i)
         if (READOP(i) || RMWOP(i))
             ReadOP(i, TPR.CA, READ_OPERAND, 0);
     
-    return i;
 }
 #endif
 
 /*
  * initializes the TPR registers.
  */
-static t_stat setupForOperandRead(DCDstruct *i)
+static t_stat setupForOperandRead (void)
 {
+    DCDstruct * i = & currentInstruction;
     if (!i->a)   // if A bit set set-up TPR stuff ...
     {
         TPR.TRR = PPR.PRR;
@@ -590,8 +592,9 @@ static t_stat setupForOperandRead(DCDstruct *i)
     return SCPE_OK;
 }
 
-t_stat executeInstruction(DCDstruct *ci)
+t_stat executeInstruction (void)
 {
+    DCDstruct * ci = & currentInstruction;
     const word36 IWB  = cu.IWB;          ///< instruction working buffer
     const opCode *info = ci->info;          ///< opCode *
     const uint32  opcode = ci->opcode;     ///< opcode
@@ -650,23 +653,23 @@ t_stat executeInstruction(DCDstruct *ci)
         }
     }
 
-    setupForOperandRead (ci);
+    setupForOperandRead ();
 
     if (info->ndes > 0)
     {
         for(int n = 0 ; n < info->ndes; n += 1)
         {
-            //setupForOperandRead (ci);
-            Read(ci, PPR.IC + 1 + n, &ci->e.op[n], OPERAND_READ, 0); // I think.
+            //setupForOperandRead ();
+            Read(PPR.IC + 1 + n, &ci->e.op[n], OPERAND_READ, 0); // I think.
         }
     }
     else
     {
         if (ci->a)   // if A bit set set-up TPR stuff ...
             doPtrReg();
-        doComputedAddressFormation(ci);
+        doComputedAddressFormation ();
     }
-    t_stat ret = doInstruction(ci);
+    t_stat ret = doInstruction ();
     
     
     if (switches . append_after)
@@ -678,7 +681,7 @@ t_stat executeInstruction(DCDstruct *ci)
     }
     
     if (modCont->bActive)
-        writeOperands(ci);
+        writeOperands ();
     
     sys_stats . total_cycles += 1; // bump cycle counter
     
@@ -705,12 +708,13 @@ t_stat executeInstruction(DCDstruct *ci)
     return ret;
 }
 
-static t_stat DoBasicInstruction(DCDstruct *i), DoEISInstruction(DCDstruct *i);    //, DoInstructionPair(DCDstruct *i);
+static t_stat DoBasicInstruction (void);
+static t_stat DoEISInstruction (void);
 
 
-static t_stat doInstruction(DCDstruct *i)
+static t_stat doInstruction (void)
 {
-    
+    DCDstruct * i = & currentInstruction;
     CLRF(cu.IR, I_MIIF);
     
     //if (i->e)
@@ -726,11 +730,12 @@ static t_stat doInstruction(DCDstruct *i)
         i->e.addr[2].mat = OperandRead;   // no ARs involved yet
     }
     
-    return i->opcodeX ? DoEISInstruction(i) : DoBasicInstruction(i);
+    return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
 
-static t_stat DoBasicInstruction(DCDstruct *i)
+static t_stat DoBasicInstruction (void)
 {
+    DCDstruct * i = & currentInstruction;
     uint opcode  = i->opcode;  // get opcode
     
     switch (opcode)
@@ -4474,7 +4479,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0212:  ///< absa
           {
             word36 result;
-            int rc = doABSA (i, & result);
+            int rc = doABSA (& result);
             if (rc)
               return rc;
             rA = result;
@@ -4534,8 +4539,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
     return 0;
 }
 
-static t_stat DoEISInstruction(DCDstruct *i)
+static t_stat DoEISInstruction (void)
 {
+    DCDstruct * i = & currentInstruction;
     // XXX not complete .....
     
     int32 opcode = i->opcode;
@@ -5649,50 +5655,50 @@ static t_stat DoEISInstruction(DCDstruct *i)
 
         // decimal arithmetic instrutions
         case 0202:  ///< ad2d
-            ad2d(i);
+            ad2d ();
             break;
 
         case 0222:  ///< ad3d
-            ad3d(i);
+            ad3d ();
             break;
             
         case 0203:  ///< sb2d
-            sb2d(i);
+            sb2d ();
             break;
             
         case 0223:  ///< sb3d
-            sb3d(i);
+            sb3d ();
             break;
 
         case 0206:  ///< mp2d
-            mp2d(i);
+            mp2d ();
             break;
 
         case 0226:  ///< mp3d
-            mp3d(i);
+            mp3d ();
             break;
 
         case 0207:  ///< dv2d
-            dv2d(i);
+            dv2d ();
             break;
 
         case 0227:  ///< dv3d
-            dv3d(i);
+            dv3d ();
             break;
 
         case 0300:  ///< mvn
-            mvn(i);
+            mvn ();
             break;
         
         case 0303:  ///< cmpn
-            cmpn(i);
+            cmpn ();
             break;
 
 #if EMULATOR_ONLY
             
         case 0420:  ///< emcall instruction Custom, for an emulator call for simh stuff ...
         {
-            int ret = emCall(i);
+            int ret = emCall ();
             if (ret)
               return ret;
             break;
@@ -5833,8 +5839,9 @@ static void print_int128 (__int128_t n)
 /**
  * emulator call instruction. Do whatever address field sez' ....
  */
-static int emCall(DCDstruct *i)
+static int emCall (void)
 {
+    DCDstruct * i = & currentInstruction;
     switch (i->address) /// address field
     {
         case 1:     ///< putc9 - put 9-bit char in AL to stdout
@@ -6010,8 +6017,9 @@ static int emCall(DCDstruct *i)
     return 0;
 }
 
-static int doABSA (DCDstruct * i, word36 * result)
+static int doABSA (word36 * result)
   {
+    DCDstruct * i = & currentInstruction;
     word36 res;
     sim_debug (DBG_APPENDING, & cpu_dev, "absa CA:%08o\n", TPR.CA);
 

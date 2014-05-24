@@ -9,10 +9,10 @@ void cu_safe_store(void);
 void initializeTheMatrix (void);
 void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag);
 t_stat displayTheMatrix (int32 arg, char * buf);
-t_stat prepareComputedAddress(DCDstruct *ci);   // new
+t_stat prepareComputedAddress (void);   // new
 void cu_safe_restore(void);
-DCDstruct * setupInstruction (void);
-DCDstruct *fetchInstruction(word18 addr, DCDstruct *dst);      // fetch (+ decode) instrcution at address
-t_stat executeInstruction(DCDstruct *ci);
+void setupInstruction (void);
+void fetchInstruction(word18 addr);
+t_stat executeInstruction (void);
 
 

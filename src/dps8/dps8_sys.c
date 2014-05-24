@@ -1284,7 +1284,9 @@ t_stat fprint_sym (FILE *ofile, t_addr __attribute__((unused)) addr, t_value *va
         fprintf(ofile, "%s", d);
         
         // decode instruction
-        DCDstruct *p = decodeInstruction(word1, NULL);
+        DCDstruct ci;
+        DCDstruct * p = & ci;
+        decodeInstruction (word1, p);
         
         // MW EIS?
         if (p->info->ndes > 1)
@@ -1296,11 +1298,9 @@ t_stat fprint_sym (FILE *ofile, t_addr __attribute__((unused)) addr, t_value *va
             for(int n = 0 ; n < p->info->ndes; n += 1)
                 fprintf(ofile, " %012llo", val[n + 1]);
           
-            freeDCDstruct(p);
             return -p->info->ndes;
         }
         
-        freeDCDstruct(p);
         return SCPE_OK;
 
         //fprintf(ofile, "%012llo", *val);

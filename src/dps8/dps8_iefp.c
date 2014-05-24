@@ -22,8 +22,6 @@
  */
 
 #ifndef QUIET_UNUSED
-DCDstruct *ci = 0;
-
 EISstruct e;
 
 enum eIEFPState
@@ -43,11 +41,11 @@ IEFPState iefpState = eIEFPUnknown;
 #ifndef QUIET_UNUSED
 static t_stat IEFPInstructionFetch()
 {
-    ci = fetchInstruction(PPR.IC, currentInstruction);    // fetch instruction into current instruction struct
+    fetchInstruction(PPR.IC, currentInstruction);    // fetch instruction into current instruction struct
     
     // XXX The conditions are more rigorous: see AL39, pg 327
     if (PPR.IC % 2 == 0 && // Even address
-            ci -> i == 0) // Not inhibited
+            currentInstruction . i == 0) // Not inhibited
         cpu . interrupt_flag = sample_interrupts ();
     else
         cpu . interrupt_flag = false;
@@ -86,8 +84,6 @@ static t_stat doIEFP()
     switch(iefpState)
     {
         case eIEFPUnknown:
-            ci = currentInstruction;
-            ci->e = &e;
             return SCPE_OK;
         
         case eIEFPInstructionFetch:
@@ -125,7 +121,7 @@ t_stat doIEFPLoop()
 
 // new Read/Write stuff ...
 
-t_stat Read(DCDstruct *i, word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
+t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
 {
     word24 finalAddress;
     if (b29)
@@ -151,7 +147,7 @@ t_stat Read(DCDstruct *i, word18 address, word36 *result, _processor_cycle_type 
         case APPEND_MODE:
             //    <generate address from procedure base registers>
 B29:        //finalAddress = doAppendRead(i, accessType, address);
-            finalAddress = doAppendCycle(i, address, cyctyp);
+            finalAddress = doAppendCycle(address, cyctyp);
             core_read(finalAddress, result);
         
             sim_debug(DBG_APPENDING, &cpu_dev, "Read(Actual) Read: finalAddress=%08o readData=%012llo\n", finalAddress, *result);
@@ -162,7 +158,7 @@ B29:        //finalAddress = doAppendRead(i, accessType, address);
     return SCPE_UNK;
 }
 
-t_stat Write(DCDstruct *i, word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
+t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
     word24 finalAddress;
     if (b29)
@@ -188,7 +184,7 @@ t_stat Write(DCDstruct *i, word18 address, word36 data, _processor_cycle_type cy
         case APPEND_MODE:
             //    <generate address from procedure base registers>
 B29:        //finalAddress = doAppendDataWrite(i, address);
-            finalAddress = doAppendCycle(i, address, cyctyp);
+            finalAddress = doAppendCycle(address, cyctyp);
             core_write(finalAddress, data);
         
             sim_debug(DBG_APPENDING, &cpu_dev, "Write(Actual) Write: finalAddress=%08o data=%012llo\n", finalAddress, data);

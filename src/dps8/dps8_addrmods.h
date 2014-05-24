@@ -10,12 +10,11 @@ struct modificationContinuation
     int cf;         // 3-bit character/byte position value,
     word36 indword; // indirect word
     int tmp18;      // temporary address used by some instructions
-    //DCDstruct *i;   // instruction that elicited continuation
 };
 typedef struct modificationContinuation modificationContinuation;
 
-t_stat doComputedAddressFormation(DCDstruct *);
+t_stat doComputedAddressFormation (void);
 extern modificationContinuation _modCont, *modCont;
-void doComputedAddressContinuation(DCDstruct *i);    //, eCAFoper operType);
+void doComputedAddressContinuation (void);
 
 

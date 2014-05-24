@@ -917,16 +917,13 @@ DEVICE cpu_dev = {
     NULL            /*!< logical name */
 };
 
-static DCDstruct *newDCDstruct(void);
-
 static t_stat reason;
 
 jmp_buf jmpMain;        ///< This is where we should return to from a fault or interrupt (if necessary)
 
-static DCDstruct _currentInstruction;
-DCDstruct *currentInstruction  = &_currentInstruction;;
+DCDstruct currentInstruction;
 
-static EISstruct E;
+//static EISstruct E;
 
 events_t events;
 switches_t switches;
@@ -1071,7 +1068,7 @@ t_stat sim_instr (void)
 
     // Heh. This needs to be static; longjmp resets the value to NULL
     //static DCDstruct _ci;
-    static DCDstruct * ci = NULL;
+    static DCDstruct * ci = & currentInstruction;
     
     cpu . interrupt_flag = false;
     cpu . g7_flag = false;
@@ -1178,8 +1175,8 @@ t_stat sim_instr (void)
                 else
                   cu . IWB = instr_buf [1];
 
-                decodeInstruction (cu . IWB, ci);
-                t_stat ret = executeInstruction (ci);
+                decodeInstruction (cu . IWB, & currentInstruction);
+                t_stat ret = executeInstruction ();
 
                 if (ret > 0)
                   {
@@ -1229,25 +1226,25 @@ t_stat sim_instr (void)
                   {
                     // Get the odd
                     cu . IWB = cu . IRODD;
-                    ci = setupInstruction ();
+                    setupInstruction ();
                     cu . xde = cu . xdo = 0; // and done
                   }
                 else if (cu . xde == 1 && cu . xdo == 1)
                   {
-                    ci = setupInstruction ();
+                    setupInstruction ();
                     cu . xde = 0; // do the odd next time
                     cu . xdo = 1;
                   }
                 else if (cu . xde == 1)
                   {
-                    ci = setupInstruction ();
+                    setupInstruction ();
                     cu . xde = cu . xdo = 0; // and done
                   }
                 else
                   {
                     processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
-                    ci = fetchInstruction(PPR.IC, currentInstruction);
+                    fetchInstruction(PPR.IC);
                   }
 
 // XXX Consider not checking for interrupts if cu.rpt
@@ -1322,7 +1319,7 @@ t_stat sim_instr (void)
             case EXEC_cycle:
               {
                 xec_side_effect = 0;
-                t_stat ret = executeInstruction (ci);
+                t_stat ret = executeInstruction ();
 
                 if (ret > 0)
                   {
@@ -1537,8 +1534,7 @@ t_stat sim_instr (void)
                 else
                   cu . IWB = instr_buf [1];
 
-                //decodeInstruction (cu . IWB, ci);
-                ci = setupInstruction ();
+                setupInstruction ();
 
 // The normal start state of the CPU is a trouble fault cascade until the
 // iom boot generates in interrupt; therefore, despite the fact that AL39
@@ -1565,7 +1561,7 @@ t_stat sim_instr (void)
                   }
 #endif
 
-                t_stat ret = executeInstruction (ci);
+                t_stat ret = executeInstruction ();
 
                 if (ret > 0)
                   {
@@ -1596,7 +1592,7 @@ t_stat sim_instr (void)
 
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
-                decodeInstruction (cu . IWB, ci);
+                decodeInstruction (cu . IWB, & currentInstruction);
 
                 PPR.IC += ci->info->ndes;
                 PPR.IC ++;
@@ -1639,7 +1635,7 @@ static uint32 bkpt_type[4] = { SWMASK ('E') , SWMASK ('N'), SWMASK ('R'), SWMASK
 //
 // XXX here is where we probably need to to the prepage thang...
 #ifndef QUIET_UNUSED
-t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
+t_stat ReadNnoalign (int n, word24 addr, word36 *Yblock, enum eMemoryAccessType acctyp, int32 Tag)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1647,14 +1643,15 @@ t_stat ReadNnoalign (DCDstruct *i, int n, word24 addr, word36 *Yblock, enum eMem
     else
 #endif
         for (int j = 0 ; j < n ; j ++)
-            Read(i, addr + j, Yblock + j, OPERAND_READ, Tag);
+            Read (addr + j, Yblock + j, OPERAND_READ, Tag);
     
     return SCPE_OK;
 }
 #endif
 
-int OPSIZE(DCDstruct *i)
+int OPSIZE (void)
 {
+    DCDstruct * i = & currentInstruction;
     if (i->info->flags & (READ_OPERAND | STORE_OPERAND))
         return 1;
     else if (i->info->flags & (READ_YPAIR | STORE_YPAIR))
@@ -1667,8 +1664,9 @@ int OPSIZE(DCDstruct *i)
 }
 
 // read instruction operands
-t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
+t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
 {
+    DCDstruct * i = & currentInstruction;
 #if 0
         if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
             return STOP_BKPT;
@@ -1682,30 +1680,30 @@ t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
     if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
     {
         addr &= 0777776;   // make even
-        Read(i, addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
-        Read(i, addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
+        Read (addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
         return SCPE_OK;
     }
 
-    switch (OPSIZE(i))
+    switch (OPSIZE ())
     {
         case 1:
-            Read(i, addr, &CY, cyctyp, b29);
+            Read (addr, &CY, cyctyp, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Read(i, addr + 0, Ypair + 0, cyctyp, b29);
-            Read(i, addr + 1, Ypair + 1, cyctyp, b29);
+            Read (addr + 0, Ypair + 0, cyctyp, b29);
+            Read (addr + 1, Ypair + 1, cyctyp, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Read(i, addr + j, Yblock8 + j, cyctyp, b29);
+                Read (addr + j, Yblock8 + j, cyctyp, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Read(i, addr + j, Yblock16 + j, cyctyp, b29);
+                Read (addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
     }
@@ -1716,7 +1714,7 @@ t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
 }
 
 // write instruction operands
-t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type __attribute__((unused)) cyctyp, bool b29)
+t_stat WriteOP(word18 addr, _processor_cycle_type __attribute__((unused)) cyctyp, bool b29)
 {
 #if 0
     if (sim_brk_summ && sim_brk_test (addr, bkpt_type[acctyp]))
@@ -1724,25 +1722,25 @@ t_stat WriteOP(DCDstruct *i, word18 addr, _processor_cycle_type __attribute__((u
     else
 #endif
         
-    switch (OPSIZE(i))
+    switch (OPSIZE ())
     {
         case 1:
-            Write(i, addr, CY, OPERAND_STORE, b29);
+            Write (addr, CY, OPERAND_STORE, b29);
             return SCPE_OK;
         case 2:
             addr &= 0777776;   // make even
-            Write(i, addr + 0, Ypair[0], OPERAND_STORE, b29);
-            Write(i, addr + 1, Ypair[1], OPERAND_STORE, b29);
+            Write (addr + 0, Ypair[0], OPERAND_STORE, b29);
+            Write (addr + 1, Ypair[1], OPERAND_STORE, b29);
             break;
         case 8:
             addr &= 0777770;   // make on 8-word boundary
             for (int j = 0 ; j < 8 ; j += 1)
-                Write(i, addr + j, Yblock8[j], OPERAND_STORE, b29);
+                Write (addr + j, Yblock8[j], OPERAND_STORE, b29);
             break;
         case 16:
             addr &= 0777760;   // make on 16-word boundary
             for (int j = 0 ; j < 16 ; j += 1)
-                Write(i, addr + j, Yblock16[j], OPERAND_STORE, b29);
+                Write (addr + j, Yblock16[j], OPERAND_STORE, b29);
             break;
     }
     //TPR.CA = addr;  // restore address
@@ -1898,23 +1896,6 @@ void encode_instr(const instr_t *ip, word36 *wordp)
 
 #endif // MM
     
-static DCDstruct *newDCDstruct(void)
-{
-    DCDstruct *p = malloc(sizeof(DCDstruct));
-    //p->e = malloc(sizeof(EISstruct));
-    
-    return p;
-}
-
-void freeDCDstruct(DCDstruct *p)
-{
-    if (!p)
-        return; // Uh-Uh...
-    
-    //if (p->e)
-    //    free(p->e);
-    free(p);
-}
 
 /*
  * instruction fetcher ...
@@ -1926,10 +1907,8 @@ void freeDCDstruct(DCDstruct *p)
  *
  * if dst is not NULL place results into dst, if dst is NULL plae results into global currentInstruction
  */
-DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruction into structure
+void decodeInstruction (word36 inst, DCDstruct * p)
 {
-    DCDstruct *p = dst == NULL ? newDCDstruct() : dst;
-    
     p->opcode  = GET_OP(inst);  // get opcode
     p->opcodeX = GET_OPX(inst); // opcode extension
     p->address = GET_ADDR(inst);// address field from instruction
@@ -1957,7 +1936,6 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
             p->e.op0 = inst;
         }
     }
-    return p;
 }
 
 // MM stuff ...

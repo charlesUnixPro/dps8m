@@ -31,11 +31,10 @@ enum _appendingUnit_cycle_type {
 
 
 
-void doAddrModPtrReg(DCDstruct *);
 void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
 void acvFault(_fault_subtype acvfault, char * msg);
-word24 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle);
+word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
 void do_camp (word36 Y);

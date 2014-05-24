@@ -716,8 +716,9 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
 /*
  * ad2d - Add Using Two Decimal Operands
  */
-void ad2d(DCDstruct *i)
+void ad2d (void)
 {
+    DCDstruct * i = & currentInstruction;
     EISstruct *e = &i->e;
     setupOperandDescriptor(1, e);
     setupOperandDescriptor(2, e);
@@ -972,8 +973,9 @@ void ad2d(DCDstruct *i)
 /*
  * ad3d - Add Using Three Decimal Operands
  */
-void ad3d(DCDstruct *ins)
+void ad3d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -1253,8 +1255,9 @@ void ad3d(DCDstruct *ins)
 /*
  * sb2d - Subtract Using Two Decimal Operands
  */
-void sb2d(DCDstruct *ins)
+void sb2d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -1508,8 +1511,9 @@ void sb2d(DCDstruct *ins)
 /*
  * sb3d - Subtract Using Three Decimal Operands
  */
-void sb3d(DCDstruct *ins)
+void sb3d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -1789,8 +1793,9 @@ void sb3d(DCDstruct *ins)
 /*
  * mp2d - Multiply Using Two Decimal Operands
  */
-void mp2d(DCDstruct *ins)
+void mp2d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -2043,8 +2048,9 @@ void mp2d(DCDstruct *ins)
 /*
  * mp3d - Multiply Using Three Decimal Operands
  */
-void mp3d(DCDstruct *ins)
+void mp3d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -2314,8 +2320,9 @@ void mp3d(DCDstruct *ins)
  * dv2d - Divide Using Two Decimal Operands
  */
 // XXX need to put in divide checks, etc ...
-void dv2d(DCDstruct *ins)
+void dv2d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -2557,8 +2564,9 @@ void dv2d(DCDstruct *ins)
  */
 // XXX need to put in divide checks, etc ...
 
-void dv3d(DCDstruct *ins)
+void dv3d (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     setupOperandDescriptor(1, e);
@@ -2845,8 +2853,9 @@ void dv3d(DCDstruct *ins)
 /*
  * cmpn - Compare Numeric
  */
-void cmpn(DCDstruct *ins)
+void cmpn (void)
 {
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
 
     // C(Y-charn1) :: C(Y-charn2) as numeric values
@@ -2988,7 +2997,7 @@ void cmpn(DCDstruct *ins)
 /*
  * mvn - move numeric (initial version was deleted by house gnomes)
  */
-void mvn(DCDstruct *ins)
+void mvn (void)
 {
     /*
      * EXPLANATION:
@@ -2998,6 +3007,7 @@ void mvn(DCDstruct *ins)
      * Provided that string 1 and string 2 are not overlapped, the contents of the decimal number that starts in location YC1 remain unchanged.
      */
 
+    DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
     
     setupOperandDescriptor(1, e);

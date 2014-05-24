@@ -1,12 +1,12 @@
-void ad2d(DCDstruct *i);
-void ad3d(DCDstruct *i);
-void sb2d(DCDstruct *i);
-void sb3d(DCDstruct *i);
-void mp2d(DCDstruct *i);
-void mp3d(DCDstruct *i);
-void dv2d(DCDstruct *i);
-void dv3d(DCDstruct *i);
-void cmpn(DCDstruct *i);
-void mvn(DCDstruct *i);
+void ad2d (void);
+void ad3d (void);
+void sb2d (void);
+void sb3d (void);
+void mp2d (void);
+void mp3d (void);
+void dv2d (void);
+void dv3d (void);
+void cmpn (void);
+void mvn (void);
 
 
