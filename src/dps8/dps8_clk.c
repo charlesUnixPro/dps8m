@@ -3,6 +3,14 @@
 #include "dps8_clk.h"
 #include "dps8_sys.h"
 
+#define TR_CLK 1 /* SIMH allows clock ids 0..7 */
+
+#ifdef USE_IDLE
+#define CLK_TR_HZ (512*1024) // should be 512 kHz, but we'll use 512 Hz for now
+#else
+#define CLK_TR_HZ (512*1) // should be 512 kHz, but we'll use 512 Hz for now
+#endif
+
 #define N_CLK_UNITS 1
 static t_stat clk_svc(UNIT *up);
 UNIT TR_clk_unit [N_CLK_UNITS] = {{ UDATA(&clk_svc, UNIT_IDLE, 0) }};

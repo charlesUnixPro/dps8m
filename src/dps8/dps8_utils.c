@@ -258,7 +258,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     {
         if (overflow && ! TSTF (*flags, I_OMASK))
         {
-            doFault(NULL, overflow_fault, 0,"addsub36b overflow fault");
+            doFault(overflow_fault, 0,"addsub36b overflow fault");
         }
     }
 
@@ -344,7 +344,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     {
         if (overflow && ! TSTF (*flags, I_OMASK))
         {
-            doFault(NULL, overflow_fault, 0,"addsub18b overflow fault");
+            doFault(overflow_fault, 0,"addsub18b overflow fault");
         }
     }
 
@@ -414,7 +414,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     {
         if (overflow)
         {
-            doFault(NULL, overflow_fault, 0,"addsub72 overflow fault");
+            doFault(overflow_fault, 0,"addsub72 overflow fault");
         }
     }
     
@@ -444,7 +444,7 @@ word36 compl36(word36 op1, word18 *flags)
     
     if (ovr && ! TSTF (*flags, I_OMASK))
     {
-        doFault(NULL, overflow_fault, 0,"compl36 overflow fault");
+        doFault(overflow_fault, 0,"compl36 overflow fault");
     }
 
     return res;
@@ -472,7 +472,7 @@ word18 compl18(word18 op1, word18 *flags)
         CLRF(*flags, I_ZERO);
     
     if (ovr && ! TSTF (*flags, I_OMASK))
-        doFault(NULL, overflow_fault, 0,"compl18 overflow fault");
+        doFault(overflow_fault, 0,"compl18 overflow fault");
 
     return res;
 }

@@ -191,7 +191,7 @@ static _ptw0* fetchDSPTW(word15 segno)
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
-        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault: fetchDSPTW out of segment bounds fault");
+        doFault(acc_viol_fault, ACV15, "acvFault: fetchDSPTW out of segment bounds fault");
         
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -215,7 +215,7 @@ static _ptw0* modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
-        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault: modifyDSPTW out of segment bounds fault");
+        doFault(acc_viol_fault, ACV15, "acvFault: modifyDSPTW out of segment bounds fault");
     
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -323,7 +323,7 @@ static _sdw0 *fetchNSDW(word15 segno)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
         // generate access violation, out of segment bounds fault
-        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault fetchNSDW: out of segment bounds fault");
+        doFault(acc_viol_fault, ACV15, "acvFault fetchNSDW: out of segment bounds fault");
     }
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):fetching SDW from %05o\n", DSBR.ADDR + 2 * segno);
     word36 SDWeven, SDWodd;
@@ -694,7 +694,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg)
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvFault, acvFaults, msg);
     
-    doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
+    doFault(acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
 }
 
 static char *strPCT(_processor_cycle_type t)
@@ -799,7 +799,7 @@ A:;
             
             if (!PTW0.F)
                 // XXX initiate a directed fault
-                doFault(i, dir_flt0_fault + PTW0.FC, 0, "doAppendCycle(A): PTW0.F == 0");
+                doFault(dir_flt0_fault + PTW0.FC, 0, "doAppendCycle(A): PTW0.F == 0");
             
             if (!PTW0.U)
                 modifyDSPTW(TPR.TSR);
@@ -813,7 +813,7 @@ A:;
         {
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
             // initiate a directed fault ...
-            doFault(i, dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
+            doFault(dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
             
             return -1;
         }
@@ -1046,7 +1046,7 @@ G:;
     
     if (acvFaults)
         // Initiate an access violation fault
-        doFault(i, acc_viol_fault, acvFaults, acvFaultsMsg);
+        doFault(acc_viol_fault, acvFaults, acvFaultsMsg);
     
     // is segment C(TPR.TSR) paged?
     if (SDW->U)
@@ -1062,7 +1062,7 @@ G:;
         fetchPTW(SDW, address);
         if (!PTW0.F)
             // initiate a directed fault
-            doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+            doFault(dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
         
         //loadPTWAM(SDW->POINTER, TPR.CA);    // load PTW0 to PTWAM
         loadPTWAM(SDW->POINTER, address);    // load PTW0 to PTWAM
@@ -1076,7 +1076,7 @@ G:;
         //Is PTW.F set ON?
        if (!PTW0.F)
           // initiate a directed fault
-         doFault(i, dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
+         doFault(dir_flt0_fault + PTW0.FC, 0, "PTW0.F == 0");
         
     }
     bPrePageMode = false;   // done with this

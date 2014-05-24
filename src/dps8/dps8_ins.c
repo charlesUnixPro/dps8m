@@ -433,7 +433,7 @@ DCDstruct * setupInstruction (void)
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((i->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(i, illproc_fault, 0, "Attempted execution of privileged instruction.");
+        doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
     
     // check for illegal addressing mode(s) ...
     
@@ -441,35 +441,35 @@ DCDstruct * setupInstruction (void)
     if (i->info->mods == NO_CSS)
     {
         if (_nocss[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal CI/SC/SCR modification");
+            doFault(illproc_fault, 0, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
     else if (i->info->mods == NO_DDCSS)
     {
         if (_noddcss[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+            doFault(illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
     else if (i->info->mods == NO_DLCSS)
     {
         if (_nodlcss[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+            doFault(illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
     else if (i->info->mods == NO_DUDL)
     {
         if (_nodudl[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
+            doFault(illproc_fault, 0, "Illegal DU/DL modification");
     }
     if (cu . xdo == 1) // Execute even or odd of XED
     {
         if (i->info->flags == NO_XED)
-            doFault(i, illproc_fault, 0, "Instruction not allowed in XED");
+            doFault(illproc_fault, 0, "Instruction not allowed in XED");
     }
     if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
     {
         if (i->info->flags == NO_XEC)
-            doFault(i, illproc_fault, 0, "Instruction not allowed in XEC");
+            doFault(illproc_fault, 0, "Instruction not allowed in XEC");
     }
     return i;
 }
@@ -518,7 +518,7 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((i->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(i, illproc_fault, 0, "Attempted execution of privileged instruction.");
+        doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
     
     // check for illegal addressing mode(s) ...
     
@@ -526,25 +526,25 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
     if (i->info->mods == NO_CSS)
     {
         if (_nocss[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal CI/SC/SCR modification");
+            doFault(illproc_fault, 0, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
     else if (i->info->mods == NO_DDCSS)
     {
         if (_noddcss[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+            doFault(illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
     else if (i->info->mods == NO_DLCSS)
     {
         if (_nodlcss[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+            doFault(illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
     else if (i->info->mods == NO_DUDL)
     {
         if (_nodudl[i->tag])
-            doFault(i, illproc_fault, 0, "Illegal DU/DL modification");
+            doFault(illproc_fault, 0, "Illegal DU/DL modification");
     }
 
     // TODO: Need to add no DL restrictions?
@@ -803,7 +803,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 SETF(cu.IR, I_OFLOW);
                 if (! TSTF (cu.IR, I_OMASK))
-                    doFault(i, overflow_fault, 0,"lcaq overflow fault");
+                    doFault(overflow_fault, 0,"lcaq overflow fault");
             }
             else if (Ypair[1] == 0 && Ypair[1] == 0)
             {
@@ -1838,7 +1838,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SCF(rA & SIGN36, cu.IR, I_NEG);
             
                 if (isovr && ! TSTF (cu.IR, I_OMASK))
-                    doFault(i, overflow_fault, 0,"mpf overflow fault");
+                    doFault(overflow_fault, 0,"mpf overflow fault");
                 }
             }
             break;
@@ -1879,7 +1879,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SCF(CY == 0, cu.IR, I_ZERO);
                 SCF(rQ & SIGN36, cu.IR, I_NEG);
                 // XXX divide check fault
-                doFault(i, div_fault, 0, "div divide check");
+                doFault(div_fault, 0, "div divide check");
             }
             else
             {
@@ -1992,7 +1992,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 {
                     SETF(cu.IR, I_OFLOW);
                     if (! TSTF (cu.IR, I_OMASK))
-                        doFault(i, overflow_fault, 0,"neg overflow fault");
+                        doFault(overflow_fault, 0,"neg overflow fault");
                 }
             }
             break;
@@ -2025,7 +2025,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                     {
                         SETF(cu.IR, I_OFLOW);
                         if (! TSTF (cu.IR, I_OMASK))
-                            doFault(i, overflow_fault, 0,"negl overflow fault");
+                            doFault(overflow_fault, 0,"negl overflow fault");
                     }
                 
                     convertToWord36(tmp72, &rA, &rQ);
@@ -3345,7 +3345,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0715:  ///< tss
             if (TPR.CA >= ((word18) BAR.BOUND) << 9)
             {
-                doFault (i, acc_viol_fault, ACV15, "TSS boundary violation");
+                doFault (acc_viol_fault, ACV15, "TSS boundary violation");
                 break;
             }
             /// C(TPR.CA) + (BAR base) → C(PPR.IC)
@@ -3598,7 +3598,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 if (((CY >> 34) & 3) != 3)
                     PR[n].BITNO = (CY >> 30) & 077;
                 else
-                  doFault(i, cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
+                  doFault(cmd_fault, 0, "Load Pointer Register Packed (lprpn)");
 
                 //If C(Y)6,17 = 11...1, then 111 → C(PRn.SNR)0,2
                 if ((CY & 07777000000LLU) == 07777000000LLU)
@@ -3816,7 +3816,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
                 // sim_printf ("sprp%d SNR %05o\n", n, PR[n].SNR);
                 if ((PR[n].SNR & 070000) != 0 && PR[n].SNR != MASK15)
-                  doFault(i, store_fault, 0, "Store Pointer Register Packed (sprpn)");
+                  doFault(store_fault, 0, "Store Pointer Register Packed (sprpn)");
             
                 if (switches . lprp_highonly)
                   {
@@ -3902,7 +3902,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         
         case 0002:   ///< drl
             /// Causes a fault which fetches and executes, in absolute mode, the instruction pair at main memory location C+(14)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault (i, derail_fault, 0, "drl");
+            doFault (derail_fault, 0, "drl");
             break;
          
         case 0716:  ///< xec
@@ -3999,22 +3999,22 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
         case 0001:   ///< mme
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+4. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(i, mme1_fault, 0, "Master Mode Entry (mme)");
+            doFault(mme1_fault, 0, "Master Mode Entry (mme)");
             break;
             
         case 0004:   ///< mme2
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(52)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(i, mme2_fault, 0, "Master Mode Entry 2 (mme2)");
+            doFault(mme2_fault, 0, "Master Mode Entry 2 (mme2)");
             break;
 
         case 0005:   ///< mme3
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(54)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(i, mme3_fault, 0, "Master Mode Entry 3 (mme3)");
+            doFault(mme3_fault, 0, "Master Mode Entry 3 (mme3)");
             break;
 
         case 0007:   ///< mme4
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(56)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
-            doFault(i, mme4_fault, 0, "Master Mode Entry 4 (mme4)");
+            doFault(mme4_fault, 0, "Master Mode Entry 4 (mme4)");
             break;
 
         case 0011:   ///< nop
@@ -4202,7 +4202,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 
         case 0257:  ///< lsdp
-            doFault(i, illproc_fault, 0, "lsdp is illproc on DPS8M");
+            doFault(illproc_fault, 0, "lsdp is illproc on DPS8M");
             return CONT_FAULT;
 
         case 0613:  ///< rcu
@@ -4409,7 +4409,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
                 default:
                   // XXX Guessing values; also don't know if this is actually a fault
-                  doFault(i, illproc_fault, 0, "Illegal register select value");
+                  doFault(illproc_fault, 0, "Illegal register select value");
               }
             SCF (rA == 0, cu.IR, I_ZERO);
             SCF (rA & SIGN36, cu.IR, I_NEG);
@@ -4463,7 +4463,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
               t_stat rc = scu_sscr (scu_unit_num, ASSUME_CPU0, TPR.CA, rA, rQ);
               if (rc == CONT_FAULT)
-                doFault(i, store_fault, 0, "(sscr)");
+                doFault(store_fault, 0, "(sscr)");
               if (rc)
                 return rc;
             }
@@ -4528,7 +4528,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             if (switches . halt_on_unimp)
                 return STOP_UNIMP;
             else
-                doFault(i, illproc_fault, ill_op, "Illegal instruction");
+                doFault(illproc_fault, ill_op, "Illegal instruction");
     }
     return 0;
 }
@@ -5700,13 +5700,13 @@ static t_stat DoEISInstruction(DCDstruct *i)
         // priviledged instructions
             
         case 0173:  ///< lptr
-            doFault(i, illproc_fault, 0, "lptr is illproc on DPS8M");
+            doFault(illproc_fault, 0, "lptr is illproc on DPS8M");
 
         case 0232:  ///< lsdr
-            doFault(i, illproc_fault, 0, "lsdr is illproc on DPS8M");
+            doFault(illproc_fault, 0, "lsdr is illproc on DPS8M");
 
         case 0257:  ///< lptp
-            doFault(i, illproc_fault, 0, "lptp is illproc on DPS8M");
+            doFault(illproc_fault, 0, "lptp is illproc on DPS8M");
 
         case 0774:  ///< lra
             return STOP_UNIMP;
@@ -5729,7 +5729,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             if (switches . halt_on_unimp)
                 return STOP_UNIMP;
             else
-                doFault(i, illproc_fault, ill_op, "Unimplemented instruction");
+                doFault(illproc_fault, ill_op, "Unimplemented instruction");
     }
 
     return 0;
@@ -6017,7 +6017,7 @@ static int doABSA (DCDstruct * i, word36 * result)
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
         sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
-        doFault (i, illproc_fault, 0, "ABSA in absolute mode.");
+        doFault (illproc_fault, 0, "ABSA in absolute mode.");
         return CONT_FAULT;
       }
 
@@ -6043,7 +6043,7 @@ static int doABSA (DCDstruct * i, word36 * result)
 
             if (2 * (uint) TPR . TSR >= 16 * ((uint) DSBR . BND + 1))
               {
-                doFault (i, acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
+                doFault (acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
                 return CONT_FAULT;
               }
 
@@ -6068,7 +6068,7 @@ static int doABSA (DCDstruct * i, word36 * result)
             word14 BOUND = (SDWo >> (35 - 14)) & 037777;
             if (TPR . CA >= 16 * (BOUND + 1))
               {
-                doFault (i, acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+                doFault (acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
                 return CONT_FAULT;
               }
 
@@ -6104,7 +6104,7 @@ static int doABSA (DCDstruct * i, word36 * result)
 
             if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
               {
-                doFault (i, acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
+                doFault (acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
                 return CONT_FAULT;
               }
 
@@ -6147,7 +6147,7 @@ static int doABSA (DCDstruct * i, word36 * result)
               {
                 sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW1.F\n");
                 // initiate a directed fault
-                doFault(i, dir_flt0_fault + PTW1.FC, 0, "ABSA !PTW1.F");
+                doFault(dir_flt0_fault + PTW1.FC, 0, "ABSA !PTW1.F");
               }
 
             // 5. Fetch the target segment SDW, SDW(segno), from the 
@@ -6199,7 +6199,7 @@ static int doABSA (DCDstruct * i, word36 * result)
             if (!SDW0.F)
               {
                 sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !SDW0.F\n");
-                doFault(i, dir_flt0_fault + SDW0.FC, 0, "ABSA !SDW0.F");
+                doFault(dir_flt0_fault + SDW0.FC, 0, "ABSA !SDW0.F");
               }
 
             // 7. If offset >= 16 * (SDW(segno).BOUND + 1), then generate an 
@@ -6213,7 +6213,7 @@ static int doABSA (DCDstruct * i, word36 * result)
             if (((offset >> 4) & 037777) > SDW0 . BOUND)
               {
                 sim_debug (DBG_APPENDING, & cpu_dev, "absa SDW boundary violation\n");
-                doFault (i, acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
+                doFault (acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
               }
 
             // 8. If the access bits (SDW(segno).R, SDW(segno).E, etc.) of the 
@@ -6266,7 +6266,7 @@ static int doABSA (DCDstruct * i, word36 * result)
                 //   {
                 //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
                 //     // initiate a directed fault
-                //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+                //     doFault(dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
                 //   }
 
                 // 12. Generate the 24-bit absolute main memory address 

@@ -533,4 +533,14 @@ enum _fault_subtype {
 typedef enum _fault_subtype _fault_subtype;
 
 
+//
+// Memory map
+//
+
+#define IOM_MBX_LOW 01200
+#define IOM_MBX_LEN 02200
+#define DN355_MBX_LOW 03400
+#define DN355_MBX_LEN 03000
+
+
 #endif // DPS8_HW_CONSTS_H

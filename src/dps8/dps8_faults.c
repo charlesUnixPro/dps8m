@@ -440,7 +440,7 @@ For now, at least, we must remember a few things:
  
 */
 
-void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, const char *faultMsg)
+void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 {
     sim_debug (DBG_FAULT, & cpu_dev, "Fault %d(0%0o), sub %d(0%o), dfc %c, '%s'\n", faultNumber, faultNumber, subFault, subFault, bTroubleFaultCycle ? 'Y' : 'N', faultMsg);
 

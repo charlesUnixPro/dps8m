@@ -508,7 +508,7 @@ static bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     //if (!(ISITP(indword) || ISITS(indword)))
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: returning false\n");
-        doFault(i, illproc_fault, ill_mod, "Incorrect address modifier");
+        doFault(illproc_fault, ill_mod, "Incorrect address modifier");
         return false;  // couldnt/woudlnt/shouldnt do ITS/ITP indirection
     }
     
@@ -524,11 +524,11 @@ static bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     /*
      if (get_addr_mode() != APPEND_mode || (TPR.CA & 1))
      // XXX illegal procedure, illegal modifier, fault
-     doFault(i, illproc_fault, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
+     doFault(illproc_fault, ill_mod, "get_addr_mode() != APPEND_MODE || (TPR.CA & 1)");
      */
 //    if ((TPR.CA & 1))
 //        // XXX illegal procedure, illegal modifier, fault
-//    doFault(i, illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
+//    doFault(illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: reading indirect words from %06o\n", address);
     
@@ -667,7 +667,7 @@ R_MOD:;
         sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Td=%o\n", Td);
     
         if (Td == TD_DU || Td == TD_DL) // XXX illegal procedure, illegal modifier, fault
-            doFault(i, illproc_fault, ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
+            doFault(illproc_fault, ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
         
         if (!Td == 0)
         {
@@ -792,10 +792,10 @@ R_MOD:;
                     switch (Td)
                     {
                         case IT_F2:
-                            doFault(i, f2_fault, 0, "IT_F2");
+                            doFault(f2_fault, 0, "IT_F2");
                             return SCPE_OK;
                         case IT_F3:
-                            doFault(i, f3_fault, 0, "IT_F3");
+                            doFault(f3_fault, 0, "IT_F3");
                             return SCPE_OK;
                     }
                 }
@@ -885,7 +885,7 @@ R_MOD:;
             
                 if ((iCA & 1))
                     // XXX illegal procedure, illegal modifier, fault
-                    doFault(i, illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
+                    doFault(illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
 
                 if (!doITSITP(i, iCA, indword, iTAG))
                     return SCPE_UNK;    // some problem with ITS/ITP stuff
@@ -922,26 +922,26 @@ R_MOD:;
             
                 // check for illegal ITS/ITP
                 ///< XXX illegal procedure, illegal modifier, fault
-                doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+                doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
                 break;
             
             case 2:
                 ///< XXX illegal procedure, illegal modifier, fault
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
-                doFault(i, illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
+                doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
                 return SCPE_OK;
             
                 ///< XXX Abort. FT2 or 3
             case IT_F1:
-                doFault(i, f1_fault, 0, "IT_F1");
+                doFault(f1_fault, 0, "IT_F1");
                 return SCPE_OK;
             
             case IT_F2:
-                doFault(i, f2_fault, 0, "IT_F2");
+                doFault(f2_fault, 0, "IT_F2");
                 return SCPE_OK;
             case IT_F3:
-                doFault(i, f3_fault, 0, "IT_F3");
+                doFault(f3_fault, 0, "IT_F3");
                 return SCPE_OK;
             
             case IT_CI: ///< Character indirect (Td = 10)
@@ -964,11 +964,11 @@ R_MOD:;
             
                 if (tTB == TB6 && tCF > 5)
                     // generate an illegal procedure, illegal modifier fault
-                    doFault(i, illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
+                    doFault(illproc_fault, ill_mod, "tTB == TB6 && tCF > 5");
             
                 if (tTB == TB9 && tCF > 3)
                     // generate an illegal procedure, illegal modifier fault
-                    doFault(i, illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
+                    doFault(illproc_fault, ill_mod, "tTB == TB9 && tCF > 3");
             
             
                 if (operType == readCY || operType == rmwCY) //READOP(i))

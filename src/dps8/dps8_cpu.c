@@ -671,7 +671,7 @@ static t_stat cpu_dep (t_value val, t_addr addr, UNIT *uptr, int32 sw)
 
 enum _processor_cycle_type processorCycle;                  ///< to keep tract of what type of cycle the processor is in
 //enum _processor_addressing_mode processorAddressingMode;    ///< what addressing mode are we using
-enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
+//enum _processor_operating_mode processorOperatingMode;      ///< what operating mode
 
 // h6180 stuff
 /* [map] designates mapping into 36-bit word from DPS-8 proc manual */
@@ -1279,7 +1279,7 @@ t_stat sim_instr (void)
                           break;
                         default:
                           // generate fault. Only R & RI allowed
-                          doFault(ci, illproc_fault, 0, "ill addr mod from RPT");
+                          doFault(illproc_fault, 0, "ill addr mod from RPT");
                       }
                     word6 Td = GET_TD(ci->tag);
                     switch (Td)
@@ -1295,12 +1295,12 @@ t_stat sim_instr (void)
                           break;
                         default:
                           // generate fault. Only Xn allowed
-                          doFault(ci, illproc_fault, 0, "ill addr mod from RPT");
+                          doFault(illproc_fault, 0, "ill addr mod from RPT");
                       }
 // XXX Does this need to also check for NO_RPL?
                     // repeat allowed for this instruction?
                     if (ci->info->flags & NO_RPT)
-                      doFault(ci, illproc_fault, 0, "no rpt allowed for instruction");
+                      doFault(illproc_fault, 0, "no rpt allowed for instruction");
                   }
 
                 if (cu . repeat_first)

@@ -64,7 +64,7 @@ void emCallReportFault (void);
 
 void cu_safe_restore (void);
 
-void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, const char *faultMsg) ///< fault handler
+void doFault(_fault faultNumber, _fault_subtype faultSubtype, const char *faultMsg) ///< fault handler
 #ifdef __GNUC__
   __attribute__ ((noreturn))
 #endif

@@ -77,10 +77,6 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #include "dps8_hw_consts.h"
 
-/* Architectural constants */
-
-
-
 
 
 #define SETF(flags, x)         flags = ((flags) |  (x))
@@ -151,15 +147,7 @@ enum _processor_addressing_mode {
     ABSOLUTE_MODE,
     APPEND_MODE,
     BAR_MODE
-};// processorAddressingMode;
-typedef enum _processor_addressing_mode _processor_addressing_mode;
-
-enum _processor_operating_mode {
-    UNKNOWN_OPERATING_MODE = 0,
-    NORMAL_MODE,
-    PRIVILEGED_MODE,
-} processorOperatingMode;
-typedef enum _processor_operating_mode _processor_operating_mode;
+};
 
 
 
@@ -295,12 +283,6 @@ typedef struct EISstruct EISstruct;
 #define NO_XEC          (1U << 19)  ///< can't be executed via xec/xed
 #define NO_XED          (1U << 20)  ///< No execution via XED instruction
 
-// There are three modes of main memory addressing (absolute mode, append mode, and BAR mode),
-// and two modes of instruction execution (normal mode and privileged mode).
-//#define NO_BAR          (1U << 20)    ///< BAR mode not allowed
-//#define NO_NORMAL       (1U << 21)    ///< No NORMAL mode
-//#define NO_BARNORM      (NO_BAR | NO_NORMAL)
-
 
 
 // opcode metadata (disallowed) modifications
@@ -391,35 +373,12 @@ typedef enum eCAFoper eCAFoper;
 
 #define TRANSOP(i) ((bool) (i->info->flags & (TRANSFER_INS) ))
 
-//word24 doFinalAddressCalculation(DCDstruct *i, MemoryAccessType accessType, word15 segno, word18 offset, word36 *ACVfaults);
-
 //
 // EIS stuff ...
 //
 
 // Numeric operand descriptors
 
-#ifdef AS8  // !!!!!
-
-// AL39 Table 4-3. Alphanumeric Data Type (TA) Codes
-#define CTA9   0U
-#define CTA6   (1U << 13)
-#define CTA4   (2U << 13)
-
-// TN - Type Numeric AL39 Table 4-3. Alphanumeric Data Type (TA) Codes
-#define CTN9           0U   ///< 9-bit
-#define CTN4    (1U << 14)  ///< 4-bit
-
-// S - Sign and Decimal Type (AL39 Table 4-4. Sign and Decimal Type (S) Codes)
-
-#define CSFL            0U   ///< Floating-point, leading sign
-#define CSLS    (1U << 12)   ///< Scaled fixed-point, leading sign
-#define CSTS    (2U << 12)   ///< Scaled fixed-point, trailing sign
-#define CSNS    (3U << 12)   ///< Scaled fixed-pointm unsigned
-
-#else
-
-// Numeric operand descriptors
 
 // AL39 Table 4-3. Alphanumeric Data Type (TA) Codes
 typedef enum _CTA
@@ -450,7 +409,6 @@ typedef enum _CTN
 #define CSTS    2U   ///< Scaled fixed-point, trailing sign
 #define CSNS    3U   ///< Scaled fixed-point, unsigned
 
-#endif
 
 #define MFkAR   0x40U ///< Address register flag. This flag controls interpretation of the ADDRESS field of the operand descriptor just as the "A" flag controls interpretation of the ADDRESS field of the basic and EIS single-word instructions.
 #define MFkPR   0x40U ///< ""
@@ -513,37 +471,11 @@ typedef struct EISaddr
     EISstruct *e;      
 } EISaddr;
 
-
-
-
 typedef struct DCDstruct DCDstruct;
 
-
-
-
-
-
-
-// ============================================================================
-// === Misc constants and macros
-
-// Clocks
-#ifdef USE_IDLE
-#define CLK_TR_HZ (512*1024) // should be 512 kHz, but we'll use 512 Hz for now
-#else
-#define CLK_TR_HZ (512*1) // should be 512 kHz, but we'll use 512 Hz for now
-#endif
-
-#define TR_CLK 1 /* SIMH allows clock ids 0..7 */
-
-// Memory
-#define IOM_MBX_LOW 01200
-#define IOM_MBX_LEN 02200
-#define DN355_MBX_LOW 03400
-#define DN355_MBX_LEN 03000
+// Misc constants and macros
 
 #define ARRAY_SIZE(a) ( sizeof(a) / sizeof((a)[0]) )
-
 
 
 #endif // ifdef DPS8_H

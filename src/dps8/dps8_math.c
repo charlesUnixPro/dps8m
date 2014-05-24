@@ -1664,7 +1664,7 @@ static void dfdvX(DCDstruct *ins, bool bInvert)
         rA = m1;
         
         //fprintf(stderr, "XXX: divide check fault\n");
-        doFault(ins, div_fault, 0, "DFDV: divide check fault");
+        doFault(div_fault, 0, "DFDV: divide check fault");
         return; // XXX: generate a divide check fault,
     }
     
@@ -1763,7 +1763,7 @@ void dvf(DCDstruct *ins)
         
         rA = m1;
         
-        doFault(ins, div_fault, 0, "DVF: divide check fault");
+        doFault(div_fault, 0, "DVF: divide check fault");
     }
     
     uint128 dividend = (uint128)m1 << 63;

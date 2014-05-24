@@ -748,7 +748,7 @@ t_stat computeAbsAddrN (word24 * absAddr, int segno, uint offset)
             //   {
             //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
             //     // initiate a directed fault
-            //     doFault(i, dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+            //     doFault(dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
             //   }
 
             // 12. Generate the 24-bit absolute main memory address 
