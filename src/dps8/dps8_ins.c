@@ -474,9 +474,10 @@ DCDstruct * setupInstruction (void)
     return i;
 }
 
-DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution at address
+// fetch instrcution at address
+DCDstruct * fetchInstruction (word18 addr, DCDstruct * ins)
 {
-    DCDstruct *p = ins; //(ins == NULL) ? newDCDstruct() : ins;
+    DCDstruct *p = ins;
     
     // XXX experimental code; there may be a better way to do this, especially
     // if a pointer to a malloc is getting zapped
