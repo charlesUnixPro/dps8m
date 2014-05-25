@@ -102,7 +102,7 @@ then
     "$DPS8" "$VARIABLE" | ./tidy > $TEST
     ./tidy <  "$VARIABLE".out >  "$VARIABLE".out.tidy
     xxdiff -D -w $TEST "$VARIABLE".out.tidy
-    [ -z "$dont_remove" ] && rm $TEST
+    [ -z "$dont_remove" ] && rm $TEST "$VARIABLE".out.tidy
     if [ "$dont_remove" ]
     then
         echo File: "$TEST" not removed.
@@ -124,7 +124,7 @@ do
 	"$DPS8" "$VARIABLE" | ./tidy > $TEST
         ./tidy <  "$VARIABLE".out >  "$VARIABLE".out.tidy
 	xxdiff -D -w $TEST "$VARIABLE".out.tidy
-    [ -z "$dont_remove" ] && rm $TEST
+    [ -z "$dont_remove" ] && rm $TEST "$VARIABLE".out.tidy
     if [ "$dont_remove" ]
     then
         echo File: "$TEST" not removed.
