@@ -1758,10 +1758,20 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
       ret = dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, pcwp,
                            & stati, & need_data, & is_read);
       //sim_printf ("dev_send_idcw p(0) stati %04o control %o ret %d\n", stati, pcwp -> control, ret);
-      if (ret)
+      //if (ret)
         {
           sim_debug (DBG_DEBUG, & iom_dev,
                      "%s: dev_send_idcw returned %d\n", __func__, ret);
+          // Exit loop if non-zero major status
+          if ((stati & 04000) && // have status
+              ((stati & 03700) != 0))
+            {
+              sim_debug (DBG_DEBUG, & iom_dev,
+                         "%s: IDCW returns non-zero status(%04o); leaving do_payload_channel\n",
+                        __func__, stati);
+              status_service (iom_unit_num, chan, pcwp -> dev_code, stati, 0, 0, 0, is_read);
+              return 0;
+            }
         }
 
 #if 0

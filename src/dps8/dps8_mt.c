@@ -355,6 +355,8 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
               * stati |= 1;
             if (sim_tape_bot (unitp))
               * stati |= 2;
+            if (sim_tape_eom (unitp))
+              * stati |= 0340;
 // XXX This not what sim_tape_eot does
 //--             if (sim_tape_eot(unitp)) {
 //--                 *majorp = 044;  // BUG? should be 3?
@@ -394,7 +396,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
               }
             if (ret != 0)
               {
-                if (ret == MTSE_TMK || ret == MTSE_EOM)
+                if (ret == MTSE_TMK)
                   {
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOF: %s\n", __func__, simh_tape_msg (ret));
@@ -404,20 +406,32 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
                         sim_debug (DBG_ERR, &tape_dev,
                                    "%s: Read %d bytes with EOF.\n", 
                                    __func__, tbc);
+                        return 0;
                       }
                     return 0;
                   }
-                else
+                if (ret == MTSE_EOM)
                   {
-                    sim_debug (DBG_ERR, & tape_dev,
-                               "%s: Cannot read tape: %d - %s\n",
-                               __func__, ret, simh_tape_msg(ret));
-                    sim_debug (DBG_ERR, & tape_dev,
-                               "%s: Returning arbitrary error code\n",
-                               __func__);
-                    * stati = 05001; // BUG: arbitrary error code; config switch
-                    return 1;
+                    sim_debug (DBG_NOTIFY, & tape_dev,
+                                "%s: EOM: %s\n", __func__, simh_tape_msg (ret));
+                    * stati = 04340; // EOT file mark
+                    if (tbc != 0)
+                      {
+                        sim_debug (DBG_ERR, &tape_dev,
+                                   "%s: Read %d bytes with EOM.\n", 
+                                   __func__, tbc);
+                        return 0;
+                      }
+                    return 0;
                   }
+                sim_debug (DBG_ERR, & tape_dev,
+                           "%s: Cannot read tape: %d - %s\n",
+                           __func__, ret, simh_tape_msg(ret));
+                sim_debug (DBG_ERR, & tape_dev,
+                           "%s: Returning arbitrary error code\n",
+                           __func__);
+                * stati = 05001; // BUG: arbitrary error code; config switch
+                return 1;
               }
             tape_statep -> rec_num ++;
             tape_statep -> tbc = tbc;
