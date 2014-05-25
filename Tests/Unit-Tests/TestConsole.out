@@ -1,20 +1,16 @@
-57 (000071) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 Debug output to "STDOUT"
-Debug output to "STDOUT" at Fri Feb 21 20:47:14 2014
+Debug output to "STDOUT" at Sat May 24 14:24:03 2014
+57 (000071) words loaded
 
 Console test
 Expect ALERT
 CONSOLE: ALERT
 
-leaving DIS_cycle
-
 Expect "Hello, world"
 CONSOLE: Hello, world
 
-cpuCycles = 21
-TestConsole-8> g 0
 
 Halt, IC: 010020 (000022420400)
 Goodbye

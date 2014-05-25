@@ -1,0 +1,400 @@
+
+dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+TAPE: unit is read only
+error opening file listings/MR12_5/system_book_.ascii
+20184.ini-42> ld_system_book  listings/MR12_5/system_book_.ascii
+Invalid argument
+DBG(2)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
+DBG(3)> CPU FAULT: fault cycle
+DBG(4)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
+DBG(5)> CPU FAULT: fault cycle
+DBG(6)> CPU FAULT: Fault 10(012), sub 1(01), dfc Y, 'Illegal instruction'
+DBG(7)> CPU FAULT: fault cycle
+DBG(8)> CPU FAULT: Fault 10(012), sub 1(01), dfc Y, 'Illegal instruction'
+DBG(9)> CPU FAULT: fault cycle
+DBG(10)> CPU FAULT: Fault 10(012), sub 1(01), dfc Y, 'Illegal instruction'
+Tape 0 reads record 1
+DBG(11)> CPU FAULT: fault cycle
+entered DIS_cycle
+left DIS_cycle
+DBG(16)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
+DBG(17)> CPU FAULT: fault cycle
+entered DIS_cycle
+left DIS_cycle
+DBG(22)> CPU FAULT: Fault 2(02), sub 0(00), dfc N, 'Master Mode Entry (mme)'
+DBG(23)> CPU FAULT: fault cycle
+entered DIS_cycle
+left DIS_cycle
+DBG(30)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
+DBG(31)> CPU FAULT: fault cycle
+entered DIS_cycle
+left DIS_cycle
+Tape 0 reads record 2
+Tape 0 reads record 3
+Tape 0 reads record 4
+Tape 0 reads record 5
+Tape 0 reads record 6
+Tape 0 reads record 7
+Tape 0 reads record 8
+Tape 0 reads record 9
+Tape 0 reads record 10
+CONSOLE: ALERT
+CONSOLE: bootload_0: Booting system MR12.5 generated 01/11/93 0832.3 mst Mon.
+CONSOLE: 
+Tape 0 reads record 11
+Tape 0 reads record 12
+Tape 0 reads record 13
+Tape 0 reads record 14
+Tape 0 reads record 15
+Tape 0 reads record 16
+Tape 0 reads record 17
+Tape 0 reads record 18
+Tape 0 reads record 19
+Tape 0 reads record 20
+Tape 0 reads record 21
+Tape 0 reads record 22
+Tape 0 reads record 23
+Tape 0 reads record 24
+Tape 0 reads record 25
+Tape 0 reads record 26
+Tape 0 reads record 27
+Tape 0 reads record 28
+Tape 0 reads record 29
+Tape 0 reads record 30
+Tape 0 reads record 31
+Tape 0 reads record 32
+Tape 0 reads record 33
+Tape 0 reads record 34
+Tape 0 reads record 35
+Tape 0 reads record 36
+Tape 0 reads record 37
+Tape 0 reads record 38
+Tape 0 reads record 39
+Tape 0 reads record 40
+Tape 0 reads record 41
+Tape 0 reads record 42
+Tape 0 reads record 43
+Tape 0 reads record 44
+Tape 0 reads record 45
+Tape 0 reads record 46
+Tape 0 reads record 47
+Tape 0 reads record 48
+Tape 0 reads record 49
+Tape 0 reads record 50
+Tape 0 reads record 51
+Tape 0 reads record 52
+Tape 0 reads record 53
+Tape 0 reads record 54
+Tape 0 reads record 55
+Tape 0 reads record 56
+Tape 0 reads record 57
+Tape 0 reads record 58
+Tape 0 reads record 59
+Tape 0 reads record 60
+Tape 0 reads record 61
+Tape 0 reads record 62
+Tape 0 reads record 63
+Tape 0 reads record 64
+Tape 0 reads record 65
+Tape 0 reads record 66
+Tape 0 reads record 67
+Tape 0 reads record 68
+Tape 0 reads record 69
+Tape 0 reads record 70
+Tape 0 reads record 71
+Tape 0 reads record 72
+Tape 0 reads record 73
+Tape 0 reads record 74
+Tape 0 reads record 75
+Tape 0 reads record 76
+Tape 0 reads record 77
+Tape 0 reads record 78
+Tape 0 reads record 79
+Tape 0 reads record 80
+Tape 0 reads record 81
+Tape 0 reads record 82
+Tape 0 reads record 83
+Tape 0 reads record 84
+Tape 0 reads record 85
+Tape 0 reads record 86
+Tape 0 reads record 87
+Tape 0 reads record 88
+Tape 0 reads record 89
+Tape 0 reads record 90
+Tape 0 reads record 91
+Tape 0 reads record 92
+Tape 0 reads record 93
+Tape 0 reads record 94
+Tape 0 reads record 95
+Tape 0 reads record 96
+Tape 0 reads record 97
+Tape 0 reads record 98
+Tape 0 reads record 99
+Tape 0 reads record 100
+Tape 0 reads record 101
+Tape 0 reads record 102
+Tape 0 reads record 103
+Tape 0 reads record 104
+Tape 0 reads record 105
+Tape 0 reads record 106
+Tape 0 reads record 107
+Tape 0 reads record 108
+Tape 0 reads record 109
+Tape 0 reads record 110
+Tape 0 reads record 111
+Tape 0 reads record 112
+Tape 0 reads record 113
+Tape 0 reads record 114
+Tape 0 reads record 115
+Tape 0 reads record 116
+Tape 0 reads record 117
+Tape 0 reads record 118
+Tape 0 reads record 119
+Tape 0 reads record 120
+Tape 0 reads record 121
+Tape 0 reads record 122
+Tape 0 reads record 123
+Tape 0 reads record 124
+Tape 0 reads record 125
+Tape 0 reads record 126
+Tape 0 reads record 127
+Tape 0 reads record 128
+Tape 0 reads record 129
+Tape 0 reads record 130
+Tape 0 reads record 131
+Tape 0 reads record 132
+Tape 0 reads record 133
+Tape 0 reads record 134
+Tape 0 reads record 135
+Tape 0 reads record 136
+Tape 0 reads record 137
+Tape 0 reads record 138
+Tape 0 reads record 139
+Tape 0 reads record 140
+Tape 0 reads record 141
+Tape 0 reads record 142
+Tape 0 reads record 143
+Tape 0 reads record 144
+Tape 0 reads record 145
+Tape 0 reads record 146
+Tape 0 reads record 147
+Tape 0 reads record 148
+Tape 0 reads record 149
+Tape 0 reads record 150
+Tape 0 reads record 151
+Tape 0 reads record 152
+Tape 0 reads record 153
+Tape 0 reads record 154
+Tape 0 reads record 155
+Tape 0 reads record 156
+Tape 0 reads record 157
+Tape 0 reads record 158
+Tape 0 reads record 159
+Tape 0 reads record 160
+Tape 0 reads record 161
+Tape 0 reads record 162
+Tape 0 reads record 163
+Tape 0 reads record 164
+Tape 0 reads record 165
+Tape 0 reads record 166
+Tape 0 reads record 167
+Tape 0 reads record 168
+Tape 0 reads record 169
+Tape 0 reads record 170
+Tape 0 reads record 171
+Tape 0 reads record 172
+Tape 0 reads record 173
+Tape 0 reads record 174
+Tape 0 reads record 175
+Tape 0 reads record 176
+Tape 0 reads record 177
+Tape 0 reads record 178
+Tape 0 reads record 179
+Tape 0 reads record 180
+Tape 0 reads record 181
+Tape 0 reads record 182
+Tape 0 reads record 183
+Tape 0 reads record 184
+Tape 0 reads record 185
+Tape 0 reads record 186
+Tape 0 reads record 187
+Tape 0 reads record 188
+Tape 0 reads record 189
+Tape 0 reads record 190
+Tape 0 reads record 191
+Tape 0 reads record 192
+Tape 0 reads record 193
+Tape 0 reads record 194
+Tape 0 reads record 195
+Tape 0 reads record 196
+Tape 0 reads record 197
+Tape 0 reads record 198
+Tape 0 reads record 199
+Tape 0 reads record 200
+Tape 0 reads record 201
+Tape 0 reads record 202
+Tape 0 reads record 203
+Tape 0 reads record 204
+Tape 0 reads record 205
+Tape 0 reads record 206
+Tape 0 reads record 207
+Tape 0 reads record 208
+Tape 0 reads record 209
+Tape 0 reads record 210
+Tape 0 reads record 211
+Tape 0 reads record 212
+Tape 0 reads record 213
+Tape 0 reads record 214
+Tape 0 reads record 215
+Tape 0 reads record 216
+Tape 0 reads record 217
+Tape 0 reads record 218
+Tape 0 reads record 219
+Tape 0 reads record 220
+Tape 0 reads record 221
+Tape 0 reads record 222
+Tape 0 reads record 223
+Tape 0 reads record 224
+Tape 0 reads record 225
+Tape 0 reads record 226
+Tape 0 reads record 227
+Tape 0 reads record 228
+Tape 0 reads record 229
+Tape 0 reads record 230
+Tape 0 reads record 231
+Tape 0 reads record 232
+Tape 0 reads record 233
+Tape 0 reads record 234
+Tape 0 reads record 235
+Tape 0 reads record 236
+Tape 0 reads record 237
+Tape 0 reads record 238
+Tape 0 reads record 239
+Tape 0 reads record 240
+Tape 0 reads record 241
+Tape 0 reads record 242
+Tape 0 reads record 243
+Tape 0 reads record 244
+Tape 0 reads record 245
+Tape 0 reads record 246
+Tape 0 reads record 247
+Tape 0 reads record 248
+Tape 0 reads record 249
+Tape 0 reads record 250
+Tape 0 reads record 251
+Tape 0 reads record 252
+Tape 0 reads record 253
+Tape 0 reads record 254
+Tape 0 reads record 255
+Tape 0 reads record 256
+Tape 0 reads record 257
+Tape 0 reads record 258
+Tape 0 reads record 259
+Tape 0 reads record 260
+Tape 0 reads record 261
+Tape 0 reads record 262
+Tape 0 reads record 263
+Tape 0 reads record 264
+Tape 0 reads record 265
+Tape 0 reads record 266
+Tape 0 reads record 267
+Tape 0 reads record 268
+Tape 0 reads record 269
+Tape 0 reads record 270
+Tape 0 reads record 271
+Tape 0 reads record 272
+Tape 0 reads record 273
+Tape 0 reads record 274
+Tape 0 reads record 275
+Tape 0 reads record 276
+Tape 0 reads record 277
+Tape 0 reads record 278
+Tape 0 reads record 279
+Tape 0 reads record 280
+Tape 0 reads record 281
+Tape 0 reads record 282
+Tape 0 reads record 283
+Tape 0 reads record 284
+Tape 0 reads record 285
+Tape 0 reads record 286
+Tape 0 reads record 287
+Tape 0 reads record 288
+Tape 0 reads record 289
+Tape 0 reads record 290
+Tape 0 reads record 291
+Tape 0 reads record 292
+Tape 0 reads record 293
+Tape 0 reads record 294
+Tape 0 reads record 295
+Tape 0 reads record 296
+CONSOLE: 0000.0  announce_chwm: 428. pages used of 512. in wired environment.
+CONSOLE: 0000.0  announce_chwm: 706. words used of 1024. in int_unpaged_page_tables.
+CONSOLE: find_rpv_subsystem: Enter RPV data: 
+CONSOLE: M-> 
+[auto-input] query
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: Enter RPV subsystem base channel, as Icc, or "cold". 
+CONSOLE: M-> 
+[auto-input] cold
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: Booting cold will destroy all data on the RPV.
+CONSOLE:    Are you sure that you want to boot cold? 
+CONSOLE: M-> 
+[auto-input] y
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: Enter RPV subsystem base channel, as Icc. 
+CONSOLE: M-> 
+[auto-input] a11
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: Enter RPV subsystem MPC model: 
+CONSOLE: M-> 
+[auto-input] ipc
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: Enter RPV disk drive model: 
+CONSOLE: M-> 
+[auto-input] 3381
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: Enter RPV drive device number: 
+CONSOLE: M-> 
+[auto-input] 0a
+CONSOLE: 
+CONSOLE: find_rpv_subsystem: RPV is a model 3381 drive, number 0a on ipc A11, and this is
+CONSOLE: \c a COLD boot.
+CONSOLE:     Is this correct? 
+CONSOLE: M-> 
+[auto-input] y
+CONSOLE: 
+CONSOLE: 
+CONSOLE: Default RPV layout: (Respond "end" to use it.)
+CONSOLE: 
+CONSOLE: Average seg length = 2.00
+CONSOLE: VTOC size = 15895 pages, 31774 vtoces.
+CONSOLE: 51550 paging records.
+CONSOLE: Constrained by average seg length.
+CONSOLE: part hc 15895. 2500.
+CONSOLE: part conf 18395. 4.
+CONSOLE: part bos 74660. 270.
+CONSOLE: part dump 72660. 2000.
+CONSOLE: part log 72404. 256.
+CONSOLE: part file 72149. 255.
+CONSOLE: part bce 69949. 2200.
+CONSOLE: request: 
+CONSOLE: M-> 
+[auto-input] end
+CONSOLE: 
+CONSOLE: 
+CONSOLE: init_empty_root: Begin rpv initialization. This will take some time.
+DBG(7350688)> CPU FAULT: Fault 17(021), sub 0(00), dfc N, 'PTW0.F == 0'
+DBG(7350689)> CPU FAULT: fault cycle
+DBG(7350699)> CPU ERR: XXX Faking SPL instruction
+DBG(7350699)> CPU ERR: XXX Faking SPL instruction
+CONSOLE: ALERT
+CONSOLE: 0000.0  page_fault: fatal error at loc 8<
+CONSOLE: 0000.0  Multics not in operation; control process: Initializer.SysDaemon.z.
+DBG(15798895)> CPU FAULT: Fault 6(06), sub 0(00), dfc N, 'drl'
+DBG(15798896)> CPU FAULT: fault cycle
+
+test_20184.ini-5> boot iom0
+
+Unimplemented Opcode, IC: 026001 (025740452206)
+Goodbye
