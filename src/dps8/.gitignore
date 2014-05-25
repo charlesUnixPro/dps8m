@@ -1,4 +1,5 @@
 *.o
+*.d
 dps8
 .DS_Store
 dps8.map
