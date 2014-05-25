@@ -20,34 +20,27 @@
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
 
-// XXX Use this when we assume there is only a single unit
+// XXX Use this when we assume there is only a single cpu unit
 #define ASSUME0 0
 
 static void cpu_reset_array (void);
 static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
 
-/* CPU data structures
- 
- cpu_dev      CPU device descriptor
- cpu_unit     CPU unit
- cpu_reg      CPU register list
- cpu_mod      CPU modifier list
- */
+// CPU data structures
 
 #define N_CPU_UNITS 1
+
 // The DPS8M had only 4 ports
 
 static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
+
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int cpu_show_stack(FILE *st, UNIT *uptr, int val, void *desc);
 
-/*! CPU modifier list */
 static MTAB cpu_mod[] = {
-    /* { UNIT_V_UF, 0, "STD", "STD", NULL }, */
-    //{ MTAB_XTD|MTAB_VDV, 0, "SPECIAL", NULL, NULL, &spec_disp },
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO /* | MTAB_VALR */, /* mask */
       0,            /* match */
@@ -116,15 +109,16 @@ const char *sim_stop_messages[] = {
  *
  * From AM81-04 Multics System Maintainance Procedures
  *
- * "A level 68 IOM system may contain a maximum of 7 CPUs, 4 IOMs, 8 SCUs and 16MW of memory
+ * "A level 68 IOM system may contain a maximum of 7 CPUs, 4 IOMs, 8 SCUs and 
+ * 16MW of memory
  * [CAC]: but AN87 says multics only supports two IOMs
  * 
- * ASSIGNMENT: 3 toggle switches determine the base address of the SCU connected
- * to the port. The base address (in KW) is the product of this number and the value
- * defined by the STORE SIZE patch plug for the port.
+ * ASSIGNMENT: 3 toggle switches determine the base address of the SCU 
+ * connected to the port. The base address (in KW) is the product of this 
+ * number and the value defined by the STORE SIZE patch plug for the port.
  *
- * ADDRESS RANGE: toggle FULL/HALF. Determines the size of the SCU as full or half
- * of the STORE SIZE patch.
+ * ADDRESS RANGE: toggle FULL/HALF. Determines the size of the SCU as full or 
+ * half of the STORE SIZE patch.
  *
  * PORT ENABLE: (4? toggles)
  *
@@ -135,15 +129,8 @@ const char *sim_stop_messages[] = {
  *
  * INTERLACE: ... All INTERLACE switches should be OFF for Multics operation.
  *
-
  */
 
-
-//t_stat spec_disp (FILE *st, UNIT *uptr, int value, void *desc)
-//{
-//    printf("In spec_disp()....\n");
-//    return SCPE_OK;
-//}
 
 /*
  * init_opcodes()
@@ -161,141 +148,149 @@ static int is_eis[1024];    // hack
 int xec_side_effect; // hack
 
 void init_opcodes (void)
-{
+  {
     memset(is_eis, 0, sizeof(is_eis));
     
-    is_eis[(opcode1_cmpc<<1)|1] = 1;
-    is_eis[(opcode1_scd<<1)|1] = 1;
-    is_eis[(opcode1_scdr<<1)|1] = 1;
-    is_eis[(opcode1_scm<<1)|1] = 1;
-    is_eis[(opcode1_scmr<<1)|1] = 1;
-    is_eis[(opcode1_tct<<1)|1] = 1;
-    is_eis[(opcode1_tctr<<1)|1] = 1;
-    is_eis[(opcode1_mlr<<1)|1] = 1;
-    is_eis[(opcode1_mrl<<1)|1] = 1;
-    is_eis[(opcode1_mve<<1)|1] = 1;
-    is_eis[(opcode1_mvt<<1)|1] = 1;
-    is_eis[(opcode1_cmpn<<1)|1] = 1;
-    is_eis[(opcode1_mvn<<1)|1] = 1;
-    is_eis[(opcode1_mvne<<1)|1] = 1;
-    is_eis[(opcode1_csl<<1)|1] = 1;
-    is_eis[(opcode1_csr<<1)|1] = 1;
-    is_eis[(opcode1_cmpb<<1)|1] = 1;
-    is_eis[(opcode1_sztl<<1)|1] = 1;
-    is_eis[(opcode1_sztr<<1)|1] = 1;
-    is_eis[(opcode1_btd<<1)|1] = 1;
-    is_eis[(opcode1_dtb<<1)|1] = 1;
-    is_eis[(opcode1_dv3d<<1)|1] = 1;
-}
+#define IS_EIS(opc) is_eis [(opc << 1) | 1] = 1;
+    IS_EIS (opcode1_cmpc);
+    IS_EIS (opcode1_scd);
+    IS_EIS (opcode1_scdr);
+    IS_EIS (opcode1_scm);
+    IS_EIS (opcode1_scmr);
+    IS_EIS (opcode1_tct);
+    IS_EIS (opcode1_tctr);
+    IS_EIS (opcode1_mlr);
+    IS_EIS (opcode1_mrl);
+    IS_EIS (opcode1_mve);
+    IS_EIS (opcode1_mvt);
+    IS_EIS (opcode1_cmpn);
+    IS_EIS (opcode1_mvn);
+    IS_EIS (opcode1_mvne);
+    IS_EIS (opcode1_csl);
+    IS_EIS (opcode1_csr);
+    IS_EIS (opcode1_cmpb);
+    IS_EIS (opcode1_sztl);
+    IS_EIS (opcode1_sztr);
+    IS_EIS (opcode1_btd);
+    IS_EIS (opcode1_dtb);
+    IS_EIS (opcode1_dv3d);
+  }
 
 
-/*!
+/*
  * initialize segment table according to the contents of DSBR ...
  */
+
 static t_stat dpsCmd_InitUnpagedSegmentTable ()
-{
-    if (DSBR.U == 0)
-    {
-        sim_printf("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
+  {
+    if (DSBR . U == 0)
+      {
+        sim_printf  ("Cannot initialize unpaged segment table because DSBR.U says it is \"paged\"\n");
         return SCPE_OK;    // need a better return value
-    }
+      }
     
-    if (DSBR.ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
-        if (!get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
+    if (DSBR . ADDR == 0) // DSBR *probably* not initialized. Issue warning and ask....
+      {
+        if (! get_yn ("DSBR *probably* uninitialized (DSBR.ADDR == 0). Proceed anyway [N]?", FALSE))
+          {
             return SCPE_OK;
-    
+          }
+      }
     
     word15 segno = 0;
     while (2 * segno < (16 * (DSBR.BND + 1)))
-    {
+      {
         //generate target segment SDW for DSBR.ADDR + 2 * segno.
         word24 a = DSBR.ADDR + 2 * segno;
         
         // just fill with 0's for now .....
-        core_write(a + 0, 0);
-        core_write(a + 1, 0);
+        core_write (a + 0, 0);
+        core_write (a + 1, 0);
         
-        segno += 1; // onto next segment SDW
-    }
+        segno ++; // onto next segment SDW
+      }
     
-    if (!sim_quiet) sim_printf("zero-initialized segments 0 .. %d\n", segno - 1);
+    if ( !sim_quiet)
+      sim_printf("zero-initialized segments 0 .. %d\n", segno - 1);
     return SCPE_OK;
-}
+  }
 
 static t_stat dpsCmd_InitSDWAM ()
-{
-    memset(SDWAM, 0, sizeof(SDWAM));
+  {
+    memset (SDWAM, 0, sizeof (SDWAM));
     
-    if (!sim_quiet) sim_printf("zero-initialized SDWAM\n");
+    if (! sim_quiet)
+      sim_printf ("zero-initialized SDWAM\n");
     return SCPE_OK;
-}
+  }
 
 // Assumes unpaged DSBR
 
-_sdw0 *fetchSDW(word15 segno)
-{
+_sdw0 *fetchSDW (word15 segno)
+  {
     word36 SDWeven, SDWodd;
     
-    core_read2(DSBR.ADDR + 2 * segno, &SDWeven, &SDWodd);
+    core_read2 (DSBR . ADDR + 2 * segno, & SDWeven, & SDWodd);
     
     // even word
     static _sdw0 _s;
     
-    _sdw0 *SDW = &_s;   //calloc(1, sizeof(_sdw0));
-    memset(SDW, 0, sizeof(_s));
+    _sdw0 *SDW = &_s;
+    memset (SDW, 0, sizeof (_s));
     
-    SDW->ADDR = (SDWeven >> 12) & 077777777;
-    SDW->R1 = (SDWeven >> 9) & 7;
-    SDW->R2 = (SDWeven >> 6) & 7;
-    SDW->R3 = (SDWeven >> 3) & 7;
-    SDW->F = TSTBIT(SDWeven, 2);
-    SDW->FC = SDWeven & 3;
+    SDW -> ADDR = (SDWeven >> 12) & 077777777;
+    SDW -> R1 = (SDWeven >> 9) & 7;
+    SDW -> R2 = (SDWeven >> 6) & 7;
+    SDW -> R3 = (SDWeven >> 3) & 7;
+    SDW -> F = TSTBIT(SDWeven, 2);
+    SDW -> FC = SDWeven & 3;
     
     // odd word
-    SDW->BOUND = (SDWodd >> 21) & 037777;
-    SDW->R = TSTBIT(SDWodd, 20);
-    SDW->E = TSTBIT(SDWodd, 19);
-    SDW->W = TSTBIT(SDWodd, 18);
-    SDW->P = TSTBIT(SDWodd, 17);
-    SDW->U = TSTBIT(SDWodd, 16);
-    SDW->G = TSTBIT(SDWodd, 15);
-    SDW->C = TSTBIT(SDWodd, 14);
-    SDW->EB = SDWodd & 037777;
+    SDW -> BOUND = (SDWodd >> 21) & 037777;
+    SDW -> R = TSTBIT(SDWodd, 20);
+    SDW -> E = TSTBIT(SDWodd, 19);
+    SDW -> W = TSTBIT(SDWodd, 18);
+    SDW -> P = TSTBIT(SDWodd, 17);
+    SDW -> U = TSTBIT(SDWodd, 16);
+    SDW -> G = TSTBIT(SDWodd, 15);
+    SDW -> C = TSTBIT(SDWodd, 14);
+    SDW -> EB = SDWodd & 037777;
     
     return SDW;
-}
+  }
 
-static char *strDSBR(void)
-{
-    static char buff[256];
-    sprintf(buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
+static char * strDSBR (void)
+  {
+    static char buff [256];
+    sprintf (buff, "DSBR: ADDR=%06o BND=%05o U=%o STACK=%04o", DSBR.ADDR, DSBR.BND, DSBR.U, DSBR.STACK);
     return buff;
-}
+  }
 
-static void printDSBR()
-{
-    sim_printf("%s\n", strDSBR());
-}
+static void printDSBR (void)
+  {
+    sim_printf ("%s\n", strDSBR ());
+  }
 
 
-char *strSDW0(_sdw0 *SDW)
-{
-    static char buff[256];
+char * strSDW0 (_sdw0 * SDW)
+  {
+    static char buff [256];
     
     //if (SDW->ADDR == 0 && SDW->BOUND == 0) // need a better test
-    if (!SDW->F) 
-        sprintf(buff, "*** Uninitialized ***");
+    if (! SDW -> F) 
+      sprintf (buff, "*** Uninitialized ***");
     else
-        sprintf(buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
-                SDW->ADDR, SDW->R1, SDW->R2, SDW->R3, SDW->F, SDW->FC, SDW->BOUND, SDW->R, SDW->E, SDW->W,
-                SDW->P, SDW->U, SDW->G, SDW->C, SDW->EB);
+      sprintf (buff, "ADDR=%06o R1=%o R2=%o R3=%o F=%o FC=%o BOUND=%o R=%o E=%o W=%o P=%o U=%o G=%o C=%o EB=%o",
+               SDW -> ADDR, SDW -> R1, SDW -> R2, SDW -> R3, SDW -> F,
+               SDW -> FC, SDW -> BOUND, SDW -> R, SDW -> E, SDW -> W,
+               SDW -> P, SDW -> U, SDW -> G, SDW -> C, SDW -> EB);
     return buff;
-}
+ }
 
-static void printSDW0(_sdw0 *SDW)
-{
-    sim_printf("%s\n", strSDW0(SDW));
-}
+static void printSDW0 (_sdw0 *SDW)
+  {
+    sim_printf ("%s\n", strSDW0 (SDW));
+  }
 
 static t_stat dpsCmd_DumpSegmentTable()
 {
@@ -962,13 +957,13 @@ void cancel_run(t_stat reason)
 static uint get_highest_intr (void)
   {
 // XXX In theory there needs to be interlocks on this?
-    for (int int_num = 32 - 1; int_num >= 0; int_num --) // XXX Magic number
+    for (int int_num = N_INTERRUPTS - 1; int_num >= 0; int_num --)
       if (events . interrupts [int_num])
         {
           events . interrupts [int_num] = 0;
 
           int cnt = 0;
-          for (int i = 0; i < 32; i ++) // XXX Magic number
+          for (int i = 0; i < N_INTERRUPTS; i ++)
             if (events . interrupts [i])
               cnt ++;
           events . int_pending = !!cnt;
@@ -1112,6 +1107,7 @@ t_stat sim_instr (void)
 
         reason = 0;
 
+        // Process deferred events and breakpoints
         reason = simh_hooks ();
         if (reason)
           return reason;
@@ -1138,18 +1134,22 @@ t_stat sim_instr (void)
                 // Set to ring 0
                 PPR . PRR = 0;
 
-                // clear interrupt, load interrupt pair into instruction buffer
-                // set INTERRUPT_EXEC_cycle
+                // Check that an interrupt is actually pending
                 if (cpu . interrupt_flag)
                   {
-                    // We should do this later, but doing it now allows us to
-                    // avoid clean up for no interrupt pending.
+                    // clear interrupt, load interrupt pair into instruction 
+                    // buffer; set INTERRUPT_EXEC_cycle.
+
+                    // In the h/w this is done later, but doing it now allows 
+                    // us to avoid clean up for no interrupt pending.
 
                     uint intr_pair_addr;
                     intr_pair_addr = get_highest_intr ();
                     if (intr_pair_addr != 1) // no interrupts 
                       {
-                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", intr_pair_addr);
+                        sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
+                                   intr_pair_addr);
+
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
                         instr_buf_state = IB_PAIR;

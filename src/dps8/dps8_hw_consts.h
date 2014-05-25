@@ -534,6 +534,12 @@ typedef enum _fault_subtype _fault_subtype;
 
 
 //
+// Interrupts
+//
+
+#define N_INTERRUPTS 32
+
+//
 // Memory map
 //
 

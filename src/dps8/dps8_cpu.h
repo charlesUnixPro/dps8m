@@ -1042,7 +1042,7 @@ typedef struct {
     int low_group; // Lowest group-number fault preset
     uint32 group7; // bitmask for multiple group 7 faults
     int fault[7]; // only one fault in groups 1..6 can be pending
-    bool interrupts[32];
+    bool interrupts[N_INTERRUPTS];
 } events_t;
 extern events_t events;
 
