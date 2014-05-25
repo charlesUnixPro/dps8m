@@ -101,7 +101,7 @@ DEVICE opcon_dev = {
  */
 
 #include <ctype.h>
-typedef struct s_console_state
+typedef struct con_state_t
   {
     // Hangs off the device structure
     enum { no_mode, read_mode, write_mode } io_mode;
@@ -138,15 +138,18 @@ static t_stat opcon_reset (DEVICE * __attribute__((unused)) dptr)
     console_state . tailp = console_state . buf;
     console_state . readp = console_state . buf;
     console_state . have_eol = 0;
-    console_state . auto_input = NULL;
-    console_state . autop = NULL;
     return SCPE_OK;
   }
+
+// Once-only initialation
 
 void console_init()
 {
     for (int i = 0; i < N_OPCON_UNITS; i ++)
       cables_from_ioms_to_con [i] . iom_unit_num = -1;
+    opcon_reset (& opcon_dev);
+    console_state . auto_input = NULL;
+    console_state . autop = NULL;
 }
 
 t_stat cable_opcon (int iom_unit_num, int chan_num)
@@ -168,46 +171,45 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
     return SCPE_OK;
   }
 
-static int opcon_autoinput_set(UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) val, char * __attribute__((unused)) cptr, void * __attribute__((unused)) desc)
-{
-//--     DEVICE *devp = find_opcon();
-//--     if (devp == NULL)
-//--         return 1;
-//--     chan_devinfo* devinfop = devp->ctxt;
-//--     struct s_console_state *console_state .  devinfop->statep;
-//--     if (console_state . auto_input) {
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Discarding prior auto-input., __func__\n");
-//--         free(console_state . auto_input);
-//--     }
-//--     if (cptr) {
-//--         console_state . auto_input = strdup(cptr);
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input now: %s\n", cptr, __func__);
-//--     } else {
-//--         console_state . auto_input = NULL;
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
-//--     }
-//--     console_state . autop = console_state . auto_input;
+static int opcon_autoinput_set(UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) val, char *  cptr, void * __attribute__((unused)) desc)
+  {
+    if (console_state . auto_input)
+      {
+        sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Discarding prior auto-input., __func__\n", __func__);
+        free (console_state . auto_input);
+        console_state . auto_input = NULL;
+      }
+    if (cptr)
+      {
+        console_state . auto_input = strdupesc (cptr);
+        //console_state . auto_input = strdup (cptr);
+        sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input now: %s\n", __func__, cptr);
+      }
+    else
+      {
+        console_state . auto_input = NULL;
+        sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
+      }
+    console_state . autop = console_state . auto_input;
     return SCPE_OK;
-}
+  }
 
 static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
-{
-//--     sim_debug (DBG_NOTIFY, & opcon_dev, "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
-//--             __func__, st, uptr, val, desc);
-//--     
-//--     DEVICE *devp = find_opcon();
-//--     if (devp == NULL)
-//--         return 1;
-//--     chan_devinfo* devinfop = devp->ctxt;
-//--     struct s_console_state *console_state .  devinfop->statep;
-//--     if (console_state . auto_input == NULL)
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: No auto-input exists.\n", __func__);
-//--     else
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input is/was: %s\n", __func__, console_state . auto_input);
-//--     
+  {
+    sim_debug (DBG_NOTIFY, & opcon_dev,
+               "%s: FILE=%p, uptr=%p, val=%d,desc=%p\n",
+               __func__, st, uptr, val, desc);
+
+    if (console_state . auto_input == NULL)
+      sim_debug (DBG_NOTIFY, & opcon_dev,
+                 "%s: No auto-input exists.\n", __func__);
+    else
+      sim_debug (DBG_NOTIFY, & opcon_dev,
+        "%s: Auto-input is/was: %s\n", __func__, console_state . auto_input);
+  
     return SCPE_OK;
-}
-//-- 
+  }
+ 
 //-- // ============================================================================
 //-- 
 //-- /*
@@ -241,7 +243,7 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
 //--         sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, no device info for channel 0%o\n", chan);
 //--         return 1;
 //--     }
-//--     struct s_console_state *console_state .  devinfop->statep;
+//--     con_state_t *console_state .  devinfop->statep;
 //--     if (dev_code != 0) {
 //--         // Consoles don't have units
 //--         *majorp = 05;
@@ -250,7 +252,7 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
 //--         return 1;
 //--     }
 //--     if (console_state . = NULL) {
-//--         if ((console_state .  malloc(sizeof(struct s_console_state))) == NULL) {
+//--         if ((console_state .  malloc(sizeof(con_state_t))) == NULL) {
 //--             sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, malloc failed.\n");
 //--             return 1;
 //--         }
@@ -282,7 +284,7 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 
     * need_data = false;
     * is_read = true;
  
-    check_keyboard ();
+    //check_keyboard ();
     
     switch (p -> dev_cmd)
       {
@@ -386,7 +388,7 @@ static int con_iom_io (UNIT * __attribute__((unused)) unitp, uint chan, uint __a
       }
 
     * cp = 0;
-    check_keyboard ();
+    //check_keyboard ();
     
     switch (console_state . io_mode)
       {
@@ -658,7 +660,7 @@ static void check_keyboard (void)
 //--         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device info\n");
 //--         return;
 //--     }
-//--     struct s_console_state *con_statep = devinfop->statep;
+//--     con_state_t *con_statep = devinfop->statep;
 //--     if (con_statep == NULL) {
 //--         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No state\n");
 //--         return;
@@ -677,22 +679,25 @@ static void check_keyboard (void)
         int c;
         if (console_state . io_mode == read_mode && console_state . autop != NULL)
           {
-            if (announce)
-              {
-                const char *msg = "[auto-input] ";
-                for (const char *s = msg; *s != 0; ++s)
-                    sim_putchar(*s);
-                announce = 0;
-              }
             c = * (console_state . autop);
             if (c == 0)
               {
-                console_state . have_eol = 1;
+                //console_state . have_eol = 1;
                 free(console_state . auto_input);
                 console_state . auto_input = NULL;
                 console_state . autop = NULL;
-                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got auto-input EOL\n");
-                return;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got auto-input EOS\n");
+                goto poll; // return;
+              }
+            if (announce)
+              {
+                sim_printf ("[auto-input] ");
+                announce = 0;
+              }
+            if (c == '\005')
+              {
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got <sim stop>\n");
+                return; // User typed ^E to stop simulation
               }
             ++ console_state . autop;
             if (isprint (c))
@@ -702,6 +707,7 @@ static void check_keyboard (void)
           }
         else
           {
+poll:
             c = sim_poll_kbd();
             if (c == SCPE_OK)
                 return; // no input

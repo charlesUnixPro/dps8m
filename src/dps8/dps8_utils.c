@@ -1348,3 +1348,55 @@ void cfgparse_done (config_state_t * state)
     state -> copy = NULL;
   }
 
+// strdup with limited C-style escape processing
+//
+//  strdupesc ("foo\nbar") --> 'f' 'o' 'o' 012 'b' 'a' 'r'
+//
+//  Handles:
+//   \\
+//   \n
+//   \t
+//   \f
+//   \r
+//
+//  Also, a simh specific:
+//
+//   \e   (end simulation)
+//
+//  all others silently ignored and left unprocessed
+//
+
+char * strdupesc (const char * str)
+  {
+    char * buf = strdup (str);
+    char * p = buf;
+    while (* p)
+      {
+        if (* p != '\\')
+          {
+            p ++;
+            continue;
+          }
+        if (p [1] == '\\')
+          * p = '\\';
+        else if (p [1] == 'n')
+          * p = '\n';
+        else if (p [1] == 't')
+          * p = '\t';
+        else if (p [1] == 'f')
+          * p = '\f';
+        else if (p [1] == 'r')
+          * p = '\r';
+        else if (p [1] == 'e')
+          * p = '\005';
+        else
+          {
+            p ++;
+            continue;
+          }
+        p ++;
+        memmove (p, p + 1, strlen (p + 1) + 1);
+      }
+    return buf;
+  }
+

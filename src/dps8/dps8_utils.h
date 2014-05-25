@@ -69,3 +69,4 @@ void sim_printf( const char * format, ... )    // not really simh, by my impl
 
 word36 getbits36(word36 x, uint i, uint n);
 word36 setbits36(word36 x, uint p, uint n, word36 val);
+char * strdupesc (const char * str);
