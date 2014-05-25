@@ -1373,10 +1373,12 @@ else if (strcmp (gbuf, "DEBUG") == 0) {                 /* output to debug? */
 else if (strcmp (gbuf, "STDOUT") == 0) {                /* output to stdout? */
     *pf = stdout;
     *pref = NULL;
+    setlinebuf (*pf);
     }
 else if (strcmp (gbuf, "STDERR") == 0) {                /* output to stderr? */
     *pf = stderr;
     *pref = NULL;
+    setlinebuf (*pf);
     }
 else {
     *pref = calloc (1, sizeof(**pref));
@@ -1390,6 +1392,7 @@ else {
         *pref = NULL;
         return SCPE_OPENERR;
         }
+    setlinebuf (*pf);
     (*pref)->file = *pf;
     (*pref)->refcount = 1;                               /* need close */
     }

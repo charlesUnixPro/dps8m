@@ -161,6 +161,7 @@ t_stat sim_tape_position (UNIT *uptr, uint8 flags, uint32 recs, uint32 *recskipp
 t_stat sim_tape_position_a (UNIT *uptr, uint8 flags, uint32 recs, uint32 *recsskipped, uint32 files, uint32 *filesskipped, uint32 *objectsskipped, TAPE_PCALLBACK callback);
 t_stat sim_tape_reset (UNIT *uptr);
 t_bool sim_tape_bot (UNIT *uptr);
+t_bool sim_tape_eom (UNIT *uptr);
 t_bool sim_tape_wrp (UNIT *uptr);
 t_bool sim_tape_eot (UNIT *uptr);
 t_stat sim_tape_set_fmt (UNIT *uptr, int32 val, char *cptr, void *desc);

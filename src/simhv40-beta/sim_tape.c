@@ -1809,6 +1809,15 @@ uint32 f = MT_GET_FMT (uptr);
 return (uptr->pos <= fmts[f].bot)? TRUE: FALSE;
 }
 
+/* Test for EOM */
+
+t_bool sim_tape_eom (UNIT *uptr)
+{
+uint32 f = MT_GET_FMT (uptr);
+
+return (feof (uptr->fileref)) ? TRUE: FALSE;
+}
+
 /* Test for end of tape */
 
 t_bool sim_tape_eot (UNIT *uptr)
