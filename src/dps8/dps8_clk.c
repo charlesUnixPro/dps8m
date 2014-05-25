@@ -13,7 +13,7 @@
 
 #define N_CLK_UNITS 1
 static t_stat clk_svc(UNIT *up);
-UNIT TR_clk_unit [N_CLK_UNITS] = {{ UDATA(&clk_svc, UNIT_IDLE, 0) }};
+UNIT TR_clk_unit [N_CLK_UNITS] = {{ UDATA(&clk_svc, UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL }};
 
 static DEBTAB clk_dt [] =
   {
@@ -52,7 +52,11 @@ DEVICE clk_dev = {
     0,           /* debug control flags */
     clk_dt,      /* debug flag names */
     NULL,        /* memory size change */
-    NULL         /* logical name */
+    NULL,        /* logical name */
+    NULL,        // help
+    NULL,        // attach help
+    NULL,        // help context
+    NULL         // description
 };
 
 

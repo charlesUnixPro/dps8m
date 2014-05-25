@@ -247,7 +247,6 @@ struct opCode {
     int32 flags;        ///< various and sundry flags
     int32 mods;         ///< disallowed addr mods
     int32 ndes;         ///< number of operand descriptor words for instruction (mw EIS)
-    int32 opcode;       ///< opcode # (if needed)
 };
 typedef struct opCode opCode;
 

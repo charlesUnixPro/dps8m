@@ -1052,7 +1052,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
             int n = sscanf(c, "%o %*s %llo", &maddr, &data);
             if (n == 2)
             {
-                if (maddr > currSegment->size)
+                if ((int) maddr > currSegment->size)
                 {
                     sim_printf("ERROR: load_oct(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
                     return SCPE_NXM;
@@ -1243,7 +1243,7 @@ char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, wor
     segment *s;
     DL_FOREACH(segments, s)
     {
-        if (s -> segno == segno)
+        if (s -> segno == (int) segno)
         {
             if (compname)
                 * compname = s -> name;

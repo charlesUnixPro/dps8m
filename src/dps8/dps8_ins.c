@@ -1208,7 +1208,7 @@ static t_stat DoBasicInstruction (void)
         case 0775:  ///< alr
             {
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a0 = rA & SIGN36;    ///< A0
                     rA <<= 1;               // shift left 1
@@ -1236,7 +1236,7 @@ static t_stat DoBasicInstruction (void)
                 word36 tmpSign = rA & SIGN36;
                 CLRF(cu.IR, I_CARRY);
 
-                for (int i = 0; i < tmp36; i ++)
+                for (uint i = 0; i < tmp36; i ++)
                 {
                     rA <<= 1;
                     if (tmpSign != (rA & SIGN36))
@@ -1286,7 +1286,7 @@ static t_stat DoBasicInstruction (void)
             rA &= DMASK; // Make sure the shifted in bits are 0
             word18 tmp18 = TPR.CA & 0177;   // CY bits 11-17
 
-            for(int i = 0 ; i < tmp18 ; i++)
+            for(uint i = 0 ; i < tmp18 ; i++)
             {
                 bool a0 = rA & SIGN36;    ///< A0
                 rA >>= 1;               // shift right 1
@@ -1315,7 +1315,7 @@ static t_stat DoBasicInstruction (void)
 
             {
                 word36 tmp36 = TPR.CA & 0177;      // CY bits 11-17
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a0 = rA & SIGN36;    ///< A0
                 
@@ -1353,7 +1353,7 @@ static t_stat DoBasicInstruction (void)
  
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
                 word36 tmpSign = rQ & SIGN36;
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     rA <<= 1;               // shift left 1
             
@@ -1388,7 +1388,7 @@ static t_stat DoBasicInstruction (void)
                 rA &= DMASK; // Make sure the shifted in bits are 0
                 rQ &= DMASK; // Make sure the shifted in bits are 0
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a35 = rA & 1;      ///< A35
                     rA >>= 1;               // shift right 1
@@ -1419,7 +1419,7 @@ static t_stat DoBasicInstruction (void)
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
                 rA &= DMASK; // Make sure the shifted in bits are 0
                 rQ &= DMASK; // Make sure the shifted in bits are 0
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool a0 = rA & SIGN36;    ///< A0
                     bool a35 = rA & 1;      ///< A35
@@ -1451,7 +1451,7 @@ static t_stat DoBasicInstruction (void)
             /// each bit leaving Q0 into Q35.
             {
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool q0 = rQ & SIGN36;    ///< Q0
                     rQ <<= 1;               // shift left 1
@@ -1479,7 +1479,7 @@ static t_stat DoBasicInstruction (void)
                 word36 tmpSign = rQ & SIGN36;
                 CLRF(cu.IR, I_CARRY);
 
-                for (int i = 0; i < tmp36; i ++)
+                for (uint i = 0; i < tmp36; i ++)
                 {
                     rQ <<= 1;
                     if (tmpSign != (rQ & SIGN36))
@@ -1528,7 +1528,7 @@ static t_stat DoBasicInstruction (void)
             {
                 rQ &= DMASK; // Make sure the shifted in bits are 0
                 word36 tmp36 = TPR.CA & 0177;   // CY bits 11-17
-                for(int i = 0 ; i < tmp36 ; i++)
+                for(uint i = 0 ; i < tmp36 ; i++)
                 {
                     bool q0 = rQ & SIGN36;    ///< Q0
                     rQ >>= 1;               // shift right 1

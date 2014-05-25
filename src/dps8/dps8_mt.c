@@ -111,22 +111,22 @@ static UNIT mt_unit [N_MT_UNITS_MAX] = {
     // run commands, including CONTINUE.
     // Turning UNIT_SEQ off.
     // XXX Should we rewind on reset? What is the actual behavior?
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0)}
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
 };
 
 static DEBTAB mt_dt [] =
@@ -144,8 +144,8 @@ static DEBTAB mt_dt [] =
 
 static MTAB mt_mod [] =
   {
-    { UNIT_WATCH, UNIT_WATCH, "WATCH", "WATCH", NULL, NULL },
-    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
+    { UNIT_WATCH, UNIT_WATCH, "WATCH", "WATCH", NULL, NULL, NULL, NULL },
+    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL, NULL, NULL },
     {
        MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
       0,            /* match */
@@ -153,7 +153,8 @@ static MTAB mt_mod [] =
       "REWIND",     /* match string */
       mt_rewind,    /* validation routine */
       NULL,         /* display routine */
-      NULL          /* value descriptor */
+      NULL,         /* value descriptor */
+      NULL          // help
     },
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
@@ -162,9 +163,10 @@ static MTAB mt_mod [] =
       "NUNITS",         /* match string */
       mt_set_nunits, /* validation routine */
       mt_show_nunits, /* display routine */
-      "Number of TAPE units in the system" /* value descriptor */
+      "Number of TAPE units in the system", /* value descriptor */
+      NULL          // help
     },
-    { 0 }
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
   };
 
 #define MT_UNIT_NUM(uptr) ((uptr) - mt_unit)
@@ -172,28 +174,32 @@ static MTAB mt_mod [] =
 static t_stat mt_reset (DEVICE * dptr);
 
 DEVICE tape_dev = {
-    "TAPE",       /* name */
-    mt_unit,      /* units */
-    NULL,         /* registers */
-    mt_mod,         /* modifiers */
-    N_MT_UNITS,   /* #units */
-    10,           /* address radix */
-    31,           /* address width */
-    1,            /* address increment */
-    8,            /* address width */
-    9,            /* data width */
-    NULL,         /* examine routine */
-    NULL,         /* deposit routine */
-    mt_reset,     /* reset routine */
-    NULL,         /* boot routine */
+    "TAPE",           /* name */
+    mt_unit,          /* units */
+    NULL,             /* registers */
+    mt_mod,           /* modifiers */
+    N_MT_UNITS,       /* #units */
+    10,               /* address radix */
+    31,               /* address width */
+    1,                /* address increment */
+    8,                /* data radix */
+    9,                /* data width */
+    NULL,             /* examine routine */
+    NULL,             /* deposit routine */
+    mt_reset,         /* reset routine */
+    NULL,             /* boot routine */
     &sim_tape_attach, /* attach routine */
     &sim_tape_detach, /* detach routine */
-    NULL,         /* context */
-    DEV_DEBUG,    /* flags */
-    0,            /* debug control flags */
+    NULL,             /* context */
+    DEV_DEBUG,        /* flags */
+    0,                /* debug control flags */
     mt_dt,            /* debug flag names */
-    NULL,         /* memory size change */
-    NULL          /* logical name */
+    NULL,             /* memory size change */
+    NULL,             /* logical name */
+    NULL,             // attach help
+    NULL,             // help
+    NULL,             // help context
+    NULL,             // device description
 };
 
 //-- /* unfinished; copied from tape_dev */
@@ -225,7 +231,7 @@ void mt_init(void)
 
 static t_stat mt_reset (DEVICE * dptr)
   {
-    for (int i = 0; i < dptr -> numunits; i ++)
+    for (int i = 0; i < (int) dptr -> numunits; i ++)
       {
         sim_tape_reset (& mt_unit [i]);
         sim_cancel (& mt_unit [i]);
@@ -247,7 +253,7 @@ static t_stat mt_reset (DEVICE * dptr)
 
 t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
   {
-    if (mt_unit_num < 0 || mt_unit_num >= tape_dev . numunits)
+    if (mt_unit_num < 0 || mt_unit_num >= (int) tape_dev . numunits)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);
         sim_printf ("cable_mt: mt_unit_num out of range <%d>\n", mt_unit_num);

@@ -36,8 +36,8 @@ static int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc);
 static MTAB opcon_mod[] = {
     { MTAB_XTD | MTAB_VDV | MTAB_VALO | MTAB_NC,
         0, NULL, "AUTOINPUT",
-        opcon_autoinput_set, opcon_autoinput_show, NULL },
-    { 0 }
+        opcon_autoinput_set, opcon_autoinput_show, NULL, NULL },
+    { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
 };
 
 
@@ -58,7 +58,7 @@ static DEBTAB opcon_dt [] =
 #define N_OPCON_UNITS 1
 #define OPCON_UNIT_NUM 0
 
-static UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0) }};
+static UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }};
 
 static t_stat opcon_reset (DEVICE * dptr);
 
@@ -84,7 +84,11 @@ DEVICE opcon_dev = {
     0,             /* debug control flags */
     opcon_dt,      /* debug flag names */
     NULL,          /* memory size change */
-    NULL           /* logical name */
+    NULL,          /* logical name */
+    NULL,          // help
+    NULL,          // attach help
+    NULL,          // help context
+    NULL           // description
 };
 
 /*

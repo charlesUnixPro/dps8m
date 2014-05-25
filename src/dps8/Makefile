@@ -20,7 +20,9 @@ CFLAGS += -Wunused-argument \
 -Wunused-parameter \
 -Wunused-value \
 -Wunused-variable \
--Wunused
+-Wunused \
+-Wextra
+
 #CFLAGS += -Wsign-conversion
 zzzCFLAGS += \
 -Wabi \

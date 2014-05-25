@@ -38,7 +38,7 @@ static void set_TEMPORARY_ABSOLUTE_mode (void);
 #define N_CPU_UNITS 1
 // The DPS8M had only 4 ports
 
-static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE) }};
+static UNIT cpu_unit [N_CPU_UNITS] = {{ UDATA (NULL, UNIT_FIX|UNIT_BINK, MEMSIZE), 0, 0, 0, 0, 0, NULL, NULL }};
 #define UNIT_NUM(uptr) ((uptr) - cpu_unit)
 static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc);
@@ -55,12 +55,13 @@ static MTAB cpu_mod[] = {
       "CONFIG",         /* match string */
       cpu_set_config,         /* validation routine */
       cpu_show_config, /* display routine */
-      NULL          /* value descriptor */
+      NULL,          /* value descriptor */
+      NULL // help
     },
     { MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_NC,
       0, "STACK", NULL,
-      NULL, cpu_show_stack, NULL },
-    { 0 }
+      NULL, cpu_show_stack, NULL, NULL },
+    { 0, 0, NULL, NULL, NULL, NULL, NULL, NULL }
 };
 
 static DEBTAB cpu_dt[] = {
@@ -539,7 +540,7 @@ static void setup_scpage_map (void)
     sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", SCPAGE, N_SCPAGES, MAXMEMSIZE);
 
     // Initalize to unmapped
-    for (int pg = 0; pg < N_SCPAGES; pg ++)
+    for (uint pg = 0; pg < N_SCPAGES; pg ++)
       scpage_map [pg] = -1; 
 
     // For each port (which is connected to a SCU
@@ -561,14 +562,14 @@ static void setup_scpage_map (void)
 
         sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
 
-        for (int pg = 0; pg < sz; pg ++)
+        for (uint pg = 0; pg < sz; pg ++)
           {
-            int scpg = base + pg;
-            if (scpg >= 0 && scpg < N_SCPAGES)
+            uint scpg = base + pg;
+            if (scpg < N_SCPAGES)
               scpage_map [scpg] = port_num;
           }
       }
-    for (int pg = 0; pg < N_SCPAGES; pg ++)
+    for (uint pg = 0; pg < N_SCPAGES; pg ++)
       sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: %d:%d\n", pg, scpage_map [pg]);
   }
 
@@ -606,7 +607,7 @@ static t_stat cpu_reset (DEVICE *dptr)
     // Fill DPS8 memory with zeros, plus a flag only visible to the emulator
     // marking the memory as uninitialized.
 
-    for (int i = 0; i < MEMSIZE; i ++)
+    for (uint i = 0; i < MEMSIZE; i ++)
       M [i] = MEM_UNINITIALIZED;
 
     rA = 0;
@@ -739,150 +740,150 @@ static BITFIELD dps8_IR_bits[] = {
     BITFNAM(CARRY, 1, z1),   /*!< carry */ ///< 0100000
     BITFNAM(NEG,   1, z1),    /*!< negative */ ///< 0200000
     BITFNAM(ZERO,  1, z1),   /*!< zero */ ///< 0400000
-    ENDBITS
+    { NULL, 0, 0, NULL, NULL }
 };
 
 static REG cpu_reg[] = {
-    { ORDATA (IC, PPR.IC, VASIZE) },
-    //{ ORDATA (IR, cu.IR, 18) },
-    { ORDATADF (IR, cu.IR, 18, "Indicator Register", dps8_IR_bits) },
+    { ORDATA (IC, PPR.IC, VASIZE), 0, 0 },
+    //{ ORDATA (IR, cu.IR, 18), 0, 0 },
+    { ORDATADF (IR, cu.IR, 18, "Indicator Register", dps8_IR_bits), 0, 0 },
     
-    //    { FLDATA (Zero, cu.IR, F_V_A) },
-    //    { FLDATA (Negative, cu.IR, F_V_B) },
-    //    { FLDATA (Carry, cu.IR, F_V_C) },
-    //    { FLDATA (Overflow, cu.IR, F_V_D) },
-    //    { FLDATA (ExpOvr, cu.IR, F_V_E) },
-    //    { FLDATA (ExpUdr, cu.IR, F_V_F) },
-    //    { FLDATA (OvrMask, cu.IR, F_V_G) },
-    //    { FLDATA (TallyRunOut, cu.IR, F_V_H) },
-    //    { FLDATA (ParityErr, cu.IR, F_V_I) }, ///< Yeah, right!
-    //    { FLDATA (ParityMask, cu.IR, F_V_J) },
-    //    { FLDATA (NotBAR, cu.IR, F_V_K) },
-    //    { FLDATA (Trunc, cu.IR, F_V_L) },
-    //    { FLDATA (MidInsFlt, cu.IR, F_V_M) },
-    //    { FLDATA (AbsMode, cu.IR, F_V_N) },
-    //    { FLDATA (HexMode, cu.IR, F_V_O) },
+    //    { FLDATA (Zero, cu.IR, F_V_A), 0, 0 },
+    //    { FLDATA (Negative, cu.IR, F_V_B), 0, 0 },
+    //    { FLDATA (Carry, cu.IR, F_V_C), 0, 0 },
+    //    { FLDATA (Overflow, cu.IR, F_V_D), 0, 0 },
+    //    { FLDATA (ExpOvr, cu.IR, F_V_E), 0, 0 },
+    //    { FLDATA (ExpUdr, cu.IR, F_V_F), 0, 0 },
+    //    { FLDATA (OvrMask, cu.IR, F_V_G), 0, 0 },
+    //    { FLDATA (TallyRunOut, cu.IR, F_V_H), 0, 0 },
+    //    { FLDATA (ParityErr, cu.IR, F_V_I), 0, 0 }, ///< Yeah, right!
+    //    { FLDATA (ParityMask, cu.IR, F_V_J), 0, 0 },
+    //    { FLDATA (NotBAR, cu.IR, F_V_K), 0, 0 },
+    //    { FLDATA (Trunc, cu.IR, F_V_L), 0, 0 },
+    //    { FLDATA (MidInsFlt, cu.IR, F_V_M), 0, 0 },
+    //    { FLDATA (AbsMode, cu.IR, F_V_N), 0, 0 },
+    //    { FLDATA (HexMode, cu.IR, F_V_O), 0, 0 },
     
-    { ORDATA (A, rA, 36) },
-    { ORDATA (Q, rQ, 36) },
-    { ORDATA (E, rE, 8) },
+    { ORDATA (A, rA, 36), 0, 0 },
+    { ORDATA (Q, rQ, 36), 0, 0 },
+    { ORDATA (E, rE, 8), 0, 0 },
     
-    { ORDATA (X0, rX[0], 18) },
-    { ORDATA (X1, rX[1], 18) },
-    { ORDATA (X2, rX[2], 18) },
-    { ORDATA (X3, rX[3], 18) },
-    { ORDATA (X4, rX[4], 18) },
-    { ORDATA (X5, rX[5], 18) },
-    { ORDATA (X6, rX[6], 18) },
-    { ORDATA (X7, rX[7], 18) },
+    { ORDATA (X0, rX[0], 18), 0, 0 },
+    { ORDATA (X1, rX[1], 18), 0, 0 },
+    { ORDATA (X2, rX[2], 18), 0, 0 },
+    { ORDATA (X3, rX[3], 18), 0, 0 },
+    { ORDATA (X4, rX[4], 18), 0, 0 },
+    { ORDATA (X5, rX[5], 18), 0, 0 },
+    { ORDATA (X6, rX[6], 18), 0, 0 },
+    { ORDATA (X7, rX[7], 18), 0, 0 },
     
-    { ORDATA (PPR.IC,  PPR.IC,  18) },
-    { ORDATA (PPR.PRR, PPR.PRR,  3) },
-    { ORDATA (PPR.PSR, PPR.PSR, 15) },
-    { ORDATA (PPR.P,   PPR.P,    1) },
+    { ORDATA (PPR.IC,  PPR.IC,  18), 0, 0 },
+    { ORDATA (PPR.PRR, PPR.PRR,  3), 0, 0 },
+    { ORDATA (PPR.PSR, PPR.PSR, 15), 0, 0 },
+    { ORDATA (PPR.P,   PPR.P,    1), 0, 0 },
     
-    { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24) },
-    { ORDATA (DSBR.BND,   DSBR.BND,   14) },
-    { ORDATA (DSBR.U,     DSBR.U,      1) },
-    { ORDATA (DSBR.STACK, DSBR.STACK, 12) },
+    { ORDATA (DSBR.ADDR,  DSBR.ADDR,  24), 0, 0 },
+    { ORDATA (DSBR.BND,   DSBR.BND,   14), 0, 0 },
+    { ORDATA (DSBR.U,     DSBR.U,      1), 0, 0 },
+    { ORDATA (DSBR.STACK, DSBR.STACK, 12), 0, 0 },
     
-    { ORDATA (BAR.BASE,  BAR.BASE,  9) },
-    { ORDATA (BAR.BOUND, BAR.BOUND, 9) },
+    { ORDATA (BAR.BASE,  BAR.BASE,  9), 0, 0 },
+    { ORDATA (BAR.BOUND, BAR.BOUND, 9), 0, 0 },
     
-    //{ ORDATA (FAULTBASE, rFAULTBASE, 12) }, ///< only top 7-msb are used
+    //{ ORDATA (FAULTBASE, rFAULTBASE, 12), 0, 0 }, ///< only top 7-msb are used
     
-    { ORDATA (PR0.SNR, PR[0].SNR, 18) },
-    { ORDATA (PR1.SNR, PR[1].SNR, 18) },
-    { ORDATA (PR2.SNR, PR[2].SNR, 18) },
-    { ORDATA (PR3.SNR, PR[3].SNR, 18) },
-    { ORDATA (PR4.SNR, PR[4].SNR, 18) },
-    { ORDATA (PR5.SNR, PR[5].SNR, 18) },
-    { ORDATA (PR6.SNR, PR[6].SNR, 18) },
-    { ORDATA (PR7.SNR, PR[7].SNR, 18) },
+    { ORDATA (PR0.SNR, PR[0].SNR, 18), 0, 0 },
+    { ORDATA (PR1.SNR, PR[1].SNR, 18), 0, 0 },
+    { ORDATA (PR2.SNR, PR[2].SNR, 18), 0, 0 },
+    { ORDATA (PR3.SNR, PR[3].SNR, 18), 0, 0 },
+    { ORDATA (PR4.SNR, PR[4].SNR, 18), 0, 0 },
+    { ORDATA (PR5.SNR, PR[5].SNR, 18), 0, 0 },
+    { ORDATA (PR6.SNR, PR[6].SNR, 18), 0, 0 },
+    { ORDATA (PR7.SNR, PR[7].SNR, 18), 0, 0 },
     
-    { ORDATA (PR0.RNR, PR[0].RNR, 18) },
-    { ORDATA (PR1.RNR, PR[1].RNR, 18) },
-    { ORDATA (PR2.RNR, PR[2].RNR, 18) },
-    { ORDATA (PR3.RNR, PR[3].RNR, 18) },
-    { ORDATA (PR4.RNR, PR[4].RNR, 18) },
-    { ORDATA (PR5.RNR, PR[5].RNR, 18) },
-    { ORDATA (PR6.RNR, PR[6].RNR, 18) },
-    { ORDATA (PR7.RNR, PR[7].RNR, 18) },
+    { ORDATA (PR0.RNR, PR[0].RNR, 18), 0, 0 },
+    { ORDATA (PR1.RNR, PR[1].RNR, 18), 0, 0 },
+    { ORDATA (PR2.RNR, PR[2].RNR, 18), 0, 0 },
+    { ORDATA (PR3.RNR, PR[3].RNR, 18), 0, 0 },
+    { ORDATA (PR4.RNR, PR[4].RNR, 18), 0, 0 },
+    { ORDATA (PR5.RNR, PR[5].RNR, 18), 0, 0 },
+    { ORDATA (PR6.RNR, PR[6].RNR, 18), 0, 0 },
+    { ORDATA (PR7.RNR, PR[7].RNR, 18), 0, 0 },
     
-    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18) },
-    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18) },
-    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18) },
-    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18) },
-    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18) },
-    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18) },
-    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18) },
-    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18) },
+    //{ ORDATA (PR0.BITNO, PR[0].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR1.BITNO, PR[1].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR2.BITNO, PR[2].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR3.BITNO, PR[3].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR4.BITNO, PR[4].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR5.BITNO, PR[5].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR6.BITNO, PR[6].PBITNO, 18), 0, 0 },
+    //{ ORDATA (PR7.BITNO, PR[7].PBITNO, 18), 0, 0 },
     
-    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18) },
-    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18) },
-    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18) },
-    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18) },
-    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18) },
-    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18) },
-    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18) },
-    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18) },
+    //{ ORDATA (AR0.BITNO, PR[0].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR1.BITNO, PR[1].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR2.BITNO, PR[2].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR3.BITNO, PR[3].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR4.BITNO, PR[4].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR5.BITNO, PR[5].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR6.BITNO, PR[6].ABITNO, 18), 0, 0 },
+    //{ ORDATA (AR7.BITNO, PR[7].ABITNO, 18), 0, 0 },
     
-    { ORDATA (PR0.WORDNO, PR[0].WORDNO, 18) },
-    { ORDATA (PR1.WORDNO, PR[1].WORDNO, 18) },
-    { ORDATA (PR2.WORDNO, PR[2].WORDNO, 18) },
-    { ORDATA (PR3.WORDNO, PR[3].WORDNO, 18) },
-    { ORDATA (PR4.WORDNO, PR[4].WORDNO, 18) },
-    { ORDATA (PR5.WORDNO, PR[5].WORDNO, 18) },
-    { ORDATA (PR6.WORDNO, PR[6].WORDNO, 18) },
-    { ORDATA (PR7.WORDNO, PR[7].WORDNO, 18) },
+    { ORDATA (PR0.WORDNO, PR[0].WORDNO, 18), 0, 0 },
+    { ORDATA (PR1.WORDNO, PR[1].WORDNO, 18), 0, 0 },
+    { ORDATA (PR2.WORDNO, PR[2].WORDNO, 18), 0, 0 },
+    { ORDATA (PR3.WORDNO, PR[3].WORDNO, 18), 0, 0 },
+    { ORDATA (PR4.WORDNO, PR[4].WORDNO, 18), 0, 0 },
+    { ORDATA (PR5.WORDNO, PR[5].WORDNO, 18), 0, 0 },
+    { ORDATA (PR6.WORDNO, PR[6].WORDNO, 18), 0, 0 },
+    { ORDATA (PR7.WORDNO, PR[7].WORDNO, 18), 0, 0 },
     
-    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18) },
-    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18) },
-    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18) },
-    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18) },
-    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18) },
-    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18) },
-    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18) },
-    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18) },
+    //{ ORDATA (PR0.CHAR, PR[0].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR1.CHAR, PR[1].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR2.CHAR, PR[2].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR3.CHAR, PR[3].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR4.CHAR, PR[4].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR5.CHAR, PR[5].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR6.CHAR, PR[6].CHAR, 18), 0, 0 },
+    //{ ORDATA (PR7.CHAR, PR[7].CHAR, 18), 0, 0 },
     
     /*
-     { ORDATA (EBR, ebr, EBR_N_EBR) },
-     { FLDATA (PGON, ebr, EBR_V_PGON) },
-     { FLDATA (T20P, ebr, EBR_V_T20P) },
-     { ORDATA (UBR, ubr, 36) },
+     { ORDATA (EBR, ebr, EBR_N_EBR), 0, 0 },
+     { FLDATA (PGON, ebr, EBR_V_PGON), 0, 0 },
+     { FLDATA (T20P, ebr, EBR_V_T20P), 0, 0 },
+     { ORDATA (UBR, ubr, 36), 0, 0 },
      { GRDATA (CURAC, ubr, 8, 3, UBR_V_CURAC), REG_RO },
      { GRDATA (PRVAC, ubr, 8, 3, UBR_V_PRVAC) },
-     { ORDATA (SPT, spt, 36) },
-     { ORDATA (CST, cst, 36) },
-     { ORDATA (PUR, pur, 36) },
-     { ORDATA (CSTM, cstm, 36) },
-     { ORDATA (HSB, hsb, 36) },
-     { ORDATA (DBR1, dbr1, PASIZE) },
-     { ORDATA (DBR2, dbr2, PASIZE) },
-     { ORDATA (DBR3, dbr3, PASIZE) },
-     { ORDATA (DBR4, dbr4, PASIZE) },
-     { ORDATA (PCST, pcst, 36) },
-     { ORDATA (PIENB, pi_enb, 7) },
-     { FLDATA (PION, pi_on, 0) },
-     { ORDATA (PIACT, pi_act, 7) },
-     { ORDATA (PIPRQ, pi_prq, 7) },
+     { ORDATA (SPT, spt, 36), 0, 0 },
+     { ORDATA (CST, cst, 36), 0, 0 },
+     { ORDATA (PUR, pur, 36), 0, 0 },
+     { ORDATA (CSTM, cstm, 36), 0, 0 },
+     { ORDATA (HSB, hsb, 36), 0, 0 },
+     { ORDATA (DBR1, dbr1, PASIZE), 0, 0 },
+     { ORDATA (DBR2, dbr2, PASIZE), 0, 0 },
+     { ORDATA (DBR3, dbr3, PASIZE), 0, 0 },
+     { ORDATA (DBR4, dbr4, PASIZE), 0, 0 },
+     { ORDATA (PCST, pcst, 36), 0, 0 },
+     { ORDATA (PIENB, pi_enb, 7), 0, 0 },
+     { FLDATA (PION, pi_on, 0), 0, 0 },
+     { ORDATA (PIACT, pi_act, 7), 0, 0 },
+     { ORDATA (PIPRQ, pi_prq, 7), 0, 0 },
      { ORDATA (PIIOQ, pi_ioq, 7), REG_RO },
      { ORDATA (PIAPR, pi_apr, 7), REG_RO },
-     { ORDATA (APRENB, apr_enb, 8) },
-     { ORDATA (APRFLG, apr_flg, 8) },
-     { ORDATA (APRLVL, apr_lvl, 3) },
-     { ORDATA (RLOG, rlog, 10) },
-     { FLDATA (F1PR, its_1pr, 0) },
+     { ORDATA (APRENB, apr_enb, 8), 0, 0 },
+     { ORDATA (APRFLG, apr_flg, 8), 0, 0 },
+     { ORDATA (APRLVL, apr_lvl, 3), 0, 0 },
+     { ORDATA (RLOG, rlog, 10), 0, 0 },
+     { FLDATA (F1PR, its_1pr, 0), 0, 0 },
      { BRDATA (PCQ, pcq, 8, VASIZE, PCQ_SIZE), REG_RO+REG_CIRC },
      { ORDATA (PCQP, pcq_p, 6), REG_HRO },
      { DRDATA (INDMAX, ind_max, 8), PV_LEFT + REG_NZ },
      { DRDATA (XCTMAX, xct_max, 8), PV_LEFT + REG_NZ },
-     { ORDATA (WRU, sim_int_char, 8) },
-     { FLDATA (STOP_ILL, stop_op0, 0) },
+     { ORDATA (WRU, sim_int_char, 8), 0, 0 },
+     { FLDATA (STOP_ILL, stop_op0, 0), 0, 0 },
      { BRDATA (REG, acs, 8, 36, AC_NUM * AC_NBLK) },
      */
     
-    { NULL }
+    { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0 }
 };
 
 /*
@@ -914,7 +915,11 @@ DEVICE cpu_dev = {
     0,              /*!< debug control flags */
     cpu_dt,         /*!< debug flag names */
     NULL,           /*!< memory size change */
-    NULL            /*!< logical name */
+    NULL,           /*!< logical name */
+    NULL,           // help
+    NULL,           // attach help
+    NULL,           // help context
+    NULL            // description
 };
 
 static t_stat reason;
@@ -1919,7 +1924,7 @@ void decodeInstruction (word36 inst, DCDstruct * p)
     p->info = getIWBInfo(p);     // get info for IWB instruction
     
     // HWR 18 June 2013 
-    p->info->opcode = p->opcode;
+    //p->info->opcode = p->opcode;
     //p->IWB = inst;
     
     // HWR 21 Dec 2013
@@ -2165,7 +2170,7 @@ static void cpu_reset_array (void)
 
 t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int __attribute__((unused)) scu_port_num)
   {
-    if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
+    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
         sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         return SCPE_ARG;
@@ -2198,7 +2203,7 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int _
 static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
 {
     int unit_num = UNIT_NUM (uptr);
-    if (unit_num < 0 || unit_num >= cpu_dev . numunits)
+    if (unit_num < 0 || unit_num >= (int) cpu_dev . numunits)
       {
         sim_debug (DBG_ERR, & cpu_dev, "cpu_show_config: Invalid unit number %d\n", unit_num);
         sim_printf ("error: invalid unit number %d\n", unit_num);
@@ -2271,7 +2276,7 @@ static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, in
 static config_value_list_t cfg_multics_fault_base [] =
   {
     { "multics", 2 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_on_off [] =
@@ -2280,14 +2285,14 @@ static config_value_list_t cfg_on_off [] =
     { "on", 1 },
     { "disable", 0 },
     { "enable", 1 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_cpu_mode [] =
   {
     { "gcos", 0 },
     { "multics", 1 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_port_letter [] =
@@ -2296,7 +2301,7 @@ static config_value_list_t cfg_port_letter [] =
     { "b", 1 },
     { "c", 2 },
     { "d", 3 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_interlace [] =
@@ -2304,7 +2309,7 @@ static config_value_list_t cfg_interlace [] =
     { "off", 0 },
     { "2", 2 },
     { "4", 4 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_size_list [] =
@@ -2328,7 +2333,7 @@ static config_value_list_t cfg_size_list [] =
     { "1M", 5 },
     { "2M", 6 },
     { "4M", 7 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_list_t cpu_config_list [] =
@@ -2362,7 +2367,7 @@ static config_list_t cpu_config_list [] =
     /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
     /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
     /* 25 */ { "report_faults", 0, 1, cfg_on_off },
-    { NULL }
+    { NULL, 0, 0, NULL }
   };
 
 static t_stat cpu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
@@ -2370,7 +2375,7 @@ static t_stat cpu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, 
 // XXX Minor bug; this code doesn't check for trailing garbage
 
     int cpu_unit_num = UNIT_NUM (uptr);
-    if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
+    if (cpu_unit_num < 0 || cpu_unit_num >= (int) cpu_dev . numunits)
       {
         sim_debug (DBG_ERR, & cpu_dev, "cpu_set_config: Invalid unit number %d\n", cpu_unit_num);
         sim_printf ("error: cpu_set_config: invalid unit number %d\n", cpu_unit_num);
@@ -2379,7 +2384,7 @@ static t_stat cpu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, 
 
     static int port_num = 0;
 
-    config_state_t cfg_state = { NULL };
+    config_state_t cfg_state = { NULL, NULL };
 
     for (;;)
       {
@@ -2636,8 +2641,8 @@ static int walk_stack (int output, void * __attribute__((unused)) frame_listp /*
 
     if (output)
       sim_printf ("%s: Stack Trace via back-links in current stack frame:\n", __func__);
-    int framep = stack_begin_pr.WORDNO;
-    int prev = 0;
+    uint framep = stack_begin_pr.WORDNO;
+    uint prev = 0;
     int finished = 0;
 #if 0
     int need_hist_msg = 0;

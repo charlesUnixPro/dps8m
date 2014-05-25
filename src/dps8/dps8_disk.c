@@ -63,22 +63,22 @@ static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, ui
 
 static UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)}
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define DISK_UNIT_NUM(uptr) ((uptr) - disk_unit)
@@ -98,8 +98,8 @@ static DEBTAB disk_dt [] =
 
 static MTAB disk_mod [] =
   {
-    { UNIT_WATCH, 1, "WATCH", "WATCH", NULL, NULL },
-    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
+    { UNIT_WATCH, 1, "WATCH", "WATCH", 0, 0, NULL, NULL },
+    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", 0, 0, NULL, NULL },
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
       0,            /* match */
@@ -107,9 +107,10 @@ static MTAB disk_mod [] =
       "NUNITS",         /* match string */
       disk_set_nunits, /* validation routine */
       disk_show_nunits, /* display routine */
-      "Number of DISK units in the system" /* value descriptor */
+      "Number of DISK units in the system", /* value descriptor */
+      NULL // Help
     },
-    { 0 }
+    { 0, 0, NULL, NULL, 0, 0, NULL, NULL }
   };
 
 
@@ -136,7 +137,11 @@ DEVICE disk_dev = {
     0,            /* debug control flags */
     disk_dt,      /* debug flag names */
     NULL,         /* memory size change */
-    NULL          /* logical name */
+    NULL,         /* logical name */
+    NULL,         // help
+    NULL,         // attach help
+    NULL,         // attach context
+    NULL          // description
 };
 
 
@@ -164,7 +169,7 @@ void disk_init (void)
 
 static t_stat disk_reset (DEVICE * dptr)
   {
-    for (int i = 0; i < dptr -> numunits; i ++)
+    for (uint i = 0; i < dptr -> numunits; i ++)
       {
         // sim_disk_reset (& disk_unit [i]);
         sim_cancel (& disk_unit [i]);
@@ -174,7 +179,7 @@ static t_stat disk_reset (DEVICE * dptr)
 
 t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_code)
   {
-    if (disk_unit_num < 0 || disk_unit_num >= disk_dev . numunits)
+    if (disk_unit_num < 0 || disk_unit_num >= (int) disk_dev . numunits)
       {
         // sim_debug (DBG_ERR, & sys_dev, "cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);
         sim_printf ("cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);

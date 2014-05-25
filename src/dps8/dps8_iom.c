@@ -361,10 +361,10 @@ static t_stat iom_reset(DEVICE *dptr);
 
 static UNIT iom_unit [N_IOM_UNITS_MAX] =
   {
-    { UDATA(NULL /*&iom_svc*/, 0, 0) },
-    { UDATA(NULL /*&iom_svc*/, 0, 0) },
-    { UDATA(NULL /*&iom_svc*/, 0, 0) },
-    { UDATA(NULL /*&iom_svc*/, 0, 0) },
+    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iom_unit)
@@ -378,7 +378,8 @@ static MTAB iom_mod [] =
       NULL,         /* match string */
       NULL,         /* validation routine */
       iom_show_mbx, /* display routine */
-      NULL          /* value descriptor */
+      NULL,          /* value descriptor */
+      NULL   // help string
     },
     {
       MTAB_XTD | MTAB_VUN | MTAB_NMO | MTAB_VALR, /* mask */
@@ -387,7 +388,8 @@ static MTAB iom_mod [] =
       "CONFIG",         /* match string */
       iom_set_config,         /* validation routine */
       iom_show_config, /* display routine */
-      NULL          /* value descriptor */
+      NULL,          /* value descriptor */
+      NULL   // help string
     },
     {
       MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
@@ -396,10 +398,11 @@ static MTAB iom_mod [] =
       "NUNITS",         /* match string */
       iom_set_nunits, /* validation routine */
       iom_show_nunits, /* display routine */
-      "Number of IOM units in the system" /* value descriptor */
+      "Number of IOM units in the system", /* value descriptor */
+      NULL   // help string
     },
     {
-      0
+      0, 0, NULL, NULL, 0, 0, NULL, NULL
     }
   };
 
@@ -418,7 +421,7 @@ static DEBTAB iom_dt [] =
 static REG iom_reg [] =
   {
 //     { DRDATA (OS, config_sw_os, 1) },
-    { 0 }
+    { NULL, NULL, 0, 0, 0, 0, NULL, NULL, 0, 0 }
   };
 
 DEVICE iom_dev =
@@ -444,17 +447,21 @@ DEVICE iom_dev =
     0,           /* debug control flags */
     iom_dt,      /* debug flag names */
     NULL,        /* memory size change */
-    NULL         /* logical name */
+    NULL,        /* logical name */
+    NULL,        // help
+    NULL,        // attach help
+    NULL,        // help context
+    NULL         // description
   };
 
 
 static t_stat boot_svc (UNIT * unitp);
 static UNIT boot_channel_unit [N_IOM_UNITS_MAX] =
   {
-    { UDATA (& boot_svc, 0, 0) },
-    { UDATA (& boot_svc, 0, 0) },
-    { UDATA (& boot_svc, 0, 0) },
-    { UDATA (& boot_svc, 0, 0) }
+    { UDATA (& boot_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    { UDATA (& boot_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    { UDATA (& boot_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    { UDATA (& boot_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 
@@ -753,7 +760,7 @@ static struct
 
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num)
   {
-    if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
+    if (iom_unit_num < 0 || iom_unit_num >= (int) iom_dev . numunits)
       {
         sim_printf ("cable_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         return SCPE_ARG;
@@ -793,7 +800,7 @@ t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_
 
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io)
   {
-    if (iom_unit_num < 0 || iom_unit_num >= iom_dev . numunits)
+    if (iom_unit_num < 0 || iom_unit_num >= (int) iom_dev . numunits)
       {
         sim_printf ("cable_to_iom: iom_unit_num out of range <%d>\n", iom_unit_num);
         return SCPE_ARG;
@@ -1276,10 +1283,10 @@ static void setup_iom_scpage_map (void)
       "%s: setup_iom_scpage_map: SCPAGE %d N_SCPAGES %d MAXMEMSIZE %d\n", 
       __func__, SCPAGE, N_SCPAGES, MAXMEMSIZE);
 
-    for (int iom_unit_num = 0; iom_unit_num < iom_dev . numunits; iom_unit_num ++)
+    for (int iom_unit_num = 0; iom_unit_num < (int) iom_dev . numunits; iom_unit_num ++)
       {
         // Initalize to unmapped
-        for (int pg = 0; pg < N_SCPAGES; pg ++)
+        for (int pg = 0; pg < (int) N_SCPAGES; pg ++)
           iom_scpage_map [iom_unit_num] [pg] = -1;
     
         struct unit_data * p = unit_data + iom_unit_num;
@@ -1313,8 +1320,8 @@ static void setup_iom_scpage_map (void)
               }
           }
       }
-    for (int iom_unit_num = 0; iom_unit_num < iom_dev . numunits; iom_unit_num ++)
-        for (int pg = 0; pg < N_SCPAGES; pg ++)
+    for (int iom_unit_num = 0; iom_unit_num < (int) iom_dev . numunits; iom_unit_num ++)
+        for (int pg = 0; pg < (int) N_SCPAGES; pg ++)
           sim_debug (DBG_DEBUG, & cpu_dev, "%s: %d:%d\n", 
             __func__, pg, iom_scpage_map [iom_unit_num] [pg]);
   }
@@ -1426,7 +1433,7 @@ static t_stat iom_reset(DEVICE * __attribute__((unused)) dptr)
   {
     sim_debug (DBG_INFO, & iom_dev, "%s: running.\n", __func__);
 
-    for (int unit_num = 0; unit_num < iom_dev . numunits; unit_num ++)
+    for (int unit_num = 0; unit_num < (int) iom_dev . numunits; unit_num ++)
       {
         for (int chan = 0; chan < max_channels; ++ chan)
           {
@@ -4159,7 +4166,7 @@ static void iom_show_channel_mbx (int iom_unit_num, uint chan)
 
     // This isn't quite right, but sufficient for debugging
     uint control = 2;
-    for (int i = 0; i < lpw.tally && control == 2; ++ i)
+    for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
       {
         if (i > 4096)
           break;
@@ -4226,7 +4233,7 @@ static int iom_show_mbx (FILE * __attribute__((unused)) st, UNIT * uptr, int __a
 
     // This isn't quite right, but sufficient for debugging
     uint control = 2;
-    for (int i = 0; i < lpw.tally && control == 2; ++ i)
+    for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
       {
         if (i > 4096)
           break;
@@ -4282,7 +4289,7 @@ static t_stat iom_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attri
 static t_stat iom_show_config(FILE *__attribute__((unused)) st, UNIT *uptr, int __attribute__((unused)) val, void *__attribute__((unused)) desc)
   {
     int unit_num = IOM_UNIT_NUM (uptr);
-    if (unit_num < 0 || unit_num >= iom_dev . numunits)
+    if (unit_num < 0 || unit_num >= (int) iom_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "iom_show_config: Invalid unit number %d\n", unit_num);
         sim_printf ("error: invalid unit number %d\n", unit_num);
@@ -4377,14 +4384,14 @@ static config_value_list_t cfg_os_list [] =
     { "gcos", CONFIG_SW_STD_GCOS },
     { "gcosext", CONFIG_SW_EXT_GCOS },
     { "multics", CONFIG_SW_MULTICS },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_boot_list [] =
   {
     { "card", CONFIG_SW_BLCT_CARD },
     { "tape", CONFIG_SW_BLCT_TAPE },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_base_list [] =
@@ -4394,7 +4401,7 @@ static config_value_list_t cfg_base_list [] =
     { "multics2", 020 },
     { "multics3", 024 },
     { "multics4", 030 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_value_list_t cfg_size_list [] =
@@ -4418,7 +4425,7 @@ static config_value_list_t cfg_size_list [] =
     { "1M", 5 },
     { "2M", 6 },
     { "4M", 7 },
-    { NULL }
+    { NULL, 0 }
   };
 
 static config_list_t iom_config_list [] =
@@ -4441,13 +4448,13 @@ static config_list_t iom_config_list [] =
 // Hacks
 
     /* 14 */ { "bootskip", 0, 100000, NULL }, // t4d testing hack (doesn't help)
-    { NULL }
+    { NULL, 0, 0, NULL }
   };
 
 static t_stat iom_set_config (UNIT * uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
   {
     int unit_num = IOM_UNIT_NUM (uptr);
-    if (unit_num < 0 || unit_num >= iom_dev . numunits)
+    if (unit_num < 0 || unit_num >= (int) iom_dev . numunits)
       {
         sim_debug (DBG_ERR, & iom_dev, "iom_set_config: Invalid unit number %d\n", unit_num);
         sim_printf ("error: iom_set_config: invalid unit number %d\n", unit_num);
@@ -4458,7 +4465,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 __attribute__((unused)) value, 
 
     static uint port_num = 0;
 
-    config_state_t cfg_state = { NULL };
+    config_state_t cfg_state = { NULL, NULL };
 
     for (;;)
       {

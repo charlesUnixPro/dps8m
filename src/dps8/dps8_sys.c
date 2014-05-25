@@ -57,22 +57,22 @@ static t_stat sbreak (int32 arg, char * buf);
 
 static CTAB dps8_cmds[] =
 {
-    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n"},
-    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n"},
-    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n"},
-    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n"},
-    {"CABLE",    sys_cable,       0, "cable String a cable\n" },
-    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n"},
-    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n"},
-    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n"},
-    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n"},
-    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n"},
-    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n"},
-    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n"},
-    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n"},
-    {"TEST", test, 0, "test: internal testing\n"},
-    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n"},
-    { NULL, NULL, 0, NULL}
+    {"DPSINIT",  dpsCmd_Init,     0, "dpsinit dps8/m initialize stuff ...\n", NULL},
+    {"DPSDUMP",  dpsCmd_Dump,     0, "dpsdump dps8/m dump stuff ...\n", NULL},
+    {"SEGMENT",  dpsCmd_Segment,  0, "segment dps8/m segment stuff ...\n", NULL},
+    {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
+    {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
+    {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
+    {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
+    {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
+    {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL},
+    {"LSB", lookupSystemBook, 0, "lsb: lookup an address or symbol in the Multics system book\n", NULL},
+    {"ABSOLUTE", absAddr, 0, "abs: Compute the absolute address of segno:offset\n", NULL},
+    {"VIRTUAL", virtAddr, 0, "virtual: Compute the virtural address(es) of segno:offset\n", NULL},
+    {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL},
+    {"TEST", test, 0, "test: internal testing\n", NULL},
+    {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
+    { NULL, NULL, 0, NULL, NULL}
 };
 
 /*!
@@ -302,7 +302,7 @@ static char * lookupSystemBookAddress (word18 segno, word18 offset, char * * com
     if (compoffset)
       * compoffset = 0;
     for (i = 0; i < nBookSegments; i ++)
-      if (bookSegments [i] . segno == segno)
+      if (bookSegments [i] . segno == (int) segno)
         break;
     if (i >= nBookSegments)
       return NULL;
@@ -498,13 +498,13 @@ void listSource (char * compname, word18 offset)
                         int n;
                         for (n = 0; n < cnt / 2; n ++)
                           {
-                            if (loc [n] > best && loc [n] <= offset)
+                            if (loc [n] > best && loc [n] <= (int) offset)
                               {
                                 best = loc [n];
                                 bestLine = lineno [n];
                               }
                           }
-                        if (best == offset)
+                        if (best == (int) offset)
                           break;
                       }
                     if (best == -1)

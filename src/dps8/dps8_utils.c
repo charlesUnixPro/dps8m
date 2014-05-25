@@ -59,7 +59,7 @@ static char * strupr(char *str)
 
 //! get instruction info for IWB ...
 
-static opCode UnImp = {"(unimplemented)", 0, 0, 0, 0};
+static opCode UnImp = {"(unimplemented)", 0, 0, 0};
 
 struct opCode *getIWBInfo(DCDstruct *i)
 {
