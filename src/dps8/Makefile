@@ -233,7 +233,7 @@ OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
 H_SRCS = dps8.h  utarray.h  uthash.h  utlist.h dps8_console.h dps8_disk.h dps8_iom.h dps8_mt.h dps8_utils.h 
 
-all: locallibs_then_dps8 tags
+all: tags locallibs_then_dps8 
 
 dps8 : $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
@@ -251,23 +251,16 @@ tags : $(C_SRCS) $(H_SRCS)
 .PHONY : clean cleaner 
 
 clean:
-	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags
+	-$(RM) $(OBJS) $(C_DEPS) $(EXECUTABLES) dps8 tags $(C_SRCS:.c=.d)
 
 cleaner: clean
 	(cd ../simh; $(MAKE) clean)
 	(cd ../decNumber; $(MAKE) clean)
 
-#dps8.h :  ../simh/sim_defs.h ../simh/sim_tape.h
+%.d: %.c
+	@set -e; rm -f $@; \
+	$(CC) -MM $(CFLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
 
-dps8_console.o : dps8_iom.h
-dps8_cpu.o : dps8_utils.h
-dps8_decimal.o : ../decNumber/decNumber.h ../decNumber/decNumberLocal.h
-dps8_disk.o : dps8_iom.h dps8_disk.h 
-dps8_iom.o : dps8_utils.h dps8_iom.h dps8_mt.h dps8_disk.h
-dps8_loader.o : utlist.h
-dps8_mt.o : dps8_iom.h dps8_mt.h
-dps8_scu.o : dps8_utils.h 
-dps8_sys.c : dps8_iom.h dps8_mt.h dps8_disk.h dps8_utils.h
-dps8_utils.o :  ../simh/sim_defs.h dps8_utils.h
-
-$(OBJS) : dps8.h ../simh/sim_defs.h ../simh/sim_tape.h
+-include $(C_SRCS:.c=.d)
