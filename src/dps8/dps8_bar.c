@@ -9,7 +9,6 @@
 /*
  * stuff to handle BAR mode ...
  */
-// XXX needs testing ....
 
 #include <stdio.h>
 

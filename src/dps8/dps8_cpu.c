@@ -145,6 +145,11 @@ const char *sim_stop_messages[] = {
  */
 
 static int is_eis[1024];    // hack
+
+// XXX PPR.IC oddly incremented. ticket #6
+// xec_side_effect is used to record the number of EIS operand descriptor
+// words consumed during XEC processing; this allows the PPR.IC to be
+// correctly incremented.
 int xec_side_effect; // hack
 
 void init_opcodes (void)
@@ -968,7 +973,7 @@ static uint get_highest_intr (void)
               cnt ++;
           events . int_pending = !!cnt;
 
-          for (int i = 0; i < 7; i ++) // XXX Magic number
+          for (int i = 0; i < N_FAULT_GROUPS; i ++)
             if (events . fault [i])
               cnt ++;
           events . any = !! cnt;
@@ -1998,6 +2003,7 @@ int is_priv_mode(void)
 
 
 static bool secret_addressing_mode;
+// XXX loss of data on page fault: ticket #5
 static bool went_appending; // we will go....
 
 void set_went_appending (void)

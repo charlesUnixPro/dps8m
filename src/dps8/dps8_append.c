@@ -801,7 +801,6 @@ A:;
             fetchDSPTW(TPR.TSR);
             
             if (!PTW0.F)
-                // XXX initiate a directed fault
                 doFault(dir_flt0_fault + PTW0.FC, 0, "doAppendCycle(A): PTW0.F == 0");
             
             if (!PTW0.U)

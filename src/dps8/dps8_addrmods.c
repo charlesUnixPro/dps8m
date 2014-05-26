@@ -671,7 +671,7 @@ R_MOD:;
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Td=%o\n", Td);
     
-        if (Td == TD_DU || Td == TD_DL) // XXX illegal procedure, illegal modifier, fault
+        if (Td == TD_DU || Td == TD_DL)
             doFault(illproc_fault, ill_mod, "RI_MOD: Td == TD_DU || Td == TD_DL");
         
         if (!Td == 0)
@@ -889,7 +889,6 @@ R_MOD:;
             //TODO: insert special rules for abs mode ITS/ITP ...
             
                 if ((iCA & 1))
-                    // XXX illegal procedure, illegal modifier, fault
                     doFault(illproc_fault, ill_mod, "doITSITP() : (TPR.CA & 1)");
 
                 if (!doITSITP(iCA, indword, iTAG))
@@ -926,18 +925,14 @@ R_MOD:;
                 return SCPE_OK;
             
                 // check for illegal ITS/ITP
-                ///< XXX illegal procedure, illegal modifier, fault
                 doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
                 break;
             
             case 2:
-                ///< XXX illegal procedure, illegal modifier, fault
-            
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
                 doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
                 return SCPE_OK;
             
-                ///< XXX Abort. FT2 or 3
             case IT_F1:
                 doFault(f1_fault, 0, "IT_F1");
                 return SCPE_OK;

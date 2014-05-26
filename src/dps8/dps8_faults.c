@@ -244,7 +244,8 @@ void fault_gen(int f)
         return;
     }
     group = fault2group[f];
-    if (group < 1 || group > 7) {
+    // Note 1-base origin
+    if (group < 1 || group > N_FAULT_GROUPS) {
         //sim_debug(DBG_ERR, & cpu_dev, "CU fault: Internal error.\n");
         cancel_run(STOP_BUG);
         return;
@@ -288,6 +289,8 @@ void fault_gen(int f)
             cpu.cycle = FAULT_cycle;
             //cancel_run(STOP_DIS); // BUG: not really
         } else {
+// XXX error? if fault[] 0-origin or 1-origin?
+// XXX ticket #8
             if (events.fault[group]) {
                 // todo: error, unhandled fault
                 sim_debug(DBG_WARN, & cpu_dev, "CU fault: Found unhandled prior fault #%d in group %d.\n", events.fault[group], group);
@@ -315,8 +318,8 @@ void fault_gen(int f)
 #ifndef QUIET_UNUSED
 static int fault_check_group(int group)
 {
-    
-    if (group < 1 || group > 7) {
+    // Note 1-origin
+    if (group < 1 || group > N_FAULT_GROUPS) {
         sim_debug(DBG_ERR, & cpu_dev, "CU fault-check-group: Bad group # %d\n", group);
         cancel_run(STOP_BUG);
         return 1;
