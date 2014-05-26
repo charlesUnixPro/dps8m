@@ -560,6 +560,54 @@ t_stat executeInstruction (void)
     
     addToTheMatrix (opcode, opcodeX, a, tag);
     
+    if (cu . rpt || cu .rd)
+      {
+        // check for illegal modifiers:
+        //    only R & RI are allowed 
+        //    only X1..X7
+        switch (GET_TM(ci->tag))
+          {
+            case TM_R:
+            case TM_RI:
+              break;
+            default:
+              // generate fault. Only R & RI allowed
+              doFault(illproc_fault, 0, "ill addr mod from RPT");
+          }
+        word6 Td = GET_TD(ci->tag);
+        switch (Td)
+          {
+            case TD_X0:
+            case TD_X1:
+            case TD_X2:
+            case TD_X3:
+            case TD_X4:
+            case TD_X5:
+            case TD_X6:
+            case TD_X7:
+              break;
+            default:
+              // generate fault. Only Xn allowed
+              doFault(illproc_fault, 0, "ill addr mod from RPT");
+          }
+// XXX Does this need to also check for NO_RPL?
+        // repeat allowed for this instruction?
+        if (ci->info->flags & NO_RPT)
+          doFault(illproc_fault, 0, "no rpt allowed for instruction");
+      }
+
+    if (cu . repeat_first)
+      {
+        if (cu . rpt || (cu . rd && (PPR.IC & 1)))
+          cu . repeat_first = false;
+        // For the first execution of the repeated instruction: 
+        // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
+        word6 Td = GET_TD(ci->tag);
+        uint Xn = X(Td);  // Get Xn of next instruction
+        TPR.CA = (rX[Xn] + ci->address) & AMASK;
+        rX[Xn] = TPR.CA;
+      }
+
     // If we are doing a RPT instruction, all of the CA setup has been done.
     if ((! cu . repeat_first) && (cu .rpt || cu . rd))
       {
@@ -3867,39 +3915,9 @@ static t_stat DoBasicInstruction (void)
          
         case 0716:  ///< xec
             {
-#if 0
-            /// XXX partially implemented
-            
-            /// The xec instruction itself does not affect any indicator. However, the execution of the instruction from C(Y) may affect indicators.
-            /// If the execution of the instruction from C(Y) modifies C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1.
-            /// To execute a rpd instruction, the xec instruction must be in an odd location. The instruction pair repeated is that instruction pair at C(PPR.IC) +1, that is, the instruction pair immediately following the xec instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so that the next instruction fetched for execution is from the first word following the repeated instruction pair.
-            ///    EIS multiword instructions may be executed with the xec instruction but the required operand descriptors must be located immediately after the xec instruction, that is, starting at C(PPR.IC)+1. C(PPR.IC) is adjusted during execution of the EIS multiword instruction so that the next instruction fetched for execution is from the first word following the EIS operand descriptors.
-            ///    Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
-                
-                DCDstruct _xec;   // our decoded instruction struct
-                EISstruct _eis;
-                
-                //_xec.IWB = CY;
-                cu . IWB = CY;
-                _xec.e = &_eis;
-                
-                DCDstruct *xec = decodeInstruction(CY, &_xec);    // fetch instruction into current instruction
-                
-                t_stat ret = executeInstruction(xec);
-
-                // We need to communicate to the main cpu loop that the 
-                // instruction that is executed by xec had EIS operands
-                // that need to be skipped over when incrmenting the IC.
-                xec_side_effect = xec -> info -> ndes;
-
-                if (ret)
-                    return (ret);
-#endif
                 cu . IWB = CY;
                 cu . xde = 1;
                 cu . xdo = 0;
-                //cpu . cycle = EXEC_cycle;
-                //longjmp (jmpMain, JMP_ENTRY);
             }
             break;
             
@@ -3914,42 +3932,6 @@ static t_stat DoBasicInstruction (void)
             ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
             ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
             
-            // XXX This is probably way wrong and too simplistic, but it's a start ...
-               
-#if 0
-#ifdef XEC_MOVED_OUT_OF_SWITCH
-            DCDstruct _xec;   // our decoded instruction struct
-            EISstruct _eis;
-            
-            //_xec.IWB = Ypair[0];
-            cu.IWB = Ypair[0];
-            _xec.e = &_eis;
-            
-            DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
-            
-            t_stat ret = executeInstruction(xec);
-            
-            if (ret)
-                return (ret);
-
-            //_xec.IWB = Ypair[1];
-            cu.IWB = Ypair[1];
-            _xec.e = &_eis;
-                
-            xec = decodeInstruction(Ypair[1], &_xec);               // fetch instruction into current instruction
-                
-            ret = executeInstruction(xec);
-                
-            if (ret)
-                return (ret);
-#endif
-                
-                t_stat ret = doXED(Ypair);
-
-                if (ret)
-                    return (ret);
-
-#endif
                 cu . IWB = Ypair [0];
                 cu . IRODD = Ypair [1];
                 cu . xde = 1;
@@ -5697,70 +5679,6 @@ static t_stat DoEISInstruction (void)
 
 }
 
-#if 0
-/*
- * Perform a XED instruction according to Ypair.
- * (It has been borken out of the main instruction execution switch to facilitate it's use
- * for interrupt/fault procesing.)
- */
-t_stat doXED(word36 *Ypair)
-{
-    /// The xed instruction itself does not affect any indicator. However, the execution of the instruction pair from C(Y-pair) may affect indicators.
-    /// The even instruction from C(Y-pair) must not alter C(Y-pair)36,71, and must not be another xed instruction.
-    /// If the execution of the instruction pair from C(Y-pair) alters C(PPR.IC), then a transfer of control occurs; otherwise, the next instruction to be executed is fetched from C(PPR.IC)+1. If the even instruction from C(Y-pair) alters C(PPR.IC), then the transfer of control is effective immediately and the odd instruction is not executed.
-    
-    /// To execute an instruction pair having an rpd instruction as the odd instruction, the xed instruction must be located at an odd address. The instruction pair repeated is that instruction pair at C(PPR.IC)+1, that is, the instruction pair immediately following the xed instruction. C(PPR.IC) is adjusted during the execution of the repeated instruction pair so the the next instruction fetched for execution is from the first word following the repeated instruction pair.
-    /// The instruction pair at C(Y-pair) may cause any of the processor defined fault conditions, but only the directed faults (0,1,2,3) and the access violation fault may be restarted successfully by the hardware. Note that the software induced fault tag (1,2,3) faults cannot be properly restarted.
-    ///  An attempt to execute an EIS multiword instruction causes an illegal procedure fault.
-    ///  Attempted repetition with the rpt, rpd, or rpl instructions causes an illegal procedure fault.
-    
-#ifdef CHASING_BOOT
-    // If we are in a fault cascade, we never return to the main loop, so
-    // we need to do some housekeeping
-    if (sim_interval <= 0) /* check clock queue */
-        sim_process_event ();
-    sim_interval --;
-#endif
-
-    // XXX This is probably way wrong and too simplistic, but it's a start ...
-    
-    DCDstruct _xec;   // our decoded instruction struct
-    EISstruct _eis;
-    
-    //_xec.IWB = Ypair[0];
-    cu.IWB = Ypair[0];
-    _xec.e = &_eis;
-    
-    DCDstruct *xec = decodeInstruction(Ypair[0], &_xec);    // fetch instruction into current instruction
-    
-// XXX The conditions are more rigorous: see AL39, pg 327
-    // If we are in a fault handler, the IC points to the faulting instruction
-    // but we technically are executing an even instruction
-    if (/* PPR.IC % 2 == 0 && // Even address */
-        xec -> i == 0) // Not inhibited
-      cpu . interrupt_flag = sample_interrupts ();
-    else
-      cpu . interrupt_flag = false;
-
-    t_stat ret = executeInstruction(xec);
-    
-    if (ret)
-        return (ret);
-    
-    if (cpu . interrupt_flag)
-        return (CONT_INTR);
-
-    //_xec.IWB = Ypair[1];
-    cu.IWB = Ypair[1];
-    _xec.e = &_eis;
-    
-    xec = decodeInstruction(Ypair[1], &_xec);               // fetch instruction into current instruction
-    
-    ret = executeInstruction(xec);
-    
-    return (ret);
-}
-#endif
 
 static void print_uint128_r (__uint128_t n)
 {

@@ -1185,7 +1185,8 @@ t_stat sim_instr (void)
                 else
                   cu . IWB = instr_buf [1];
 
-                decodeInstruction (cu . IWB, & currentInstruction);
+                //decodeInstruction (cu . IWB, & currentInstruction);
+                setupInstruction ();
                 t_stat ret = executeInstruction ();
 
                 if (ret > 0)
@@ -1236,18 +1237,15 @@ t_stat sim_instr (void)
                   {
                     // Get the odd
                     cu . IWB = cu . IRODD;
-                    setupInstruction ();
                     cu . xde = cu . xdo = 0; // and done
                   }
                 else if (cu . xde == 1 && cu . xdo == 1)
                   {
-                    setupInstruction ();
                     cu . xde = 0; // do the odd next time
                     cu . xdo = 1;
                   }
                 else if (cu . xde == 1)
                   {
-                    setupInstruction ();
                     cu . xde = cu . xdo = 0; // and done
                   }
                 else
@@ -1255,8 +1253,8 @@ t_stat sim_instr (void)
                     processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     fetchInstruction(PPR.IC);
-                    setupInstruction ();
                   }
+
 
 // XXX Consider not checking for interrupts if cu.rpt
 
@@ -1273,6 +1271,12 @@ t_stat sim_instr (void)
                     cpu . g7_flag = false;
                   }
 
+// XXX The following repeat code should be part of instruction execution.
+// XXX This would allow all setupInstruction()s to be coalesced.
+
+                setupInstruction ();
+
+#if 0
                 if (cu . rpt || cu .rd)
                   {
 //sim_debug (DBG_TRACE, & cpu_dev, "cpu repeat\n");
@@ -1323,7 +1327,7 @@ t_stat sim_instr (void)
                     rX[Xn] = TPR.CA;
 //sim_debug (DBG_TRACE, & cpu_dev, "cpu repeat_first Xn %o X[Xn] %06o\n", Xn, rX [Xn]);
                   }
-
+#endif
                 cpu . cycle = EXEC_cycle;
                 break;
 
@@ -1603,6 +1607,7 @@ t_stat sim_instr (void)
 
                 // cu_safe_restore should have restored CU.IWB, so
                 // we can determine the instruction length.
+                // decodeInstruction() restores ci->info->ndes
                 decodeInstruction (cu . IWB, & currentInstruction);
 
                 PPR.IC += ci->info->ndes;
