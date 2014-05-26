@@ -991,6 +991,8 @@ t_stat scu_sscr (uint scu_unit_num, uint __attribute__((unused)) cpu_unit_num, w
       {
         sim_debug (DBG_ERR, &scu_dev, "%s: scu_unit_num out of range %d\n",
                    __func__, scu_unit_num);
+// XXX we shouldn't really have a STOP_BUG....
+// XXX should this be a store fault?
         return STOP_BUG;
       }
 
@@ -1092,6 +1094,7 @@ sim_printf ("sscr %o\n", function);
               {
                 // Not legal for Multics
                 sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, port_num);
+// XXX we should not support a STOP_WARN
                 return STOP_WARN;
               }
     
@@ -1847,6 +1850,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * r
       {
         sim_debug (DBG_ERR, & scu_dev, "%s: can't find cpu port in the snarl of cables; scu_unit_no %d, cpu_unit_num %d\n", 
                    __func__, scu_unit_num, cpu_unit_num);
+// XXX we should not support STOP_BUG
         return STOP_BUG;
       }
 
@@ -1935,6 +1939,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
       {
         sim_debug (DBG_ERR, & scu_dev, "%s: can't find cpu port in the snarl of cables; scu_unit_no %d, cpu_unit_num %d\n", 
                    __func__, scu_unit_num, cpu_unit_num);
+// XXX we should not support STOP_BUG
         return STOP_BUG;
       }
 

@@ -716,6 +716,23 @@ static t_stat DoBasicInstruction (void);
 static t_stat DoEISInstruction (void);
 
 
+// Return values
+//  CONT_TRA
+//  STOP_UNIMP
+//  emCall()
+//     STOP_HALT
+//  scu_sscr()
+//     CONT_FAULT (faults)
+//     STOP_BUG
+//     STOP_WARN
+//  scu_rmcm()
+//     STOP_BUG
+//  scu_smcm()
+//  STOP_DIS
+//  simh_hooks()
+//    hard to document what this can return....
+//  0
+// 
 static t_stat doInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
@@ -3104,7 +3121,6 @@ static t_stat DoBasicInstruction (void)
             if (TPR.TRR > PPR.PRR)
             {
                 acvFault(OCALL, "call6 access violation fault (outward call)");
-                return CONT_FAULT; // access violation fault (outward call)
             }
             if (TPR.TRR < PPR.PRR)
                 PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & MASK15; // keep to 15-bits
@@ -4132,7 +4148,7 @@ static t_stat DoBasicInstruction (void)
                   return STOP_UNIMP;
 
                 default:
-                  return CONT_FAULT;
+                  doFault (illproc_fault, 0, "lcpr tag invalid");
 
               }
             break;
@@ -4147,7 +4163,6 @@ static t_stat DoBasicInstruction (void)
 
         case 0257:  ///< lsdp
             doFault(illproc_fault, 0, "lsdp is illproc on DPS8M");
-            return CONT_FAULT;
 
         case 0613:  ///< rcu
             return STOP_UNIMP;
@@ -5901,7 +5916,6 @@ static int doABSA (word36 * result)
       {
         sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
         doFault (illproc_fault, 0, "ABSA in absolute mode.");
-        return CONT_FAULT;
       }
 
     // XXX This mode logic should not be necessary, but something is still wrong
@@ -5927,7 +5941,6 @@ static int doABSA (word36 * result)
             if (2 * (uint) TPR . TSR >= 16 * ((uint) DSBR . BND + 1))
               {
                 doFault (acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
-                return CONT_FAULT;
               }
 
             // 2. Fetch the target segment SDW from DSBR.ADDR + 2 * segno.
@@ -5952,7 +5965,6 @@ static int doABSA (word36 * result)
             if (TPR . CA >= 16 * (BOUND + 1))
               {
                 doFault (acc_viol_fault, ACV15, "ABSA in SDW boundary violation.");
-                return CONT_FAULT;
               }
 
             // 5. If the access bits (SDW.R, SDW.E, etc.) of the segment are incompatible with the reference, generate the appropriate access violation fault.
@@ -5988,7 +6000,6 @@ static int doABSA (word36 * result)
             if (2 * (uint) segno >= 16 * ((uint) DSBR . BND + 1))
               {
                 doFault (acc_viol_fault, ACV15, "ABSA in DSBR boundary violation.");
-                return CONT_FAULT;
               }
 
             // 2. Form the quantities:

@@ -33,7 +33,11 @@ enum _appendingUnit_cycle_type {
 
 void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);
-void acvFault(_fault_subtype acvfault, char * msg);
+void acvFault(_fault_subtype acvfault, char * msg)
+#ifdef __GNUC__
+  __attribute__ ((noreturn))
+#endif
+;
 word24 doAppendCycle(word18 address, _processor_cycle_type thisCycle);
 void do_ldbr (word36 * Ypair);
 void do_sdbr (word36 * Ypair);
