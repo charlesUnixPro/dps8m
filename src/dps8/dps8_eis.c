@@ -23,6 +23,7 @@ struct MOPstruct
 
 
 
+// CANFAULT
 static void EISWrite(EISaddr *p, word36 data)
 {
     if (p->mat == viaPR)
@@ -46,6 +47,7 @@ static void EISWrite(EISaddr *p, word36 data)
     }
 }
 
+// CANFAULT
 static word36 EISRead(EISaddr *p)
 {
     word36 data;
@@ -71,6 +73,7 @@ static word36 EISRead(EISaddr *p)
     return data;
 }
 
+// CANFAULT
 static void EISReadN(EISaddr *p, int N, word36 *dst)
 {
     for(int n = 0 ; n < N ; n++)
@@ -140,6 +143,7 @@ static word36 getMFReg(int n, bool RType)
  */
 // prepare MFk operand descriptor for use by EIS instruction ....
 
+// CANFAULT
 void setupOperandDescriptor(int k, EISstruct *e)
 {
     switch (k)
@@ -594,6 +598,7 @@ static void addSign(word72s n128, EISstruct *e)
 /*!
  * load a 9*n bit integer into e->x ...
  */
+// CANFAULT
 static void load9x(int n, EISaddr *addr, int pos, EISstruct *e)
 {
     int128 x = 0;
@@ -711,6 +716,7 @@ static word9 get9(word36 w, int pos)
 /*!
  * return a 4- or 9-bit character at memory "*address" and position "*pos". Increment pos (and address if necesary)
  */
+// CANFAULT
 static int EISget49(EISaddr *p, int *pos, int tn)
 {
     if (!p)
@@ -755,6 +761,7 @@ static int EISget49(EISaddr *p, int *pos, int tn)
  * return a 4-, 6- or 9-bit character at memory "*address" and position "*pos". Increment pos (and address if necesary)
  * NB: must be initialized before use or else unpredictable side-effects may result. Not thread safe!
  */
+// CANFAULT
 static int EISget469(EISaddr *p, int *pos, int ta)
 {
     if (!p)
@@ -810,6 +817,7 @@ static int EISget469(EISaddr *p, int *pos, int ta)
  * NB: must be initialized before use or else unpredictable side-effects may result. Not thread safe
  */
 
+// CANFAULT
 static int EISget469r(EISaddr *p, int *pos, int ta)
 {
     //static word18 lastAddress;// try to keep memory access' down
@@ -867,6 +875,7 @@ static int EISget469r(EISaddr *p, int *pos, int ta)
 /*!
  * load a decimal number into e->x ...
  */
+// CANFAULT
 static void loadDec(EISaddr *p, int pos, EISstruct *e)
 {
     int128 x = 0;
@@ -1012,6 +1021,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
 /*!
  * write 9-bit bytes to memory @ pos (in reverse)...
  */
+// CANFAULT
 static void EISwrite9r(EISaddr *p, int *pos, int char9)
 {
     word36 w;
@@ -1049,6 +1059,7 @@ static void EISwrite9r(EISaddr *p, int *pos, int char9)
 /*!
  * write 6-bit chars to memory @ pos (in reverse)...
  */
+// CANFAULT
 static void EISwrite6r(EISaddr *p, int *pos, int char6)
 {
     word36 w;
@@ -1094,6 +1105,7 @@ static void EISwrite6r(EISaddr *p, int *pos, int char6)
 /*!
  * write 4-bit digits to memory @ pos (in reverse) ...
  */
+// CANFAULT
 static void EISwrite4r(EISaddr *p, int *pos, int char4)
 {
     word36 w;
@@ -1143,6 +1155,7 @@ static void EISwrite4r(EISaddr *p, int *pos, int char4)
 /*!
  * write 4-bit chars to memory @ pos ...
  */
+// CANFAULT
 static void EISwrite4(EISaddr *p, int *pos, int char4)
 {
     word36 w;
@@ -1191,6 +1204,7 @@ static void EISwrite4(EISaddr *p, int *pos, int char4)
 /*!
  * write 6-bit digits to memory @ pos ...
  */
+// CANFAULT
 static void EISwrite6(EISaddr *p, int *pos, int char6)
 {
     word36 w;
@@ -1233,6 +1247,7 @@ static void EISwrite6(EISaddr *p, int *pos, int char6)
 /*!
  * write 9-bit bytes to memory @ pos ...
  */
+// CANFAULT
 static void EISwrite9(EISaddr *p, int *pos, int char9)
 {
     word36 w;
@@ -1268,6 +1283,7 @@ static void EISwrite9(EISaddr *p, int *pos, int char9)
 /*!
  * write a 4-, 6-, or 9-bit char to dstAddr ....
  */
+// CANFAULT
 static void EISwrite469(EISaddr *p, int *pos, int ta, int c469)
 {
     switch(ta)
@@ -1285,8 +1301,8 @@ static void EISwrite469(EISaddr *p, int *pos, int ta, int c469)
 /*!
  * write a 4-, 6-, or 9-bit char to dstAddr (in reverse)....
  */
-static 
-void EISwrite469r(EISaddr *p, int *pos, int ta, int c469)
+// CANFAULT
+static void EISwrite469r(EISaddr *p, int *pos, int ta, int c469)
 {
     switch(ta)
     {
@@ -1303,6 +1319,7 @@ void EISwrite469r(EISaddr *p, int *pos, int ta, int c469)
 /*!
  * write a 4-, or 9-bit numeric char to dstAddr ....
  */
+// CANFAULT
 void EISwrite49(EISaddr *p, int *pos, int tn, int c49)
 {
     switch(tn)
@@ -1317,6 +1334,7 @@ void EISwrite49(EISaddr *p, int *pos, int tn, int c49)
 /*!
  * write char to output string in Reverse. Right Justified and taking into account string length of destination
  */
+// CANFAULT
 static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
 {
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
@@ -1403,6 +1421,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
     N -= 1;
 }
 
+// CANFAULT
 static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 {
     /// first thing we need to do is to find out the last position is the buffer we want to start writing to.
@@ -1451,6 +1470,7 @@ static void EISwriteToBinaryStringReverse(EISaddr *p, int k)
 /// characters directly into the output string taking into account the output string length.....
 
 
+// CANFAULT
 static void _btd(EISstruct *e)
 {
     word72s n128 = e->x;    ///< signExt9(e->x, e->N1);          ///< adjust for +/-
@@ -1511,6 +1531,7 @@ static void _btd(EISstruct *e)
 }
 
 
+// CANFAULT
 void btd(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -1565,6 +1586,7 @@ void btd(DCDstruct *ins)
     
 }
 
+// CANFAULT
 void dtb(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -1603,6 +1625,7 @@ void dtb(DCDstruct *ins)
 /*!
  * Edit instructions & support code ...
  */
+// CANFAULT
 static void EISwriteOutputBufferToMemory(EISaddr *p)
 {
     //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
@@ -1632,6 +1655,7 @@ static void EISwriteOutputBufferToMemory(EISaddr *p)
     }
 }
 
+// CANFAULT
 static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int szDst, int c49)
 {
     //4. If an edit insertion table entry or MOP insertion character is to be stored, ANDed, or ORed into a receiving string of 4- or 6-bit characters, high-order truncate the character accordingly.
@@ -1690,6 +1714,7 @@ static void writeToOutputBuffer(EISstruct *e, word9 **dstAddr, int szSrc, int sz
 /*!
  * Load the entire sending string number (maximum length 63 characters) into the decimal unit input buffer as 4-bit digits (high-order truncating 9-bit data). Strip the sign and exponent characters (if any), put them aside into special holding registers and decrease the input buffer count accordingly.
  */
+// CANFAULT
 void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 {
     EISstruct *e = &ins->e;
@@ -1841,6 +1866,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
 /*!
  * Load decimal unit input buffer with sending string characters. Data is read from main memory in unaligned units (not modulo 8 boundary) of Y-block8 words. The number of characters loaded is the minimum of the remaining sending string count, the remaining receiving string count, and 64.
  */
+// CANFAULT
 static void EISloadInputBufferAlphnumeric(EISstruct *e, int k)
 {
     word9 *p = e->inBuffer; // p points to position in inBuffer where 4-bit chars are stored
@@ -1951,8 +1977,7 @@ MOPstruct mopTab[040] = {
     {NULL, 0}
 };
 
-static 
-char* defaultEditInsertionTable = " *+-$,.0";
+static char* defaultEditInsertionTable = " *+-$,.0";
 
 
 //static 
@@ -1971,7 +1996,8 @@ char* defaultEditInsertionTable = " *+-$,.0";
  * EXPLANATION: The edit insertion table is replaced by the string of eight 9-bit characters immediately following the CHT micro operation.
  * FLAGS: None affected
  * NOTE: C(IF) is not interpreted for this operation.
- ￼￼￼*/
+ */
+// CANFAULT
 static int mopCHT(EISstruct *e)
 {
     memset(&e->editInsertionTable, 0, sizeof(e->editInsertionTable)); // XXX do we really need this?
@@ -2007,6 +2033,7 @@ static int mopCHT(EISstruct *e)
  *      ES - If OFF, then set ON
  *      BZ - If bit 1 of C(IF) = 1, then set ON; otherwise, unchanged
  */
+// CANFAULT
 static int mopENF(EISstruct *e)
 {
     // For IF(0) = 0 (end floating-sign operation),
@@ -2072,6 +2099,7 @@ static int mopIGN(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
+// CANFAULT
 static int mopINSA(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
@@ -2120,6 +2148,7 @@ static int mopINSA(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
+// CANFAULT
 static int mopINSB(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
@@ -2164,6 +2193,7 @@ static int mopINSB(EISstruct *e)
  * Edit insertion table entry 1 is moved to the next IF (1-16) receiving field characters.
  * FLAGS: None affected
  */
+// CANFAULT
 static int mopINSM(EISstruct *e)
 {
     for(int n = 0 ; n < e->mopIF ; n += 1)
@@ -2183,6 +2213,7 @@ static int mopINSM(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
+// CANFAULT
 static int mopINSN(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
@@ -2226,6 +2257,7 @@ static int mopINSN(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 9-15, an IPR fault occurs.
  */
+// CANFAULT
 static int mopINSP(EISstruct *e)
 {
     // If C(IF) = 9-15, an IPR fault occurs.
@@ -2265,6 +2297,7 @@ static int mopINSP(EISstruct *e)
  * FLAGS: None affected
  * NOTE: If C(IF) = 0 or C(IF) = 9-15, an Illegal Procedure fault occurs.
  */
+// CANFAULT
 static int mopLTE(EISstruct *e)
 {
     if (e->mopIF == 0 || (e->mopIF >= 9 && e->mopIF <= 15))
@@ -2296,6 +2329,7 @@ static int mopLTE(EISstruct *e)
  unchanged.
  * NOTE: Since the number of characters moved to the receiving string is data-dependent, a possible IPR fault may be avoided by ensuring that the Z and BZ flags are ON.
  */
+// CANFAULT
 static int mopMFLC(EISstruct *e)
 {
     if (e->mopIF == 0)
@@ -2366,6 +2400,7 @@ static int mopMFLC(EISstruct *e)
  *     ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it is unchanged.
  * NOTE: Since the number of characters moved to the receiving string is data-dependent, a possible Illegal Procedure fault may be avoided by ensuring that the Z and BZ flags are ON.
  */
+// CANFAULT
 static int mopMFLS(EISstruct *e)
 {
     if (e->mopIF == 0)
@@ -2453,6 +2488,7 @@ static int mopMFLS(EISstruct *e)
  * MORS can be used to generate a negative overpunch for a receiving field to be used later as a sending field.
  * FLAGS: None affected
  */
+// CANFAULT
 static int mopMORS(EISstruct *e)
 {
     if (e->mopIF == 0)
@@ -2486,6 +2522,7 @@ static int mopMORS(EISstruct *e)
  * FLAGS: (Flags not listed are not affected.)
  * SN If edit insertion table entry 4 is found in C(Y-1), then ON; otherwise, it is unchanged.
  */
+// CANFAULT
 static int mopMSES(EISstruct *e)
 {
     if (e->mvne == true)
@@ -2562,6 +2599,7 @@ static int mopMSES(EISstruct *e)
  * The next IF characters in the source data field are moved to the receiving data field.
  * FLAGS: None affected
  */
+// CANFAULT
 static int mopMVC(EISstruct *e)
 {
     if (e->mopIF == 0)
@@ -2591,6 +2629,7 @@ static int mopMVC(EISstruct *e)
  * FLAGS: (Flags not listed are not affected.)
  * ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it is unchanged.
  */
+// CANFAULT
 static int mopMVZA(EISstruct *e)
 {
     if (e->mopIF == 0)
@@ -2642,6 +2681,7 @@ static int mopMVZA(EISstruct *e)
  * FLAGS: (Flags not listed are not affected.)
  *   ES If OFF and any of C(Y) is less than decimal zero, then ON; otherwise, it is unchanged.
  */
+// CANFAULT
 static int mopMVZB(EISstruct *e)
 {
     if (e->mopIF == 0)
@@ -2709,6 +2749,7 @@ static int mopSES(EISstruct *e)
 /*!
  * fetch MOP from e->mopAddr/e->mopCN ...
  */
+// CANFAULT
 static MOPstruct* EISgetMop(EISstruct *e)
 {
     //static word18 lastAddress;  // try to keep memory access' down
@@ -2758,6 +2799,7 @@ static MOPstruct* EISgetMop(EISstruct *e)
 /*!
  * This is the Micro Operation Executor/Interpreter
  */
+// CANFAULT
 static void mopExecutor(EISstruct *e, int kMop)
 {
     //e->mopAddr = e->YChar9[kMop-1];    // get address of microoperations
@@ -2809,6 +2851,7 @@ static void mopExecutor(EISstruct *e, int kMop)
         e->_faults |= FAULT_IPR;   // XXX ill proc fault
 }
 
+// CANFAULT
 void mvne(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -2887,6 +2930,7 @@ void mvne(DCDstruct *ins)
     EISwriteOutputBufferToMemory(&e->ADDR3);
 }
 
+// CANFAULT
 void mve(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -2987,6 +3031,7 @@ static bool isOvp(int c, int *on)
  *
  * (Nice, simple instruction if it weren't for the stupid overpunch stuff that ruined it!!!!)
  */
+// CANFAULT
 void mlr(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -3198,6 +3243,7 @@ static void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
  *
  * (Like MLR, nice, simple instruction if it weren't for the stupid overpunch stuff that ruined it!!!!)
  */
+// CANFAULT
 void mrl(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -3392,6 +3438,7 @@ static word9 xlate(word36 *xlatTbl, int dstTA, int c)
 /*  
  * MVT - Move Alphanumeric with Translation
  */
+// CANFAULT
 void mvt(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -3684,6 +3731,7 @@ static word18 getMF2Reg(int n, word18 data)
 /*
  * SCM - Scan with Mask
  */
+// CANFAULT
 void scm(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -3870,6 +3918,7 @@ void scm(DCDstruct *ins)
 /*
  * SCMR - Scan with Mask Reverse
  */
+// CANFAULT
 void scmr(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -4050,6 +4099,7 @@ void scmr(DCDstruct *ins)
 /*
  * TCT - Test Character and Translate
  */
+// CANFAULT
 void tct(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -4246,6 +4296,7 @@ void tct(DCDstruct *ins)
 /*
  * TCTR - Test Character and Translate Reverse
  */
+// CANFAULT
 void tctr(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -4457,6 +4508,7 @@ void tctr(DCDstruct *ins)
 }
 
 
+// CANFAULT
 void cmpc(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -4581,6 +4633,7 @@ void cmpc(DCDstruct *ins)
 /*
  * SCD - Scan Characters Double
  */
+// CANFAULT
 void scd(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -4764,6 +4817,7 @@ void scd(DCDstruct *ins)
 /*
  * SCDR - Scan Characters Double Reverse
  */
+// CANFAULT
 void scdr(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -4958,6 +5012,7 @@ void scdr(DCDstruct *ins)
  * get a bit from memory ....
  */
 // XXX this is terribly ineffecient, but it'll do for now ......
+// CANFAULT
 static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
 {
     //static word18 lastAddress;  // try to keep memory access' down
@@ -5001,6 +5056,7 @@ static bool EISgetBit(EISaddr *p, int *cpos, int *bpos)
  */
 
 #ifndef QUIET_UNUSED
+// CANFAULT
 static void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
 {
     if (*bpos > 8)      // bits 0-8
@@ -5028,6 +5084,7 @@ static void EISwriteBit(EISaddr *p, int *cpos, int *bpos, bool bit)
 }
 #endif
 
+// CANFAULT
 static bool EISgetBitRW(EISaddr *p)
 {
     // make certain we have a valid address
@@ -5095,6 +5152,7 @@ static bool EISgetBitRW(EISaddr *p)
 /*
  * CMPB - Compare Bit Strings
  */
+// CANFAULT
 void cmpb(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -5180,6 +5238,7 @@ void cmpb(DCDstruct *ins)
     }
 }
 
+// CANFAULT
 void csl(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -5348,6 +5407,7 @@ static void getBitOffsets(int length, int initC, int initB, int *nWords, int *ne
     *newB = endBit % 9; // last bit number
 }
 
+// CANFAULT
 void csr(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -5500,6 +5560,7 @@ void csr(DCDstruct *ins)
 }
 
 
+// CANFAULT
 void sztl(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -5624,13 +5685,13 @@ void sztl(DCDstruct *ins)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
-            // XXX enable when things are working
             doFault(overflow_fault, 0, "sztl truncation fault");
         }
     }
 }
 
 
+// CANFAULT
 void sztr(DCDstruct *ins)
 {
     EISstruct *e = &ins->e;
@@ -5765,7 +5826,6 @@ void sztr(DCDstruct *ins)
         SETF(cu.IR, I_TRUNC);
         if (e->T)
         {
-            // XXX enable when things are working
             doFault(overflow_fault, 0, "sztr truncation fault");
         }
     }

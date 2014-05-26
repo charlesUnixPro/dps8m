@@ -36,6 +36,7 @@ static int doABSA (word36 * result);
 static t_stat doInstruction (void);
 static int emCall (void);
 
+// CANFAULT 
 static void writeOperands (void)
 {
     DCDstruct * i = & currentInstruction;
@@ -423,6 +424,7 @@ t_stat prepareComputedAddress (void)
     return SCPE_OK;
 }
 
+// CANFAULT 
 static void setupInstruction (void)
 {
     cpu.read_addr = TPR.CA;
@@ -473,36 +475,16 @@ static void setupInstruction (void)
 }
 
 // fetch instrcution at address
+// CANFAULT
 void fetchInstruction (word18 addr)
 {
     DCDstruct * p = & currentInstruction;
     
-    // XXX experimental code; there may be a better way to do this, especially
-    // if a pointer to a malloc is getting zapped
-    // Yep, I was right
-    // HWR doesn't make sense. DCDstruct * is not really malloc()'d .. it's a global that needs to be cleared before each use. Why does the memset break gcc code?
-    // CAC The DCDstruct * is not the problem; the DCDstruct contains a pointer
-    // to a malloc'd structure. After the memset zero'd the pointer, no one set
-    // it back to point to anything, so the code dies later dereferencing a 
-    // NULL pointer.
-
-    //memset (p, 0, sizeof (struct DCDstruct));
-    // Try the obvious ones
-    p->opcode  = 0;
-    p->opcodeX = 0;
-    p->address = 0;
-    p->a       = 0;
-    p->i       = 0;
-    p->tag     = 0;
-    
-    p->info = 0;
-    //p->IWB = 0;
-    
+    memset (p, 0, sizeof (struct DCDstruct));
 
     // since the next memory cycle will be a instruction fetch setup TPR
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
-    
 
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
@@ -517,6 +499,7 @@ void fetchInstruction (word18 addr)
 //    return SCPE_OK;
 //}
 
+// CANFAULT 
 void fetchOperands (void)
 {
     DCDstruct * p = & currentInstruction;
@@ -545,6 +528,7 @@ static t_stat setupForOperandRead (void)
     return SCPE_OK;
 }
 
+// CANFAULT
 t_stat executeInstruction (void)
 {
     setupInstruction ();
@@ -821,6 +805,7 @@ static t_stat DoEISInstruction (void);
 //    hard to document what this can return....
 //  0
 // 
+// CANFAULT 
 static t_stat doInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
@@ -842,6 +827,7 @@ static t_stat doInstruction (void)
     return i->opcodeX ? DoEISInstruction () : DoBasicInstruction ();
 }
 
+// CANFAULT 
 static t_stat DoBasicInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
@@ -4580,6 +4566,7 @@ static t_stat DoBasicInstruction (void)
     return 0;
 }
 
+// CANFAULT 
 static t_stat DoEISInstruction (void)
 {
     DCDstruct * i = & currentInstruction;
@@ -5994,6 +5981,8 @@ static int emCall (void)
     return 0;
 }
 
+// XXX This code may be redundant
+// CANFAULT 
 static int doABSA (word36 * result)
   {
     DCDstruct * i = & currentInstruction;

@@ -831,6 +831,7 @@ void ufm (void)
 /*!
  * floating divide ...
  */
+// CANFAULT
 static void fdvX(bool bInvert)
 {
     //! C(EAQ) / C (Y) → C(EA)
@@ -904,8 +905,7 @@ static void fdvX(bool bInvert)
         
         rA = m1;
         
-        sim_printf ("XXX: divide check fault");
-        return; // XXX: generate a divide check fault,
+        doFault(div_fault, 0, "DFDV: divide check fault");
     }
 
     while (m1 >= m2)
@@ -1573,6 +1573,7 @@ void dufm (void)
 /*!
  * floating divide ...
  */
+// CANFAULT 
 static void dfdvX (bool bInvert)
 {
     //! C(EAQ) / C (Y) → C(EA)
@@ -1663,9 +1664,7 @@ static void dfdvX (bool bInvert)
         
         rA = m1;
         
-        //sim_printf ("XXX: divide check fault\n");
         doFault(div_fault, 0, "DFDV: divide check fault");
-        // return; // XXX: generate a divide check fault,
     }
     
     while (m1 >= m2)
@@ -1706,15 +1705,19 @@ static void dfdvX (bool bInvert)
         rE = (word8)-128;
 }
 
+// CANFAULT 
 void dfdv (void)
 {
     dfdvX (false);    // no inversion
 }
+
+// CANFAULT 
 void dfdi (void)
 {
     dfdvX (true);
 }
 
+// CANFAULT 
 void dvf (void)
 {
     //! C(AQ) / (Y)

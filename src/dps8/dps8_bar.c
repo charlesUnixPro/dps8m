@@ -38,6 +38,7 @@
  * address is out of range, and a store fault occurs.
  */
 
+// CANFAULT
 word18 getBARaddress(word18 addr)
 {
     // sim_printf ("BAR.BOUND %03o (%06o) addr %06o\n", BAR.BOUND, BAR.BOUND << 9, addr);

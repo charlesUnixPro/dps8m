@@ -182,6 +182,7 @@ char *getModString(int32 tag)
 
 
 // XXX ticket #3 isSigned
+// CANFAULT
 word36 AddSub36b(char op, bool __attribute__((unused)) isSigned, word36 op1, word36 op2, word18 flagsToSet, word18 *flags)
 {
     word36 res = 0;
@@ -267,6 +268,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
 }
 
 // XXX ticket #3 isSigned
+// CANFAULT
 word18 AddSub18b(char op, bool __attribute__((unused)) isSigned, word18 op1, word18 op2, word18 flagsToSet, word18 *flags)
 {
     word18 res = 0;
@@ -354,6 +356,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
 }
 
 // XXX ticket #3 isSigned
+// CANFAULT
 word72 AddSub72b(char op, bool __attribute__((unused)) isSigned, word72 op1, word72 op2, word18 flagsToSet, word18 *flags)
 {
     word72 res = 0;
@@ -424,6 +427,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     return res & MASK72;           // 128 => 72-bit. Mask off unnecessary bits ...
 }
 
+// CANFAULT
 word36 compl36(word36 op1, word18 *flags)
 {
     //printf("op1 = %llo %llo\n", op1, (-op1) & DMASK);
@@ -453,6 +457,7 @@ word36 compl36(word36 op1, word18 *flags)
     return res;
 }
 
+// CANFAULT
 word18 compl18(word18 op1, word18 *flags)
 {
     //printf("op1 = %llo %llo\n", op1, (-op1) & DMASK);

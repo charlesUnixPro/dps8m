@@ -501,6 +501,7 @@ static void doITS(word4 Tag)
 }
 
 
+// CANFAULT
 static bool doITSITP(word18 address, word36 indword, word6 Tag)
 {
     DCDstruct * i = & currentInstruction;
@@ -554,6 +555,7 @@ static bool doITSITP(word18 address, word36 indword, word6 Tag)
     
 }
 
+// CANFAULT
 t_stat doComputedAddressFormation (void)
 {
     DCDstruct * i = & currentInstruction;

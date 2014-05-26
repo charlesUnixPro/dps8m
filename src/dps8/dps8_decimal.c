@@ -716,6 +716,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
 /*
  * ad2d - Add Using Two Decimal Operands
  */
+// CANFAULT
 void ad2d (void)
 {
     DCDstruct * i = & currentInstruction;
@@ -973,6 +974,7 @@ void ad2d (void)
 /*
  * ad3d - Add Using Three Decimal Operands
  */
+// CANFAULT
 void ad3d (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -1255,6 +1257,7 @@ void ad3d (void)
 /*
  * sb2d - Subtract Using Two Decimal Operands
  */
+// CANFAULT
 void sb2d (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -1511,6 +1514,7 @@ void sb2d (void)
 /*
  * sb3d - Subtract Using Three Decimal Operands
  */
+// CANFAULT
 void sb3d (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -1793,6 +1797,7 @@ void sb3d (void)
 /*
  * mp2d - Multiply Using Two Decimal Operands
  */
+// CANFAULT
 void mp2d (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -2048,6 +2053,7 @@ void mp2d (void)
 /*
  * mp3d - Multiply Using Three Decimal Operands
  */
+// CANFAULT
 void mp3d (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -2320,6 +2326,7 @@ void mp3d (void)
  * dv2d - Divide Using Two Decimal Operands
  */
 // XXX need to put in divide checks, etc ...
+// CANFAULT
 void dv2d (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -2565,6 +2572,7 @@ void dv2d (void)
 // XXX need to put in divide checks, etc ...
 
 void dv3d (void)
+// CANFAULT
 {
     DCDstruct * ins = & currentInstruction;
     EISstruct *e = &ins->e;
@@ -2853,6 +2861,7 @@ void dv3d (void)
 /*
  * cmpn - Compare Numeric
  */
+// CANFAULT
 void cmpn (void)
 {
     DCDstruct * ins = & currentInstruction;
@@ -2997,6 +3006,7 @@ void cmpn (void)
 /*
  * mvn - move numeric (initial version was deleted by house gnomes)
  */
+// CANFAULT
 void mvn (void)
 {
     /*

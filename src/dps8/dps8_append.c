@@ -188,6 +188,7 @@ void do_cams (word36 __attribute__((unused)) Y)
 /**
  * fetch descriptor segment PTW ...
  */
+// CANFAULT
 static _ptw0* fetchDSPTW(word15 segno)
 {
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
@@ -210,9 +211,12 @@ static _ptw0* fetchDSPTW(word15 segno)
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW x1 0%o y1 0%o DSBR.ADDR 0%o PTWx1 0%012llo PTW0: ADDR 0%o U %o M %o F %o FC %o\n", x1, y1, DSBR.ADDR, PTWx1, PTW0.ADDR, PTW0.U, PTW0.M, PTW0.F, PTW0.FC);
     return &PTW0;
 }
+
+
 /**
  * modify descriptor segment PTW (Set U=1) ...
  */
+// CANFAULT
 static _ptw0* modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
@@ -275,6 +279,7 @@ static _sdw* fetchSDWfromSDWAM(word15 segno)
 /**
  * Fetches an SDW from a paged descriptor segment.
  */
+// CANFAULT
 static _sdw0* fetchPSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(0):segno=%05o\n", segno);
@@ -317,6 +322,7 @@ static _sdw0* fetchPSDW(word15 segno)
 
 /// \brief Nonpaged SDW Fetch
 /// Fetches an SDW from an unpaged descriptor segment.
+// CANFAULT
 static _sdw0 *fetchNSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
@@ -683,6 +689,7 @@ static char *strACV(_fault_subtype acv)
 
 static int acvFaults = 0;   ///< pending ACV faults
 
+// CANFAULT
 void acvFault(_fault_subtype acvfault, char * msg)
 {
     
@@ -733,6 +740,7 @@ static bool bPrePageMode = false;
  * Returns final address suitable for core_read/write
  */
 
+// CANFAULT
 word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 {
     DCDstruct * i = & currentInstruction;
