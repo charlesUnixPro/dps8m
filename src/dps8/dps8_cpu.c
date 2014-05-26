@@ -1185,8 +1185,6 @@ t_stat sim_instr (void)
                 else
                   cu . IWB = instr_buf [1];
 
-                //decodeInstruction (cu . IWB, & currentInstruction);
-                setupInstruction ();
                 t_stat ret = executeInstruction ();
 
                 if (ret > 0)
@@ -1271,63 +1269,6 @@ t_stat sim_instr (void)
                     cpu . g7_flag = false;
                   }
 
-// XXX The following repeat code should be part of instruction execution.
-// XXX This would allow all setupInstruction()s to be coalesced.
-
-                setupInstruction ();
-
-#if 0
-                if (cu . rpt || cu .rd)
-                  {
-//sim_debug (DBG_TRACE, & cpu_dev, "cpu repeat\n");
-                    //cu . repeat_first = false;
-                    // check for illegal modifiers:
-                    //    only R & RI are allowed 
-                    //    only X1..X7
-                    switch (GET_TM(ci->tag))
-                      {
-                        case TM_R:
-                        case TM_RI:
-                          break;
-                        default:
-                          // generate fault. Only R & RI allowed
-                          doFault(illproc_fault, 0, "ill addr mod from RPT");
-                      }
-                    word6 Td = GET_TD(ci->tag);
-                    switch (Td)
-                      {
-                        case TD_X0:
-                        case TD_X1:
-                        case TD_X2:
-                        case TD_X3:
-                        case TD_X4:
-                        case TD_X5:
-                        case TD_X6:
-                        case TD_X7:
-                          break;
-                        default:
-                          // generate fault. Only Xn allowed
-                          doFault(illproc_fault, 0, "ill addr mod from RPT");
-                      }
-// XXX Does this need to also check for NO_RPL?
-                    // repeat allowed for this instruction?
-                    if (ci->info->flags & NO_RPT)
-                      doFault(illproc_fault, 0, "no rpt allowed for instruction");
-                  }
-
-                if (cu . repeat_first)
-                  {
-                    if (cu . rpt || (cu . rd && (PPR.IC & 1)))
-                      cu . repeat_first = false;
-                    // For the first execution of the repeated instruction: 
-                    // C(C(PPR.IC)+1)0,17 + C(Xn) → y, y → C(Xn)
-                    word6 Td = GET_TD(ci->tag);
-                    uint Xn = X(Td);  // Get Xn of next instruction
-                    TPR.CA = (rX[Xn] + ci->address) & AMASK;
-                    rX[Xn] = TPR.CA;
-//sim_debug (DBG_TRACE, & cpu_dev, "cpu repeat_first Xn %o X[Xn] %06o\n", Xn, rX [Xn]);
-                  }
-#endif
                 cpu . cycle = EXEC_cycle;
                 break;
 
@@ -1519,21 +1460,6 @@ t_stat sim_instr (void)
                 core_read2(addr, instr_buf, instr_buf + 1);
 
                 cpu . cycle = FAULT_EXEC_cycle;
-#if 0
-    t_stat xrv = doXED(faultPair);
-    
-    bFaultCycle = false;                // exit FAULT CYCLE
-    bTroubleFaultCycle = false;
-    if (xrv == CONT_TRA)
-        longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
-    
-    set_addr_mode(am);      // If no transfer of control takes place, the processor returns to the mode in effect at the time of the fault and resumes normal sequential execution with the instruction following the faulting instruction (C(PPR.IC) + 1).
-    
-    if (xrv == 0)
-        longjmp(jmpMain, JMP_NEXT);     // execute next instruction
-    else if (0)                         // TODO: need to put test in to retry instruction (i.e. when executing restartable MW EIS?)
-        longjmp(jmpMain, JMP_RETRY);    // retry instruction
-#endif
 
                 break;
               }
@@ -1548,33 +1474,6 @@ t_stat sim_instr (void)
                   cu . IWB = instr_buf [0];
                 else
                   cu . IWB = instr_buf [1];
-
-                setupInstruction ();
-
-// The normal start state of the CPU is a trouble fault cascade until the
-// iom boot generates in interrupt; therefore, despite the fact that AL39
-// doesn't mention it, interrupts must be sampled during the fault cycle.
-//
-// The above is not correct. During the 20184 boot, the trouble fault 
-// cascade runs until the boot record installs a fault pair into the
-// trouble fault pair location. The loaded pair is 'SCU;DIS'. The DIS
-// should hang until an interrupt is signalled, and then return. The
-// fault pair should then be complete, and return to the original faulted
-// instruction stream at location 0. The interrupt should be sampled then,
-// as part of normal processing.
-
-#if 0
-                if (ci -> i == 0) // Not inhibited
-                  {
-                    cpu . interrupt_flag = sample_interrupts ();
-                    cpu . g7_flag = bG7Pending ();
-                  }
-                else
-                  {
-                    cpu . interrupt_flag = false;
-                    cpu . g7_flag = false;
-                  }
-#endif
 
                 t_stat ret = executeInstruction ();
 

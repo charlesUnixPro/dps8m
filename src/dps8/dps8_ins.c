@@ -423,7 +423,7 @@ t_stat prepareComputedAddress (void)
     return SCPE_OK;
 }
 
-void setupInstruction (void)
+static void setupInstruction (void)
 {
     cpu.read_addr = TPR.CA;
     
@@ -507,7 +507,6 @@ void fetchInstruction (word18 addr)
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
     // TODO: Need to add no DL restrictions?
-    setupInstruction ();
 }
 
 #ifndef QUIET_UNUSED
@@ -548,6 +547,8 @@ static t_stat setupForOperandRead (void)
 
 t_stat executeInstruction (void)
 {
+    setupInstruction ();
+
     DCDstruct * ci = & currentInstruction;
     const word36 IWB  = cu.IWB;          ///< instruction working buffer
     const opCode *info = ci->info;          ///< opCode *
@@ -558,6 +559,7 @@ t_stat executeInstruction (void)
     const bool   i = ci->i;               ///< interrupt inhibit bit.
     const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
     
+   
     addToTheMatrix (opcode, opcodeX, a, tag);
     
     if (cu . rpt || cu .rd)
@@ -5672,7 +5674,7 @@ static t_stat DoEISInstruction (void)
             if (switches . halt_on_unimp)
                 return STOP_UNIMP;
             else
-                doFault(illproc_fault, ill_op, "Unimplemented instruction");
+                doFault(illproc_fault, ill_op, "Illegal instruction");
     }
 
     return 0;
