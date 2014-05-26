@@ -11,7 +11,6 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag);
 t_stat displayTheMatrix (int32 arg, char * buf);
 t_stat prepareComputedAddress (void);   // new
 void cu_safe_restore(void);
-void setupInstruction (void);
 void fetchInstruction(word18 addr);
 t_stat executeInstruction (void);
 
