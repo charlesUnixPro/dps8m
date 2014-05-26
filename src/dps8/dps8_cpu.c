@@ -1294,100 +1294,11 @@ t_stat sim_instr (void)
 
                 if ((! cu . repeat_first) && (cu . rpt || (cu . rd & (PPR.IC & 1))))
                   {
-//sim_debug (DBG_TRACE, & cpu_dev, "cu.rpt\n");
-                    // Delay this to here to so that CAF can see it.
-                    //cu . repeat_first = 0;
-                    bool exit = false;
-                    // The repetition cycle consists of the following steps:
-                    //  a. Execute the repeated instruction
-
-                    //  b. C(X0)0,7 - 1 → C(X0)0,7
-                    uint x = bitfieldExtract(rX[0], 10, 8);
-                    x -= 1;
-                    rX[0] = bitfieldInsert(rX[0], x, 10, 8);
-//sim_debug (DBG_TRACE, & cpu_dev, "x %03o rX[0] %06o\n", x, rX[0]);
-                    
-                    // Modify C(Xn) as described below
-                    //  The computed address, y, of the operand (in the case 
-                    //  of R modification) or indirect word (in the case of RI 
-                    //  modification) is determined as follows:
-                    
-                    word6 Td = GET_TD(ci -> tag);
-                    uint Xn = X(Td);  // Get Xn of instruction
-                    TPR.CA = (rX[Xn] + cu . delta) & AMASK;
-                    rX[Xn] = TPR.CA;
-//sim_debug (DBG_TRACE, & cpu_dev, "Xn %o rX[Xn] %06o\n", Xn, rX[Xn]);
-
-                    //  c. If C(X0)0,7 = 0, then set the tally runout indicator ON and terminate
-                    if (x == 0)
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "tally runout\n");
-                        SETF(cu.IR, I_TALLY);
-                        exit = true;
-                      } 
-
-                    //  d. If a terminate condition has been met, then set 
-                    //     the tally runout indicator OFF and terminate
-
-                    if (TSTF(cu.IR, I_ZERO) && (rX[0] & 0100))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is zero terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      }
-                    else if (!TSTF(cu.IR, I_ZERO) && (rX[0] & 040))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is not zero terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      } 
-                    else if (TSTF(cu.IR, I_NEG) && (rX[0] & 020))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is neg terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      } 
-                    else if (!TSTF(cu.IR, I_NEG) && (rX[0] & 010))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is not neg terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      } 
-                    else if (TSTF(cu.IR, I_CARRY) && (rX[0] & 04))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is carry terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      } 
-                    else if (!TSTF(cu.IR, I_CARRY) && (rX[0] & 02))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is not carry terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      } 
-                    else if (TSTF(cu.IR, I_OFLOW) && (rX[0] & 01))
-                      {
-//sim_debug (DBG_TRACE, & cpu_dev, "is overflow terminate\n");
-                        CLRF(cu.IR, I_TALLY);
-                        exit = true;
-                      }
-
-                    //  e. Go to step a
-                    // If termination condition not met, stay in EXEC_cycle
-                    // and repeat the instruction
-                    if ( ! exit)
-                      {
-                        if (! cu . rpt) // therefore rd & odd
-                          -- PPR.IC;
-                        cpu . cycle = FETCH_cycle;
-                        break;
-                      }
-
-//sim_debug (DBG_TRACE, & cpu_dev, "leaving rpt\n");
-                    cu . rpt = false;
-                    cu . rd = false;
-
-                  } // if (cu . rpt || cu . rd & (PPR.IC & 1))
+                    if (! cu . rpt)
+                      -- PPR.IC;
+                    cpu . cycle = FETCH_cycle;
+                    break;
+                  }
 
                 if (cu . xde == 1 && cu . xdo == 1) // we just did the even of an XED
                   {
