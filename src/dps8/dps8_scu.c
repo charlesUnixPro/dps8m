@@ -738,220 +738,10 @@ typedef struct {
     int scu_port; // What port num are we connected to (same for all SCUs)
 } cpu_ports_t;
 
-#ifndef QUIET_UNUSED
-static cpu_ports_t cpu_ports;
-static int pima_parse_raw(int pima, const char *moi);
-static int scu_get_mask(t_uint64 addr, int port);
-#endif
-
 
 // ============================================================================
 
-#ifndef QUIET_UNUSED
-static const char* adev2text(enum active_dev type)
-{
-    static char* types[] = { "", "CPU", "IOM" };
-    return (type >= ARRAY_SIZE(types)) ? "" : types[type];
-}
-#endif
 
-// ============================================================================
-
-#if 0 // XXX [CAC] this code causes more complexity then it solves, IMO
-static int scu_hw_arg_check(const char *tag, word36 addr, uint scu_unit_num, int port)
-{
-    // Sanity check args
-    // Verify that HW could have received signal
-    
-    if (port < 0 || port > 7) {
-        sim_debug (DBG_ERR, &scu_dev, "%s: Port %d from sscr is out of range 0..7\n", tag, port);
-        cancel_run(STOP_BUG);
-        return 2;
-    }
-    
-    // Verify that HW could have received signal
-    
-    // port-no that rscr instr came in on
-    // We only have one CPU, so...
-    int rcv_port = cpu_ports.scu_port;
-    
-    if (rcv_port < 0 || rcv_port > 7) {
-        sim_debug (DBG_ERR, &scu_dev, "%s: CPU is not connected to any port. Port %d does nto exist on the SCU.\n", tag, rcv_port);
-        cancel_run(STOP_WARN);
-        return 1;
-    }
-    
-    int cpu_port = scu[scu_unit_num].ports[rcv_port].dev_port;    // which port on the CPU?
-    
-    // Verify that HW could have received signal
-    if (cpu_port < 0 || cpu_port > 7) {
-        sim_debug (DBG_ERR, &scu_dev, "%s: Port %d is connected to nonsense port %d of CPU %d\n", tag, rcv_port, cpu_port, scu[ASSUME0].ports[rcv_port].idnum);
-        cancel_run(STOP_WARN);
-        return 1;
-    }
-    // TODO: Check that cpu_ports.ports[cpu_port] is this SCU
-    return 0;
-}
-#endif
-
-// =============================================================================
-
-#ifndef QUIET_UNUSED
-static int scu_set_mask(t_uint64 addr, int port)
-{
-    // BUG: addr should determine which SCU is selected
-    // Implements part of the sscr instruction -- functions y00[0-7]2x
-    
-    const char* moi = "SCU::setmask";
-    if (scu_hw_arg_check(moi, addr, port) > 0)
-        return 1;
-    int rcv_port = cpu_ports.scu_port;  // port-no that instr came in on
-    // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
-    // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
-    
-    // Find mask reg assigned to specified port
-    int port_pima = 0;
-#ifndef QUIET_UNUSED
-    int cpu_pima = 0;
-#endif
-    int cpu_found = 0;
-    int port_found = 0;
-    for (int p = 0; p < ARRAY_SIZE(scu[ASSUME0].interrupts); ++p) {
-        if (scu[ASSUME0].interrupts[p].mask_assign.unassigned)
-            continue;
-        if (scu[ASSUME0].interrupts[p].mask_assign.port == port) {
-            port_pima = p;
-            if (port != rcv_port)
-              {
-                sim_debug (DBG_DEBUG, &scu_dev, "%s: Found MASK %d assigned to %s on port %d\n", moi, p, adev2text(scu[ASSUME0].ports[port].type), port);
-              }
-            ++ port_found;
-        }
-        if (scu[ASSUME0].interrupts[p].mask_assign.port == rcv_port) {
-#ifndef QUIET_UNUSED
-            cpu_pima = p;
-#endif
-             sim_debug (DBG_DEBUG, &scu_dev, "%s: Found MASK %d assigned to invoking CPU on port %d\n", moi, p, rcv_port);
-            ++ cpu_found;
-        }
-    }
-    
-    if (! cpu_found) {
-        sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", moi, rcv_port);
-        fault_gen(FAULT_STR);
-        return 1;
-    }
-    if (cpu_found > 1) {
-        // Not legal for Multics
-        sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", moi, rcv_port);
-        cancel_run(STOP_WARN);
-    }
-    if (! port_found) {
-        sim_debug (DBG_DEBUG, &scu_dev, "%s: No masks assigned to port %d\n", moi, port);
-        return 0;
-    }
-    if (port_found > 1)
-      {
-        sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to port %d\n", moi, rcv_port);
-      }
-    
-    if (port_pima > 1) {
-        sim_debug (DBG_ERR, &scu_dev, "%s: Cannot write to masks other than zero and one: %d\n", moi, port_pima);
-        cancel_run(STOP_BUG);
-        return 1;
-    }
-    
-    // See AN87
-    scu[ASSUME0].interrupts[port_pima].exec_intr_mask = 0;
-    scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= (getbits36(rA, 0, 16) << 16);
-    scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= getbits36(rQ, 0, 16);
-    //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, port_pima + 'A', bin2text(scu[ASSUME0].interrupts[port_pima].exec_intr_mask, N_CELL_INTERRUPTS));
-    return 0;
-}
-#endif
-
-// =============================================================================
-
-#ifndef QUIET_UNUSED
-static int scu_set_cpu_mask(t_uint64 addr)
-{
-    // BUG: addr should determine which SCU is selected
-    
-    if (scu_hw_arg_check("smcm", addr, 0) > 0)
-        return 1;
-    int rcv_port = cpu_ports.scu_port;  // port-no that instr came in on
-    // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
-    // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
-    
-    return scu_set_mask(addr, rcv_port);
-}
-#endif
-
-
-
-// =============================================================================
-
-#ifndef QUIET_UNUSED
-static int scu_get_cpu_mask(t_uint64 addr)
-{
-    // BUG: addr should determine which SCU is selected
-    
-    const char *moi = "SCU::rmcm";
-    
-    if (scu_hw_arg_check(moi, addr, 0) > 0)
-        return 1;
-    int rcv_port = cpu_ports.scu_port;  // port-no that instr came in on
-    // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
-    // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
-    
-    rA = 0;
-    rQ = 0;
-    return scu_get_mask(addr, rcv_port);
-}
-#endif
-
-// =============================================================================
-
-#ifndef QUIET_UNUSED
-static int scu_get_mode_register(t_uint64 addr)
-{
-    // Implements part of the rscr instruction -- function  y0000x
-    // BUG: addr should determine which SCU is selected
-    
-#if 1
-    // BUG: is it really OK for all ports to be disabled?
-    if (scu_hw_arg_check("get-mode-register", addr, 0) != 0)
-      {
-        sim_debug (DBG_ERR, &scu_dev, "get-mode-register: But proceeding anyway");
-      }
-#endif
-    
-#ifndef QUIET_UNUSED
-    int rcv_port = cpu_ports.scu_port;  // port-no that instr came in on
-#endif
-    // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
-    // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
-    
-    
-    // See scr.incl.pl1 and AN87 page 2-2
-    
-    // Note that rscr 0001X can only report an SC with a memory sizes of up
-    // to 256 K-words, but rscr 0001X can report an SCU with up to 4MW.  So,
-    // we identify ourselves as an 4MW SCU.
-    
-    rA = 0;  // first 50 bits are padding
-    rQ = 0;
-    rQ |= setbits36(rQ, 50-36, 4, 2); // id for a 4MW SCU (level 66 SCU)
-    /*
-     remaining bits are only for T&D test and diagnostics
-     */
-    // rQ |= setbits36(rQ, 54-36, 2, 0);  // TS strobe normal timing
-    // rQ |= setbits36(rQ, 64-36, 2, 0);  // both 00b and 10b mean normal voltage
-    // rQ |= setbits36(rQ, 70-36, 1, 0);  // SGR accepted
-    
-    return 0;
-}
-#endif
 
 
 // system controller and the function to be performed as follows:
@@ -1078,7 +868,8 @@ sim_printf ("sscr %o\n", function);
                 //if (scup -> interrupts [p] . mask_assign . port == port_num)
                 if (scu [scu_unit_num ] . mask_assignment [p] == port_num)
                   {
-                    mask_num = p;
+                    if (n_masks_found == 0)
+                      mask_num = p;
                     n_masks_found ++;
                   }
               }
@@ -1094,8 +885,6 @@ sim_printf ("sscr %o\n", function);
               {
                 // Not legal for Multics
                 sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, port_num);
-// XXX we should not support a STOP_WARN
-                return STOP_WARN;
               }
     
             // See AN87
@@ -1367,41 +1156,6 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
     return ret;
 }
 
-// =============================================================================
-
-#ifndef QUIET_UNUSED
-static int pima_parse_raw(int pima, const char *moi)
-{
-    char pima_name = (pima == 0) ? 'A' : 'B';
-    bool unassigned = scu[ASSUME0].interrupts[pima].mask_assign.raw & 1;
-    if (unassigned) {
-        scu[ASSUME0].interrupts[pima].mask_assign.unassigned = 1;
-        sim_debug (DBG_NOTIFY, &scu_dev, "%s: Unassigning MASK %c.\n", moi, pima_name);
-    }
-    int found = 0;
-    for (int p = 0; p < 8; ++p)
-        if (((1<<(8-p) & scu[ASSUME0].interrupts[pima].mask_assign.raw)) != 0) {
-            ++ found;
-            scu[ASSUME0].interrupts[pima].mask_assign.port = p;
-            sim_debug (DBG_NOTIFY, &scu_dev, "%s: Assigning port %d to MASK %c.\n", moi, p, pima_name);
-        }
-    if (unassigned) {
-        if (found != 0) {
-            sim_debug (DBG_WARN, &scu_dev, "%s: %d ports enabled for unassigned MASK %c: %#o\n", moi, found, pima_name, scu[ASSUME0].interrupts[pima].mask_assign.raw);
-            cancel_run(STOP_WARN);
-        }
-        return found != 0;
-    } else {
-        scu[ASSUME0].interrupts[pima].mask_assign.unassigned = found == 0;
-        if (found != 1) {
-            sim_debug (DBG_WARN, &scu_dev, "%s: d ports enabled for MASK %c: %#o\n", moi, found, pima_name, scu[ASSUME0].interrupts[pima].mask_assign.raw);
-            sim_debug (DBG_WARN, &scu_dev, "%s: Auto breakpoint.\n", moi);
-            cancel_run(STOP_WARN);
-        }
-        return found != 1;
-    }
-}
-#endif
 
 // =============================================================================
 
@@ -1419,7 +1173,6 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
     
     if (inum > 31) {
         sim_debug (DBG_WARN, &scu_dev, "%s: Bad interrupt number %d\n", moi, inum);
-        cancel_run(STOP_WARN);
         return 1;
     }
     

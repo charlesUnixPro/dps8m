@@ -162,12 +162,9 @@ enum _processor_addressing_mode {
 #define STOP_UNIMP  1
 #define STOP_DIS    2
 #define STOP_BKPT   3
-#define STOP_INVOP  4
-#define STOP_5      5
-#define STOP_BUG    6
-#define STOP_WARN   7
-#define STOP_FLT_CASCADE   8
-#define STOP_HALT   9
+#define STOP_BUG    4
+#define STOP_FLT_CASCADE   5
+#define STOP_HALT   6
 
 
 // not really STOP codes, but get returned from instruction loops
