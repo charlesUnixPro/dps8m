@@ -423,8 +423,6 @@ t_stat prepareComputedAddress (void)
     return SCPE_OK;
 }
 
-static bool lastTRA = false;
-
 void setupInstruction (void)
 {
     cpu.read_addr = TPR.CA;
@@ -432,8 +430,6 @@ void setupInstruction (void)
     DCDstruct * i = & currentInstruction;
     decodeInstruction(cu . IWB, i);
 
-    lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
-    
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((i->info->flags & PRIV_INS) && !is_priv_mode())
         doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
@@ -503,8 +499,6 @@ void fetchInstruction (word18 addr)
     //p->IWB = 0;
     
 
-    //Read(NULL, addr, &p->IWB, lastTRA ? INSTRUCTION_FETCH : SEQUENTIAL_INSTRUCTION_FETCH, 0);
-    
     // since the next memory cycle will be a instruction fetch setup TPR
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
