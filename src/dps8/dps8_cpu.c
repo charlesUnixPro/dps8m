@@ -1255,6 +1255,7 @@ t_stat sim_instr (void)
                     processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
                     fetchInstruction(PPR.IC);
+                    setupInstruction ();
                   }
 
 // XXX Consider not checking for interrupts if cu.rpt

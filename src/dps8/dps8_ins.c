@@ -512,48 +512,8 @@ void fetchInstruction (word18 addr)
 
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
-#if 0
-    cpu.read_addr = addr;
-    
-    DCDstruct *i = decodeInstruction(cu . IWB, p);
-
-    lastTRA = i->info->flags & TRANSFER_INS; // last instruction was a transfer
-    
-    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
-    if ((i->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
-    
-    // check for illegal addressing mode(s) ...
-    
-    // No CI/SC/SCR allowed
-    if (i->info->mods == NO_CSS)
-    {
-        if (_nocss[i->tag])
-            doFault(illproc_fault, 0, "Illegal CI/SC/SCR modification");
-    }
-    // No DU/DL/CI/SC/SCR allowed
-    else if (i->info->mods == NO_DDCSS)
-    {
-        if (_noddcss[i->tag])
-            doFault(illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
-    }
-    // No DL/CI/SC/SCR allowed
-    else if (i->info->mods == NO_DLCSS)
-    {
-        if (_nodlcss[i->tag])
-            doFault(illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
-    }
-    // No DU/DL allowed
-    else if (i->info->mods == NO_DUDL)
-    {
-        if (_nodudl[i->tag])
-            doFault(illproc_fault, 0, "Illegal DU/DL modification");
-    }
-
     // TODO: Need to add no DL restrictions?
-#else
     setupInstruction ();
-#endif
 }
 
 #ifndef QUIET_UNUSED
