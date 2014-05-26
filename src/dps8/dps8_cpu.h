@@ -4,11 +4,12 @@
 
 
 #define JMP_ENTRY       0
-#define JMP_RETRY       1   ///< retry instruction
-#define JMP_NEXT        2   ///< goto next sequential instruction
-#define JMP_TRA         3   ///< treat return as if it were a TRA instruction with PPR.IC already set to where to jump to
-#define JMP_STOP        4   ///< treat return as if it were an attempt to unravel the stack and gracefully exit out of sim_instr
-#define JMP_INTR        5   // Interrupt detected during processing
+#define JMP_REENTRY     1
+#define JMP_RETRY       2   ///< retry instruction
+#define JMP_NEXT        3   ///< goto next sequential instruction
+#define JMP_TRA         4   ///< treat return as if it were a TRA instruction with PPR.IC already set to where to jump to
+#define JMP_STOP        5   ///< treat return as if it were an attempt to unravel the stack and gracefully exit out of sim_instr
+#define JMP_INTR        6   // Interrupt detected during processing
 
 
 // MM's opcode stuff ...

@@ -465,7 +465,7 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
       }
     
     cpu . cycle = FAULT_cycle;
-    longjmp (jmpMain, JMP_ENTRY);
+    longjmp (jmpMain, JMP_REENTRY);
 }
 
 /*

@@ -1059,7 +1059,6 @@ t_stat simh_hooks (void)
 //  ABORT_cycle
 
 static word36 instr_buf [2];
-static enum { IB_EMPTY, IB_SINGLE, IB_PAIR } instr_buf_state;
 
 // This is part of the simh interface
 t_stat sim_instr (void)
@@ -1075,18 +1074,14 @@ t_stat sim_instr (void)
     cpu . interrupt_flag = false;
     cpu . g7_flag = false;
 
-    //currentInstruction->e = &E;
-    instr_buf_state = IB_EMPTY;
-    // sys_stats . total_cycles = 0; // XXX this should be done by reset(), messes up count on breakpoint
-
     // This allows long jumping to the top of the state machine
     int val = setjmp(jmpMain);
 
     switch (val)
     {
         case JMP_ENTRY:
+        case JMP_REENTRY:
             reason = 0;
-            //sys_stats . total_cycles = 0;
             break;
 #if 0
         case JMP_NEXT:
@@ -1100,6 +1095,9 @@ t_stat sim_instr (void)
 #endif
         case JMP_STOP:
             return stop_reason;
+        default:
+          sim_printf ("longjmp value of %d unhandled\n", val);
+            return STOP_BUG;
     }
 
     // Main instruction fetch/decode loop 
@@ -1154,7 +1152,6 @@ t_stat sim_instr (void)
 
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
-                        instr_buf_state = IB_PAIR;
 
                         cpu . interrupt_flag = false;
                         cpu . cycle = INTERRUPT_EXEC_cycle;
@@ -1192,7 +1189,6 @@ t_stat sim_instr (void)
 
                 if (ret == CONT_TRA)
                   {
-                     instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
                      if (!clear_TEMPORARY_ABSOLUTE_mode ())
                        set_addr_mode (ABSOLUTE_mode);
@@ -1358,14 +1354,13 @@ t_stat sim_instr (void)
                 // Set to ring 0
                 PPR . PRR = 0;
 
-                int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
-// XXX this seems an overly complicated way or colculating that the fault
-// address is twice the fault number.
-                //word24 addr = fltAddress + _faults [cpu . faultNumber] . fault_address;    // absolute address of fault YPair
-                word24 addr = fltAddress +  2 * cpu . faultNumber;    // absolute address of fault YPair
+                // (12-bits of which the top-most 7-bits are used)
+                int fltAddress = (switches.FLT_BASE << 5) & 07740;
+
+                // absolute address of fault YPair
+                word24 addr = fltAddress +  2 * cpu . faultNumber;
   
-                // XXX using core_read2 means decode instruction isn't used
-                core_read2(addr, instr_buf, instr_buf + 1);
+                core_read2 (addr, instr_buf, instr_buf + 1);
 
                 cpu . cycle = FAULT_EXEC_cycle;
 
@@ -1393,7 +1388,6 @@ t_stat sim_instr (void)
 
                 if (ret == CONT_TRA)
                   {
-                     instr_buf_state = IB_EMPTY;
                      cpu . cycle = FETCH_cycle;
                      clearFaultCycle ();
                      if (!clear_TEMPORARY_ABSOLUTE_mode ())
