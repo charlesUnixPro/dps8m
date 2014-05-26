@@ -1189,7 +1189,7 @@ static t_stat DoBasicInstruction (void)
             /// XXX need to implement timer
             
             return STOP_UNIMP;
-            break;
+            // break;
             
             
         case 0740:  ///< stx0
@@ -3372,7 +3372,7 @@ static t_stat DoBasicInstruction (void)
             if (TPR.CA >= ((word18) BAR.BOUND) << 9)
             {
                 doFault (acc_viol_fault, ACV15, "TSS boundary violation");
-                break;
+                //break;
             }
             /// C(TPR.CA) + (BAR base) → C(PPR.IC)
             /// C(TPR.TSR) → C(PPR.PSR)
@@ -3929,7 +3929,7 @@ static t_stat DoBasicInstruction (void)
         case 0002:   ///< drl
             /// Causes a fault which fetches and executes, in absolute mode, the instruction pair at main memory location C+(14)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault (derail_fault, 0, "drl");
-            break;
+            // break;
          
         case 0716:  ///< xec
             {
@@ -3960,22 +3960,22 @@ static t_stat DoBasicInstruction (void)
         case 0001:   ///< mme
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+4. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(mme1_fault, 0, "Master Mode Entry (mme)");
-            break;
+            // break;
             
         case 0004:   ///< mme2
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(52)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(mme2_fault, 0, "Master Mode Entry 2 (mme2)");
-            break;
+            // break;
 
         case 0005:   ///< mme3
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(54)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(mme3_fault, 0, "Master Mode Entry 3 (mme3)");
-            break;
+            // break;
 
         case 0007:   ///< mme4
             /// Causes a fault that fetches and executes, in absolute mode, the instruction pair at main memory location C+(56)8. The value of C is obtained from the FAULT VECTOR switches on the processor configuration panel.
             doFault(mme4_fault, 0, "Master Mode Entry 4 (mme4)");
-            break;
+            // break;
 
         case 0011:   ///< nop
             break;

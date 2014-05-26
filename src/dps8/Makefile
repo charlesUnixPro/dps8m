@@ -23,6 +23,8 @@ CFLAGS += -Wunused-argument \
 -Wunused \
 -Wextra
 
+CFLAGS += -Wunreachable-code
+
 #CFLAGS += -Wsign-conversion
 zzzCFLAGS += \
 -Wabi \

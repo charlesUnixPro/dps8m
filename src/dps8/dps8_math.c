@@ -54,14 +54,14 @@ long double EAQToIEEElongdouble(void)
         v /= 2.0;
     }
     //printf("\n");
-    //fprintf(stderr, "E=%o m=%Lf e=%d\n", E, m, e);
+    //sim_printf ("E=%o m=%Lf e=%d\n", E, m, e);
     
     if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
     if (m == 0)
         return (S ? -1 : 1) * exp2l(e);
     
-    //fprintf(stderr, "frac=%Lf e=%d\n", m, e);
+    //sim_printf ("frac=%Lf e=%d\n", m, e);
     return (S ? -1 : 1) * ldexpl(m, e);
 }
 
@@ -79,7 +79,7 @@ float72 IEEElongdoubleToFloat72(long double f0)
     
     int exp;
     long double mant = frexpl(f, &exp);
-    //fprintf(stderr,"sign=%d f0=%Lf mant=%Lf exp=%d\n", sign, f0, mant, exp);
+    //sim_printf (sign=%d f0=%Lf mant=%Lf exp=%d\n", sign, f0, mant, exp);
     
     word72 result = 0;
     
@@ -99,19 +99,19 @@ float72 IEEElongdoubleToFloat72(long double f0)
         {
             result = bitfieldInsert72(result, 1, n, 1);
             mant -= bitval;
-            //fprintf(stderr, "Inserting a bit @ %d %012llo %012llo\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
+            //sim_printf ("Inserting a bit @ %d %012llo %012llo\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
         }
         bitval /= 2.0;
     }
-    //fprintf(stderr, "n=%d mant=%f\n", n, mant);
+    //sim_printf ("n=%d mant=%f\n", n, mant);
     
-    //fprintf(stderr, "result=%012llo %012llo\n", (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
+    //sim_printf ("result=%012llo %012llo\n", (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
     
     // if f is < 0 then take 2-comp of result ...
     if (sign)
     {
         result = -result & (((word72)1 << 64) - 1);
-        //fprintf(stderr, "-result=%012llo %012llo\n", (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
+        //sim_printf ("-result=%012llo %012llo\n", (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
     }
     //! insert exponent ...
     int e = (int)exp;
@@ -214,7 +214,7 @@ void IEEElongdoubleToEAQ(long double f0)
         {
             result = bitfieldInsert72(result, 1, n, 1);
             mant -= bitval;
-            //fprintf(stderr, "Inserting a bit @ %d %012llo %012llo\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
+            //sim_printf ("Inserting a bit @ %d %012llo %012llo\n", n , (word36)((result >> 36) & DMASK), (word36)(result & DMASK));
         }
         bitval /= 2.0;
     }
@@ -263,7 +263,7 @@ double float36ToIEEEdouble(float36 f36)
         v /= 2.0;
     }
     //printf("\n");
-    //fprintf(stderr, "s72=%012llo, E=%o M=%llo m=%f e=%d\n", f36, E, M, m, e);
+    //sim_printf ("s72=%012llo, E=%o M=%llo m=%f e=%d\n", f36, E, M, m, e);
     
     if (m == 0 && e == -128)    // special case - normalized 0
         return 0;
@@ -291,7 +291,7 @@ float36 IEEEdoubleTofloat36(double f0)
     int exp;
     double mant = frexp(f, &exp);
     
-    //fprintf(stderr,"sign=%d f0=%f mant=%f exp=%d\n", sign, f0, mant, exp);
+    //sim_printf (sign=%d f0=%f mant=%f exp=%d\n", sign, f0, mant, exp);
     
     word36 result = 0;
     
@@ -304,17 +304,17 @@ float36 IEEEdoubleTofloat36(double f0)
         {
             result = bitfieldInsert36(result, 1, n, 1);
             mant -= bitval;
-            //fprintf(stderr, "Inserting a bit @ %d result=%012llo\n", n, result);
+            //sim_printf ("Inserting a bit @ %d result=%012llo\n", n, result);
         }
         bitval /= 2.0;
     }
-    //fprintf(stderr, "result=%012llo\n", result);
+    //sim_printf ("result=%012llo\n", result);
     
     // if f is < 0 then take 2-comp of result ...
     if (sign)
     {
         result = -result & 001777777777LL;
-        //fprintf(stderr, "-result=%012llo\n", result);
+        //sim_printf ("-result=%012llo\n", result);
     }
     // insert exponent ...
     int e = (int)exp;
@@ -406,7 +406,7 @@ void ufa (void)
         m2 &= MASK72;
         e3 = e1;
     }
-    //fprintf(stderr, "shift_count = %d\n", shift_count);
+    //sim_printf ("shift_count = %d\n", shift_count);
     
     m3 = m1 + m2;
     
@@ -494,7 +494,7 @@ void ufs (void)
 
     if (ov && m2 != 0)
     {
-        //fprintf(stderr, "OV\n");
+        //sim_printf ("OV\n");
         int8   e = (int8)(bitfieldExtract36(CY, 28, 8) & 0377U);      ///< 8-bit signed integer (incl sign)
 
         m2c >>= 1;
@@ -904,7 +904,7 @@ static void fdvX(bool bInvert)
         
         rA = m1;
         
-        fprintf(stderr, "XXX: divide check fault");
+        sim_printf ("XXX: divide check fault");
         return; // XXX: generate a divide check fault,
     }
 
@@ -1367,7 +1367,7 @@ void dufa (void)
         m2 &= MASK72;
         e3 = e1;
     }
-    //fprintf(stderr, "shift_count = %d\n", shift_count);
+    //sim_printf ("shift_count = %d\n", shift_count);
     
     m3 = m1 + m2;
     
@@ -1663,9 +1663,9 @@ static void dfdvX (bool bInvert)
         
         rA = m1;
         
-        //fprintf(stderr, "XXX: divide check fault\n");
+        //sim_printf ("XXX: divide check fault\n");
         doFault(div_fault, 0, "DFDV: divide check fault");
-        return; // XXX: generate a divide check fault,
+        // return; // XXX: generate a divide check fault,
     }
     
     while (m1 >= m2)
@@ -1682,7 +1682,7 @@ static void dfdvX (bool bInvert)
     if (e3 > 127 || e3 < -128)
     {
         // XXX ahndle correctly
-        fprintf(stderr, "Exp Underflow/Overflow (%d)\n", e3);
+        sim_printf ("Exp Underflow/Overflow (%d)\n", e3);
     }
     //uint128 M1 = (uint128)m1 << 63;
     //uint128 M2 = (uint128)m2; ///< << 36;

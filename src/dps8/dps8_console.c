@@ -368,7 +368,7 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 
             return 1;
           }
       }
-    return 1;   // not reached
+    // return 1;   // not reached
   }
 
 
@@ -614,7 +614,7 @@ static int con_iom_io (UNIT * __attribute__((unused)) unitp, uint chan, uint __a
           * stati = 0501;
           return 1;
       }
-    return 0;
+    // return 0;
   }
 
 //-- // The IOM will send a fault to the device for TRO and/or PTRO

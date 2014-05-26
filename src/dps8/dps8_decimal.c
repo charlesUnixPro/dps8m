@@ -315,11 +315,11 @@ static void printBCD(decNumber *a, decContext *set, int width)
     memset(bcd, 0, sizeof(bcd));
     
     decNumberGetBCD(a, bcd);
-    fprintf(stderr, "Bcd: %c", decNumberIsNegative(a) ? '-' : '+');
+    sim_printf ("Bcd: %c", decNumberIsNegative(a) ? '-' : '+');
     
     for(int n = 0 ; n < width-1 ; n += 1)
-        fprintf(stderr, "%d", bcd[n]);
-    fprintf(stderr, "  scale=%d\n", -(a->exponent));
+        sim_printf ("%d", bcd[n]);
+    sim_printf ("  scale=%d\n", -(a->exponent));
 }
 #endif
 
@@ -397,7 +397,7 @@ static int calcSF(int sf1, int sf2, int sf3)
         if (sf2 >= sf3 && sf3 > sf1)
             return sf3-1;
     }
-    //fprintf(stderr, "calcSF(): How'd we get here?\n");
+    //sim_printf ("calcSF(): How'd we get here?\n");
     return sf3;
 }
 

@@ -310,7 +310,7 @@ void doComputedAddressContinuation (void)
                 putByte(&data, CY & 0777, tCF);
                 break;
             default:
-                fprintf(stderr, "IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
+                sim_printf ("IT_MOD(IT_SCR): unknown tTB:%o\n", tTB);
                 break;
         }
         
@@ -922,12 +922,6 @@ R_MOD:;
                 }
                 goto startCA;
                 
-                return SCPE_OK;
-            
-                // check for illegal ITS/ITP
-                doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");
-                break;
-            
             case 2:
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(): illegal procedure, illegal modifier, fault Td=%o\n", Td);
                 doFault(illproc_fault, ill_mod, "IT_MOD(): illegal procedure, illegal modifier, fault");

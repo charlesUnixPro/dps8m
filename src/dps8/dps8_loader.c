@@ -993,7 +993,7 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool __attrib
 //                
 //                if (elt)
 //                {
-//                    fprintf(stderr, "symbol '%s' already referenced in segment '%s'. Use 'segment segref remove'\n", elt->symbol, currSegment->name);
+//                    sim_printf ("symbol '%s' already referenced in segment '%s'. Use 'segment segref remove'\n", elt->symbol, currSegment->name);
 //                    freeSegref(s);
 //                    continue;
 //                }
@@ -1123,13 +1123,13 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
                     return SCPE_NXM;
                 else
                     M[ldaddr + maddr] = data & DMASK;
-                //fprintf(stderr, "laddr:%d maddr:%d\n", maddr, maddr);
+                //sim_printf ("laddr:%d maddr:%d\n", maddr, maddr);
                 words++;
                 maxaddr = max(maddr, maxaddr);
             }
         }
         word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
-        //fprintf(stderr, "segwords:%d maxaddr:%d\n", segwords, maxaddr);
+        //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
         if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
         {
             if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
@@ -1202,7 +1202,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
             return SCPE_MEM;
         
         DSBR.BND = (2 * (segno)) >> 4;
-        //fprintf(stderr, "DSBR.BND set to %o\n", DSBR.BND);
+        //sim_printf ("DSBR.BND set to %o\n", DSBR.BND);
     }
     
     const word3 R1 = 0;     ///< ring brackets
@@ -1222,7 +1222,7 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     const word1 C = true;   ///< allow caching (who cares?)
     const word14 EB = count;    ///< Any call into this segment must be to an offset less than EB if G=0
     
-    //fprintf(stderr, "B:%d count:%d\n", BOUND, count);
+    //sim_printf ("B:%d count:%d\n", BOUND, count);
     
     _sdw0 *s = createSDW0(addr, R1, R2, R3, F, FC, BOUND, R, E, W, P, U, G, C, EB);
     word36 yPair[2];
@@ -1395,11 +1395,13 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     switch (fmt) {                                          /* case fmt */
         case FMT_O:                                         /*!< OCT */
             return load_oct (fileref, segno, ldaddr, bDeferred, bVerbose);
-            break;
-            //case FMT_S:                                         /*!< SAV */
+            // break;
+
+        //case FMT_S:                                         /*!< SAV */
             //  return load_sav (fileref);
             //    break;
-            //case FMT_E:                                         /*!< EXE */
+
+        //case FMT_E:                                         /*!< EXE */
             //   return load_exe (fileref);
             //    break;
     }

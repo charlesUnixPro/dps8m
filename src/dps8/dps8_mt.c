@@ -510,7 +510,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
             return 1;
         }
       }
-    return 1;   // not reached
+    // return 1;   // not reached
   }
 
 // Extract the N'th 36 bit word from a buffer

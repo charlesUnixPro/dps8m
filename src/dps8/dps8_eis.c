@@ -115,7 +115,7 @@ static word36 getMFReg(int n, bool RType)
         case 15:
             return rX[n - 8];
     }
-    fprintf(stderr, "getMFReg(): How'd we get here? n=%d\n", n);
+    sim_printf ("getMFReg(): How'd we get here? n=%d\n", n);
     return 0;
 }
 
@@ -261,7 +261,7 @@ static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
                 e->N[k-1] &= 07777777;  ///< 21-bits of length.
                 break;
             default:
-                fprintf(stderr, "parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", e->TA[k-1]);
+                sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 1?\n", e->TA[k-1]);
                 break;
         }
     }
@@ -319,7 +319,7 @@ static void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
             e->CN[k-1] = e->effCHAR;   // ??????
             break;
         default:
-            fprintf(stderr, "parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
+            sim_printf ("parseAlphanumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
             break;
     }
     
@@ -418,7 +418,7 @@ void parseNumericOperandDescriptor(int k, EISstruct *e)
             
             break;
         default:
-            fprintf(stderr, "parseNumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
+            sim_printf ("parseNumericOperandDescriptor(ta=%d) How'd we get here 2?\n", e->TA[k-1]);
             break;
     }
     
@@ -631,30 +631,30 @@ static word4 get4(word36 w, int pos)
     {
         case 0:
             return bitfieldExtract36(w, 31, 4);
-            break;
+            // break;
         case 1:
             return bitfieldExtract36(w, 27, 4);
-            break;
+            // break;
         case 2:
             return bitfieldExtract36(w, 22, 4);
-            break;
+            // break;
         case 3:
             return bitfieldExtract36(w, 18, 4);
-            break;
+            // break;
         case 4:
             return bitfieldExtract36(w, 13, 4);
-            break;
+            // break;
         case 5:
             return bitfieldExtract36(w, 9, 4);
-            break;
+            // break;
         case 6:
             return bitfieldExtract36(w, 4, 4);
-            break;
+            // break;
         case 7:
             return bitfieldExtract36(w, 0, 4);
-            break;
+            // break;
     }
-    fprintf(stderr, "get4(): How'd we get here?\n");
+    sim_printf ("get4(): How'd we get here?\n");
     return 0;
 }
 
@@ -664,24 +664,24 @@ static word4 get6(word36 w, int pos)
     {
         case 0:
             return bitfieldExtract36(w, 30, 6);
-            break;
+            // break;
         case 1:
             return bitfieldExtract36(w, 24, 6);
-            break;
+            // break;
         case 2:
             return bitfieldExtract36(w, 18, 6);
-            break;
+            // break;
         case 3:
             return bitfieldExtract36(w, 12, 6);
-            break;
+            // break;
         case 4:
             return bitfieldExtract36(w, 6, 6);
-            break;
+            // break;
         case 5:
             return bitfieldExtract36(w, 0, 6);
-            break;
+            // break;
     }
-    fprintf(stderr, "get6(): How'd we get here?\n");
+    sim_printf ("get6(): How'd we get here?\n");
     return 0;
 }
 
@@ -692,18 +692,18 @@ static word9 get9(word36 w, int pos)
     {
         case 0:
             return bitfieldExtract36(w, 27, 9);
-            break;
+            //break;
         case 1:
             return bitfieldExtract36(w, 18, 9);
-            break;
+            //break;
         case 2:
             return bitfieldExtract36(w, 9, 9);
-            break;
+            //break;
         case 3:
             return bitfieldExtract36(w, 0, 9);
-            break;
+            //break;
     }
-    fprintf(stderr, "get9(): How'd we get here?\n");
+    sim_printf ("get9(): How'd we get here?\n");
     return 0;
 }
 
@@ -922,7 +922,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
                 case 014:   // default   4-bit + sign
                     break;
                 default:
-                    fprintf(stderr, "loadDec:1\n");
+                    sim_printf ("loadDec:1\n");
                     // not a leading sign
                     // XXX generate Ill Proc fault
             }
@@ -944,7 +944,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
                 case '+':
                     break;
                 default:
-                    fprintf(stderr, "loadDec:2\n");
+                    sim_printf ("loadDec:2\n");
                     // not a leading sign
                     // XXX generate Ill Proc fault
 
@@ -968,7 +968,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
                 case 014:   // default   4-bit + sign
                     break;
                 default:
-                    fprintf(stderr, "loadDec:3\n");
+                    sim_printf ("loadDec:3\n");
                     // not a trailing sign
                     // XXX generate Ill Proc fault
             }
@@ -989,7 +989,7 @@ static void loadDec(EISaddr *p, int pos, EISstruct *e)
                 case '+':
                     break;
                 default:
-                    fprintf(stderr, "loadDec:4\n");
+                    sim_printf ("loadDec:4\n");
                     // not a trailing sign
                     // XXX generate Ill Proc fault
             }
@@ -1379,7 +1379,7 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
         
         pos = lastChar;             // last character number
         
-        //fprintf(stderr, "numWords=%d lastChar=%d\n", numWords, lastChar);
+        //sim_printf ("numWords=%d lastChar=%d\n", numWords, lastChar);
         return;
     }
     
@@ -2743,7 +2743,7 @@ static MOPstruct* EISgetMop(EISstruct *e)
     e->m = m;
     if (e->m == NULL || e->m->f == NULL)
     {
-        fprintf(stderr, "getMop(e->m == NULL || e->m->f == NULL): mop:%d IF:%d\n", e->mop, e->mopIF);
+        sim_printf ("getMop(e->m == NULL || e->m->f == NULL): mop:%d IF:%d\n", e->mop, e->mopIF);
         return NULL;
     }
     
@@ -2784,7 +2784,7 @@ static void mopExecutor(EISstruct *e, int kMop)
     // execute dstTally micro operations
     // The micro operation sequence is terminated normally when the receiving string length becomes exhausted. The micro operation sequence is terminated abnormally (with an illegal procedure fault) if a move from an exhausted sending string or the use of an exhausted MOP string is attempted.
     
-    //fprintf(stderr, "(I) mopTally=%d srcTally=%d\n", e->mopTally, e->srcTally);
+    //sim_printf ("(I) mopTally=%d srcTally=%d\n", e->mopTally, e->srcTally);
 
     //while (e->mopTally && e->srcTally && e->dstTally)
     while (e->dstTally && e->mopTally)
@@ -3674,10 +3674,11 @@ static word18 getMF2Reg(int n, word18 data)
             return rX[n - 8];
         default:
             // XXX: IPR generate Illegal Procedure Fault
+            sim_printf ("XXX: IPR generate Illegal Procedure Fault\n");
             return 0;
     }
-    fprintf(stderr, "getMF2Reg(): How'd we get here? n=%d\n", n);
-    return 0;
+    //sim_printf ("getMF2Reg(): How'd we get here? n=%d\n", n);
+    //return 0;
 }
 
 /*

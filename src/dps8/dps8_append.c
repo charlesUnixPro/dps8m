@@ -816,8 +816,6 @@ A:;
             sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A): SDW0.F == 0! Initiating directed fault\n");
             // initiate a directed fault ...
             doFault(dir_flt0_fault + SDW0.FC, 0, "SDW0.F == 0");
-            
-            return -1;
         }
         else
             // load SDWAM .....
@@ -1219,18 +1217,6 @@ M:;
     
     goto KLM;
     
-    
-    //C(TPR.TRR)= 0?
-    if (TPR.TRR == 0)
-        //C(SDW.P) → C(PPR.P)
-        PPR.P = SDW->P;
-    else
-        PPR.P = 0;
-    
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M): Exit\n");
-    
-    return finalAddress;
-
 N:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(N): CALL6\n");
 
