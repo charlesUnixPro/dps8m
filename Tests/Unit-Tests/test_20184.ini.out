@@ -1,9 +1,6 @@
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 TAPE: unit is read only
-error opening file listings/MR12_5/system_book_.ascii
-20184.ini-42> ld_system_book  listings/MR12_5/system_book_.ascii
-Invalid argument
 DBG(2)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
 DBG(3)> CPU FAULT: fault cycle
 DBG(4)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
