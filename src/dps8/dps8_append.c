@@ -377,7 +377,8 @@ static _sdw0* fetchPSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+    // doAppendCycle manages this bit
+    //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
 
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, p->ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
@@ -428,7 +429,8 @@ static _sdw0 *fetchNSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+    // doAppendCycle manages this bit
+    //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
     
     if (apndTrace)
     {
@@ -875,7 +877,6 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
-    int n = 0;  // # of PR
     int RSDWH_R1 = 0;
     
     acvFaults = 0;
@@ -997,7 +998,6 @@ B:;
         if (!SDW->W)
             // Set fault ACV6 = W-OFF
             acvFault(i, ACV6, "doAppendCycle(B) ACV6 = W-OFF");
-        goto G;
         
     } else {
         // XXX should we test for READOP() here?
@@ -1011,22 +1011,23 @@ B:;
             acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
         }
         
-        if (SDW->R)
-            goto G;
-        
-        //C(PPR.PSR) = C(TPR.TSR)?
-        if (PPR.PSR != TPR.TSR) {
-            //Set fault ACV4 = R-OFF
-            acvFaults |= ACV4;
-            acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+        if (SDW->R == 0)
+        {
+
+            //C(PPR.PSR) = C(TPR.TSR)?
+            if (PPR.PSR != TPR.TSR) {
+                //Set fault ACV4 = R-OFF
+                acvFaults |= ACV4;
+                acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+            }
         }
         
-        goto G;
     }
+    goto G;
     
+// All of 'C' is handled by the rtcd instruction
 #ifndef QUIET_UNUSED
 C:;
-#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(C)\n");
 
     //C(TPR.TRR) < C(SDW .R1)?
@@ -1056,6 +1057,8 @@ C:;
         acvFaults |= ACV11;
         acvFaultsMsg = "acvFaults(C) C(TPR.TRR) ≥ C(PPR.PRR)";
     }
+    goto D;
+#endif
     
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
@@ -1253,16 +1256,20 @@ I:;
 HI:
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI)\n");
     
-    if (thisCycle == INSTRUCTION_FETCH)
+    if (thisCycle == INDIRECT_WORD_FETCH)
         goto J;
     
     if (thisCycle == RTCD_OPERAND_FETCH)
         goto K;
     
+// This is handled in the CALL6 code
+#if 0
     if (i && i->info->flags & CALL6_INS)
         goto N;
-    
-    if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
+#endif
+
+    //if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
+    if (instructionFetch || (i && (i->info->flags & TRANSFER_INS)))
         goto L;
     
     // load/store data .....
@@ -1281,8 +1288,10 @@ HI:
     
     goto Exit;
     
-J:; // implement
-    
+J:; 
+    // All of the J/O/P logic is handled in addmods.
+    goto Exit;
+
 K:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(K)\n");
 
@@ -1309,18 +1318,19 @@ KL:;
 
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KL): PPR is set to address %05o:%06o\n", TPR.TSR, TPR.CA);
 
-KLM:;
+//KLM:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
     
     if (TPR.TRR == 0)
         // C(SDW.P) → C(PPR.P)
         PPR.P = SDW->P;
     else
-        // ￼0 → C(PPR.P)
+        // 0 → C(PPR.P)
         PPR.P = 0;
     
-    if (thisCycle == RTCD_OPERAND_FETCH)
-        goto O;
+    // This is handled in the RTCD code
+    //if (thisCycle == RTCD_OPERAND_FETCH)
+        //goto O;
     
     goto Exit;    // this may not be setup or right
     
@@ -1343,6 +1353,8 @@ L:;
     
     goto KL;
     
+// All of this is handled in CALL6 code
+#if 0
 M:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M)\n");
     
@@ -1376,7 +1388,10 @@ N:;
     PPR.IC = TPR.CA;    // IC or IC+1???
 
     goto M;
-    
+#endif
+
+// All of this is handled in the RTCD code
+#if 0
 O:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): RTCD\n");
     
@@ -1409,7 +1424,10 @@ O:;
 #endif
     
     goto Exit;    // or 0 or -1???
+#endif
     
+// All of this is handled in the ITS/ITP code
+#if 0
 #ifndef QUIET_UNUSED
 P:;
 #endif
@@ -1439,6 +1457,7 @@ P:;
             // RSDWH.R1 → C(TPR.TRR)
             TPR.TRR = RSDWH_R1;
     }
+#endif
    
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
