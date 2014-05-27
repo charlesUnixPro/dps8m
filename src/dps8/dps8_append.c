@@ -313,7 +313,7 @@ static _sdw0* fetchPSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+    //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
 
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchPSDW y1 0%o p->ADDR 0%o SDW 0%012llo 0%012llo ADDR 0%o BOUND 0%o U %o F %o\n",
  y1, p->ADDR, SDWeven, SDWodd, SDW0.ADDR, SDW0.BOUND, SDW0.U, SDW0.F);
@@ -357,7 +357,7 @@ static _sdw0 *fetchNSDW(word15 segno)
     SDW0.C = TSTBIT(SDWodd, 14);
     SDW0.EB = SDWodd & 037777;
     
-    PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
+    //PPR.P = (SDW0.P && PPR.PRR == 0);   // set priv bit (if OK)
     
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(2):SDW0=%s\n", strSDW0(&SDW0));
     return &SDW0;
@@ -753,7 +753,7 @@ word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
-    int n = 0;  // # of PR
+    //int n = 0;  // # of PR
     int RSDWH_R1 = 0;
     
     acvFaults = 0;
@@ -858,8 +858,6 @@ B:;
     if (instructionFetch || (thisCycle == OPERAND_READ && (i->info && i->info->flags & TRANSFER_INS)))
         goto F;
     
-    //if (isSTROP(i))
-    //if (thisCycle == STORE_OPERAND) // is this the right way to do this?
     if (StrOp)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):STR-OP\n");
@@ -872,7 +870,6 @@ B:;
         if (!SDW->W)
             // Set fault ACV6 = W-OFF
             acvFault(ACV6, "doAppendCycle(B) ACV6 = W-OFF");
-        goto G;
         
     } else {
         // XXX should we test for READOP() here?
@@ -886,22 +883,26 @@ B:;
             acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
         }
         
-        if (SDW->R)
-            goto G;
-        
-        //C(PPR.PSR) = C(TPR.TSR)?
-        if (PPR.PSR != TPR.TSR) {
-            //Set fault ACV4 = R-OFF
-            acvFaults |= ACV4;
-            acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+        if (SDW->R == 0)
+        {
+            //C(PPR.PSR) = C(TPR.TSR)?
+            if (PPR.PSR != TPR.TSR) {
+                //Set fault ACV4 = R-OFF
+                acvFaults |= ACV4;
+                acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+            }
         }
         
-        goto G;
     }
     
+    goto G;
+
+
+// This is handled in the rtcd instruction
 #ifndef QUIET_UNUSED
 C:;
 #endif
+#ifndef QUIET_UNUSED
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(C)\n");
 
     //C(TPR.TRR) < C(SDW .R1)?
@@ -931,6 +932,8 @@ C:;
         acvFaults |= ACV11;
         acvFaultsMsg = "acvFaults(C) C(TPR.TRR) ≥ C(PPR.PRR)";
     }
+    goto D;
+#endif
     
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
@@ -1078,6 +1081,7 @@ G:;
     
     // is prepage mode???
     // XXX: don't know what todo with this yet ...
+    // XXX: ticket #11
     // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
     if (bPrePageMode)
     {
@@ -1130,18 +1134,24 @@ I:;
 HI:
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI)\n");
     
-    if (thisCycle == INSTRUCTION_FETCH)
+    //if (thisCycle == INSTRUCTION_FETCH)
+    if (thisCycle == INDIRECT_WORD_FETCH)
         goto J;
     
     if (thisCycle == RTCD_OPERAND_FETCH)
         goto K;
     
-    if (i && i->info->flags & CALL6_INS)
-        goto N;
+// This is handled in CALL6
+//    //if (i && i->info->flags & CALL6_INS)
+//    if (thisCycle == OPERAND_READ && i && (i->info->flags & CALL6_INS))
+//        goto N;
     
-    if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
+    //if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
+    if (instructionFetch || (i && (i->info->flags & TRANSFER_INS)))
         goto L;
     
+// XXX "APU data movement; Load/store APU data" not implemented"
+// XXX ticket 12
     // load/store data .....
 
 //    if (isREADOP(i))
@@ -1158,8 +1168,10 @@ HI:
     
     goto Exit;
     
-J:; // implement
-    
+J:; // XXX implement
+    // CAC I belive that all of the J/O/P logic is handled in  addrmods;
+    goto Exit;
+ 
 K:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(K)\n");
 
@@ -1186,18 +1198,19 @@ KL:;
 
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KL): PPR is set to address %05o:%06o\n", TPR.TSR, TPR.CA);
 
-KLM:;
+//KLM:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
     
     if (TPR.TRR == 0)
         // C(SDW.P) → C(PPR.P)
         PPR.P = SDW->P;
     else
-        // ￼0 → C(PPR.P)
+        // 0 → C(PPR.P)
         PPR.P = 0;
-    
-    if (thisCycle == RTCD_OPERAND_FETCH)
-        goto O;
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", TPR.TRR, SDW->P, PPR.P);
+    // This is handled in the RTCD code
+    //if (thisCycle == RTCD_OPERAND_FETCH)
+        //goto O;
     
     goto Exit;    // this may not be setup or right
     
@@ -1220,11 +1233,14 @@ L:;
     
     goto KL;
     
+#if 0
 M:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M)\n");
     
     goto KLM;
-    
+#endif
+
+#if 0
 N:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(N): CALL6\n");
 
@@ -1241,7 +1257,9 @@ N:;
     PPR.IC = TPR.CA;    // IC or IC+1???
 
     goto M;
+#endif
     
+#ifdef UNUSED
 O:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): RTCD\n");
     
@@ -1274,7 +1292,9 @@ O:;
 #endif
     
     goto Exit;    // or 0 or -1???
+#endif
     
+#ifdef UNUSED
 #ifndef QUIET_UNUSED
 P:;
 #endif
@@ -1304,6 +1324,7 @@ P:;
             // RSDWH.R1 → C(TPR.TRR)
             TPR.TRR = RSDWH_R1;
     }
+#endif
    
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
