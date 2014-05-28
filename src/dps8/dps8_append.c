@@ -985,7 +985,7 @@ B:;
         goto F;
     
     //if (isSTROP(i))
-    //if (thisCycle == STORE_OPERAND) // is this the right way to do this?
+    //if (thisCycle == OPERAND_STORE) // is this the right way to do this?
     if (StrOp)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):STR-OP\n");
@@ -1233,7 +1233,7 @@ H:;
 I:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I)\n");
     //if (isSTROP(i) && PTW->M == 0)
-    if (thisCycle == STORE_OPERAND && PTW->M == 0)  // is this the right way to do this?
+    if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
     {
         // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
         appendingUnitCycleType = MPTW;
