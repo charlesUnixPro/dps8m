@@ -103,18 +103,25 @@ static void scu2words(word36 *words)
     
     // words[1]
     
+    // words[2]
+    
     words[2] = setbits36(0, 0, 3, TPR.TRR);
     words[2] = setbits36(words[2], 3, 15, TPR.TSR);
     words[2] = setbits36(words[2], 27, 3, switches.cpu_num);
     words[2] = setbits36(words[2], 30, 6, cu.delta);
     
+    // words[3]
+
     words[3] = 0;
     words[3] = setbits36(words[3], 30, 6, TPR.TBR);
     
-    //save_IR(&words[4]);
+    // words[4]
+
     words[4] = cu.IR; // HWR
     words[4] = setbits36(words[4], 0, 18, PPR.IC);
     
+    // words[5]
+
     words[5] = setbits36(0, 0, 18, TPR.CA);
     words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
     words[5] = setbits36(words[5], 19, 1, cu.rpt);
@@ -122,10 +129,15 @@ static void scu2words(word36 *words)
     // BUG: Not all of CU data exists and/or is saved
     words[5] = setbits36(words[5], 24, 1, cu.xde);
     words[5] = setbits36(words[5], 25, 1, cu.xdo);
+    words[5] = setbits36(words[5], 29, 1, cu.FIF);
     words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
     
+    // words[6]
+
     words[6] = cu.IWB; 
     
+    // words[7]
+
     words[7] = cu.IRODD;
 }
 
@@ -179,7 +191,6 @@ static void words2scu (word36 * words)
     
     TPR.TBR  = getbits36(words[3], 30, 6);
     
-    //save_IR(&words[4]);
     cu.IR      = getbits36(words[4], 18, 18); // HWR
     PPR.IC   = getbits36(words[4], 0, 18);
     
@@ -190,6 +201,7 @@ static void words2scu (word36 * words)
     // BUG: Not all of CU data exists and/or is saved
     cu.xde   = getbits36(words[5], 24, 1);
     cu.xdo   = getbits36(words[5], 25, 1);
+    cu.FIF   = getbits36(words[5], 29, 1);
     cu.CT_HOLD = getbits36(words[5], 30, 6);
     
     cu.IWB = words [6];
@@ -424,55 +436,6 @@ t_stat prepareComputedAddress (void)
     return SCPE_OK;
 }
 
-// CANFAULT 
-static void setupInstruction (void)
-{
-    cpu.read_addr = TPR.CA;
-    
-    DCDstruct * i = & currentInstruction;
-    decodeInstruction(cu . IWB, i);
-
-    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
-    if ((i->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
-    
-    // check for illegal addressing mode(s) ...
-    
-    // No CI/SC/SCR allowed
-    if (i->info->mods == NO_CSS)
-    {
-        if (_nocss[i->tag])
-            doFault(illproc_fault, 0, "Illegal CI/SC/SCR modification");
-    }
-    // No DU/DL/CI/SC/SCR allowed
-    else if (i->info->mods == NO_DDCSS)
-    {
-        if (_noddcss[i->tag])
-            doFault(illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
-    }
-    // No DL/CI/SC/SCR allowed
-    else if (i->info->mods == NO_DLCSS)
-    {
-        if (_nodlcss[i->tag])
-            doFault(illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
-    }
-    // No DU/DL allowed
-    else if (i->info->mods == NO_DUDL)
-    {
-        if (_nodudl[i->tag])
-            doFault(illproc_fault, 0, "Illegal DU/DL modification");
-    }
-    if (cu . xdo == 1) // Execute even or odd of XED
-    {
-        if (i->info->flags == NO_XED)
-            doFault(illproc_fault, 0, "Instruction not allowed in XED");
-    }
-    if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
-    {
-        if (i->info->flags == NO_XEC)
-            doFault(illproc_fault, 0, "Instruction not allowed in XEC");
-    }
-}
 
 // fetch instrcution at address
 // CANFAULT
@@ -528,20 +491,89 @@ static t_stat setupForOperandRead (void)
     return SCPE_OK;
 }
 
+static void traceInstruction (void)
+  {
+    if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
+    {
+        char * compname;
+        word18 compoffset;
+        char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
+        if (where)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, where);
+            if_sim_debug (DBG_TRACE, &cpu_dev)
+              listSource (compname, compoffset);
+        }
+
+        if (get_addr_mode() == ABSOLUTE_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.IC, cu . IWB, disAssemble (cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+        }
+        if (get_addr_mode() == APPEND_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+        }
+        if (get_addr_mode() == BAR_mode)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, BAR.BASE, PPR.IC, cu . IWB, disAssemble(cu . IWB), currentInstruction . address, currentInstruction . opcode, currentInstruction . opcodeX, currentInstruction . a, currentInstruction . i, GET_TM(currentInstruction . tag) >> 4, GET_TD(currentInstruction . tag) & 017);
+        }
+    }
+
+  }
+
 // CANFAULT
 t_stat executeInstruction (void)
-{
-    setupInstruction ();
-
+  {
     DCDstruct * ci = & currentInstruction;
-    const word36 IWB  = cu.IWB;          ///< instruction working buffer
-    const opCode *info = ci->info;          ///< opCode *
-    const uint32  opcode = ci->opcode;     ///< opcode
-    const bool   opcodeX = ci->opcodeX;   ///< opcode extension
-    const word18 address = ci->address;   ///< bits 0-17 of instruction XXX replace with rY
-    const bool   a = ci->a;               ///< bit-29 - addressing via pointer register
-    const bool   i = ci->i;               ///< interrupt inhibit bit.
-    const word6  tag = ci->tag;           ///< instruction tag XXX replace with rTAG
+    decodeInstruction(cu . IWB, ci);
+
+    // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
+    if ((ci->info->flags & PRIV_INS) && !is_priv_mode())
+        doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
+    
+    // check for illegal addressing mode(s) ...
+    
+    // No CI/SC/SCR allowed
+    if (ci->info->mods == NO_CSS)
+    {
+        if (_nocss[ci->tag])
+            doFault(illproc_fault, 0, "Illegal CI/SC/SCR modification");
+    }
+    // No DU/DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DDCSS)
+    {
+        if (_noddcss[ci->tag])
+            doFault(illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+    }
+    // No DL/CI/SC/SCR allowed
+    else if (ci->info->mods == NO_DLCSS)
+    {
+        if (_nodlcss[ci->tag])
+            doFault(illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+    }
+    // No DU/DL allowed
+    else if (ci->info->mods == NO_DUDL)
+    {
+        if (_nodudl[ci->tag])
+            doFault(illproc_fault, 0, "Illegal DU/DL modification");
+    }
+    if (cu . xdo == 1) // Execute even or odd of XED
+    {
+        if (ci->info->flags == NO_XED)
+            doFault(illproc_fault, 0, "Instruction not allowed in XED");
+    }
+    if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
+    {
+        if (ci->info->flags == NO_XEC)
+            doFault(illproc_fault, 0, "Instruction not allowed in XEC");
+    }
+
+    const opCode *info = ci->info;       // opCode *
+    const uint32  opcode = ci->opcode;   // opcode
+    const bool   opcodeX = ci->opcodeX;  // opcode extension
+    const word18 address = ci->address;  // bits 0-17 of instruction XXX replace with rY
+    const bool   a = ci->a;              // bit-29 - addressing via pointer register
+    const word6  tag = ci->tag;          // instruction tag XXX replace with rTAG
     
    
     addToTheMatrix (opcode, opcodeX, a, tag);
@@ -614,49 +646,26 @@ t_stat executeInstruction (void)
     }
 
     ci->stiTally = cu.IR & I_TALLY;   //TSTF(cu.IR, I_TALLY);  // for sti instruction
-    
-    if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
-    {
-        char * compname;
-        word18 compoffset;
-        char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
-        if (where)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, where);
-            if_sim_debug (DBG_TRACE, &cpu_dev)
-              listSource (compname, compoffset);
-        }
-
-        if (get_addr_mode() == ABSOLUTE_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
-        }
-        if (get_addr_mode() == APPEND_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, PPR.PSR, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
-        }
-        if (get_addr_mode() == BAR_mode)
-        {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", sys_stats . total_cycles, BAR.BASE, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
-        }
-    }
+   
+    traceInstruction ();
 
     setupForOperandRead ();
 
-    if (info->ndes > 0)
-    {
-        for(int n = 0 ; n < info->ndes; n += 1)
-        {
+    if (info -> ndes > 0)
+      {
+        for(int n = 0; n < info -> ndes; n += 1)
+          {
             //setupForOperandRead ();
-            Read(PPR.IC + 1 + n, &ci->e.op[n], OPERAND_READ, 0); // I think.
-        }
-    }
+            Read (PPR . IC + 1 + n, & ci -> e . op [n], OPERAND_READ, 0); // I think.
+          }
+      }
     else
-    {
-        if (ci->a)   // if A bit set set-up TPR stuff ...
-            doPtrReg();
+      {
+        if (ci -> a)   // if A bit set set-up TPR stuff ...
+          doPtrReg ();
         doComputedAddressFormation ();
-    }
+      }
+
     t_stat ret = doInstruction ();
     
     

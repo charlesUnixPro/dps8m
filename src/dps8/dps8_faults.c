@@ -465,6 +465,9 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
         // cu_safe_store ();
       }
     
+    // Set control unit 'fault occured during insturction fetch' flag
+    cu . FIF = cpu . cycle == INSTRUCTION_FETCH ? 1 : 0;
+
     cpu . cycle = FAULT_cycle;
     longjmp (jmpMain, JMP_REENTRY);
 }

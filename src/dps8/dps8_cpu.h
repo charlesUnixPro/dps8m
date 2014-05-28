@@ -1091,8 +1091,6 @@ typedef struct {
     cycles_t cycle;
     uint IC_abs; // translation of odd IC to an absolute address; see ADDRESS of cu history
     bool irodd_invalid; // cached odd instr invalid due to memory write by even instr
-    uint read_addr; // last absolute read; might be same as CA for our purposes...; see APU RMA
-    // bool instr_fetch; // true during an instruction fetch
     /* The following are all from the control unit history register: */
     bool trgo; // most recent instruction caused a transfer?
     bool ic_odd; // executing odd pair?
@@ -1201,26 +1199,117 @@ typedef struct {
                    // 33-35 FCT   Fault counter - counts retries
 
     /* word 1 */
-    
+                   //               AVF Access Violation Fault
+                   //               SF  Store Fault
+                   //               IPF Illegal Procedure Fault
+                   //
+                   //  0    IRO       AVF Illegal Ring Order
+                   //       ISN       SF  Illegal segment number
+                   //  1    ORB       AVF Out of execute bracket [sic] should be OEB?
+                   //       ICC       IPF Illegal op code
+                   //  2    E-OFF     AVF Execute bit is off
+                   //       IA+IM     IPF Illegal address of modifier
+                   //  3    ORB       AVF Out of read bracket
+                   //       ISP       IPF Illegal slave procedure
+                   //  4    R-OFF     AVF Read bit is off
+                   //       IPR       IPF Illegal EIS digit
+                   //  5    OWB       AVF Out of write bracket
+                   //       NEA       SF  Nonexistant address
+                   //  6    W-OFF     AVF Write bit is off
+                   //       OOB       SF  Out of bounds (BAR mode)
+                   //  7    NO GA     AVF Not a gate
+                   //  8    OCB       AVF Out of call bracket
+                   //  9    OCALL     AVF Outward call
+                   // 10    BOC       AVF Bad outward call
+                   // 11    PTWAM_ER  AVF PTWAM error
+                   // 12    CRT       AVF Cross ring transfer
+                   // 13    RALR      AVF Ring alarm
+                   // 14    SWWAM_ER  AVF SDWAM error
+                   // 15    OOSB      AVF Out of segment bounds
+                   // 16    PARU      Parity fault - processor parity upper
+                   // 17    PARL      Parity fault - processor parity lower
+                   // 18    ONC1      Operation not complete fault error #1
+                   // 19    ONC2      Operation not complete fault error #2
+                   // 20-23 IA        System controll illegal action lines
+                   // 24-26 IACHN     Illegal action processor port
+                   // 27-29 CNCHN     Connect fault - connect processor port
+                   // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
+                   // 35    F/I       0 = interrupt; 1 = fault
+
     /* word 2 */
-    word6 delta;     // 6 bits at 2[30..35]; addr increment for repeats
+                   //  0- 2 TRR
+                   //  3- 7 TSR
+                   // 18-21 PTW
+                   //                  18  PTWAM levels A, B enabled
+                   //                  19  PTWAM levels C, D enabled
+                   //                  20  PTWAM levels A, B match
+                   //                  21  PTWAM levels C, D match
+                   // 22-25 SDW
+                   //                  22  SDWAM levels A, B enabled
+                   //                  23  SDWAM levels C, D enabled
+                   //                  24  SDWAM levels A, B match
+                   //                  25  SDWAM levels C, D match
+                   // 26             0
+                   // 27-29 CPU      CPU Number
+    word6 delta;   // 30-35 DELTA    addr increment for repeats
     
+    /* word 3 */
+                   //  0-17          0
+                   // 18-21 TSNA     Pointer register number for non-EIS operands or
+                   //                EIS Operand #1
+                   //                  18-20 PRNO Pointer register number
+                   //                  21       PRNO is valid
+                   // 22-25 TSNB     Pointer register number for EIS operand #2
+                   //                  22-24 PRNO Pointer register number
+                   //                  25       PRNO is valid
+                   // 26-29 TSNC     Pointer register number for EIS operand #2
+                   //                  26-28 PRNO Pointer register number
+                   //                  29       PRNO is valid
+                   // 30-35 TEMP BIT Current bit offset (TPR.TBR)
+
     /* word 4 */
-    word18 IR;     /* Working instr register; addr & tag are modified */
-
+                   //  0-17 PPR.IC
+    word18 IR;     // 18-35 Indicator register
+                   //    18 ZER0
+                   //    19 NEG
+                   //    20 CARY
+                   //    21 OVFL
+                   //    22 EOVF
+                   //    23 EUFL
+                   //    24 OFLM
+                   //    25 TRO
+                   //    26 PAR
+                   //    27 PARM
+                   //    28 -BM
+                   //    29 TRU
+                   //    30 MIF
+                   //    31 ABS
+                   //    32 HEX [sic] Figure 3-32 is wrong.
+                   // 33-35 0
+                    
     /* word 5 */
-    bool repeat_first;        // "RF" flag -- first cycle of a repeat instruction; We also use with xed
-    bool rpt;     // execute an rpt instruction
-    bool rd;     // execute an rpd instruction
-    uint CT_HOLD;   // 6 bits at 5[30..35]; contents of the "remember modifier" register
 
+                   //  0-17 COMPUTED ADDRESS (TPR.CA)
+    word1 repeat_first; 
+                   // 18    RF  First cycle of all repeat instructions
+    word1 rpt;     // 19    RPT Execute an Repeat (rpt) instruction
+    word1 rd;      // 20    RD  Execute an Repeat Double (rpd) instruction
+                   // 21    RL  Execute a Repeat Link (rpl) instruction
+                   // 22    POT Prepare operand tally
+                   // 23    PON Prepare operand no tally
     //xde xdo
     // 0   0   no execute           -> 0 0
     // 1   0   execute XEC          -> 0 0
     // 1   1   execute even of XED  -> 0 1
     // 0   1   execute odd of XED   -> 0 0
-    bool xde;     // execute even instr from xed pair
-    bool xdo;     // execute even instr from xed pair
+    word1 xde;     // 24    XDE Execute instruction from Execute Double even pair
+    word1 xdo;     // 25    XDO Execute instruction from Execute Double odd pair
+                   // 26    ITP Execute ITP indirect cycle
+                   // 27    RFI Restart this instruction
+                   // 28    ITS Execute ITS indirect cycle
+    word1 FIF;     // 29    FIF Fault occured during instruction fetch
+    uint CT_HOLD;  // 30-35 CT HOLD contents of the "remember modifier" register
+
     
     
     /* word 6 */
