@@ -233,69 +233,52 @@ void _sim_debug (uint32 dbits, DEVICE* dptr, const char* fmt, ...)
 ;
 
 
-// ******* h6180 stuff *******
-
-// address modification stuff
-
-
-//! Basic + EIS opcodes .....
-struct opCode {
-    const char *mne;    ///< mnemonic
-    int32 flags;        ///< various and sundry flags
-    int32 mods;         ///< disallowed addr mods
-    int32 ndes;         ///< number of operand descriptor words for instruction (mw EIS)
-};
-typedef struct opCode opCode;
-
-// instruction decode information
-struct EISstruct;   // forward reference
-typedef struct EISstruct EISstruct;
-
-
-
 // opcode metadata (flag) ...
-// XXX change this to an enum?
-#define READ_OPERAND    (1U << 0)   ///< fetches/reads operand (CA) from memory
-#define STORE_OPERAND   (1U << 1)   ///< stores/writes operand to memory (its a STR-OP)
+typedef enum opc_flag
+  {
+    READ_OPERAND    = (1U <<  0),  // fetches/reads operand (CA) from memory
+    STORE_OPERAND   = (1U <<  1),  // stores/writes operand to memory (its a STR-OP)
 #define RMW             (READ_OPERAND | STORE_OPERAND) ///< a Read-Modify-Write instruction
-#define READ_YPAIR      (1U << 2)   ///< fetches/reads Y-pair operand (CA) from memory
-#define STORE_YPAIR     (1U << 3)   ///< stores/writes Y-pair operand to memory
-#define READ_YBLOCK8    (1U << 4)   ///< fetches/reads Y-block8 operand (CA) from memory
-#define NO_RPT          (1U << 5)   ///< Repeat instructions not allowed
+    READ_YPAIR      = (1U <<  2),  // fetches/reads Y-pair operand (CA) from memory
+    STORE_YPAIR     = (1U <<  3),  // stores/writes Y-pair operand to memory
+    READ_YBLOCK8    = (1U <<  4),  // fetches/reads Y-block8 operand (CA) from memory
+    NO_RPT          = (1U <<  5),  // Repeat instructions not allowed
 //#define NO_RPD          (1U << 6)
-#define NO_RPL          (1U << 7)
+    NO_RPL          = (1U <<  7),
 //#define NO_RPX          (NO_RPT | NO_RPD | NO_RPL)
-#define READ_YBLOCK16   (1U << 8)   ///< fetches/reads Y-block16 operands from memory
-#define STORE_YBLOCK16  (1U << 9)   ///< fetches/reads Y-block16 operands from memory
-#define TRANSFER_INS    (1U << 10)  ///< a transfer instruction
-#define TSPN_INS        (1U << 11)  ///< a TSPn instruction
-#define CALL6_INS       (1U << 12)  ///< a call6 instruction
-#define PREPARE_CA      (1U << 13)  ///< prepare TPR.CA for instruction
-#define STORE_YBLOCK8   (1U << 14)  ///< stores/writes Y-block8 operand to memory
-#define IGN_B29         (1U << 15)  ///< Bit-29 has an instruction specific meaning. Ignore.
-#define NO_TAG          (1U << 16)  ///< tag is interpreted differently and for addressing purposes is effectively 0
-#define PRIV_INS        (1U << 17)  ///< priveleged instruction
-#define NO_BAR          (1U << 18)  ///< not allowed in BAR mode
-#define NO_XEC          (1U << 19)  ///< can't be executed via xec/xed
-#define NO_XED          (1U << 20)  ///< No execution via XED instruction
-
+    READ_YBLOCK16   = (1U <<  8),  // fetches/reads Y-block16 operands from memory
+    STORE_YBLOCK16  = (1U <<  9),  // fetches/reads Y-block16 operands from memory
+    TRANSFER_INS    = (1U << 10), // a transfer instruction
+    TSPN_INS        = (1U << 11), // a TSPn instruction
+    CALL6_INS       = (1U << 12), // a call6 instruction
+    PREPARE_CA      = (1U << 13), // prepare TPR.CA for instruction
+    STORE_YBLOCK8   = (1U << 14), // stores/writes Y-block8 operand to memory
+    IGN_B29         = (1U << 15), // Bit-29 has an instruction specific meaning. Ignore.
+    NO_TAG          = (1U << 16), // tag is interpreted differently and for addressing purposes is effectively 0
+    PRIV_INS        = (1U << 17), // priveleged instruction
+    NO_BAR          = (1U << 18), // not allowed in BAR mode
+    NO_XEC          = (1U << 19), // can't be executed via xec/xed
+    NO_XED          = (1U << 20)  // No execution via XED instruction
+  } opc_flag;
 
 
 // opcode metadata (disallowed) modifications
-// XXX change to an enum as time permits?
-#define NO_DU           (1U << 0)    ///< No DU modification allowed (Can these 2 be combined into 1?)
-#define NO_DL           (1U << 1)    ///< No DL modification allowed
+typedef enum opc_mod
+  {
+    NO_DU                 = (1U << 0),   ///< No DU modification allowed (Can these 2 be combined into 1?)
+    NO_DL                 = (1U << 1),   ///< No DL modification allowed
 #define NO_DUDL         (NO_DU | NO_DL)    
 
-#define NO_CI           (1U << 2)    ///< No character indirect modification (can these next 3 be combined?_
-#define NO_SC           (1U << 3)    ///< No sequence character modification
-#define NO_SCR          (1U << 4)    ///< No sequence character reverse modification
+    NO_CI                 = (1U << 2),   ///< No character indirect modification (can these next 3 be combined?_
+    NO_SC                 = (1U << 3),   ///< No sequence character modification
+    NO_SCR                = (1U << 4),   ///< No sequence character reverse modification
 #define NO_CSS          (NO_CI | NO_SC | NO_SCR)
 
 #define NO_DLCSS        (NO_DU   | NO_CSS)
 #define NO_DDCSS        (NO_DUDL | NO_CSS)
 
-#define ONLY_AU_QU_AL_QL_XN     (1U << 5)    ///< None except au, qu, al, ql, xn
+    ONLY_AU_QU_AL_QL_XN   = (1U << 5)    ///< None except au, qu, al, ql, xn
+  } opc_mod;
 
 // None except au, qu, al, ql, xn for MF1 and REG
 // None except du, au, qu, al, ql, xn for MF2
@@ -313,6 +296,22 @@ typedef struct EISstruct EISstruct;
 #define IS_DDCSS(tag) (IS_DD(tag) || IS_CSS(tag))
 /*! just dl or css */
 #define IS_DCSS(tag) (((_TM(tag) != 040U) && (_TD(tag) == 007U)) || IS_CSS(tag))
+
+//! Basic + EIS opcodes .....
+struct opCode {
+    const char *mne;    ///< mnemonic
+    opc_flag flags;        ///< various and sundry flags
+    opc_mod mods;         ///< disallowed addr mods
+    int32 ndes;         ///< number of operand descriptor words for instruction (mw EIS)
+};
+typedef struct opCode opCode;
+
+// instruction decode information
+struct EISstruct;   // forward reference
+typedef struct EISstruct EISstruct;
+
+
+
 
 // operations stuff
 

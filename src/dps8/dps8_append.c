@@ -740,6 +740,13 @@ static bool bPrePageMode = false;
  * Returns final address suitable for core_read/write
  */
 
+// Usage notes:
+//   Checks for the following conditions:
+//     thisCycle == INSTRUCTION_FETCH, OPERAND_STORE, EIS_OPERAND_STORE, 
+//                  RTCD_OPERAND_FETCH
+//     thisCycle == OPERAND_READ && i->info->flags & CALL6_INS
+//     thisCycle == OPERAND_READ && (i->info && i->info->flags & TRANSFER_INS
+
 // CANFAULT
 word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 {
@@ -1130,7 +1137,7 @@ I:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I)\n");
     //if (isSTROP(i) && PTW->M == 0)
-    if (thisCycle == STORE_OPERAND && PTW->M == 0)  // is this the right way to do this?
+    if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
     {
         // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
         appendingUnitCycleType = MPTW;

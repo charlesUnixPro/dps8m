@@ -179,9 +179,15 @@ static char * modContSTR(modificationContinuation *i)
     //    return "modCont NOT active";
     
     static char temp[256];
+#ifdef NO_REWRITE
     sprintf(temp,
             "Address:%06o segment:%05o tally:%d delta%d mod:%d tb:%d cf:%d indword:%012llo",
             i->address, i->segment, i->tally, i->delta, i->mod, i->tb, i->cf, i->indword );
+#else
+    sprintf(temp,
+            "Address:%06o segment:%05o tally:%d delta%d mod:%d tb:%d cf:%d indword:%012llo",
+            TPR.CA, TPR.TSR, 0/*i->tally*/, 0/*i->delta*/, 0/*i->mod*/, 0/*i->tb*/, i->cf, 0ll/*i->indword*/ );
+#endif
     return temp;
     
 }
@@ -195,7 +201,9 @@ void doComputedAddressContinuation (void)
     
     directOperandFlag = false;
     
+#ifdef NO_REWRITE
     TPR.TSR = modCont->segment;
+#endif
     
     //modCont->bActive = false;   // assume no continuation necessary
     
@@ -212,17 +220,25 @@ void doComputedAddressContinuation (void)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): restoring instruction continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
             int Yi = modCont->address ;
             tTB = modCont->tb;
+#endif
             tCF = modCont->cf;
         
             word36 data;
         
             // read data where chars/bytes now live
             //Read(Yi, &data, INDIRECT_WORD_FETCH, i->a); //TM_IT);
+#ifdef NO_REWRITE
             Read(Yi, &data, OPERAND_READ, i->a); //TM_IT);
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, Yi, tTB, tCF);
+#else
+            Read(TPR.CA, &data, OPERAND_READ, i->a); //TM_IT);
+        
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): read char/byte %012llo from %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
+#endif
         
         // set byte/char
         switch (tTB)
@@ -239,7 +255,11 @@ void doComputedAddressContinuation (void)
         }
         
         // write it
+#ifdef NO_REWRITE
         Write (Yi, data, OPERAND_STORE, i->a);   //TM_IT);
+#else
+        Write (TPR.CA, data, OPERAND_STORE, i->a);   //TM_IT);
+#endif
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
@@ -251,13 +271,19 @@ void doComputedAddressContinuation (void)
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): restoring instruction continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
         Yi = modCont->address;
         tTB = modCont->tb;
+#endif
         tCF = modCont->cf;
         
         // read data where chars/bytes now live (if it hasn't already been read in)
         if (!(i->info->flags & READ_OPERAND))
+#ifdef NO_REWRITE
             Read(Yi, &data, OPERAND_READ, i->a); //TM_IT);
+#else
+            Read(TPR.CA, &data, OPERAND_READ, i->a); //TM_IT);
+#endif
         else
             data = CY;
         
@@ -278,7 +304,11 @@ void doComputedAddressContinuation (void)
         }
         
         // write it
+#ifdef NO_REWRITE
         Write (Yi, data, OPERAND_STORE, i->a);   //TM_IT);
+#else
+        Write (TPR.CA, data, OPERAND_STORE, i->a);   //TM_IT);
+#endif
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
@@ -289,14 +319,20 @@ void doComputedAddressContinuation (void)
         
         sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): restoring instruction continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
         Yi = modCont->address;
         tTB = modCont->tb;
+#endif
         tCF = modCont->cf;
         
         
         // read data where chars/bytes now live (if it hasn't already been read in)
         if (!(i->info->flags & READ_OPERAND))
+#ifdef NO_REWRITE
             Read(Yi, &data, OPERAND_READ, i->a); //TM_IT);
+#else
+            Read(TPR.CA, &data, OPERAND_READ, i->a); //TM_IT);
+#endif
         else
             data = CY;
         
@@ -317,7 +353,11 @@ void doComputedAddressContinuation (void)
         }
         
             // write it
+#ifdef NO_REWRITE
             Write (Yi, data, OPERAND_STORE, i->a);   //TM_IT);
+#else
+            Write (TPR.CA, data, OPERAND_STORE, i->a);   //TM_IT);
+#endif
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): wrote char/byte %012llo to %06o tTB=%o tCF=%o\n", data, TPR.CA, tTB, tCF);
         
@@ -327,7 +367,9 @@ void doComputedAddressContinuation (void)
         case IT_I: ///< Indirect (Td = 11)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): restoring continuation '%s'\n", modContSTR(modCont));
+#ifdef NO_REWRITE
             TPR.CA = modCont->address;
+#endif
         
             Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
         
@@ -340,7 +382,9 @@ void doComputedAddressContinuation (void)
         // read data
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): restoring continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
             TPR.CA = modCont->address;
+#endif
         
             Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
         
@@ -352,9 +396,13 @@ void doComputedAddressContinuation (void)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): restoring continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
             Yi = modCont->address;
         
             Write (Yi, CY, OPERAND_STORE, i->a); //TM_IT);
+#else
+            Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
+#endif
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): wrote operand %012llo to %06o\n", CY, TPR.CA);
             return;
@@ -365,11 +413,17 @@ void doComputedAddressContinuation (void)
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): restoring continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
             Yi = modCont->address;
+#endif
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing operand %012llo to %06o\n", CY, TPR.CA);
         
+#ifdef NO_REWRITE
             Write (Yi, CY, OPERAND_STORE, i->a); //TM_IT);
+#else
+            Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
+#endif
         
             return;
         
@@ -382,11 +436,12 @@ void doComputedAddressContinuation (void)
 
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): restoring continuation '%s'\n", modContSTR(modCont));
         
+#ifdef NO_REWRITE
             TPR.CA = modCont->address;
-        
+#endif        
             sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): writing operand %012llo to %06o\n", CY, TPR.CA);
         
-            Write (TPR.CA, CY, STORE_OPERAND, i->a); //TM_IT);
+            Write (TPR.CA, CY, OPERAND_STORE, i->a); //TM_IT);
         
             return;
         
@@ -394,7 +449,9 @@ void doComputedAddressContinuation (void)
             //sim_printf("doContinuedAddressContinuation(): How'd we get here (%d)???\n", modCont->mod);
         
             //sim_debug(DBG_ADDRMOD, &cpu_dev, "default: restoring continuation '%s'\n", modContSTR(modCont));
+#ifdef NO_REWRITE
             TPR.CA = modCont->address;
+#endif
             
             //Write (TPR.CA, CY, DataWrite, TM_IT);
             WriteOP(TPR.CA, OPERAND_STORE, i->a);    //modCont->mod);
@@ -581,6 +638,7 @@ t_stat doComputedAddressFormation (void)
     if (i->info->flags & NO_TAG) // for instructions line STCA/STCQ
         rTAG = 0;
     else
+// XXX needs to be from IWB
         rTAG = i->tag;
         
     sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressFormation(Entry): operType:%s TPR.CA=%06o\n", opDescSTR(), TPR.CA);
@@ -656,10 +714,14 @@ R_MOD:;
         if (operType == writeCY || operType == rmwCY)
         {
             modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
             modCont->address = TPR.CA;
+#endif
             modCont->mod = TM_R;
             //modCont->i = i;
+#ifdef NO_REWRITE
             modCont->segment = TPR.TSR;
+#endif
             
             sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(), modContSTR(modCont));
         }
@@ -771,10 +833,14 @@ R_MOD:;
             {
 //sim_printf ("ITx in IR_MOD: write; rTAG %o\n", rTAG);
                 modCont->bActive = true;    // will continue the write operatio
+#ifdef NO_REWRITE
                 modCont->address = TPR.CA;
+#endif
                 modCont->mod = iTAG;    //TM_R;
                 //modCont->i = i;
+#ifdef NO_REWRITE
                 modCont->segment = TPR.TSR;
+#endif
             }
 if (cu.CT_HOLD && rTAG)
 sim_printf ("ignoring CT-HOLD; rTAG %o\n", rTAG);
@@ -882,10 +948,14 @@ sim_printf ("ignoring CT-HOLD; rTAG %o\n", rTAG);
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = TPR.CA;
+#endif
                     modCont->mod = TM_R;
                     //modCont->i = i;
+#ifdef NO_REWRITE
                     modCont->segment = TPR.TSR;
+#endif
                     
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IR_MOD(): saving continuation '%s'\n", modContSTR(modCont));
                 }
@@ -963,10 +1033,14 @@ sim_printf ("IT_MOD uses ITx\n");
                 if (operType == writeCY || operType == rmwCY)
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = TPR.CA;
+#endif
                     modCont->mod = iTAG;    //TM_R;
                     //modCont->i = i;
+#ifdef NO_REWRITE
                     modCont->segment = TPR.TSR;
+#endif
                     
                     sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
                 }
@@ -1028,12 +1102,15 @@ sim_printf ("IT_MOD uses ITx\n");
                 if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = TPR.CA;
-                    modCont->mod = IT_CI;
-                    //modCont->i = i;
                     modCont->tb = tTB;
+#endif
+                    modCont->mod = IT_CI;
                     modCont->cf = tCF;
+#ifdef NO_REWRITE
                     modCont->segment = TPR.TSR;
+#endif
                     
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_CI): saving continuation '%s'\n", modContSTR(modCont));
                 }
@@ -1089,13 +1166,16 @@ sim_printf ("IT_MOD uses ITx\n");
                 {
 sim_printf ("SC write\n");
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = Yi;
-                    modCont->mod = IT_SC;
-                    //modCont->i = i;
                     modCont->tb = tTB;
-                    modCont->cf = tCF;
                     modCont->indword = indword;
+#endif
+                    modCont->mod = IT_SC;
+                    modCont->cf = tCF;
+#ifdef NO_REWRITE
                     modCont->segment = TPR.TSR;
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SC): saving continuation '%s'\n", modContSTR(modCont));
                 
@@ -1140,7 +1220,6 @@ sim_printf ("SC write\n");
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
                 Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): indword=%012llo\n", indword);
@@ -1208,13 +1287,16 @@ sim_printf ("SC write\n");
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = Yi;
-                    modCont->mod = IT_SCR;
-                    //modCont->i = i;
                     modCont->tb = tTB;
-                    modCont->cf = tCF;
                     modCont->indword = indword;
+#endif
+                    modCont->mod = IT_SCR;
+                    modCont->cf = tCF;
+#ifdef NO_REWRITE
                     modCont->segment = TPR.TSR;
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SCR): saving instruction continuation '%s'\n", modContSTR(modCont));
                 }
@@ -1241,11 +1323,15 @@ sim_printf ("SC write\n");
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = TPR.CA;
+#endif
                     modCont->mod = IT_I;
                     //modCont->i = i;
+#ifdef NO_REWRITE
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_I): saving continuation '%s'\n", modContSTR(modCont));
                 
@@ -1258,7 +1344,6 @@ sim_printf ("SC write\n");
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //            Read(TPR.CA, &indword, IndirectRead, TM_IT);
                 Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 tally = GET_TALLY(indword); // 12-bits
@@ -1280,11 +1365,14 @@ sim_printf ("SC write\n");
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = TPR.CA;
+#endif
                     modCont->mod = IT_AD;
-                    //modCont->i = i;
+#ifdef NO_REWRITE
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_AD): saving continuation '%s'\n", modContSTR(modCont));
                 
@@ -1313,7 +1401,6 @@ sim_printf ("SC write\n");
                 ///< The TAG field of the indirect word is interpreted as a 6-bit, unsigned, positive address increment value, delta. For each reference to the indirect word, the ADDRESS field is reduced by delta and the TALLY field is increased by 1 before the computed address is formed. ADDRESS arithmetic is modulo 2^18. TALLY arithmetic is modulo 4096. If the TALLY field overflows to 0, the tally runout indicator is set ON, otherwise it is set OFF. The computed address is the value of the decremented ADDRESS field of the indirect word.
             
                 tmp18 = TPR.CA;
-                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
                 Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): reading indirect word from %06o\n", TPR.CA);
@@ -1326,7 +1413,11 @@ sim_printf ("SC write\n");
             
                 Yi -= delta;
                 Yi &= MASK18;
+#ifdef NO_REWRITE
                 //TPR.CA = Yi;
+#else
+                TPR.CA = Yi;
+#endif
             
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
@@ -1346,7 +1437,11 @@ sim_printf ("SC write\n");
                 if (operType == readCY || operType == rmwCY) //READOP(i))
                 {
                     //Read(Yi, &CY, DataRead, TM_IT);
+#ifdef NO_REWRITE
                     ReadOP(Yi, OPERAND_READ, currentInstruction.a);
+#else
+                    ReadOP(TPR.CA, OPERAND_READ, currentInstruction.a);
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): read operand %012llo from %06o\n", CY, TPR.CA);
                 }
@@ -1354,11 +1449,15 @@ sim_printf ("SC write\n");
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = Yi;
+#endif
                     modCont->mod = IT_SD;
                     //modCont->i = i;
+#ifdef NO_REWRITE
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_SD): saving instruction continuation '%s'\n", modContSTR(modCont));
                 
@@ -1375,7 +1474,6 @@ sim_printf ("SC write\n");
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
                 Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
@@ -1387,7 +1485,11 @@ sim_printf ("SC write\n");
             
                 Yi -= 1;
                 Yi &= MASK18;
+#ifdef NO_REWRITE
                 //TPR.CA = Yi;
+#else
+                TPR.CA = Yi;
+#endif
             
                 tally += 1;
                 tally &= 07777; // keep to 12-bits
@@ -1398,7 +1500,11 @@ sim_printf ("SC write\n");
                     // Only update the tally and address if not prepareCA
                     // write back out indword
                 
+#ifdef NO_REWRITE
                     indword = (word36) (((word36) Yi << 18) | ((word36) tally << 6) | junk);
+#else
+                    indword = (word36) (((word36) TPR.CA << 18) | ((word36) tally << 6) | junk);
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): writing indword=%012llo to addr %06o\n", indword, tmp18);
                     
@@ -1411,7 +1517,11 @@ sim_printf ("SC write\n");
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): reading operand from %06o\n", TPR.CA);
                 
                     //Read(Yi, &CY, DataRead, TM_IT);
+#ifdef NO_REWRITE
                     ReadOP(Yi, OPERAND_READ, i->a);
+#else
+                    ReadOP(TPR.CA, OPERAND_READ, i->a);
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): operand = %012llo\n", CY);
                 }
@@ -1419,11 +1529,15 @@ sim_printf ("SC write\n");
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = Yi;
+#endif
                     modCont->mod = IT_DI;
                     //modCont->i = i;
+#ifdef NO_REWRITE
                     modCont->indword = indword;
                     modCont->segment = TPR.TSR;
+#endif
                 
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DI): saving continuation '%s'\n", modContSTR(modCont));
 
@@ -1442,7 +1556,6 @@ sim_printf ("SC write\n");
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): fetching indirect word from %06o\n", TPR.CA);
             
-                //Read(TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
                 Read(TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
@@ -1467,12 +1580,15 @@ sim_printf ("SC write\n");
                 if (operType == writeCY || operType == rmwCY)    //WRITEOP(i))
                 {
                     modCont->bActive = true;    // will continue the write operation after instruction implementation
+#ifdef NO_REWRITE
                     modCont->address = TPR.CA;
+#endif
                     modCont->mod = IT_DI;
-                    //modCont->i = i;
-                    modCont->indword = indword;
+#ifdef NO_REWRITE
                     modCont->tmp18 = tmp18;
+                    modCont->indword = indword;
                     modCont->segment = TPR.TSR;
+#endif
                     
                     sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): saving instruction continuation '%s'\n", modContSTR(modCont));
                 
@@ -1497,7 +1613,6 @@ sim_printf ("SC write\n");
             
                 Write (tmp18, indword, OPERAND_STORE, i->a);
             
-                //TPR.CA = Yi;
             
             return SCPE_OK;
             
@@ -1508,7 +1623,6 @@ sim_printf ("SC write\n");
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_DIC): fetching indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read (TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
                 Read (TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
@@ -1580,7 +1694,6 @@ sim_printf ("SC write\n");
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_IDC): fetching indirect word from %06o\n", TPR.CA);
             
                 tmp18 = TPR.CA;
-                //Read (TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a);
                 Read (TPR.CA, &indword, OPERAND_READ, i->a);
             
                 Yi = GETHI(indword);
@@ -1614,13 +1727,11 @@ sim_printf ("SC write\n");
             
                 // force R to 0 (except for IT)
                 TPR.CA = YiSafe;
-                //TPR.CA = GETHI(indword);
             
                 rTAG = idwtag & 0x70; // force R to 0 (except for IT)
                 Td = GET_TD(rTAG);
                 Tm = GET_TM(rTAG);
             
-                //TPR.CA = i->address;
                 rY = TPR.CA;    //i->address;
             
                 switch(Tm)
