@@ -744,56 +744,93 @@ static bool bPrePageMode = false;
 word24 doAppendCycle (word18 address, _processor_cycle_type thisCycle)
 {
     DCDstruct * i = & currentInstruction;
-//    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 
-    //bool instructionFetch = (thisCycle == INSTRUCTION_FETCH) || (thisCycle == SEQUENTIAL_INSTRUCTION_FETCH);
     bool instructionFetch = (thisCycle == INSTRUCTION_FETCH);
     bool StrOp = (thisCycle == OPERAND_STORE || thisCycle == EIS_OPERAND_STORE);
     
-    //int n = 0;  // # of PR
     int RSDWH_R1 = 0;
     
     acvFaults = 0;
     char * acvFaultsMsg = "<unknown>";
 
-    
     word24 finalAddress = -1;  // not everything requires a final address
     
-//    if (thisCycle == EIS_OPERAND_READ || thisCycle == EIS_OPERAND_STORE)
-//    {
-//        // TPR already setup properly
-//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(EIS) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
-//        goto A;
-//    }
-    
-//    if (lastCycle == INDIRECT_WORD_FETCH)
-//        goto A;
-//    
-//    if (lastCycle == RTCD_OPERAND_FETCH)
-//        goto A;
-    
-    //if (lastCycle == SEQUENTIAL_INSTRUCTION_FETCH || instructionFetch)
-//    if (instructionFetch)
-//    {
-//        if (i && i->a)   // bit 29 on?
-//        {
-//              sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(1): bit-29 (a) detected\n");
-//              sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(2) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
-//            goto A;
-//        }
-//        
-//        TPR.TRR = PPR.PRR;
-//        TPR.TSR = PPR.PSR;
-//        
-//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(3) instructionfetch - TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
-//    }
-
+//
+//  A:
+//    Get SDW
 #ifndef QUIET_UNUSED
 A:;
 #endif
+
+//
+// Phase 1:
+//
+//     A: Get the SDW
+//
+//     B: Check the ring
+//
+// Phase 2:
+//
+//     B1: If CALL6 operand
+//           goto E
+//         If instruction fetch or transfer instruction operand
+//           goto F
+//         If write
+//           check write permission
+//         else
+//           check read permission
+//         goto G
+//
+//     E: -- CALL6 operand handling
+//        Check execute and gate bits
+//        Get the ring
+//        goto G
+//
+//     F: -- instruction fetch or transfer instruction operand
+//        Check execute bit and ring
+//        goto D
+//
+//     D: Check RALR
+//        goto G
+//
+// Phase 3
+//
+//     G: Check BOUND
+//        If not paged
+//          goto H
+//        Fetch PTW
+//        Fetch prepage PTW
+//        Goto I
+//
+//     H: Compute final address
+//        Goto HI
+//
+//     I: If write
+//          set PTW.M
+//        Compute final address
+//        Goto HI
+//
+// Phase 4
+//
+//     HI: --
+//         If indirect word fetch
+//           goto Exit
+//         if rtcd operand fetch
+//           goto KL
+//         If instruction fetch or transfer instruction operand
+//           goto KL
+//         "APU data movement"
+//         Goto Exit
+//
+//    KL: Set PPR.P
+//         Goto Exit
+//
+//    Exit: return
+//
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
     // is SDW for C(TPR.TSR) in SDWAM?
@@ -833,31 +870,44 @@ A:;
     // Yes...
     RSDWH_R1 = SDW->R1;
 
-    goto B;
-    
-B:;
+//
+// B: Check the ring
+//
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B)\n");
     
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
         acvFault(ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
-    
+
     // No
-    
-    // Was last cycle an rtcd operand fetch?
-//    if (lastCycle == RTCD_OPERAND_FETCH)
-//        goto C;
-    
+
+//
+// B1: The operand is one of: an instruction, data to be read or data to be
+//     written
+//
+
+    // CALL6 must check the call gate. Also it has the feature of checking 
+    // the target address for execution permission (instead of allowing the 
+    // instruction fetch of the next cycle to do it). This allows the fault 
+    // to occur in the calling instruction, which is easier to debug.
+
     // Is OPCODE call6?
-    //if (!instructionFetch && i->info->flags & CALL6_INS)
     if (thisCycle == OPERAND_READ && i->info->flags & CALL6_INS)
-        goto E;
-    
+      goto E;
+ 
+
+    // If the instruction is a transfer operand or we are doing an instruction
+    // fetch, the operand is destined to be executed. Verify that the operand
+    // is executable
+
     // Transfer or instruction fetch?
     if (instructionFetch || (thisCycle == OPERAND_READ && (i->info && i->info->flags & TRANSFER_INS)))
         goto F;
     
+    // Not executed, therefore it is data. Read or Write?
+
     if (StrOp)
     {
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):STR-OP\n");
@@ -872,7 +922,6 @@ B:;
             acvFault(ACV6, "doAppendCycle(B) ACV6 = W-OFF");
         
     } else {
-        // XXX should we test for READOP() here?
         sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(B):!STR-OP\n");
         
         // No
@@ -897,43 +946,6 @@ B:;
     
     goto G;
 
-
-// This is handled in the rtcd instruction
-#ifndef QUIET_UNUSED
-C:;
-#endif
-#ifndef QUIET_UNUSED
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(C)\n");
-
-    //C(TPR.TRR) < C(SDW .R1)?
-    if (TPR.TRR < SDW->R1) {
-        //Set fault ACV1 = OEB
-        acvFaults |= ACV1;
-        acvFaultsMsg = "acvFaults(C) C(TPR.TRR) < C(SDW .R1)";
-    }
-
-    //C(TPR.TRR) > C(SDW .R2)?
-    if (TPR.TRR > SDW->R2) {
-        //Set fault ACV1 = OEB
-        acvFaults |= ACV1;
-        acvFaultsMsg = "acvFaults(C) C(TPR.TRR) > C(SDW .R2)";
-    }
-
-    // SDW .E set ON?
-    if (SDW->E) {
-        //Set fault ACV2 = E-OFF
-        acvFaults |= ACV2;
-        acvFaultsMsg = "acvFaults(C) SDW .E set ON";
-    }
-    
-    //C(TPR.TRR) ≥ C(PPR.PRR)
-    if (!(TPR.TRR >= PPR.PRR)) {
-        // Set fault ACV11 = INRET
-        acvFaults |= ACV11;
-        acvFaultsMsg = "acvFaults(C) C(TPR.TRR) ≥ C(PPR.PRR)";
-    }
-    goto D;
-#endif
     
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
@@ -951,6 +963,11 @@ D:;
     goto G;
     
 E:;
+
+//
+// E: CALL6
+//
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E): CALL6\n");
 
     //SDW .E set ON?
@@ -1100,7 +1117,6 @@ H:;
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, address);
 
-    //finalAddress = SDW->ADDR + TPR.CA;
     finalAddress = SDW->ADDR + address;
     finalAddress &= 0xffffff;
     
@@ -1109,6 +1125,9 @@ H:;
     goto HI;
     
 I:;
+
+// Set PTW.M
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I)\n");
     //if (isSTROP(i) && PTW->M == 0)
     if (thisCycle == STORE_OPERAND && PTW->M == 0)  // is this the right way to do this?
@@ -1130,75 +1149,38 @@ I:;
     finalAddress &= 0xffffff;
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H:FAP): (%05o:%06o) finalAddress=%08o\n",TPR.TSR, address, finalAddress);
+    goto HI;
 
 HI:
+
+// Check for conditions that change the PPR.P bit
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI)\n");
     
     //if (thisCycle == INSTRUCTION_FETCH)
     if (thisCycle == INDIRECT_WORD_FETCH)
-        goto J;
+        goto Exit;
     
     if (thisCycle == RTCD_OPERAND_FETCH)
-        goto K;
+        goto KL;
     
-// This is handled in CALL6
-//    //if (i && i->info->flags & CALL6_INS)
-//    if (thisCycle == OPERAND_READ && i && (i->info->flags & CALL6_INS))
-//        goto N;
     
     //if (i && ((i->info->flags & TRANSFER_INS) || instructionFetch))
     if (instructionFetch || (i && (i->info->flags & TRANSFER_INS)))
-        goto L;
+        goto KL;
     
 // XXX "APU data movement; Load/store APU data" not implemented"
 // XXX ticket 12
     // load/store data .....
 
-//    if (isREADOP(i))
-//    {
-//        core_read(finalAddress, readData);  // I think now is the time to do it ...
-//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI):Read: finalAddress=%08o readData-%012llo\n", finalAddress, *readData);
-//    }
-//    
-//    if (isSTROP(i))
-//    {
-//        core_write(finalAddress, writeData);  // I think now is the time to do it ...
-//        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(HI):Write: finalAddress=%08o writeData-%012llo\n", finalAddress, writeData);
-//    }
     
-    goto Exit;
-    
-J:; // XXX implement
-    // CAC I belive that all of the J/O/P logic is handled in  addrmods;
     goto Exit;
  
-K:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(K)\n");
-
-    // C(Y)3,17 → C(TPR.TSR)
-    // C(Y+1)0,17 → C(TPR.CA)
-    
-// handled in RTCD instruction .....
-    
-//    TPR.TSR = (Ypair[0] & 0077777) >> 18;
-//    TPR.CA = (Ypair[1] & 07777777) >> 18;
-//    
-//    // C(TPR.TRR) ≥ C(PPR.PRR)?
-//    if (TPR.TRR >= PPR.PRR)
-//        // C(TPR.￼￼TRR) → C(PRi.RNR) for i = 0, 7
-//        PR[n].RNR = TPR.TRR;
-//    
-//    // C(TPR.TRR) → C(PPR.PRR)
-//    PPR.PRR = TPR.TRR;
-    
 KL:;
-    // C(TPR.TSR) → C(PPR.PSR) C(TPR.CA) → C(PPR.IC)
-//    PPR.PSR = TPR.TSR;
-//    PPR.IC = address;   //TPR.CA;
 
-//    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KL): PPR is set to address %05o:%06o\n", TPR.TSR, TPR.CA);
+// We end up here if the operand data is destined for the IC.
+//  Set PPR.P
 
-//KLM:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM)\n");
     
     if (TPR.TRR == 0)
@@ -1208,129 +1190,16 @@ KL:;
         // 0 → C(PPR.P)
         PPR.P = 0;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(KLM) TPR.TRR %o SDW.P %o PPR.P %o\n", TPR.TRR, SDW->P, PPR.P);
-    // This is handled in the RTCD code
-    //if (thisCycle == RTCD_OPERAND_FETCH)
-        //goto O;
     
     goto Exit;    // this may not be setup or right
     
-L:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(L)\n");
-    
-//    if (i->info->flags & TSPN_INS)
-//    {
-//        if (i->opcode <= 0273)
-//            n = (i->opcode & 3);
-//        else
-//            n = (i->opcode & 3) + 4;
-//        
-//        PR[n].RNR = PPR.PRR;
-//        PR[n].SNR = PPR.PSR;
-//        PR[n].WORDNO = (PPR.IC + 1) & 0777777; // IC or IC+1?????
-//        PR[n].BITNO = 0;
-//
-//    }
-    
-    goto KL;
-    
-#if 0
-M:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(M)\n");
-    
-    goto KLM;
-#endif
 
-#if 0
-N:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(N): CALL6\n");
-
-    if (TPR.TRR == PPR.PRR)
-        PR[7].SNR = PR[6].SNR;
-    else
-        PR[7].SNR = ((DSBR.STACK << 3) | TPR.TRR) & 077777; // keep to 15-bits
     
-    PR[7].RNR = TPR.TRR;
-    PR[7].WORDNO = 0;
-    PR[7].BITNO = 0;
-    PPR.PRR = TPR.TRR;
-    PPR.PSR = TPR.TSR;
-    PPR.IC = TPR.CA;    // IC or IC+1???
-
-    goto M;
-#endif
     
-#ifdef UNUSED
-O:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): RTCD\n");
-    
-// All of this is done in the instruction; doing it here fouls the fetch
-// of the second word of the Ypair
-#if 0 
-    int CY316 = (CY >> 16) & 03;
- 
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): C(Y)18,20 = %06o\n", CY316);
-    
-    // C(TPR.TRR) ≥ RSDWH.R1?
-    if (TPR.TRR >= RSDWH_R1)
-    {
-        // C(TPR.TRR) ≥ C(Y)18,20?
-        if (TPR.TRR >= CY316)
-            goto Exit;
-        else
-            // C(Y)18,20 → C(TPR.TRR)
-            TPR.TRR = CY316;
-    }
-    else
-    {
-        // C(Y)18,20 ≥ RSDWH.R1?
-        if (CY316 >= RSDWH_R1)
-            TPR.TRR = CY316;
-        else
-            // RSDWH.R1 → C(TPR.TRR)
-            TPR.TRR = RSDWH_R1;
-    }
-#endif
-    
-    goto Exit;    // or 0 or -1???
-#endif
-    
-#ifdef UNUSED
-#ifndef QUIET_UNUSED
-P:;
-#endif
-
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(P): ITP\n");
-    
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(P): RSDWH_R1 = %0o", RSDWH_R1);
-    
-    // TODO: need to extract n from the ITP pair
-    
-    // C(TPR.TRR) ≥ RSDWH.R1?
-    if (TPR.TRR >= RSDWH_R1)
-    {
-        // C(TPR.TRR) ≥ C(PRn .RNR)??
-        if (TPR.TRR >= PR[n].RNR)
-            goto Exit;
-        else
-            //C(PRn .RNR) → C(TPR.TRR)
-            TPR.TRR = PR[n].RNR;
-    }
-    else
-    {
-        // C(PRn .RNR) ≥ RSDWH.R1?
-        if (PR[n].RNR >= RSDWH_R1)
-            TPR.TRR = PR[n].RNR;
-        else
-            // RSDWH.R1 → C(TPR.TRR)
-            TPR.TRR = RSDWH_R1;
-    }
-#endif
    
 Exit:;
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Exit): lastCycle: %s => %s\n", strPCT(lastCycle), strPCT(thisCycle));
 
-    
-//    lastCycle = thisCycle;
     return finalAddress;    // or 0 or -1???
 }
 
