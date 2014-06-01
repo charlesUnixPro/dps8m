@@ -423,20 +423,6 @@ t_stat displayTheMatrix (int32 __attribute__((unused)) arg, char * __attribute__
 }
 
 
-/*
- * Setup TPR registers prior to instruction execution ...
- */
-
-t_stat prepareComputedAddress (void)
-{
-    DCDstruct * i = & currentInstruction;
-    if (i->a)   // if A bit set up TPR stuff ...
-        doPtrReg();
-
-    return SCPE_OK;
-}
-
-
 // fetch instrcution at address
 // CANFAULT
 void fetchInstruction (word18 addr)
@@ -661,6 +647,7 @@ t_stat executeInstruction (void)
       }
     else
       {
+        //cac ();
         if (ci -> a)   // if A bit set set-up TPR stuff ...
           doPtrReg ();
         doComputedAddressFormation ();

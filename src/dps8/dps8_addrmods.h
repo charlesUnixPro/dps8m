@@ -14,6 +14,7 @@ struct modificationContinuation
 typedef struct modificationContinuation modificationContinuation;
 
 t_stat doComputedAddressFormation (void);
+t_stat cac(void);
 extern modificationContinuation _modCont, *modCont;
 void doComputedAddressContinuation (void);
 
