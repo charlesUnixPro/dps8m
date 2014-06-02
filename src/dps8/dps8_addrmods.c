@@ -16,6 +16,7 @@
 #include "dps8_utils.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
+#include "dps8_opcodetable.h"
 
 // Computed Address Formation Flowcharts
 
@@ -1762,9 +1763,20 @@ sim_printf ("SC write\n");
 
 static void updateIWB (word18 addr, word6 tag)
   {
+    sim_debug (DBG_ADDRMOD, & cpu_dev,
+               "updateIWB: IWB was %012llo %06o %s\n",
+               cu . IWB, GET_ADDR (cu . IWB),
+               extMods [GET_TAG (cu . IWB)] . mod);
+
     cu . IWB = setbits36 (cu . IWB,  0, 18, addr);
     cu . IWB = setbits36 (cu . IWB, 29,  1, 0);
     cu . IWB = setbits36 (cu . IWB, 30,  6, tag);
+
+    sim_debug (DBG_ADDRMOD, & cpu_dev,
+               "updateIWB: IWB was %012llo %06o %s\n",
+               cu . IWB, GET_ADDR (cu . IWB),
+               extMods [GET_TAG (cu . IWB)] . mod);
+
     decodeInstruction (cu . IWB, & currentInstruction);
   }
 
