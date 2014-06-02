@@ -194,6 +194,7 @@ LDFLAGS = -g
 # Temporary to tidy -Wall
 CFLAGS += -DQUIET_UNUSED
 
+CFLAGS += -DNEWCAF
 # for Linux (Gentoo 4.3.6-r1 p1.0, pie-10.1.5)
 # Ubuntu Linux 8.04.4, "Hardy Heron" (which is no longer a supported release) 
 #CFLAGS = -I../decNumber -I../simh -std=c99 -U__STRICT_ANSI__  -O2 \

@@ -15,6 +15,12 @@ struct modificationContinuation
 };
 typedef struct modificationContinuation modificationContinuation;
 
+extern bool directOperandFlag;
+extern bool characterOperandFlag;
+extern int characterOperandSize;
+extern int characterOperandOffset;
+extern word36 directOperand;
+
 t_stat doComputedAddressFormation (void);
 t_stat cac(void);
 extern modificationContinuation _modCont, *modCont;

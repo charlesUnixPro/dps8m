@@ -36,6 +36,22 @@ static int doABSA (word36 * result);
 static t_stat doInstruction (void);
 static int emCall (void);
 
+#ifdef NEWCAF
+// CANFAULT 
+static void readOperands (void)
+{
+    if (directOperandFlag)
+      {
+        CY = directOperand;
+        return;
+      }
+    DCDstruct * i = & currentInstruction;
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
+    
+    ReadOP (TPR.CA, OPERAND_READ, i->a);
+}
+#endif
+
 // CANFAULT 
 static void writeOperands (void)
 {
@@ -45,11 +61,15 @@ static void writeOperands (void)
     // TPR.CA may be different from instruction spec because of various addr mod operations.
     // This is especially true in a R/M/W cycle such as stxn. So, restore it.
     
+#ifdef NEWCAF
+    WriteOP(TPR.CA, OPERAND_STORE, i->a);
+#else
     if (modCont->bActive)
         doComputedAddressContinuation ();
     else
         WriteOP(TPR.CA, OPERAND_STORE, i->tag);
     modCont->bActive = false;
+#endif
 }
 
 /**
@@ -458,7 +478,7 @@ void fetchOperands (void)
             Read(i, PPR.IC + 1 + n, &i->e->op[n], READ_OPERAND, 0); 
     else
         if (READOP(i) || RMWOP(i))
-            ReadOP(i, TPR.CA, READ_OPERAND, 0);
+            ReadOP(i, TPR.CA, READ_OPERAND, XXX);
     
 }
 #endif
@@ -647,10 +667,25 @@ t_stat executeInstruction (void)
       }
     else
       {
-        //cac ();
+#ifdef NEWCAF
+
+        // This must not happen on instruction restart
+        if (ci -> a)   // if A bit set set-up TPR stuff ...
+          doPtrReg ();
+
+        if (ci->info->flags & PREPARE_CA)
+          cac ();
+
+        if (READOP (ci))
+          {
+            cac ();
+            readOperands ();
+          }
+#else
         if (ci -> a)   // if A bit set set-up TPR stuff ...
           doPtrReg ();
         doComputedAddressFormation ();
+#endif
       }
 
     t_stat ret = doInstruction ();
@@ -663,9 +698,17 @@ t_stat executeInstruction (void)
             set_addr_mode(APPEND_mode);
         }
     }
-    
+
+#ifndef NEWCAF    
     if (modCont->bActive)
         writeOperands ();
+#else
+    if (WRITEOP (ci))
+      {
+        cac ();
+        writeOperands ();
+      }
+#endif
     
 
     if ((! cu . repeat_first) && (cu . rpt || (cu . rd & (PPR.IC & 1))))
