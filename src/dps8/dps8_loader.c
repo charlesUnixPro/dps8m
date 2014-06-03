@@ -262,10 +262,13 @@ static int segdefNamecmp(segdef *a, segdef *b)
 {
     return strcmp(a->symbol, b->symbol);
 }
-int segrefNamecmp(segref *a, segref *b)
+
+#ifndef QUIET_UNUSED
+static int segrefNamecmp(segref *a, segref *b)
 {
     return strcmp(a->symbol, b->symbol);
 }
+#endif 
 
 #ifndef QUIET_UNUSED
 segment *findSegment(char *segname)
@@ -820,8 +823,8 @@ static t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool __attrib
     objSize = -1;
     currSegment = NULL;
     
-    char buff[1024], *c;
-    while((c = fgets(buff, sizeof(buff), f)) != NULL)
+    char buff[1024];
+    while(fgets(buff, sizeof(buff), f) != NULL)
     {
         if (buff[0] != '!')
             continue;

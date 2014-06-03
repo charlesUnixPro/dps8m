@@ -155,7 +155,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
     Int   cut=0;                     // phase of output
     
     decNumberZero(dn);               // default result
-    last = &bcd[length-1];
+    //last = &bcd[length-1];
     //nib = *last & 0x0f;                // get the sign
     //if (nib==DECPMINUS || nib==DECPMINUSALT) dn->bits=DECNEG;
     //else if (nib<=9) return NULL;   // not a sign nibble

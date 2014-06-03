@@ -564,7 +564,7 @@ static t_stat absAddr (int32 __attribute__((unused)) arg, char * buf)
   {
     int segno;
     uint offset;
-    if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
+    if (sscanf (buf, "%i:%u", & segno, & offset) != 2)
       return SCPE_ARG;
     return absAddrN (segno, offset);
   }
@@ -810,7 +810,7 @@ static t_stat sbreak (int32 arg, char * buf)
 static t_stat virtAddr (int32 __attribute__((unused)) arg, char * buf)
   {
     uint address;
-    if (sscanf (buf, "%i", & address) != 1)
+    if (sscanf (buf, "%u", & address) != 1)
       return SCPE_ARG;
     return virtAddrN (address);
   }
@@ -1021,6 +1021,7 @@ static t_stat loadSystemBook (int32  __attribute__((unused)) arg, char * buf)
             if (rc < 0)
               {
                 sim_printf ("error adding segment name\n");
+                fclose (fp);
                 return SCPE_ARG;
               }
             continue;
@@ -1069,13 +1070,14 @@ static t_stat loadSystemBook (int32  __attribute__((unused)) arg, char * buf)
             if (rc < 0)
               {
                 sim_printf ("error adding segment name\n");
+                fclose (fp);
                 return SCPE_ARG;
               }
             continue;
           }
 
       }
-
+    fclose (fp);
 #if 0
     for (int i = 0; i < nBookSegments; i ++)
       { 

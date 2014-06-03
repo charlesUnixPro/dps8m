@@ -394,7 +394,7 @@ void addToTheMatrix (uint32 opcode, bool opcodeX, bool a, word6 tag)
 t_stat displayTheMatrix (int32 __attribute__((unused)) arg, char * __attribute__((unused)) buf)
 {
     long long count;
-    for (int opcode = 0; opcode < 1024; opcode ++)
+    for (int opcode = 0; opcode < 01000; opcode ++)
     for (int opcodeX = 0; opcodeX < 2; opcodeX ++)
     for (int a = 0; a < 2; a ++)
     for (int tag = 0; tag < 64; tag ++)
@@ -945,7 +945,7 @@ static t_stat DoBasicInstruction (void)
                 if (! TSTF (cu.IR, I_OMASK))
                     doFault(overflow_fault, 0,"lcaq overflow fault");
             }
-            else if (Ypair[1] == 0 && Ypair[1] == 0)
+            else if (Ypair[0] == 0 && Ypair[1] == 0)
             {
                 rA = 0;
                 rQ = 0;
@@ -6255,16 +6255,16 @@ static int doABSA (word36 * result)
                 word36 PTWx2;
                 core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
     
-                struct _ptw0 PTW2;
-                PTW2.ADDR = GETHI(PTWx2);
-                PTW2.U = TSTBIT(PTWx2, 9);
-                PTW2.M = TSTBIT(PTWx2, 6);
-                PTW2.F = TSTBIT(PTWx2, 2);
-                PTW2.FC = PTWx2 & 3;
+                struct _ptw0 PTW_2;
+                PTW_2.ADDR = GETHI(PTWx2);
+                PTW_2.U = TSTBIT(PTWx2, 9);
+                PTW_2.M = TSTBIT(PTWx2, 6);
+                PTW_2.F = TSTBIT(PTWx2, 2);
+                PTW_2.FC = PTWx2 & 3;
 
                 sim_debug (DBG_APPENDING, & cpu_dev, 
-                  "absa PTW2 ADDR %08o U %o M %o F %o FC %o\n", 
-                  PTW2 . ADDR, PTW2 . U, PTW2 . M, PTW2 . F, PTW2 . FC);
+                  "absa PTW_2 ADDR %08o U %o M %o F %o FC %o\n", 
+                  PTW_2 . ADDR, PTW_2 . U, PTW_2 . M, PTW_2 . F, PTW_2 . FC);
 
                 // 11.If PTW(x2).F = 0, then generate directed fault n where n is 
                 // given in PTW(x2).FC. This is a page fault as in Step 4 above.
@@ -6272,17 +6272,17 @@ static int doABSA (word36 * result)
                 // ABSA only wants the address; it doesn't care if the page is
                 // resident
 
-                // if (!PTW2.F)
+                // if (!PTW_2.F)
                 //   {
-                //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW2.F\n");
+                //     sim_debug (DBG_APPENDING, & cpu_dev, "absa fault !PTW_2.F\n");
                 //     // initiate a directed fault
-                //     doFault(dir_flt0_fault + PTW2.FC, 0, "ABSA !PTW2.F");
+                //     doFault(dir_flt0_fault + PTW_2.FC, 0, "ABSA !PTW_2.F");
                 //   }
 
                 // 12. Generate the 24-bit absolute main memory address 
                 // PTW(x2).ADDR + y2.
 
-                res = (((word36) PTW2 . ADDR) << 6)  + (word36) y2;
+                res = (((word36) PTW_2 . ADDR) << 6)  + (word36) y2;
                 res &= PAMASK; //24 bit math
                 res <<= 12; // 24:12 format
               }

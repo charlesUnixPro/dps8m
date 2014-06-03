@@ -169,6 +169,7 @@ static char * operandSTR(void)
 #endif
 
 
+#ifndef NEWCAF
 modificationContinuation _modCont, *modCont = &_modCont;
 
 static char * modContSTR(modificationContinuation *i)
@@ -192,7 +193,7 @@ static char * modContSTR(modificationContinuation *i)
     return temp;
     
 }
-
+#endif
 
 #ifndef NEWCAF
 void doComputedAddressContinuation (void)

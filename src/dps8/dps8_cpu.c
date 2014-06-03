@@ -371,15 +371,15 @@ static t_stat dpsCmd_DumpSegmentTable()
                         word36 PTWx2;
                         core_read ((SDW0 . ADDR + x2) & PAMASK, & PTWx2);
 
-                        struct _ptw0 PTW2;
-                        PTW2.ADDR = GETHI(PTWx2);
-                        PTW2.U = TSTBIT(PTWx2, 9);
-                        PTW2.M = TSTBIT(PTWx2, 6);
-                        PTW2.F = TSTBIT(PTWx2, 2);
-                        PTW2.FC = PTWx2 & 3;
+                        struct _ptw0 PTW_2;
+                        PTW_2.ADDR = GETHI(PTWx2);
+                        PTW_2.U = TSTBIT(PTWx2, 9);
+                        PTW_2.M = TSTBIT(PTWx2, 6);
+                        PTW_2.F = TSTBIT(PTWx2, 2);
+                        PTW_2.FC = PTWx2 & 3;
 
                          sim_printf ("        %06o  Addr %06o U %o M %o F %o FC %o\n", 
-                                     offset, PTW2.ADDR, PTW2.U, PTW2.M, PTW2.F, PTW2.FC);
+                                     offset, PTW_2.ADDR, PTW_2.U, PTW_2.M, PTW_2.F, PTW_2.FC);
 
                       }
                   }

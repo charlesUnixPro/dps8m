@@ -3531,7 +3531,7 @@ static char * pcw2text (const pcw_t * p)
   {
     // WARNING: returns single static buffer
     static char buf[200];
-    sprintf(buf, "[dev-cmd=0%o, dev-code=0%o, ext=0%o, mask=%d, ctrl=0%o, chan-cmd=0%o, chan-data=0%o, chan=0%o]",
+    sprintf(buf, "[dev-cmd=0%o, dev-code=0%o, ext=0%o, mask=%u, ctrl=0%o, chan-cmd=0%o, chan-data=0%o, chan=0%o]",
             p->dev_cmd, p->dev_code, p->ext, p->mask, p->control, p->chan_cmd, p->chan_data, p->chan);
     return buf;
   }
@@ -3620,7 +3620,7 @@ static char * dcw2text (const dcw_t * p)
         (dtype == 2) ? "transfer" :
         (dtype == 3) ? "IONTP" :
         "<illegal>";
-        sprintf(buf, "D-DCW: type=%d(%s), addr=%06o, cp=0%o, tally=0%o(%d) tally-ctl=%d",
+        sprintf(buf, "D-DCW: type=%u(%s), addr=%06o, cp=0%o, tally=0%o(%d) tally-ctl=%d",
                 dtype, type, p->fields.ddcw.daddr, p->fields.ddcw.cp, p->fields.ddcw.tally,
                 p->fields.ddcw.tally, p->fields.ddcw.tctl);
       }

@@ -1,50 +1,50 @@
 struct _fault_register {
     // even word
-    bool    ill_op;     // IPR fault. An illegal operation code has been detected.
-    bool    ill_mod;    // IPR fault. An illegal address modifier has been detected.
-    bool    ill_slv;    // IPR fault. An illegal BAR mode procedure has been encountered.
-    bool    ill_proc;   // IPR fault. An illegal procedure other than the three above has been encountered.
-    bool    nem;        // ONC fault. A nonexistent main memory address has been requested.
-    bool    oob;        // STR fault. A BAR mode boundary violation has occurred.
-    bool    ill_dig;    // IPR fault. An illegal decimal digit or sign has been detected by the decimal unit.
-    bool    proc_paru;  // PAR fault. A parity error has been detected in the upper 36 bits of data. (Yeah, right)
-    bool    proc_parl;  // PAR fault. A parity error has been detected in the lower 36 bits of data. (Yeah, right)
-    bool    con_a;      // CON fault. A $CONNECT signal has been received through port A.
-    bool    con_b;      // CON fault. A $CONNECT signal has been received through port B.
-    bool    con_c;      // CON fault. A $CONNECT signal has been received through port C.
-    bool    con_d;      // CON fault. A $CONNECT signal has been received through port D.
-    bool    da_err;     // ONC fault. Operation not complete. Processor/system controller interface sequence error 1 has been detected. (Yeah, right)
-    bool    da_err2;    // ONC fault. Operation not completed. Processor/system controller interface sequence error 2 has been detected.
-    int     ia_a;       // Coded illegal action, port A. (See Table 3-2)
-    int     ia_b;       // Coded illegal action, port B. (See Table 3-2)
-    int     ia_c;       // Coded illegal action, port C. (See Table 3-2)
-    int     ia_d;       // Coded illegal action, port D. (See Table 3-2)
-    bool    cpar_div;   // A parity error has been detected in the cache memory directory. (Not likely)
-    bool    cpar_str;   // PAR fault. A data parity error has been detected in the cache memory.
-    bool    cpar_ia;    // PAR fault. An illegal action has been received from a system controller during a store operation with cache memory enabled.
-    bool    cpar_blk;   // PAR fault. A cache memory parity error has occurred during a cache memory data block load.
+    bool    ILL_OP;     // IPR fault. An illegal operation code has been detected.
+    bool    ILL_MOD;    // IPR fault. An illegal address modifier has been detected.
+    bool    ILL_SLV;    // IPR fault. An illegal BAR mode procedure has been encountered.
+    bool    ILL_PROC;   // IPR fault. An illegal procedure other than the three above has been encountered.
+    bool    NEM;        // ONC fault. A nonexistent main memory address has been requested.
+    bool    OOB;        // STR fault. A BAR mode boundary violation has occurred.
+    bool    ILL_DIG;    // IPR fault. An illegal decimal digit or sign has been detected by the decimal unit.
+    bool    PROC_PARU;  // PAR fault. A parity error has been detected in the upper 36 bits of data. (Yeah, right)
+    bool    PROC_PARL;  // PAR fault. A parity error has been detected in the lower 36 bits of data. (Yeah, right)
+    bool    CON_A;      // CON fault. A $CONNECT signal has been received through port A.
+    bool    CON_B;      // CON fault. A $CONNECT signal has been received through port B.
+    bool    CON_C;      // CON fault. A $CONNECT signal has been received through port C.
+    bool    CON_D;      // CON fault. A $CONNECT signal has been received through port D.
+    bool    DA_ERR;     // ONC fault. Operation not complete. Processor/system controller interface sequence error 1 has been detected. (Yeah, right)
+    bool    DA_ERR2;    // ONC fault. Operation not completed. Processor/system controller interface sequence error 2 has been detected.
+    int     IA_A;       // Coded illegal action, port A. (See Table 3-2)
+    int     IA_B;       // Coded illegal action, port B. (See Table 3-2)
+    int     IA_C;       // Coded illegal action, port C. (See Table 3-2)
+    int     IA_D;       // Coded illegal action, port D. (See Table 3-2)
+    bool    CPAR_DIV;   // A parity error has been detected in the cache memory directory. (Not likely)
+    bool    CPAR_STR;   // PAR fault. A data parity error has been detected in the cache memory.
+    bool    CPAR_IA;    // PAR fault. An illegal action has been received from a system controller during a store operation with cache memory enabled.
+    bool    CPAR_BLK;   // PAR fault. A cache memory parity error has occurred during a cache memory data block load.
     
     // odd word
     //      Cache Duplicate Directory WNO Buffer Overflow
-    bool    port_a;
-    bool    port_b;
-    bool    port_c;
-    bool    port_d;
+    bool    PORT_A;
+    bool    PORT_B;
+    bool    PORT_C;
+    bool    PORT_D;
     
-    bool    cpd;  // Cache Primary Directory WNO Buffer Overflow
+    bool    CPD;  // Cache Primary Directory WNO Buffer Overflow
     // Write Notify (WNO) Parity Error on Port A, B, C, or D.
     
     //      Cache Duplicate Directory Parity Error
-    bool    level_0;
-    bool    level_1;
-    bool    level_2;
-    bool    level_3;
+    bool    LEVEL_0;
+    bool    LEVEL_1;
+    bool    LEVEL_2;
+    bool    LEVEL_3;
     
     // Cache Duplicate Directory Multiple Match
-    bool    cdd;
+    bool    CDD;
     
-    bool    par_sdwam;  // A parity error has been detected in the SDWAM.
-    bool    par_ptwam;  // A parity error has been detected in the PTWAM.
+    bool    PAR_SDWAM;  // A parity error has been detected in the SDWAM.
+    bool    PAR_PTWAM;  // A parity error has been detected in the PTWAM.
 };
 
 struct dps8faults
