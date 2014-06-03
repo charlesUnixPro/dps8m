@@ -83,6 +83,7 @@ static DEBTAB cpu_dt[] = {
 
     { "FAULT",      DBG_FAULT       },
     { "INTR",       DBG_INTR        },
+    { "CORE",       DBG_CORE        },
 
     // { "CAC",       DBG_CAC          },
 
@@ -1006,7 +1007,10 @@ t_stat simh_hooks (void)
         sim_brk_test ((PPR.IC & 0777777) |
                       ((((t_addr) PPR.PSR) & 037777) << 18),
                       SWMASK ('E')))  /* breakpoint? */
-        return STOP_BKPT; /* stop simulation */
+      return STOP_BKPT; /* stop simulation */
+    if (sim_deb_break && sys_stats . total_cycles >= sim_deb_break)
+      return STOP_BKPT; /* stop simulation */
+
     return reason;
   }       
 
@@ -1580,6 +1584,9 @@ int32 core_read(word24 addr, word36 *data)
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *data = M[addr] & DMASK;
+        sim_debug (DBG_CORE, & cpu_dev,
+                   "core_read  %08o %012llo\n",
+                    addr, * data);
     }
     return 0;
 }
@@ -1589,6 +1596,9 @@ int core_write(word24 addr, word36 data) {
         return -1;
     } else {
         M[addr] = data & DMASK;
+        sim_debug (DBG_CORE, & cpu_dev,
+                   "core_write %08o %012llo\n",
+                    addr, data);
     }
     return 0;
 }
@@ -1608,11 +1618,17 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *even = M[addr++] & DMASK;
+        sim_debug (DBG_CORE, & cpu_dev,
+                   "core_read2 %08o %012llo\n",
+                    addr - 1, * even);
         if (M[addr] & MEM_UNINITIALIZED)
         {
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *odd = M[addr] & DMASK;
+        sim_debug (DBG_CORE, & cpu_dev,
+                   "core_read2 %08o %012llo\n",
+                    addr, * odd);
         return 0;
     }
 }

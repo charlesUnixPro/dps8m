@@ -114,7 +114,8 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
 #define DBG_FAULT       (1U << 20)  ///< follow fault handling
 #define DBG_INTR        (1U << 21)  // follow interrupt handling
-//#define DBG_CAC         (1 << 22)
+#define DBG_CORE        (1U << 22)  // follow interrupt handling
+//#define DBG_CAC         (1 << 23)
 
 
 /////
