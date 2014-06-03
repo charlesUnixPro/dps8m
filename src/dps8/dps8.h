@@ -72,8 +72,8 @@ typedef word72      float72;    // double precision float
 typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 
 #undef sim_debug
-#define sim_debug(dbits, dptr, ...) if (sys_stats . total_cycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
-#define if_sim_debug(dbits, dptr) if (sys_stats . total_cycles >= sim_deb_start && sim_deb && ((dptr)->dctrl & dbits))
+#define sim_debug(dbits, dptr, ...) if (sys_stats . total_cycles >= sim_deb_start && (sim_deb_stop == 0 || sys_stats . total_cycles < sim_deb_stop) && sim_deb && ((dptr)->dctrl & dbits)) _sim_debug (dbits, dptr, __VA_ARGS__); else (void)0
+#define if_sim_debug(dbits, dptr) if (sys_stats . total_cycles >= sim_deb_start && (sim_deb_stop == 0 || sys_stats . total_cycles < sim_deb_stop) && sim_deb && ((dptr)->dctrl & dbits))
 
 #include "dps8_hw_consts.h"
 

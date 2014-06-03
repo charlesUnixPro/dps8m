@@ -45,6 +45,7 @@ stats_t sys_stats;
 
 static t_stat sys_cable (int32 arg, char * buf);
 static t_stat dps_debug_start (int32 arg, char * buf);
+static t_stat dps_debug_stop (int32 arg, char * buf);
 static t_stat loadSystemBook (int32 arg, char * buf);
 static t_stat lookupSystemBook (int32 arg, char * buf);
 static t_stat absAddr (int32 arg, char * buf);
@@ -63,6 +64,7 @@ static CTAB dps8_cmds[] =
     {"SEGMENTS", dpsCmd_Segments, 0, "segments dps8/m segments stuff ...\n", NULL},
     {"CABLE",    sys_cable,       0, "cable String a cable\n" , NULL},
     {"DBGSTART", dps_debug_start, 0, "dbgstart Limit debugging to N > Cycle count\n", NULL},
+    {"DBGSTOP", dps_debug_stop, 0, "dbgstop Limit debugging to N < Cycle count\n", NULL},
     {"DISPLAYMATRIX", displayTheMatrix, 0, "displaymatrix Display instruction usage counts\n", NULL},
     {"LD_SYSTEM_BOOK", loadSystemBook, 0, "load_system_book: Load a Multics system book for symbolic debugging\n", NULL},
     {"LOOKUP_SYSTEM_BOOK", lookupSystemBook, 0, "lookup_system_book: lookup an address or symbol in the Multics system book\n", NULL},
@@ -212,12 +214,20 @@ exit:
     return rc;
   }
 
-uint64 sim_deb_start;
+uint64 sim_deb_start = 0;
+uint64 sim_deb_stop = 0;
 
 static t_stat dps_debug_start (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_deb_start = strtoull (buf, NULL, 0);
     sim_printf ("Debug set to start at cycle: %lld\n", sim_deb_start);
+    return SCPE_OK;
+  }
+
+static t_stat dps_debug_stop (int32 __attribute__((unused)) arg, char * buf)
+  {
+    sim_deb_stop = strtoull (buf, NULL, 0);
+    sim_printf ("Debug set to stop at cycle: %lld\n", sim_deb_stop);
     return SCPE_OK;
   }
 

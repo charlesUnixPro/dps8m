@@ -36,6 +36,7 @@ extern word36 *M;
 extern stats_t sys_stats;
 extern sysinfo_t sys_opts;
 extern uint64 sim_deb_start;
+extern uint64 sim_deb_stop;
 extern DEVICE *sim_devices[];
 
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
