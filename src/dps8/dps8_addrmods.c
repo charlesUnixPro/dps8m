@@ -2343,6 +2343,7 @@ startCA:;
                            "IT_MOD(IT_SCR): tally=%04o idwtag=%02o\n",
                            tally, idwtag);
             
+                characterOperandFlag = true;
                 characterOperandSize = GET_TB (idwtag);   //GET_TAG(indword));
                 characterOperandOffset = GET_CF (idwtag);   //GET_TAG(indword));
             
@@ -2365,19 +2366,18 @@ startCA:;
                 // number is the decremented value of the character position
                 // count, cf, field of the indirect word.
             
-                int cos = characterOperandOffset;
-                if (cos == 0)
+                if (characterOperandOffset == 0)
                   {
                     if (characterOperandSize == TB6)
-                        cos = 5;
+                        characterOperandOffset = 5;
                     else
-                        cos = 3;
+                        characterOperandOffset = 3;
                     Yi -= 1;
                     Yi &= MASK18;
                   }
                 else
                   {
-                    cos -= 1;
+                    characterOperandOffset -= 1;
                   }
 
                 tally += 1;
@@ -2387,7 +2387,7 @@ startCA:;
                 indword = (word36) (((word36) Yi << 18) |
                                     (((word36) tally & 07777) << 6) |
                                     characterOperandSize |
-                                    cos);
+                                    characterOperandOffset);
                 Write (saveCA, indword, OPERAND_STORE, i -> a);
                 
                 sim_debug (DBG_ADDRMOD, & cpu_dev,

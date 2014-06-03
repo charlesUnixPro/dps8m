@@ -54,6 +54,8 @@ static void readOperands (void)
       {
         word36 data;
         Read (TPR . CA, & data, OPERAND_READ, i -> a);
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands: IT_MOD(IT_SCR): indword=%012llo\n", data);
         switch (characterOperandSize)
           {
             case TB6:
@@ -69,7 +71,7 @@ static void readOperands (void)
               break;
           }
         sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n",
+                   "readOperands: IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n",
                    data, TPR . CA, CY);
 
         return;
