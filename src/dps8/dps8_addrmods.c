@@ -2330,7 +2330,7 @@ startCA:;
                            TPR.CA);
             
                 word18 saveCA = TPR . CA;
-                Read (TPR . CA, & indword, OPERAND_READ, 9);
+                Read (TPR . CA, & indword, OPERAND_READ, i -> a);
             
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IT_MOD(IT_SCR): indword=%012llo\n", indword);
