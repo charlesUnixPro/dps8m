@@ -20,11 +20,12 @@
 
 // Computed Address Formation Flowcharts
 
-bool directOperandFlag = false;
+bool directOperandFlag;
+word36 directOperand;
+
 bool characterOperandFlag;
 int characterOperandSize;
 int characterOperandOffset;
-word36 directOperand = 0;
 
 /*!
  * return contents of register indicated by Td
@@ -2256,6 +2257,7 @@ startCA:;
                 // value of the character position counter, cf, field of the
                 // indirect word.
 
+                characterOperandFlag = true;
                 characterOperandSize = GET_TB (idwtag);
                 characterOperandOffset = GET_CF (idwtag);
                 Yi = GETHI (indword);

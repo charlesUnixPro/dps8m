@@ -511,7 +511,6 @@ void copyBytes(int posn, word36 src, word36 *dst)
 }
 
 
-#ifndef QUIET_UNUSED
 word9 getByte(int posn, word36 src)
 {
     // XXX what's wrong with the macro????
@@ -536,7 +535,6 @@ word9 getByte(int posn, word36 src)
     word9 byteVal = (word9) (src >> (9 * (3 - posn))) & 0777;   ///< get byte bits
     return byteVal;
 }
-#endif
 
 void copyChars(int posn, word36 src, word36 *dst)
 {
@@ -571,7 +569,6 @@ void copyChars(int posn, word36 src, word36 *dst)
 }
 
 
-#ifndef QUIET_UNUSED
 /*!
  * write 9-bit byte into 36-bit word....
  */
@@ -597,9 +594,7 @@ void putByte(word36 *dst, word9 data, int posn)
 //    }
     *dst = bitfieldInsert36(*dst, (word36)data, offset, 9);
 }
-#endif
 
-#ifndef QUIET_UNUSED
 void putChar(word36 *dst, word6 data, int posn)
 {
     // XXX which is faster switch() or calculation?
@@ -628,7 +623,6 @@ void putChar(word36 *dst, word6 data, int posn)
 //    }
     *dst = bitfieldInsert36(*dst, (word36)data, offset, 6);
 }
-#endif
 
 word72 convertToWord72(word36 even, word36 odd)
 {

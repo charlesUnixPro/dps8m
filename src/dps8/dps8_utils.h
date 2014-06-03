@@ -41,11 +41,9 @@ word18 compl18(word18 op1, word18 *flags);
 void copyBytes(int posn, word36 src, word36 *dst);
 void copyChars(int posn, word36 src, word36 *dst);
 
-#ifndef QUIET_UNUSED
 word9 getByte(int posn, word36 src);
 void putByte(word36 *dst, word9 data, int posn);
 void putChar(word36 *dst, word6 data, int posn);
-#endif
 
 void cmp36(word36 op1, word36 op2, word18 *flags);
 void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags);
