@@ -39,7 +39,6 @@ static int emCall (void);
 // CANFAULT 
 static void writeOperands (void)
 {
-#ifdef NEWCAF
     DCDstruct * i = & currentInstruction;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -93,23 +92,8 @@ static void writeOperands (void)
     WriteOP (TPR . CA, OPERAND_STORE, i -> a);
 
     return;
-#else
-    DCDstruct * i = & currentInstruction;
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
-    
-    // TPR.CA may be different from instruction spec because of various addr mod operations.
-    // This is especially true in a R/M/W cycle such as stxn. So, restore it.
-    
-    if (modCont->bActive)
-        doComputedAddressContinuation ();
-    else
-        WriteOP(TPR.CA, OPERAND_STORE, i->tag);
-    modCont->bActive = false;
-
-#endif
 }
 
-#ifdef NEWCAF
 // CANFAULT 
 static void readOperands (void)
 {
@@ -153,7 +137,6 @@ static void readOperands (void)
     ReadOP (TPR.CA, OPERAND_READ, i -> a);
     return;
 }
-#endif
 
 /**
  * get register value indicated by reg for Address Register operations
@@ -750,30 +733,19 @@ t_stat executeInstruction (void)
       }
     else
       {
-#ifdef NEWCAF
 
         // This must not happen on instruction restart
         if (ci -> a)   // if A bit set set-up TPR stuff ...
           doPtrReg ();
 
         if (ci->info->flags & PREPARE_CA)
-          cac ();
+          doComputedAddressFormation ();
 
         else if (READOP (ci))
           {
-            cac ();
+            doComputedAddressFormation ();
             readOperands ();
           }
-#else
-        if (ci -> a)   // if A bit set set-up TPR stuff ...
-          doPtrReg ();
-#if 1 // oldcaffix
-        if ((ci->info->flags & PREPARE_CA) ||
-            READOP (ci) ||
-            WRITEOP (ci))
-#endif
-          doComputedAddressFormation ();
-#endif
       }
 
     t_stat ret = doInstruction ();
@@ -787,17 +759,12 @@ t_stat executeInstruction (void)
         }
     }
 
-#ifndef NEWCAF    
-    if (modCont->bActive)
-        writeOperands ();
-#else
     if (WRITEOP (ci))
       {
         if (! READOP (ci))
-          cac ();
+          doComputedAddressFormation ();
         writeOperands ();
       }
-#endif
     
 
     if ((! cu . repeat_first) && (cu . rpt || (cu . rd & (PPR.IC & 1))))
