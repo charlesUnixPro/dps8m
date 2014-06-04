@@ -1338,7 +1338,7 @@ t_stat sim_instr (void)
                 // normal EXECUTE CYCLE but in the FAULT CYCLE with the
                 // processor in temporary absolute mode.
 
-                sim_debug (DBG_FAULT, & cpu_dev, "fault cycle\n");
+                sim_debug (DBG_FAULT, & cpu_dev, "fault cycle [%lld]\n", sys_stats . total_cycles);
     
                 if (switches . report_faults)
                   {

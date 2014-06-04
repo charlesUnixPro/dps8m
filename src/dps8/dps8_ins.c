@@ -36,60 +36,16 @@ static int doABSA (word36 * result);
 static t_stat doInstruction (void);
 static int emCall (void);
 
-#ifdef NEWCAF
-// CANFAULT 
-static void readOperands (void)
-{
-    DCDstruct * i = & currentInstruction;
-
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
-    
-    if (directOperandFlag)
-      {
-        CY = directOperand;
-        return;
-      }
-
-    if (characterOperandFlag)
-      {
-        word36 data;
-        Read (TPR . CA, & data, OPERAND_READ, i -> a);
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands: IT_MOD(IT_SCR): indword=%012llo\n", data);
-        switch (characterOperandSize)
-          {
-            case TB6:
-              CY = GETCHAR (data, characterOperandOffset % 6); // XXX magic number
-              break;
-
-            case TB9:
-              CY = GETBYTE (data, characterOperandOffset % 4); // XXX magic number
-              break;
-
-            default:
-              sim_printf ("readOperands: IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
-              break;
-          }
-        sim_debug (DBG_ADDRMOD, & cpu_dev,
-                   "readOperands: IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n",
-                   data, TPR . CA, CY);
-
-        return;
-      }
-
-    ReadOP (TPR.CA, OPERAND_READ, i -> a);
-    return;
-}
-#endif
-
 // CANFAULT 
 static void writeOperands (void)
 {
+#ifdef NEWCAF
     DCDstruct * i = & currentInstruction;
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
                "writeOperands(%s):mne=%s flags=%x\n",
                disAssemble (cu . IWB), i -> info -> mne, i -> info -> flags);
+
     if (characterOperandFlag)
       {
         word36 data;
@@ -137,7 +93,67 @@ static void writeOperands (void)
     WriteOP (TPR . CA, OPERAND_STORE, i -> a);
 
     return;
+#else
+    DCDstruct * i = & currentInstruction;
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "writeOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
+    
+    // TPR.CA may be different from instruction spec because of various addr mod operations.
+    // This is especially true in a R/M/W cycle such as stxn. So, restore it.
+    
+    if (modCont->bActive)
+        doComputedAddressContinuation ();
+    else
+        WriteOP(TPR.CA, OPERAND_STORE, i->tag);
+    modCont->bActive = false;
+
+#endif
 }
+
+#ifdef NEWCAF
+// CANFAULT 
+static void readOperands (void)
+{
+    DCDstruct * i = & currentInstruction;
+
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
+    
+    if (directOperandFlag)
+      {
+        CY = directOperand;
+        return;
+      }
+
+    if (characterOperandFlag)
+      {
+        word36 data;
+        Read (TPR . CA, & data, OPERAND_READ, i -> a);
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands: IT_MOD(IT_SCR): indword=%012llo\n", data);
+        switch (characterOperandSize)
+          {
+            case TB6:
+              CY = GETCHAR (data, characterOperandOffset % 6); // XXX magic number
+              break;
+
+            case TB9:
+              CY = GETBYTE (data, characterOperandOffset % 4); // XXX magic number
+              break;
+
+            default:
+              sim_printf ("readOperands: IT_MOD(IT_SC): unknown tTB:%o\n", tTB);
+              break;
+          }
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands: IT_MOD(IT_SC): read operand %012llo from %06o char/byte=%llo\n",
+                   data, TPR . CA, CY);
+
+        return;
+      }
+
+    ReadOP (TPR.CA, OPERAND_READ, i -> a);
+    return;
+}
+#endif
 
 /**
  * get register value indicated by reg for Address Register operations
@@ -743,7 +759,7 @@ t_stat executeInstruction (void)
         if (ci->info->flags & PREPARE_CA)
           cac ();
 
-        if (READOP (ci))
+        else if (READOP (ci))
           {
             cac ();
             readOperands ();
@@ -751,7 +767,12 @@ t_stat executeInstruction (void)
 #else
         if (ci -> a)   // if A bit set set-up TPR stuff ...
           doPtrReg ();
-        doComputedAddressFormation ();
+#if 1 // oldcaffix
+        if ((ci->info->flags & PREPARE_CA) ||
+            READOP (ci) ||
+            WRITEOP (ci))
+#endif
+          doComputedAddressFormation ();
 #endif
       }
 
@@ -772,7 +793,8 @@ t_stat executeInstruction (void)
 #else
     if (WRITEOP (ci))
       {
-        cac ();
+        if (! READOP (ci))
+          cac ();
         writeOperands ();
       }
 #endif
