@@ -99,7 +99,7 @@ static void readOperands (void)
 {
     DCDstruct * i = & currentInstruction;
 
-    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x\n", disAssemble(cu.IWB), i->info->mne, i->info->flags);
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "readOperands(%s):mne=%s flags=%x dof=%d do=%012llo\n", disAssemble(cu.IWB), i->info->mne, i->info->flags, directOperandFlag, directOperand);
     
     if (directOperandFlag)
       {
@@ -738,6 +738,11 @@ t_stat executeInstruction (void)
         if (ci -> a)   // if A bit set set-up TPR stuff ...
           doPtrReg ();
 
+        // Setup for ABUSE_CT_HOLD code
+        // This must not happen on instruction restart
+        cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
+
+ // restartInstruction:
         if (ci->info->flags & PREPARE_CA)
           doComputedAddressFormation ();
 
@@ -745,14 +750,33 @@ t_stat executeInstruction (void)
           {
             doComputedAddressFormation ();
 #if 0 // test code
-{
-sim_printf ("2nd call\n");
-word18 save = TPR.CA;
-            doComputedAddressFormation ();
-if (save != TPR.CA)
-sim_printf ("XXX %06o %06o %lld\n", save, TPR . CA, sys_stats . total_cycles);
-sim_printf ("back from 2nd call\n");
-}
+// Test to verify that recalling CAF is stable.
+        {
+          sim_debug (DBG_ADDRMOD, & cpu_dev, "2nd call\n");
+          word18 save = TPR.CA;
+          bool savef = characterOperandFlag;
+          int saves = characterOperandSize;
+          int saveo = characterOperandOffset;
+          bool savedof = directOperandFlag;
+          word36 savedo = directOperand;
+
+          doComputedAddressFormation ();
+
+          if (save != TPR.CA)
+            sim_printf ("XXX save %06o %06o %lld\n", save, TPR . CA, sys_stats . total_cycles);
+          if (savef != characterOperandFlag)
+            sim_printf ("XXX savef %o %o %lld\n", savef, characterOperandOffset, sys_stats . total_cycles);
+          if (saves != characterOperandSize)
+            sim_printf ("XXX saves %o %o %lld\n", saves, characterOperandSize, sys_stats . total_cycles);
+          if (saveo != characterOperandOffset)
+            sim_printf ("XXX saveo %o %o %lld\n", saveo, characterOperandOffset, sys_stats . total_cycles);
+          if (savedof != directOperandFlag)
+            sim_printf ("XXX savedof %o %o %lld\n", savedof, directOperandFlag, sys_stats . total_cycles);
+          if (savedo != directOperand)
+            sim_printf ("XXX savedo %012llo %012llo %lld\n", savedo, directOperand, sys_stats . total_cycles);
+
+          sim_debug (DBG_ADDRMOD, & cpu_dev, "back from 2nd call\n");
+        }
 #endif
             readOperands ();
           }

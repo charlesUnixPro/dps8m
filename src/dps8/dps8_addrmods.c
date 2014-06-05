@@ -654,6 +654,31 @@ startCA:;
 
                 updateIWB (TPR . CA, cu . CT_HOLD);
 #else
+#define ABUSE_CT_HOLD
+#ifdef ABUSE_CT_HOLD
+                if (directOperandFlag)
+                  {
+                    TPR . CA += directOperand;
+                    TPR . CA &= MASK18;   // keep to 18-bits
+
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "IR_MOD(TM_R): DO TPR.CA=%06o\n", TPR . CA);
+
+                    updateIWB (TPR . CA, TM_R | TD_DL);
+                    cu . CT_HOLD = 0;
+                  }
+                else
+                  {
+                    TPR . CA += Cr;
+                    TPR . CA &= MASK18;   // keep to 18-bits
+
+                    sim_debug (DBG_ADDRMOD, & cpu_dev,
+                               "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
+
+                    updateIWB (TPR . CA, 0);
+                    cu . CT_HOLD = 0;
+                  }
+#else
                 if (directOperandFlag)
                   {
                     TPR . CA += directOperand;
@@ -668,6 +693,7 @@ startCA:;
                            "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
 
                 updateIWB (TPR . CA, 0);
+#endif
 #endif
                 return SCPE_OK;
               } // TM_R
@@ -750,6 +776,18 @@ startCA:;
 
             case IT_CI: ///< Character indirect (Td = 10)
               {
+#ifdef ABUSE_CT_HOLD
+                // Check for instruction restart
+                if (cu . CT_HOLD)
+                  {
+                    characterOperandFlag = true;
+                    characterOperandSize = cu . CT_HOLD & 010 ? TB9 : TB6;
+                    characterOperandOffset = cu . CT_HOLD & 007;
+//sim_printf ("XXX CI\n");
+                    return SCPE_OK;
+                  }
+#endif
+
                 // Bit 30 of the TAG field of the indirect word is interpreted
                 // as a character size flag, tb, with the value 0 indicating
                 // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -793,12 +831,31 @@ startCA:;
                   doFault (illproc_fault, ill_mod,
                            "co size == TB9 && offset > 3");
 
+#ifdef ABUSE_CT_HOLD
+                cu . CT_HOLD = 020 | // flag = true
+                               (characterOperandSize == TB9 ? 010 : 000) |
+                               (characterOperandOffset & 007);
+
+                updateIWB (TPR . CA, rTAG);
+#else
                 //updateIWB (identity)
+#endif
                 return SCPE_OK;
                } // IT_CI
 
             case IT_SC: ///< Sequence character (Td = 12)
               {
+#ifdef ABUSE_CT_HOLD
+                // Check for instruction restart
+                if (cu . CT_HOLD)
+                  {
+                    characterOperandFlag = true;
+                    characterOperandSize = cu . CT_HOLD & 010 ? TB9 : TB6;
+                    characterOperandOffset = cu . CT_HOLD & 007;
+                    return SCPE_OK;
+                  }
+#endif
+
                 // Bit 30 of the TAG field of the indirect word is interpreted
                 // as a character size flag, tb, with the value 0 indicating
                 // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -883,13 +940,31 @@ startCA:;
                            "IT_MOD(IT_SC): wrote tally word %012llo to %06o\n",
                            indword, saveCA);
 
-                updateIWB (TPR . CA, 0); // XXX guessing here...
+#ifdef ABUSE_CT_HOLD
+                cu . CT_HOLD = 020 | // flag = true
+                               (characterOperandSize == TB9 ? 010 : 000) |
+                               (characterOperandOffset & 007);
 
+                updateIWB (TPR . CA, rTAG);
+#else
+                updateIWB (TPR . CA, 0); // XXX guessing here...
+#endif
                 return SCPE_OK;
               } // IT_SC
 
             case IT_SCR: // Sequence character reverse (Td = 5)
               {
+#ifdef ABUSE_CT_HOLD
+                // Check for instruction restart
+                if (cu . CT_HOLD)
+                  {
+                    characterOperandFlag = true;
+                    characterOperandSize = cu . CT_HOLD & 010 ? TB9 : TB6;
+                    characterOperandOffset = cu . CT_HOLD & 007;
+                    return SCPE_OK;
+                  }
+#endif
+
                 // Bit 30 of the TAG field of the indirect word is interpreted
                 // as a character size flag, tb, with the value 0 indicating
                 // 6-bit characters and the value 1 indicating 9-bit bytes.
@@ -969,7 +1044,15 @@ startCA:;
 
                 TPR.CA = Yi;
 
+#ifdef ABUSE_CT_HOLD
+                cu . CT_HOLD = 020 | // flag = true
+                               (characterOperandSize == TB9 ? 010 : 000) |
+                               (characterOperandOffset & 007);
+
+                updateIWB (TPR . CA, rTAG);
+#else
                 updateIWB (TPR . CA, 0); // XXX guessing here...
+#endif
                 return SCPE_OK;
               } // IT_SCR
 
