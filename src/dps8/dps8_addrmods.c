@@ -68,6 +68,11 @@ static word18 getCr(word4 Tdes)
             directOperandFlag = true;
         
             sim_debug(DBG_ADDRMOD, &cpu_dev, "getCr(TD_DL): rY=%06o directOperand=%012llo\n", rY, directOperand);
+            // In the case of "*ql", by setting CA here the code becomes
+            // simpler at IR_MOD:TM_R; the case of *qh is problematic
+            // (Fig 6.5 says "CA+Cr(ct-hold)->CA; since CA is 18 bit,
+            // setting the high bits is nonsensical
+            //TPR.CA = rY;
             return 0;
     }
     return 0;
@@ -315,7 +320,7 @@ static void updateIWB (word18 addr, word6 tag)
     cu . IWB = setbits36 (cu . IWB, 30,  6, tag);
 
     sim_debug (DBG_ADDRMOD, & cpu_dev,
-               "updateIWB: IWB was %012llo %06o %s\n",
+               "updateIWB: IWB now %012llo %06o %s\n",
                cu . IWB, GET_ADDR (cu . IWB),
                extMods [GET_TAG (cu . IWB)] . mod);
 
@@ -423,16 +428,17 @@ startCA:;
     R_MOD:;
       {
         if (Td == 0) // TPR.CA = address from opcode
-          goto R_MOD1;
-        
+          {
+            //updateIWB (identity)
+            return SCPE_OK;
+          }
+
         word18 Cr = getCr (Td);
 
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: Cr=%06o\n", Cr);
     
         if (directOperandFlag)
           {
-// XXX XXX XXX remember to check directOperandFlag before reading CA
-            //TPR . CA = directOperand;
             sim_debug (DBG_ADDRMOD, & cpu_dev,
                        "R_MOD: directOperand = %012llo\n", directOperand);
 
@@ -453,19 +459,20 @@ startCA:;
 
         if ((! cu . repeat_first) && (cu . rpt || cu . rd))
           {
-            sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: rpt special case\n");
+            sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD rpt special case: TPR.CA=%06o\n", TPR . CA);
+            // calling updateIWB(TPR.CA, 0) here crashes unit tests; the rpt
+            // code is using IWB to save the repeated instruction.
+            //updateIWB (identity)
+            return SCPE_OK;
           }
-        else
-          {
-            TPR . CA += Cr;
-            TPR . CA &= MASK18;   // keep to 18-bits
-          }
+
+        TPR . CA += Cr;
+        TPR . CA &= MASK18;   // keep to 18-bits
 
         sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR . CA);
     
-    R_MOD1:;
-    
-        //updateIWB (identity)
+        if (! (cu . rpt || cu . rd))
+          updateIWB (TPR . CA, 0);
         return SCPE_OK;
       } // R_MOD
 
@@ -502,7 +509,8 @@ startCA:;
 
             if ((! cu . repeat_first) && (cu . rpt || cu . rd))
               {
-                sim_debug (DBG_ADDRMOD, & cpu_dev, "R_MOD: rpt special case\n");
+                sim_debug (DBG_ADDRMOD, & cpu_dev, "RI_MOD: rpt special case\n");
+                sim_printf ("RI_MOD: rpt special case\n");
               }
             else
               {
@@ -518,7 +526,18 @@ startCA:;
         iTAG = rTAG;
         
         Read (TPR . CA, & indword, INDIRECT_WORD_FETCH, i -> a); //TM_RI);
-    
+
+        // "In the case of RI modification, only one indirect reference is made
+        // per repeated execution. The TAG field of the indirect word is not
+        // interpreted.  The indirect word is treated as though it had R
+        // modification with R = N."
+
+        if (cu . rpt || cu . rd)
+          {
+             indword &= ~ INST_M_TAG;
+             indword |= TM_R | GET_TD (iTAG);
+           }
+
         if (ISITP (indword) || ISITS (indword))
           {
             if (! doITSITP (TPR . CA, indword, iTAG))
@@ -538,7 +557,8 @@ startCA:;
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
                    indword, TPR . CA, rTAG);
     
-        updateIWB (TPR . CA, rTAG);
+        if (! (cu . rpt || cu . rd))
+          updateIWB (TPR . CA, rTAG);
         goto startCA;
       } // RI_MOD
         
@@ -613,6 +633,7 @@ startCA:;
                 sim_debug (DBG_ADDRMOD, & cpu_dev,
                            "IR_MOD(TM_R): Cr=%06o\n", Cr);
             
+#if 0
                 if (directOperandFlag)
                   {
                     sim_debug (DBG_ADDRMOD, & cpu_dev,
@@ -633,6 +654,22 @@ startCA:;
                            "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
             
                 updateIWB (TPR . CA, cu . CT_HOLD);
+#else
+                if (directOperandFlag)
+                  {
+                    TPR . CA += directOperand;
+                  }
+                else
+                  {
+                    TPR . CA += Cr;
+                  }
+                TPR . CA &= MASK18;   // keep to 18-bits
+            
+                sim_debug (DBG_ADDRMOD, & cpu_dev,
+                           "IR_MOD(TM_R): TPR.CA=%06o\n", TPR . CA);
+            
+                updateIWB (TPR . CA, 0);
+#endif
                 return SCPE_OK;
               } // TM_R
 

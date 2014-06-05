@@ -1141,7 +1141,7 @@ struct opCode EISopcodes[01000] = {
 
 struct adrMods extMods[0100] = {    ///< address modifiers w/ extended info
     /* R */
-    {NULL, 0, 0},
+    {"",   0, 0},
     {"au", 1, 0},
     {"qu", 2, 0},
     {"du", 3, 0},

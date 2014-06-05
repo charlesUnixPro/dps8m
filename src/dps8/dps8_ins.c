@@ -744,6 +744,16 @@ t_stat executeInstruction (void)
         else if (READOP (ci))
           {
             doComputedAddressFormation ();
+#if 0 // test code
+{
+sim_printf ("2nd call\n");
+word18 save = TPR.CA;
+            doComputedAddressFormation ();
+if (save != TPR.CA)
+sim_printf ("XXX %06o %06o %lld\n", save, TPR . CA, sys_stats . total_cycles);
+sim_printf ("back from 2nd call\n");
+}
+#endif
             readOperands ();
           }
       }
@@ -763,6 +773,7 @@ t_stat executeInstruction (void)
       {
         if (! READOP (ci))
           doComputedAddressFormation ();
+
         writeOperands ();
       }
     
