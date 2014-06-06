@@ -31,6 +31,13 @@
 	tra	start
 
 
+"""
+""" MME handler
+""""
+
+	org	68
+	scu	mme_scu
+	tra	mme_handler
 	org	program_start
 
 ldbr_data:
@@ -128,7 +135,7 @@ descr_seg_page_table:
 
 """
 """ Descriptor segment page for segments 0-1023
-""""
+"""
 
 seg_0_descr_seg_page_table:
 
@@ -166,7 +173,7 @@ seg_2_page_table:
 
 	sixtyfour
 start:	
-	eaa	msg_main_entry
+	eaa	msg_start_entry
 	emcall	16
 
 	ldbr	ldbr_data
@@ -174,12 +181,32 @@ start:
 	lprp0	entry_ptr
 	tra	0|0
 
-	oct	its,43
+mme_handler:
+	rcu	mme_scu
+
+
+	eight
+mme_scu:
+	bss	8
+
+mme_enable:
+	oct	0
+
 entry_ptr:
 	vfd	6/0,12/1,18/main-seg_1_page_0
 
+msg_start_entry:
+	aci	'Fault test start\n\0\0'
+	oct	0
 msg_main_entry:
-	aci	'Fault test\n\0\0'
+	aci	'Fault test main\n\0\0'
+	oct	0
+msg_dbg_mme_back:
+	aci	'back from mme\n\0\0'
+	oct	0
+msg_done:
+	aci	'Fault test done\n\0\0'
+	oct	0
 
 
 """
@@ -187,12 +214,37 @@ msg_main_entry:
 """
 
 	sixtyfour
+set1:
 seg_1_page_0:
 
 main:
 	eaa	msg_main_entry
 	emcall	16
+
+" Run the tests with out faulting
+
+	lda	0,dl
+	sta	mme_enable-seg1
+	tsx2	run_tests-seg1
+
+" Run the tests with faulting
+
+	lda	1,dl
+	sta	mme_enable-seg1
+	tsx2	run_tests-seg1
+
+	eaa	msg_done
+	emcall	16
 	emcall	18
+
+run_tests:
+	tra	0,2
+
+	"mme	" ask for memory to be marked non-resident
+
+	"eaa	msg_dbg_mme_back
+	"emcall	16
+
 
 """
 """ Segment 2
