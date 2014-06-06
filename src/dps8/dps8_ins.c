@@ -32,6 +32,11 @@ word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
 word36 Yblock16[16];    ///< 16-words
 static int doABSA (word36 * result);
+static void doRCU (void)
+#ifdef __GNUC__
+  __attribute__ ((noreturn))
+#endif
+;
 
 static t_stat doInstruction (void);
 static int emCall (void);
@@ -520,6 +525,11 @@ void fetchInstruction (word18 addr)
     // since the next memory cycle will be a instruction fetch setup TPR
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
+
+    if (get_addr_mode() == ABSOLUTE_mode)
+      sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %06o\n", PPR . IC);
+    else
+      sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %05o:%06o\n", PPR . PSR, PPR . IC);
 
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
@@ -4369,7 +4379,7 @@ static t_stat DoBasicInstruction (void)
             doFault(illproc_fault, 0, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
-            return STOP_UNIMP;
+            doRCU ();
 
         case 0452:  ///< scpr
             return STOP_UNIMP;
@@ -6427,3 +6437,9 @@ sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08
     return SCPE_OK;
   }
 
+static void doRCU (void)
+  {
+    words2scu (Yblock8);
+// First step: handle MME returns
+    longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+  }

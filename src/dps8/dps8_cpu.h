@@ -10,6 +10,7 @@
 #define JMP_TRA         4   ///< treat return as if it were a TRA instruction with PPR.IC already set to where to jump to
 #define JMP_STOP        5   ///< treat return as if it were an attempt to unravel the stack and gracefully exit out of sim_instr
 #define JMP_INTR        6   // Interrupt detected during processing
+#define JMP_SYNC_FAULT_RETURN 7
 
 
 // MM's opcode stuff ...

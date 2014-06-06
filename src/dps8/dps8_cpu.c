@@ -1099,6 +1099,9 @@ t_stat sim_instr (void)
 #endif
         case JMP_STOP:
             return stop_reason;
+        case JMP_SYNC_FAULT_RETURN:
+            goto syncFaultReturn;
+
         default:
           sim_printf ("longjmp value of %d unhandled\n", val);
             return STOP_BUG;
@@ -1317,6 +1320,12 @@ t_stat sim_instr (void)
                 PPR.IC += xec_side_effect;
                 xec_side_effect = 0;
 
+                cpu . cycle = FETCH_cycle;
+                break;
+
+syncFaultReturn:
+                PPR.IC ++;
+                xec_side_effect = 0;
                 cpu . cycle = FETCH_cycle;
               }
               break;
