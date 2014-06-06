@@ -1,0 +1,9 @@
+do ../../src/dps8/base_system.ini
+load ./TestFault.oct 
+set debug stdout
+set cpu debug=trace;appending;regdump;addrmod;fault
+;set cpu debug=trace
+;set cpu debug=err
+g 0
+q
+

@@ -1,0 +1,203 @@
+"
+" Access an unmapped segment page; fault; map the page; return from fault, 
+" restarting the faulted instruction.
+"
+" Virtual Memory layout
+"
+"     segment
+"       (0)      absolute mode code
+"        1       executable code and data
+"        2       its/itp data
+"
+	equ	seg1,1
+	equ	seg2,2
+
+"     segment 1 pages
+"
+"       0-n    code
+"       1000   data
+"       1001   data
+"       1002   data
+"       1003   data
+
+	equ	pgsz,1024	" pages are 1024 words long
+	equ	program_start,100*pgsz
+
+"""
+""" Entry point
+"""
+
+	org	0
+	tra	start
+
+
+	org	program_start
+
+ldbr_data:
+
+"""
+""" DSBR format for the LDBR instruction:
+"""
+
+"        pos len
+"  ADDR    0  24  If U = 1, the memory address of the origin of the descriptor
+"                 segment; if U = 0, the memory address of the descriptor
+"                 segment page table
+" 
+"  BOUND  37  14  The 14 most significant bits of the highest Y-block16 
+"                 address of the descriptor segment that can be addressed 
+"                 without causing an fault.
+
+"  U      55   1  U = 0: descriptor segment is paged; 1: unpaged.
+"  STACK  60  12  Used by CALL6; the upper 12 bits of the 15 bit stack base
+"                 segment number.
+"
+" U bit
+	equ	paged,0
+	equ	unpaged,1
+
+" F bit
+	equ	nonresident,0
+	equ	resident,1
+
+        equ	dsbr_bound,0	" All of our segments will fit in a single
+				" Y16 (2 words/segment; this allows 8)
+
+	vfd	24/descr_seg_page_table,12/0
+	vfd	1/0,14/dsbr_bound,4/0,1/paged,4/0,12/0
+
+"""
+""" Descriptor Segment Page Table.
+"""
+
+
+descr_seg_page_table:
+
+" A table of PTWs; each PTW points to a table of 1024 SDWs; the first PTW is
+" used for segment numbers 0-1023, the second for 1024-2047, and so on
+"
+" In this table, each PTW takes up 2 words; the second word is unused.
+" (If the DSPT is unpaged, it is an array of SDWs, which are two words.)
+
+" PTW format:
+"    ADDR  x x x x x x 0 0 U 0 0 M x x x F FC
+"    x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x 
+"
+"        pos len
+"  ADDR:   0  18  modulo 64 absolute main memory address of page
+"     U   26   1  page has been used
+"     M   29   1  page has been modfied
+"     F   33   1  0: page not in memory; 1: page in memory
+"     FC  34   2  direct fault number
+   
+" The following vfd allocate 24 bits for the addr to hand-wave away the 
+" divide by 64.
+
+" segments 0-1023
+
+	vfd	24/seg_0_descr_seg_page_table,2/0,1/0,2/0,1/0,3/0,1/resident,2/0
+	vfd	36/0
+
+"""
+""" SDW format
+"""
+
+" even word
+"        pos len
+" ADDR     0  24   U=1: address of the unpaged segment; 0 address of the 
+"                  segment page table
+" R1      24   3
+" R2      27   3
+" R3      30   3
+" F       33   1    0: page is non-resident, 1: resident
+" FC      34   2
+
+" odd word
+"        pos len
+" BOUND    1  14
+" R       15   1
+" E       16   1
+" W       17   1
+" P       18   1
+" U       19   1   0: segment is paged; 1: unpaged
+" G       20   1
+" C       21   1
+" ER      22  14
+
+	sixtyfour
+
+"""
+""" Descriptor segment page for segments 0-1023
+""""
+
+seg_0_descr_seg_page_table:
+
+" segment 0 (non-existant)
+	vfd	24/-1, 3/0, 3/0, 3/0, 1/nonresident, 2/0
+	vfd	1/0,14/0,1/0,1/0,1/0,1/0,1/paged,1/0,1/1,14/0
+
+" segment 1; code and data R/E/W
+"	vfd	24/seg_1_page_table,3/5,3/5,3/5,1/resident,2/3
+	vfd	24/seg_1_page_table,3/0,3/0,3/0,1/resident,2/3
+	vfd	1/0,14/-1,1/1,1/1,1/1,1/0,1/paged,1/0,1/1,14/0
+
+" segment 2; data R/W
+"	vfd	24/seg_2_page_table,3/5,3/5,3/5,1/resident,2/3
+	vfd	24/seg_2_page_table,3/0,3/0,3/0,1/resident,2/3
+	vfd	1/0,14/-1,1/1,1/0,1/1,1/0,1/paged,1/0,1/1,14/0
+
+
+" 1024 segment, 3 segs used, 2 words/seg
+"   (1024 - 3) * 2
+        bss	2042
+
+seg_1_page_table:
+
+	vfd	24/seg_1_page_0,2/0,1/0,2/0,1/0,3/0,1/resident,2/0
+
+seg_2_page_table:
+
+	vfd	24/seg_2_page_0,2/0,1/unpaged,2/0,1/0,3/0,1/resident,2/0
+
+
+"""
+""" Abs mode code
+"""
+
+	sixtyfour
+start:	
+	eaa	msg_main_entry
+	emcall	16
+
+	ldbr	ldbr_data
+
+	lprp0	entry_ptr
+	tra	0|0
+
+	oct	its,43
+entry_ptr:
+	vfd	6/0,12/1,18/main-seg_1_page_0
+
+msg_main_entry:
+	aci	'Fault test\n\0\0'
+
+
+"""
+""" Segment 1
+"""
+
+	sixtyfour
+seg_1_page_0:
+
+main:
+	eaa	msg_main_entry
+	emcall	16
+	emcall	18
+
+"""
+""" Segment 2
+"""
+
+	sixtyfour
+seg_2_page_0:
+
