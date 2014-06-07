@@ -1,0 +1,97 @@
+
+
+"""
+""" Segment 1
+"""
+
+	macro	msg
+	absa	#1
+	emcall	21
+	endm
+
+main:
+	msg	msg_main_entry
+
+" Run the tests with out faulting
+
+	msg	msg_without
+
+	lda	=0,dl
+	sta	mme_enable
+	tsx2	run_tests
+
+" Run the tests with faulting
+
+	msg	msg_with
+
+	lda	=1,dl
+	sta	mme_enable
+	tsx2	run_tests
+
+	msg	msg_done
+	emcall	18
+
+	macro	unmap_memory
+	lda	mme_enable
+	mme
+	endm
+
+run_tests:
+
+"
+" Test 1: simple indirect
+"
+	equ	t1_data,123001001
+
+	lda	=0,dl
+	unmap_memory
+	lda	t1_p1,*
+	cmpa	t1_a1
+	tze	t1_pass
+	dis	*
+t1_pass:
+
+
+"
+" done with tests
+"
+
+	tra	0,2
+
+	"mme	" ask for memory to be marked non-resident
+
+	"msg	msg_dbg_mme_back
+
+mme_enable:
+	oct	0
+
+
+msg_main_entry:
+	aci	'Fault test main\n\0\0'
+	oct	0
+msg_dbg_mme_back:
+	aci	'back from mme\n\0\0'
+	oct	0
+msg_done:
+	aci	'Fault test done\n\0\0'
+	oct	0
+msg_without:
+	aci	'Running tests without page faulting\n\0\0'
+	oct	0
+msg_with:
+	aci	'Running tests with page faulting\n\0\0'
+	oct	0
+
+" Page 1: indirect words
+
+	org	1*1024
+t1_p1:	arg	t1_a1
+
+" Page 2: double indirect words
+
+	org	2*1024
+
+" Page 3: data
+
+t1_a1:	dec	t1_data
+

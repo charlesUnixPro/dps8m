@@ -22,6 +22,13 @@
 
 	equ	pgsz,1024	" pages are 1024 words long
 	equ	program_start,100*pgsz
+	equ	seg1_start,200*pgsz
+	equ	seg2_start,300*pgsz
+
+	macro	msg
+	eaa	#1
+	emcall	16
+	endm
 
 """
 """ Entry point
@@ -31,13 +38,26 @@
 	tra	start
 
 
+	equ	fault_base,64
+	equ	fault_mme,fault_base+2*2
+	equ	fault_dpf3,fault_base+2*19
 """
 """ MME handler
-""""
+"""
 
-	org	68
+	org	fault_mme
 	scu	mme_scu
 	tra	mme_handler
+
+"""
+""" directed page fault handler
+"""
+
+	org	fault_dpf3
+	scu	dpf3_scu
+	tra	dpf3_handler
+
+
 	org	program_start
 
 ldbr_data:
@@ -97,6 +117,9 @@ descr_seg_page_table:
 "     F   33   1  0: page not in memory; 1: page in memory
 "     FC  34   2  direct fault number
    
+	bool	fbit,4
+	bool	fmask,777777777773
+
 " The following vfd allocate 24 bits for the addr to hand-wave away the 
 " divide by 64.
 
@@ -144,13 +167,11 @@ seg_0_descr_seg_page_table:
 	vfd	1/0,14/0,1/0,1/0,1/0,1/0,1/paged,1/0,1/1,14/0
 
 " segment 1; code and data R/E/W
-"	vfd	24/seg_1_page_table,3/5,3/5,3/5,1/resident,2/3
-	vfd	24/seg_1_page_table,3/0,3/0,3/0,1/resident,2/3
+	vfd	24/seg_1_page_table,3/0,3/0,3/0,1/resident,2/0
 	vfd	1/0,14/-1,1/1,1/1,1/1,1/0,1/paged,1/0,1/1,14/0
 
 " segment 2; data R/W
-"	vfd	24/seg_2_page_table,3/5,3/5,3/5,1/resident,2/3
-	vfd	24/seg_2_page_table,3/0,3/0,3/0,1/resident,2/3
+	vfd	24/seg_2_page_table,3/0,3/0,3/0,1/resident,2/0
 	vfd	1/0,14/-1,1/1,1/0,1/1,1/0,1/paged,1/0,1/1,14/0
 
 
@@ -160,11 +181,12 @@ seg_0_descr_seg_page_table:
 
 seg_1_page_table:
 
-	vfd	24/seg_1_page_0,2/0,1/0,2/0,1/0,3/0,1/resident,2/0
+s1p0:	vfd	24/seg1_start,2/0,1/0,2/0,1/0,3/0,1/resident,2/3
+s1p1:	vfd	24/seg1_start+1024,2/0,1/0,2/0,1/0,3/0,1/resident,2/3
 
 seg_2_page_table:
 
-	vfd	24/seg_2_page_0,2/0,1/unpaged,2/0,1/0,3/0,1/resident,2/0
+s2p0:	vfd	24/seg2_start,2/0,1/unpaged,2/0,1/0,3/0,1/resident,2/3
 
 
 """
@@ -173,83 +195,221 @@ seg_2_page_table:
 
 	sixtyfour
 start:	
-	eaa	msg_start_entry
-	emcall	16
+	msg	msg_start_entry
 
 	ldbr	ldbr_data
 
 	lprp0	entry_ptr
 	tra	0|0
 
+"""
+""" MME handler
+"""
+
 mme_handler:
+	sta	mme_arg
+
+	msg	msg_mme_entry
+
+" A == 0: Mark pages resident
+" A != 0: Mark pages non-resident
+
+	szn	mme_arg
+	tnz	mark_non
+
+" Set the F bit in the page table entrys
+
+	lda	f_bit
+	orsa	s1p0
+	orsa	s1p1
+	orsa	s2p0
+	tra	mark_done
+
+mark_non:
+
+" Clear the F bit in the page table entrys
+
+	lda	f_mask
+	ansa	s1p0
+	ansa	s1p1
+	ansa	s2p0
+
+mark_done:
+
+" Reset the caches
+
+	cams
+	camp
+
+" And return
+
 	rcu	mme_scu
 
+mme_arg:
+	dec	0
+
+"""
+""" page fault handler
+"""
+
+dpf3_handler:
+	sreg	dpf3_sreg
+
+	msg	msg_dpf3_entry
+
+" Test the FIF bit
+
+	lda	fif_mask
+	ana	dpf3_scu_5
+	tze	non_fetch
+
+" Fault during instruction fetch
+
+	msg	msg_fetch
+
+" Print fault address for debugging
+
+	" Get the segno
+	msg	msg_segno
+	lda	dpf3_scu_2
+	arl	18
+	ana	mask15
+	emcall	5	" putdec
+	" Get the IC
+	msg	msg_ic
+	lda	dpf3_scu_4
+	arl	18
+	ana	mask18
+	emcall	3	" putoct
+	emcall	8	" nl
+
+	" Lookup the segment in the descr_seg_page_table (assume segno < 1024)
+
+	eax0	seg_0_descr_seg_page_table
+
+	" Compute table[2*segno]
+
+	adx0	dpf3_scu_2
+	adx0	dpf3_scu_2
+
+	" Get the first word of the SDW
+
+	lda	0,x0
+
+	" Get the address of segment page table
+
+	arl	12
+	sta	spt_addr
+
+	" Get the IC
+
+	lda	dpf3_scu_4
+	arl	18
+	ana	mask18
+
+	" Divide by 1024
+
+	arl	10
+
+	" Compute page_table[offset/1024]
+
+	ada	spt_addr
+	als	18	" move to high half
+	sta	spte_addr
+
+	" Set the resident bit for the page
+	lda	f_bit
+	orsa	spte_addr,*
+
+	" Reset the caches
+
+	cams
+	camp
+
+	" And done...
+	tra	dpf3_done
+
+	dis	*
+
+" Fault during operand fetch
+
+non_fetch:
+	msg	msg_nonfetch
+	dis	*
+
+dpf3_done:
+	lreg	dpf3_sreg
+	rcu	dpf3_scu
+
+spt_addr:
+	bss	1
+
+spte_addr:
+	bss	1
+
+f_mask:	oct	fmask
+f_bit:	oct	fbit
+fif_mask:
+	oct	100
+mask15:
+	oct	77777
+mask18:
+	oct	777777
 
 	eight
 mme_scu:
 	bss	8
 
-mme_enable:
+	eight
+dpf3_sreg:
+	bss	8
+
+	eight
+dpf3_scu:
+	oct	0
+	oct	0
+dpf3_scu_2:
+	oct	0
+	oct	0
+dpf3_scu_4:
+	oct	0
+dpf3_scu_5:
+	oct	0
+	oct	0
 	oct	0
 
 entry_ptr:
-	vfd	6/0,12/1,18/main-seg_1_page_0
+	vfd	6/0,12/seg1,18/0
 
 msg_start_entry:
-	aci	'Fault test start\n\0\0'
-	oct	0
-msg_main_entry:
-	aci	'Fault test main\n\0\0'
-	oct	0
-msg_dbg_mme_back:
-	aci	'back from mme\n\0\0'
-	oct	0
-msg_done:
-	aci	'Fault test done\n\0\0'
+	aci	'Fault test entry\n\0\0'
 	oct	0
 
+msg_mme_entry:
+	aci	'MME entry\n\0\0'
+	oct	0
 
-"""
-""" Segment 1
-"""
+msg_dpf3_entry:
+	aci	'DPF3 entry\n\0\0'
+	oct	0
 
-	sixtyfour
-set1:
-seg_1_page_0:
+msg_fetch:
+	aci	'DPF3 instruction fetch\n'
+	oct	0
 
-main:
-	eaa	msg_main_entry
-	emcall	16
+msg_nonfetch:
+	aci	'DPF3 non-instruction fetch\n'
+	oct	0
 
-" Run the tests with out faulting
+msg_segno:
+	aci	'segno: '
+	oct	0
 
-	lda	0,dl
-	sta	mme_enable-seg1
-	tsx2	run_tests-seg1
+msg_ca:
+	aci	' CA: '
+	oct	0
 
-" Run the tests with faulting
-
-	lda	1,dl
-	sta	mme_enable-seg1
-	tsx2	run_tests-seg1
-
-	eaa	msg_done
-	emcall	16
-	emcall	18
-
-run_tests:
-	tra	0,2
-
-	"mme	" ask for memory to be marked non-resident
-
-	"eaa	msg_dbg_mme_back
-	"emcall	16
-
-
-"""
-""" Segment 2
-"""
-
-	sixtyfour
-seg_2_page_0:
+msg_ic:
+	aci	' IC: '
+	oct	0
 
