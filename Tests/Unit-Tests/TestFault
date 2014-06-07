@@ -7,7 +7,7 @@ set debug stdout
 ;set cpu debug=trace;appending;regdump;addrmod;fault;core;cycle
 ;set cpu debug=trace;fault;appending
 ;set cpu debug=fault;trace;regdumpaqi
-;set cpu debug=fault;trace
+;set cpu debug=fault;trace;addrmod;regdumpaqi
 ;set cpu debug=trace;regdumpaqi
 ;set cpu debug=trace;appending;core
 ;set cpu debug=err

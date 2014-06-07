@@ -38,21 +38,35 @@ main:
 
 run_tests:
 
-"
-" Test 1: simple indirect
-"
-	msg	msg_test1
+" Test 1: simple direct R,n
 
+	msg	msg_test1
 	equ	t1_data,123001001
 
 	lda	=0,dl
 	unmap_memory
-	lda	t1_p1,*
+	lda	t1_a1
 	cmpa	t1_a1
 	tze	t1_pass
 	dis	*
 t1_pass:
-	msg	msg_test1_ok
+	msg	msg_test_ok
+
+" Test 1: simple indirect
+
+	msg	msg_test2
+
+	equ	t2_data,123002001
+
+	lda	=0,dl
+	unmap_memory
+	lda	t2_p1,*	"t2_p1 -> t2_a1
+	cmpa	t2_a1
+	tze	t2_pass
+	dis	*
+t2_pass:
+	msg	msg_test_ok
+
 
 "
 " done with tests
@@ -69,10 +83,13 @@ mme_enable:
 
 
 msg_test1:
-	aci	'Test 1 ...\n\0\0'
+	aci	'Test 1 R,n ...\n\0\0'
 	oct	0
-msg_test1_ok:
+msg_test_ok:
 	aci	'... ok\n\0\0'
+	oct	0
+msg_test2:
+	aci	'Test 2 R,* ...\n\0\0'
 	oct	0
 msg_main_entry:
 	aci	'Fault test main\n\0\0'
@@ -93,7 +110,9 @@ msg_with:
 " Page 1: indirect words
 
 	org	1*1024
-t1_p1:	arg	t1_a1
+	oct	0
+
+t2_p1:	arg	t2_a1
 
 " Page 2: double indirect words
 
@@ -101,5 +120,8 @@ t1_p1:	arg	t1_a1
 
 " Page 3: data
 
+	org	3*1024
+
 t1_a1:	dec	t1_data
+t2_a1:	dec	t2_data
 
