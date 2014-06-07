@@ -1137,15 +1137,18 @@ t_stat sim_instr (void)
             goto jmpIntr;
 #endif
         case JMP_STOP:
-            return stop_reason;
+            goto leave;
         case JMP_SYNC_FAULT_RETURN:
             goto syncFaultReturn;
         case JMP_REFETCH:
             setCpuCycle (FETCH_cycle);
             break;
+        case JMP_RESTART:
+            setCpuCycle (EXEC_cycle);
+            break;
         default:
           sim_printf ("longjmp value of %d unhandled\n", val);
-            return STOP_BUG;
+            goto leave;
     }
 
     // Main instruction fetch/decode loop 
@@ -1482,6 +1485,7 @@ syncFaultReturn:
 
       } while (reason == 0);
 
+leave:
     sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
     for (int i = 0; i < N_FAULTS; i ++)
       {

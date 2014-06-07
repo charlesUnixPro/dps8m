@@ -12,6 +12,7 @@
 #define JMP_INTR        6   // Interrupt detected during processing
 #define JMP_SYNC_FAULT_RETURN 7
 #define JMP_REFETCH 8
+#define JMP_RESTART 9
 
 
 // MM's opcode stuff ...

@@ -254,6 +254,7 @@ void tidy_cu (void)
     cu . rd = false;
     cu . xde = false;
     cu . xdo = false;
+    cu . IR &= ~ I_MIIF; 
   }
 
 static void words2scu (word36 * words)
@@ -616,6 +617,19 @@ t_stat executeInstruction (void)
     DCDstruct * ci = & currentInstruction;
     decodeInstruction(cu . IWB, ci);
 
+    const opCode *info = ci->info;       // opCode *
+    const uint32  opcode = ci->opcode;   // opcode
+    const bool   opcodeX = ci->opcodeX;  // opcode extension
+    const word18 address = ci->address;  // bits 0-17 of instruction XXX replace with rY
+    const bool   a = ci->a;              // bit-29 - addressing via pointer register
+    const word6  tag = ci->tag;          // instruction tag XXX replace with rTAG
+    
+   
+    addToTheMatrix (opcode, opcodeX, a, tag);
+    
+    if (cu . IR & I_MIIF)
+      goto restart_1;
+
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
     if ((ci->info->flags & PRIV_INS) && !is_priv_mode())
         doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
@@ -657,16 +671,6 @@ t_stat executeInstruction (void)
             doFault(illproc_fault, 0, "Instruction not allowed in XEC");
     }
 
-    const opCode *info = ci->info;       // opCode *
-    const uint32  opcode = ci->opcode;   // opcode
-    const bool   opcodeX = ci->opcodeX;  // opcode extension
-    const word18 address = ci->address;  // bits 0-17 of instruction XXX replace with rY
-    const bool   a = ci->a;              // bit-29 - addressing via pointer register
-    const word6  tag = ci->tag;          // instruction tag XXX replace with rTAG
-    
-   
-    addToTheMatrix (opcode, opcodeX, a, tag);
-    
     if (cu . rpt || cu .rd)
       {
         // check for illegal modifiers:
@@ -734,11 +738,15 @@ t_stat executeInstruction (void)
         }
     }
 
+restart_1:
+
+    // XXX this may be wrong; make sure that the right value is used
+    // if a page fault occurs.
     ci->stiTally = cu.IR & I_TALLY;   //TSTF(cu.IR, I_TALLY);  // for sti instruction
    
     traceInstruction ();
 
-    setupForOperandRead ();
+    //setupForOperandRead ();
 
     if (info -> ndes > 0)
       {
@@ -752,14 +760,15 @@ t_stat executeInstruction (void)
       {
 
         // This must not happen on instruction restart
-        if (ci -> a)   // if A bit set set-up TPR stuff ...
-          doPtrReg ();
+        if (! (cu . IR & I_MIIF))
+          {
+            if (ci -> a)   // if A bit set set-up TPR stuff ...
+              doPtrReg ();
+            // Setup for ABUSE_CT_HOLD code
+            // This must not happen on instruction restart
+            cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
+          }
 
-        // Setup for ABUSE_CT_HOLD code
-        // This must not happen on instruction restart
-        cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
-
- // restartInstruction:
         if (ci->info->flags & PREPARE_CA)
           doComputedAddressFormation ();
 
@@ -4394,7 +4403,10 @@ static t_stat DoBasicInstruction (void)
             return STOP_UNIMP;
 
         case 0657:  ///< scu
-            scu2words (Yblock8);
+            // No; the SCU command saves the safe store, not the CU
+            //scu2words (Yblock8);
+            for (int i = 0; i < 8; i ++)
+              Yblock8 [i] = scu_data [i];
             break;
             
         case 0154:  ///< sdbr
@@ -6476,9 +6488,13 @@ static void doRCU (void)
           {
             // directed page fault during instruction fetch
             longjmp (jmpMain, JMP_REFETCH);
-         }
-        sim_printf ("doRCU dies at FAULT_DF3\n");
-        doFault (FAULT_TRB, 0, "doRCU dies at FAULT_DF3");
+          }
+        else
+          {
+            // directed page fault during CAF
+            cu . IR |= I_MIIF;
+            longjmp (jmpMain, JMP_RESTART);
+          }
       }
     sim_printf ("doRCU dies with unhandled fault number\n");
     doFault (FAULT_TRB, cu . FI_ADDR, "doRCU dies with unhandled fault number");
