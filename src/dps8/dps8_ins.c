@@ -109,6 +109,8 @@ static void readOperands (void)
     if (directOperandFlag)
       {
         CY = directOperand;
+        sim_debug (DBG_ADDRMOD, & cpu_dev,
+                   "readOperands direct CY=%012llo\n", CY);
         return;
       }
 
