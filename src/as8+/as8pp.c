@@ -72,6 +72,26 @@ static void dumpstr (char * tag, char * str, size_t len)
   }
 #endif
 
+static bool nameMatch (const char * s1, const char * s2, size_t n)
+  {
+//fprintf (stderr, "nameMatch %s %s\n", s2, s1);
+    bool smatch = strncasecmp (s1, s2, n) == 0;
+    if (smatch)
+      {
+        // test to see if the character after the match is a valid
+        // identifier character; ie "foo" should not match "fooy"
+        // but should match "foo["
+        char next = s1 [n];
+        if (next == '\0')
+          return true;
+//fprintf (stderr, "nameMatch s2: %s n: %d next: %d, index %u\n", s2, n, next, index (CS_NAME, next));
+        if (index (CS_NAME, next))
+          return false;
+        return true;
+      }
+   return false;
+  }
+
 int main (int argc, char * argv [])
   {
 
@@ -134,7 +154,8 @@ int main (int argc, char * argv [])
 
             // macro definition?
 
-            if (strncasecmp (expbuf + bufidx, S_MACRO, L_MACRO) == 0)
+            //if (strncasecmp (expbuf + bufidx, S_MACRO, L_MACRO) == 0)
+            if (nameMatch (expbuf + bufidx, S_MACRO, L_MACRO))
               {
                 bufidx += L_MACRO;
 
@@ -149,6 +170,7 @@ int main (int argc, char * argv [])
                   die ("empty macro name");
 
                 macros [n_macros] . name = strndup (expbuf + bufidx, name_len);
+                // fprintf(stderr, "defining <%s>\n", macros [n_macros] . name);
                 for (int i = 0; i < n_macros; i ++)
                   if (strcmp (macros [i] . name, macros [n_macros] . name) == 0)
                     die ("macro redefinition");
@@ -167,9 +189,13 @@ int main (int argc, char * argv [])
               {
                 // scan for macro calls and expand them
 rescan:
+                SKIPWS;
+                if (* (expbuf + bufidx) == '\0')
+                  goto done;
                 for (int m = 0; m < n_macros; m ++)
                   {
                     struct macro * mp = macros + m;
+#if 0
                     char * where = strstr (expbuf + bufidx, mp -> name);
                     if (where)
                       {
@@ -178,6 +204,11 @@ rescan:
                         if (extra)
                           where = NULL;
                       }
+#else
+                    char * where = NULL;
+                    if (nameMatch (expbuf + bufidx, mp -> name, strlen (mp -> name)))
+                      where = expbuf + bufidx + strlen (mp -> name);
+#endif
 
                     // if where is NULL, there is not a macro call at this
                     // location
@@ -186,20 +217,24 @@ rescan:
 
                     if (where)
                       {
+                        // fprintf (stderr, "expanding \"%s\"\n", expbuf + bufidx);
+                        // fprintf (stderr, "where \"%s\"\n", where);
                         unique ++;
 
-                        // Convert pointer to index
-                        int where_idx = where - expbuf;
+                        // // Convert pointer to index
+                        // int where_idx = where - expbuf;
 
-                        // Save the start location for rescan
-                        bufidx = where_idx;
+                        // // Save the start location for rescan
+                        // bufidx = where_idx;
+                        int where_idx = bufidx;
+
                         // Expand the macro
 
-                        // printf ("first <%s>\n", expbuf);
+                        // fprintf (stderr, "first <%s>\n", expbuf + bufidx);
                         // erase the call
                         size_t call_len = strlen (mp -> name);
                         erase (expbuf + bufidx, call_len);
-                        // printf ("erase <%s>\n", expbuf);
+                        // fprintf (stderr, "erase <%s>\n", expbuf + bufidx);
 
                         // process args
                         int n_args = 0;
@@ -322,14 +357,21 @@ rescan:
 
                         // rescan
                         bufidx = where_idx;
-                        goto rescan;
+                        if (* (expbuf + bufidx) != '\0')
+                          goto rescan;
                       } // if where
                   } // for m
+                // The current token is not a macro ref or keyword
+                // If not at the end of the buffer, advance a char
+                if (* (expbuf + bufidx) != '\0')
+                  bufidx ++;
+                goto rescan;
               } // scan
           } // if !defining
         else // defining
           {
-            if (strncasecmp (expbuf + bufidx, S_ENDM, L_ENDM) == 0)
+            //if (strncasecmp (expbuf + bufidx, S_ENDM, L_ENDM) == 0)
+            if (nameMatch (expbuf + bufidx, S_ENDM, L_ENDM))
               {
                 bufidx += L_ENDM;
 
@@ -360,6 +402,7 @@ rescan:
               }
             make_comment = true;
           }       
+done:
         if (make_comment)
           printf ("\"%s%s", expbuf, comment_ptr ? comment_ptr : "\n");
         else
