@@ -1,0 +1,12 @@
+" copied from seg1, since we don't have a linker
+	equ	t5_data,567005001
+	equ	t6_data,678006001
+	
+t6_p2:	arg	t6_a1
+
+	org	1*1024
+
+t5_a1:
+	dec	t5_data
+t6_a1:
+	dec	t6_data

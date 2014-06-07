@@ -14,13 +14,18 @@
 
 "     segment 1 pages
 "
-"       0    code
+"       0   code
 "       1   data
 "       2   data
 "       3   data
 
+"     segment 2 pages
+"
+"       0   data
+"       1   data
+
 	equ	n_seg1_pgs,4
-	equ	n_seg2_pgs,1
+	equ	n_seg2_pgs,2
 
 	equ	pgsz,1024	" pages are 1024 words long
 	equ	program_start,100*pgsz
@@ -228,7 +233,8 @@ s1p3:	PTW	seg1_start+3*1024, resident, FC3
 
 seg_2_page_table:
 
-s2p0:	PTW	seg2_start, resident, FC3
+s2p0:	PTW	seg2_start+0*1024, resident, FC3
+s2p1:	PTW	seg2_start+1*1024, resident, FC3
 
 
 """
@@ -267,6 +273,7 @@ mme_handler:
 	orsa	s1p2
 	orsa	s1p3
 	orsa	s2p0
+	orsa	s2p1
 	tra	mark_done
 
 mark_non:
@@ -279,6 +286,7 @@ mark_non:
 	ansa	s1p2
 	ansa	s1p3
 	ansa	s2p0
+	ansa	s2p1
 
 mark_done:
 
