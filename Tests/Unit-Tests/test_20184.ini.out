@@ -1,5 +1,7 @@
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+Debug output to "STDOUT"
+Debug output to "STDOUT" at Fri Jun  6 18:26:24 2014
 TAPE: unit is read only
 DBG(2)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
 DBG(3)> CPU FAULT: fault cycle [0]
@@ -387,7 +389,13 @@ CONSOLE: 0000.0  Multics not in operation; control process: Initializer.SysDaemo
 DBG(15798887)> CPU FAULT: Fault 6(06), sub 0(00), dfc N, 'drl'
 DBG(15798888)> CPU FAULT: fault cycle [7899435]
 
+cpuCycles = 7899438
+Master mode entry 1 faults = 1
+Derail faults = 1
+Illegal procedure faults = 6
+Directed fault 1 faults = 1
 test_20184.ini-5> boot iom0
 
 Unimplemented Opcode, IC: 026001 (025740452206)
 Goodbye
+Debug output disabled

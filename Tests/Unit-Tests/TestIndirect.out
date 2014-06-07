@@ -160,7 +160,7 @@ dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	211560 + 13 => 000013001756
 	211560 + 14 => 000014002570
 	211560 + 15 => 000015000422
-Howdy world this is 'TestIndirect'! - It's ' 2/21 21:47 '
+Howdy world this is 'TestIndirect'! - It's ' 6/06 18:26 '
 TINDC$magicC was = 2718281828 (Should be 2718281828)
 TestIndirectA: magicA: 14 000043 2324 000000
 
@@ -318,8 +318,8 @@ _printTemps:3: t2(11)=41
 _printTemps:3: t2(12)=42
 Now leaving TINC$_main_C ...
 T-H-A-T-S all folks (from 0|main) !!! 
-cpuCycles = 118426
-TestIndirect-28> g 1 
+cpuCycles = 118430
+TestIndirect-29> g 1 
 
 DIS instruction, IC: main|145 (00000145) (000000616000)
 Goodbye

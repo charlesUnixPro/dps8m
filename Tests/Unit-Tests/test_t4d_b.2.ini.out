@@ -1,5 +1,7 @@
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+Debug output to "STDOUT"
+Debug output to "STDOUT" at Fri Jun  6 18:26:43 2014
 TAPE: unit is read only
 Booting T4D_B.2
 Tape 0 reads record 1
@@ -3092,7 +3094,15 @@ entered DIS_cycle
 left DIS_cycle
 DIS@0006607 with no interrupts pending and no events in queue
 
+cpuCycles = 33367874
+
+cpuCycles = 33367874
+Store faults = 8211
+Master mode entry 1 faults = 3418
+Illegal procedure faults = 518
+Access violation faults = 969
 test_t4d_b.2.ini-47> boot iom0
 
-DIS instruction, IC: 006607 (006607616200)
+Unknown error, IC: 006607 (006607616200)
 Goodbye
+Debug output disabled
