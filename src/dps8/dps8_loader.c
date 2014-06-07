@@ -1095,7 +1095,7 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
                 if (maddr > MAXMEMSIZE)
                     return SCPE_NXM;
                 else
-                    M[maddr] = data & DMASK;
+                    M[maddr+ldaddr] = data & DMASK;
                 words++;
             }
         }
@@ -1279,7 +1279,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     size_t fmt;
     
     int32 segno = -1;
-    int32 ldaddr = -1;
+    int32 ldaddr = 0;
     
     bool bDeferred = false; // a deferred load
 
@@ -1306,15 +1306,38 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
    /*
     * Absolute:
     *  load file.oct
+    * Absolute at offset:
+    *  load file.oct address ?
     * Unpaged, non-deferred
     *  load file.oct segment ? address ?
     * Unpages, deferred
     *  load file.oct segment ? address ? deferred
     *
     */
+    // load file at offset ?
+    // Syntax load file.oct address addr
+    if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "addr*"))
+    {
+        char s[128], *end_ptr, w[128], s2[128], sDef[128];
+        
+        strcpy(s, "");
+        strcpy(w, "");
+        strcpy(s2, "");
+        strcpy(sDef, "");
+        
+        /* long n = */ sscanf(cptr, "%*s %s", s);
+        ldaddr = (word24)strtol(s, &end_ptr, 0); // allows for octal, decimal and hex
+        
+        if (end_ptr == s)
+        {
+            sim_printf("sim_load(): No load address was found\n");
+            return SCPE_FMT;
+        }
+    }
+
     // load file into segment?
     // Syntax load file.oct segment xxx address addr
-    if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "seg*"))
+    else if (flag == 0 && strlen(cptr) && strmask(strlower(cptr), "seg*"))
     {
         char s[128], *end_ptr, w[128], s2[128], sDef[128];
         

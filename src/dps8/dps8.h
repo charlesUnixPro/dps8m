@@ -45,6 +45,7 @@ typedef bool        word1;
 typedef uint8       word2;
 typedef uint8       word3;
 typedef uint8       word4;
+typedef uint8       word5;
 typedef uint8       word6;
 typedef uint8       word8;
 typedef int8        word8s; // signed 8-bit quantity
@@ -115,7 +116,8 @@ typedef unsigned int uint;  // efficient unsigned int, at least 32 bits
 #define DBG_FAULT       (1U << 20)  ///< follow fault handling
 #define DBG_INTR        (1U << 21)  // follow interrupt handling
 #define DBG_CORE        (1U << 22)  // follow interrupt handling
-//#define DBG_CAC         (1 << 23)
+#define DBG_CYCLE       (1U << 23)
+// simh uses 24,25,26
 
 
 /////

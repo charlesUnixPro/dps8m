@@ -467,8 +467,10 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
     
     // Set control unit 'fault occured during insturction fetch' flag
     cu . FIF = cpu . cycle == INSTRUCTION_FETCH ? 1 : 0;
+    cu . FI_ADDR = faultNumber;
 
     cpu . cycle = FAULT_cycle;
+    sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to FAULT_cycle\n");
     longjmp (jmpMain, JMP_REENTRY);
 }
 

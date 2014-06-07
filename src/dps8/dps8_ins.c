@@ -181,25 +181,24 @@ static void scu2words(word36 *words)
     
     memset(words, 0, 8 * sizeof(*words));
     
-    words[0] = setbits36(0, 0, 3, PPR.PRR);
-    words[0] = setbits36(words[0], 3, 15, PPR.PSR);
-    words[0] = setbits36(words[0], 18, 1, PPR.P);
-    // 19 "b" XSF
-    // 20 "c" SDWAMN
-    words[0] = setbits36(words[0], 21, 1, cu.SD_ON);
-    // 22 "e" PTWAM
-    words[0] = setbits36(words[0], 23, 1, cu.PT_ON);
-    // 24..32 various
-    // 33-35 FCT
+    // words [0]
+
+    words[0] = setbits36(       0,  0,  3, PPR.PRR);
+    words[0] = setbits36(words[0],  3, 15, PPR.PSR);
+    words[0] = setbits36(words[0], 18,  1, PPR.P);
+    words[0] = setbits36(words[0], 21,  1, cu.SD_ON);
+    words[0] = setbits36(words[0], 23,  1, cu.PT_ON);
     
     // words[1]
     
+    words [1] = setbits36(words[1], 30, 5, cu.FI_ADDR);
+
     // words[2]
     
-    words[2] = setbits36(0, 0, 3, TPR.TRR);
-    words[2] = setbits36(words[2], 3, 15, TPR.TSR);
-    words[2] = setbits36(words[2], 27, 3, switches.cpu_num);
-    words[2] = setbits36(words[2], 30, 6, cu.delta);
+    words[2] = setbits36(       0,  0,  3, TPR.TRR);
+    words[2] = setbits36(words[2],  3, 15, TPR.TSR);
+    words[2] = setbits36(words[2], 27,  3, switches.cpu_num);
+    words[2] = setbits36(words[2], 30,  6, cu.delta);
     
     // words[3]
 
@@ -217,7 +216,6 @@ static void scu2words(word36 *words)
     words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
     words[5] = setbits36(words[5], 19, 1, cu.rpt);
     words[5] = setbits36(words[5], 20, 1, cu.rd);
-    // BUG: Not all of CU data exists and/or is saved
     words[5] = setbits36(words[5], 24, 1, cu.xde);
     words[5] = setbits36(words[5], 25, 1, cu.xdo);
     words[5] = setbits36(words[5], 29, 1, cu.FIF);
@@ -262,40 +260,49 @@ static void words2scu (word36 * words)
 {
     // BUG:  We don't track much of the data that should be tracked
     
-    PPR.PRR  = getbits36(words[0], 0, 3);
-    PPR.PSR  = getbits36(words[0], 3, 15);
-    PPR.P    = getbits36(words[0], 18, 1);
-    // 19 "b" XSF
-    // 20 "c" SDWAMN
-    cu.SD_ON = getbits36(words[0], 21, 1);
-    // 22 "e" PTWAM
-    cu.PT_ON = getbits36(words[0], 23, 1);
-    // 24..32 various
-    // 33-35 FCT
+    // words [0]
+
+    PPR.PRR         = getbits36(words[0], 0, 3);
+    PPR.PSR         = getbits36(words[0], 3, 15);
+    PPR.P           = getbits36(words[0], 18, 1);
+    cu.SD_ON        = getbits36(words[0], 21, 1);
+    cu.PT_ON        = getbits36(words[0], 23, 1);
     
     // words[1]
+
+    cu.FI_ADDR      = getbits36(words[1], 30, 5);
+
+    // words[2]
     
-    TPR.TRR  =  getbits36(words[2], 0, 3);
-    TPR.TSR  = getbits36(words[2], 3, 15);
-    switches.cpu_num = getbits36(words[2], 27, 3);
-    cu.delta = getbits36(words[2], 30, 6);
+    TPR.TRR         = getbits36(words[2], 0, 3);
+    TPR.TSR         = getbits36(words[2], 3, 15);
+    cu.delta        = getbits36(words[2], 30, 6);
     
-    TPR.TBR  = getbits36(words[3], 30, 6);
+    // words[3]
+
+    TPR.TBR         = getbits36(words[3], 30, 6);
     
-    cu.IR      = getbits36(words[4], 18, 18); // HWR
-    PPR.IC   = getbits36(words[4], 0, 18);
+    // words [4]
+
+    cu.IR           = getbits36(words[4], 18, 18); // HWR
+    PPR.IC          = getbits36(words[4], 0, 18);
     
-    TPR.CA   = getbits36(words[5], 0, 18);
+    // words [5]
+
+    TPR.CA          = getbits36(words[5], 0, 18);
     cu.repeat_first = getbits36(words[5], 18, 1);
-    cu.rpt   = getbits36(words[5], 19, 1);
-    cu.rd    = getbits36(words[5], 29, 1);
-    // BUG: Not all of CU data exists and/or is saved
-    cu.xde   = getbits36(words[5], 24, 1);
-    cu.xdo   = getbits36(words[5], 25, 1);
-    cu.FIF   = getbits36(words[5], 29, 1);
-    cu.CT_HOLD = getbits36(words[5], 30, 6);
+    cu.rpt          = getbits36(words[5], 19, 1);
+    cu.rd           = getbits36(words[5], 20, 1);
+    cu.xde          = getbits36(words[5], 24, 1);
+    cu.xdo          = getbits36(words[5], 25, 1);
+    cu.FIF          = getbits36(words[5], 29, 1);
+    cu.CT_HOLD      = getbits36(words[5], 30, 6);
     
+    // words [6]
+
     cu.IWB = words [6];
+
+    // words [7]
 
     cu.IRODD = words [7];
 }
@@ -1330,6 +1337,8 @@ static t_stat DoBasicInstruction (void)
             break;
             
         case 0750:  ///< stc2
+            // XXX AL-39 doesn't specify if the low half is set to zero,
+            // set to IR, or left unchanged
             SETHI(CY, (PPR.IC + 2) & MASK18);
 
             break;
@@ -4379,7 +4388,7 @@ static t_stat DoBasicInstruction (void)
             doFault(illproc_fault, 0, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
-            doRCU ();
+            doRCU (); // never returns
 
         case 0452:  ///< scpr
             return STOP_UNIMP;
@@ -6043,14 +6052,19 @@ static int emCall (void)
             break;
         }
 
-        case 16:     ///< puts - A points to by an aci string; print it.
+        case 16:     ///< puts - A high points to by an aci string; print it.
                      // The string includes C-sytle escapes: \0 for end
                      // of string, \n for newline, \\ for a backslash
+        case 21: // puts: A contains a 24 bit address
         {
             const int maxlen = 256;
             char buf [maxlen + 1];
 
-            word36 addr = rA >> 18;
+            word36 addr;
+            if (i->address == 16)
+              addr = rA >> 18;
+            else // 21
+              addr = rA >> 12;
             word36 chunk;
             int i;
             bool is_escape = false;
@@ -6117,6 +6131,8 @@ static int emCall (void)
        {
            emCallReportFault ();
        }
+
+       // case 21 defined above
     }
     return 0;
 }
@@ -6440,6 +6456,30 @@ sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08
 static void doRCU (void)
   {
     words2scu (Yblock8);
+
+// Restore addressing mode
+
+    if ((cu . IR & I_NBAR) == 0)
+      set_addr_mode (BAR_mode);
+    else if ((cu . IR & I_ABS) != 0) // XXX
+      set_addr_mode (ABSOLUTE_mode);
+    else
+      set_addr_mode (APPEND_mode);
+
 // First step: handle MME returns
-    longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+// Second step: handle MME and DF3 returns
+    if (cu . FI_ADDR == FAULT_MME)
+      longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+    if (cu . FI_ADDR == FAULT_DF3)
+      {
+        if (cu . FIF == 1)
+          {
+            // directed page fault during instruction fetch
+            longjmp (jmpMain, JMP_REFETCH);
+         }
+        sim_printf ("doRCU dies at FAULT_DF3\n");
+        doFault (FAULT_TRB, 0, "doRCU dies at FAULT_DF3");
+      }
+    sim_printf ("doRCU dies with unhandled fault number\n");
+    doFault (FAULT_TRB, cu . FI_ADDR, "doRCU dies with unhandled fault number");
   }

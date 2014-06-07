@@ -11,6 +11,7 @@
 #define JMP_STOP        5   ///< treat return as if it were an attempt to unravel the stack and gracefully exit out of sim_instr
 #define JMP_INTR        6   // Interrupt detected during processing
 #define JMP_SYNC_FAULT_RETURN 7
+#define JMP_REFETCH 8
 
 
 // MM's opcode stuff ...
@@ -1234,7 +1235,7 @@ typedef struct {
                    // 20-23 IA        System controll illegal action lines
                    // 24-26 IACHN     Illegal action processor port
                    // 27-29 CNCHN     Connect fault - connect processor port
-                   // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
+    word5 FI_ADDR; // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
                    // 35    F/I       0 = interrupt; 1 = fault
 
     /* word 2 */

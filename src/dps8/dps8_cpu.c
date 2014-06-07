@@ -26,6 +26,7 @@
 static void cpu_reset_array (void);
 static bool clear_TEMPORARY_ABSOLUTE_mode (void);
 static void set_TEMPORARY_ABSOLUTE_mode (void);
+static void setCpuCycle (cycles_t cycle);
 
 // CPU data structures
 
@@ -84,9 +85,7 @@ static DEBTAB cpu_dt[] = {
     { "FAULT",      DBG_FAULT       },
     { "INTR",       DBG_INTR        },
     { "CORE",       DBG_CORE        },
-
-    // { "CAC",       DBG_CAC          },
-
+    { "CYCLE",      DBG_CYCLE       },
     { NULL,         0               }
 };
 
@@ -510,7 +509,7 @@ static t_stat cpu_reset_mm (DEVICE * __attribute__((unused)) dptr)
     
     set_addr_mode(ABSOLUTE_mode);
     
-    cpu.cycle = FETCH_cycle;
+    setCpuCycle (FETCH_cycle);
 
     sys_stats . total_cycles = 0;
 
@@ -1014,6 +1013,42 @@ t_stat simh_hooks (void)
     return reason;
   }       
 
+static char * cycleStr (cycles_t cycle)
+  {
+    switch (cycle)
+      {
+        case ABORT_cycle:
+          return "ABORT_cycle";
+        case FAULT_cycle:
+          return "FAULT_cycle";
+        case EXEC_cycle:
+          return "EXEC_cycle";
+        case FAULT_EXEC_cycle:
+          return "FAULT_EXEC_cycle";
+        case FAULT_EXEC2_cycle:
+          return "FAULT_EXEC2_cycle";
+        case INTERRUPT_cycle:
+          return "INTERRUPT_cycle";
+        case INTERRUPT_EXEC_cycle:
+          return "INTERRUPT_EXEC_cycle";
+        case INTERRUPT_EXEC2_cycle:
+          return "INTERRUPT_EXEC2_cycle";
+        case FETCH_cycle:
+          return "FETCH_cycle";
+#if 0
+        default:
+          sim_printf ("setCpuCycle: cpu . cycle %d?\n", cpu . cycle);
+          return "XXX unknwon cycle";
+#endif
+     }
+  }
+
+static void setCpuCycle (cycles_t cycle)
+  {
+    sim_debug (DBG_CYCLE, & cpu_dev, "Setting cycle to %s\n",
+               cycleStr (cycle));
+    cpu . cycle = cycle;
+  }
 //
 // Okay, lets treat this as a state machine
 //
@@ -1101,7 +1136,9 @@ t_stat sim_instr (void)
             return stop_reason;
         case JMP_SYNC_FAULT_RETURN:
             goto syncFaultReturn;
-
+        case JMP_REFETCH:
+            setCpuCycle (FETCH_cycle);
+            break;
         default:
           sim_printf ("longjmp value of %d unhandled\n", val);
             return STOP_BUG;
@@ -1119,6 +1156,8 @@ t_stat sim_instr (void)
         if (reason)
           return reason;
 
+        sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
+                   cycleStr (cpu . cycle));
         switch (cpu . cycle)
           {
             case INTERRUPT_cycle:
@@ -1161,7 +1200,7 @@ t_stat sim_instr (void)
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);
 
                         cpu . interrupt_flag = false;
-                        cpu . cycle = INTERRUPT_EXEC_cycle;
+                        setCpuCycle (INTERRUPT_EXEC_cycle);
                         break;
                       } // int_pair != 1
                   } // interrupt_flag
@@ -1173,7 +1212,7 @@ t_stat sim_instr (void)
                 cu_safe_restore ();
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
 // we can safely assume that is the state that should be restored.
-                cpu . cycle = FETCH_cycle;
+                setCpuCycle (FETCH_cycle);
                 break;
 
             case INTERRUPT_EXEC_cycle:
@@ -1196,7 +1235,7 @@ t_stat sim_instr (void)
 
                 if (ret == CONT_TRA)
                   {
-                     cpu . cycle = FETCH_cycle;
+                     setCpuCycle (FETCH_cycle);
                      if (!clear_TEMPORARY_ABSOLUTE_mode ())
                        set_addr_mode (ABSOLUTE_mode);
                      break;
@@ -1204,14 +1243,14 @@ t_stat sim_instr (void)
 
                 if (cpu . cycle == INTERRUPT_EXEC_cycle)
                   {
-                    cpu . cycle = INTERRUPT_EXEC2_cycle;
+                    setCpuCycle (INTERRUPT_EXEC2_cycle);
                     break;
                   }
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
 // we can safely assume that is the state that should be restored.
-                cpu . cycle = FETCH_cycle;
+                setCpuCycle (FETCH_cycle);
                 break;
 
             case FETCH_cycle:
@@ -1221,12 +1260,12 @@ t_stat sim_instr (void)
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
 // return from interrupt can safely assume the it should set the cycle
 // to FETCH_cycle.
-                    cpu . cycle = INTERRUPT_cycle;
+                    setCpuCycle (INTERRUPT_cycle);
                     break;
                   }
                 if (cpu . g7_flag)
                   {
-                    cpu . cycle = FAULT_cycle;
+                    setCpuCycle (FAULT_cycle);
                     break;
                   }
 
@@ -1269,7 +1308,7 @@ t_stat sim_instr (void)
                     cpu . g7_flag = false;
                   }
 
-                cpu . cycle = EXEC_cycle;
+                setCpuCycle (EXEC_cycle);
                 break;
 
             case EXEC_cycle:
@@ -1285,7 +1324,7 @@ t_stat sim_instr (void)
                 if (ret == CONT_TRA)
                   {
                     cu . xde = cu . xdo = 0;
-                    cpu . cycle = FETCH_cycle;
+                    setCpuCycle (FETCH_cycle);
                     break;   // don't bump PPR.IC, instruction already did it
                   }
 
@@ -1299,18 +1338,18 @@ t_stat sim_instr (void)
                   {
                     if (! cu . rpt)
                       -- PPR.IC;
-                    cpu . cycle = FETCH_cycle;
+                    setCpuCycle (FETCH_cycle);
                     break;
                   }
 
                 if (cu . xde == 1 && cu . xdo == 1) // we just did the even of an XED
                   {
-                    cpu . cycle = FETCH_cycle;
+                    setCpuCycle (FETCH_cycle);
                     break;
                   }
                 if (cu . xde) // We just did a xec or xed instruction
                   {
-                    cpu . cycle = FETCH_cycle;
+                    setCpuCycle (FETCH_cycle);
                     break;
                   }
                 cu . xde = cu . xdo = 0;
@@ -1320,13 +1359,13 @@ t_stat sim_instr (void)
                 PPR.IC += xec_side_effect;
                 xec_side_effect = 0;
 
-                cpu . cycle = FETCH_cycle;
+                setCpuCycle (FETCH_cycle);
                 break;
 
 syncFaultReturn:
                 PPR.IC ++;
                 xec_side_effect = 0;
-                cpu . cycle = FETCH_cycle;
+                setCpuCycle (FETCH_cycle);
               }
               break;
 
@@ -1353,7 +1392,7 @@ syncFaultReturn:
                   {
                     emCallReportFault ();
                     clearFaultCycle ();
-                    cpu . cycle = FETCH_cycle;
+                    setCpuCycle (FETCH_cycle);
                     PPR.IC += ci->info->ndes;
                     PPR.IC ++;
                     break;
@@ -1375,7 +1414,7 @@ syncFaultReturn:
   
                 core_read2 (addr, instr_buf, instr_buf + 1);
 
-                cpu . cycle = FAULT_EXEC_cycle;
+                setCpuCycle (FAULT_EXEC_cycle);
 
                 break;
               }
@@ -1401,22 +1440,22 @@ syncFaultReturn:
 
                 if (ret == CONT_TRA)
                   {
-                     cpu . cycle = FETCH_cycle;
-                     clearFaultCycle ();
-                     if (!clear_TEMPORARY_ABSOLUTE_mode ())
-                       set_addr_mode (ABSOLUTE_mode);
-                     break;
+                    setCpuCycle (FETCH_cycle);
+                    clearFaultCycle ();
+                    if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                      set_addr_mode (ABSOLUTE_mode);
+                    break;
                   }
                 if (cpu . cycle == FAULT_EXEC_cycle)
                   {
-                    cpu . cycle = FAULT_EXEC2_cycle;
+                    setCpuCycle (FAULT_EXEC2_cycle);
                     break;
                   }
                 // Done with FAULT_EXEC2_cycle
                 // Restores cpu.cycle and addressing mode
                 clear_TEMPORARY_ABSOLUTE_mode ();
                 cu_safe_restore ();
-                cpu . cycle = FETCH_cycle;
+                setCpuCycle (FETCH_cycle);
                 clearFaultCycle ();
 
                 // cu_safe_restore should have restored CU.IWB, so

@@ -161,7 +161,8 @@ struct opCode NonEISopcodes[01000] = {
     {"cnax7", READ_OPERAND, NO_CSS, 0},
     {NULL, 0, 0, 0},
     {"cmk", READ_OPERAND, 0, 0},
-    {"absa", PREPARE_CA | PRIV_INS | NO_RPT, NO_DDCSS, 0},
+    // XXX AL-39 seems wrong w.r.t absa; it makes no sense as privileged.
+    {"absa", PREPARE_CA /*| PRIV_INS*/ | NO_RPT, NO_DDCSS, 0},
     {"epaq", PREPARE_CA | NO_BAR | NO_RPT, NO_DDCSS, 0},
     {"sznc", RMW, NO_DDCSS, 0},
     {"cnaa", READ_OPERAND, 0, 0},
