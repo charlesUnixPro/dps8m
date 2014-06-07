@@ -147,6 +147,41 @@ static dps8faults _faults[] = {    // sorted by number
 };
 #endif
 
+char * faultNames [N_FAULTS] =
+  {
+    "Shutdown",
+    "Store",
+    "Master mode entry 1",
+    "Fault tag 1",
+    "Timer runout",
+    "Command",
+    "Derail",
+    "Lockup",
+    "Connect",
+    "Parity",
+    "Illegal procedure",
+    "Operation not complete",
+    "Startup",
+    "Overflow",
+    "Divide check",
+    "Execute",
+    "Directed fault 0",
+    "Directed fault 1",
+    "Directed fault 2",
+    "Directed fault 3",
+    "Access violation",
+    "Master mode entry 2",
+    "Master mode entry 3",
+    "Master mode entry 4",
+    "Fault tag 2",
+    "Fault tag 3",
+    "Unassigned 26",
+    "Unassigned 27",
+    "Unassigned 28",
+    "Unassigned 29",
+    "Unassigned 30",
+    "Trouble"
+  };
 //bool pending_fault = false;     // true when a fault has been signalled, but not processed
 
 
@@ -428,6 +463,7 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
 
     cpu . faultNumber = faultNumber;
     cpu . subFault = subFault;
+    sys_stats . total_faults [faultNumber] ++;
 
 //--    dps8faults *f = &_faults[faultNumber];
     

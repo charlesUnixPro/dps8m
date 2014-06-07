@@ -512,6 +512,8 @@ static t_stat cpu_reset_mm (DEVICE * __attribute__((unused)) dptr)
     setCpuCycle (FETCH_cycle);
 
     sys_stats . total_cycles = 0;
+    for (int i = 0; i < N_FAULTS; i ++)
+      sys_stats . total_faults [i] = 0;
 
 //#if FEAT_INSTR_STATS
     memset(&sys_stats, 0, sizeof(sys_stats));
@@ -622,6 +624,8 @@ static t_stat cpu_reset (DEVICE *dptr)
     sim_brk_types = sim_brk_dflt = SWMASK ('E');
 
     sys_stats . total_cycles = 0;
+    for (int i = 0; i < N_FAULTS; i ++)
+      sys_stats . total_faults [i] = 0;
     
     CMR.luf = 3;    // default of 16 mS
     
@@ -1154,7 +1158,8 @@ t_stat sim_instr (void)
         // Process deferred events and breakpoints
         reason = simh_hooks ();
         if (reason)
-          return reason;
+          //return reason;
+          break;
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu . cycle));
@@ -1478,6 +1483,11 @@ syncFaultReturn:
       } while (reason == 0);
 
     sim_printf("\r\ncpuCycles = %lld\n", sys_stats . total_cycles);
+    for (int i = 0; i < N_FAULTS; i ++)
+      {
+        if (sys_stats . total_faults [i])
+          sim_printf("%s faults = %lld\n", faultNames [i], sys_stats . total_faults [i]);
+     }
     
     return reason;
   }

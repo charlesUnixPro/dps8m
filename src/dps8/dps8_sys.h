@@ -26,6 +26,7 @@ typedef struct {
         uint nmsec; // FIXME: WARNING: if 32 bits, only good for ~47 days :-)
     } instr[1024];
     t_uint64 total_cycles;      // Used for statistics and for simulated clock
+    t_uint64 total_faults [N_FAULTS];
     t_uint64 total_instr;
     t_uint64 total_msec;
     uint n_instr;       // Reset to zero on each call to sim_instr()

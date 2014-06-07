@@ -58,6 +58,8 @@ struct dps8faults
     bool        fault_pending;        // when true fault is pending and waiting to be processed
 };
 typedef struct dps8faults dps8faults;
+
+extern char * faultNames [N_FAULTS];
 void check_events (void);
 void clearFaultCycle (void);
 void emCallReportFault (void);
