@@ -261,7 +261,7 @@ dpf3_handler:
 
 	lda	fif_mask
 	ana	dpf3_scu_5
-	tze	non_fetch
+	tze	operand_fetch
 
 " Fault during instruction fetch
 
@@ -329,12 +329,74 @@ dpf3_handler:
 	" And done...
 	tra	dpf3_done
 
-	dis	*
 
 " Fault during operand fetch
 
-non_fetch:
-	msg	msg_nonfetch
+operand_fetch:
+	msg	msg_operand_fetch
+
+" Print fault address for debugging
+
+	" Get the segno
+	msg	msg_segno
+	lda	dpf3_scu_2
+	arl	18
+	ana	mask15
+	emcall	5	" putdec
+	" Get the CA
+	msg	msg_ca
+	lda	dpf3_scu_5
+	arl	18
+	ana	mask18
+	emcall	3	" putoct
+	emcall	8	" nl
+
+	" Lookup the segment in the descr_seg_page_table (assume segno < 1024)
+
+	eax0	seg_0_descr_seg_page_table
+
+	" Compute table[2*segno]
+
+	adx0	dpf3_scu_2
+	adx0	dpf3_scu_2
+
+	" Get the first word of the SDW
+
+	lda	0,x0
+
+	" Get the address of segment page table
+
+	arl	12
+	sta	spt_addr
+
+	" Get the CA
+
+	lda	dpf3_scu_5
+	arl	18
+	ana	mask18
+
+	" Divide by 1024
+
+	arl	10
+
+	" Compute page_table[offset/1024]
+
+	ada	spt_addr
+	als	18	" move to high half
+	sta	spte_addr
+
+	" Set the resident bit for the page
+	lda	f_bit
+	orsa	spte_addr,*
+
+	" Reset the caches
+
+	cams
+	camp
+
+	" And done...
+	tra	dpf3_done
+
 	dis	*
 
 dpf3_done:
@@ -397,8 +459,8 @@ msg_fetch:
 	aci	'DPF3 instruction fetch\n'
 	oct	0
 
-msg_nonfetch:
-	aci	'DPF3 non-instruction fetch\n'
+msg_operand_fetch:
+	aci	'DPF3 operand fetch\n'
 	oct	0
 
 msg_segno:

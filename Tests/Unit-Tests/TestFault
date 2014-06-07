@@ -4,9 +4,10 @@ load ./TestFaultKernel.oct
 ; Seg 1 at page 200
 load ./TestFaultSeg1.oct address 204800 
 set debug stdout
-;set cpu debug=trace;appending;regdump;addrmod;fault;core
+;set cpu debug=trace;appending;regdump;addrmod;fault;core;cycle
 ;set cpu debug=trace;fault;appending
 ;set cpu debug=fault;trace;regdumpaqi
+;set cpu debug=fault;trace
 ;set cpu debug=trace;regdumpaqi
 ;set cpu debug=trace;appending;core
 ;set cpu debug=err
