@@ -492,6 +492,8 @@ startCA:;
           doFault (illproc_fault, ill_mod,
                    "RI_MOD: Td == TD_DU || Td == TD_DL");
 
+        word18 tmpCA = TPR . CA;
+
         if (Td != 0)
           {
             word18 Cr = getCr (Td);  // C(r)
@@ -500,7 +502,7 @@ startCA:;
             // and dl are disallowed above
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "RI_MOD: Cr=%06o TPR.CA(Before)=%06o\n", Cr, TPR . CA);
+                       "RI_MOD: Cr=%06o tmpCA(Before)=%06o\n", Cr, tmpCA);
 
             // possible states
             // repeat_first rpt rd    do it?
@@ -520,19 +522,19 @@ startCA:;
               }
             else
               {
-                TPR . CA += Cr;
-                TPR . CA &= MASK18;   // keep to 18-bits
+                tmpCA += Cr;
+                tmpCA &= MASK18;   // keep to 18-bits
               }
 
             sim_debug (DBG_ADDRMOD, & cpu_dev,
-                       "RI_MOD: TPR.CA(After)=%06o\n", TPR . CA);
+                       "RI_MOD: tmpCA(After)=%06o\n", tmpCA);
           }
 
         // in case it turns out to be a ITS/ITP
         iTAG = rTAG;
 
         word36 indword;
-        Read (TPR . CA, & indword, INDIRECT_WORD_FETCH, i -> a); //TM_RI);
+        Read (tmpCA, & indword, INDIRECT_WORD_FETCH, i -> a); //TM_RI);
 
         // "In the case of RI modification, only one indirect reference is made
         // per repeated execution. The TAG field of the indirect word is not
@@ -547,7 +549,7 @@ startCA:;
 
         if (ISITP (indword) || ISITS (indword))
           {
-            doITSITP (TPR . CA, indword, iTAG);
+            doITSITP (tmpCA, indword, iTAG);
           }
         else
           {
