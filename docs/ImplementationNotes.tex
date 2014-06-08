@@ -1329,7 +1329,7 @@ should read:
 4   IC   |a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|0 0 0
 \end{verbatim}
 
-\section{AL-39, page 311, Figure 6-6, ``Indirect Then Tally Modification Flowchart''}
+\section{Page 311, Figure 6-6, ``Indirect Then Tally Modification Flowchart''}
 
 \begin{verbatim}
         ???
@@ -1338,9 +1338,36 @@ should read:
  computed address
 \end{verbatim}
 
-\section{AL-39, page 308 ``Sequence character $T_d = 12$''}
+\section{Page 308 ``Sequence character $T_d = 12$''}
 
 ``A 36-bit operand is formed by high-order zero filling the value of 
 character \emph{of of} C(computed address) with an appropriate number of bits .
+
+ 
+\section{Page 217 ABSA instruction}
+
+``SUMMARY: Final main memory address, Y -> C(A)0,23
+
+
+`` NOTES: If the absa instruction is executed in absolute mode, C(A) will be
+undefined.
+
+``Attempted execution in normal or BAR modes causes an illegal procedure
+fault.''
+
+Summary: Absolute mode: dosen't work. Normal mode: Illegal. BAR mode: Illegal.
+
+What's it good for? Absolutely nothing.
+
+\section{Page 102 STC2 instruction}
+
+The text only defines the high half of C(Y); it does not specify if the low half is set to zero, the IR, or left unchanged.
+
+\section{Page 204 SCU instruction}
+
+The text only defines the behavior of the SCU instruction during fault/interrupt processing: it saves the safe-stored CU data.
+
+The T\&D tape uses the SCU instruction during normal processing, and apparently
+expects the instruction to save the current state.
 
 \end{document}
