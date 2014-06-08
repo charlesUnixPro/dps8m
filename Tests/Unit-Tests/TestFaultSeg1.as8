@@ -390,6 +390,52 @@ t15_pass:
 t16_pass:
 	msg	msg_test_ok
 
+" Test 17: increment address, decrement tally
+
+	msg	msg_test17
+
+	bool	t17_data,456013001
+
+	" Initialize the indirect word
+
+	lda	t17_p1_init
+	sta	t17_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t17_p1, id	"t17_p1 -> t17_a1
+
+	cmpa	t17_a1
+	tze	t17_pass
+	dis	*
+
+t17_pass:
+	msg	msg_test_ok
+
+" Test 18: increment address, decrement tally, continue
+
+	msg	msg_test18
+
+	bool	t18_data,456013001
+
+	" Initialize the indirect word
+
+	lda	t18_p1_init
+	sta	t18_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t18_p1, idc	"t18_p1[1] -> t18_p2 -> t18_a1
+
+	cmpa	t18_a1
+	tze	t18_pass
+	dis	*
+
+t18_pass:
+	msg	msg_test_ok
+
 "
 " done with tests
 "
@@ -432,6 +478,12 @@ t15_p1_init:
 
 t16_p1_init:
 	vfd	18/t16_p2, 12/0, 6/TM_RI	" initial tally 0
+
+t17_p1_init:
+	vfd	18/t17_a1, 12/0, 6/0	" initial tally 0
+
+t18_p1_init:
+	vfd	18/t18_p2, 12/0, 6/TM_RI	" initial tally 0
 
 mme_enable:
 	oct	0
@@ -502,6 +554,14 @@ msg_test15:
 
 msg_test16:
 	aci	'Test 16 R,dic ...\n\0\0'
+	oct	0
+
+msg_test18:
+	aci	'Test 18 R,idc ...\n\0\0'
+	oct	0
+
+msg_test17:
+	aci	'Test 17 R,id ...\n\0\0'
 	oct	0
 
 msg_main_entry:
@@ -587,6 +647,14 @@ t15_p1:	oct	0	" Initialized to t15_p1_init in test
 
 t16_p1:	oct	0	" Initialized to t16_p1_init in test
 
+" Test 17
+
+t17_p1:	oct	0	" Initialized to t17_p1_init in test
+
+" Test 18
+
+t18_p1:	oct	0	" Initialized to t18_p1_init in test
+
 "
 " Page 2: double indirect words
 "
@@ -601,6 +669,10 @@ t3_p2:	arg	t3_a1
 
 	arg	t16_a1
 t16_p2:	oct	0
+
+" Test 18
+
+t18_p2:	arg	t18_a1
 
 "
 " Page 3: data
@@ -678,4 +750,12 @@ t15_a1:	oct	0	" DIC will back up one word to the data
 " Test 16
 
 t16_a1:	dec	t16_data
+
+" Test 17
+
+t17_a1:	dec	t17_data
+
+" Test 18
+
+t18_a1:	dec	t18_data
 
