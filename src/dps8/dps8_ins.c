@@ -748,13 +748,20 @@ restart_1:
    
     traceInstruction ();
 
-    //setupForOperandRead ();
+    // This must not happen on instruction restart
+    if (! (cu . IR & I_MIIF))
+      {
+        if (! ci -> a)
+          {
+            TPR.TRR = PPR.PRR;
+            TPR.TSR = PPR.PSR;
+          }
+      }
 
     if (info -> ndes > 0)
       {
         for(int n = 0; n < info -> ndes; n += 1)
           {
-            //setupForOperandRead ();
             Read (PPR . IC + 1 + n, & ci -> e . op [n], OPERAND_READ, 0); // I think.
           }
       }
