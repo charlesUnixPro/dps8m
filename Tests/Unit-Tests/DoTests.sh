@@ -47,7 +47,7 @@ BASE=../../src/
 DPS8=${BASE}/dps8/dps8
 AS8=${BASE}/as8+/as8+
 
-SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect TestMpy TestBugs TestConsole test_20184.ini test_t4d_b.2.ini"
+SRC="TestAppendA TestCSR TestAppend TestString TestFP TestEIS TestFXE TestAddrMods TestIndirect TestMpy TestBugs TestConsole TestFault test_20184.ini test_t4d_b.2.ini"
 
 
 #EPOCH=$(date -j -f "%a %b %d %T %Z %Y" "`date`" "+%s")
@@ -121,7 +121,7 @@ do
 	TEST="$VARIABLE"."$EPOCH"
 
 #    $AS8 -Isrc src/"$VARIABLE".as8 -o"$VARIABLE".o8
-	"$DPS8" "$VARIABLE" | ./tidy > $TEST
+	"$DPS8" "$VARIABLE" | ./tidy | tee  $TEST
         ./tidy <  "$VARIABLE".out >  "$VARIABLE".out.tidy
 	xxdiff -D -w $TEST "$VARIABLE".out.tidy
     [ -z "$dont_remove" ] && rm $TEST "$VARIABLE".out.tidy
