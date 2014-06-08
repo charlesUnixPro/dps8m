@@ -1,6 +1,6 @@
 " copied from seg1, since we don't have a linker
-	equ	t5_data,567005001
-	equ	t6_data,678006001
+	bool	t5_data,567005001
+	bool	t6_data,670006001
 	
 t6_p2:	arg	t6_a1
 

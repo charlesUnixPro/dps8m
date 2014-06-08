@@ -9,6 +9,8 @@
 	emcall	21
 	endm
 
+	equ	MBZ, 0
+
 main:
 	msg	msg_main_entry
 
@@ -41,7 +43,7 @@ run_tests:
 " Test 1: simple direct R,n
 
 	msg	msg_test1
-	equ	t1_data,123001001
+	bool	t1_data,123001001
 
 	lda	=0,dl
 
@@ -58,7 +60,7 @@ t1_pass:
 
 	msg	msg_test2
 
-	equ	t2_data,234002001
+	bool	t2_data,234002001
 
 	lda	=0,dl
 
@@ -76,7 +78,7 @@ t2_pass:
 
 	msg	msg_test3
 
-	equ	t3_data,345003001
+	bool	t3_data,345003001
 
 	lda	=0,dl
 
@@ -93,7 +95,7 @@ t3_pass:
 
 	msg	msg_test4
 
-	equ	t4_data,456004001
+	bool	t4_data,456004001
 
 	lda	=0,dl
 	ldx3	=1,du
@@ -111,7 +113,7 @@ t4_pass:
 
 	msg	msg_test5
 
-	equ	t5_data,567005001
+	bool	t5_data,567005001
 
 	lda	=0,dl
 
@@ -128,7 +130,7 @@ t5_pass:
 
 	msg	msg_test6
 
-	equ	t6_data,678006001
+	bool	t6_data,670006001
 
 	lda	=0,dl
 
@@ -138,14 +140,101 @@ t5_pass:
 	cmpa	t6_a1
 	tze	t6_pass
 	dis	*
+
 t6_pass:
 	msg	msg_test_ok
+
+" Test 7: subtract delta
+
+	msg	msg_test7
+
+	bool	t7_data,701007001
+
+	" Initailize the indirect word
+
+	lda	t7_p1_init
+	sta	t7_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t7_p1, sd	"t7_p1[-1] -> t7_a1
+
+	cmpa	t7_a1-1
+	tze	t7_pass
+	dis	*
+
+t7_pass:
+	msg	msg_test_ok
+
+" Test 8: sequence character reverse, no addr change
+
+	msg	msg_test8
+
+	bool	t8_data,10
+
+	" Initailize the indirect word
+
+	lda	t8_p1_init
+	sta	t8_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t8_p1, scr	"t8_p1[-1] -> t8_a1
+
+	cmpa	t8_data, dl
+	tze	t8_pass
+	dis	*
+
+t8_pass:
+	msg	msg_test_ok
+
+
+" Test 9: sequence character reverse, addr change
+
+	msg	msg_test9
+
+	bool	t9_data,10
+
+	" Initailize the indirect word
+
+	lda	t9_p1_init
+	sta	t9_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t9_p1, scr	"t9_p1[-1] -> t9_a1
+
+	cmpa	t9_data, dl
+	tze	t9_pass
+	dis	*
+
+t9_pass:
+	msg	msg_test_ok
+
+
 
 "
 " done with tests
 "
 
 	tra	0,2
+
+t7_p1_init:
+	vfd	18/t7_a1, 12/0, 6/1	" initial tally 0, delta 1
+
+	equ	TB6, 0
+	equ	TB9, 1
+	
+t8_p1_init:
+	" initial tally 0, 9-bit chars, start at character 3
+	vfd	18/t8_a1, 12/0, 1/TB9, 2/MBZ, 3/3
+
+t9_p1_init:
+	" initial tally 0, 9-bit chars, start at character 0
+	vfd	18/t9_a1, 12/0, 1/TB9, 2/MBZ, 3/0
 
 mme_enable:
 	oct	0
@@ -176,6 +265,18 @@ msg_test5:
 
 msg_test6:
 	aci	'Test 6 R,*seg, * ...\n\0\0'
+	oct	0
+
+msg_test7:
+	aci	'Test 7 R,sd ...\n\0\0'
+	oct	0
+
+msg_test8:
+	aci	'Test 8 R,scr ...\n\0\0'
+	oct	0
+
+msg_test9:
+	aci	'Test 9 R,scr w/addr change ...\n\0\0'
 	oct	0
 
 msg_main_entry:
@@ -221,15 +322,31 @@ t5_p1:	its	2,1024	" t5_a1 is at offset 1024 in seg 2.
 	even
 t6_p1:	its	2,0,*	" t6_p2 is at offset 0 in seg 2.
 
-" Page 2: double indirect words
+" Test 7
 
-org	2*1024
+t7_p1:	oct	0	" Initialized to t7_p1_init in test
+
+" Test 8
+
+t8_p1:	oct	0	" Initialized to t8_p1_init in test
+
+" Test 9
+
+t9_p1:	oct	0	" Initialized to t9_p1_init in test
+
+"
+" Page 2: double indirect words
+"
+
+	org	2*1024
 
 " Test 3
 
 t3_p2:	arg	t3_a1
 
+"
 " Page 3: data
+"
 
 	org	3*1024
 
@@ -258,4 +375,19 @@ t5_a1:	dec	t5_data	" This is not actually the data read by test 5 -- it
 
 t6_a1:	dec	t6_data	" This is not actually the data read by test 6 -- it
 			" is over on seg 2.
+
+" Test 7
+
+	dec	t7_data
+t7_a1:	oct	0	" subtract delta will back up one word to the data
+
+" Test 8
+
+t8_a1:	vfd	9/-1, 9/-1, 9/t8_data, 9/-1
+
+" Test 9
+	
+	vfd	9/-1, 9/-1, 9/-1, 9/t9_data
+t9_a1:	vfd	9/-1, 9/-1, 9/-1, 9/-1
+
 
