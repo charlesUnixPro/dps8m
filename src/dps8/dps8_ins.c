@@ -4405,10 +4405,22 @@ static t_stat DoBasicInstruction (void)
             return STOP_UNIMP;
 
         case 0657:  ///< scu
-            // No; the SCU command saves the safe store, not the CU
-            //scu2words (Yblock8);
-            for (int i = 0; i < 8; i ++)
-              Yblock8 [i] = scu_data [i];
+            // AL-39 defines the behaivor of SCU during fault/interrupt
+            // processing, but not otherwise.
+            // The T&D tape uses SCU during normal processing, and apparently
+            // expects the current CU state to be saved.
+
+            if (cpu . cycle == EXEC_cycle)
+              {
+                // T&D behavior
+                scu2words (Yblock8);
+              }
+            else
+              {
+                // AL-39 behavior
+                for (int i = 0; i < 8; i ++)
+                  Yblock8 [i] = scu_data [i];
+              }
             break;
             
         case 0154:  ///< sdbr
