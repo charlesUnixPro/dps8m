@@ -50,6 +50,7 @@ typedef uint8       word6;
 typedef uint8       word8;
 typedef int8        word8s; // signed 8-bit quantity
 typedef uint16      word9;
+typedef uint16      word10;
 typedef uint16      word12;
 typedef uint16      word14;
 typedef uint16      word15;

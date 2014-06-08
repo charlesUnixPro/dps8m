@@ -315,6 +315,105 @@ void cu_safe_restore (void)
     words2scu (scu_data);
   }
 
+static void du2words (word36 * words)
+  {
+    memset (words, 0, 8 * sizeof (* words));
+
+    // Word 0
+
+    words [0] = setbits36 (        0,  9,  1, du . Z);
+    words [0] = setbits36 (words [0], 10,  1, du . NOP);
+
+    // Word 1
+
+    // Word 2
+
+    words [2] = setbits36 (        0, 24,  1, du . D1_PTR);
+    words [2] = setbits36 (words [2], 25,  2, du . TA1);
+    words [2] = setbits36 (words [2], 31,  1, du . F1);
+    words [2] = setbits36 (words [2], 32,  1, du . A1);
+
+    // Word 3
+
+    words [3] = setbits36 (        0,  9,  1, du . LEVEL1);
+    words [3] = setbits36 (words [3], 12, 24, du . D1_RES);
+    
+    // Word 4
+
+    words [4] = setbits36 (        0, 24,  1, du . D2_PTR);
+    words [4] = setbits36 (words [4], 25,  2, du . TA2);
+    words [4] = setbits36 (words [4], 30,  1, du . R);
+    words [4] = setbits36 (words [4], 31,  1, du . F2);
+    words [4] = setbits36 (words [4], 32,  1, du . A2);
+
+    // Word 5
+
+    words [5] = setbits36 (        0,  9,  1, du . LEVEL2);
+    words [5] = setbits36 (words [5], 12, 24, du . D2_RES);
+
+    // Word 6
+
+    words [6] = setbits36 (        0, 24,  1, du . D3_PTR);
+    words [6] = setbits36 (words [6], 25,  2, du . TA3);
+    words [6] = setbits36 (words [6], 31,  1, du . F3);
+    words [6] = setbits36 (words [6], 32,  1, du . A3);
+    words [6] = setbits36 (words [6], 33,  3, du . JMP);
+
+    // Word 7
+
+    words [7] = setbits36 (        0, 12, 24, du . D3_RES);
+
+  }
+
+static void words2du (word36 * words)
+  {
+    memset (words, 0, 8 * sizeof (* words));
+
+    // Word 0
+
+    du . Z      = getbits36 (words [0],  9,  1);
+    du . NOP    = getbits36 (words [0], 10,  1);
+
+    // Word 1
+
+    // Word 2
+
+    du . D1_PTR = getbits36 (words [2], 24,  1);
+    du . TA1    = getbits36 (words [2], 25,  2);
+    du . F1     = getbits36 (words [2], 31,  1);
+    du . A1     = getbits36 (words [2], 32,  1);
+
+    // Word 3
+
+    du . LEVEL1 = getbits36 (words [3],  9,  1);
+    du . D1_RES = getbits36 (words [3], 12, 24);
+    
+    // Word 4
+
+    du . D2_PTR = getbits36 (words [4], 24,  1);
+    du . TA2    = getbits36 (words [4], 25,  2);
+    du . F2     = getbits36 (words [4], 31,  1);
+    du . A2     = getbits36 (words [4], 32,  1);
+
+    // Word 5
+
+    du . LEVEL2 = getbits36 (words [5],  9,  1);
+    du . D2_RES = getbits36 (words [5], 12, 24);
+
+    // Word 6
+
+    du . D3_PTR = getbits36 (words [6], 24,  1);
+    du . TA3    = getbits36 (words [6], 25,  2);
+    du . F3     = getbits36 (words [6], 31,  1);
+    du . A3     = getbits36 (words [6], 32,  1);
+    du . JMP    = getbits36 (words [6], 33,  3);
+
+    // Word 7
+
+    du . D3_RES = getbits36 (words [7], 12, 24);
+
+  }
+
 static char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
 
 
@@ -5219,7 +5318,8 @@ static t_stat DoEISInstruction (void)
             break;
             
         case 0467:  ///< lpl - Load Pointers and Lengths
-            return STOP_UNIMP;
+            words2du (Yblock8);
+            break;
 
         case 0660: ///< narn -  (G'Kar?) Numeric Descriptor to Address Register n
         case 0661: 
@@ -5394,21 +5494,11 @@ static t_stat DoEISInstruction (void)
                 
                 Yblock8[n] = arx;
             }
-            // XXX this will eventually be done automagically.....
-            //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
-            
             break;
             
         case 0447:  ///< spl - Store Pointers and Lengths
-#if 1
-// XXX Unimplemented; dummy handler here.
-            sim_debug (DBG_ERR, & cpu_dev, "XXX Faking SPL instruction\n");
-            memset (Yblock8, 0, sizeof (Yblock8));
-            sim_debug (DBG_ERR, & cpu_dev, "XXX Faking SPL instruction\n");
-            break;
-#else
-            return STOP_UNIMP;
-#endif
+            du2words (Yblock8);
+          break;
             
         // EIS - Address Register Special Arithmetic
         case 0500:  ///< a9bd        Add 9-bit Displacement to Address Register

@@ -936,6 +936,7 @@ switches_t switches;
 // the following two should probably be combined
 cpu_state_t cpu;
 ctl_unit_data_t cu;
+du_unit_data_t du;
 
 
 int stop_reason; // sim_instr return value for JMP_STOP
