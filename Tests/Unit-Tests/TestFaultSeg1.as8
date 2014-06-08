@@ -255,6 +255,62 @@ t10_pass:
 t11_pass:
 	msg	msg_test_ok
 
+" Test 12: sequence character, no addr change
+
+	msg	msg_test12
+
+	bool	t12_data,12
+
+	" Initialize the indirect word
+
+	lda	t12_p1_init
+	sta	t12_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t12_p1, sc	"t12_p1 -> t12_a1
+
+	cmpa	t12_data, dl
+	tze	t12_pass
+	dis	*
+
+t12_pass:
+	msg	msg_test_ok
+
+" Test 13: sequence character, addr change
+
+	msg	msg_test13
+
+	bool	t13_data,13
+	bool	t13_data2,14
+
+	" Initialize the indirect word
+
+	lda	t13_p1_init
+	sta	t13_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t13_p1, sc	"t13_p1[0] -> t13_a1
+
+	cmpa	t13_data, dl
+	tze	t13_pass1
+	dis	*
+
+t13_pass1:
+
+	unmap_memory
+	lda	t13_p1, sc	"t13_p1[1] -> t13_a1
+
+	cmpa	t13_data2, dl
+	tze	t13_pass
+	dis	*
+
+t13_pass:
+	msg	msg_test_ok
+
 "
 " done with tests
 "
@@ -278,6 +334,14 @@ t9_p1_init:
 t10_p1_init:
 	" initial tally 0, 9-bit chars, character 3
 	vfd	18/t10_a1, 12/0, 1/TB9, 2/MBZ, 3/3
+
+t12_p1_init:
+	" initial tally 0, 9-bit chars, start at character 3
+	vfd	18/t12_a1, 12/0, 1/TB9, 2/MBZ, 3/3
+
+t13_p1_init:
+	" initial tally 0, 9-bit chars, start at character 3
+	vfd	18/t13_a1, 12/0, 1/TB9, 2/MBZ, 3/3
 
 mme_enable:
 	oct	0
@@ -328,6 +392,14 @@ msg_test10:
 
 msg_test11:
 	aci	'Test 11 R,i ...\n\0\0'
+	oct	0
+
+msg_test12:
+	aci	'Test 12 R,sc ...\n\0\0'
+	oct	0
+
+msg_test13:
+	aci	'Test 13 R,sc w/addr change ...\n\0\0'
 	oct	0
 
 msg_main_entry:
@@ -393,6 +465,14 @@ t10_p1:	oct	0	" Initialized to t10_p1_init in test
 
 t11_p1:	vfd	18/t11_a1, 18/0
 
+" Test 12
+
+t12_p1:	oct	0	" Initialized to t12_p1_init in test
+
+" Test 13
+
+t13_p1:	oct	0	" Initialized to t13_p1_init in test
+
 "
 " Page 2: double indirect words
 "
@@ -457,5 +537,13 @@ t10_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t10_data
 
 t11_a1:	dec	t11_data
 
+" Test 12
+
+t12_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t12_data
+
+" Test 13
+
+t13_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t13_data
+       	vfd	9/t13_data2, 9/-1, 9/-1, 9/-1
 
 
