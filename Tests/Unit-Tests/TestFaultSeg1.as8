@@ -106,6 +106,7 @@ t3_pass:
 	cmpa	t4_a1
 	tze	t4_pass
 	dis	*
+
 t4_pass:
 	msg	msg_test_ok
 
@@ -436,6 +437,26 @@ t17_pass:
 t18_pass:
 	msg	msg_test_ok
 
+" Test 19: IR with indexing
+
+	msg	msg_test19
+
+	bool	t19_data,567014001
+
+	lda	=0,dl
+	ldx3	=1,du
+
+	unmap_memory
+	lda	t19_p1,*3 " t19_p1[1] -> t19_a1
+
+	cmpa	t19_a1+1
+	tze	t19_pass
+	dis	*
+
+t19_pass:
+	msg	msg_test_ok
+
+
 "
 " done with tests
 "
@@ -564,18 +585,26 @@ msg_test17:
 	aci	'Test 17 R,id ...\n\0\0'
 	oct	0
 
+msg_test19:
+	aci	'Test 19 R,*3 ...\n\0\0'
+	oct	0
+
 msg_main_entry:
 	aci	'Fault test main\n\0\0'
 	oct	0
+
 msg_dbg_mme_back:
 	aci	'back from mme\n\0\0'
 	oct	0
+
 msg_done:
 	aci	'Fault test done\n\0\0'
 	oct	0
+
 msg_without:
 	aci	'Running tests without page faulting\n\0\0'
 	oct	0
+
 msg_with:
 	aci	'Running tests with page faulting\n\0\0'
 	oct	0
@@ -654,6 +683,10 @@ t17_p1:	oct	0	" Initialized to t17_p1_init in test
 " Test 18
 
 t18_p1:	oct	0	" Initialized to t18_p1_init in test
+
+" Test 19
+
+t19_p1:	arg	t19_a1
 
 "
 " Page 2: double indirect words
@@ -758,4 +791,9 @@ t17_a1:	dec	t17_data
 " Test 18
 
 t18_a1:	dec	t18_data
+
+" Test 19
+
+t19_a1:	oct	-1
+	dec	t19_data
 
