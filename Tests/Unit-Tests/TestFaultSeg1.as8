@@ -150,7 +150,7 @@ t6_pass:
 
 	bool	t7_data,701007001
 
-	" Initailize the indirect word
+	" Initialize the indirect word
 
 	lda	t7_p1_init
 	sta	t7_p1
@@ -173,7 +173,7 @@ t7_pass:
 
 	bool	t8_data,10
 
-	" Initailize the indirect word
+	" Initialize the indirect word
 
 	lda	t8_p1_init
 	sta	t8_p1
@@ -197,7 +197,7 @@ t8_pass:
 
 	bool	t9_data,10
 
-	" Initailize the indirect word
+	" Initialize the indirect word
 
 	lda	t9_p1_init
 	sta	t9_p1
@@ -220,7 +220,7 @@ t9_pass:
 
 	bool	t10_data,11
 
-	" Initailize the indirect word
+	" Initialize the indirect word
 
 	lda	t10_p1_init
 	sta	t10_p1
@@ -237,7 +237,23 @@ t9_pass:
 t10_pass:
 	msg	msg_test_ok
 
+" Test 11: indirect
 
+	msg	msg_test11
+
+	bool	t11_data,012012001
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t11_p1, i	"t11_p1 -> t11_a1
+
+	cmpa	t11_a1
+	tze	t11_pass
+	dis	*
+
+t11_pass:
+	msg	msg_test_ok
 
 "
 " done with tests
@@ -310,6 +326,10 @@ msg_test10:
 	aci	'Test 10 R,ci ...\n\0\0'
 	oct	0
 
+msg_test11:
+	aci	'Test 11 R,i ...\n\0\0'
+	oct	0
+
 msg_main_entry:
 	aci	'Fault test main\n\0\0'
 	oct	0
@@ -368,6 +388,10 @@ t9_p1:	oct	0	" Initialized to t9_p1_init in test
 " Test 10
 
 t10_p1:	oct	0	" Initialized to t10_p1_init in test
+
+" Test 11
+
+t11_p1:	vfd	18/t11_a1, 18/0
 
 "
 " Page 2: double indirect words
@@ -428,5 +452,10 @@ t9_a1:	vfd	9/-1, 9/-1, 9/-1, 9/-1
 " Test 10
 
 t10_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t10_data
+
+" Test 11
+
+t11_a1:	dec	t11_data
+
 
 
