@@ -214,6 +214,29 @@ t8_pass:
 t9_pass:
 	msg	msg_test_ok
 
+" Test 10: character indirect
+
+	msg	msg_test10
+
+	bool	t10_data,11
+
+	" Initailize the indirect word
+
+	lda	t10_p1_init
+	sta	t10_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t10_p1, ci	"t10_p1 -> t10_a1
+
+	cmpa	t10_data, dl
+	tze	t10_pass
+	dis	*
+
+t10_pass:
+	msg	msg_test_ok
+
 
 
 "
@@ -235,6 +258,10 @@ t8_p1_init:
 t9_p1_init:
 	" initial tally 0, 9-bit chars, start at character 0
 	vfd	18/t9_a1, 12/0, 1/TB9, 2/MBZ, 3/0
+
+t10_p1_init:
+	" initial tally 0, 9-bit chars, character 3
+	vfd	18/t10_a1, 12/0, 1/TB9, 2/MBZ, 3/3
 
 mme_enable:
 	oct	0
@@ -277,6 +304,10 @@ msg_test8:
 
 msg_test9:
 	aci	'Test 9 R,scr w/addr change ...\n\0\0'
+	oct	0
+
+msg_test10:
+	aci	'Test 10 R,ci ...\n\0\0'
 	oct	0
 
 msg_main_entry:
@@ -334,6 +365,10 @@ t8_p1:	oct	0	" Initialized to t8_p1_init in test
 
 t9_p1:	oct	0	" Initialized to t9_p1_init in test
 
+" Test 10
+
+t10_p1:	oct	0	" Initialized to t10_p1_init in test
+
 "
 " Page 2: double indirect words
 "
@@ -389,5 +424,9 @@ t8_a1:	vfd	9/-1, 9/-1, 9/t8_data, 9/-1
 	
 	vfd	9/-1, 9/-1, 9/-1, 9/t9_data
 t9_a1:	vfd	9/-1, 9/-1, 9/-1, 9/-1
+
+" Test 10
+
+t10_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t10_data
 
 
