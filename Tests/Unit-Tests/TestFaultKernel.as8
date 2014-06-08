@@ -255,6 +255,7 @@ start:
 """
 
 mme_handler:
+	sreg	mme_sreg
 	sta	mme_arg
 
 	dmsg	msg_mme_entry
@@ -297,10 +298,15 @@ mark_done:
 
 " And return
 
+	lreg	mme_sreg
 	rcu	mme_scu
 
 mme_arg:
 	dec	0
+
+	eight
+mme_sreg:
+	bss	8
 
 """
 """ page fault handler
