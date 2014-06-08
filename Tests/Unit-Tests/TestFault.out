@@ -3,6 +3,8 @@
 3 (000003) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
+Debug output to "STDOUT"
+Debug output to "STDOUT" at Sun Jun  8 12:00:46 2014
 Debug set to break at cycle: 10000
 Fault test entry
 Fault test main
@@ -86,8 +88,11 @@ Test 19 R,*3 ...
 [1:000000 000376](1:000000 002024)(1:000000 006030)... ok
 Fault test done
 
+cpuCycles = 3774
 Master mode entry 1 faults = 42
 Directed fault 3 faults = 68
+TestFault-17> g 0
 
 Halt, IC: 000016 (000000000000)
 Goodbye
+Debug output disabled

@@ -113,7 +113,7 @@ dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	205340 + 0 => 000000000150
 	205340 + 23 => 000023000302
 	205340 + 24 => 000024000056
-This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 6/06 18:26 '
+This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 6/08 12:00 '
 BBG-1 ...
 ORSQ test 0 ... 0 (Should be 0)
 ORSQ test 1 ... 1234567 (Should be 1234567)

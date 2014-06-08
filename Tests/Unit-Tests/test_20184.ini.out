@@ -1,7 +1,7 @@
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 Debug output to "STDOUT"
-Debug output to "STDOUT" at Fri Jun  6 18:26:24 2014
+Debug output to "STDOUT" at Sun Jun  8 12:00:47 2014
 TAPE: unit is read only
 DBG(2)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
 DBG(3)> CPU FAULT: fault cycle [0]
@@ -381,8 +381,6 @@ CONSOLE:
 CONSOLE: init_empty_root: Begin rpv initialization. This will take some time.
 DBG(7350680)> CPU FAULT: Fault 17(021), sub 0(00), dfc N, 'PTW0.F == 0'
 DBG(7350681)> CPU FAULT: fault cycle [3675332]
-DBG(7350691)> CPU ERR: XXX Faking SPL instruction
-DBG(7350691)> CPU ERR: XXX Faking SPL instruction
 CONSOLE: ALERT
 CONSOLE: 0000.0  page_fault: fatal error at loc 8<
 CONSOLE: 0000.0  Multics not in operation; control process: Initializer.SysDaemon.z.
