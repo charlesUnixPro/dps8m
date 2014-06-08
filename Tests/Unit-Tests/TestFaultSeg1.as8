@@ -311,6 +311,39 @@ t13_pass1:
 t13_pass:
 	msg	msg_test_ok
 
+" Test 14: add delta
+
+	msg	msg_test14
+
+	bool	t14_data,123010001
+	bool	t14_data2,123010002
+
+	" Initialize the indirect word
+
+	lda	t14_p1_init
+	sta	t14_p1
+
+	lda	=0,dl
+
+	unmap_memory
+	lda	t14_p1, ad	"t14_p1[0] -> t14_a1
+
+	cmpa	t14_a1
+	tze	t14_pass1
+	dis	*
+
+t14_pass1:
+
+	unmap_memory
+	lda	t14_p1, ad	"t14_p1[1] -> t14_a2
+
+	cmpa	t14_a2
+	tze	t14_pass
+	dis	*
+
+t14_pass:
+	msg	msg_test_ok
+
 "
 " done with tests
 "
@@ -342,6 +375,9 @@ t12_p1_init:
 t13_p1_init:
 	" initial tally 0, 9-bit chars, start at character 3
 	vfd	18/t13_a1, 12/0, 1/TB9, 2/MBZ, 3/3
+
+t14_p1_init:
+	vfd	18/t14_a1, 12/0, 6/1	" initial tally 0, delta 1
 
 mme_enable:
 	oct	0
@@ -400,6 +436,10 @@ msg_test12:
 
 msg_test13:
 	aci	'Test 13 R,sc w/addr change ...\n\0\0'
+	oct	0
+
+msg_test14:
+	aci	'Test 14 R,ad ...\n\0\0'
 	oct	0
 
 msg_main_entry:
@@ -472,6 +512,10 @@ t12_p1:	oct	0	" Initialized to t12_p1_init in test
 " Test 13
 
 t13_p1:	oct	0	" Initialized to t13_p1_init in test
+
+" Test 14
+
+t14_p1:	oct	0	" Initialized to t14_p1_init in test
 
 "
 " Page 2: double indirect words
@@ -546,4 +590,8 @@ t12_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t12_data
 t13_a1:	vfd	9/-1, 9/-1, 9/-1, 9/t13_data
        	vfd	9/t13_data2, 9/-1, 9/-1, 9/-1
 
+" Test 14
+
+t14_a1:	dec	t14_data
+t14_a2:	dec	t14_data2
 
