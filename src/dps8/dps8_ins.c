@@ -569,6 +569,7 @@ void fetchOperands (void)
 }
 #endif
 
+#ifndef QUIET_UNUSED
 /*
  * initializes the TPR registers.
  */
@@ -582,6 +583,7 @@ static t_stat setupForOperandRead (void)
     }
     return SCPE_OK;
 }
+#endif
 
 static void traceInstruction (void)
   {

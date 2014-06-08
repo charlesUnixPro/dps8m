@@ -2003,7 +2003,7 @@ struct ic_hist_t {
     union {
         int intr;
         int fault;
-        instr_t instr;
+        //instr_t instr;
     } detail;
 };
 

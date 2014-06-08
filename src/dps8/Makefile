@@ -234,13 +234,32 @@ C_SRCS += ./dps8_iefp.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 
-H_SRCS  = dps8_addrmods.h  dps8_disk.h       dps8_iom.h          dps8_utils.h
-H_SRCS += dps8_append.h    dps8_eis.h        dps8_loader.h       utarray.h
-H_SRCS += dps8_bar.h       dps8_faults.h     dps8_math.h         uthash.h
-H_SRCS += dps8_clk.h       dps8.h            dps8_mt.h           utlist.h
-H_SRCS += dps8_console.h   dps8_hw_consts.h  dps8_opcodetable.h
-H_SRCS += dps8_cpu.h       dps8_iefp.h       dps8_scu.h
-H_SRCS += dps8_decimal.h   dps8_ins.h        dps8_sys.h
+H_SRCS  = dps8_addrmods.h
+H_SRCS += dps8_append.h
+H_SRCS += dps8_bar.h
+H_SRCS += dps8_clk.h
+H_SRCS += dps8_console.h
+H_SRCS += dps8_cpu.h
+H_SRCS += dps8_decimal.h
+H_SRCS += dps8_disk.h
+H_SRCS += dps8_eis.h
+H_SRCS += dps8_faults.h
+H_SRCS += dps8.h
+H_SRCS += dps8_hw_consts.h
+H_SRCS += dps8_iefp.h
+H_SRCS += dps8_ins.h
+H_SRCS += dps8_iom.h
+H_SRCS += dps8_loader.h
+H_SRCS += dps8_math.h
+H_SRCS += dps8_mt.h
+H_SRCS += dps8_opcodetable.h
+H_SRCS += dps8_scu.h
+H_SRCS += dps8_simh.h
+H_SRCS += dps8_sys.h
+H_SRCS += dps8_utils.h
+H_SRCS += utarray.h
+H_SRCS += uthash.h
+H_SRCS += utlist.h
 
 
 all: tags locallibs_then_dps8 
