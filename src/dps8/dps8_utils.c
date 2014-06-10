@@ -1094,8 +1094,7 @@ inline word36 getbits36(word36 x, uint i, uint n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-(int)i-(int)n+1;
     if (shift < 0 || shift > 35) {
-//        sim_debug (DBG_ERR, & cpu_dev, "getbits36: bad args (%012llo,i=%d,n=%d)\n", x, i, n);
-//        cancel_run(STOP_BUG);
+        sim_printf ("getbits36: bad args (%012llo,i=%d,n=%d)\n", x, i, n);
         return 0;
     } else
         return (x >> (unsigned) shift) & ~ (~0U << n);
@@ -1114,8 +1113,7 @@ inline word36 setbits36(word36 x, uint p, uint n, word36 val)
 {
     int shift = 36 - (int) p - (int) n;
     if (shift < 0 || shift > 35) {
-//        sim_debug (DBG_ERR, & cpu_dev, "setbits36: bad args (%012llo,pos=%d,n=%d)\n", x, p, n);
-//        cancel_run(STOP_BUG);
+        sim_printf ("setbits36: bad args (%012llo,pos=%d,n=%d)\n", x, p, n);
         return 0;
     }
     word36 mask = ~ (~0U<<n);  // n low bits on
@@ -1125,6 +1123,32 @@ inline word36 setbits36(word36 x, uint p, uint n, word36 val)
     word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
     return result;
 }
+
+
+// ============================================================================
+
+/*
+ * putbits36()
+ *
+ * Set a range of bits in a 36-bit word -- Sets the bits in the argument,
+ * starting at p set to the n lowest bits of val
+ */
+
+inline void putbits36 (word36 * x, uint p, uint n, word36 val)
+  {
+    int shift = 36 - (int) p - (int) n;
+    if (shift < 0 || shift > 35)
+      {
+        sim_printf ("putbits36: bad args (%012llo,pos=%d,n=%d)\n", * x, p, n);
+        return;
+      }
+    word36 mask = ~ (~0U << n);  // n low bits on
+    mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
+    // caller may provide val that is too big, e.g., a word with all bits
+    // set to one, so we mask val
+    * x = (* x & ~mask) | ((val & MASKBITS (n)) << (36 - p - n));
+    return;
+  }
 
 
 
