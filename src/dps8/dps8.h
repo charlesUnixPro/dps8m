@@ -47,6 +47,7 @@ typedef uint8       word3;
 typedef uint8       word4;
 typedef uint8       word5;
 typedef uint8       word6;
+typedef uint8       word7;
 typedef uint8       word8;
 typedef int8        word8s; // signed 8-bit quantity
 typedef uint16      word9;
@@ -195,7 +196,27 @@ typedef enum opc_flag
     PRIV_INS        = (1U << 17), // priveleged instruction
     NO_BAR          = (1U << 18), // not allowed in BAR mode
     NO_XEC          = (1U << 19), // can't be executed via xec/xed
-    NO_XED          = (1U << 20)  // No execution via XED instruction
+    NO_XED          = (1U << 20), // No execution via XED instruction
+
+// EIS operand types
+
+#define EOP_ALPHA 1U
+
+// bits 21, 22
+    EOP1_ALPHA      = (EOP_ALPHA << 21),
+    EOP1_MASK       = (3U << 21),
+#define EOP1_SHIFT 21
+
+// bits 23, 24
+    EOP2_ALPHA      = (EOP_ALPHA << 23),
+    EOP2_MASK       = (3U << 23),
+#define EOP2_SHIFT 23
+
+// bits 25, 26
+    EOP3_ALPHA      = (EOP_ALPHA << 25),
+    EOP3_MASK       = (3U << 25)
+#define EOP3_SHIFT 25
+
   } opc_flag;
 
 

@@ -17,6 +17,9 @@
  * };
 
  */
+
+#define _EIS_ NO_TAG | NO_XED | NO_RPT | IGN_B29
+
 struct opCode NonEISopcodes[01000] = {
     /* 000 */
     {NULL, 0, 0, 0},
@@ -624,7 +627,7 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
-    {"cmpc",  NO_TAG | NO_XED | NO_RPT | IGN_B29, 0, 2},
+    {"cmpc",  _EIS_ | EOP1_ALPHA | EOP2_ALPHA, 0, 2},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},

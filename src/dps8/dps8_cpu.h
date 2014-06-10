@@ -168,6 +168,15 @@ extern struct _par
     // sync. BITNO is the canonical value; access routines for AR [n] . BITNO
     // and . CHAR are provided
 
+    // AL-39 defines the AR format (by implication of the "data as stored by 
+    // SARn" as:
+    //  18/WORDNO, 2/CHAR, 4/BITNO, 12/0
+    //
+    // and define the PR register ("odd word of ITS pointer pair") as:
+    //  18/WORDNO, 6/BITNO
+    //
+    // We use this to deduce the BITNO <-> CHAR/BITNO mapping.
+
     word6   BITNO;  // The number of the bit within PRn . WORDNO that is the 
                     // first bit of the data item. Data items aligned on word 
                     // boundaries always have the value 0. Unaligned data
@@ -455,9 +464,9 @@ struct EISstruct
     int     BOLR;           // Boolean result control field
     
     int     MF [3];
-#define MF1     MF [0]      // Modification field for operand descriptor 1
-#define MF2     MF [1]      // Modification field for operand descriptor 2
-#define MF3     MF [2]      // Modification field for operand descriptor 3
+#define MF1    MF [0]      // Modification field for operand descriptor 1
+#define MF2    MF [1]      // Modification field for operand descriptor 2
+#define MF3    MF [2]      // Modification field for operand descriptor 3
 
     word18  YChar9 [3];
 #define YChar91 YChar9 [0]
@@ -510,9 +519,9 @@ struct EISstruct
 #define TN3 TN [2]
 
     int    TA [3];          // type alphanumeric
-#define TA_1 TA [0]
-#define TA_2 TA [1]
-#define TA_3 TA [2]
+#define TA1 TA [0]
+#define TA2 TA [1]
+#define TA3 TA [2]
 
     int    S [3];           // Sign and decimal type of number
 #define S1  S [0]
@@ -904,95 +913,128 @@ typedef struct
   {
     // Word 0
     
-                    //  0- 8  9   Zeros
-    word1 Z;        //     9  1   Z       All bit-string instruction results 
-                    //                      are zero
-    word1 NOP;      //    10  1   Ø       Negative overpunch found in 6-4 
-                    //                      expanded move
-    word24 CHTALLY; // 12-35 24   CHTALLY The number of characters examined 
-                    //                      by the scm, scmr, scd,
-                    //                      scdr, tct, or tctr instructions
-                    //                      (up to the interrupt or match)
+                      //  0- 8  9   Zeros
+    word1 Z;          //     9  1   Z       All bit-string instruction results 
+                      //                      are zero
+    word1 NOP;        //    10  1   Ø       Negative overpunch found in 6-4 
+                      //                      expanded move
+    word24 CHTALLY;   // 12-35 24   CHTALLY The number of characters examined 
+                      //                      by the scm, scmr, scd,
+                      //                      scdr, tct, or tctr instructions
+                      //                      (up to the interrupt or match)
 
     // Word 1
 
-                    //  0-35 26   Zeros
+                      //  0-35 26   Zeros
 
     // Word 2
 
-    word24 D1_PTR;  //  0-23 24   D1 PTR  Address of the last double-word
-                    //                      accessed by operand descriptor 1;
-                    //                      bits 17-23 (bit-address) valid
-                    //                      only for initial access
-                    //    24  1   Zero
-    word2 TA1;      // 25-26  2   TA1     Alphanumeric type of operand 
-                    //                      descriptor 1
-                    // 27-29  3   Zeroes
-                    //    30  1   I       Decimal unit interrupted flag; a 
-                    //                      copy of the mid-instruction
-                    //                      interrupt fault indicator
-    word1 F1;       //    31  1   F1      First time; data in operand 
-                    //                      descriptor 1 is valid
-    word1 A1;       //    32  1   A1      Operand descriptor 1 is active
-                    // 33-35  3   Zeroes
+    // word24 D1_PTR; //  0-23 24   D1 PTR  Address of the last double-word
+                      //                      accessed by operand descriptor 1;
+                      //                      bits 17-23 (bit-address) valid
+                      //                      only for initial access
+                      //    24  1   Zero
+    // word2 TA1;     // 25-26  2   TA1     Alphanumeric type of operand 
+                      //                      descriptor 1
+                      // 27-29  3   Zeroes
+                      //    30  1   I       Decimal unit interrupted flag; a 
+                      //                      copy of the mid-instruction
+                      //                      interrupt fault indicator
+    word1 F1;         //    31  1   F1      First time; data in operand 
+                      //                      descriptor 1 is valid
+    word1 A1;         //    32  1   A1      Operand descriptor 1 is active
+                      // 33-35  3   Zeroes
 
     // Word 3
 
-    word10 LEVEL1;  //  0- 9 10   LEVEL 1 Difference in the count of characters 
-                    //                      loaded into the processor and 
-                    //                      characters not acted upon
-    word24 D1_RES;  // 12-35 24   D1 RES  Count of characters remaining in
-                    //                      operand descriptor 1
+    word10 LEVEL1;    //  0- 9 10   LEVEL 1 Difference in the count of 
+                      //                      characters loaded into the and 
+                      //                      processor characters not acted 
+                      //                      upon
+    // word24 D1_RES; // 12-35 24   D1 RES  Count of characters remaining in
+                      //                      operand descriptor 1
 
     // Word 4
 
-    word24 D2_PTR;  //  0-23 24   D2 PTR  Address of the last double-word 
-                    //                      accessed by operand descriptor 2;
-                    //                      bits 17-23 (bit-address) valid
-                    //                      only for initial access
-                    //    24  1   Zero
-    word2 TA2;      // 25-26  2   TA2     Alphanumeric type of operand 
-                    //                      descriptor 2
-                    // 27-29  3   Zeroes
-    word1 R;        //    30  1   R       Last cycle performed must be repeated
-    word1 F2;       //    31  1   F2      First time; data in operand 
-                    //                      descriptor 2 is valid
-    word1 A2;       //    32  1   A2      Operand descriptor 2 is active
-                    // 33-35  3   Zeroes
+    // word24 D2_PTR; //  0-23 24   D2 PTR  Address of the last double-word 
+                      //                      accessed by operand descriptor 2;
+                      //                      bits 17-23 (bit-address) valid
+                      //                      only for initial access
+                      //    24  1   Zero
+    // word2 TA2;     // 25-26  2   TA2     Alphanumeric type of operand 
+                      //                      descriptor 2
+                      // 27-29  3   Zeroes
+    word1 R;          //    30  1   R       Last cycle performed must be 
+                      //                    repeated
+    word1 F2;         //    31  1   F2      First time; data in operand 
+                      //                      descriptor 2 is valid
+    word1 A2;         //    32  1   A2      Operand descriptor 2 is active
+                      // 33-35  3   Zeroes
 
     // Word 5
 
-    word10 LEVEL2; //  0- 9 10   LEVEL 2 Same as LEVEL 1, but used mainly 
-                   //                      for OP 2 information
-    word24 D2_RES; // 12-35 24   D2 RES  Count of characters remaining in
-                   //                      operand descriptor 2
+    word10 LEVEL2;    //  0- 9 10   LEVEL 2 Same as LEVEL 1, but used mainly 
+                      //                      for OP 2 information
+    // word24 D2_RES; // 12-35 24   D2 RES  Count of characters remaining in
+                      //                      operand descriptor 2
 
     // Word 6
 
-    word24 D3_PTR;  //  0-23 24   D3 PTR  Address of the last double-word 
-                    //                      accessed by operand descriptor 3;
-                    //                      bits 17-23 (bit-address) valid
-                    //                      only for initial access
-                    //    24  1   Zero
-    word2 TA3;      // 25-26  2   TA3     Alphanumeric type of operand 
-                    //                      descriptor 3
-                    // 27-29  3   Zeroes
-                    //    30  1   R       Last cycle performed must be repeated
-                    //                    [XXX: what is the difference between
-                    //                     this and word4.R]
-    word1 F3;       //    31  1   F3      First time; data in operand 
-                    //                      descriptor 3 is valid
-    word1 A3;       //    32  1   A3      Operand descriptor 3 is active
-    word1 JMP;      // 33-35  3   JMP     Descriptor count; number of words to 
-                    //                      skip to find the next
-                    //                      instruction following this 
-                    //                      multiword instruction
+    // word24 D3_PTR; //  0-23 24   D3 PTR  Address of the last double-word 
+                      //                      accessed by operand descriptor 3;
+                      //                      bits 17-23 (bit-address) valid
+                      //                      only for initial access
+                      //    24  1   Zero
+    // word2 TA3;     // 25-26  2   TA3     Alphanumeric type of operand 
+                      //                      descriptor 3
+                      // 27-29  3   Zeroes
+                      //    30  1   R       Last cycle performed must be 
+                      //                      repeated
+                      //                    [XXX: what is the difference between
+                      //                      this and word4.R]
+    word1 F3;         //    31  1   F3      First time; data in operand 
+                      //                      descriptor 3 is valid
+    word1 A3;         //    32  1   A3      Operand descriptor 3 is active
+    word1 JMP;        // 33-35  3   JMP     Descriptor count; number of words 
+                      //                      to skip to find the next
+                      //                      instruction following this 
+                      //                      multiword instruction
 
     // Word 7
 
-                    //  0-12 12   Zeroes
-    word24 D3_RES;  // 12-35 24   D3 RES  Count of characters remaining in
-                    //                      operand descriptor 3
+                      //  0-12 12   Zeroes
+    // word24 D3_RES; // 12-35 24   D3 RES  Count of characters remaining in
+                      //                      operand descriptor 3
+
+    // Fields from above reorganized for generality
+    word2 TA [3];
+
+// D_PTR is a word24 divided into a 18 bit address, and a 6-bit bitno/char 
+// field
+
+//    word24 D_PTR [3];
+//#define D1_PTR D_PTR [0]
+//#define D2_PTR D_PTR [1]
+//#define D3_PTR D_PTR [2]
+    word18 D_PTR_W [3];
+#define D1_PTR_W D_PTR_W [0]
+#define D2_PTR_W D_PTR_W [1]
+#define D3_PTR_W D_PTR_W [2]
+    word6 D_PTR_B [3];
+#define D1_PTR_B D_PTR_B [0]
+#define D2_PTR_B D_PTR_B [1]
+#define D3_PTR_B D_PTR_B [2]
+
+    word24 /* D_RES */ N [3];
+#define D_RES N
+#define D1_RES N [0]
+#define D2_RES N [1]
+#define D3_RES N [2]
+
+    // Working storage for EIS instruction processing.
+
+    // These values must be restored on instruction restart
+    word7 MF [3]; // Modifier fields for each instruction.
 
   } du_unit_data_t;
 

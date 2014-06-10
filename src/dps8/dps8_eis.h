@@ -1,3 +1,4 @@
+void doEIS_CAF (void);
 void setupOperandDescriptor(int k, EISstruct *e);
 void parseNumericOperandDescriptor(int k, EISstruct *e);
 void EISwrite49(EISaddr *p, int *pos, int tn, int c49);

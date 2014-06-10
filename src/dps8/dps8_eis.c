@@ -15,6 +15,8 @@
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
 
+static word36 getMFReg (int n, bool RType);
+
 struct MOPstruct
 {
     char *mopName;             // name of microoperation
@@ -22,6 +24,441 @@ struct MOPstruct
 };
 
 
+static void packCharBit (word6 * D_PTR_B, word3 TAk, uint effCHAR, uint effBITNO)
+  {
+    switch (TAk)
+      {
+        case CTA4:
+          // CHARNO 0-7, BITNO 0-3
+          * D_PTR_B = effCHAR * 4 + effBITNO;
+        case CTA6:
+          // CHARNO 0-5, BITNO 0-5
+          * D_PTR_B = effCHAR * 6 + effBITNO;
+        case CTA9:
+          // CHARNO 0-3, BITNO 0-8
+          * D_PTR_B = effCHAR * 9 + effBITNO;
+        //default:
+          //doFault (illproc_fault, 0, "illegal TAk");
+      }
+  }
+
+static void unpackCharBit (word6 D_PTR_B, word3 TAk, uint * effCHAR, uint * effBITNO)
+  {
+    switch (TAk)
+      {
+        case CTA4:
+          // CHARNO 0-7, BITNO 0-3
+          // * D_PTR_B = effCHAR * 4 + effBITNO;
+          * effCHAR = D_PTR_B / 4;
+          * effBITNO = D_PTR_B % 4;
+        case CTA6:
+          // CHARNO 0-5, BITNO 0-5
+          // * D_PTR_B = effCHAR * 6 + effBITNO;
+          * effCHAR = D_PTR_B / 6;
+          * effBITNO = D_PTR_B % 6;
+        case CTA9:
+          // CHARNO 0-3, BITNO 0-8
+          // * D_PTR_B = effCHAR * 9 + effBITNO;
+          * effCHAR = D_PTR_B / 9;
+          * effBITNO = D_PTR_B % 9;
+        //default:
+          //doFault (illproc_fault, 0, "illegal TAk");
+      }
+  }
+
+//
+// 5.2.10.5  Operand Descriptor Address Preparation Flowchart
+//
+// A flowchart of the operations involved in operand descriptor address
+// preparation is shown in Figure 5-2. The chart depicts the address
+// preparation for operand descriptor 1 of a multiword instruction as described
+// by modification field 1 (MF1). A similar type address preparation would be
+// carried out for each operand descriptor as specified by its MF code.
+//
+//    (Bull Nova 9000 pg 5-40  67 A2 RJ78 REV02)
+//
+// 1. The multiword instruction is obtained from memory.
+//
+// 2. The indirect (ID) bit of MF1 is queried to determine if the descriptor
+// for operand 1 is present or is an indirect word.
+//
+// 3. This step is reached only if an indirect word was in the operand
+// descriptor location. Address modification for the indirect word is now
+// performed. If the AR bit of the indirect word is 1, address register
+// modification step 4 is performed.
+//
+// 4. The y field of the indirect word is added to the contents of the
+// specified address register.
+//
+// 5. A check is now made to determine if the REG field of the indirect word
+// specifies that a register type modification be performed.
+//
+// 6. The indirect address as modified by the address register is now modified
+// by the contents of the specified register, producing the effective address
+// of the operand descriptor.
+//
+// 7. The operand descriptor is obtained from the location determined by the
+// generated effective address in item 6.
+//
+// 8. Modification of the operand descriptor address begins. This step is
+// reached directly from 2 if no indirection is involved. The AR bit of MF1 is
+// checked to determine if address register modification is specified.
+//
+// 9. Address register modification is performed on the operand descriptor as
+// described under "Address Modification with Address Registers" above. The
+// character and bit positions of the specified address register are used in
+// one of two ways, depending on the type of operand descriptor, i.e., whether
+// the type is a bit string, a numeric, or an alphanumeric descriptor.
+//
+// 10. The REG field of MF1 is checked for a legal code. If DU is specified in
+// the REG field of MF2 in one of the four multiword instructions (SCD, SCDR,
+// SCM, or SCMR) for which DU is legal, the CN field is ignored and the
+// character or characters are arranged within the 18 bits of the word address
+// portion of the operand descriptor.
+//
+// 11. The count contained in the register specified by the REG field code is
+// appropriately converted and added to the operand address.
+//
+// 12. The operand is retrieved from the calculated effective address location.
+//
+
+// CANFAULT
+static void setupOperandDesc (int k)
+  {
+// temp while buggy
+word15 saveTSR = TPR . TSR;
+word3 saveTRR = TPR . TRR;
+
+// XXX restart: only do this if the valid bit[k] is not set
+    DCDstruct * ci = & currentInstruction;
+
+sim_debug (DBG_TRACE, & cpu_dev, "CAC k %d IWB %012llo\n", k, cu . IWB);
+    word7 MFk;
+    uint opType;
+    switch (k)
+      {
+        case 1:
+          MFk = du . MF1 = bitfieldExtract36 (cu . IWB,  0, 7);
+          opType = ((ci -> info -> flags) & EOP1_MASK) >> EOP1_SHIFT;
+          break;
+        case 2:
+          MFk = du . MF2 = bitfieldExtract36 (cu . IWB, 18, 7);
+          opType = ((ci -> info -> flags) & EOP2_MASK) >> EOP2_SHIFT;
+          break;
+        case 3:
+          MFk = du . MF3 = bitfieldExtract36 (cu . IWB, 27, 7);
+          opType = ((ci -> info -> flags) & EOP3_MASK) >> EOP3_SHIFT;
+          break;
+      }
+    du . MF [k - 1] = MFk;
+
+    word36 operandDesc;
+
+    // CANFAULT
+    Read (PPR . IC + k, & operandDesc, OPERAND_READ, 0);
+sim_debug (DBG_TRACE, & cpu_dev, "CAC first operand desc [%d] %012llo\n", k, operandDesc);
+    // operandDesc is either the operand descriptor, or a pointer to it
+
+    if (MFk & MFkID)
+      {
+sim_debug (DBG_TRACE, & cpu_dev, "CAC indirect\n");
+        // Indirect descriptor control. If ID = 1 for Mfk, then the kth word
+        // following the instruction word is an indirect pointer to the operand
+        // descriptor for the kth operand; otherwise, that word is the operand
+        // descriptor.
+
+        // If MFk.ID = 1, then the kth word following an EIS multiword
+        // instruction word is not an operand descriptor, but is an indirect
+        // pointer to an operand descriptor and is interpreted as shown in
+        // Figure 4-5.
+
+        bool a = operandDesc & (1 << 6); 
+        word18 address;
+        word3 prn;
+        word15 offset;
+        if (a)
+          {
+            // A 3-bit pointer register number (n) and a 15-bit offset 
+            // relative to C (PRn . WORDNO)
+
+            prn = GET_PRN (operandDesc);
+            offset = GET_OFFSET (operandDesc);
+            address = (PR [prn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
+          }
+        else
+          {
+            prn = 0;
+            offset = 0;
+            address = GETHI (operandDesc);
+          }
+
+        // Address modifier for ADDRESS. All register modifiers except du and
+        // dl may be used. If the ic modifier is used, then ADDRESS is an
+        // 18-bit offset relative to value of the instruction counter for the
+        // instruction word. C(REG) is always interpreted as a word offset. 
+
+        word4 reg = GET_TD (operandDesc);
+        address += getMFReg (reg, true);
+        address &= MASK18;
+
+        if (a)
+          {
+            TPR . TRR = max3 (PR [prn] . RNR, TPR . TRR, PPR . PRR);
+            TPR . TSR = PR [prn] . SNR;
+          }
+        else
+          {
+            TPR . TRR = PPR . PRR;
+            TPR . TSR = PPR . PSR;
+          }
+
+        // CANFAULT
+        Read (address, & operandDesc, EIS_OPERAND_READ, a);
+      }
+    // operandDesc is now the operand descriptor
+
+    word18 address = GETHI (operandDesc);
+sim_debug (DBG_TRACE, & cpu_dev, "CAC first address [%d] %06o\n", k, address);
+    //du . D_PTR_W [k - 1] = address;
+
+//
+// cmpc
+//   descna  Y-charn1[(CN1)],N1
+//   descna  Y-charn2[(CN2)],N2 (TA2 ignored)
+//
+// scd, scdr
+//   descna  Y-charn1[(CN1)],N1
+//   descna  Y-charn2[(CN2)],N2 (TA2 ignored)
+//   arg     Y3[,tag]
+//
+// scm, scmr
+//   descna  Y-charn1[(CN1)],N1
+//   descna  Y-charn2[(CN2)]    (TA2, N  ignored)
+//   arg     Y3[,tag]
+//
+// tct, tctr
+//   descna  Y-charn1[(CN1)],N1
+//   arg     Ycharn92[,tag]
+//   arg     Y3[,tag]
+//
+// mlr, mrl
+//   descna  Y-charn1[(CN1)],N1
+//   descna  Y-charn2[(CN2)],N2
+//
+// mve
+//   descna  Y-charn1[(CN1)],N1
+//   desc9a  Y-char92[(CN2)],N2 (n must be 9)
+//   descna  Y-charn3[(CN3)],N3
+//
+// mvt
+//   descna  Y-charn1[(CN1)],N1
+//   descna  Y-charn2[(CN2)],N2
+//   arg     Y3[,tag]
+//
+// cmpn, mvn
+//   descn[fl,ls,ns,ts]  Y-charn1[(CN1)],N1,SF1   n=4 or 9)
+//   descn[fl,ls,ns,ts]  Y-charn2[(CN2)],N2,SF2   n=4 or 9)
+//
+// mvne
+//   descn[fl,ls,ns,ts]  Y-charn1[(CN1)],N1,SF1   n=4 or 9)
+//   desc9a  Y-char92[(CN2)],N2 (n must be 9)
+//   descna  Y-charn3[(CN3)],N3
+//
+// csl, csr, cmb, sztl, sztr, btd
+//   descb  Y-bit1[(BITNO1)],N1
+//   descb  Y-bit2[(BITNO2)],N2
+//   descn[fl,ls,ns,ts]  Y-charnk[(CNk],Nk,SFk   n=4 or 9)
+//
+// btd
+//   desc9a  Y-char91[(CN1)],N1 (n must be 9)
+//   descn[fl,ls,ns,ts]  Y-charn2[(CN2],N2,SF2   n=4 or 9)
+//     (btd forbids fl, but can handle that as IPR fault in instruction)
+//
+// dtb
+//   descn[fl,ls,ns,ts]  Y-charn1[(CN1],N1,SF1   n=4 or 9)
+//   desc9a  Y-char92[(CN2)],N2 (n must be 9)
+//     (dtb forbids fl, but can handle that as IPR fault in instruction)
+//
+// ad2d, sb2d, mp2d, dv2d
+//   descn[fl,ls,ns,ts]  Y-charn1[(CN1],N1,SF1   n=4 or 9)
+//   descn[fl,ls,ns,ts]  Y-charn2[(CN2],N2,SF2   n=4 or 9)
+//
+// ad3d, mp3d, dv3d
+//   descn[fl,ls,ns,ts]  Y-charn1[(CN1],N1,SF1   n=4 or 9)
+//   descn[fl,ls,ns,ts]  Y-charn2[(CN2],N2,SF2   n=4 or 9)
+//   descn[fl,ls,ns,ts]  Y-charn3[(CN3],N3,SF3   n=4 or 9)
+//
+// Special cases
+//
+//   BTD and DTB forbid DESCNFL, but that does affect operand
+//   parsing, and can be handled with an IPR fault in the instruction.
+//
+//   CMPC, SCD, SCDR, SCM and SCMR  use the value of TA1 for TA2.
+//
+//   SCD and SCDR ignore N2; I think that this does not require special 
+//   handling here.
+//   
+//   descna  Y-charnk[(CNk],Nk
+//   descna  Y-charnk[(CNk],Nk (TA2 ignored)
+//   desc9a  Y-char9k[(CNk],Nk (n must be 9)
+//   descna  Y-charnk[(CNk]    (TA2, N ignored)
+//   arg     Yk[,tag]
+//   descn[fl,ls,ns,ts]  Y-charnk[(CNk],Nk,SFk   n=4 or 9)
+//   descb  Y-bitk[(BITNOk)],Nk
+
+    // operand type specific processing:
+    //
+    //   ALPHA:    "Operand Descriptor Form" ADDRESS, CN, TA, N
+    //
+    //             "Pointer Register Form" WORDNO, BITNO, TAG
+    //             "Address Register Form" WORDNO, CHAR, BITNO, TAG
+    //   Anotag    Same as alpha, but TA is taken from TA1, and N is 
+    //               taken from N1
+    //   WORDP:    AR (or PR) with WORDNO/BIT 0
+    //   NUMERIC:  ADDRESS, CN, TN, S, SF, N
+    //   BIT:      ADDRESS, C, B, N
+// XXX btd op1 must be Y-char9; but there is no definition of
+// what happens if is different.
+
+    if (opType == EOP_ALPHA)
+      {
+        word8 ARn_CHAR = 0;
+        word6 ARn_BITNO = 0;
+
+        if (MFk & MFkAR)
+          {
+sim_debug (DBG_TRACE, & cpu_dev, "CAC MFkAR\n");
+            // If MKf contains AR then it Means Y-charn is not the memory 
+            // address of the data but is a reference to a pointer register 
+            // pointing to the data.
+
+            word3 arn = (address >> 15) & MASK3;
+            word15 offset = address & MASK15;
+            address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
+        
+            ARn_CHAR = GET_AR_CHAR (arn); // AR[n].CHAR;
+            ARn_BITNO = GET_AR_BITNO (arn); // AR[n].BITNO;
+sim_debug (DBG_TRACE, & cpu_dev, "arn %d offset %05o ARn.WORDNO %o06o\n", arn, offset, AR [arn] . WORDNO);
+          }
+
+        word3 CN = getbits36 (operandDesc, 18, 3); 
+        word2 TAk = getbits36 (operandDesc, 21, 2); 
+        du . TA [k - 1] = TAk;
+
+        if (MFk & MFkRL)
+          {
+sim_debug (DBG_TRACE, & cpu_dev, "CAC MFkRL\n");
+            int reg = GET_TD (operandDesc);
+            du . D_RES [k - 1] = getMFReg (reg, false);
+            switch (TAk)
+              {
+                case CTA4:
+                  du . D_RES [k - 1] &= 017777777; // 22-bits of length
+                  break;
+                case CTA6:
+                case CTA9:
+                  du . D_RES [k - 1] &= 07777777;  // 21-bits of length.
+                  break;
+                default:
+                  doFault (illproc_fault, 0, "illegal TAk");
+              }
+          }
+        else
+          {
+            du . D_RES [k - 1] = operandDesc & 07777;
+          }
+
+        int r = SIGNEXT18 ((word18) getMFReg (MFk & 017, true));
+    
+        // AL-39 implies, and RJ-76 say that RL and reg == IC is
+        // illegal; but it the emulator ignores RL if reg == IC,
+        // then that PL/I generated code in Multics works. 
+        // "Pragmatic debugging."
+
+        if (/*!(MFk & MFkRL) && */ (MFk & 017) == 4) // reg == IC ?
+          {
+            // The ic modifier is permitted in MFk.REG and 
+            // C (od)32,35 only if MFk.RL = 0, that is, if the 
+            // contents of the register is an address offset, 
+            // not the designation of a register containing the 
+            // operand length.
+            address += r;
+            r = 0;
+          }
+
+sim_debug (DBG_TRACE, & cpu_dev, "CAC second address [%d] %06o\n", k, address);
+
+        uint effBITNO;
+        uint effCHAR;
+        uint effWORDNO;
+  
+        // If seems that the effect address calcs given in AL39 p.6-27 are 
+        // not quite right.
+        // E.g. For CTA4/CTN4 because of the 4 "slop" bits you need to do 
+        // 32-bit calcs not 36-bit!
+
+        switch (TAk)
+          {
+            case CTA4:
+              effBITNO = 4 * (ARn_CHAR + 2*r + ARn_BITNO/4) % 2 + 1;
+              effCHAR = ((4 * CN + 9 * ARn_CHAR + 4 * r + ARn_BITNO) % 32) / 4;
+              effWORDNO = address + 
+                          (4 * CN + 9 * ARn_CHAR + 4 * r + ARn_BITNO) / 32;
+              effWORDNO &= AMASK;
+            
+              //e->YChar4[k-1] = e->effWORDNO;
+              //e->CN[k-1] = e->effCHAR;
+              break;
+            case CTA6:
+              effBITNO = (9 * ARn_CHAR + 6 * r + ARn_BITNO) % 9;
+              effCHAR = ((6 * CN + 9 * ARn_CHAR + 6 * r + ARn_BITNO) % 36) / 6;
+              effWORDNO = address + 
+                          (6 * CN + 9 * ARn_CHAR + 6 * r + ARn_BITNO) / 36;
+              effWORDNO &= AMASK;
+            
+              //e->YChar6[k-1] = e->effWORDNO;
+              //e->CN[k-1] = e->effCHAR;   // ??????
+              break;
+            case CTA9:
+              CN = (CN >> 1) & 03;  // XXX Do error checking
+            
+              effBITNO = 0;
+              effCHAR = (CN + ARn_CHAR + r) % 4;
+              effWORDNO = address +
+                          (9 * CN + 9 * ARn_CHAR + 9 * r + ARn_BITNO) / 36;
+              effWORDNO &= AMASK;
+            
+              //e->YChar9[k-1] = e->effWORDNO;
+              //e->CN[k-1] = e->effCHAR;   // ??????
+              break;
+          }
+    
+sim_debug (DBG_TRACE, & cpu_dev, "CAC third address [%d] %06o\n", k, effWORDNO);
+        du . D_PTR_W [k - 1] = effWORDNO;
+        packCharBit (& du . D_PTR_B [k - 1], TAk, effCHAR, effBITNO);
+      } // opType == EOP_ALPHA
+// temp  while buggy
+TPR . TSR = saveTSR;
+TPR . TRR = saveTRR;
+  }
+
+// CANFAULT
+void doEIS_CAF (void)
+  {
+    DCDstruct * ci = & currentInstruction;
+
+    int ndes = ci -> info -> ndes;
+    if (ndes != 2 && ndes != 3)
+      {
+        sim_printf ("Dazed and confused; ndes = %d\n", ndes);
+        return;
+      }
+
+    setupOperandDesc (1);
+    setupOperandDesc (2);
+    if (ndes == 3)
+      setupOperandDesc (3);
+  }
 
 // CANFAULT
 static void EISWrite(EISaddr *p, word36 data)
@@ -46,6 +483,28 @@ static void EISWrite(EISaddr *p, word36 data)
         Write (p->address, data, EIS_OPERAND_STORE, false); // write data
     }
 }
+
+static word36 myEISRead (int k)
+  {
+
+// Form effective word/char/bit
+//       address from
+//  Y, CN, C, B, C(PRn), C(r )
+
+    word36 data;
+    word7 MFk = du . MF [k - 1];
+#if 0
+    if (MFk & MFkAR)
+      {
+            // If MKf contains AR then it Means Y-charn is not the memory 
+            // address of the data but is a reference to a pointer register 
+            // pointing to the data.
+
+            word3 arn = (address >> 15) & MASK3;
+            word15 offset = address & MASK15;
+            address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
+#endif   
+  }
 
 // CANFAULT
 static word36 EISRead(EISaddr *p)
@@ -2887,7 +3346,7 @@ void mvne(DCDstruct *ins)
             break;
     }
 
-    e->dstTA = e->TA_3;    // type of chars in dst
+    e->dstTA = e->TA3;    // type of chars in dst
     e->dstCN = e->CN3;    // starting at char pos CN
     switch(e->dstTA)
     {
@@ -2906,8 +3365,8 @@ void mvne(DCDstruct *ins)
     }
 
     sim_debug (DBG_TRACEEXT, & cpu_dev,
-      "mvne N1 %d N2 %d N3 %d TN1 %d CN1 %d TA_3 %d CN3 %d\n",
-      e->N1, e->N2, e->N3, e->TN1, e->CN1, e->TA_3, e->CN3);
+      "mvne N1 %d N2 %d N3 %d TN1 %d CN1 %d TA3 %d CN3 %d\n",
+      e->N1, e->N2, e->N3, e->TN1, e->CN1, e->TA3, e->CN3);
 
     // 1. load sending string into inputBuffer
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
@@ -2952,7 +3411,7 @@ void mve(DCDstruct *ins)
     e->srcTally = e->N1;  // number of chars in src (max 63)
     e->dstTally = e->N3;  // number of chars in dst (max 63)
     
-    e->srcTA = e->TA_1;    // type of chars in src
+    e->srcTA = e->TA1;    // type of chars in src
     e->srcCN = e->CN1;    // starting at char pos CN
     switch(e->srcTA)
     {
@@ -2970,7 +3429,7 @@ void mve(DCDstruct *ins)
             break;
     }
     
-    e->dstTA = e->TA_3;    // type of chars in dst
+    e->dstTA = e->TA3;    // type of chars in dst
     e->dstCN = e->CN3;    // starting at char pos CN
     switch(e->dstTA)
     {
@@ -3051,7 +3510,7 @@ void mlr(DCDstruct *ins)
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -3067,7 +3526,7 @@ void mlr(DCDstruct *ins)
             break;
     }
     
-    switch(e->TA_2)
+    switch(e->TA2)
     {
         case CTA4:
             //e->dstAddr = e->YChar42;
@@ -3104,7 +3563,7 @@ void mlr(DCDstruct *ins)
       fill, fillT, e -> N1, e -> N2, e->ADDR1.address, e->ADDR2.address);
 
     // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved and the truncation indicator is set ON.
-    // If N1 < N2 and TA_2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
     //The user of string replication or overlaying is warned that the decimal unit addresses the main memory in unaligned (not on modulo 8 boundary) units of Y-block8 words and that the overlayed string, C(Y-charn2), is not returned to main memory until the unit of Y-block8 words is filled or the instruction completes.
     //If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
     //Attempted execution with the xed instruction causes an illegal procedure fault.
@@ -3114,7 +3573,7 @@ void mlr(DCDstruct *ins)
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     
-    bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA_1 == 1) && (e->TA_2 == 2); // (6-4 move)
+    bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
     bool bOvp = false;  // true when a negative overpunch character has been found @ N1-1 
 
@@ -3122,16 +3581,16 @@ void mlr(DCDstruct *ins)
     
     for(int i = 0 ; i < min(e->N1, e->N2); i += 1)
     {
-        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA_1); // get src char
-        int c = EISget469(&e->ADDR1, &e->srcCN, e->TA_1); // get src char
+        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
+        int c = EISget469(&e->ADDR1, &e->srcCN, e->TA1); // get src char
         int cout = 0;
         
-        if (e->TA_1 == e->TA_2) 
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA_1, c);
-            EISwrite469(&e->ADDR2, &e->dstCN, e->TA_1, c);
+        if (e->TA1 == e->TA2) 
+            //write469(e, &e->dstAddr, &e->dstCN, e->TA1, c);
+            EISwrite469(&e->ADDR2, &e->dstCN, e->TA1, c);
         else
         {
-            // If data types are dissimilar (TA_1 ≠ TA_2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
             cout = c;
             switch (e->srcSZ)
             {
@@ -3158,7 +3617,7 @@ void mlr(DCDstruct *ins)
                     break;
             }
 
-            // If N1 < N2, C(FILL)0 = 1, TA_1 = 1, and TA_2 = 2 (6-4 move), then C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a negative overpunch sign is found, then the minus sign character is placed in C(Y-charn2)N2-1; otherwise, a plus sign character is placed in C(Y-charn2)N2-1.
+            // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a negative overpunch sign is found, then the minus sign character is placed in C(Y-charn2)N2-1; otherwise, a plus sign character is placed in C(Y-charn2)N2-1.
             
             if (ovp && (i == e->N1-1))
             {
@@ -3166,14 +3625,14 @@ void mlr(DCDstruct *ins)
                 bOvp = isOvp(c, &on);
                 cout = on;      // replace char with the digit the overpunch represents
             }
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA_2, cout);
-            EISwrite469(&e->ADDR2, &e->dstCN, e->TA_2, cout);
+            //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cout);
+            EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cout);
         }
     }
     
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
     //    C(FILL) → C(Y-charn2)N2-i
-    // If N1 < N2 and TA_2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
 
     if (e->N1 < e->N2)
     {
@@ -3181,15 +3640,15 @@ void mlr(DCDstruct *ins)
             if (ovp && (i == e->N2-1))    // if there's an overpunch then the sign will be the last of the fill
             {
                 if (bOvp)   // is c an GEBCD negative overpunch? and of what?
-                    //write469(e, &e->dstAddr, &e->dstCN, e->TA_2, 015);  // 015 is decimal -
-                    EISwrite469(&e->ADDR2, &e->dstCN, e->TA_2, 015);  // 015 is decimal -
+                    //write469(e, &e->dstAddr, &e->dstCN, e->TA2, 015);  // 015 is decimal -
+                    EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, 015);  // 015 is decimal -
                 else
-                    //write469(e, &e->dstAddr, &e->dstCN, e->TA_2, 014);  // 014 is decimal +
-                    EISwrite469(&e->ADDR2, &e->dstCN, e->TA_2, 014);  // 014 is decimal +
+                    //write469(e, &e->dstAddr, &e->dstCN, e->TA2, 014);  // 014 is decimal +
+                    EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, 014);  // 014 is decimal +
             }
             else
-                //write469(e, &e->dstAddr, &e->dstCN, e->TA_2, fillT);
-                EISwrite469(&e->ADDR2, &e->dstCN, e->TA_2, fillT);
+                //write469(e, &e->dstAddr, &e->dstCN, e->TA2, fillT);
+                EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, fillT);
     }
 }
 
@@ -3264,10 +3723,10 @@ void mrl(DCDstruct *ins)
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
     
-    e->srcTA = e->TA_1;
-    e->dstTA = e->TA_2;
+    e->srcTA = e->TA1;
+    e->dstTA = e->TA2;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -3283,7 +3742,7 @@ void mrl(DCDstruct *ins)
             break;
     }
     
-    switch(e->TA_2)
+    switch(e->TA2)
     {
         case CTA4:
             //e->dstAddr = e->YChar42;
@@ -3329,7 +3788,7 @@ void mrl(DCDstruct *ins)
     }
     
     // If N1 > N2, then (N1-N2) leading characters of C(Y-charn1) are not moved and the truncation indicator is set ON.
-    // If N1 < N2 and TA_2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
     //The user of string replication or overlaying is warned that the decimal unit addresses the main memory in unaligned (not on modulo 8 boundary) units of Y-block8 words and that the overlayed string, C(Y-charn2), is not returned to main memory until the unit of Y-block8 words is filled or the instruction completes.
     //If T = 1 and the truncation indicator is set ON by execution of the instruction, then a truncation (overflow) fault occurs.
     //Attempted execution with the xed instruction causes an illegal procedure fault.
@@ -3339,7 +3798,7 @@ void mrl(DCDstruct *ins)
     
     SCF(e->N1 > e->N2, cu.IR, I_TRUNC);
     
-    bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA_1 == 1) && (e->TA_2 == 2); // (6-4 move)
+    bool ovp = (e->N1 < e->N2) && (fill & 0400) && (e->TA1 == 1) && (e->TA2 == 2); // (6-4 move)
     int on;     // number overpunch represents (if any)
     bool bOvp = false;  // true when a negative overpunch character has been found @ N1-1
    
@@ -3351,11 +3810,11 @@ void mrl(DCDstruct *ins)
         int c = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA); // get src char
         int cout = 0;
         
-        if (e->TA_1 == e->TA_2)
+        if (e->TA1 == e->TA2)
             EISwrite469r(&e->ADDR2, &newDstCN, e->dstTA, c);
         else
         {
-            // If data types are dissimilar (TA_1 ≠ TA_2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
             cout = c;
             switch (e->srcSZ)
             {
@@ -3382,7 +3841,7 @@ void mrl(DCDstruct *ins)
                     break;
             }
             
-            // If N1 < N2, C(FILL)0 = 1, TA_1 = 1, and TA_2 = 2 (6-4 move), then C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a negative overpunch sign is found, then the minus sign character is placed in C(Y-charn2)N2-1; otherwise, a plus sign character is placed in C(Y-charn2)N2-1.
+            // If N1 < N2, C(FILL)0 = 1, TA1 = 1, and TA2 = 2 (6-4 move), then C(Y-charn1)N1-1 is examined for a GBCD overpunch sign. If a negative overpunch sign is found, then the minus sign character is placed in C(Y-charn2)N2-1; otherwise, a plus sign character is placed in C(Y-charn2)N2-1.
             
             //if (ovp && (i == e->N1-1))
             if (ovp && (i == 0))    // since we're going backwards, we actually test the 1st char for overpunch
@@ -3397,7 +3856,7 @@ void mrl(DCDstruct *ins)
     
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
     //    C(FILL) → C(Y-charn2)N2-i
-    // If N1 < N2 and TA_2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
     
     if (e->N1 < e->N2)
     {
@@ -3461,10 +3920,10 @@ void mvt(DCDstruct *ins)
     e->srcCN = e->CN1;    // starting at char pos CN
     e->dstCN = e->CN2;    // starting at char pos CN
     
-    e->srcTA = e->TA_1;
-    e->dstTA = e->TA_2;
+    e->srcTA = e->TA1;
+    e->dstTA = e->TA2;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -3480,7 +3939,7 @@ void mvt(DCDstruct *ins)
             break;
     }
     
-    switch(e->TA_2)
+    switch(e->TA2)
     {
         case CTA4:
             //e->dstAddr = e->YChar42;
@@ -3534,15 +3993,15 @@ void mvt(DCDstruct *ins)
     // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
     // XXX handle, later. (Yeah, just like everything else hard.)
     //  Prepage Check in a Multiword Instruction
-    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA_1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
         
-    // TA_1              TRANSLATE TABLE SIZE
+    // TA1              TRANSLATE TABLE SIZE
     // 4-BIT CHARACTER      4 WORDS
     // 6-BIT CHARACTER     16 WORDS
     // 9-BIT CHARACTER    128 WORDS
     
     int xlatSize = 0;   // size of xlation table in words .....
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             xlatSize = 4;
@@ -3592,16 +4051,16 @@ void mvt(DCDstruct *ins)
     
     for(int i = 0 ; i < min(e->N1, e->N2); i += 1)
     {
-        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA_1); // get src char
-        int c = EISget469(&e->ADDR1, &e->srcCN, e->TA_1); // get src char
+        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
+        int c = EISget469(&e->ADDR1, &e->srcCN, e->TA1); // get src char
         int cidx = 0;
     
-        if (e->TA_1 == e->TA_2)
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA_1, xlate(xlatTbl, e->dstTA, c));
-            EISwrite469(&e->ADDR2, &e->dstCN, e->TA_1, xlate(xlatTbl, e->dstTA, c));
+        if (e->TA1 == e->TA2)
+            //write469(e, &e->dstAddr, &e->dstCN, e->TA1, xlate(xlatTbl, e->dstTA, c));
+            EISwrite469(&e->ADDR2, &e->dstCN, e->TA1, xlate(xlatTbl, e->dstTA, c));
         else
         {
-            // If data types are dissimilar (TA_1 ≠ TA_2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
+            // If data types are dissimilar (TA1 ≠ TA2), each character is high-order truncated or zero filled, as appropriate, as it is moved. No character conversion takes place.
             cidx = c;
             
             unsigned int cout = xlate(xlatTbl, e->dstTA, cidx);
@@ -3641,14 +4100,14 @@ void mvt(DCDstruct *ins)
                     break;
             }
             
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA_2, cout);
-            EISwrite469(&e->ADDR2, &e->dstCN, e->TA_2, cout);
+            //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cout);
+            EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cout);
         }
     }
     
     // If N1 < N2, then for i = N1+1, N1+2, ..., N2
     //    C(FILL) → C(Y-charn2)N2-i
-    // If N1 < N2 and TA_2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
+    // If N1 < N2 and TA2 = 2 (4-bit data) or 1 (6-bit data), then FILL characters are high-order truncated as they are moved to C(Y-charn2). No character conversion takes place.
     
     if (e->N1 < e->N2)
     {
@@ -3689,8 +4148,8 @@ void mvt(DCDstruct *ins)
 //        }
         
         for(int j = e->N1 ; j < e->N2 ; j += 1)
-            //write469(e, &e->dstAddr, &e->dstCN, e->TA_2, cfill);
-            EISwrite469(&e->ADDR2, &e->dstCN, e->TA_2, cfill);
+            //write469(e, &e->dstAddr, &e->dstCN, e->TA2, cfill);
+            EISwrite469(&e->ADDR2, &e->dstCN, e->TA2, cfill);
     }
 }
 
@@ -3747,7 +4206,7 @@ void scm(DCDstruct *ins)
     //   00...0 → C(Y3)0,11
     //   N1 → C(Y3)12,35
     
-    // Starting at location YC1, the L1 type TA_1 characters are masked and compared with the assumed type TA_1 character contained either in location YC2 or in bits 0-8 or 0-5 of the address field of operand descriptor 2 (when the REG field of MF2 specifies DU modification). The mask is right-justified in bit positions 0-8 of the instruction word. Each bit position of the mask that is a 1 prevents that bit position in the two characters from entering into the compare.
+    // Starting at location YC1, the L1 type TA1 characters are masked and compared with the assumed type TA1 character contained either in location YC2 or in bits 0-8 or 0-5 of the address field of operand descriptor 2 (when the REG field of MF2 specifies DU modification). The mask is right-justified in bit positions 0-8 of the instruction word. Each bit position of the mask that is a 1 prevents that bit position in the two characters from entering into the compare.
     // The masked compare operation continues until either a match is found or the tally (L1) is exhausted. For each unsuccessful match, a count is incremented by 1. When a match is found or when the L1 tally runs out, this count is stored right-justified in bits 12-35 of location Y3 and bits 0-11 of Y3 are zeroed. The contents of location YC2 and the source string remain unchanged. The RL bit of the MF2 field is not used.
     
     // The REG field of MF1 is checked for a legal code. If DU is specified in the REG field of MF2 in one of the four multiword instructions (SCD, SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and the character or characters are arranged within the 18 bits of the word address portion of the operand descriptor.
@@ -3761,11 +4220,11 @@ void scm(DCDstruct *ins)
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
-    //Both the string and the test character pair are treated as the data type given for the string, TA_1. A data type given for the test character pair, TA_2, is ignored.
-    e->srcTA = e->TA_1;
-    e->srcTA2 = e->TA_1;
+    //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
+    e->srcTA = e->TA1;
+    e->srcTA2 = e->TA1;
 
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -3781,7 +4240,7 @@ void scm(DCDstruct *ins)
             break;
     }
     
-    switch(e->TA_1)      // assumed same type
+    switch(e->TA1)      // assumed same type
     {
         case CTA4:
             //e->srcAddr2 = e->YChar42;
@@ -3823,8 +4282,8 @@ void scm(DCDstruct *ins)
     else
     {
         //get469(NULL, 0, 0, 0);
-        //ctest = get469(e, &e->srcAddr2, &e->srcCN2, e->TA_2);
-        ctest = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);
+        //ctest = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
+        ctest = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
     }
     switch(e->srcTA2)
     {
@@ -3934,7 +4393,7 @@ void scmr(DCDstruct *ins)
     //   00...0 → C(Y3)0,11
     //   N1 → C(Y3)12,35
     
-    // Starting at location YC1, the L1 type TA_1 characters are masked and compared with the assumed type TA_1 character contained either in location YC2 or in bits 0-8 or 0-5 of the address field of operand descriptor 2 (when the REG field of MF2 specifies DU modification). The mask is right-justified in bit positions 0-8 of the instruction word. Each bit position of the mask that is a 1 prevents that bit position in the two characters from entering into the compare.
+    // Starting at location YC1, the L1 type TA1 characters are masked and compared with the assumed type TA1 character contained either in location YC2 or in bits 0-8 or 0-5 of the address field of operand descriptor 2 (when the REG field of MF2 specifies DU modification). The mask is right-justified in bit positions 0-8 of the instruction word. Each bit position of the mask that is a 1 prevents that bit position in the two characters from entering into the compare.
     // The masked compare operation continues until either a match is found or the tally (L1) is exhausted. For each unsuccessful match, a count is incremented by 1. When a match is found or when the L1 tally runs out, this count is stored right-justified in bits 12-35 of location Y3 and bits 0-11 of Y3 are zeroed. The contents of location YC2 and the source string remain unchanged. The RL bit of the MF2 field is not used.
     
     // The REG field of MF1 is checked for a legal code. If DU is specified in the REG field of MF2 in one of the four multiword instructions (SCD, SCDR, SCM, or SCMR) for which DU is legal, the CN field is ignored and the character or characters are arranged within the 18 bits of the word address portion of the operand descriptor.
@@ -3948,11 +4407,11 @@ void scmr(DCDstruct *ins)
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
-    //Both the string and the test character pair are treated as the data type given for the string, TA_1. A data type given for the test character pair, TA_2, is ignored.
-    e->srcTA = e->TA_1;
-    e->srcTA2 = e->TA_1;
+    //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
+    e->srcTA = e->TA1;
+    e->srcTA2 = e->TA1;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -3976,7 +4435,7 @@ void scmr(DCDstruct *ins)
     //word18 newSrcAddr = e->srcAddr + nSrcWords;
     e->ADDR1.address += nSrcWords;
     
-    switch(e->TA_1)      // assumed same type
+    switch(e->TA1)      // assumed same type
     {
         case CTA4:
             //e->srcAddr2 = e->YChar42;
@@ -4021,8 +4480,8 @@ void scmr(DCDstruct *ins)
         //    e->srcAddr2 += y2offset;
         //}
         //get469(NULL, 0, 0, 0);
-        //ctest = get469(e, &e->srcAddr2, &e->srcCN2, e->TA_2);
-        ctest = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);
+        //ctest = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
+        ctest = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
     }
     switch(e->srcTA2)
     {
@@ -4116,7 +4575,7 @@ void tct(DCDstruct *ins)
     //
     // Indicators: Tally Run Out. If the string length count exhausts, then ON; otherwise, OFF
     //
-    // If the data type of the string to be scanned is not 9-bit (TA_1 ≠ 0), then characters from C(Y-charn1) are high-order zero filled in forming the table index, m.
+    // If the data type of the string to be scanned is not 9-bit (TA1 ≠ 0), then characters from C(Y-charn1) are high-order zero filled in forming the table index, m.
     // Instruction execution proceeds until a non-zero table entry is found or the string length count is exhausted.
     // The character number of Y-char92 must be zero, i.e., Y-char92 must start on a word boundary.
     
@@ -4126,9 +4585,9 @@ void tct(DCDstruct *ins)
     parseAlphanumericOperandDescriptor(1, e);
     
     e->srcCN = e->CN1;    // starting at char pos CN
-    e->srcTA = e->TA_1;
+    e->srcTA = e->TA1;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -4186,15 +4645,15 @@ void tct(DCDstruct *ins)
     // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
     // XXX handle, later. (Yeah, just like everything else hard.)
     //  Prepage Check in a Multiword Instruction
-    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA_1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
     
-    // TA_1              TRANSLATE TABLE SIZE
+    // TA1              TRANSLATE TABLE SIZE
     // 4-BIT CHARACTER      4 WORDS
     // 6-BIT CHARACTER     16 WORDS
     // 9-BIT CHARACTER    128 WORDS
     
     int xlatSize = 0;   // size of xlation table in words .....
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             xlatSize = 4;
@@ -4258,8 +4717,8 @@ void tct(DCDstruct *ins)
     int i = 0;
     for(; i < e->N1 ; i += 1)
     {
-        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA_1); // get src char
-        int c = EISget469(&e->ADDR1, &e->srcCN, e->TA_1); // get src char
+        //int c = get469(e, &e->srcAddr, &e->srcCN, e->TA1); // get src char
+        int c = EISget469(&e->ADDR1, &e->srcCN, e->TA1); // get src char
 
         int m = 0;
         
@@ -4313,7 +4772,7 @@ void tctr(DCDstruct *ins)
     //
     // Indicators: Tally Run Out. If the string length count exhausts, then ON; otherwise, OFF
     //
-    // If the data type of the string to be scanned is not 9-bit (TA_1 ≠ 0), then characters from C(Y-charn1) are high-order zero filled in forming the table index, m.
+    // If the data type of the string to be scanned is not 9-bit (TA1 ≠ 0), then characters from C(Y-charn1) are high-order zero filled in forming the table index, m.
     // Instruction execution proceeds until a non-zero table entry is found or the string length count is exhausted.
     // The character number of Y-char92 must be zero, i.e., Y-char92 must start on a word boundary.
     
@@ -4322,9 +4781,9 @@ void tctr(DCDstruct *ins)
     parseAlphanumericOperandDescriptor(1, e);
     
     e->srcCN = e->CN1;    // starting at char pos CN
-    e->srcTA = e->TA_1;
+    e->srcTA = e->TA1;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -4398,15 +4857,15 @@ void tctr(DCDstruct *ins)
     // XXX I think this is where prepage mode comes in. Need to ensure that the translation table's page is im memory.
     // XXX handle, later. (Yeah, just like everything else hard.)
     //  Prepage Check in a Multiword Instruction
-    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA_1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
+    //  The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (Bull RJ78 p.7-75)
     
-    // TA_1              TRANSLATE TABLE SIZE
+    // TA1              TRANSLATE TABLE SIZE
     // 4-BIT CHARACTER      4 WORDS
     // 6-BIT CHARACTER     16 WORDS
     // 9-BIT CHARACTER    128 WORDS
     
     int xlatSize = 0;   // size of xlation table in words .....
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             xlatSize = 4;
@@ -4471,8 +4930,8 @@ void tctr(DCDstruct *ins)
     int i = 0;
     for(; i < e->N1 ; i += 1)
     {
-        //int c = get469r(e, &newSrcAddr, &newSrcCN, e->TA_1); // get src char
-        int c = EISget469r(&e->ADDR1, &newSrcCN, e->TA_1); // get src char
+        //int c = get469r(e, &newSrcAddr, &newSrcCN, e->TA1); // get src char
+        int c = EISget469r(&e->ADDR1, &newSrcCN, e->TA1); // get src char
         
         int m = 0;
         
@@ -4524,8 +4983,8 @@ void cmpc(DCDstruct *ins)
     //     Zero: If C(Y-charn1)i-1 = C(Y-charn2)i-1 for all i, then ON; otherwise, OFF
     //     Carry: If C(Y-charn1)i-1 < C(Y-charn2)i-1 for any i, then OFF; otherwise ON
     
-    // Both strings are treated as the data type given for the left-hand string, TA_1. A data type given for the right-hand string, TA_2, is ignored.
-    // Comparison is made on full 9-bit fields. If the given data type is not 9-bit (TA_1 ≠ 0), then characters from C(Y-charn1) and C(Y-charn2) are high- order zero filled. All 9 bits of C(FILL) are used.
+    // Both strings are treated as the data type given for the left-hand string, TA1. A data type given for the right-hand string, TA2, is ignored.
+    // Comparison is made on full 9-bit fields. If the given data type is not 9-bit (TA1 ≠ 0), then characters from C(Y-charn1) and C(Y-charn2) are high- order zero filled. All 9 bits of C(FILL) are used.
     // Instruction execution proceeds until an inequality is found or the larger string length count is exhausted.
     
     
@@ -4535,100 +4994,86 @@ void cmpc(DCDstruct *ins)
     parseAlphanumericOperandDescriptor(1, e);
     parseAlphanumericOperandDescriptor(2, e);
     
-    e->srcCN = e->CN1;  ///< starting at char pos CN
-    e->srcCN2= e->CN2;  ///< character number
-    
-    e->srcTA = e->TA_1;
-    
-    switch(e->srcTA)
-    {
-        case CTA4:
-            //e->srcAddr = e->YChar41;
-            break;
-        case CTA6:
-            //e->srcAddr = e->YChar61;
-            break;
-        case CTA9:
-            //e->srcAddr = e->YChar91;
-            break;
-    }
-    
-    switch(e->srcTA)      // assumed same type
-    {
-        case CTA4:
-            //e->srcAddr2 = e->YChar42;
-            break;
-        case CTA6:
-            //e->srcAddr2 = e->YChar62;
-            break;
-        case CTA9:
-            //e->srcAddr2 = e->YChar92;
-            break;
-    }
+// debug
+if (e->TA1 != du . TA1) sim_printf ("TA1 %d %d\n", e -> TA1, du . TA1);
+if (e->TA2 != du . TA2) sim_printf ("TA2 %d %d\n", e -> TA2, du . TA2);
+if (e->N1 != (int) du . N1) sim_printf ("%lld N1 %d %u\n", sys_stats . total_cycles, e -> N1, du . N1);
+if (e->N2 != (int) du . N2) sim_printf ("N2 %d %u\n", e -> N2, du . N2);
+if (e->addr[0].address != du . D_PTR_W [0]) sim_printf ("%lld WORDNO1 %06o %06o\n", sys_stats . total_cycles, e->addr[0].address, du . D_PTR_W [0]);
+if (e->addr[1].address != du . D_PTR_W [1]) sim_printf ("%lld WORDNO2 %06o %06o\n", sys_stats . total_cycles, e->addr[1].address, du . D_PTR_W [1]);
+uint du_CN1, du_BITNO1, du_CN2, du_BITNO2;
+unpackCharBit (du . D_PTR_B [0], du . TA1, & du_CN1, & du_BITNO1);
+unpackCharBit (du . D_PTR_B [1], du . TA2, & du_CN2, & du_BITNO2);
+if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sys_stats . total_cycles, e->CN1, du_CN1);
+if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cycles, e->CN2, du_CN2);
 
-    int fill = (int)bitfieldExtract36(e->op0, 27, 9);
+//---    e->srcCN = e->CN1;  ///< starting at char pos CN
+//---    e->srcCN2= e->CN2;  ///< character number
+    e -> srcCN = du_CN1;  // starting at char pos CN
+    e -> srcCN2= du_CN2;  // character number
     
-    //get469(NULL, 0, 0, 0);    // initialize src1 getter
-    //get4692(NULL, 0, 0, 0);   // initialize src2 getter
+//---    e->srcTA = e->TA1;
+    e -> srcTA = du . TA1;
+    
+    int fill = (int) getbits36 (cu . IWB, 0, 9);
     
     sim_debug (DBG_TRACEEXT, & cpu_dev, 
       "%s srcCN:%d srcCN2:%d srcTA:%d srcSZ:%d fill:0%03o\n",
       __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcSZ, 
       fill);
 
-    SETF(cu.IR, I_ZERO);  // set ZERO flag assuming strings are are equal ...
-    SETF(cu.IR, I_CARRY); // set CARRY flag assuming strings are are equal ...
+    SETF (cu . IR, I_ZERO);  // set ZERO flag assuming strings are equal ...
+    SETF (cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
     
-    int i = 0;
-    for(; i < min(e->N1, e->N2); i += 1)
-    {
-        //int c1 = get469 (e, &e->srcAddr,  &e->srcCN,  e->TA_1);   // get Y-char1n
-        int c1 = EISget469(&e->ADDR1,  &e->srcCN,  e->TA_1);   // get Y-char1n
-        //int c2 = get4692(e, &e->srcAddr2, &e->srcCN2, e->TA_2);   // get Y-char2n
-        int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);   // get Y-char2n
+    uint i = 0;
+//---    for (; i < min (e->N1, e->N2); i += 1)
+    for (; i < min (du . N1, du . N2); i ++)
+      {
+        int c1 = EISget469(&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
+        int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2);   // get Y-char2n
         
         if (c1 != c2)
-        {
-            CLRF(cu.IR, I_ZERO);  // an inequality found
-            
-            SCF(c1 < c2, cu.IR, I_CARRY);
-            
+          {
+            CLRF (cu . IR, I_ZERO);  // an inequality found
+            SCF (c1 < c2, cu . IR, I_CARRY);
             return;
         }
-    }
-    if (e->N1 < e->N2)
-        for(; i < e->N2; i += 1)
-        {
-            int c1 = fill;                                      // use fill for Y-char1n
-            //int c2 = get4692(e, &e->srcAddr2, &e->srcCN2, e->TA_2); // get Y-char2n
-            int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2); // get Y-char2n
+      }
+//---    if (e->N1 < e->N2)
+    if (du . N1 < du . N2)
+      {
+//---        for(; i < e->N2; i += 1)
+        for (; i < du . N2; i ++)
+          {
+            int c1 = fill;     // use fill for Y-char1n
+            int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2); // get Y-char2n
             
             if (c1 != c2)
-            {
+              {
+                CLRF (cu . IR, I_ZERO);  // an inequality found
+                SCF (c1 < c2, cu . IR, I_CARRY);
+                return;
+              }
+          }
+      }
+    else if (du . N1 > du . N2)
+      {
+        for(; i < du . N1; i ++)
+          {
+            int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
+            int c2 = fill;   // use fill for Y-char2n
+            
+            if (c1 != c2)
+              {
                 CLRF(cu.IR, I_ZERO);  // an inequality found
                 
                 SCF(c1 < c2, cu.IR, I_CARRY);
                 
                 return;
-            }
-        }
-    else if (e->N1 > e->N2)
-        for(; i < e->N1; i += 1)
-        {
-            //int c1 = get469 (e, &e->srcAddr,  &e->srcCN,  e->TA_1);   // get Y-char1n
-            int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  e->TA_1);   // get Y-char1n
-            int c2 = fill;                                        // use fill for Y-char2n
-            
-            if (c1 != c2)
-            {
-                CLRF(cu.IR, I_ZERO);  // an inequality found
-                
-                SCF(c1 < c2, cu.IR, I_CARRY);
-                
-                return;
-            }
-        }
-}
+              }
+          }
+      }
+  }
 
 /*
  * SCD - Scan Characters Double
@@ -4659,11 +5104,11 @@ void scd(DCDstruct *ins)
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
-    //Both the string and the test character pair are treated as the data type given for the string, TA_1. A data type given for the test character pair, TA_2, is ignored.
-    e->srcTA = e->TA_1;
-    e->srcTA2 = e->TA_1;
+    //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
+    e->srcTA = e->TA1;
+    e->srcTA2 = e->TA1;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -4722,10 +5167,10 @@ void scd(DCDstruct *ins)
             e->ADDR2.address += y2offset;
         }
         //get469(NULL, 0, 0, 0);
-        //c1 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA_2);
-        //c2 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA_2);
-        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);
-        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);
+        //c1 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
+        //c2 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
+        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
+        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
 
     }
     switch(e->srcTA2)
@@ -4843,11 +5288,11 @@ void scdr(DCDstruct *ins)
     e->srcCN = e->CN1;  ///< starting at char pos CN
     e->srcCN2= e->CN2;  ///< character number
     
-    //Both the string and the test character pair are treated as the data type given for the string, TA_1. A data type given for the test character pair, TA_2, is ignored.
-    e->srcTA = e->TA_1;
-    e->srcTA2 = e->TA_1;
+    //Both the string and the test character pair are treated as the data type given for the string, TA1. A data type given for the test character pair, TA2, is ignored.
+    e->srcTA = e->TA1;
+    e->srcTA2 = e->TA1;
     
-    switch(e->TA_1)
+    switch(e->TA1)
     {
         case CTA4:
             //e->srcAddr = e->YChar41;
@@ -4917,10 +5362,10 @@ void scdr(DCDstruct *ins)
             e->ADDR2.address += y2offset;
         }
         //get469(NULL, 0, 0, 0);    // initialize char getter
-        //c1 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA_2);
-        //c2 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA_2);
-        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);
-        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA_2);
+        //c1 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
+        //c2 = get469(e, &e->srcAddr2, &e->srcCN2, e->TA2);
+        c1 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
+        c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);
     }
     switch(e->srcTA2)
     {

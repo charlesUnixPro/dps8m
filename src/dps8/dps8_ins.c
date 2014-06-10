@@ -178,59 +178,56 @@ static word18 getCrAR(word4 reg)
 static word36 scu_data[8];    // For SCU instruction
 
 static void scu2words(word36 *words)
-{
-    // BUG:  We don't track much of the data that should be tracked
-    
-    memset(words, 0, 8 * sizeof(*words));
+  {
+    memset (words, 0, 8 * sizeof (* words));
     
     // words [0]
 
-    words[0] = setbits36(       0,  0,  3, PPR.PRR);
-    words[0] = setbits36(words[0],  3, 15, PPR.PSR);
-    words[0] = setbits36(words[0], 18,  1, PPR.P);
-    words[0] = setbits36(words[0], 21,  1, cu.SD_ON);
-    words[0] = setbits36(words[0], 23,  1, cu.PT_ON);
+    putbits36 (& words [0],  0,  3, PPR.PRR);
+    putbits36 (& words [0],  3, 15, PPR.PSR);
+    putbits36 (& words [0], 18,  1, PPR.P);
+    putbits36 (& words [0], 21,  1, cu.SD_ON);
+    putbits36 (& words [0], 23,  1, cu.PT_ON);
     
-    // words[1]
+    // words [1]
     
-    words [1] = setbits36(words[1], 30, 5, cu.FI_ADDR);
+    putbits36 (& words [1], 30, 5, cu.FI_ADDR);
 
-    // words[2]
+    // words [2]
     
-    words[2] = setbits36(       0,  0,  3, TPR.TRR);
-    words[2] = setbits36(words[2],  3, 15, TPR.TSR);
-    words[2] = setbits36(words[2], 27,  3, switches.cpu_num);
-    words[2] = setbits36(words[2], 30,  6, cu.delta);
+    putbits36 (& words [2],  0,  3, TPR.TRR);
+    putbits36 (& words [2],  3, 15, TPR.TSR);
+    putbits36 (& words [2], 27,  3, switches.cpu_num);
+    putbits36 (& words [2], 30,  6, cu.delta);
     
-    // words[3]
+    // words [3]
 
-    words[3] = 0;
-    words[3] = setbits36(words[3], 30, 6, TPR.TBR);
+    putbits36 (& words [3], 30, 6, TPR.TBR);
     
-    // words[4]
+    // words [4]
 
-    words[4] = cu.IR; // HWR
-    words[4] = setbits36(words[4], 0, 18, PPR.IC);
+    putbits36 (& words [4],  0, 18, PPR.IC);
+    putbits36 (& words [4], 18, 18, cu.IR); // HWR
     
-    // words[5]
+    // words [5]
 
-    words[5] = setbits36(0, 0, 18, TPR.CA);
-    words[5] = setbits36(words[5], 18, 1, cu.repeat_first);
-    words[5] = setbits36(words[5], 19, 1, cu.rpt);
-    words[5] = setbits36(words[5], 20, 1, cu.rd);
-    words[5] = setbits36(words[5], 24, 1, cu.xde);
-    words[5] = setbits36(words[5], 25, 1, cu.xdo);
-    words[5] = setbits36(words[5], 29, 1, cu.FIF);
-    words[5] = setbits36(words[5], 30, 6, cu.CT_HOLD);
+    putbits36 (& words [5],  0, 18, TPR.CA);
+    putbits36 (& words [5], 18,  1, cu.repeat_first);
+    putbits36 (& words [5], 19,  1, cu.rpt);
+    putbits36 (& words [5], 20,  1, cu.rd);
+    putbits36 (& words [5], 24,  1, cu.xde);
+    putbits36 (& words [5], 25,  1, cu.xdo);
+    putbits36 (& words [5], 29,  1, cu.FIF);
+    putbits36 (& words [5], 30,  6, cu.CT_HOLD);
     
-    // words[6]
+    // words [6]
 
-    words[6] = cu.IWB; 
+    words [6] = cu . IWB; 
     
-    // words[7]
+    // words [7]
 
-    words[7] = cu.IRODD;
-}
+    words [7] = cu . IRODD;
+  }
 
 
 void cu_safe_store(void)
@@ -321,47 +318,50 @@ static void du2words (word36 * words)
 
     // Word 0
 
-    words [0] = setbits36 (        0,  9,  1, du . Z);
-    words [0] = setbits36 (words [0], 10,  1, du . NOP);
+    putbits36 (& words [0],  9,  1, du . Z);
+    putbits36 (& words [0], 10,  1, du . NOP);
 
     // Word 1
 
     // Word 2
 
-    words [2] = setbits36 (        0, 24,  1, du . D1_PTR);
-    words [2] = setbits36 (words [2], 25,  2, du . TA1);
-    words [2] = setbits36 (words [2], 31,  1, du . F1);
-    words [2] = setbits36 (words [2], 32,  1, du . A1);
+    putbits36 (& words [2],  0, 18, du . D1_PTR_W);
+    putbits36 (& words [2], 18,  6, du . D1_PTR_B);
+    putbits36 (& words [2], 25,  2, du . TA1);
+    putbits36 (& words [2], 31,  1, du . F1);
+    putbits36 (& words [2], 32,  1, du . A1);
 
     // Word 3
 
-    words [3] = setbits36 (        0,  9,  1, du . LEVEL1);
-    words [3] = setbits36 (words [3], 12, 24, du . D1_RES);
+    putbits36 (& words [3],  9,  1, du . LEVEL1);
+    putbits36 (& words [3], 12, 24, du . D1_RES);
     
     // Word 4
 
-    words [4] = setbits36 (        0, 24,  1, du . D2_PTR);
-    words [4] = setbits36 (words [4], 25,  2, du . TA2);
-    words [4] = setbits36 (words [4], 30,  1, du . R);
-    words [4] = setbits36 (words [4], 31,  1, du . F2);
-    words [4] = setbits36 (words [4], 32,  1, du . A2);
+    putbits36 (& words [4],  0, 18, du . D2_PTR_W);
+    putbits36 (& words [4], 18,  6, du . D2_PTR_B);
+    putbits36 (& words [4], 25,  2, du . TA2);
+    putbits36 (& words [4], 30,  1, du . R);
+    putbits36 (& words [4], 31,  1, du . F2);
+    putbits36 (& words [4], 32,  1, du . A2);
 
     // Word 5
 
-    words [5] = setbits36 (        0,  9,  1, du . LEVEL2);
-    words [5] = setbits36 (words [5], 12, 24, du . D2_RES);
+    putbits36 (& words [5],  9,  1, du . LEVEL2);
+    putbits36 (& words [5], 12, 24, du . D2_RES);
 
     // Word 6
 
-    words [6] = setbits36 (        0, 24,  1, du . D3_PTR);
-    words [6] = setbits36 (words [6], 25,  2, du . TA3);
-    words [6] = setbits36 (words [6], 31,  1, du . F3);
-    words [6] = setbits36 (words [6], 32,  1, du . A3);
-    words [6] = setbits36 (words [6], 33,  3, du . JMP);
+    putbits36 (& words [6],  0, 18, du . D3_PTR_W);
+    putbits36 (& words [6], 18,  6, du . D3_PTR_B);
+    putbits36 (& words [6], 25,  2, du . TA3);
+    putbits36 (& words [6], 31,  1, du . F3);
+    putbits36 (& words [6], 32,  1, du . A3);
+    putbits36 (& words [6], 33,  3, du . JMP);
 
     // Word 7
 
-    words [7] = setbits36 (        0, 12, 24, du . D3_RES);
+    putbits36 (& words [7], 12, 24, du . D3_RES);
 
   }
 
@@ -371,46 +371,49 @@ static void words2du (word36 * words)
 
     // Word 0
 
-    du . Z      = getbits36 (words [0],  9,  1);
-    du . NOP    = getbits36 (words [0], 10,  1);
+    du . Z        = getbits36 (words [0],  9,  1);
+    du . NOP      = getbits36 (words [0], 10,  1);
 
     // Word 1
 
     // Word 2
 
-    du . D1_PTR = getbits36 (words [2], 24,  1);
-    du . TA1    = getbits36 (words [2], 25,  2);
-    du . F1     = getbits36 (words [2], 31,  1);
-    du . A1     = getbits36 (words [2], 32,  1);
+    du . D1_PTR_W = getbits36 (words [2],  0, 18);
+    du . D1_PTR_B = getbits36 (words [2], 18,  6);
+    du . TA1      = getbits36 (words [2], 25,  2);
+    du . F1       = getbits36 (words [2], 31,  1);
+    du . A1       = getbits36 (words [2], 32,  1);
 
     // Word 3
 
-    du . LEVEL1 = getbits36 (words [3],  9,  1);
-    du . D1_RES = getbits36 (words [3], 12, 24);
+    du . LEVEL1   = getbits36 (words [3],  9,  1);
+    du . D1_RES   = getbits36 (words [3], 12, 24);
     
     // Word 4
 
-    du . D2_PTR = getbits36 (words [4], 24,  1);
-    du . TA2    = getbits36 (words [4], 25,  2);
-    du . F2     = getbits36 (words [4], 31,  1);
-    du . A2     = getbits36 (words [4], 32,  1);
+    du . D2_PTR_W = getbits36 (words [4],  0, 18);
+    du . D2_PTR_B = getbits36 (words [4], 18,  6);
+    du . TA2      = getbits36 (words [4], 25,  2);
+    du . F2       = getbits36 (words [4], 31,  1);
+    du . A2       = getbits36 (words [4], 32,  1);
 
     // Word 5
 
-    du . LEVEL2 = getbits36 (words [5],  9,  1);
-    du . D2_RES = getbits36 (words [5], 12, 24);
+    du . LEVEL2   = getbits36 (words [5],  9,  1);
+    du . D2_RES   = getbits36 (words [5], 12, 24);
 
     // Word 6
 
-    du . D3_PTR = getbits36 (words [6], 24,  1);
-    du . TA3    = getbits36 (words [6], 25,  2);
-    du . F3     = getbits36 (words [6], 31,  1);
-    du . A3     = getbits36 (words [6], 32,  1);
-    du . JMP    = getbits36 (words [6], 33,  3);
+    du . D3_PTR_W = getbits36 (words [6],  0, 18);
+    du . D3_PTR_B = getbits36 (words [6], 18,  6);
+    du . TA3      = getbits36 (words [6], 25,  2);
+    du . F3       = getbits36 (words [6], 31,  1);
+    du . A3       = getbits36 (words [6], 32,  1);
+    du . JMP      = getbits36 (words [6], 33,  3);
 
     // Word 7
 
-    du . D3_RES = getbits36 (words [7], 12, 24);
+    du . D3_RES   = getbits36 (words [7], 12, 24);
 
   }
 
@@ -859,8 +862,11 @@ restart_1:
           }
       }
 
+    du . JMP = info -> ndes;
+
     if (info -> ndes > 0)
       {
+        doEIS_CAF ();
         for(int n = 0; n < info -> ndes; n += 1)
           {
             Read (PPR . IC + 1 + n, & ci -> e . op [n], OPERAND_READ, 0); // I think.
@@ -868,7 +874,6 @@ restart_1:
       }
     else
       {
-
         // This must not happen on instruction restart
         if (! (cu . IR & I_MIIF))
           {
