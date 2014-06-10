@@ -73,7 +73,7 @@
 
 #define SIGN64         ((uint64)1U << 63)
 
-#define MASK3           03U
+#define MASK3           07U
 #define MASK6           077U
 
 #define SIGN8          0400U         //sign mask 8-bit number
