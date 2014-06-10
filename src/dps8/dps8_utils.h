@@ -71,3 +71,11 @@ word36 getbits36 (word36 x, uint i, uint n);
 word36 setbits36 (word36 x, uint p, uint n, word36 val);
 void putbits36 (word36 * x, uint p, uint n, word36 val);
 char * strdupesc (const char * str);
+
+
+word36 extr36 (uint8 * bits, uint woffset);
+word9 extr9 (uint8 * bits, uint coffset);
+word18 extr18 (uint8 * bits, uint coffset);
+uint8 getbit (void * bits, int offset);
+t_uint64 extr (void * bits, int offset, int nbits);
+void put36 (word36 val, uint8 * bits, uint woffset);

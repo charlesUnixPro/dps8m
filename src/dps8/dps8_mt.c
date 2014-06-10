@@ -513,6 +513,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
     // return 1;   // not reached
   }
 
+#if 0
 // Extract the N'th 36 bit word from a buffer
 //
 //   bits: buffer of bits from a simh tape. The data is
@@ -559,7 +560,7 @@ static t_uint64 extr36 (uint8 * bits, uint woffset)
     // DMASK shouldn't be neccessary but is robust
     return w & DMASK;
   }
-
+#endif
 
 static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp)
   {
