@@ -21,6 +21,7 @@
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"
+#include "dps8_fxe.h"
 
 // XXX Strictly speaking, memory belongs in the SCU
 // We will treat memory as viewed from the CPU and elide the
@@ -76,6 +77,7 @@ static CTAB dps8_cmds[] =
     {"SPATH", setSearchPath, 0, "spath: Set source code search path\n", NULL},
     {"TEST", test, 0, "test: internal testing\n", NULL},
     {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
+    {"FXE", fxe, 0, "fxe: enter the FXE environment\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 

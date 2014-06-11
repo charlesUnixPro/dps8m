@@ -21,6 +21,7 @@
 #include "dps8_decimal.h"
 #include "dps8_iefp.h"
 #include "dps8_faults.h"
+#include "dps8_fxe.h"
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
@@ -6009,6 +6010,11 @@ static t_stat DoEISInstruction (void)
             if (ret)
               return ret;
             break;
+        }
+
+        case 0425: // fxe fault handler
+        {
+            fxeFaultHandler ();
         }
 #endif
         // priviledged instructions

@@ -863,7 +863,9 @@ struct opCode EISopcodes[01000] = {
     {"popa",  0, 0, 0}, // pop word from stack via Xn into A
     {"pushq", 0, 0, 0}, // push Q onto stack via Xn
     {"popq",  0, 0, 0}, // pop word from stack via Xn into Q
+    {"fxe",  0, 0, 0}, // fxe fault handler
 #else
+    {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
@@ -872,7 +874,6 @@ struct opCode EISopcodes[01000] = {
     {NULL, 0, 0, 0},
 #endif
     
-    {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},

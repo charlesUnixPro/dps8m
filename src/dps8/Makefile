@@ -231,6 +231,7 @@ C_SRCS += ./dps8_utils.c
 C_SRCS += ./dps8_decimal.c
 C_SRCS += ./dps8_faults.c
 C_SRCS += ./dps8_iefp.c
+C_SRCS += ./dps8_fxe.c
 
 OBJS  := $(patsubst %.c,%.o,$(C_SRCS))
 

@@ -6,6 +6,8 @@
 */
 
 #include <stdio.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_cpu.h"
@@ -16,12 +18,15 @@
 #include "utlist.h" // for linked list ops
 
 /* Master loader */
-#define FMT_O   1
-#define FMT_S   2
-#define FMT_E   3
+#define FMT_O   1 // .oct
+#define FMT_S   2 // .sav
+#define FMT_E   3 // .exe
+#define FMT_SEG 4
 #define FMT_9   9
 
 static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred, bool bVerbose);
+static t_stat load_simh (FILE * fileref, int32 segno, int32 ldaddr, 
+                         bool bDeferred, bool bVerbose);
 static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count);
 
 #ifndef QUIET_UNUSED
@@ -1146,6 +1151,111 @@ static t_stat load_oct (FILE *fileref, int32 segno, int32 ldaddr, bool bDeferred
     return SCPE_OK;
 }
 
+//
+// "simh" simh/dps8 loader (.seg files) ....
+//
+
+static t_stat load_simh (FILE *fileref, int32 segno, int32 ldaddr, 
+                         bool bDeferred, bool __attribute__((unused)) bVerbose)
+  {
+    char buff[132] = "";
+    int fno = fileno (fileref);
+    lseek (fno, 0, SEEK_SET);
+
+    // 72 bits at a time; 2 dps8m words == 9 bytes
+    uint8 bytes [9];
+
+    int words = 0;
+    
+    if (bDeferred)  // a deferred segment load
+    {
+        word24 maddr = 0;
+        while (read (fno, bytes, 9))
+          {
+            word36 w1 = extr36 (bytes, 0);
+            word36 w2 = extr36 (bytes, 1);
+
+            if ((int) maddr + 2 > currSegment->size)
+              {
+                sim_printf("ERROR: load_bin(deferred): attempted load into segment %s location %06o (max %06o)\n", currSegment->name, maddr, currSegment->size);
+                return SCPE_NXM;
+              }
+            currSegment->M[maddr++] = w1 & DMASK;
+            currSegment->M[maddr++] = w2 & DMASK;
+            words += 2;
+          }
+        currSegment->ldaddr = ldaddr;
+        currSegment->segno = segno;
+        currSegment->deferred = true;
+        if (segno != -1)
+            sprintf(buff, " as segment %d", segno);
+        else
+            strcpy(buff, "");
+        
+        if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %s%s\n", words, words, currSegment->name, buff);
+      }
+    else if (segno == -1)// just do an absolute load
+      {
+        word24 maddr = 0;
+        while (read (fno, bytes, 9))
+          {
+            word36 w1 = extr36 (bytes, 0);
+            word36 w2 = extr36 (bytes, 1);
+
+            if (currSegment && currSegment->M == NULL)
+              currSegment->M = &M[maddr];
+
+            if (maddr > MAXMEMSIZE)
+              return SCPE_NXM;
+
+            M [maddr + ldaddr] = w1 & DMASK;
+            maddr ++;
+            words++;
+            M [maddr + ldaddr] = w2 & DMASK;
+            maddr ++;
+            words++;
+          }
+        if (!sim_quiet) sim_printf("%d (%06o) words loaded\n", words, words);
+    }
+    else
+    {
+        word24 maxaddr = 0;
+        
+        word24 maddr = 0;
+        while (read (fno, bytes, 9))
+          {
+            word36 w1 = extr36 (bytes, 0);
+            word36 w2 = extr36 (bytes, 1);
+
+            if (currSegment && currSegment->M == NULL)
+              currSegment->M = &M[maddr];
+
+            if (maddr > MAXMEMSIZE)
+              return SCPE_NXM;
+
+            M [maddr + ldaddr] = w1 & DMASK;
+            maddr ++;
+            words++;
+            M [maddr + ldaddr] = w2 & DMASK;
+            maxaddr = maddr;
+            maddr ++;
+            words++;
+          }
+        word18 segwords = (objSize == -1) ? maxaddr + 1 : objSize;  // words in segment
+        //sim_printf ("segwords:%d maxaddr:%d\n", segwords, maxaddr);
+        if (loadUnpagedSegment(segno, ldaddr, segwords) == SCPE_OK)
+        {
+            if (!sim_quiet) sim_printf("%d (%06o) words loaded into segment %d(%o) at address %06o\n", words, words, segno, segno, ldaddr);
+        }
+        else
+        {
+            if (!sim_quiet) sim_printf("Error loading segment %d (%o)\n", segno, segno);
+        }
+    }
+    
+    return SCPE_OK;
+}
+
 /*
  * stuff todo with loading segments ....
  */
@@ -1288,6 +1398,8 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
         fmt = FMT_O;
     else if (match_ext (fnam, "OCT"))                       /* .OCT? */
         fmt = FMT_O;
+    else if (match_ext (fnam, "SEG"))                       /* .OCT? */
+        fmt = FMT_SEG;
     else {
         //wc = fxread (&data, sizeof (d8), 1, fileref);      /* read hdr */
         //if (wc == 0)                                        /* error? */
@@ -1423,6 +1535,8 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
             return load_oct (fileref, segno, ldaddr, bDeferred, bVerbose);
             // break;
 
+        case FMT_SEG:                                         /*!< OCT */
+            return load_simh (fileref, segno, ldaddr, bDeferred, bVerbose);
         //case FMT_S:                                         /*!< SAV */
             //  return load_sav (fileref);
             //    break;
