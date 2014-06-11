@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include "dps8.h"
+#include "dps8_append.h"
 #include "dps8_cpu.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
@@ -639,6 +640,9 @@ static void installSDW (int segIdx)
      putbits36 (odd,  18,  1, e -> P);
      putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
      putbits36 (odd,  22, 14, e -> entry_bound >> 4);
+
+     do_camp (TPR . CA);
+     do_cams (TPR . CA);
   }
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
