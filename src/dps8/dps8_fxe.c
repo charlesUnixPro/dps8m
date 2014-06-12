@@ -11,6 +11,8 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 
+static void installSDW (int segIdx);
+
 // keeping it simple: segments are loaded unpaged, and a full 128K space is
 // allocated for them.
 
@@ -35,9 +37,17 @@ typedef struct
     char * segname;
     word18 seglen;
     word18 entry;
+
+// Remeber stuff from parseSegment
+    word18 definition_offset;
+
   } segTableEntry;
 
 static segTableEntry segTable [N_SEGS];
+
+// Remember which segment we loaded bound_library_wired_ into
+
+static int libIdx;
 
 static word24 lookupSegAddrByIdx (int segIdx)
   {
@@ -337,6 +347,85 @@ static void printACC (word36 * p)
       }
   }
 
+static int accCmp (word36 * acc, char * str)
+  {
+sim_printf ("accCmp <");
+printACC (acc);
+sim_printf ("> <%s>\n", str);
+    word36 cnt = getbits36 (* acc, 0, 9);
+    if (cnt != strlen (str))
+      return 0;
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (acc + woffset), coffset * 9, 9);
+        if ((char) (ch & 0177) != str [i])
+          return 0;
+      }
+    return 1;
+  }
+   
+static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
+  {
+    segTableEntry * e = segTable + segIdx;
+    word24 segAddr = lookupSegAddrByIdx (segIdx);
+    word36 * segp = M + segAddr;
+    def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
+
+    word36 * defBase = (word36 *) oip_defp;
+
+    definition * p = (definition *) (defBase +
+                                     oip_defp -> def_list_relp);
+    // Search for the segment
+
+    definition * symDef = NULL;
+
+    while (* (word36 *) p)
+      {
+        if (p -> ignore != 0)
+          goto next;
+        if (p -> class != 3)  // Not segment name?
+          goto next;
+        if (accCmp (defBase + p -> symbol, segName))
+          {
+            sim_printf ("hit\n");
+            break;
+          }
+next:
+        p = (definition *) (defBase + p -> forward);
+      }
+    if (! (* (word36 *) p))
+      {
+        sim_printf ("can't find segment name %s\n", segName);
+        return 0;
+      }
+
+    // Goto list of symbols defined in this segment
+    p = (definition *) (defBase + p -> segname);
+
+    while (* (word36 *) p)
+      {
+        if (p -> ignore != 0)
+          goto next2;
+        if (p -> class == 3)  // Segment name marks the end of the 
+                              // list of symbols is the segment
+          break;
+
+        if (accCmp (defBase + p -> symbol, symbolName))
+          {
+            symDef = p;
+            sim_printf ("hit2\n");
+            * value =  p -> value;
+            return 1;
+          }
+next2:
+        p = (definition *) (defBase + p -> forward);
+      }
+    sim_printf ("can't find symbol name %s\n", symbolName);
+    return 0;
+  }
+
 static void parseSegment (int segIdx)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
@@ -383,6 +472,7 @@ static void parseSegment (int segIdx)
 //sim_printf ("text length %o\n", mapp -> text_length);
 sim_printf ("definition offset %o\n", mapp -> definition_offset);
 sim_printf ("definition length %o\n", mapp -> definition_length);
+    e -> definition_offset = mapp -> definition_offset;
 //sim_printf ("align2 %012llo\n", mapp -> align2);
 //sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 //sim_printf ("linkage length %o\n", mapp -> linkage_length);
@@ -451,7 +541,7 @@ sim_printf ("definition length %o\n", mapp -> definition_length);
           {
             if (p -> new == 0)
               sim_printf ("warning: !new\n");
-            sim_printf ("    ");
+            sim_printf ("    %lu ", (word36 *) p - defBase);
             printACC (defBase + p -> symbol);
             sim_printf ("\n");
             if (p -> entry)
@@ -586,6 +676,11 @@ static void setupWiredSegments (void)
      segTable [0] . segname = strdup ("dseg");
           
      initializeDSEG ();
+
+     sim_printf ("Loading library segment\n");
+
+     libIdx = loadSegmentFromFile ("bound_library_wired_");
+     installSDW (libIdx);
   }
 
 //++ /*  BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
@@ -789,6 +884,7 @@ static int createStackSegment (void)
     e -> E = 0;
     e -> W = 1;
     e -> P = 0;
+    e -> seglen = 0777777;
 
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     memset (M + segAddr, 0, sizeof (stack_header));
@@ -821,6 +917,226 @@ static void installSDW (int segIdx)
      do_cams (TPR . CA);
   }
 
+static void makeITS (word36 * memory, word15 snr, word3 rnr,
+                     word18 wordno, word6 bitno, word6 tag)
+  {
+      // even
+      memory [0] = 0;
+      putbits36 (memory + 0,  3, 15, snr);
+      putbits36 (memory + 0, 18,  3, rnr);
+      putbits36 (memory + 0, 30,  6, 043);
+
+      // odd
+      memory [1] = 1;
+      putbits36 (memory + 1,  0, 18, wordno);
+      putbits36 (memory + 1, 21,  6, bitno);
+      putbits36 (memory + 1, 30,  6, tag);
+  }
+
+static void makeNullPtr (word36 * memory)
+  {
+    makeITS (memory, 077777, 0, 0777777, 0, 0);
+
+    // The example null ptr I found was in http://www.multicians.org/pxss.html;
+    // it has a tag of 0 instead of 43;
+    putbits36 (memory + 0, 30,  6, 0);
+  }
+
+//++ "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+//++ "
+//++ "	modified 7/76 by M. Weaver for *system links and more system use of areas
+//++ "	modified 3/77 by M. Weaver  to add rnt_ptr
+//++ "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+//++ "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+//++ 
+//++ " HISTORY COMMENTS:
+//++ "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+//++ "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+//++ "     added the heap_header_ptr definition
+//++ "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+//++ "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+//++ "     Modified to support control point management.  These changes were
+//++ "     actually made in February 1985 by G. Palter.
+//++ "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+//++ "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+//++ "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+//++ "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+//++ "     some space int the stack header and change the cpd_ptr unal to
+//++ "     cpm_data_ptr (ITS pair).
+//++ "                                                      END HISTORY COMMENTS
+//++ 
+//++ 	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+//++ 	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+//++ 
+//++ 	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+//++ 	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+//++ 	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+//++ 	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+//++ 	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+//++           equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+//++ 	equ	stack_header.system_free_ptr,12	ptr to system storage area
+//++ 	equ	stack_header.user_free_ptr,14		ptr to user storage area
+//++ 
+//++ 	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+//++ 	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+//++ 	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+//++ 	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+//++ 
+//++ 	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+//++ 	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+//++ 	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+//++ 	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+//++ 
+//++ 	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+//++ 	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+//++ 	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+//++ 	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+//++ 
+//++ 	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+//++ 	equ	stack_header.isot_ptr,42		pointer to ISOT
+//++ 	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+//++ 	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+//++ 
+//++ 	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+//++ 	equ	stack_header.rnt_ptr,50		ptr to reference name table
+//++ 	equ	stack_header.ect_ptr,52		ptr to event channel table
+//++ 	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+//++ 	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+//++ 	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+//++ 	equ	stach_header.trace_top_ptr,59		trace pointer
+//++ 	equ	stack_header.in_trace,60		trace antirecurse bit
+//++ 	equ	stack_header_end,64			length of stack header
+//++ 
+//++ 
+//++ 
+//++ 
+//++ 	equ	trace_frames.count,0		number of trace frames on stack
+//++ 	equ	trace_frames.top_ptr,1		packed pointer to top one
+//++ 
+//++ "	The  following constant is an offset within the  pl1  operators table.
+//++ "	It  references a  transfer vector table.
+//++ 
+//++ 	bool	tv_offset,551
+#define tv_offset 0551
+//++ 
+//++ 
+//++ "	The  following constants are offsets within this transfer vector table.
+//++ 
+//++ 	equ	call_offset,tv_offset+271
+#define call_offset (tv_offset+271)
+//++ 	equ	push_offset,tv_offset+272
+#define push_offset (tv_offset+272)
+//++ 	equ	return_offset,tv_offset+273
+#define return_offset (tv_offset+273)
+//++ 	equ	return_no_pop_offset,tv_offset+274
+#define return_no_pop_offset (tv_offset+274)
+//++ 	equ	entry_offset,tv_offset+275
+//++ 
+//++ 
+//++ " 	END INCLUDE FILE stack_header.incl.alm
+
+static void initStack (int ssIdx)
+  {
+// bound_file_system.s.archive has a 'MAKESTACK' function;
+// borrowing from there.
+
+#define HDR_OFFSET 0
+#define HDR_SIZE 64
+// we assume HDR_SIZE is a multiple of 8, since frames must be so aligned
+#define STK_TOP HDR_SIZE
+
+    word24 segAddr = lookupSegAddrByIdx (ssIdx);
+    word24 hdrAddr = segAddr + HDR_OFFSET;
+
+    word24 libAddr = lookupSegAddrByIdx (libIdx);
+
+    // To help with debugging, initialize the stack header with
+    // null ptrs
+    for (int i = 0; i < HDR_SIZE; i += 2)
+      makeNullPtr (M + hdrAddr + i);
+
+    // word  0,  1    reserved
+
+    // word  2,  3    reserved
+
+    // word  4,  5    odd_lot_ptr
+
+    // word  6,  7    combined_stat_ptr
+
+    // word  8,  9    clr_ptr
+
+    // word 10        max_lot_sie, run_unit_depth
+
+    // word 11        cur_lot_size, pad2
+
+    // word 12, 13    system_storage_ptr
+
+    // word 14, 15    user_storage_ptr
+
+    // word 16, 17    null_ptr
+    makeNullPtr (M + hdrAddr + 16);
+
+    // word 18, 19    stack_begin_ptr
+    makeITS (M + hdrAddr + 18, ssIdx, 5, STK_TOP, 0, 0);
+
+    // word 20, 21    stack_end_ptr
+    makeITS (M + hdrAddr + 20, ssIdx, 5, STK_TOP, 0, 0);
+
+    // word 22, 23    lot_ptr
+
+    // word 24, 25    signal_ptr
+
+    // word 26, 27    bar_mode_sp_ptr
+
+    // word 28, 29    pl1_operators_table
+    word18 operator_table = 0777777;
+    if (! lookupDef (libIdx, "pl1_operators_", "operator_table",
+                     & operator_table))
+     {
+       sim_printf ("Can't find pl1_operators_$operator_table\n");
+     }
+    makeITS (M + hdrAddr + 28, libIdx, 5, operator_table, 0, 0);
+
+// MR12.3_restoration/MR12.3/library_dir_dir/system_library_1/source/bound_file_system.s.archive.ascii, line 11779
+// AK92, pg 59
+
+
+    // word 30, 31    call_op_ptr
+    // I am guessing that this is GETHI()
+    //  stack_header.call_op_ptr =
+    //    ptr (workptr, addrel (workptr, call_offset) -> 
+    //      instruction.tra_offset);
+    word18 callOffset = operator_table + call_offset;
+    word24 callTraInstAddr = libAddr + callOffset;
+    word36 callTraInst = M [callTraInstAddr];
+//sim_printf ("callOffset %06o callTraInstAddr %08o calTraInst %012llo\n",
+// callOffset, callTraInstAddr, callTraInst);
+    makeITS (M + hdrAddr + 30, libIdx, 5, GETHI (callTraInst), 0, 0);
+
+    // word 32, 33    push_op_ptr
+    word18 pushOffset = operator_table + push_offset;
+    word24 pushTraInstAddr = libAddr + pushOffset;
+    word36 pushTraInst = M [pushTraInstAddr];
+    makeITS (M + hdrAddr + 32, libIdx, 5, GETHI (pushTraInst), 0, 0);
+
+    // word 34, 35    return_op_ptr
+    word18 returnOffset = operator_table + return_offset;
+    word24 returnTraInstAddr = libAddr + returnOffset;
+    word36 returnTraInst = M [returnTraInstAddr];
+    makeITS (M + hdrAddr + 34, libIdx, 5, GETHI (returnTraInst), 0, 0);
+
+    // word 36, 37    short_return_op_ptr
+    word18 returnNoPopOffset = operator_table + return_no_pop_offset;
+    word24 returnNoPopTraInstAddr = libAddr + returnNoPopOffset;
+    word36 returnNoPopTraInst = M [returnNoPopTraInstAddr];
+    makeITS (M + hdrAddr + 36, libIdx, 5, GETHI (returnNoPopTraInst), 0, 0);
+
+
+    // word 52, 53    ect_ptr
+    makeNullPtr (M + hdrAddr + 52);
+
+  }
+
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
      sim_printf ("FXE initializing...\n");
@@ -844,7 +1160,19 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
          int ssIdx = createStackSegment ();
          installSDW (ssIdx);
 
+         initStack (ssIdx);
 
+// AK92, pg 2-10: PR7 points to the base of the stack segement
+
+         PR [7] . SNR = ssIdx;
+         PR [7] . RNR = 5;
+         PR [7] . BITNO = 0;
+         PR [7] . WORDNO = 0;
+
+// eis_tester entry code:
+//   EAX7 001440
+//   EPP2 PR7|34,N*
+// +34 in the stack header is return_op_ptr, the "Return Operator Pointer'
 
          set_addr_mode (APPEND_mode);
          PPR . IC = segTable [segIdx] . entry;
