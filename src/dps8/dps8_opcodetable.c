@@ -844,6 +844,7 @@ struct opCode EISopcodes[01000] = {
 #if EMULATOR_ONLY 
      /* 420 - 437 */
     {"emcall", IGN_B29, 0, 0},  // we add a emulator call instruction for SIMH use ONLY! (opcode 0420(1))
+    {"fxe",  0, 0, 0}, // fxe fault handler
   
 #ifdef DEPRECIATED
     // with the lack of a stack it makes it very cumbersome to write decent code for reentrant subroutines.
@@ -863,9 +864,7 @@ struct opCode EISopcodes[01000] = {
     {"popa",  0, 0, 0}, // pop word from stack via Xn into A
     {"pushq", 0, 0, 0}, // push Q onto stack via Xn
     {"popq",  0, 0, 0}, // pop word from stack via Xn into Q
-    {"fxe",  0, 0, 0}, // fxe fault handler
 #else
-    {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},
     {NULL, 0, 0, 0},

@@ -1,3 +1,4 @@
+// From multicians: The maximum size of user ring stacks is initially set to 48K.
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -33,6 +34,7 @@ typedef struct
     word18 entry_bound;
     char * segname;
     word18 seglen;
+    word18 entry;
   } segTableEntry;
 
 static segTableEntry segTable [N_SEGS];
@@ -80,7 +82,7 @@ static void initializeDSEG (void)
     for (int i = 0; i < N_FAULTS; i ++)
       {
         M [fltAddress + i * 2 + 0] = 0000200657000;  // 'SCU 200' instruction.
-        M [fltAddress + i * 2 + 1] = 0000000425400;  // FXE instruction.
+        M [fltAddress + i * 2 + 1] = 0000000421400;  // FXE instruction.
       }
 
     // Fill the descriptor segment with SDWs
@@ -94,7 +96,7 @@ static void initializeDSEG (void)
         //   R1, R2, R3: 0
         //   F: 0 - page is non-resident
         //   FC: 0 - fault code
-        word36 even = ((word36) segAddr) << 8;
+        word36 even = ((word36) segAddr) << 12;
         M [descAddress + i * 2 + 0] = even;
 
         // odd
@@ -103,7 +105,7 @@ static void initializeDSEG (void)
         //  U: 1
         //  G,C: 0
         //  EB: 0
-        M [descAddress + i * 2 + 0] = 0000000400000;
+        M [descAddress + i * 2 + 1] = 0000000200000;
       }
     DSBR . ADDR = DESCSEG;
     DSBR . BND = N_SEGS / 8;
@@ -123,7 +125,7 @@ static void initializeDSEG (void)
 
 //++  /* Structure describing standard object map */
 //++  declare  1 object_map aligned based,
-struct object_map
+struct  __attribute__ ((__packed__)) object_map
   {
 //++    2 decl_vers fixed bin,  /* Version number of current structure format */
     word36 decl_vers; /* Version number of current structure format */
@@ -135,7 +137,7 @@ struct object_map
 //++    2 text_length bit (18) unaligned,     /* Length in words of text section */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint text_length : 18; 
             uint text_offset : 18; 
@@ -147,7 +149,7 @@ struct object_map
 //++    2 definition_length bit (18) unaligned, /* Length in words of definition section */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint definition_length : 18; 
             uint definition_offset : 18; 
@@ -159,7 +161,7 @@ struct object_map
 //++    2 linkage_length bit (18) unaligned,  /* Length in words of linkage section */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint linkage_length : 18; 
             uint linkage_offset : 18; 
@@ -171,7 +173,7 @@ struct object_map
 //++    2 static_length bit (18) unaligned,   /* Length in words of static section */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint static_length : 18; 
             uint static_offset : 18; 
@@ -183,7 +185,7 @@ struct object_map
 //++    2 symbol_length bit (18) unaligned,   /* Length in words of symbol section */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint symbol_length : 18; 
             uint symbol_offset : 18; 
@@ -195,7 +197,7 @@ struct object_map
 //++    2 break_map_length bit (18) unaligned, /* Length in words of break map */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint break_map_length : 18; 
             uint break_map_offset : 18; 
@@ -207,7 +209,7 @@ struct object_map
 //++    2 text_link_offset bit (18) unaligned, /* Offset of first text-embedded link */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint text_link_offset : 18; 
             uint entry_bound : 18; 
@@ -226,7 +228,7 @@ struct object_map
 //++    3 unused bit (29) unaligned;        /* Reserved */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint unused : 29; 
             uint perprocess_static : 1; 
@@ -241,6 +243,53 @@ struct object_map
       };
   };
 
+typedef struct __attribute__ ((__packed__))
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint backward : 18;
+            uint forward : 18;
+          };
+        word36 align1;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint class : 3;
+            uint unused : 9;
+            uint descriptors : 1;
+            uint argcount : 1;
+            uint retain : 1;
+            uint entry : 1;
+            uint ignore : 1;
+            uint new : 1;
+            uint value : 18;
+          };
+        word36 align2;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint segname : 18;
+            uint symbol : 18;
+          };
+        word36 align3;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint descriptor_relp : 18;
+            uint nargs : 18;
+          };
+        word36 align4;
+      };
+  } definition;
+
 //++ 
 //++ declare   map_ptr bit(18) aligned based;          /* Last word of the segment. It points to the base of the object map. */
 //++ 
@@ -250,6 +299,43 @@ struct object_map
 
 //++ 
 //++ /* END INCLUDE FILE ... object_map.incl.pl1 */
+
+typedef struct __attribute__ ((__packed__))
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint unused1 : 18;
+            uint def_list_relp : 18;
+          };
+        word36 align1;
+      };
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint unused2 : 16;
+            uint ignore : 1;
+            uint new_format : 1;
+            uint hash_table_relp : 18;
+          };
+        word36 align2;
+      };
+  } def_header;
+
+static void printACC (word36 * p)
+  {
+    word36 cnt = getbits36 (* p, 0, 9);
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        sim_printf ("%c", (char) (ch & 0177));
+      }
+  }
 
 static void parseSegment (int segIdx)
   {
@@ -293,8 +379,20 @@ static void parseSegment (int segIdx)
         return;
       }
 
+//sim_printf ("text offset %o\n", mapp -> text_offset);
+//sim_printf ("text length %o\n", mapp -> text_length);
+sim_printf ("definition offset %o\n", mapp -> definition_offset);
+sim_printf ("definition length %o\n", mapp -> definition_length);
+//sim_printf ("align2 %012llo\n", mapp -> align2);
+//sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
+//sim_printf ("linkage length %o\n", mapp -> linkage_length);
+//sim_printf ("static offset %o\n", mapp -> static_offset);
+//sim_printf ("static length %o\n", mapp -> static_length);
+//sim_printf ("symbol offset %o\n", mapp -> symbol_offset);
+//sim_printf ("symbol length %o\n", mapp -> symbol_length);
+
 //    word36 * oip_textp = segp + mapp -> text_offset;
-//    word36 * oip_defp = segp + mapp -> definition_offset;
+    def_header * oip_defp = (def_header *) (segp + mapp -> definition_offset);
 //    word36 * oip_linkp = segp + mapp -> linkage_offset;
 //    word36 * oip_statp = segp + mapp -> static_offset;
 //    word36 * oip_symbp = segp + mapp -> symbol_offset;
@@ -333,6 +431,83 @@ static void parseSegment (int segIdx)
         sim_printf ("Segment is ungated.\n");
         e -> gated = false;
         e -> entry_bound = 0;
+      }
+
+    bool entryFound = false;
+    word18 entryValue = 0;
+
+    // Walk the definiton
+// oip_defp
+    word36 * defBase = (word36 *) oip_defp;
+
+    sim_printf ("Definitions:\n");
+//sim_printf ("def_list_relp %u\n", oip_defp -> def_list_relp);
+//sim_printf ("hash_table_relp %u\n", oip_defp -> hash_table_relp);
+    definition * p = (definition *) (defBase +
+                                     oip_defp -> def_list_relp);
+    while (* (word36 *) p)
+      {
+        if (p -> ignore == 0)
+          {
+            if (p -> new == 0)
+              sim_printf ("warning: !new\n");
+            sim_printf ("    ");
+            printACC (defBase + p -> symbol);
+            sim_printf ("\n");
+            if (p -> entry)
+              sim_printf ("        entry\n");
+            if (p -> argcount)
+              sim_printf ("        argcount\n");
+            if (p -> descriptors)
+              sim_printf ("        descriptors\n");
+            switch (p -> class)
+              {
+                case 0:
+                  sim_printf ("        text section\n");
+                  break;
+                case 1:
+                  sim_printf ("        linkage section\n");
+                  break;
+                case 2:
+                  sim_printf ("        symbol section\n");
+                  break;
+                case 3:
+                  sim_printf ("        segment name\n");
+                  break;
+                case 4:
+                  sim_printf ("        static section\n");
+                  break;
+                default:
+                  sim_printf ("        ???? section\n");
+                  break;
+              }
+            if (p -> class == 3)
+              {
+                  sim_printf ("        segname_thread %u\n", p -> value);
+                  sim_printf ("        first_relp *%u\n", p -> segname);
+              }
+            else
+              {
+                  sim_printf ("        value 0%o\n", p -> value);
+                  sim_printf ("        segname *%u\n", p -> segname);
+              }
+            sim_printf ("\n");
+            if ((! entryFound) && p -> class == 0 && p -> entry)
+              {
+                entryFound = true;
+                entryValue = p -> value;
+              }
+          }
+        p = (definition *) (defBase + p -> forward);
+      }
+
+    if (! entryFound)
+      {
+        sim_printf ("entry point not found\n");
+      }
+    else
+      {
+        e -> entry = entryValue;
       }
   }
 
@@ -439,7 +614,7 @@ static void setupWiredSegments (void)
 //++      dcl    sb        ptr;  /* the  main pointer to the stack header */
 //++ 
 //++      dcl    1 stack_header       based (sb) aligned,
-typedef struct
+typedef struct __attribute__ ((__packed__))
   {
 
 //++       2 pad1       (4) fixed bin, /*  (0) also used as arg list by outward_call_handler  */
@@ -461,7 +636,7 @@ typedef struct
 //++       2 run_unit_depth     fixed bin (2) unal, /*  (10) DL  number of active run units stacked */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint run_unit_depth : 3;
             uint pad4 : 2;
@@ -476,7 +651,7 @@ typedef struct
 //++       2 cpm_enabled       bit (18) unal, /*  (11) DL  non-zero if control point management is enabled */
     union
       {
-        struct
+        struct __attribute__ ((__packed__))
           {
             uint cpm_enabled : 18;
             uint cur_lot_size : 18;
@@ -638,6 +813,7 @@ static void installSDW (int segIdx)
      putbits36 (odd,  16,  1, e -> E);
      putbits36 (odd,  17,  1, e -> W);
      putbits36 (odd,  18,  1, e -> P);
+     putbits36 (odd,  19,  1, 1); // unpaged
      putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
      putbits36 (odd,  22, 14, e -> entry_bound >> 4);
 
@@ -671,7 +847,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 
          set_addr_mode (APPEND_mode);
-         PPR . IC = 0;
+         PPR . IC = segTable [segIdx] . entry;
          PPR . PRR = 5;
          PPR . PSR = segIdx;
          PPR . P = 0;

@@ -6012,9 +6012,10 @@ static t_stat DoEISInstruction (void)
             break;
         }
 
-        case 0425: // fxe fault handler
+        case 0421: // fxe fault handler
         {
             fxeFaultHandler ();
+            return STOP_BUG;
         }
 #endif
         // priviledged instructions
