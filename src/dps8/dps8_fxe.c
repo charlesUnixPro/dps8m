@@ -44,6 +44,30 @@ typedef struct
 
 static segTableEntry segTable [N_SEGS];
 
+static bool FXEinitialized = false;
+
+char * lookupFXESegmentAddress (word18 segno, word18 offset, 
+                                char * * compname, word18 * compoffset)
+  {
+    if (! FXEinitialized)
+      return NULL;
+
+    static char buf [129];
+    for (uint i = 0; i < N_SEGS; i ++)
+      {
+        if (segTable [i] . segno == segno)
+          {
+            if (compname)
+                * compname = segTable [i] . segname;
+            if (compoffset)
+                * compoffset = 0;  
+            sprintf (buf, "%s:+0%0o", segTable [i] . segname, offset);
+            return buf;
+          }
+      }
+    return NULL;
+  }
+
 // Remember which segment we loaded bound_library_wired_ into
 
 static int libIdx;
@@ -1182,6 +1206,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     setupWiredSegments ();
 
+    FXEinitialized = true;
+
     char * fname = malloc (strlen (buf) + 1);
     int n = sscanf (buf, "%s", fname);
     if (n == 1)
@@ -1189,6 +1215,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         sim_printf ("Loading segment %s\n", fname);
         int segIdx = loadSegmentFromFile (fname);
         installSDW (segIdx);
+        segTable [segIdx] . segname = strdup (fname);
 sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
 segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
         createStackSegments ();

@@ -311,6 +311,9 @@ char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * c
     if (ret)
       return ret;
     ret = lookupSegmentAddress (segno, offset, compname, compoffset);
+    if (ret)
+      return ret;
+    ret = lookupFXESegmentAddress (segno, offset, compname, compoffset);
     return ret;
   }
 
