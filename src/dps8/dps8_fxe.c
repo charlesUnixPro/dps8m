@@ -1,4 +1,4 @@
-// From multicians: The maximum size of user ring stacks is initially set to 48K.
+// From multicians: The maximum size of user ring stacks is initially set to 48K.SEGSIZE;
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -23,7 +23,6 @@ static void installSDW (int segIdx);
 
 // This is 64...
 #define N_SEGS ((MEMSIZE + SEGSIZE - 1) / SEGSIZE)
-#define STK_SEG 8
 
 typedef struct
   {
@@ -37,7 +36,7 @@ typedef struct
     char * segname;
     word18 seglen;
     word18 entry;
-
+    word24 physmem;
 // Remeber stuff from parseSegment
     word18 definition_offset;
 
@@ -51,8 +50,10 @@ static int libIdx;
 
 static word24 lookupSegAddrByIdx (int segIdx)
   {
-    return segIdx * SEGSIZE;
+    return segTable [segIdx] . physmem;
   }
+
+static word24 nextPhysmem = 1; // First block is used by dseg;
 
 static int allocateSegment (void)
   {
@@ -61,10 +62,23 @@ static int allocateSegment (void)
         if (! segTable [i] . allocated)
           {
             segTable [i] . allocated = true;
+            segTable [i] . physmem = (nextPhysmem ++) * SEGSIZE;
             return i;
           }
       }
     return -1;
+  }
+
+// segno usage:
+//   0  dseg
+/// 270-277 stacks
+//  300-377 user mode
+
+static int nextSegno = 0300;
+
+static int allocSegno (void)
+  {
+    return nextSegno ++;
   }
 
 //static loadSegment (char * segname, word15 segno);
@@ -73,15 +87,16 @@ static void initializeDSEG (void)
 
     // 0100 (64) - 0177 (127) Fault pairs
     // 0200 (128) - 0207 (135) SCU yblock
-    // 0300 - 0477 descriptor segment: 64 segments at 2 words per segment.
+    // 0300 - 1377 descriptor segment: 0400 segments at 2 words per segment.
 #define DESCSEG 0300
+#define N_DESCS 0400
 
     //    org   0100 " Fault pairs
     //    bss   64
     //    org   0200
     //    bss   8
     //    org   0300
-    //    bss   64*2
+    //    bss   0400*2
 
 
     // Fill the fault pairs with fxeFaultHandler traps.
@@ -97,9 +112,10 @@ static void initializeDSEG (void)
 
     // Fill the descriptor segment with SDWs
     int descAddress = DESCSEG;
-    for (int i = 0; i < (int) N_SEGS; i ++)
+    for (int i = 0; i < (int) N_DESCS; i ++)
       {
-        word24 segAddr = lookupSegAddrByIdx (i);
+        //word24 segAddr = lookupSegAddrByIdx (i);
+        word24 segAddr = 0;
 
         // even
         //   ADDR: memory address for segment
@@ -118,9 +134,10 @@ static void initializeDSEG (void)
         M [descAddress + i * 2 + 1] = 0000000200000;
       }
     DSBR . ADDR = DESCSEG;
-    DSBR . BND = N_SEGS / 8;
+    DSBR . BND = N_DESCS / 8;
     DSBR . U = 1;
-    DSBR . STACK = STK_SEG >> 3;
+    // stack segno not yet assigned
+    //DSBR . STACK = segTable [STK_SEG + 5] . segno >> 3;
   }
 
 
@@ -349,9 +366,9 @@ static void printACC (word36 * p)
 
 static int accCmp (word36 * acc, char * str)
   {
-sim_printf ("accCmp <");
-printACC (acc);
-sim_printf ("> <%s>\n", str);
+//sim_printf ("accCmp <");
+//printACC (acc);
+//sim_printf ("> <%s>\n", str);
     word36 cnt = getbits36 (* acc, 0, 9);
     if (cnt != strlen (str))
       return 0;
@@ -470,8 +487,8 @@ static void parseSegment (int segIdx)
 
 //sim_printf ("text offset %o\n", mapp -> text_offset);
 //sim_printf ("text length %o\n", mapp -> text_length);
-sim_printf ("definition offset %o\n", mapp -> definition_offset);
-sim_printf ("definition length %o\n", mapp -> definition_length);
+//sim_printf ("definition offset %o\n", mapp -> definition_offset);
+//sim_printf ("definition length %o\n", mapp -> definition_length);
     e -> definition_offset = mapp -> definition_offset;
 //sim_printf ("align2 %012llo\n", mapp -> align2);
 //sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
@@ -530,7 +547,7 @@ sim_printf ("definition length %o\n", mapp -> definition_length);
 // oip_defp
     word36 * defBase = (word36 *) oip_defp;
 
-    sim_printf ("Definitions:\n");
+//    sim_printf ("Definitions:\n");
 //sim_printf ("def_list_relp %u\n", oip_defp -> def_list_relp);
 //sim_printf ("hash_table_relp %u\n", oip_defp -> hash_table_relp);
     definition * p = (definition *) (defBase +
@@ -539,6 +556,7 @@ sim_printf ("definition length %o\n", mapp -> definition_length);
       {
         if (p -> ignore == 0)
           {
+#if 0
             if (p -> new == 0)
               sim_printf ("warning: !new\n");
             sim_printf ("    %lu ", (word36 *) p - defBase);
@@ -582,6 +600,7 @@ sim_printf ("definition length %o\n", mapp -> definition_length);
                   sim_printf ("        segname *%u\n", p -> segname);
               }
             sim_printf ("\n");
+#endif
             if ((! entryFound) && p -> class == 0 && p -> entry)
               {
                 entryFound = true;
@@ -598,6 +617,7 @@ sim_printf ("definition length %o\n", mapp -> definition_length);
     else
       {
         e -> entry = entryValue;
+sim_printf ("entry %o\n", entryValue);
       }
   }
 
@@ -643,7 +663,7 @@ static int loadSegmentFromFile (char * arg)
 
     segTableEntry * e = segTable + segIdx;
 
-    // e -> segno = ???? XXX
+    e -> segno = allocSegno ();
     e -> R1 = 5;
     e -> R2 = 5;
     e -> R3 = 5;
@@ -680,6 +700,7 @@ static void setupWiredSegments (void)
      sim_printf ("Loading library segment\n");
 
      libIdx = loadSegmentFromFile ("bound_library_wired_");
+     segTable [libIdx] . segno = 041;
      installSDW (libIdx);
   }
 
@@ -869,35 +890,44 @@ typedef struct __attribute__ ((__packed__))
 //++ 
 //++ /*  END INCLUDE FILE ... stack_header.incl.pl1 */
 
+static int stack0Idx;
 
-static int createStackSegment (void)
+static void createStackSegments (void)
   {
-    int segIdx = STK_SEG + 5; // ring 5
-    segTableEntry * e = segTable + segIdx;
-    e -> segname = strdup ("stack_5");
+    for (int i = 0; i < 8; i ++)
+      {
+        int ssIdx = allocateSegment ();
+        if (i == 0)
+          stack0Idx = ssIdx;
+        segTableEntry * e = segTable + ssIdx;
+        e -> segname = strdup ("stack_0");
+        e -> segname [6] += i; // do not try this at home
+        e -> segno = 0270 + i;
+        e -> R1 = 5;
+        e -> R2 = 5;
+        e -> R3 = 5;
+        e -> R = 1;
+        e -> E = 0;
+        e -> W = 1;
+        e -> P = 0;
+        e -> seglen = 0777777;
 
-    // e -> segno = ???? XXX
-    e -> R1 = 5;
-    e -> R2 = 5;
-    e -> R3 = 5;
-    e -> R = 1;
-    e -> E = 0;
-    e -> W = 1;
-    e -> P = 0;
-    e -> seglen = 0777777;
+        word24 segAddr = lookupSegAddrByIdx (ssIdx);
+        memset (M + segAddr, 0, sizeof (stack_header));
 
-    word24 segAddr = lookupSegAddrByIdx (segIdx);
-    memset (M + segAddr, 0, sizeof (stack_header));
-    return segIdx;
+        installSDW (ssIdx);
+      }
   }
 
 static void installSDW (int segIdx)
   {
      segTableEntry * e = segTable + segIdx;
+     word15 segno = e -> segno;
+sim_printf ("install idx %d segno %d @ %o len %d\n", segIdx, segno, e -> physmem, e -> seglen);
+     word36 * even = M + DESCSEG + 2 * segno + 0;  
+     word36 * odd  = M + DESCSEG + 2 * segno + 1;  
 
-     word36 * even = M + DESCSEG + 2 * segIdx + 0;  
-     word36 * odd  = M + DESCSEG + 2 * segIdx + 1;  
-
+     putbits36 (even,  0, 24, e -> physmem);
      putbits36 (even, 24,  3, e -> R1);
      putbits36 (even, 27,  3, e -> R2);
      putbits36 (even, 30,  3, e -> R3);
@@ -1045,9 +1075,11 @@ static void initStack (int ssIdx)
 // we assume HDR_SIZE is a multiple of 8, since frames must be so aligned
 #define STK_TOP HDR_SIZE
 
+    word15 stkSegno = segTable [ssIdx] . segno;
     word24 segAddr = lookupSegAddrByIdx (ssIdx);
     word24 hdrAddr = segAddr + HDR_OFFSET;
 
+    word15 libSegno = segTable [libIdx] . segno;
     word24 libAddr = lookupSegAddrByIdx (libIdx);
 
     // To help with debugging, initialize the stack header with
@@ -1077,10 +1109,10 @@ static void initStack (int ssIdx)
     makeNullPtr (M + hdrAddr + 16);
 
     // word 18, 19    stack_begin_ptr
-    makeITS (M + hdrAddr + 18, ssIdx, 5, STK_TOP, 0, 0);
+    makeITS (M + hdrAddr + 18, stkSegno, 5, STK_TOP, 0, 0);
 
     // word 20, 21    stack_end_ptr
-    makeITS (M + hdrAddr + 20, ssIdx, 5, STK_TOP, 0, 0);
+    makeITS (M + hdrAddr + 20, stkSegno, 5, STK_TOP, 0, 0);
 
     // word 22, 23    lot_ptr
 
@@ -1095,7 +1127,7 @@ static void initStack (int ssIdx)
      {
        sim_printf ("Can't find pl1_operators_$operator_table\n");
      }
-    makeITS (M + hdrAddr + 28, libIdx, 5, operator_table, 0, 0);
+    makeITS (M + hdrAddr + 28, libSegno, 5, operator_table, 0, 0);
 
 // MR12.3_restoration/MR12.3/library_dir_dir/system_library_1/source/bound_file_system.s.archive.ascii, line 11779
 // AK92, pg 59
@@ -1111,25 +1143,25 @@ static void initStack (int ssIdx)
     word36 callTraInst = M [callTraInstAddr];
 //sim_printf ("callOffset %06o callTraInstAddr %08o calTraInst %012llo\n",
 // callOffset, callTraInstAddr, callTraInst);
-    makeITS (M + hdrAddr + 30, libIdx, 5, GETHI (callTraInst), 0, 0);
+    makeITS (M + hdrAddr + 30, libSegno, 5, GETHI (callTraInst), 0, 0);
 
     // word 32, 33    push_op_ptr
     word18 pushOffset = operator_table + push_offset;
     word24 pushTraInstAddr = libAddr + pushOffset;
     word36 pushTraInst = M [pushTraInstAddr];
-    makeITS (M + hdrAddr + 32, libIdx, 5, GETHI (pushTraInst), 0, 0);
+    makeITS (M + hdrAddr + 32, libSegno, 5, GETHI (pushTraInst), 0, 0);
 
     // word 34, 35    return_op_ptr
     word18 returnOffset = operator_table + return_offset;
     word24 returnTraInstAddr = libAddr + returnOffset;
     word36 returnTraInst = M [returnTraInstAddr];
-    makeITS (M + hdrAddr + 34, libIdx, 5, GETHI (returnTraInst), 0, 0);
+    makeITS (M + hdrAddr + 34, libSegno, 5, GETHI (returnTraInst), 0, 0);
 
     // word 36, 37    short_return_op_ptr
     word18 returnNoPopOffset = operator_table + return_no_pop_offset;
     word24 returnNoPopTraInstAddr = libAddr + returnNoPopOffset;
     word36 returnNoPopTraInst = M [returnNoPopTraInstAddr];
-    makeITS (M + hdrAddr + 36, libIdx, 5, GETHI (returnNoPopTraInst), 0, 0);
+    makeITS (M + hdrAddr + 36, libSegno, 5, GETHI (returnNoPopTraInst), 0, 0);
 
 
     // word 52, 53    ect_ptr
@@ -1139,50 +1171,56 @@ static void initStack (int ssIdx)
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
-     sim_printf ("FXE initializing...\n");
-     sim_printf ("(%d segments)\n", N_SEGS);
+    sim_printf ("FXE initializing...\n");
+    sim_printf ("(%d segments)\n", N_SEGS);
 
-     memset (segTable, 0, sizeof (segTable));
+    memset (segTable, 0, sizeof (segTable));
 
-     // The stack segments must be allocated as an aligned set of 8.
-     for (int i = 0; i < 8; i ++)
-       segTable [STK_SEG + i] . allocated = true;
+    // The stack segments must be allocated as an aligned set of 8.
+    //for (int i = 0; i < 8; i ++)
+      //segTable [STK_SEG + i] . allocated = true;
 
-     setupWiredSegments ();
+    setupWiredSegments ();
 
-     char * fname = malloc (strlen (buf) + 1);
-     int n = sscanf (buf, "%s", fname);
-     if (n == 1)
-       {
-         sim_printf ("Loading segment %s\n", fname);
-         int segIdx = loadSegmentFromFile (fname);
-         installSDW (segIdx);
-         int ssIdx = createStackSegment ();
-         installSDW (ssIdx);
+    char * fname = malloc (strlen (buf) + 1);
+    int n = sscanf (buf, "%s", fname);
+    if (n == 1)
+      {
+        sim_printf ("Loading segment %s\n", fname);
+        int segIdx = loadSegmentFromFile (fname);
+        installSDW (segIdx);
+sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
+segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
+        createStackSegments ();
+sim_printf ("stack segment idx %d, segno %o, phyaddr %08o\n", 
+stack0Idx + 5, segTable [stack0Idx + 5] . segno, lookupSegAddrByIdx (stack0Idx + 5));
+sim_printf ("lib segment idx %d, segno %o, phyaddr %08o\n", 
+libIdx, segTable [libIdx] . segno, lookupSegAddrByIdx (libIdx));
 
-         initStack (ssIdx);
+        initStack (stack0Idx + 5);
 
 // AK92, pg 2-10: PR7 points to the base of the stack segement
 
-         PR [7] . SNR = ssIdx;
-         PR [7] . RNR = 5;
-         PR [7] . BITNO = 0;
-         PR [7] . WORDNO = 0;
+        PR [7] . SNR = 0270 + 5;
+        PR [7] . RNR = 5;
+        PR [7] . BITNO = 0;
+        PR [7] . WORDNO = 0;
 
 // eis_tester entry code:
 //   EAX7 001440
 //   EPP2 PR7|34,N*
 // +34 in the stack header is return_op_ptr, the "Return Operator Pointer'
 
-         set_addr_mode (APPEND_mode);
-         PPR . IC = segTable [segIdx] . entry;
-         PPR . PRR = 5;
-         PPR . PSR = segIdx;
-         PPR . P = 0;
-       }
-     free (fname);
+        set_addr_mode (APPEND_mode);
+        PPR . IC = segTable [segIdx] . entry;
+        PPR . PRR = 5;
+        PPR . PSR = segTable [segIdx] . segno;
+        PPR . P = 0;
+        DSBR . STACK = segTable [stack0Idx + 5] . segno >> 3;
+      }
+    free (fname);
 
-     return SCPE_OK;
+    return SCPE_OK;
   }
 
 void fxeFaultHandler (void)
