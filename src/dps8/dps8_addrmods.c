@@ -562,6 +562,18 @@ startCA:;
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
                    indword, TPR . CA, rTAG);
 
+        // XXX Ticket 15: Check for fault causing tags before updating
+        // the IWB, so the instruction restart will reload the offending
+        // indirect word.
+
+        if (GET_TM (rTAG) == TM_IT)
+          {
+            if (GET_TD (rTAG) == IT_F2)
+              doFault (f2_fault, 0, "RI_MOD: IT_F2");
+            if (GET_TD (rTAG) == IT_F3)
+              doFault (f2_fault, 0, "RI_MOD: IT_F3");
+          }
+
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, rTAG);
         goto startCA;
@@ -618,10 +630,10 @@ startCA:;
                     switch (Td)
                     {
                         case IT_F2:
-                            doFault (f2_fault, 0, "IT_F2");
+                            doFault (f2_fault, 0, "TM_IT: IT_F2");
 
                         case IT_F3:
-                            doFault( f3_fault, 0, "IT_F3");
+                            doFault( f3_fault, 0, "TM_IT: IT_F3");
                     }
                 }
                 // fall through to TM_R
@@ -763,17 +775,17 @@ startCA:;
 
             case IT_F1:
               {
-                doFault(f1_fault, 0, "IT_F1");
+                doFault(f1_fault, 0, "IT_MOD: IT_F1");
               }
 
             case IT_F2:
               {
-                doFault(f2_fault, 0, "IT_F2");
+                doFault(f2_fault, 0, "IT_MOD: IT_F2");
               }
 
             case IT_F3:
               {
-                doFault(f3_fault, 0, "IT_F3");
+                doFault(f3_fault, 0, "IT_MOD: IT_F3");
               }
 
             case IT_CI: ///< Character indirect (Td = 10)
