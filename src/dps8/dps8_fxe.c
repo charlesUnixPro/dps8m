@@ -859,7 +859,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
               sim_printf ("    4: referencing link with offset\n");
               sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
               sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
-              int dsegIdx = loadDeferred (sprintACC (defBase + typePair -> seg_ptr));
+              //int dsegIdx = loadDeferred (sprintACC (defBase + typePair -> seg_ptr));
               break;
             case 5:
               sim_printf ("    5: self-referencing link with offset\n");
@@ -1611,6 +1611,14 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     libIdx = loadSegmentFromFile ("bound_library_wired_");
     segTable [libIdx] . segno = 041;
     segTable [libIdx] . segname = strdup ("bound_library_wired_");
+    segTable [libIdx] . R1 = 0;
+    segTable [libIdx] . R2 = 5;
+    segTable [libIdx] . R3 = 5;
+    segTable [libIdx] . R = 1;
+    segTable [libIdx] . E = 1;
+    segTable [libIdx] . W = 0;
+    segTable [libIdx] . P = 0;
+
     installLOT (libIdx);
     installSDW (libIdx);
 
@@ -1654,6 +1662,14 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         sim_printf ("Loading segment %s\n", args [0]);
         int segIdx = loadSegmentFromFile (args [0]);
         segTable [segIdx] . segname = strdup (args [0]);
+        segTable [libIdx] . R1 = 0;
+        segTable [libIdx] . R2 = 5;
+        segTable [libIdx] . R3 = 5;
+        segTable [libIdx] . R = 1;
+        segTable [libIdx] . E = 1;
+        segTable [libIdx] . W = 0;
+        segTable [libIdx] . P = 0;
+
         installSDW (segIdx);
         segTable [segIdx] . segname = strdup (args [0]);
         installLOT (segIdx);
@@ -1667,6 +1683,19 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
         initStack (stack0Idx + 5);
 
+
+        sim_printf ("\nSegment table\n------- -----\n\n");
+        for (int idx = 0; idx < (int) N_SEGS; idx ++)
+          {
+            segTableEntry * e = segTable + idx;
+            if (! e -> allocated)
+              continue;
+            sim_printf ("%3d %c %06o %012o %s\n", 
+                        idx, e -> loaded ? ' ' : '*',
+                        e -> segno, e -> physmem,
+                        e -> segname ? e -> segname : "anon");
+          }
+        sim_printf ("\n");
 
 // AK92, pg 2-13: PR0 points to the argument list
 
