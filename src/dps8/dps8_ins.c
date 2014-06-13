@@ -33,11 +33,6 @@ word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
 word36 Yblock16[16];    ///< 16-words
 static int doABSA (word36 * result);
-static void doRCU (void)
-#ifdef __GNUC__
-  __attribute__ ((noreturn))
-#endif
-;
 
 static t_stat doInstruction (void);
 static int emCall (void);
@@ -6590,7 +6585,7 @@ sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08
     return SCPE_OK;
   }
 
-static void doRCU (void)
+void doRCU (void)
   {
     words2scu (Yblock8);
 
@@ -6603,11 +6598,12 @@ static void doRCU (void)
     else
       set_addr_mode (APPEND_mode);
 
-// First step: handle MME returns
-// Second step: handle MME and DF3 returns
     if (cu . FI_ADDR == FAULT_MME)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
-    if (cu . FI_ADDR == FAULT_DF3)
+
+    if (cu . FI_ADDR == FAULT_DF3 || 
+        cu . FI_ADDR == FAULT_F2 || 
+        cu . FI_ADDR == FAULT_F3)
       {
         if (cu . FIF == 1)
           {
