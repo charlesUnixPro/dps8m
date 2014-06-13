@@ -17,7 +17,9 @@
 #define RUN_UNIT_DEPTH 1
 
 static void installSDW (int segIdx);
+#if 0
 static int loadDeferred (char * arg);
+#endif
 
 // keeping it simple: segments are loaded unpaged, and a full 128K space is
 // allocated for them.
@@ -592,7 +594,7 @@ next:
       }
     if (! (* (word36 *) p))
       {
-        sim_printf ("can't find segment name %s\n", segName);
+        //sim_printf ("can't find segment name %s\n", segName);
         return 0;
       }
 
@@ -618,6 +620,31 @@ next2:
         p = (definition *) (defBase + p -> forward);
       }
     sim_printf ("can't find symbol name %s\n", symbolName);
+    return 0;
+  }
+
+static int resolveName (char * segName, char * symbolName, word15 * segno,
+                        word18 * value)
+  {
+    sim_printf ("resolveName %s:%s\n", segName, symbolName);
+
+    for (int idx = 0; idx < (int) N_SEGS; idx ++)
+      {
+        segTableEntry * e = segTable + idx;
+        if (! e -> allocated)
+          continue;
+        if (! e -> loaded)
+          continue;
+        if (e -> definition_offset == 0)
+          continue;
+        if (lookupDef (idx, segName, symbolName, value))
+          {
+            * segno = e -> segno;
+            sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
+            return 1;
+          }
+      }
+    sim_printf ("resoveName fail\n");
     return 0;
   }
 
@@ -813,6 +840,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
     
     e -> segnoPadAddr = & (oip_linkp -> align4);
 
+#if 0
     link_ * l = (link_ *) (linkBase + oip_linkp -> link_begin);
     link_ * end = (link_ *) (linkBase + oip_linkp -> linkage_section_lng);
 
@@ -887,6 +915,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
           }
       }
     while (++ l < end);
+#endif
   }
 
 static void readSegment (int fd, int segIdx)
@@ -915,6 +944,7 @@ static void readSegment (int fd, int segIdx)
     parseSegment (segIdx);
   }
 
+#if 0
 static int loadDeferred (char * arg)
   {
     int idx;
@@ -946,6 +976,7 @@ static int loadDeferred (char * arg)
     sim_printf ("Deferred %s in %d\n", arg, idx);
     return idx;
   }
+#endif
 
 static int loadSegmentFromFile (char * arg)
   {
@@ -1217,30 +1248,30 @@ static void createStackSegments (void)
 
 static void installSDW (int segIdx)
   {
-     segTableEntry * e = segTable + segIdx;
-     word15 segno = e -> segno;
+    segTableEntry * e = segTable + segIdx;
+    word15 segno = e -> segno;
 sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
-     word36 * even = M + DESCSEG + 2 * segno + 0;  
-     word36 * odd  = M + DESCSEG + 2 * segno + 1;  
+    word36 * even = M + DESCSEG + 2 * segno + 0;  
+    word36 * odd  = M + DESCSEG + 2 * segno + 1;  
 
-     putbits36 (even,  0, 24, e -> physmem);
-     putbits36 (even, 24,  3, e -> R1);
-     putbits36 (even, 27,  3, e -> R2);
-     putbits36 (even, 30,  3, e -> R3);
+    putbits36 (even,  0, 24, e -> physmem);
+    putbits36 (even, 24,  3, e -> R1);
+    putbits36 (even, 27,  3, e -> R2);
+    putbits36 (even, 30,  3, e -> R3);
 
-     putbits36 (even, 33,  1, 1); // F: mark page as resident
+    putbits36 (even, 33,  1, 1); // F: mark page as resident
 
-     putbits36 (odd,   1, 14, e -> seglen >> 4); // BOUND
-     putbits36 (odd,  15,  1, e -> R);
-     putbits36 (odd,  16,  1, e -> E);
-     putbits36 (odd,  17,  1, e -> W);
-     putbits36 (odd,  18,  1, e -> P);
-     putbits36 (odd,  19,  1, 1); // unpaged
-     putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
-     putbits36 (odd,  22, 14, e -> entry_bound >> 4);
+    putbits36 (odd,   1, 14, e -> seglen >> 4); // BOUND
+    putbits36 (odd,  15,  1, e -> R);
+    putbits36 (odd,  16,  1, e -> E);
+    putbits36 (odd,  17,  1, e -> W);
+    putbits36 (odd,  18,  1, e -> P);
+    putbits36 (odd,  19,  1, 1); // unpaged
+    putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
+    putbits36 (odd,  22, 14, e -> entry_bound >> 4);
 
-     do_camp (TPR . CA);
-     do_cams (TPR . CA);
+    do_camp (TPR . CA);
+    do_cams (TPR . CA);
   }
 
 static void makeITS (word36 * memory, word15 snr, word3 rnr,
@@ -1622,6 +1653,19 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLOT (libIdx);
     installSDW (libIdx);
 
+    int lib1Idx = loadSegmentFromFile ("bound_library_1_");
+    segTable [lib1Idx] . segno = 040;
+    segTable [lib1Idx] . segname = strdup ("bound_library_1_");
+    segTable [lib1Idx] . R1 = 0;
+    segTable [lib1Idx] . R2 = 5;
+    segTable [lib1Idx] . R3 = 5;
+    segTable [lib1Idx] . R = 1;
+    segTable [lib1Idx] . E = 1;
+    segTable [lib1Idx] . W = 0;
+    segTable [lib1Idx] . P = 0;
+
+    installLOT (lib1Idx);
+    installSDW (lib1Idx);
 
 
     int fxeIdx = allocateSegment ();
@@ -1752,8 +1796,125 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     return SCPE_OK;
   }
 
+static void faultTag2Handler (void)
+  {
+    // The fault pair saved the SCU data @ 0200
+
+    // Get the offending address from the SCU data
+
+    word18 offset = GETHI (M [0200 + 5]);
+    word15 segno = GETHI (M [0200 + 2]) & MASK15;
+    sim_printf ("f2 fault %05o:%06o\n", segno, offset);
+
+    // Get the physmem address of the segment
+    word36 * even = M + DESCSEG + 2 * segno + 0;  
+    //word36 * odd  = M + DESCSEG + 2 * segno + 1;  
+    word24 segBaseAddr = getbits36 (* even, 0, 24);
+    word24 addr = (segBaseAddr + offset) & MASK24;
+    sim_printf ("addr %08o:%012llo\n", addr, M [addr]);
+
+    link_ * l = (link_ *) (M + addr);
+
+    // Make a copy of it so that when we overwrite it, we don't get confused
+    link_ linkCopy = * l;
+
+    if (linkCopy . tag != 046)
+      {
+        sim_printf ("f2 handler dazed and confused. not f2? %012llo\n", M [addr]);
+        return;
+      }
+
+    if (linkCopy . run_depth != 0)
+      sim_printf ("Warning:  run_depth wrong %06o\n", linkCopy . run_depth);
+
+    // Find the linkage header
+    sim_printf ("header_relp %08o\n", linkCopy . header_relp);
+    word24 linkHeaderOffset = (offset + SIGNEXT18 (linkCopy . header_relp)) & MASK24;
+    sim_printf ("headerOffset %08o\n", linkHeaderOffset);
+    link_header * lh = (link_header *) (M + segBaseAddr + linkHeaderOffset);
+
+    // Find the definition header
+    word36 * defBase = M + segBaseAddr + lh -> def_offset;
+    //sim_printf ("defs_in_link %o\n", lh -> defs_in_link);
+    //sim_printf ("def_offset %o\n", lh -> def_offset);
+    //sim_printf ("first_ref_relp %o\n", lh -> first_ref_relp);
+    //sim_printf ("link_begin %o\n", lh -> link_begin);
+    //sim_printf ("linkage_section_lng %o\n", lh -> linkage_section_lng);
+    //sim_printf ("segno_pad %o\n", lh -> segno_pad);
+    //sim_printf ("static_length %o\n", lh -> static_length);
+    
+    //sim_printf ("ringno %0o\n", linkCopy . ringno);
+    //sim_printf ("run_depth %02o\n", linkCopy . run_depth);
+    //sim_printf ("expression_relp %06o\n", linkCopy . expression_relp);
+       
+    expression * expr = (expression *) (defBase + linkCopy . expression_relp);
+
+    //sim_printf ("  type_ptr %06o  exp %6o\n", 
+                //expr -> type_ptr, expr -> exp);
+
+    type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
+
+    word15 refSegno;
+    word18 refValue;
+
+    switch (typePair -> type)
+      {
+        case 1:
+          sim_printf ("    1: self-referencing link\n");
+          sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+          break;
+        case 3:
+          sim_printf ("    3: referencing link\n");
+          sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+          break;
+        case 4:
+          sim_printf ("    4: referencing link with offset\n");
+          sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+          sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+          char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
+          char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
+          if (resolveName (segStr, extStr, & refSegno, & refValue))
+            {
+              makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
+                       linkCopy . modifier);
+              free (segStr);
+              free (extStr);
+              doRCU ();
+            }
+          else
+            {
+              sim_printf ("can't resolve %s:%s\n", segStr, extStr);
+            }
+
+          free (segStr);
+          free (extStr);
+          //int segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
+          break;
+        case 5:
+          sim_printf ("    5: self-referencing link with offset\n");
+          sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+          break;
+        default:
+          sim_printf ("Warning: unknown type %d\n", typePair -> type);
+          break;
+      }
+
+
+    //sim_printf ("    type %06o\n", typePair -> type);
+    //sim_printf ("    trap_ptr %06o\n", typePair -> trap_ptr);
+    //sim_printf ("    seg_ptr %06o\n", typePair -> seg_ptr);
+    //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
+  }
+
 void fxeFaultHandler (void)
   {
-    sim_printf ("fxeFaultHandler\n");
+    switch (cpu . faultNumber)
+      {
+        case 24: // fault tag 2
+          faultTag2Handler ();
+          break;
+        default:
+          sim_printf ("fxeFaultHandler: fail: %d\n", cpu . faultNumber);
+      }
   }
 
