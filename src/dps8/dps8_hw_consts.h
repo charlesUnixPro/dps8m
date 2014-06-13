@@ -47,6 +47,7 @@
 #define WMASK           MASK18                             // WORDNO mask
 #define MASKLO18        0000000777777LLU
 #define MASKHI18        0777777000000LLU
+#define MASK24          077777777U                     // 24-bit data mask
 #define SIGN36          0400000000000LLU                   /*!< sign bit of a 36-bit word */
 //#define SIGN            SIGN36
 #define SIGNEX          0100000000000LLU                   /*!< extended sign helper for mpf/mpy */
