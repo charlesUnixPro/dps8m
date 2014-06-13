@@ -10,6 +10,7 @@
 #include "dps8_cpu.h"
 #include "dps8_sys.h"
 #include "dps8_utils.h"
+#include "dps8_ins.h"
 
 
 // Made up numbers
@@ -49,6 +50,7 @@ typedef struct
 // Remeber stuff from parseSegment
     word18 definition_offset;
     word18 linkage_offset;
+    word18 isot_offset;
     word36 * segnoPadAddr;
   } segTableEntry;
 
@@ -700,6 +702,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
     e -> linkage_offset = mapp -> linkage_offset;
 //sim_printf ("linkage length %o\n", mapp -> linkage_length);
 //sim_printf ("static offset %o\n", mapp -> static_offset);
+    e -> isot_offset = mapp -> static_offset;
 //sim_printf ("static length %o\n", mapp -> static_length);
 //sim_printf ("symbol offset %o\n", mapp -> symbol_offset);
 //sim_printf ("symbol length %o\n", mapp -> symbol_length);
@@ -713,7 +716,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 //    if (mapp -> break_map_offset)
 //      oip_bmapp = segp + mapp -> break_map_offset;
 //    word18 oip_tlng = mapp -> text_length;
-    word18 oip_dlng = mapp -> definition_length;
+//    word18 oip_dlng = mapp -> definition_length;
 //    word18 oip_llng = mapp -> linkage_length;
 //    word18 oip_ilng = mapp -> static_length;
 //    word18 oip_slng = mapp -> symbol_length;
@@ -828,7 +831,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 
     // Walk the linkage
 
-    word36 * linkBase = (word36 *) oip_linkp;
+    // word36 * linkBase = (word36 *) oip_linkp;
 
     sim_printf ("defs_in_link %o\n", oip_linkp -> defs_in_link);
     sim_printf ("def_offset %o\n", oip_linkp -> def_offset);
@@ -1594,9 +1597,12 @@ static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
 static void installLOT (int idx)
   {
     word36 * cltMemory = M + segTable [cltIdx] . physmem;
-    cltMemory [segTable [idx] . segno] = 
+    cltMemory [LOT_OFFSET + segTable [idx] . segno] = 
       packedPtr (0, segTable [idx] . segno,
                  segTable [idx] . linkage_offset);
+    cltMemory [ISOT_OFFSET + segTable [idx] . segno] = 
+      packedPtr (0, segTable [idx] . segno,
+                 segTable [idx] . isot_offset);
   }
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
@@ -1627,7 +1633,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     cltEntry -> P = 0;
     cltEntry -> segname = strdup ("clt");
     cltEntry -> segno = CLT_SEGNO;
-    cltEntry -> seglen = LOT_SIZE;
+    cltEntry -> seglen = 2 * LOT_SIZE;
     cltEntry -> loaded = true;
     installSDW (cltIdx);
 
