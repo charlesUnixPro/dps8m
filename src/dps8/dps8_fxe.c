@@ -39,12 +39,17 @@ typedef struct
     word24 physmem;
 // Remeber stuff from parseSegment
     word18 definition_offset;
+    word18 linkage_offset;
 
   } segTableEntry;
 
 static segTableEntry segTable [N_SEGS];
 
 static bool FXEinitialized = false;
+
+//
+// support for instruction tracing
+//
 
 char * lookupFXESegmentAddress (word18 segno, word18 offset, 
                                 char * * compname, word18 * compoffset)
@@ -94,11 +99,21 @@ static int allocateSegment (void)
   }
 
 // segno usage:
-//   0  dseg
-/// 270-277 stacks
-//  300-377 user mode
+//          0  dseg
+//       0266  combined linkage segment
+//       0267  fxe
+/// 0270-0277  stacks
+//  0300-0377  user mode
 
-static int nextSegno = 0300;
+#define DSEG_SEGNO 0
+#define CLT_SEGNO 0266
+#define FXE_SEGNO 0267
+#define STACKS_SEGNO 0270
+#define USER_SEGNO 0300
+
+#define LOT_SIZE 0100000 // 2^12
+
+static int nextSegno = USER_SEGNO;
 
 static int allocSegno (void)
   {
@@ -376,6 +391,7 @@ typedef struct __attribute__ ((__packed__))
       };
   } def_header;
 
+#if 0 // unused
 static void printACC (word36 * p)
   {
     word36 cnt = getbits36 (* p, 0, 9);
@@ -387,12 +403,13 @@ static void printACC (word36 * p)
         sim_printf ("%c", (char) (ch & 0177));
       }
   }
+#endif
 
 static int accCmp (word36 * acc, char * str)
   {
-//sim_printf ("accCmp <");
-//printACC (acc);
-//sim_printf ("> <%s>\n", str);
+    //sim_printf ("accCmp <");
+    //printACC (acc);
+    //sim_printf ("> <%s>\n", str);
     word36 cnt = getbits36 (* acc, 0, 9);
     if (cnt != strlen (str))
       return 0;
@@ -430,7 +447,7 @@ static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * va
           goto next;
         if (accCmp (defBase + p -> symbol, segName))
           {
-            sim_printf ("hit\n");
+            //sim_printf ("hit\n");
             break;
           }
 next:
@@ -456,7 +473,7 @@ next:
         if (accCmp (defBase + p -> symbol, symbolName))
           {
             symDef = p;
-            sim_printf ("hit2\n");
+            //sim_printf ("hit2\n");
             * value =  p -> value;
             return 1;
           }
@@ -515,7 +532,8 @@ static void parseSegment (int segIdx)
 //sim_printf ("definition length %o\n", mapp -> definition_length);
     e -> definition_offset = mapp -> definition_offset;
 //sim_printf ("align2 %012llo\n", mapp -> align2);
-//sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
+sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
+    e -> linkage_offset = mapp -> linkage_offset;
 //sim_printf ("linkage length %o\n", mapp -> linkage_length);
 //sim_printf ("static offset %o\n", mapp -> static_offset);
 //sim_printf ("static length %o\n", mapp -> static_length);
@@ -641,7 +659,7 @@ static void parseSegment (int segIdx)
     else
       {
         e -> entry = entryValue;
-sim_printf ("entry %o\n", entryValue);
+        //sim_printf ("entry %o\n", entryValue);
       }
   }
 
@@ -681,7 +699,7 @@ static int loadSegmentFromFile (char * arg)
     int segIdx = allocateSegment ();
     if (segIdx < 0)
       {
-        sim_printf ("Unable to open '%s': %d\n", arg, errno);
+        sim_printf ("Unable to allocate segment for segment load\n");
         return -1;
       }
 
@@ -720,12 +738,6 @@ static void setupWiredSegments (void)
      segTable [0] . segname = strdup ("dseg");
           
      initializeDSEG ();
-
-     sim_printf ("Loading library segment\n");
-
-     libIdx = loadSegmentFromFile ("bound_library_wired_");
-     segTable [libIdx] . segno = 041;
-     installSDW (libIdx);
   }
 
 //++ /*  BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
@@ -926,7 +938,7 @@ static void createStackSegments (void)
         segTableEntry * e = segTable + ssIdx;
         e -> segname = strdup ("stack_0");
         e -> segname [6] += i; // do not try this at home
-        e -> segno = 0270 + i;
+        e -> segno = STACKS_SEGNO + i;
         e -> R1 = 5;
         e -> R2 = 5;
         e -> R3 = 5;
@@ -947,7 +959,7 @@ static void installSDW (int segIdx)
   {
      segTableEntry * e = segTable + segIdx;
      word15 segno = e -> segno;
-sim_printf ("install idx %d segno %d @ %o len %d\n", segIdx, segno, e -> physmem, e -> seglen);
+sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
      word36 * even = M + DESCSEG + 2 * segno + 0;  
      word36 * odd  = M + DESCSEG + 2 * segno + 1;  
 
@@ -1085,6 +1097,7 @@ static void makeNullPtr (word36 * memory)
 //++ 	equ	return_no_pop_offset,tv_offset+274
 #define return_no_pop_offset (tv_offset+274)
 //++ 	equ	entry_offset,tv_offset+275
+#define entry_offset (tv_offset+275)
 //++ 
 //++ 
 //++ " 	END INCLUDE FILE stack_header.incl.alm
@@ -1121,9 +1134,11 @@ static void initStack (int ssIdx)
 
     // word  8,  9    clr_ptr
 
-    // word 10        max_lot_sie, run_unit_depth
+    // word 10        max_lot_size, run_unit_depth
+    M [hdrAddr + 10] = ((word36) LOT_SIZE << 18) | 0;
 
     // word 11        cur_lot_size, pad2
+    M [hdrAddr + 11] = ((word36) LOT_SIZE << 18) | 0;
 
     // word 12, 13    system_storage_ptr
 
@@ -1139,6 +1154,7 @@ static void initStack (int ssIdx)
     makeITS (M + hdrAddr + 20, stkSegno, 5, STK_TOP, 0, 0);
 
     // word 22, 23    lot_ptr
+    makeITS (M + hdrAddr + 22, CLT_SEGNO, 5, 0, 0, 0);
 
     // word 24, 25    signal_ptr
 
@@ -1187,10 +1203,100 @@ static void initStack (int ssIdx)
     word36 returnNoPopTraInst = M [returnNoPopTraInstAddr];
     makeITS (M + hdrAddr + 36, libSegno, 5, GETHI (returnNoPopTraInst), 0, 0);
 
+    // word 38, 39    entry_op_ptr
+    word18 entryOffset = operator_table + entry_offset;
+    word24 entryTraInstAddr = libAddr + entryOffset;
+    word36 entryTraInst = M [entryTraInstAddr];
+    makeITS (M + hdrAddr + 38, libSegno, 5, GETHI (entryTraInst), 0, 0);
+
+    // word 40, 41    trans_op_tv_ptr
+
+    // word 42, 43    isot_ptr
+
+    // word 44, 45    sct_ptr
+
+    // word 46, 47    unwinder_ptr
+
+    // word 48, 49    sys_link_info_ptr
+
+    // word 50, 51    rnt_ptr
 
     // word 52, 53    ect_ptr
     makeNullPtr (M + hdrAddr + 52);
 
+    // word 54, 55    assign_linkage_ptr
+
+    // word 56, 57    reserved
+
+    // word 58, 59    reserved
+
+    // word 60, 61    reserved
+
+    // word 62, 63    reserved
+
+  }
+
+#if 0
+static void createFrame (void)
+  {
+    word15 stkSegno = segTable [ssIdx] . segno;
+    word24 segAddr = lookupSegAddrByIdx (ssIdx);
+    word24 frameAddr = segAddr + STK_TOP;
+    
+#define FRAME_SZ 40 // assuming no temporaries
+
+    // word  0,  1    pr storage
+    makeNullPtr (M + frameAddr +  0);
+
+    // word  2,  3    pr storage
+    makeNullPtr (M + frameAddr +  2);
+
+    // word  4,  5    pr storage
+    makeNullPtr (M + frameAddr +  4);
+
+    // word  5,  7    pr storage
+    makeNullPtr (M + frameAddr +  6);
+
+    // word  8,  9    pr storage
+    makeNullPtr (M + frameAddr +  8);
+
+    // word 10, 11    pr storage
+    makeNullPtr (M + frameAddr + 10);
+
+    // word 12, 13    pr storage
+    makeNullPtr (M + frameAddr + 12);
+
+    // word 14, 15    pr storage
+    makeNullPtr (M + frameAddr + 14);
+
+    // word 16, 17    prev_stack_frame_ptr
+    makeNullPtr (M + frameAddr + 16);
+
+    // word 18, 19    next_stack_frame_ptr
+    makeITS (M + frameAddr + 18, stkSegno, 5, STK_TOP + FRAME_SZ, 0, 0);
+
+    // word 20, 21    return_ptr
+    makeNullPtr (M + frameAddr + 20);
+    
+    // word 22, 23    entry_ptr
+    makeNullPtr (M + frameAddr + 22);
+
+    // word 24, 25    operator_link_ptr
+    makeNullPtr (M + frameAddr + 23);
+
+    // word 25, 26    operator_link_ptr
+    makeNullPtr (M + frameAddr + 23);
+
+  }
+#endif
+
+static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
+  {
+    word36 p = 0;
+    putbits36 (& p,  0,  6, bitno);
+    putbits36 (& p,  6, 12, shortSegNo);
+    putbits36 (& p, 18, 18, wordno);
+    return p;
   }
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
@@ -1200,43 +1306,144 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     memset (segTable, 0, sizeof (segTable));
 
-    // The stack segments must be allocated as an aligned set of 8.
-    //for (int i = 0; i < 8; i ++)
-      //segTable [STK_SEG + i] . allocated = true;
-
     setupWiredSegments ();
+
+    int cltIdx = allocateSegment ();
+    if (cltIdx < 0)
+      {
+        sim_printf ("Unable to allocate clt segment\n");
+        return -1;
+      }
+
+    segTableEntry * cltEntry = segTable + cltIdx;
+
+    cltEntry -> segno = allocSegno ();
+    cltEntry -> R1 = 5;
+    cltEntry -> R2 = 5;
+    cltEntry -> R3 = 5;
+    cltEntry -> R = 1;
+    cltEntry -> E = 0;
+    cltEntry -> W = 1;
+    cltEntry -> P = 0;
+    cltEntry -> segname = strdup ("clt");
+    cltEntry -> segno = CLT_SEGNO;
+    cltEntry -> seglen = LOT_SIZE;
+    installSDW (cltIdx);
+
+    word36 * cltMemory = M + cltEntry -> physmem;
+
+    for (uint i = 0; i < LOT_SIZE; i ++)
+      cltMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
+
+
+    sim_printf ("Loading library segment\n");
+
+    libIdx = loadSegmentFromFile ("bound_library_wired_");
+    segTable [libIdx] . segno = 041;
+    segTable [libIdx] . segname = strdup ("bound_library_wired_");
+    cltMemory [segTable [libIdx] . segno] = 
+      packedPtr (0, segTable [libIdx] . segno,
+                 segTable [libIdx] . linkage_offset);
+    installSDW (libIdx);
+
+
+
+    int fxeIdx = allocateSegment ();
+    if (fxeIdx < 0)
+      {
+        sim_printf ("Unable to allocate fxe segment\n");
+        return -1;
+      }
+    cltMemory [segTable [fxeIdx] . segno] = 
+      packedPtr (0, segTable [fxeIdx] . segno,
+                 segTable [fxeIdx] . linkage_offset);
+    segTableEntry * fxeEntry = segTable + fxeIdx;
+
+    fxeEntry -> segno = allocSegno ();
+    fxeEntry -> R1 = 5;
+    fxeEntry -> R2 = 5;
+    fxeEntry -> R3 = 5;
+    fxeEntry -> R = 1;
+    fxeEntry -> E = 1;
+    fxeEntry -> W = 1;
+    fxeEntry -> P = 0;
+    fxeEntry -> segname = strdup ("fxe");
+    fxeEntry -> segno = FXE_SEGNO;
+
+
 
     FXEinitialized = true;
 
-    char * fname = malloc (strlen (buf) + 1);
-    int n = sscanf (buf, "%s", fname);
-    if (n == 1)
+#define maxargs 10
+    char * args [maxargs];
+    for (int i = 0; i < maxargs; i ++)
+      args [i] = malloc (strlen (buf) + 1);
+    
+    int n = sscanf (buf, "%s%s%s%s%s%s%s%s%s%s", 
+                    args [0], args [1], args [2], args [3], args [4],
+                    args [5], args [6], args [7], args [8], args [9]);
+    if (n >= 1)
       {
-        sim_printf ("Loading segment %s\n", fname);
-        int segIdx = loadSegmentFromFile (fname);
+        sim_printf ("Loading segment %s\n", args [0]);
+        int segIdx = loadSegmentFromFile (args [0]);
+        segTable [segIdx] . segname = strdup (args [0]);
         installSDW (segIdx);
-        segTable [segIdx] . segname = strdup (fname);
-sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
-segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
+        segTable [segIdx] . segname = strdup (args [0]);
+        cltMemory [segTable [segIdx] . segno] = 
+          packedPtr (0, segTable [segIdx] . segno,
+                     segTable [segIdx] . linkage_offset);
+        // sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
+        // segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
         createStackSegments ();
-sim_printf ("stack segment idx %d, segno %o, phyaddr %08o\n", 
-stack0Idx + 5, segTable [stack0Idx + 5] . segno, lookupSegAddrByIdx (stack0Idx + 5));
-sim_printf ("lib segment idx %d, segno %o, phyaddr %08o\n", 
-libIdx, segTable [libIdx] . segno, lookupSegAddrByIdx (libIdx));
+        // sim_printf ("stack segment idx %d, segno %o, phyaddr %08o\n", 
+        // stack0Idx + 5, segTable [stack0Idx + 5] . segno, lookupSegAddrByIdx (stack0Idx + 5));
+        // sim_printf ("lib segment idx %d, segno %o, phyaddr %08o\n", 
+        // libIdx, segTable [libIdx] . segno, lookupSegAddrByIdx (libIdx));
 
         initStack (stack0Idx + 5);
 
+
+// AK92, pg 2-13: PR0 points to the argument list
+
+        // Create an empty argument list for now.
+
+        word36 fxeMemPtr = fxeEntry -> physmem;
+
+        word36 argList = fxeMemPtr - fxeEntry -> physmem; // wordno
+
+        // word 0  arg_count, call_type
+        M [fxeMemPtr ++] = 0000000000004; // 0 args, inter-segment call
+
+        // word 1  desc_count, 0
+        M [fxeMemPtr ++] = 0000000000000; // 0 descs
+
+ 
+        PR [0] . SNR = FXE_SEGNO;
+        PR [0] . RNR = 5;
+        PR [0] . BITNO = 0;
+        PR [0] . WORDNO = argList;
+
+// AK92, pg 2-13: PR4 points to the linkage section for the executing procedure
+
+        PR [4] . SNR = segTable [segIdx] . segno;
+        PR [4] . RNR = 5;
+        PR [4] . BITNO = 0;
+        PR [4] . WORDNO = segTable [segIdx] . linkage_offset;
+
+// AK92, pg 2-13: PR7 points to the stack frame
+
+        PR [6] . SNR = 077777;
+        PR [6] . RNR = 5;
+        PR [6] . BITNO = 0;
+        PR [6] . WORDNO = 0777777;
+
 // AK92, pg 2-10: PR7 points to the base of the stack segement
 
-        PR [7] . SNR = 0270 + 5;
+        PR [7] . SNR = STACKS_SEGNO + 5;
         PR [7] . RNR = 5;
         PR [7] . BITNO = 0;
         PR [7] . WORDNO = 0;
 
-// eis_tester entry code:
-//   EAX7 001440
-//   EPP2 PR7|34,N*
-// +34 in the stack header is return_op_ptr, the "Return Operator Pointer'
 
         set_addr_mode (APPEND_mode);
         PPR . IC = segTable [segIdx] . entry;
@@ -1245,7 +1452,8 @@ libIdx, segTable [libIdx] . segno, lookupSegAddrByIdx (libIdx));
         PPR . P = 0;
         DSBR . STACK = segTable [stack0Idx + 5] . segno >> 3;
       }
-    free (fname);
+    for (int i = 0; i < maxargs; i ++)
+      free (args [i]);
 
     return SCPE_OK;
   }
