@@ -547,6 +547,24 @@ startCA:;
              indword |= TM_R | GET_TD (iTAG);
            }
 
+        // XXX Ticket 15: Check for fault causing tags before updating
+        // the IWB, so the instruction restart will reload the offending
+        // indirect word.
+
+        if (GET_TM (GET_TAG(indword)) == TM_IT)
+          {
+            if (GET_TD (GET_TAG(indword)) == IT_F2)
+              {
+                TPR . CA = tmpCA;
+                doFault (f2_fault, 0, "RI_MOD: IT_F2");
+              }
+            if (GET_TD (GET_TAG(indword)) == IT_F3)
+              {
+                TPR . CA = tmpCA;
+                doFault (f2_fault, 0, "RI_MOD: IT_F3");
+              }
+          }
+
         if (ISITP (indword) || ISITS (indword))
           {
             doITSITP (tmpCA, indword, iTAG);
@@ -561,18 +579,6 @@ startCA:;
         sim_debug (DBG_ADDRMOD, & cpu_dev,
                    "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n",
                    indword, TPR . CA, rTAG);
-
-        // XXX Ticket 15: Check for fault causing tags before updating
-        // the IWB, so the instruction restart will reload the offending
-        // indirect word.
-
-        if (GET_TM (rTAG) == TM_IT)
-          {
-            if (GET_TD (rTAG) == IT_F2)
-              doFault (f2_fault, 0, "RI_MOD: IT_F2");
-            if (GET_TD (rTAG) == IT_F3)
-              doFault (f2_fault, 0, "RI_MOD: IT_F3");
-          }
 
         if (! (cu . rpt || cu . rd))
           updateIWB (TPR . CA, rTAG);
