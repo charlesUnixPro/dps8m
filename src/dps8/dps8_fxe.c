@@ -11,7 +11,13 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 
+
+// Made up numbers
+
+#define RUN_UNIT_DEPTH 1
+
 static void installSDW (int segIdx);
+static int loadDeferred (char * arg);
 
 // keeping it simple: segments are loaded unpaged, and a full 128K space is
 // allocated for them.
@@ -27,6 +33,7 @@ static void installSDW (int segIdx);
 typedef struct
   {
     bool allocated;
+    bool loaded;
     word15 segno;  // Multics segno
     bool wired;
     word3 R1, R2, R3;
@@ -40,7 +47,7 @@ typedef struct
 // Remeber stuff from parseSegment
     word18 definition_offset;
     word18 linkage_offset;
-
+    word36 * segnoPadAddr;
   } segTableEntry;
 
 static segTableEntry segTable [N_SEGS];
@@ -60,7 +67,7 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
     static char buf [129];
     for (uint i = 0; i < N_SEGS; i ++)
       {
-        if (segTable [i] . segno == segno)
+        if (segTable [i] . allocated && segTable [i] . segno == segno)
           {
             if (compname)
                 * compname = segTable [i] . segname;
@@ -76,6 +83,7 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
 // Remember which segment we loaded bound_library_wired_ into
 
 static int libIdx;
+static int cltIdx;
 
 static word24 lookupSegAddrByIdx (int segIdx)
   {
@@ -112,6 +120,10 @@ static int allocateSegment (void)
 #define USER_SEGNO 0300
 
 #define LOT_SIZE 0100000 // 2^12
+#define LOT_OFFSET 0 // LOT starts at word 0
+#define ISOT_OFFSET LOT_SIZE // ISOT follows LOT
+
+#define CLT_SIZE (LOT_SIZE * 2) // LOT + ISOT
 
 static int nextSegno = USER_SEGNO;
 
@@ -356,6 +368,67 @@ typedef struct __attribute__ ((__packed__))
       };
   } definition;
 
+typedef struct __attribute__ ((__packed__))
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint tag: 6;
+            uint run_depth: 6;
+            uint mbz: 3;
+            uint ringno: 3;
+            uint header_relp: 18;
+          };
+        word36 align1;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint modifier: 6;
+            uint mbz2 : 12;
+            uint expression_relp: 18;
+          };
+        word36 align2;
+      };
+  } link_;
+
+typedef struct __attribute__ ((__packed__))
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint exp: 18;
+            uint type_ptr: 18;
+          };
+        word36 align1;
+      };
+  } expression;
+
+typedef struct __attribute__ ((__packed__))
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint trap_ptr: 18;
+            uint type: 18;
+          };
+        word36 align1;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint ext_ptr: 18;
+            uint seg_ptr: 18;
+          };
+        word36 align2;
+      };
+  } type_pair;
+
 //++ 
 //++ declare   map_ptr bit(18) aligned based;          /* Last word of the segment. It points to the base of the object map. */
 //++ 
@@ -391,6 +464,53 @@ typedef struct __attribute__ ((__packed__))
       };
   } def_header;
 
+typedef struct __attribute__ ((__packed__))
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint defs_in_link : 6;
+            uint pad : 30;
+          };
+        word36 align1;
+      };
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint first_ref_relp : 18;
+            uint def_offset : 18;
+          };
+        word36 align2;
+      };
+
+    word36 filled_in_later [4];
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint linkage_section_lng : 18;
+            uint link_begin : 18;
+          };
+        word36 align3;
+      };
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint static_length : 18;
+            uint segno_pad : 18;
+          };
+        word36 align4;
+      };
+
+
+  } link_header;
+
 #if 0 // unused
 static void printACC (word36 * p)
   {
@@ -404,6 +524,23 @@ static void printACC (word36 * p)
       }
   }
 #endif
+
+static char * sprintACC (word36 * p)
+  {
+    static char buf [257];
+    char * bp = buf;
+    word36 cnt = getbits36 (* p, 0, 9);
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        //sim_printf ("%c", (char) (ch & 0177));
+        * bp ++ = (char) (ch & 0177);
+      }
+    * bp ++ = '\0';
+    return buf;
+  }
 
 static int accCmp (word36 * acc, char * str)
   {
@@ -528,8 +665,8 @@ static void parseSegment (int segIdx)
 
 //sim_printf ("text offset %o\n", mapp -> text_offset);
 //sim_printf ("text length %o\n", mapp -> text_length);
-//sim_printf ("definition offset %o\n", mapp -> definition_offset);
-//sim_printf ("definition length %o\n", mapp -> definition_length);
+sim_printf ("definition offset %o\n", mapp -> definition_offset);
+sim_printf ("definition length %o\n", mapp -> definition_length);
     e -> definition_offset = mapp -> definition_offset;
 //sim_printf ("align2 %012llo\n", mapp -> align2);
 sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
@@ -542,14 +679,14 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 
 //    word36 * oip_textp = segp + mapp -> text_offset;
     def_header * oip_defp = (def_header *) (segp + mapp -> definition_offset);
-//    word36 * oip_linkp = segp + mapp -> linkage_offset;
+    link_header * oip_linkp = (link_header *) (segp + mapp -> linkage_offset);
 //    word36 * oip_statp = segp + mapp -> static_offset;
 //    word36 * oip_symbp = segp + mapp -> symbol_offset;
 //    word36 * oip_bmapp = NULL;
 //    if (mapp -> break_map_offset)
 //      oip_bmapp = segp + mapp -> break_map_offset;
 //    word18 oip_tlng = mapp -> text_length;
-//    word18 oip_dlng = mapp -> definition_length;
+    word18 oip_dlng = mapp -> definition_length;
 //    word18 oip_llng = mapp -> linkage_length;
 //    word18 oip_ilng = mapp -> static_length;
 //    word18 oip_slng = mapp -> symbol_length;
@@ -661,6 +798,95 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
         e -> entry = entryValue;
         //sim_printf ("entry %o\n", entryValue);
       }
+
+    // Walk the linkage
+
+    word36 * linkBase = (word36 *) oip_linkp;
+
+    sim_printf ("defs_in_link %o\n", oip_linkp -> defs_in_link);
+    sim_printf ("def_offset %o\n", oip_linkp -> def_offset);
+    sim_printf ("first_ref_relp %o\n", oip_linkp -> first_ref_relp);
+    sim_printf ("link_begin %o\n", oip_linkp -> link_begin);
+    sim_printf ("linkage_section_lng %o\n", oip_linkp -> linkage_section_lng);
+    sim_printf ("segno_pad %o\n", oip_linkp -> segno_pad);
+    sim_printf ("static_length %o\n", oip_linkp -> static_length);
+    
+    e -> segnoPadAddr = & (oip_linkp -> align4);
+
+    link_ * l = (link_ *) (linkBase + oip_linkp -> link_begin);
+    link_ * end = (link_ *) (linkBase + oip_linkp -> linkage_section_lng);
+
+    do
+      {
+        if (l -> tag != 046)
+          continue;
+        //sim_printf ("  tag %02o\n", l -> tag);
+        if (l -> header_relp != 
+            ((word18) (- (((word36 *) l) - linkBase)) & 0777777))
+          sim_printf ("Warning:  header_relp wrong %06o (%06o)\n",
+                      l -> header_relp,
+                      (word18) (- (((word36 *) l) - linkBase)) & 0777777);
+        if (l -> run_depth != 0)
+          sim_printf ("Warning:  run_depth wrong %06o\n", l -> run_depth);
+
+        //sim_printf ("ringno %0o\n", l -> ringno);
+        //sim_printf ("run_depth %02o\n", l -> run_depth);
+        //sim_printf ("expression_relp %06o\n", l -> expression_relp);
+       
+        if (l -> expression_relp >= oip_dlng)
+          sim_printf ("Warning:  expression_relp too big %06o\n", l -> expression_relp);
+
+        expression * expr = (expression *) (defBase + l -> expression_relp);
+
+        //sim_printf ("  type_ptr %06o  exp %6o\n", 
+                    //expr -> type_ptr, expr -> exp);
+
+        if (expr -> type_ptr >= oip_dlng)
+          sim_printf ("Warning:  type_ptr too big %06o\n", expr -> type_ptr);
+        type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
+
+        switch (typePair -> type)
+          {
+            case 1:
+              sim_printf ("    1: self-referencing link\n");
+              sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+              break;
+            case 3:
+              sim_printf ("    3: referencing link\n");
+              sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+              break;
+            case 4:
+              sim_printf ("    4: referencing link with offset\n");
+              sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+              sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+              int dsegIdx = loadDeferred (sprintACC (defBase + typePair -> seg_ptr));
+              break;
+            case 5:
+              sim_printf ("    5: self-referencing link with offset\n");
+              sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+              break;
+            default:
+              sim_printf ("Warning: unknown type %d\n", typePair -> type);
+              break;
+          }
+
+
+        //sim_printf ("    type %06o\n", typePair -> type);
+        //sim_printf ("    trap_ptr %06o\n", typePair -> trap_ptr);
+        //sim_printf ("    seg_ptr %06o\n", typePair -> seg_ptr);
+        //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
+
+        if (typePair -> trap_ptr >= oip_dlng)
+          sim_printf ("Warning:  trap_ptr too big %06o\n", typePair -> trap_ptr);
+        if (typePair -> ext_ptr >= oip_dlng)
+          sim_printf ("Warning:  ext_ptr too big %06o\n", typePair -> ext_ptr);
+
+        if (typePair -> ext_ptr != 0)
+          {
+             //sim_printf ("    ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+          }
+      }
+    while (++ l < end);
   }
 
 static void readSegment (int fd, int segIdx)
@@ -683,9 +909,42 @@ static void readSegment (int fd, int segIdx)
         seglen += 2;
       }
     segTable [segIdx] . seglen = seglen;
+    segTable [segIdx] . loaded = true;
     sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
                 seglen, segIdx, segAddr);
     parseSegment (segIdx);
+  }
+
+static int loadDeferred (char * arg)
+  {
+    int idx;
+    for (idx = 0; idx < (int) N_SEGS; idx ++)
+      if (segTable [idx] . allocated && segTable [idx] . segname &&
+          strcmp (arg, segTable [idx] . segname) == 0)
+        return idx;
+
+    idx = allocateSegment ();
+    if (idx < 0)
+      {
+        sim_printf ("Unable to allocate segment for segment %s\n", arg);
+        return -1;
+      }
+
+    segTableEntry * e = segTable + idx;
+
+    e -> segno = allocSegno ();
+    e -> R1 = 5;
+    e -> R2 = 5;
+    e -> R3 = 5;
+    e -> R = 1;
+    e -> E = 1;
+    e -> W = 1;
+    e -> P = 0;
+    e -> segname = strdup (arg);
+    e -> loaded = false;
+
+    sim_printf ("Deferred %s in %d\n", arg, idx);
+    return idx;
   }
 
 static int loadSegmentFromFile (char * arg)
@@ -726,6 +985,7 @@ static void setupWiredSegments (void)
      // 'dseg' contains the fault traps
 
      segTable [0] . allocated = true;
+     segTable [0] . loaded = true;
      segTable [0] . segno = 0;
      segTable [0] . wired = true;
      segTable [0] . R1 = 0;
@@ -947,7 +1207,7 @@ static void createStackSegments (void)
         e -> W = 1;
         e -> P = 0;
         e -> seglen = 0777777;
-
+        e -> loaded = true;
         word24 segAddr = lookupSegAddrByIdx (ssIdx);
         memset (M + segAddr, 0, sizeof (stack_header));
 
@@ -1135,7 +1395,7 @@ static void initStack (int ssIdx)
     // word  8,  9    clr_ptr
 
     // word 10        max_lot_size, run_unit_depth
-    M [hdrAddr + 10] = ((word36) LOT_SIZE << 18) | 0;
+    M [hdrAddr + 10] = ((word36) LOT_SIZE << 18) | RUN_UNIT_DEPTH;
 
     // word 11        cur_lot_size, pad2
     M [hdrAddr + 11] = ((word36) LOT_SIZE << 18) | 0;
@@ -1154,7 +1414,7 @@ static void initStack (int ssIdx)
     makeITS (M + hdrAddr + 20, stkSegno, 5, STK_TOP, 0, 0);
 
     // word 22, 23    lot_ptr
-    makeITS (M + hdrAddr + 22, CLT_SEGNO, 5, 0, 0, 0);
+    makeITS (M + hdrAddr + 22, CLT_SEGNO, 5, LOT_OFFSET, 0, 0); 
 
     // word 24, 25    signal_ptr
 
@@ -1212,6 +1472,7 @@ static void initStack (int ssIdx)
     // word 40, 41    trans_op_tv_ptr
 
     // word 42, 43    isot_ptr
+    makeITS (M + hdrAddr + 42, CLT_SEGNO, 5, ISOT_OFFSET, 0, 0); 
 
     // word 44, 45    sct_ptr
 
@@ -1299,6 +1560,14 @@ static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
     return p;
   }
 
+static void installLOT (int idx)
+  {
+    word36 * cltMemory = M + segTable [cltIdx] . physmem;
+    cltMemory [segTable [idx] . segno] = 
+      packedPtr (0, segTable [idx] . segno,
+                 segTable [idx] . linkage_offset);
+  }
+
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_printf ("FXE initializing...\n");
@@ -1308,7 +1577,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     setupWiredSegments ();
 
-    int cltIdx = allocateSegment ();
+    cltIdx = allocateSegment ();
     if (cltIdx < 0)
       {
         sim_printf ("Unable to allocate clt segment\n");
@@ -1328,6 +1597,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     cltEntry -> segname = strdup ("clt");
     cltEntry -> segno = CLT_SEGNO;
     cltEntry -> seglen = LOT_SIZE;
+    cltEntry -> loaded = true;
     installSDW (cltIdx);
 
     word36 * cltMemory = M + cltEntry -> physmem;
@@ -1341,9 +1611,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     libIdx = loadSegmentFromFile ("bound_library_wired_");
     segTable [libIdx] . segno = 041;
     segTable [libIdx] . segname = strdup ("bound_library_wired_");
-    cltMemory [segTable [libIdx] . segno] = 
-      packedPtr (0, segTable [libIdx] . segno,
-                 segTable [libIdx] . linkage_offset);
+    installLOT (libIdx);
     installSDW (libIdx);
 
 
@@ -1354,9 +1622,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         sim_printf ("Unable to allocate fxe segment\n");
         return -1;
       }
-    cltMemory [segTable [fxeIdx] . segno] = 
-      packedPtr (0, segTable [fxeIdx] . segno,
-                 segTable [fxeIdx] . linkage_offset);
+    installLOT (fxeIdx);
     segTableEntry * fxeEntry = segTable + fxeIdx;
 
     fxeEntry -> segno = allocSegno ();
@@ -1369,6 +1635,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     fxeEntry -> P = 0;
     fxeEntry -> segname = strdup ("fxe");
     fxeEntry -> segno = FXE_SEGNO;
+    fxeEntry -> loaded = true;
 
 
 
@@ -1389,9 +1656,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         segTable [segIdx] . segname = strdup (args [0]);
         installSDW (segIdx);
         segTable [segIdx] . segname = strdup (args [0]);
-        cltMemory [segTable [segIdx] . segno] = 
-          packedPtr (0, segTable [segIdx] . segno,
-                     segTable [segIdx] . linkage_offset);
+        installLOT (segIdx);
         // sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
         // segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
         createStackSegments ();
