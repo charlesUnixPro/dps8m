@@ -12,17 +12,13 @@
 #include "dps8_utils.h"
 #include "dps8_ins.h"
 
+//
+// Configuration constants
+//
 
 // Made up numbers
 
 #define RUN_UNIT_DEPTH 1
-
-static void installSDW (int segIdx);
-static int loadSegmentFromFile (char * arg);
-static void installLOT (int idx);
-#if 0
-static int loadDeferred (char * arg);
-#endif
 
 // keeping it simple: segments are loaded unpaged, and a full 128K space is
 // allocated for them.
@@ -35,6 +31,196 @@ static int loadDeferred (char * arg);
 // This is 64...
 #define N_SEGS ((MEMSIZE + SEGSIZE - 1) / SEGSIZE)
 
+
+
+//
+// Static data
+//
+
+static bool FXEinitialized = false;
+
+// Remember which segment we loaded bound_library_wired_ into
+
+static int libIdx;
+
+//
+// Forward declarations
+//
+
+static int loadSegmentFromFile (char * arg);
+
+//
+// Utility routines
+//   printACC - print an ACC
+//   sprintACC - convert an ACC to a C string
+//   accCmp - strcmp a ACC to a C string
+//   packedPtr - create a packed pointer
+//   makeITS - create an ITS pointer
+//   makeNullPtr - equivalent to Multics PL/I null()
+
+#if 0 // unused
+static void printACC (word36 * p)
+  {
+    word36 cnt = getbits36 (* p, 0, 9);
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        sim_printf ("%c", (char) (ch & 0177));
+      }
+  }
+#endif
+
+static char * sprintACC (word36 * p)
+  {
+    static char buf [257];
+    char * bp = buf;
+    word36 cnt = getbits36 (* p, 0, 9);
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        //sim_printf ("%c", (char) (ch & 0177));
+        * bp ++ = (char) (ch & 0177);
+      }
+    * bp ++ = '\0';
+    return buf;
+  }
+
+static int accCmp (word36 * acc, char * str)
+  {
+    //sim_printf ("accCmp <");
+    //printACC (acc);
+    //sim_printf ("> <%s>\n", str);
+    word36 cnt = getbits36 (* acc, 0, 9);
+    if (cnt != strlen (str))
+      return 0;
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = (i + 1) / 4;
+        uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (acc + woffset), coffset * 9, 9);
+        if ((char) (ch & 0177) != str [i])
+          return 0;
+      }
+    return 1;
+  }
+   
+static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
+  {
+    word36 p = 0;
+    putbits36 (& p,  0,  6, bitno);
+    putbits36 (& p,  6, 12, shortSegNo);
+    putbits36 (& p, 18, 18, wordno);
+    return p;
+  }
+
+static void makeITS (word36 * memory, word15 snr, word3 rnr,
+                     word18 wordno, word6 bitno, word6 tag)
+  {
+      // even
+      memory [0] = 0;
+      putbits36 (memory + 0,  3, 15, snr);
+      putbits36 (memory + 0, 18,  3, rnr);
+      putbits36 (memory + 0, 30,  6, 043);
+
+      // odd
+      memory [1] = 1;
+      putbits36 (memory + 1,  0, 18, wordno);
+      putbits36 (memory + 1, 21,  6, bitno);
+      putbits36 (memory + 1, 30,  6, tag);
+  }
+
+static void makeNullPtr (word36 * memory)
+  {
+    makeITS (memory, 077777, 0, 0777777, 0, 0);
+
+    // The example null ptr I found was in http://www.multicians.org/pxss.html;
+    // it has a tag of 0 instead of 43;
+    putbits36 (memory + 0, 30,  6, 0);
+  }
+
+//
+// SLTE
+//
+
+//
+// A running Multics system has a SLTE table which lists
+// the segments loaded from the boot tape, and the segment numbers
+// and other attributes assigned to them by the generate_multics
+// process.
+//
+// The system book lists these values, but it finds them by parsing
+// the boot tape. Rather than parsing the boot tape or system boook,
+// just copy the needed values from the system book.
+//
+
+// The Multics SLTE table
+
+typedef struct SLTEentry
+  {
+    char * segname;
+    int segno, R, E, W, P, R1, R2, R3;
+    char * path;
+  } SLTEentry;
+
+static SLTEentry SLTE [] =
+  {
+#include "slte.inc"
+    { NULL, 0, 0, 0, 0, 0, 0, 0, 0, NULL }
+  };
+
+// getSLTEidx - lookup a segment name in the SLTE 
+
+static int getSLTEidx (char * name)
+  {
+    //sim_printf ("getSLTEidx %s\n", name);
+    for (int idx = 0; SLTE [idx] . segname; idx ++)
+      {
+        if (strcmp (SLTE [idx] . segname, name) == 0)
+          return idx;
+      }
+    sim_printf ("ERROR %s not in SLTE\n", name);
+    return -1;
+  }
+
+// getSegnoFromSLTE - get the segment number of a segment from the SLTE
+
+static int getSegnoFromSLTE (char * name)
+  {
+    int idx = getSLTEidx (name);
+    if (idx < 0)
+      return -1;
+    return SLTE  [idx] . segno;
+  }
+
+//
+// segTable: the list of known segments
+//
+
+// lookupSegAddrByIdx - return the physical memory address of a segment
+// allocateSegment - find an unallocated entry in segtable, mark it allocated
+//                   and allocate physical memory for it.
+// allocateSegno - Allocate a segment number, starting at USER_SEGNO
+//
+// segno usage:
+//          0  dseg
+//       0266  combined linkage segment
+//       0267  fxe
+/// 0270-0277  stacks
+//  0600-0777  user 
+
+#define DSEG_SEGNO 0
+#define CLT_SEGNO 0266
+#define FXE_SEGNO 0267
+#define STACKS_SEGNO 0270
+#define USER_SEGNO 0600
+
+
+
+
 typedef struct
   {
     bool allocated;
@@ -43,78 +229,65 @@ typedef struct
     bool wired;
     word3 R1, R2, R3;
     word1 R, E, W, P;
-    bool gated;
-    word18 entry_bound;
     char * segname;
     word18 seglen;
-    word18 entry;
     word24 physmem;
-// Remeber stuff from parseSegment
+
+// Cache values discovered during parseSegment
+
+    word18 entry;
+    bool gated;
+    word18 entry_bound;
     word18 definition_offset;
     word18 linkage_offset;
     word18 isot_offset;
     word36 * segnoPadAddr;
+
   } segTableEntry;
 
 static segTableEntry segTable [N_SEGS];
 
-static bool FXEinitialized = false;
 
 //
-// support for instruction tracing
+// CLT - Multics segment containing the LOT and ISOT
 //
 
-char * lookupFXESegmentAddress (word18 segno, word18 offset, 
-                                char * * compname, word18 * compoffset)
-  {
-    if (! FXEinitialized)
-      return NULL;
+// Remember which segment has the CLT
 
-    static char buf [129];
-    for (uint i = 0; i < N_SEGS; i ++)
-      {
-        if (segTable [i] . allocated && segTable [i] . segno == segno)
-          {
-            if (compname)
-                * compname = segTable [i] . segname;
-            if (compoffset)
-                * compoffset = 0;  
-            sprintf (buf, "%s:+0%0o", segTable [i] . segname, offset);
-            return buf;
-          }
-      }
-    return NULL;
-  }
-
-// Remember which segment we loaded bound_library_wired_ into
-
-static int libIdx;
 static int cltIdx;
 
-static int getSegnoFromSLTE (char * name)
+#define LOT_SIZE 0100000 // 2^12
+#define LOT_OFFSET 0 // LOT starts at word 0
+#define ISOT_OFFSET LOT_SIZE // ISOT follows LOT
+
+#define CLT_SIZE (LOT_SIZE * 2) // LOT + ISOT
+
+// installLOT - install a segment LOT and ISOT in the SLT
+
+static void installLOT (int idx)
   {
-    if (strcmp (name, "bound_library_1_") == 0)
-      return 040;
-    if (strcmp (name, "bound_library_wired_") == 0)
-      return 041;
-    if (strcmp (name, "sys_info") == 0)
-      return 015;
-    if (strcmp (name, "bound_bce_wired") == 0)
-      return 0430;
-    sim_printf ("don't know the SLTE segno for %s\n", name);
-    return -1;
+    word36 * cltMemory = M + segTable [cltIdx] . physmem;
+    cltMemory [LOT_OFFSET + segTable [idx] . segno] = 
+      packedPtr (0, segTable [idx] . segno,
+                 segTable [idx] . linkage_offset);
+    cltMemory [ISOT_OFFSET + segTable [idx] . segno] = 
+      packedPtr (0, segTable [idx] . segno,
+                 segTable [idx] . isot_offset);
   }
 
+//
+// segTable routines
+//
 
 static word24 lookupSegAddrByIdx (int segIdx)
   {
     return segTable [segIdx] . physmem;
   }
 
-static word24 nextPhysmem = 1; // First block is used by dseg;
 
 static int allocateSegment (void)
   {
+    static word24 nextPhysmem = 1; // First block is used by dseg;
     for (int i = 0; i < (int) N_SEGS; i ++)
       {
         if (! segTable [i] . allocated)
@@ -127,29 +300,9 @@ static int allocateSegment (void)
     return -1;
   }
 
-// segno usage:
-//          0  dseg
-//       0266  combined linkage segment
-//       0267  fxe
-/// 0270-0277  stacks
-//  0300-0377  user mode
-
-#define DSEG_SEGNO 0
-#define CLT_SEGNO 0266
-#define FXE_SEGNO 0267
-#define STACKS_SEGNO 0270
-#define USER_SEGNO 0600
-
-#define LOT_SIZE 0100000 // 2^12
-#define LOT_OFFSET 0 // LOT starts at word 0
-#define ISOT_OFFSET LOT_SIZE // ISOT follows LOT
-
-#define CLT_SIZE (LOT_SIZE * 2) // LOT + ISOT
-
-static int nextSegno = USER_SEGNO;
-
-static int allocSegno (void)
+static int allocateSegno (void)
   {
+    static int nextSegno = USER_SEGNO;
     return nextSegno ++;
   }
 
@@ -159,9 +312,9 @@ static void initializeDSEG (void)
 
     // 0100 (64) - 0177 (127) Fault pairs
     // 0200 (128) - 0207 (135) SCU yblock
-    // 0300 - 1377 descriptor segment: 0400 segments at 2 words per segment.
+    // 0300 - 2377 descriptor segment: 1000 segments at 2 words per segment.
 #define DESCSEG 0300
-#define N_DESCS 0400
+#define N_DESCS 01000
 
     //    org   0100 " Fault pairs
     //    bss   64
@@ -532,56 +685,6 @@ typedef struct __attribute__ ((__packed__))
 
   } link_header;
 
-#if 0 // unused
-static void printACC (word36 * p)
-  {
-    word36 cnt = getbits36 (* p, 0, 9);
-    for (uint i = 0; i < cnt; i ++)
-      {
-        uint woffset = (i + 1) / 4;
-        uint coffset = (i + 1) % 4;
-        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
-        sim_printf ("%c", (char) (ch & 0177));
-      }
-  }
-#endif
-
-static char * sprintACC (word36 * p)
-  {
-    static char buf [257];
-    char * bp = buf;
-    word36 cnt = getbits36 (* p, 0, 9);
-    for (uint i = 0; i < cnt; i ++)
-      {
-        uint woffset = (i + 1) / 4;
-        uint coffset = (i + 1) % 4;
-        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
-        //sim_printf ("%c", (char) (ch & 0177));
-        * bp ++ = (char) (ch & 0177);
-      }
-    * bp ++ = '\0';
-    return buf;
-  }
-
-static int accCmp (word36 * acc, char * str)
-  {
-    //sim_printf ("accCmp <");
-    //printACC (acc);
-    //sim_printf ("> <%s>\n", str);
-    word36 cnt = getbits36 (* acc, 0, 9);
-    if (cnt != strlen (str))
-      return 0;
-    for (uint i = 0; i < cnt; i ++)
-      {
-        uint woffset = (i + 1) / 4;
-        uint coffset = (i + 1) % 4;
-        word36 ch = getbits36 (* (acc + woffset), coffset * 9, 9);
-        if ((char) (ch & 0177) != str [i])
-          return 0;
-      }
-    return 1;
-  }
-   
 static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
   {
     segTableEntry * e = segTable + segIdx;
@@ -640,6 +743,34 @@ next2:
       }
     sim_printf ("can't find symbol name %s\n", symbolName);
     return 0;
+  }
+
+static void installSDW (int segIdx)
+  {
+    segTableEntry * e = segTable + segIdx;
+    word15 segno = e -> segno;
+sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
+    word36 * even = M + DESCSEG + 2 * segno + 0;  
+    word36 * odd  = M + DESCSEG + 2 * segno + 1;  
+
+    putbits36 (even,  0, 24, e -> physmem);
+    putbits36 (even, 24,  3, e -> R1);
+    putbits36 (even, 27,  3, e -> R2);
+    putbits36 (even, 30,  3, e -> R3);
+
+    putbits36 (even, 33,  1, 1); // F: mark page as resident
+
+    putbits36 (odd,   1, 14, e -> seglen >> 4); // BOUND
+    putbits36 (odd,  15,  1, e -> R);
+    putbits36 (odd,  16,  1, e -> E);
+    putbits36 (odd,  17,  1, e -> W);
+    putbits36 (odd,  18,  1, e -> P);
+    putbits36 (odd,  19,  1, 1); // unpaged
+    putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
+    putbits36 (odd,  22, 14, e -> entry_bound >> 4);
+
+    do_camp (TPR . CA);
+    do_cams (TPR . CA);
   }
 
 static int resolveName (char * segName, char * symbolName, word15 * segno,
@@ -1009,7 +1140,7 @@ static int loadDeferred (char * arg)
 
     segTableEntry * e = segTable + idx;
 
-    e -> segno = allocSegno ();
+    e -> segno = allocateSegno ();
     e -> R1 = 5;
     e -> R2 = 5;
     e -> R3 = 5;
@@ -1046,7 +1177,7 @@ static int loadSegmentFromFile (char * arg)
 
     segTableEntry * e = segTable + segIdx;
 
-    //e -> segno = allocSegno ();
+    //e -> segno = allocateSegno ();
     e -> R1 = 5;
     e -> R2 = 5;
     e -> R3 = 5;
@@ -1297,59 +1428,6 @@ static void createStackSegments (void)
       }
   }
 
-static void installSDW (int segIdx)
-  {
-    segTableEntry * e = segTable + segIdx;
-    word15 segno = e -> segno;
-sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
-    word36 * even = M + DESCSEG + 2 * segno + 0;  
-    word36 * odd  = M + DESCSEG + 2 * segno + 1;  
-
-    putbits36 (even,  0, 24, e -> physmem);
-    putbits36 (even, 24,  3, e -> R1);
-    putbits36 (even, 27,  3, e -> R2);
-    putbits36 (even, 30,  3, e -> R3);
-
-    putbits36 (even, 33,  1, 1); // F: mark page as resident
-
-    putbits36 (odd,   1, 14, e -> seglen >> 4); // BOUND
-    putbits36 (odd,  15,  1, e -> R);
-    putbits36 (odd,  16,  1, e -> E);
-    putbits36 (odd,  17,  1, e -> W);
-    putbits36 (odd,  18,  1, e -> P);
-    putbits36 (odd,  19,  1, 1); // unpaged
-    putbits36 (odd,  20,  1, e -> gated ? 1U : 0U);
-    putbits36 (odd,  22, 14, e -> entry_bound >> 4);
-
-    do_camp (TPR . CA);
-    do_cams (TPR . CA);
-  }
-
-static void makeITS (word36 * memory, word15 snr, word3 rnr,
-                     word18 wordno, word6 bitno, word6 tag)
-  {
-      // even
-      memory [0] = 0;
-      putbits36 (memory + 0,  3, 15, snr);
-      putbits36 (memory + 0, 18,  3, rnr);
-      putbits36 (memory + 0, 30,  6, 043);
-
-      // odd
-      memory [1] = 1;
-      putbits36 (memory + 1,  0, 18, wordno);
-      putbits36 (memory + 1, 21,  6, bitno);
-      putbits36 (memory + 1, 30,  6, tag);
-  }
-
-static void makeNullPtr (word36 * memory)
-  {
-    makeITS (memory, 077777, 0, 0777777, 0, 0);
-
-    // The example null ptr I found was in http://www.multicians.org/pxss.html;
-    // it has a tag of 0 instead of 43;
-    putbits36 (memory + 0, 30,  6, 0);
-  }
-
 //++ "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
 //++ "
 //++ "	modified 7/76 by M. Weaver for *system links and more system use of areas
@@ -1507,7 +1585,7 @@ static void initStack (int ssIdx)
     if (! lookupDef (libIdx, "pl1_operators_", "operator_table",
                      & operator_table))
      {
-       sim_printf ("Can't find pl1_operators_$operator_table\n");
+       sim_printf ("ERROR: Can't find pl1_operators_$operator_table\n");
      }
     makeITS (M + hdrAddr + 28, libSegno, 5, operator_table, 0, 0);
 
@@ -1640,30 +1718,11 @@ static void createFrame (int ssIdx)
 
   }
 
-static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
-  {
-    word36 p = 0;
-    putbits36 (& p,  0,  6, bitno);
-    putbits36 (& p,  6, 12, shortSegNo);
-    putbits36 (& p, 18, 18, wordno);
-    return p;
-  }
-
-static void installLOT (int idx)
-  {
-    word36 * cltMemory = M + segTable [cltIdx] . physmem;
-    cltMemory [LOT_OFFSET + segTable [idx] . segno] = 
-      packedPtr (0, segTable [idx] . segno,
-                 segTable [idx] . linkage_offset);
-    cltMemory [ISOT_OFFSET + segTable [idx] . segno] = 
-      packedPtr (0, segTable [idx] . segno,
-                 segTable [idx] . isot_offset);
-  }
-
 static int installLibrary (char * name)
   {
     int idx = loadSegmentFromFile (name);
     segTable [idx] . segno = getSegnoFromSLTE (name);
+sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
     segTable [idx] . segname = strdup (name);
     segTable [idx] . R1 = 5;
     segTable [idx] . R2 = 5;
@@ -1678,6 +1737,10 @@ static int installLibrary (char * name)
     return idx;
   }
 
+
+//
+// fxe - load a segment into memory and execute it
+//
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
@@ -1720,19 +1783,19 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     libIdx = installLibrary ("bound_library_wired_");
 
-    int lib1Idx = installLibrary ("bound_library_1_");
+    /* int lib1Idx = */ installLibrary ("bound_library_1_");
     //int lib2Idx = installLibrary ("bound_bce_wired");
     int infoIdx = installLibrary ("sys_info");
 
     // Set the flag that applications check to see if Multics is up
     word18 value;
-    if (lookupDef (infoIdx, "sys_info", "system_service", & value))
+    if (lookupDef (infoIdx, "sys_info", "service_system", & value))
       {
         M [segTable [infoIdx] . physmem + value] = 1;
       }
     else
       {
-        sim_printf ("ERROR: can't find sys_info:system_service\n");
+        sim_printf ("ERROR: can't find sys_info:service_system\n");
       }
 
     int fxeIdx = allocateSegment ();
@@ -1773,13 +1836,14 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         sim_printf ("Loading segment %s\n", args [0]);
         int segIdx = loadSegmentFromFile (args [0]);
         segTable [segIdx] . segname = strdup (args [0]);
-        segTable [libIdx] . R1 = 0;
-        segTable [libIdx] . R2 = 5;
-        segTable [libIdx] . R3 = 5;
-        segTable [libIdx] . R = 1;
-        segTable [libIdx] . E = 1;
-        segTable [libIdx] . W = 0;
-        segTable [libIdx] . P = 0;
+        segTable [segIdx] . segno = allocateSegno ();
+        segTable [segIdx] . R1 = 0;
+        segTable [segIdx] . R2 = 5;
+        segTable [segIdx] . R3 = 5;
+        segTable [segIdx] . R = 1;
+        segTable [segIdx] . E = 1;
+        segTable [segIdx] . W = 0;
+        segTable [segIdx] . P = 0;
         segTable [segIdx] . segname = strdup (args [0]);
 
         installSDW (segIdx);
@@ -1802,9 +1866,10 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
             segTableEntry * e = segTable + idx;
             if (! e -> allocated)
               continue;
-            sim_printf ("%3d %c %06o %012o %s\n", 
+            sim_printf ("%3d %c %06o %012o %06o %s\n", 
                         idx, e -> loaded ? ' ' : '*',
                         e -> segno, e -> physmem,
+                        e -> seglen, 
                         e -> segname ? e -> segname : "anon");
           }
         sim_printf ("\n");
@@ -1863,6 +1928,10 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     return SCPE_OK;
   }
+
+//
+// Fault handler
+//
 
 static void faultTag2Handler (void)
   {
@@ -1984,5 +2053,31 @@ void fxeFaultHandler (void)
         default:
           sim_printf ("fxeFaultHandler: fail: %d\n", cpu . faultNumber);
       }
+  }
+
+//
+// support for instruction tracing
+//
+
+char * lookupFXESegmentAddress (word18 segno, word18 offset, 
+                                char * * compname, word18 * compoffset)
+  {
+    if (! FXEinitialized)
+      return NULL;
+
+    static char buf [129];
+    for (uint i = 0; i < N_SEGS; i ++)
+      {
+        if (segTable [i] . allocated && segTable [i] . segno == segno)
+          {
+            if (compname)
+                * compname = segTable [i] . segname;
+            if (compoffset)
+                * compoffset = 0;  
+            sprintf (buf, "%s:+0%0o", segTable [i] . segname, offset);
+            return buf;
+          }
+      }
+    return NULL;
   }
 

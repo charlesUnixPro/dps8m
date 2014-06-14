@@ -268,6 +268,9 @@ all: tags locallibs_then_dps8
 dps8 : $(OBJS) $(LOCALLIBS) 
 	$(LD)  -o "dps8" $(OBJS) $(LDFLAGS) $(LIBS)
 	
+slte.inc : system_book_12_3.ascii
+	./buildSLTE.sh
+
 locallibs_then_dps8 :
 	(cd ../simh; $(MAKE))
 	(cd ../decNumber; $(MAKE))
