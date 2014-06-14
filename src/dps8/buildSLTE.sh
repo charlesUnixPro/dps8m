@@ -5,7 +5,8 @@ sed -n < system_book_12_3.ascii \
   '/Begin collection [012]/,/[Cc]ollection/{
      /^[a-z]/,+2 p
    }' | \
-awk '{ segname = $1; segno = $2; 
+awk '{ if (substr ($2, 1, 1) == "(") { getline; getline; next; }
+       segname = $1; segno = strtonum (0$2); 
        R = match ($0, "\\<read\\>") != 0;
        E = match ($0, "\\<execute\\>") != 0;
        W = match ($0, "\\<write\\>") != 0;
@@ -20,7 +21,7 @@ awk '{ segname = $1; segno = $2;
        # print "3:" $0;
        n = match ($0, "\\<path\\>:");
        if (n) path = "\"" substr ($0, n + 6) "\""; else path = "NULL";
-       printf "    {\"%s\", %d, %d, %d, %d, %d, %d, %d, %d, %s},\n", segname, segno, R, E, W, P, R1, R2, R3, path;
+       printf "    {\"%s\", 0%05o, %d, %d, %d, %d, %d, %d, %d, %s},\n", segname, segno, R, E, W, P, R1, R2, R3, path;
        # print "";
      }' >slte.inc 
 
