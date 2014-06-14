@@ -120,6 +120,8 @@ static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
 static void makeITS (word36 * memory, word15 snr, word3 rnr,
                      word18 wordno, word6 bitno, word6 tag)
   {
+      //sim_printf ("makeITS %08lo snr %05o wordno %06o\n", memory - M, snr, wordno);
+
       // even
       memory [0] = 0;
       putbits36 (memory + 0,  3, 15, snr);
@@ -207,21 +209,27 @@ static int getSegnoFromSLTE (char * name)
 //
 // segno usage:
 //          0  dseg
+//       0265  iocbs
 //       0266  combined linkage segment
 //       0267  fxe
 /// 0270-0277  stacks
 //  0600-0777  user 
+//     077776  fxe trap       
 
 #define DSEG_SEGNO 0
+#define IOCB_SEGNO 0265
 #define CLT_SEGNO 0266
 #define FXE_SEGNO 0267
 #define STACKS_SEGNO 0270
 #define USER_SEGNO 0600
+#define TRAP_SEGNO 077776
+
+// Traps
+
+#define TRAP_PUT_CHARS 1
 
 
-
-
-typedef struct
+typedef struct segTableEntry
   {
     bool allocated;
     bool loaded;
@@ -377,7 +385,7 @@ static void initializeDSEG (void)
 
 //++  /* Structure describing standard object map */
 //++  declare  1 object_map aligned based,
-struct  __attribute__ ((__packed__)) object_map
+typedef struct  __attribute__ ((__packed__)) object_map
   {
 //++    2 decl_vers fixed bin,  /* Version number of current structure format */
     word36 decl_vers; /* Version number of current structure format */
@@ -493,9 +501,9 @@ struct  __attribute__ ((__packed__)) object_map
           } format;
         word36 align8;
       };
-  };
+  } object_map;
 
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) definition
   {
     union
       {
@@ -542,7 +550,7 @@ typedef struct __attribute__ ((__packed__))
       };
   } definition;
 
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) link_
   {
     union
       {
@@ -568,7 +576,7 @@ typedef struct __attribute__ ((__packed__))
       };
   } link_;
 
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) expression
   {
     union
       {
@@ -581,7 +589,7 @@ typedef struct __attribute__ ((__packed__))
       };
   } expression;
 
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) type_pair
   {
     union
       {
@@ -613,7 +621,7 @@ typedef struct __attribute__ ((__packed__))
 //++ 
 //++ /* END INCLUDE FILE ... object_map.incl.pl1 */
 
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) def_header
   {
     union
       {
@@ -638,7 +646,7 @@ typedef struct __attribute__ ((__packed__))
       };
   } def_header;
 
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) link_header
   {
     union
       {
@@ -774,7 +782,7 @@ static void installSDW (int segIdx)
   }
 
 static int resolveName (char * segName, char * symbolName, word15 * segno,
-                        word18 * value)
+                        word18 * value, int * index)
   {
     //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     int idx;
@@ -790,6 +798,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         if (lookupDef (idx, segName, symbolName, value))
           {
             * segno = e -> segno;
+            * index = idx;
             //sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
             return 1;
           }
@@ -799,6 +808,11 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
       {
         //sim_printf ("got file\n");
         segTable [idx] . segno = getSegnoFromSLTE (segName);
+        if (! segTable [idx] . segno)
+          {
+            segTable [idx] . segno = allocateSegno ();
+            sim_printf ("assigning %d to %s\n", segTable [idx] . segno, segName);
+          }
         segTable [idx] . segname = strdup (segName);
         segTable [idx] . R1 = 0;
         segTable [idx] . R2 = 5;
@@ -813,6 +827,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         if (lookupDef (idx, segName, symbolName, value))
           {
             * segno = segTable [idx] . segno;
+            * index = idx;
             // sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
             return 1;
           }
@@ -849,7 +864,7 @@ static void parseSegment (int segIdx)
         return;
       }
 
-    struct object_map * mapp = (struct object_map *) (segp + i);
+    object_map * mapp = (object_map *) (segp + i);
 
     if (mapp -> identifier [0] != 0157142152137LLU || // "obj_"
         mapp -> identifier [1] != 0155141160040LLU) // "map "
@@ -1218,6 +1233,114 @@ static void setupWiredSegments (void)
      initializeDSEG ();
   }
 
+
+//++ /* BEGIN INCLUDE FILE iocbx.incl.pl1 */
+//++ /* written 27 Dec 1973, M. G. Smith */
+//++ /* returns attributes removed, hashing support BIM Spring 1981 */
+//++ /* version made character string June 1981 BIM */
+//++ /* Modified 11/29/82 by S. Krupp to add new entries and to change
+//++       version number to IOX2. */
+//++ /* format: style2 */
+//++ 
+//++      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+typedef struct  __attribute__ ((__packed__)) iocb
+  {
+//++ 	     2 version	      character (4) aligned,	/* IOX2 */
+    word36 version; // 0
+//++ 	     2 name	      char (32),		/* I/O name of this block. */
+    word36 name [8]; // 1
+//++ 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+    word36 make_even1; // 9
+    word72 actual_iocb_ptr; // 10
+//++ 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+    word72 attach_descrip_ptr; // 12
+//++ 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+    word72 attach_data_ptr;  // 14
+//++ 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+    word72 open_descrip_ptr; // 16
+//++ 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+    word72 open_data_ptr; // 18
+//++ 	     2 event_channel      bit (72),		/* Event channel for asynchronous I/O. */
+    word72 event_channel; // 20
+//++ 	     2 detach_iocb	      entry (ptr, fixed bin (35)),
+//++ 						/* detach_iocb(p) */
+    word72 detach_iocb [2]; // 22
+//++ 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed bin (35)),
+//++ 						/* open(p,mode,not_used) */
+    word72 open [2]; // 26
+//++ 	     2 close	      entry (ptr, fixed bin (35)),
+//++ 						/* close(p) */
+    word72 close [2]; // 30
+//++ 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+//++ 						/* get_line(p,bufptr,buflen,actlen) */
+    word72 get_line [2]; // 34
+//++ 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+    word72 get_chars [2]; // 38
+//++ 						/* get_chars(p,bufptr,buflen,actlen) */
+//++ 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+//++ 						/* put_chars(p,bufptr,buflen) */
+    word72 put_chars [2]; // 42
+//++ 	     2 modes	      entry (ptr, char (*), char (*), fixed bin (35)),
+//++ 						/* modes(p,newmode,oldmode) */
+    word72 modes [2]; // 46
+//++ 	     2 position	      entry (ptr, fixed, fixed (21), fixed bin (35)),
+//++ 						/* position(p,u1,u2) */
+    word72 position [2]; // 50
+//++ 	     2 control	      entry (ptr, char (*), ptr, fixed bin (35)),
+//++ 						/* control(p,order,infptr) */
+    word72 control [2]; // 54
+//++ 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+//++ 						/* read_record(p,bufptr,buflen,actlen) */
+    word72 read_record [2]; // 58
+//++ 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+//++ 						/* write_record(p,bufptr,buflen) */
+    word72 write_record [2]; // 62
+//++ 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed bin (35)),
+//++ 						/* rewrite_record(p,bufptr,buflen) */
+    word72 rewrite_record [2]; // 66
+//++ 	     2 delete_record      entry (ptr, fixed bin (35)),
+//++ 						/* delete_record(p) */
+    word72 delete_record [2]; // 70
+//++ 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+//++ 						/* seek_key(p,key,len) */
+    word72 seek_key [2]; // 74
+//++ 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+//++ 						/* read_key(p,key,len) */
+    word72 read_key [2]; // 78
+//++ 	     2 read_length	      entry (ptr, fixed (21), fixed bin (35)),
+//++ 						/* read_length(p,len) */
+    word72 read_length [2]; // 82
+//++ 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+//++ 						/* open_file(p,mode,desc,not_used,s) */
+    word72 open_file [2]; // 86
+//++ 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+//++ 						/* close_file(p,desc,s) */
+    word72 close_file [2]; // 90
+//++ 	     2 detach	      entry (ptr, char (*), fixed bin (35)),
+//++ 						/* detach(p,desc,s) */
+//++ 						/* Hidden information, to support SYN attachments. */
+    word72 detach [2]; // 94
+//++ 	     2 ios_compatibility  ptr,		/* Ptr to old DIM's IOS transfer vector. */
+    word72 ios_compatibility; // 98
+//++ 	     2 syn_inhibits	      bit (36),		/* Operations inhibited by SYN. */
+    word36 syn_inhibits; // 100
+//++ 	     2 syn_father	      ptr,		/* IOCB immediately SYNed to. */
+    word36 make_even2; // 101
+    word72 syn_father; // 102
+//++ 	     2 syn_brother	      ptr,		/* Next IOCB SYNed as this one is. */
+    word72 syn_brother; // 104
+//++ 	     2 syn_son	      ptr,		/* First IOCB SYNed to this one. */
+    word72 syn_son; // 106
+//++ 	     2 hash_chain_ptr     ptr;		/* Next IOCB in hash bucket */
+    word72 hash_chain_ptr; // 108
+//++ 
+//++      declare iox_$iocb_version_sentinel
+//++ 			      character (4) aligned external static;
+//++ 
+  } iocb;
+
+//++ /* END INCLUDE FILE iocbx.incl.pl1 */
+
 //++ /*  BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
 //++ /* modified 7/76 by M. Weaver for *system links and more system use of areas */
 //++ /* modified 3/77 by M. Weaver to add rnt_ptr */
@@ -1244,7 +1367,7 @@ static void setupWiredSegments (void)
 //++      dcl    sb        ptr;  /* the  main pointer to the stack header */
 //++ 
 //++      dcl    1 stack_header       based (sb) aligned,
-typedef struct __attribute__ ((__packed__))
+typedef struct __attribute__ ((__packed__)) stack_header
   {
 
 //++       2 pad1       (4) fixed bin, /*  (0) also used as arg list by outward_call_handler  */
@@ -1727,6 +1850,11 @@ static int installLibrary (char * name)
   {
     int idx = loadSegmentFromFile (name);
     segTable [idx] . segno = getSegnoFromSLTE (name);
+    if (! segTable [idx] . segno)
+      {
+        segTable [idx] . segno = allocateSegno ();
+        sim_printf ("assigning %d to %s\n", segTable [idx] . segno, name);
+      }
     //sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
     segTable [idx] . segname = strdup (name);
     segTable [idx] . R1 = 5;
@@ -1750,10 +1878,11 @@ static int installLibrary (char * name)
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_printf ("FXE initializing...\n");
-
     memset (segTable, 0, sizeof (segTable));
 
     setupWiredSegments ();
+
+// Setup CLT
 
     cltIdx = allocateSegment ();
     if (cltIdx < 0)
@@ -1783,24 +1912,79 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
       cltMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
 
 
+// Setup IOCB
+
+    int iocbIdx = allocateSegment ();
+    if (iocbIdx < 0)
+      {
+        sim_printf ("ERROR: Unable to allocate iocb segment\n");
+        return -1;
+      }
+
+    segTableEntry * iocbEntry = segTable + iocbIdx;
+
+    iocbEntry -> R1 = 5;
+    iocbEntry -> R2 = 5;
+    iocbEntry -> R3 = 5;
+    iocbEntry -> R = 1;
+    iocbEntry -> E = 0;
+    iocbEntry -> W = 1;
+    iocbEntry -> P = 0;
+    iocbEntry -> segname = strdup ("iocb");
+    iocbEntry -> segno = IOCB_SEGNO;
+    iocbEntry -> seglen = 0777777;
+    iocbEntry -> loaded = true;
+    installSDW (iocbIdx);
+
+#define IOCB_USER_OUTPUT 0
+
+    // Define iocb [IOCB_USER_OUTPUT] . put_chars
+
+    iocb * iocbUser = (iocb *) (M + iocbEntry -> physmem + IOCB_USER_OUTPUT * sizeof (iocb));
+
+    word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
+
+    makeITS (putCharEntry, TRAP_SEGNO, 5, TRAP_PUT_CHARS, 0, 0);
+    makeNullPtr (putCharEntry + 2);
+
     sim_printf ("Loading library segment\n");
 
     libIdx = installLibrary ("bound_library_wired_");
 
-    /* int lib1Idx = */ installLibrary ("bound_library_1_");
+    installLibrary ("bound_library_1_");
+    installLibrary ("bound_process_env_");
     //int lib2Idx = installLibrary ("bound_bce_wired");
     int infoIdx = installLibrary ("sys_info");
 
     // Set the flag that applications check to see if Multics is up
     word18 value;
-    if (lookupDef (infoIdx, "sys_info", "service_system", & value))
+    word15 segno;
+    int defIdx;
+
+    if (resolveName ("sys_info", "service_system", & segno, & value, & defIdx))
       {
-        M [segTable [infoIdx] . physmem + value] = 1;
+        M [segTable [defIdx] . physmem + value] = 1;
       }
     else
       {
         sim_printf ("ERROR: can't find sys_info:service_system\n");
       }
+
+    // Set the iox_$user_output
+
+    if (resolveName ("iox_", "user_output", & segno, & value, & defIdx))
+      {
+        //M [segTable [infoIdx] . physmem + value] = 1;
+      }
+    else
+      {
+        sim_printf ("ERROR: can't find iox_:user_output\n");
+      }
+sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
+    makeITS (M + segTable [defIdx] . physmem + value, IOCB_SEGNO, 5,
+             IOCB_USER_OUTPUT * sizeof (iocb), 0, 0);
+
+    // Create the fxe segment
 
     int fxeIdx = allocateSegment ();
     if (fxeIdx < 0)
@@ -1870,7 +2054,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
             segTableEntry * e = segTable + idx;
             if (! e -> allocated)
               continue;
-            sim_printf ("%3d %c %06o %012o %06o %s\n", 
+            sim_printf ("%3d %c %06o %08o %06o %s\n", 
                         idx, e -> loaded ? ' ' : '*',
                         e -> segno, e -> physmem,
                         e -> seglen, 
@@ -1997,6 +2181,7 @@ static void faultTag2Handler (void)
 
     word15 refSegno;
     word18 refValue;
+    int defIdx;
 
     switch (typePair -> type)
       {
@@ -2014,7 +2199,7 @@ static void faultTag2Handler (void)
           sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
           char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
-          if (resolveName (segStr, extStr, & refSegno, & refValue))
+          if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
