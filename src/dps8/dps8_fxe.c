@@ -18,6 +18,8 @@
 #define RUN_UNIT_DEPTH 1
 
 static void installSDW (int segIdx);
+static int loadSegmentFromFile (char * arg);
+static void installLOT (int idx);
 #if 0
 static int loadDeferred (char * arg);
 #endif
@@ -89,6 +91,21 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
 static int libIdx;
 static int cltIdx;
 
+static int getSegnoFromSLTE (char * name)
+  {
+    if (strcmp (name, "bound_library_1_") == 0)
+      return 040;
+    if (strcmp (name, "bound_library_wired_") == 0)
+      return 041;
+    if (strcmp (name, "sys_info") == 0)
+      return 015;
+    if (strcmp (name, "bound_bce_wired") == 0)
+      return 0430;
+    sim_printf ("don't know the SLTE segno for %s\n", name);
+    return -1;
+  }
+
+
 static word24 lookupSegAddrByIdx (int segIdx)
   {
     return segTable [segIdx] . physmem;
@@ -121,7 +138,7 @@ static int allocateSegment (void)
 #define CLT_SEGNO 0266
 #define FXE_SEGNO 0267
 #define STACKS_SEGNO 0270
-#define USER_SEGNO 0300
+#define USER_SEGNO 0600
 
 #define LOT_SIZE 0100000 // 2^12
 #define LOT_OFFSET 0 // LOT starts at word 0
@@ -629,8 +646,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
                         word18 * value)
   {
     sim_printf ("resolveName %s:%s\n", segName, symbolName);
-
-    for (int idx = 0; idx < (int) N_SEGS; idx ++)
+    int idx;
+    for (idx = 0; idx < (int) N_SEGS; idx ++)
       {
         segTableEntry * e = segTable + idx;
         if (! e -> allocated)
@@ -645,6 +662,31 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
             return 1;
           }
+      }
+    idx = loadSegmentFromFile (segName);
+    if (idx >= 0)
+      {
+sim_printf ("got file\n");
+        segTable [idx] . segno = getSegnoFromSLTE (segName);
+        segTable [idx] . segname = strdup (segName);
+        segTable [idx] . R1 = 0;
+        segTable [idx] . R2 = 5;
+        segTable [idx] . R3 = 5;
+        segTable [idx] . R = 1;
+        segTable [idx] . E = 1;
+        segTable [idx] . W = 0;
+        segTable [idx] . P = 0;
+
+        installLOT (idx);
+        installSDW (idx);
+        if (lookupDef (idx, segName, symbolName, value))
+          {
+            * segno = segTable [idx] . segno;
+            sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
+            return 1;
+          }
+        sim_printf ("found segment but not symbol\n");
+        return 0; 
       }
     sim_printf ("resoveName fail\n");
     return 0;
@@ -921,7 +963,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 #endif
   }
 
-static void readSegment (int fd, int segIdx)
+static void readSegment (int fd, int segIdx, off_t flen)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word24 maddr = segAddr;
@@ -940,7 +982,9 @@ static void readSegment (int fd, int segIdx)
         M [maddr ++] = extr36 (bytes, 1);
         seglen += 2;
       }
-    segTable [segIdx] . seglen = seglen;
+    sim_printf ("seglen %d flen %ld\n", seglen, flen * 8 / 36);
+    //segTable [segIdx] . seglen = seglen;
+    segTable [segIdx] . seglen = flen * 8 / 36;
     segTable [segIdx] . loaded = true;
     sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
                 seglen, segIdx, segAddr);
@@ -989,6 +1033,10 @@ static int loadSegmentFromFile (char * arg)
         sim_printf ("Unable to open '%s': %d\n", arg, errno);
         return -1;
       }
+
+    off_t flen = lseek (fd, 0, SEEK_END);
+    lseek (fd, 0, SEEK_SET);
+    
     int segIdx = allocateSegment ();
     if (segIdx < 0)
       {
@@ -998,7 +1046,7 @@ static int loadSegmentFromFile (char * arg)
 
     segTableEntry * e = segTable + segIdx;
 
-    e -> segno = allocSegno ();
+    //e -> segno = allocSegno ();
     e -> R1 = 5;
     e -> R2 = 5;
     e -> R3 = 5;
@@ -1007,7 +1055,7 @@ static int loadSegmentFromFile (char * arg)
     e -> W = 1;
     e -> P = 0;
 
-    readSegment (fd, segIdx);
+    readSegment (fd, segIdx, flen);
 
     return segIdx;
   }
@@ -1531,8 +1579,7 @@ static void initStack (int ssIdx)
 
   }
 
-#if 0
-static void createFrame (void)
+static void createFrame (int ssIdx)
   {
     word15 stkSegno = segTable [ssIdx] . segno;
     word24 segAddr = lookupSegAddrByIdx (ssIdx);
@@ -1582,8 +1629,16 @@ static void createFrame (void)
     // word 25, 26    operator_link_ptr
     makeNullPtr (M + frameAddr + 23);
 
+    // Update the header
+
+    // word 18, 19    stack_begin_ptr
+    word24 hdrAddr = segAddr + HDR_OFFSET;
+    makeITS (M + hdrAddr + 18, stkSegno, 5, STK_TOP, 0, 0);
+
+    // word 20, 21    stack_end_ptr
+    makeITS (M + hdrAddr + 20, stkSegno, 5, STK_TOP + FRAME_SZ, 0, 0);
+
   }
-#endif
 
 static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
   {
@@ -1605,6 +1660,25 @@ static void installLOT (int idx)
                  segTable [idx] . isot_offset);
   }
 
+static int installLibrary (char * name)
+  {
+    int idx = loadSegmentFromFile (name);
+    segTable [idx] . segno = getSegnoFromSLTE (name);
+    segTable [idx] . segname = strdup (name);
+    segTable [idx] . R1 = 5;
+    segTable [idx] . R2 = 5;
+    segTable [idx] . R3 = 5;
+    segTable [idx] . R = 1;
+    segTable [idx] . E = 1;
+    segTable [idx] . W = 0;
+    segTable [idx] . P = 0;
+
+    installLOT (idx);
+    installSDW (idx);
+    return idx;
+  }
+
+
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_printf ("FXE initializing...\n");
@@ -1623,7 +1697,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     segTableEntry * cltEntry = segTable + cltIdx;
 
-    cltEntry -> segno = allocSegno ();
     cltEntry -> R1 = 5;
     cltEntry -> R2 = 5;
     cltEntry -> R3 = 5;
@@ -1645,34 +1718,22 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     sim_printf ("Loading library segment\n");
 
-    libIdx = loadSegmentFromFile ("bound_library_wired_");
-    segTable [libIdx] . segno = 041;
-    segTable [libIdx] . segname = strdup ("bound_library_wired_");
-    segTable [libIdx] . R1 = 0;
-    segTable [libIdx] . R2 = 5;
-    segTable [libIdx] . R3 = 5;
-    segTable [libIdx] . R = 1;
-    segTable [libIdx] . E = 1;
-    segTable [libIdx] . W = 0;
-    segTable [libIdx] . P = 0;
+    libIdx = installLibrary ("bound_library_wired_");
 
-    installLOT (libIdx);
-    installSDW (libIdx);
+    int lib1Idx = installLibrary ("bound_library_1_");
+    //int lib2Idx = installLibrary ("bound_bce_wired");
+    int infoIdx = installLibrary ("sys_info");
 
-    int lib1Idx = loadSegmentFromFile ("bound_library_1_");
-    segTable [lib1Idx] . segno = 040;
-    segTable [lib1Idx] . segname = strdup ("bound_library_1_");
-    segTable [lib1Idx] . R1 = 0;
-    segTable [lib1Idx] . R2 = 5;
-    segTable [lib1Idx] . R3 = 5;
-    segTable [lib1Idx] . R = 1;
-    segTable [lib1Idx] . E = 1;
-    segTable [lib1Idx] . W = 0;
-    segTable [lib1Idx] . P = 0;
-
-    installLOT (lib1Idx);
-    installSDW (lib1Idx);
-
+    // Set the flag that applications check to see if Multics is up
+    word18 value;
+    if (lookupDef (infoIdx, "sys_info", "system_service", & value))
+      {
+        M [segTable [infoIdx] . physmem + value] = 1;
+      }
+    else
+      {
+        sim_printf ("ERROR: can't find sys_info:system_service\n");
+      }
 
     int fxeIdx = allocateSegment ();
     if (fxeIdx < 0)
@@ -1683,7 +1744,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLOT (fxeIdx);
     segTableEntry * fxeEntry = segTable + fxeIdx;
 
-    fxeEntry -> segno = allocSegno ();
+    fxeEntry -> seglen = 0777777;
     fxeEntry -> R1 = 5;
     fxeEntry -> R2 = 5;
     fxeEntry -> R3 = 5;
@@ -1694,7 +1755,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     fxeEntry -> segname = strdup ("fxe");
     fxeEntry -> segno = FXE_SEGNO;
     fxeEntry -> loaded = true;
-
+    installSDW (fxeIdx);
 
 
     FXEinitialized = true;
@@ -1719,9 +1780,9 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         segTable [libIdx] . E = 1;
         segTable [libIdx] . W = 0;
         segTable [libIdx] . P = 0;
+        segTable [segIdx] . segname = strdup (args [0]);
 
         installSDW (segIdx);
-        segTable [segIdx] . segname = strdup (args [0]);
         installLOT (segIdx);
         // sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
         // segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
@@ -1732,6 +1793,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         // libIdx, segTable [libIdx] . segno, lookupSegAddrByIdx (libIdx));
 
         initStack (stack0Idx + 5);
+        createFrame (stack0Idx + 5);
 
 
         sim_printf ("\nSegment table\n------- -----\n\n");
