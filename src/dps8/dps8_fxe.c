@@ -182,7 +182,7 @@ static int getSLTEidx (char * name)
         if (strcmp (SLTE [idx] . segname, name) == 0)
           return idx;
       }
-    sim_printf ("ERROR %s not in SLTE\n", name);
+    sim_printf ("ERROR: %s not in SLTE\n", name);
     return -1;
   }
 
@@ -741,7 +741,7 @@ next:
 next2:
         p = (definition *) (defBase + p -> forward);
       }
-    sim_printf ("can't find symbol name %s\n", symbolName);
+    //sim_printf ("can't find symbol name %s\n", symbolName);
     return 0;
   }
 
@@ -749,7 +749,7 @@ static void installSDW (int segIdx)
   {
     segTableEntry * e = segTable + segIdx;
     word15 segno = e -> segno;
-sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
+    // sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
     word36 * even = M + DESCSEG + 2 * segno + 0;  
     word36 * odd  = M + DESCSEG + 2 * segno + 1;  
 
@@ -776,7 +776,7 @@ sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> 
 static int resolveName (char * segName, char * symbolName, word15 * segno,
                         word18 * value)
   {
-    sim_printf ("resolveName %s:%s\n", segName, symbolName);
+    //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     int idx;
     for (idx = 0; idx < (int) N_SEGS; idx ++)
       {
@@ -790,14 +790,14 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         if (lookupDef (idx, segName, symbolName, value))
           {
             * segno = e -> segno;
-            sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
+            //sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
             return 1;
           }
       }
     idx = loadSegmentFromFile (segName);
     if (idx >= 0)
       {
-sim_printf ("got file\n");
+        //sim_printf ("got file\n");
         segTable [idx] . segno = getSegnoFromSLTE (segName);
         segTable [idx] . segname = strdup (segName);
         segTable [idx] . R1 = 0;
@@ -813,13 +813,13 @@ sim_printf ("got file\n");
         if (lookupDef (idx, segName, symbolName, value))
           {
             * segno = segTable [idx] . segno;
-            sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
+            // sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
             return 1;
           }
-        sim_printf ("found segment but not symbol\n");
+        // sim_printf ("found segment but not symbol\n");
         return 0; 
       }
-    sim_printf ("resoveName fail\n");
+    // sim_printf ("resoveName fail\n");
     return 0;
   }
 
@@ -833,19 +833,19 @@ static void parseSegment (int segIdx)
 
     if (seglen == 0)
       {
-        sim_printf ("Can't parse empty segment\n");
+        sim_printf ("ERROR: Can't parse empty segment\n");
         return;
       }
     word36 lastword = segp [seglen - 1];
     word24 i = GETHI (lastword);
     if (i >= seglen)
       {
-        sim_printf ("mapPtr too big %06u >= %06u\n", i, seglen);
+        sim_printf ("ERROR: mapPtr too big %06u >= %06u\n", i, seglen);
         return;
       }
     if (seglen - i - 1 < 11)
       {
-        sim_printf ("mapPtr too small %06u\n", seglen - i - 1);
+        sim_printf ("ERROR: mapPtr too small %06u\n", seglen - i - 1);
         return;
       }
 
@@ -854,24 +854,24 @@ static void parseSegment (int segIdx)
     if (mapp -> identifier [0] != 0157142152137LLU || // "obj_"
         mapp -> identifier [1] != 0155141160040LLU) // "map "
       {
-        sim_printf ("mapID wrong %012llo %012llo\n", 
+        sim_printf ("ERROR: mapID wrong %012llo %012llo\n", 
                     mapp -> identifier [0], mapp -> identifier [1]);
         return;
       }
 
     if (mapp -> decl_vers != 2)
       {
-        sim_printf ("Can't hack object map version %llu\n", mapp -> decl_vers);
+        sim_printf ("ERROR: Can't hack object map version %llu\n", mapp -> decl_vers);
         return;
       }
 
 //sim_printf ("text offset %o\n", mapp -> text_offset);
 //sim_printf ("text length %o\n", mapp -> text_length);
-sim_printf ("definition offset %o\n", mapp -> definition_offset);
-sim_printf ("definition length %o\n", mapp -> definition_length);
+//sim_printf ("definition offset %o\n", mapp -> definition_offset);
+//sim_printf ("definition length %o\n", mapp -> definition_length);
     e -> definition_offset = mapp -> definition_offset;
 //sim_printf ("align2 %012llo\n", mapp -> align2);
-sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
+//sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
     e -> linkage_offset = mapp -> linkage_offset;
 //sim_printf ("linkage length %o\n", mapp -> linkage_length);
 //sim_printf ("static offset %o\n", mapp -> static_offset);
@@ -895,11 +895,11 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 //    word18 oip_slng = mapp -> symbol_length;
 //    word18 oip_blng = mapp -> break_map_length;
 //    word1 oip_format_procedure = mapp -> format . procedure;
-    word1 oip_format_bound = mapp -> format . bound;
-    if (oip_format_bound)
-      sim_printf ("Segment is bound.\n");
-    else
-      sim_printf ("Segment is unbound.\n");
+//    word1 oip_format_bound = mapp -> format . bound;
+//    if (oip_format_bound)
+//      sim_printf ("Segment is bound.\n");
+//    else
+//      sim_printf ("Segment is unbound.\n");
 //    word1 oip_format_relocatable = mapp -> format . relocatable;
 //    word1 oip_format_standard = mapp -> format . standard; /* could have standard obj. map but not std. seg. */
     bool oip_format_gate = mapp -> entry_bound != 0;
@@ -911,13 +911,13 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 
     if (oip_format_gate)
       {
-        sim_printf ("Segment is gated; entry bound %d.\n", entry_bound);
+        //sim_printf ("Segment is gated; entry bound %d.\n", entry_bound);
         e -> gated = true;
         e -> entry_bound = entry_bound;
       }
     else
       {
-        sim_printf ("Segment is ungated.\n");
+        //sim_printf ("Segment is ungated.\n");
         e -> gated = false;
         e -> entry_bound = 0;
       }
@@ -994,7 +994,7 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 
     if (! entryFound)
       {
-        sim_printf ("entry point not found\n");
+        sim_printf ("ERROR: entry point not found\n");
       }
     else
       {
@@ -1006,13 +1006,13 @@ sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
 
     // word36 * linkBase = (word36 *) oip_linkp;
 
-    sim_printf ("defs_in_link %o\n", oip_linkp -> defs_in_link);
-    sim_printf ("def_offset %o\n", oip_linkp -> def_offset);
-    sim_printf ("first_ref_relp %o\n", oip_linkp -> first_ref_relp);
-    sim_printf ("link_begin %o\n", oip_linkp -> link_begin);
-    sim_printf ("linkage_section_lng %o\n", oip_linkp -> linkage_section_lng);
-    sim_printf ("segno_pad %o\n", oip_linkp -> segno_pad);
-    sim_printf ("static_length %o\n", oip_linkp -> static_length);
+    //sim_printf ("defs_in_link %o\n", oip_linkp -> defs_in_link);
+    //sim_printf ("def_offset %o\n", oip_linkp -> def_offset);
+    //sim_printf ("first_ref_relp %o\n", oip_linkp -> first_ref_relp);
+    //sim_printf ("link_begin %o\n", oip_linkp -> link_begin);
+    //sim_printf ("linkage_section_lng %o\n", oip_linkp -> linkage_section_lng);
+    //sim_printf ("segno_pad %o\n", oip_linkp -> segno_pad);
+    //sim_printf ("static_length %o\n", oip_linkp -> static_length);
     
     e -> segnoPadAddr = & (oip_linkp -> align4);
 
@@ -1102,23 +1102,28 @@ static void readSegment (int fd, int segIdx, off_t flen)
 
     // 72 bits at a time; 2 dps8m words == 9 bytes
     uint8 bytes [9];
-    while (read (fd, bytes, 9))
+    ssize_t n;
+    while ((n = read (fd, bytes, 9)))
       {
+        if (n != 5 && n != 9)
+          {
+            sim_printf ("ERROR: garbage at end of segment lost\n");
+          }
         if (seglen > MAX18)
           {
-            sim_printf ("File too long\n");
+            sim_printf ("ERROR: File too long\n");
             return;
           }
         M [maddr ++] = extr36 (bytes, 0);
         M [maddr ++] = extr36 (bytes, 1);
         seglen += 2;
       }
-    sim_printf ("seglen %d flen %ld\n", seglen, flen * 8 / 36);
+    //sim_printf ("seglen %d flen %ld\n", seglen, flen * 8 / 36);
     //segTable [segIdx] . seglen = seglen;
     segTable [segIdx] . seglen = flen * 8 / 36;
     segTable [segIdx] . loaded = true;
-    sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
-                seglen, segIdx, segAddr);
+    //sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
+                //seglen, segIdx, segAddr);
     parseSegment (segIdx);
   }
 
@@ -1161,7 +1166,7 @@ static int loadSegmentFromFile (char * arg)
     int fd = open (arg, O_RDONLY);
     if (fd < 0)
       {
-        sim_printf ("Unable to open '%s': %d\n", arg, errno);
+        sim_printf ("ERROR: Unable to open '%s': %d\n", arg, errno);
         return -1;
       }
 
@@ -1171,7 +1176,7 @@ static int loadSegmentFromFile (char * arg)
     int segIdx = allocateSegment ();
     if (segIdx < 0)
       {
-        sim_printf ("Unable to allocate segment for segment load\n");
+        sim_printf ("ERROR: Unable to allocate segment for segment load\n");
         return -1;
       }
 
@@ -1722,7 +1727,7 @@ static int installLibrary (char * name)
   {
     int idx = loadSegmentFromFile (name);
     segTable [idx] . segno = getSegnoFromSLTE (name);
-sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
+    //sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
     segTable [idx] . segname = strdup (name);
     segTable [idx] . R1 = 5;
     segTable [idx] . R2 = 5;
@@ -1745,7 +1750,6 @@ sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_printf ("FXE initializing...\n");
-    sim_printf ("(%d segments)\n", N_SEGS);
 
     memset (segTable, 0, sizeof (segTable));
 
@@ -1754,7 +1758,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     cltIdx = allocateSegment ();
     if (cltIdx < 0)
       {
-        sim_printf ("Unable to allocate clt segment\n");
+        sim_printf ("ERROR: Unable to allocate clt segment\n");
         return -1;
       }
 
@@ -1801,7 +1805,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     int fxeIdx = allocateSegment ();
     if (fxeIdx < 0)
       {
-        sim_printf ("Unable to allocate fxe segment\n");
+        sim_printf ("ERROR: Unable to allocate fxe segment\n");
         return -1;
       }
     installLOT (fxeIdx);
@@ -2020,7 +2024,7 @@ static void faultTag2Handler (void)
             }
           else
             {
-              sim_printf ("can't resolve %s:%s\n", segStr, extStr);
+              sim_printf ("ERROR: can't resolve %s:%s\n", segStr, extStr);
             }
 
           free (segStr);
