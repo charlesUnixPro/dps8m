@@ -2,18 +2,25 @@
 
 #sed -n < system_book_12_3.ascii '/Begin collection/,/\(^End coll\)\|\(^Coll\)]/p'
 sed -n < system_book_12_3.ascii \
-  '/Begin collection [012]/,/[Cc]ollection/{
+  '/Begin collection /,/[Cc]ollection/{
      /^[a-z]/,+2 p
    }' | \
-awk '{ if (substr ($2, 1, 1) == "(") { getline; getline; next; }
-       segname = $1; segno = strtonum (0$2); 
+awk '{ segname = $1;
+       if (substr ($2, 1, 1) == "(") { 
+         segno = 0;
+         R1 = substr ($2, 2, 1);
+         R2 = substr ($3, 1, 1);
+         R3 = substr ($4, 1, 1);
+       } else {
+         segno = strtonum (0$2); 
+         R1 = substr ($3, 2, 1);
+         R2 = substr ($4, 1, 1);
+         R3 = substr ($5, 1, 1);
+       }
        R = match ($0, "\\<read\\>") != 0;
        E = match ($0, "\\<execute\\>") != 0;
        W = match ($0, "\\<write\\>") != 0;
        P = match ($0, "\\<privileged\\>") != 0;
-       R1 = substr ($3, 2, 1);
-       R2 = substr ($4, 1, 1);
-       R3 = substr ($5, 1, 1);
        # print "1:" $0;
        getline; 
        # print "2:" $0;
