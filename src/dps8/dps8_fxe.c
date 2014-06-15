@@ -192,11 +192,12 @@ static int getSLTEidx (char * name)
 
 // getSegnoFromSLTE - get the segment number of a segment from the SLTE
 
-static int getSegnoFromSLTE (char * name)
+static int getSegnoFromSLTE (char * name, int * slteIdx)
   {
     int idx = getSLTEidx (name);
     if (idx < 0)
       return -1;
+    * slteIdx = idx;
     return SLTE  [idx] . segno;
   }
 
@@ -832,21 +833,34 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
     if (idx >= 0)
       {
         //sim_printf ("got file\n");
-        segTable [idx] . segno = getSegnoFromSLTE (segName);
+        int slteIdx = -1;
+        segTable [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
         if (! segTable [idx] . segno)
           {
             segTable [idx] . segno = allocateSegno ();
             sim_printf ("assigning %d to %s\n", segTable [idx] . segno, segName);
           }
         segTable [idx] . segname = strdup (segName);
-        segTable [idx] . R1 = 0;
-        segTable [idx] . R2 = 5;
-        segTable [idx] . R3 = 5;
-        segTable [idx] . R = 1;
-        segTable [idx] . E = 1;
-        segTable [idx] . W = 0;
-        segTable [idx] . P = 0;
-
+        if (slteIdx < 0) // segment not in slte
+          {
+            segTable [idx] . R1 = 0;
+            segTable [idx] . R2 = 5;
+            segTable [idx] . R3 = 5;
+            segTable [idx] . R = 1;
+            segTable [idx] . E = 1;
+            segTable [idx] . W = 0;
+            segTable [idx] . P = 0;
+          }
+        else // segment in slte
+          {
+            segTable [idx] . R1 = SLTE [slteIdx] . R1;
+            segTable [idx] . R2 = SLTE [slteIdx] . R2;
+            segTable [idx] . R3 = SLTE [slteIdx] . R2;
+            segTable [idx] . R = SLTE [slteIdx] . R;
+            segTable [idx] . E = SLTE [slteIdx] . E;
+            segTable [idx] . W = SLTE [slteIdx] . W;
+            segTable [idx] . P = SLTE [slteIdx] . P;
+          }
         installLOT (idx);
         installSDW (idx);
         if (lookupDef (idx, segName, symbolName, value))
@@ -1873,7 +1887,8 @@ static void createFrame (int ssIdx)
 static int installLibrary (char * name)
   {
     int idx = loadSegmentFromFile (name);
-    int segno = getSegnoFromSLTE (name);
+    int slteIdx = -1;
+    int segno = getSegnoFromSLTE (name, & slteIdx);
     if (segno)
       {
         setSegno (idx, segno);
@@ -1886,13 +1901,26 @@ static int installLibrary (char * name)
       }
     //sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
     segTable [idx] . segname = strdup (name);
-    segTable [idx] . R1 = 5;
-    segTable [idx] . R2 = 5;
-    segTable [idx] . R3 = 5;
-    segTable [idx] . R = 1;
-    segTable [idx] . E = 1;
-    segTable [idx] . W = 0;
-    segTable [idx] . P = 0;
+    if (slteIdx < 0) // segment not in slte
+      {
+        segTable [idx] . R1 = 5;
+        segTable [idx] . R2 = 5;
+        segTable [idx] . R3 = 5;
+        segTable [idx] . R = 1;
+        segTable [idx] . E = 1;
+        segTable [idx] . W = 0;
+        segTable [idx] . P = 0;
+      }
+    else // segment in slte
+      {
+        segTable [idx] . R1 = SLTE [slteIdx] . R1;
+        segTable [idx] . R2 = SLTE [slteIdx] . R2;
+        segTable [idx] . R3 = SLTE [slteIdx] . R2;
+        segTable [idx] . R = SLTE [slteIdx] . R;
+        segTable [idx] . E = SLTE [slteIdx] . E;
+        segTable [idx] . W = SLTE [slteIdx] . W;
+        segTable [idx] . P = SLTE [slteIdx] . P;
+      }
 
     installLOT (idx);
     installSDW (idx);
