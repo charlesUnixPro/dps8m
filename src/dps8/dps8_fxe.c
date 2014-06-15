@@ -1975,7 +1975,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     // Define iocb [IOCB_USER_OUTPUT]
 
-    iocb * iocbUser = (iocb *) (M + iocbEntry -> physmem + IOCB_USER_OUTPUT * sizeof (iocb));
+    iocb * iocbUser =
+      (iocb *) (M + iocbEntry -> physmem + IOCB_USER_OUTPUT * sizeof (iocb));
 
     // iocb [IOCB_USER_OUTPUT] . version
 
@@ -1996,7 +1997,9 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     libIdx = installLibrary ("bound_library_wired_");
 
     installLibrary ("bound_library_1_");
+    installLibrary ("bound_library_2_");
     installLibrary ("bound_process_env_");
+    installLibrary ("error_table_");
     //int lib2Idx = installLibrary ("bound_bce_wired");
     installLibrary ("sys_info");
 
@@ -2014,7 +2017,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         sim_printf ("ERROR: can't find sys_info:service_system\n");
       }
 
-    // Set the iox_$user_output
+    // Set iox_$user_output
 
     if (resolveName ("iox_", "user_output", & segno, & value, & defIdx))
       {
@@ -2060,10 +2063,10 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
     for (int i = 0; i < maxargs; i ++)
       args [i] = malloc (strlen (buf) + 1);
     
-    int n = sscanf (buf, "%s%s%s%s%s%s%s%s%s%s", 
+    int nargs = sscanf (buf, "%s%s%s%s%s%s%s%s%s%s", 
                     args [0], args [1], args [2], args [3], args [4],
                     args [5], args [6], args [7], args [8], args [9]);
-    if (n >= 1)
+    if (nargs >= 1)
       {
         sim_printf ("Loading segment %s\n", args [0]);
         int segIdx = loadSegmentFromFile (args [0]);
@@ -2116,11 +2119,20 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
 
         word36 argList = fxeMemPtr - fxeEntry -> physmem; // wordno
 
+// Function: The cu_$arg_ptr entry point is used by a command or
+// subroutine that can be called with a varying number of arguments,
+// each of which is a variable-length unaligned character string
+// (i.e., declared char(*)).  This entry point returns a pointer to
+// the character-string argument specified by the argument number and
+// also returns the length of the argument.
+
         // word 0  arg_count, call_type
-        M [fxeMemPtr ++] = 0000000000004; // 0 args, inter-segment call
+        M [fxeMemPtr + 0] = 0;
+        putbits36 (M + fxeMemPtr +  0,  0, 18, nargs - 1);
+        putbits36 (M + fxeMemPtr +  0, 18, 18, 4); // inter-segment call
 
         // word 1  desc_count, 0
-        M [fxeMemPtr ++] = 0000000000000; // 0 descs
+        M [fxeMemPtr + 1] = 0000000000000; // 0 descs
 
  
         PR [0] . SNR = FXE_SEGNO;
@@ -2166,6 +2178,36 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
 //
 // Fault handler
 //
+
+static bool c6tValid = false;
+static word1 c6tPPR_P;
+static word3 c6tPPR_PRR;
+static word15 c6tPPR_PSR;
+static word18 c6tPPR_IC;
+
+void fxeSetCall6Trap (void)
+  {
+    c6tPPR_P = PPR . P;
+    c6tPPR_PRR = PPR . PRR;
+    c6tPPR_PSR = PPR . PSR;
+    c6tPPR_IC = PPR . IC;
+    c6tValid = true;
+  }
+
+void fxeCall6TrapRestore (void)
+  {
+    if (! c6tValid)
+      {
+        sim_printf ("ERROR: !c6tValid\n");
+        return;
+      }
+
+    PPR . P = c6tPPR_P;
+    PPR . PRR = c6tPPR_PRR;
+    PPR . PSR = c6tPPR_PSR;
+    PPR . IC = c6tPPR_IC;
+    c6tValid = false;
+  }
 
 static void faultTag2Handler (void)
   {
@@ -2252,7 +2294,7 @@ static void faultTag2Handler (void)
                        linkCopy . modifier);
               free (segStr);
               free (extStr);
-              doRCU (); // doesn't return
+              doRCU (false); // doesn't return
             }
           else
             {
@@ -2386,6 +2428,8 @@ static void trapPutChars (void)
         sim_printf ("%c", (char) (ch & 0177U));
       }
     sim_printf ("\n");
+
+    doRCU (true); // doesn't return
   }
 
 
@@ -2501,7 +2545,7 @@ static void faultACVHandler (void)
                        linkCopy . modifier);
               free (segStr);
               free (extStr);
-              doRCU ();
+              doRCU (false);
             }
           else
             {

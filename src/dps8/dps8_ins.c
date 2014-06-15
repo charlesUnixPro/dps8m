@@ -3461,6 +3461,7 @@ static t_stat DoBasicInstruction (void)
         /// TRANSFER INSTRUCTIONS
         case 0713:  ///< call6
             
+            fxeSetCall6Trap ();
             if (TPR.TRR > PPR.PRR)
             {
                 acvFault(OCALL, "call6 access violation fault (outward call)");
@@ -4508,7 +4509,7 @@ static t_stat DoBasicInstruction (void)
             doFault(illproc_fault, 0, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
-            doRCU (); // never returns
+            doRCU (false); // never returns
 
         case 0452:  ///< scpr
             return STOP_UNIMP;
@@ -6585,7 +6586,10 @@ sim_debug (DBG_FAULT, & cpu_dev, "absa After Read() TPR.CA %08o finalAddress %08
     return SCPE_OK;
   }
 
-void doRCU (void)
+// fxeTrap: If true, the fault was a call6 that was serviced by fxe, so
+// the execution should resume at the instruction after.
+
+void doRCU (bool fxeTrap)
   {
     words2scu (Yblock8);
 
@@ -6597,6 +6601,12 @@ void doRCU (void)
       set_addr_mode (ABSOLUTE_mode);
     else
       set_addr_mode (APPEND_mode);
+
+    if (fxeTrap)
+      {
+        fxeCall6TrapRestore ();
+        longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+      }
 
     if (cu . FI_ADDR == FAULT_MME)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
