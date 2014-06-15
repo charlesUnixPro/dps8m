@@ -841,7 +841,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         if (! segTable [idx] . segno)
           {
             segTable [idx] . segno = allocateSegno ();
-            sim_printf ("assigning %d to %s\n", segTable [idx] . segno, segName);
+            // sim_printf ("assigning %d to %s\n", segTable [idx] . segno, segName);
           }
         segTable [idx] . segname = strdup (segName);
         if (slteIdx < 0) // segment not in slte
@@ -1051,7 +1051,8 @@ static void parseSegment (int segIdx)
 
     if (! entryFound)
       {
-        sim_printf ("ERROR: entry point not found\n");
+        //sim_printf ("ERROR: entry point not found\n");
+        e -> entry = 0;
       }
     else
       {
@@ -1833,7 +1834,7 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
     word24 segAddr = lookupSegAddrByIdx (ssIdx);
     word24 frameAddr = segAddr + STK_TOP;
     
-sim_printf ("stack %d frame @ %08o\n", ssIdx, frameAddr);
+    //sim_printf ("stack %d frame @ %08o\n", ssIdx, frameAddr);
 
 #define FRAME_SZ 40 // assuming no temporaries
 
@@ -1864,7 +1865,7 @@ sim_printf ("stack %d frame @ %08o\n", ssIdx, frameAddr);
     // word 16, 17    prev_stack_frame_ptr
     //makeNullPtr (M + frameAddr + 16);
     makeITS (M + frameAddr + 16, prevSegno, prevRing, prevWordno, 0, 0);
-sim_printf ("stack %d prev %05o:%06o:%o @ %08o\n", ssIdx, prevSegno, prevWordno, prevRing, frameAddr + 16);
+    //sim_printf ("stack %d prev %05o:%06o:%o @ %08o\n", ssIdx, prevSegno, prevWordno, prevRing, frameAddr + 16);
     // word 18, 19    next_stack_frame_ptr
     makeITS (M + frameAddr + 18, stkSegno, ssIdx - stack0Idx, STK_TOP + FRAME_SZ, 0, 0);
 
@@ -1904,7 +1905,7 @@ static int installLibrary (char * name)
       {
         segno = allocateSegno ();
         setSegno (idx, segno);
-        sim_printf ("assigning %d to %s\n", segno, name);
+        //sim_printf ("assigning %d to %s\n", segno, name);
       }
     //sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
     segTable [idx] . segname = strdup (name);
@@ -1941,7 +1942,7 @@ static int installLibrary (char * name)
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
-    sim_printf ("FXE initializing...\n");
+    sim_printf ("FXE: initializing...\n");
 
     // Reset all state data
     memset (segTable, 0, sizeof (segTable));
@@ -2027,7 +2028,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
     makeNullPtr (putCharEntry + 2);
 
-    sim_printf ("Loading library segment\n");
+    // sim_printf ("Loading library segment\n");
 
     libIdx = installLibrary ("bound_library_wired_");
 
@@ -2062,7 +2063,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
       {
         sim_printf ("ERROR: can't find iox_:user_output\n");
       }
-sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
+    //sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
     makeITS (M + segTable [defIdx] . physmem + value, IOCB_SEGNO, FXE_RING,
              IOCB_USER_OUTPUT * sizeof (iocb), 0, 0);
 
@@ -2132,7 +2133,7 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
         createFrame (stack0Idx + FXE_RING, segTable [stack0Idx] . segno, STK_TOP, 0);
 
 
-#if 1
+#if 0
         sim_printf ("\nSegment table\n------- -----\n\n");
         for (int idx = 0; idx < (int) N_SEGS; idx ++)
           {
@@ -2303,7 +2304,7 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     //sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);  
     if (getbits36 (odd, 30, 6) != 020)
       {
-        sim_printf ("ERROR: Expected tag 020 (%02o)\n", 
+        sim_printf ("ERROR: Expected tag 020 (%02llo)\n", 
                     getbits36 (odd, 30, 6));
         return;
       }
@@ -2393,14 +2394,15 @@ static void faultTag2Handler (void)
           sim_printf ("ERROT: unhandled type %d\n", typePair -> type);
           return;
         case 4:
-          sim_printf ("    4: referencing link with offset\n");
-          sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
-          sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+          //sim_printf ("    4: referencing link with offset\n");
+          //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+          //sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
           ;
           char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
           if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
+              sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
               free (segStr);
@@ -2421,8 +2423,8 @@ static void faultTag2Handler (void)
           sim_printf ("ERROR: unhandled type %d\n", typePair -> type);
           return;
         default:
-          sim_printf ("Warning: unknown type %d\n", typePair -> type);
-          break;
+          sim_printf ("ERROR: unknown type %d\n", typePair -> type);
+          return;
       }
 
 
@@ -2695,7 +2697,7 @@ void fxeFaultHandler (void)
           faultTag2Handler ();
           break;
         default:
-          sim_printf ("fxeFaultHandler: fail: %d\n", cpu . faultNumber);
+          sim_printf ("ERROR: fxeFaultHandler: fail: %d\n", cpu . faultNumber);
       }
   }
 
