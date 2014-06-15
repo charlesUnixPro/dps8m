@@ -1,4 +1,6 @@
 // From multicians: The maximum size of user ring stacks is initially set to 48K.SEGSIZE;
+// XXX set the ring brackets from SLTE
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -216,6 +218,7 @@ static int getSegnoFromSLTE (char * name)
 //  0600-0777  user 
 //     077776  fxe trap       
 
+#define N_SEGNOS 01000
 #define DSEG_SEGNO 0
 #define IOCB_SEGNO 0265
 #define CLT_SEGNO 0266
@@ -255,6 +258,9 @@ typedef struct segTableEntry
 
 static segTableEntry segTable [N_SEGS];
 
+// Map segno to segTableIdx
+
+static int segnoMap [N_SEGNOS];
 
 //
 // CLT - Multics segment containing the LOT and ISOT
@@ -293,9 +299,9 @@ static word24 lookupSegAddrByIdx (int segIdx)
   }
 
 
+static word24 nextPhysmem = 1; // First block is used by dseg;
 static int allocateSegment (void)
   {
-    static word24 nextPhysmem = 1; // First block is used by dseg;
     for (int i = 0; i < (int) N_SEGS; i ++)
       {
         if (! segTable [i] . allocated)
@@ -308,10 +314,29 @@ static int allocateSegment (void)
     return -1;
   }
 
+static int nextSegno = USER_SEGNO;
+
 static int allocateSegno (void)
   {
-    static int nextSegno = USER_SEGNO;
     return nextSegno ++;
+  }
+
+static void setSegno (int idx, word15 segno)
+  {
+    segTable [idx] . segno = segno;
+    segnoMap [segno] = idx;
+  }
+
+static word24 ITSToPhysmem (word36 * its)
+  {
+    word36 even = * its;
+    word36 odd = * (its + 1);
+
+    word15 segno = getbits36 (even, 3, 15);
+    word18 wordno = getbits36 (odd, 0, 18);
+
+    word24 physmem = segTable [segnoMap [segno]] . physmem  + wordno;
+    return physmem;
   }
 
 //static loadSegment (char * segname, word15 segno);
@@ -1197,7 +1222,6 @@ static int loadSegmentFromFile (char * arg)
 
     segTableEntry * e = segTable + segIdx;
 
-    //e -> segno = allocateSegno ();
     e -> R1 = 5;
     e -> R2 = 5;
     e -> R3 = 5;
@@ -1219,7 +1243,7 @@ static void setupWiredSegments (void)
 
      segTable [0] . allocated = true;
      segTable [0] . loaded = true;
-     segTable [0] . segno = 0;
+     setSegno (0, 0);
      segTable [0] . wired = true;
      segTable [0] . R1 = 0;
      segTable [0] . R2 = 0;
@@ -1539,7 +1563,7 @@ static void createStackSegments (void)
         segTableEntry * e = segTable + ssIdx;
         e -> segname = strdup ("stack_0");
         e -> segname [6] += i; // do not try this at home
-        e -> segno = STACKS_SEGNO + i;
+        setSegno (ssIdx, STACKS_SEGNO + i);
         e -> R1 = 5;
         e -> R2 = 5;
         e -> R3 = 5;
@@ -1832,8 +1856,8 @@ static void createFrame (int ssIdx)
     // word 24, 25    operator_link_ptr
     makeNullPtr (M + frameAddr + 23);
 
-    // word 25, 26    operator_link_ptr
-    makeNullPtr (M + frameAddr + 23);
+    // word 25, 26    argument_ptr
+    makeNullPtr (M + frameAddr + 25);
 
     // Update the header
 
@@ -1849,11 +1873,16 @@ static void createFrame (int ssIdx)
 static int installLibrary (char * name)
   {
     int idx = loadSegmentFromFile (name);
-    segTable [idx] . segno = getSegnoFromSLTE (name);
-    if (! segTable [idx] . segno)
+    int segno = getSegnoFromSLTE (name);
+    if (segno)
       {
-        segTable [idx] . segno = allocateSegno ();
-        sim_printf ("assigning %d to %s\n", segTable [idx] . segno, name);
+        setSegno (idx, segno);
+      }
+    else
+      {
+        segno = allocateSegno ();
+        setSegno (idx, segno);
+        sim_printf ("assigning %d to %s\n", segno, name);
       }
     //sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
     segTable [idx] . segname = strdup (name);
@@ -1878,7 +1907,12 @@ static int installLibrary (char * name)
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
     sim_printf ("FXE initializing...\n");
+
+    // Reset all state data
     memset (segTable, 0, sizeof (segTable));
+    memset (segnoMap, -1, sizeof (segnoMap));
+    nextSegno = USER_SEGNO;
+    nextPhysmem = 1;
 
     setupWiredSegments ();
 
@@ -1901,7 +1935,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     cltEntry -> W = 1;
     cltEntry -> P = 0;
     cltEntry -> segname = strdup ("clt");
-    cltEntry -> segno = CLT_SEGNO;
+    setSegno (cltIdx, CLT_SEGNO);
     cltEntry -> seglen = 2 * LOT_SIZE;
     cltEntry -> loaded = true;
     installSDW (cltIdx);
@@ -1932,15 +1966,25 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     iocbEntry -> P = 0;
     iocbEntry -> segname = strdup ("iocb");
     iocbEntry -> segno = IOCB_SEGNO;
+    setSegno (iocbIdx, IOCB_SEGNO);
     iocbEntry -> seglen = 0777777;
     iocbEntry -> loaded = true;
     installSDW (iocbIdx);
 
 #define IOCB_USER_OUTPUT 0
 
-    // Define iocb [IOCB_USER_OUTPUT] . put_chars
+    // Define iocb [IOCB_USER_OUTPUT]
 
     iocb * iocbUser = (iocb *) (M + iocbEntry -> physmem + IOCB_USER_OUTPUT * sizeof (iocb));
+
+    // iocb [IOCB_USER_OUTPUT] . version
+
+    word36 * versionEntry = (word36 *) & iocbUser -> version;
+
+    * versionEntry = 0111117130062LLU; // 'IOX2'
+
+    // iocb [IOCB_USER_OUTPUT] . put_chars
+
 
     word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
 
@@ -1954,7 +1998,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_library_1_");
     installLibrary ("bound_process_env_");
     //int lib2Idx = installLibrary ("bound_bce_wired");
-    int infoIdx = installLibrary ("sys_info");
+    installLibrary ("sys_info");
 
     // Set the flag that applications check to see if Multics is up
     word18 value;
@@ -2004,7 +2048,7 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
     fxeEntry -> W = 1;
     fxeEntry -> P = 0;
     fxeEntry -> segname = strdup ("fxe");
-    fxeEntry -> segno = FXE_SEGNO;
+    setSegno (fxeIdx, FXE_SEGNO);
     fxeEntry -> loaded = true;
     installSDW (fxeIdx);
 
@@ -2024,7 +2068,7 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
         sim_printf ("Loading segment %s\n", args [0]);
         int segIdx = loadSegmentFromFile (args [0]);
         segTable [segIdx] . segname = strdup (args [0]);
-        segTable [segIdx] . segno = allocateSegno ();
+        setSegno (segIdx, allocateSegno ());
         segTable [segIdx] . R1 = 0;
         segTable [segIdx] . R2 = 5;
         segTable [segIdx] . R3 = 5;
@@ -2048,6 +2092,7 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
         createFrame (stack0Idx + 5);
 
 
+#if 0
         sim_printf ("\nSegment table\n------- -----\n\n");
         for (int idx = 0; idx < (int) N_SEGS; idx ++)
           {
@@ -2061,6 +2106,7 @@ sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
                         e -> segname ? e -> segname : "anon");
           }
         sim_printf ("\n");
+#endif
 
 // AK92, pg 2-13: PR0 points to the argument list
 
@@ -2129,8 +2175,258 @@ static void faultTag2Handler (void)
 
     word18 offset = GETHI (M [0200 + 5]);
     word15 segno = GETHI (M [0200 + 2]) & MASK15;
-    sim_printf ("f2 fault %05o:%06o\n", segno, offset);
+    // sim_printf ("f2 fault %05o:%06o\n", segno, offset);
 
+    // Get the physmem address of the segment
+    word36 * even = M + DESCSEG + 2 * segno + 0;  
+    //word36 * odd  = M + DESCSEG + 2 * segno + 1;  
+    word24 segBaseAddr = getbits36 (* even, 0, 24);
+    word24 addr = (segBaseAddr + offset) & MASK24;
+    // sim_printf ("addr %08o:%012llo\n", addr, M [addr]);
+
+    link_ * l = (link_ *) (M + addr);
+
+    // Make a copy of it so that when we overwrite it, we don't get confused
+    link_ linkCopy = * l;
+
+    if (linkCopy . tag != 046)
+      {
+        sim_printf ("f2 handler dazed and confused. not f2? %012llo\n", M [addr]);
+        return;
+      }
+
+    if (linkCopy . run_depth != 0)
+      sim_printf ("Warning:  run_depth wrong %06o\n", linkCopy . run_depth);
+
+    // Find the linkage header
+    // sim_printf ("header_relp %08o\n", linkCopy . header_relp);
+    word24 linkHeaderOffset = (offset + SIGNEXT18 (linkCopy . header_relp)) & MASK24;
+    // sim_printf ("headerOffset %08o\n", linkHeaderOffset);
+    link_header * lh = (link_header *) (M + segBaseAddr + linkHeaderOffset);
+
+    // Find the definition header
+    word36 * defBase = M + segBaseAddr + lh -> def_offset;
+    //sim_printf ("defs_in_link %o\n", lh -> defs_in_link);
+    //sim_printf ("def_offset %o\n", lh -> def_offset);
+    //sim_printf ("first_ref_relp %o\n", lh -> first_ref_relp);
+    //sim_printf ("link_begin %o\n", lh -> link_begin);
+    //sim_printf ("linkage_section_lng %o\n", lh -> linkage_section_lng);
+    //sim_printf ("segno_pad %o\n", lh -> segno_pad);
+    //sim_printf ("static_length %o\n", lh -> static_length);
+    
+    //sim_printf ("ringno %0o\n", linkCopy . ringno);
+    //sim_printf ("run_depth %02o\n", linkCopy . run_depth);
+    //sim_printf ("expression_relp %06o\n", linkCopy . expression_relp);
+       
+    expression * expr = (expression *) (defBase + linkCopy . expression_relp);
+
+    //sim_printf ("  type_ptr %06o  exp %6o\n", 
+                //expr -> type_ptr, expr -> exp);
+
+    type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
+
+    word15 refSegno;
+    word18 refValue;
+    int defIdx;
+
+    switch (typePair -> type)
+      {
+        case 1:
+          //sim_printf ("    1: self-referencing link\n");
+          sim_printf ("ERROR: unhandled type %d\n", typePair -> type);
+          return;
+        case 3:
+          //sim_printf ("    3: referencing link\n");
+          sim_printf ("ERROT: unhandled type %d\n", typePair -> type);
+          return;
+        case 4:
+          //sim_printf ("    4: referencing link with offset\n");
+          //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+          //sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+          ;
+          char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
+          char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
+          if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
+            {
+              makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
+                       linkCopy . modifier);
+              free (segStr);
+              free (extStr);
+              doRCU (); // doesn't return
+            }
+          else
+            {
+              sim_printf ("ERROR: can't resolve %s:%s\n", segStr, extStr);
+            }
+
+          free (segStr);
+          free (extStr);
+          //int segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
+          break;
+        case 5:
+          //sim_printf ("    5: self-referencing link with offset\n");
+          sim_printf ("ERROR: unhandled type %d\n", typePair -> type);
+          return;
+        default:
+          sim_printf ("Warning: unknown type %d\n", typePair -> type);
+          break;
+      }
+
+
+    //sim_printf ("    type %06o\n", typePair -> type);
+    //sim_printf ("    trap_ptr %06o\n", typePair -> trap_ptr);
+    //sim_printf ("    seg_ptr %06o\n", typePair -> seg_ptr);
+    //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
+  }
+
+static void trapPutChars (void)
+  {
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    //sim_printf ("arg_count %u\n", arg_count);
+    //sim_printf ("call_type %u\n", call_type);
+    //sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (desc_count)
+      {
+        sim_printf ("ERROR: non-zero desc_count (%d) not handled\n", 
+                    desc_count);
+        return;
+      }
+
+    if (arg_count != 4)
+      {
+        sim_printf ("ERROR: put_chars expected 4 args, get %d\n", arg_count);
+        return;
+      }
+
+    //sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem + 2],
+    //                                     M [alPhysmem + 3]);
+    //sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem + 4],
+    //                                     M [alPhysmem + 5]);
+    //sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem + 6],
+    //                                     M [alPhysmem + 7]);
+    //sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem + 8],
+    //                                     M [alPhysmem + 9]);
+
+    // Process the arguments
+
+    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4);
+    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6);
+    word24 ap4 = ITSToPhysmem (M + alPhysmem + 8);
+
+    //sim_printf ("ap1 %08o\n", ap1);
+    //sim_printf ("ap2 %08o\n", ap2);
+    //sim_printf ("ap3 %08o\n", ap3);
+    //sim_printf ("ap4 %08o\n", ap4);
+
+    //sim_printf ("@ap1 %012llo\n", M [ap1]);
+  
+    word24 iocbPtr = ITSToPhysmem (M + ap1);
+    //sim_printf ("iocbPtr %08o\n", iocbPtr);
+
+    word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+
+    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx != 0)
+      {
+        sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
+        return;
+      }
+
+    //sim_printf ("@ap2 %012llo\n", M [ap2]);
+  
+    word24 bufPtr = ITSToPhysmem (M + ap2);
+    //sim_printf ("bufPtr %08o\n", bufPtr);
+    //sim_printf ("@bufPtr %012llo\n", M [bufPtr]);
+
+    //sim_printf ("@ap3 %012llo\n", M [ap3]);
+  
+    word36 len = M [ap3];
+
+    //sim_printf ("len %012llo\n", len);
+
+    word36 status = M [ap4];
+
+    //sim_printf ("status %012llo\n", status);
+
+    sim_printf ("PUT_CHARS:");
+    for (int i = 0; i < (int) len; i ++)
+      {
+        int woff = i / 4;
+        int chno = i % 4;
+        word36 ch = getbits36 (M [bufPtr + woff], chno * 9, 9);
+        sim_printf ("%c", (char) (ch & 0177U));
+      }
+    sim_printf ("\n");
+  }
+
+
+static void fxeTrap (void)
+  {
+    // Application has made an call into a routine that FXE wants to handle
+    // on the host.
+
+    // Get the offending address from the SCU data
+
+    word18 offset = GETHI (M [0200 + 5]);
+
+    switch (offset)
+      {
+        case TRAP_PUT_CHARS:
+          trapPutChars ();
+          break;
+        default:
+          sim_printf ("ERROR: unknown trap code\n");
+          break;
+      }
+  }
+
+static void faultACVHandler (void)
+  {
+    // The fault pair saved the SCU data @ 0200
+
+    // Get the offending address from the SCU data
+
+    word18 offset = GETHI (M [0200 + 5]);
+    word15 segno = GETHI (M [0200 + 2]) & MASK15;
+    //sim_printf ("acv fault %05o:%06o\n", segno, offset);
+
+    if (segno == TRAP_SEGNO)
+      {
+        fxeTrap ();
+      }
+
+
+    // Get the 
+#if 0
     // Get the physmem address of the segment
     word36 * even = M + DESCSEG + 2 * segno + 0;  
     //word36 * odd  = M + DESCSEG + 2 * segno + 1;  
@@ -2230,12 +2526,16 @@ static void faultTag2Handler (void)
     //sim_printf ("    trap_ptr %06o\n", typePair -> trap_ptr);
     //sim_printf ("    seg_ptr %06o\n", typePair -> seg_ptr);
     //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
+#endif
   }
 
 void fxeFaultHandler (void)
   {
     switch (cpu . faultNumber)
       {
+        case 20: // access violation
+          faultACVHandler ();
+          break;
         case 24: // fault tag 2
           faultTag2Handler ();
           break;
