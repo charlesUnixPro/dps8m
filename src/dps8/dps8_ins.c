@@ -3530,6 +3530,7 @@ static t_stat DoBasicInstruction (void)
             /// C(Y-pair)3,17 → C(PPR.PSR)
             PPR.PSR = GETHI(Ypair[0]) & 077777LL;
             
+            // XXX ticket #16
             /// Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) → C(PPR.PRR)
             PPR.PRR = max3(((GETLO(Ypair[0]) >> 15) & 7), TPR.TRR, SDW->R1);
             
@@ -6605,7 +6606,8 @@ void doRCU (bool fxeTrap)
     if (fxeTrap)
       {
         fxeCall6TrapRestore ();
-        longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+        cpu . cycle = FETCH_cycle;
+        longjmp (jmpMain, JMP_REENTRY);
       }
 
     if (cu . FI_ADDR == FAULT_MME)
