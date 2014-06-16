@@ -137,6 +137,9 @@ static void makeITS (word36 * memory, word15 snr, word3 rnr,
       putbits36 (memory + 1, 30,  6, tag);
   }
 
+// AK92-2 pg 7-42.1 "A null pointer is represented by the virtual
+// pointer 77777|1, by -1|1, or by -1.
+
 static void makeNullPtr (word36 * memory)
   {
     //makeITS (memory, 077777, 0, 0777777, 0, 0);
@@ -146,6 +149,56 @@ static void makeNullPtr (word36 * memory)
     //putbits36 (memory + 0, 30,  6, 0);
 
     makeITS (memory, 077777, 0, 1, 0, 0);
+  }
+
+static bool isNullPtr (word24 physaddr)
+  {
+    return getbits36 (M [physaddr], 3, 15) == 077777LLU;
+  }
+
+static void strcpyVarying (word24 base, word18 * next, char * str)
+  {
+    size_t len = strlen (str);
+    word18 offset = * next;
+    // store the lengtn in the first word
+    M [base + offset] = len;
+    //sim_printf ("len %3d %012llo\n", offset, M [base + offset]);
+    offset ++;
+
+    for (uint i = 0; i < len; i ++)
+      {
+        int woff = i / 4;
+        int choff = i % 4;
+        if (choff == 0)
+          M [base + offset + woff] = 0;
+        putbits36 (M + base + offset + woff, choff * 9, 9, str [i]);
+        //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
+      }
+    offset += (len + 3) / 4;
+    * next = offset;
+  }
+
+static void strcpyNonVarying (word24 base, word18 * next, char * str)
+  {
+    size_t len = strlen (str);
+    word18 offset = * next;
+#if 0
+    // store the lengtn in the first word
+    M [base + offset] = len;
+    //sim_printf ("len %3d %012llo\n", offset, M [base + offset]);
+    offset ++;
+#endif
+    for (uint i = 0; i < len; i ++)
+      {
+        int woff = i / 4;
+        int choff = i % 4;
+        if (choff == 0)
+          M [base + offset + woff] = 0;
+        putbits36 (M + base + offset + woff, choff * 9, 9, str [i]);
+        //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
+      }
+    offset += (len + 3) / 4;
+    * next = offset;
   }
 
 //
@@ -198,7 +251,7 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
   {
     int idx = getSLTEidx (name);
     if (idx < 0)
-      return -1;
+      return 0;
     * slteIdx = idx;
     return SLTE  [idx] . segno;
   }
@@ -236,8 +289,17 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 enum
   {
     TRAP_UNUSED, // Don't use 0 so as to help distingish uninitialized fields
+    // iox_
     TRAP_PUT_CHARS, 
+    TRAP_MODES, // deprecated
+
+    // bound_io_commands
+    TRAP_GET_LINE_LENGTH_SWITCH,
+    
+    // hcs_
     TRAP_HISTORY_REGS_SET,
+    TRAP_HISTORY_REGS_GET,
+
     TRAP_RETURN_TO_FXE
   };
 
@@ -339,13 +401,15 @@ static void setSegno (int idx, word15 segno)
     segnoMap [segno] = idx;
   }
 
-static word24 ITSToPhysmem (word36 * its)
+static word24 ITSToPhysmem (word36 * its, word6 * bitno)
   {
     word36 even = * its;
     word36 odd = * (its + 1);
 
     word15 segno = getbits36 (even, 3, 15);
     word18 wordno = getbits36 (odd, 0, 18);
+    if (bitno)
+      * bitno = getbits36 (odd, 57 - 36, 6);
 
     word24 physmem = segTable [segnoMap [segno]] . physmem  + wordno;
     return physmem;
@@ -827,7 +891,9 @@ typedef struct trapNameTableEntry
 
 static trapNameTableEntry trapNameTable [] =
   {
-    { "hcs_", "history_regs_set", TRAP_HISTORY_REGS_SET }
+    { "hcs_", "history_regs_set", TRAP_HISTORY_REGS_SET },
+    { "hcs_", "history_regs_get", TRAP_HISTORY_REGS_GET },
+    { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
 
@@ -1989,6 +2055,187 @@ static int installLibrary (char * name)
   }
 
 
+
+static void initSysinfoStr (char * segName, char * compName, char * str,
+                            bool vary)
+  {
+    word18 value;
+    word15 segno;
+    int defIdx;
+
+    if (resolveName (segName, compName, & segno, & value, & defIdx))
+      {
+        if (defIdx < 0)
+          sim_printf ("ERROR: dazed and confused; %s.%s has no idx\n",
+                      segName, compName);
+        else
+          {
+            //M [segTable [defIdx] . physmem + value + offset] = word;
+            if (vary)
+              strcpyVarying (segTable [defIdx] . physmem, & value, str);
+            else
+              strcpyNonVarying (segTable [defIdx] . physmem, & value, str);
+          }
+      }
+    else
+      {
+        sim_printf ("ERROR: can't find %s.%s\n", segName, compName);
+      }
+  }
+
+static void initSysinfoWord36Offset (char * segName, char * compName, 
+                                     uint offset, word36 word)
+  {
+    word18 value;
+    word15 segno;
+    int defIdx;
+
+    if (resolveName (segName, compName, & segno, & value, & defIdx))
+      {
+        if (defIdx < 0)
+          sim_printf ("ERROR: dazed and confused; %s.%s has no idx\n",
+                      segName, compName);
+        else
+          M [segTable [defIdx] . physmem + value + offset] = word;
+      }
+    else
+      {
+        sim_printf ("ERROR: can't find %s.%s\n", segName, compName);
+      }
+  }
+
+static void initSysinfoWord36 (char * segName, char * compName, 
+                                     word36 word)
+  {
+    initSysinfoWord36Offset (segName, compName, 0, word);
+  }
+
+static void initSysinfo (void)
+  {
+    // Set the flag that applications check to see if Multics is up
+    initSysinfoWord36 ("sys_info", "service_system", (word36) (1));
+    initSysinfoWord36 ("sys_info", "page_size", (word36) (1024));
+    initSysinfoWord36 ("sys_info", "max_seg_size", (word36) (255 * 1024));
+    initSysinfoWord36 ("sys_info", "default_max_length", (word36) (255 * 1024));
+    initSysinfoWord36 ("sys_info", "seg_size_256K", (word36) (255 * 1024));
+    initSysinfoWord36 ("sys_info", "default_256K_enable", (word36) 0);
+    initSysinfoWord36 ("sys_info", "default_dir_max_length", (word36) (205 * 1024));
+    initSysinfoWord36 ("sys_info", "default_stack_length", (word36) (64 * 1024));
+    initSysinfoWord36 ("sys_info", "maxlinks", (word36) (10));
+    initSysinfoWord36 ("sys_info", "data_management_ringno", (word36) (2));
+
+//++ /* BEGIN INCLUDE FILE aim_template.incl.pl1 */
+//++ 
+//++ /* Created 740723 by PG */
+//++ /* Modified 06/28/78 by C. D. Tavares to add rcp privilege */
+//++ /* Modified 83-05-10 by E. N. Kitltitz to add communications privilege */
+//++ 
+//++ /* This structure defines the components of both an access
+//++    class and an access authorization as interpreted by the
+//++    Access Isolation Mechanism. */
+//++ 
+//++ 
+//++ dcl  1 aim_template aligned based,                      /* authorization/access class template */
+//++        2 categories bit (36),                           /* access categories */
+//++        2 level fixed bin (17) unaligned,                /* sensitivity level */
+//++        2 privileges unaligned,                  /* special access privileges (in authorization only) */
+//++         (3 ipc,                                 /* interprocess communication privilege */
+//++          3 dir,                                 /* directory privilege */
+//++          3 seg,                                 /* segment privilege */
+//++          3 soos,                                        /* security out-of-service privilege */
+//++          3 ring1,                                       /* ring 1 access privilege */
+//++          3 rcp,                                 /* RCP resource access privilege */
+//++          3 comm) bit (1),                               /* communications cross-AIM privilege */
+//++          3 pad bit (11);
+
+
+/* END INCLUDE FILE aim_template.incl.pl1 */
+
+    initSysinfoWord36Offset ("sys_info", "access_class_ceiling", 0, (word36) (0000001000001llu)); // access_class_ceiling.categories
+    initSysinfoWord36Offset ("sys_info", "access_class_ceiling", 1, (word36) (0000007000000llu)); // access_class_ceiling.level
+
+    initSysinfoWord36Offset ("sys_info", "successful_access_threshold", 0, (word36) (0000001000001llu)); // successful_access_threshold.categories
+    initSysinfoWord36Offset ("sys_info", "successful_access_threshold", 1, (word36) (0000007000000llu)); // successful_access_threshold.level
+    
+    initSysinfoWord36Offset ("sys_info", "unsuccessful_access_threshold", 0, (word36) (0000001000001llu)); // unsuccessful_access_threshold.categories
+    initSysinfoWord36Offset ("sys_info", "unsuccessful_access_threshold", 1, (word36) (0000007000000llu)); // unsuccessful_access_threshold.level
+    
+    initSysinfoWord36Offset ("sys_info", "covert_channel_threshold", 0, (word36) (0000001000001llu)); // covert_channel_threshold.categories
+    initSysinfoWord36Offset ("sys_info", "covert_channel_threshold", 1, (word36) (0000007000000llu)); // covert_channel_threshold.level
+    
+    initSysinfoStr ("sys_info", "system_control_dir", ">system_control_dir",
+                    true);
+    initSysinfoWord36 ("sys_info", "initialization_state", (word36) (4));
+    initSysinfoWord36 ("sys_info", "system_type", (word36) (1)); // L68_SYSTEM
+
+// XXX
+// call set_time ("02/24/73 14:00 est Saturday", sys_info.first_reasonable_time);
+//      /* The invention of NSS, roughly */
+// call set_time ("12/31/99 23:59:59", sys_info.last_reasonable_time);
+
+//  $ date -d "02/24/73 14:00 est Saturday" +%s
+//  99428400   // UNIX epoch in seconds of first reasonable time
+//  $ date -d ""12/31/99 23:59:59"" +%s
+//  946713599   // UNIX epoch in seconds of first reasonable time
+//  Sat Feb 24 11:00:00 PST 1973
+//  $ date -d "0000 GMT, January 1, 1901" +%s
+//  -2177452800 // UNIX epoch of Multics epoch
+//  99428400 - (-2177452800)
+//  2276881200 // Multics clock at first reasonable time (in seconds)
+//  946713599 - (-2177452800)
+//  3124166399 // Multics clock at last reasonable time (in seconds)
+
+    word72 firstReasonable = 2276881200;
+    firstReasonable *= 1000000; // convert to microseconds
+    word72 lastReasonable = 3124166399;
+    lastReasonable *= 1000000; // convert to microseconds
+
+// call set_time ("02/24/73 14:00 est Saturday", sys_info.first_reasonable_time);
+    initSysinfoWord36Offset ("sys_info", "first_reasonable_time", 0,
+                             (word36) ((firstReasonable >> 36) & MASK36));
+    initSysinfoWord36Offset ("sys_info", "first_reasonable_time", 1,
+                             (word36) (firstReasonable & MASK36));
+    initSysinfoWord36Offset ("sys_info", "last_reasonable_time", 0,
+                             (word36) ((lastReasonable >> 36) & MASK36));
+    initSysinfoWord36Offset ("sys_info", "last_reasonable_time", 1,
+                             (word36) (lastReasonable & MASK36));
+
+    initSysinfoWord36 ("sys_info", "hfp_exponent_available", (word36) (0));
+    initSysinfoWord36 ("sys_info", "ips_mask_data", (word36) (11));
+
+    initSysinfoStr ("sys_info", "quit_name", "quit", false);
+    initSysinfoWord36 ("sys_info", "quit_mask", (word36) (1ull << 35));
+    initSysinfoStr ("sys_info", "cput_name", "cput", false);
+    initSysinfoWord36 ("sys_info", "cput_mask", (word36) (1ull << 34));
+    initSysinfoStr ("sys_info", "alrm_name", "alrm", false);
+    initSysinfoWord36 ("sys_info", "alrm_mask", (word36) (1ull << 33));
+    initSysinfoStr ("sys_info", "neti_name", "neti", false);
+    initSysinfoWord36 ("sys_info", "neti_mask", (word36) (1ull << 32));
+    initSysinfoStr ("sys_info", "susp_name", "sus_", false);
+    initSysinfoWord36 ("sys_info", "susp_mask", (word36) (1ull << 31));
+    initSysinfoStr ("sys_info", "term_name", "trm_", false);
+    initSysinfoWord36 ("sys_info", "term_mask", (word36) (1ull << 30));
+    initSysinfoStr ("sys_info", "wkp_name", "wkp_", false);
+    initSysinfoWord36 ("sys_info", "wkp_mask", (word36) (1ull << 29));
+    initSysinfoStr ("sys_info", "pgt_name", "pgt_", false);
+    initSysinfoWord36 ("sys_info", "pgt_mask", (word36) (1ull << 28));
+    initSysinfoStr ("sys_info", "system_shutdown_scheduled_name", "system_shutdown_scheduled_", false);
+    initSysinfoWord36 ("sys_info", "system_shutdown_scheduled_mask", (word36) (1ull << 27));
+    initSysinfoStr ("sys_info", "dm_shutdown_scheduled_name", "dm_shutdown_scheduled_name_", false);
+    initSysinfoWord36 ("sys_info", "dm_shutdown_scheduled_mask", (word36) (1ull << 26));
+
+    initSysinfoStr ("sys_info", "system_message_name", "system_message_", false);
+    initSysinfoWord36 ("sys_info", "system_message_mask", (word36) (1ull << 25));
+    initSysinfoWord36 ("sys_info", "all_valid_ips_mask", (word36) (0777600000000llu));
+    initSysinfoWord36 ("sys_info", "ipc_privilege", (word36) (1ull << 35));
+    initSysinfoWord36 ("sys_info", "dir_privilege", (word36) (1ull << 34));
+    initSysinfoWord36 ("sys_info", "seg_privilege", (word36) (1ull << 33));
+    initSysinfoWord36 ("sys_info", "soos_privilege", (word36) (1ull << 32));
+    initSysinfoWord36 ("sys_info", "ring1_privilege", (word36) (1ull << 31));
+    initSysinfoWord36 ("sys_info", "rcp_privilege", (word36) (1ull << 30));
+    initSysinfoWord36 ("sys_info", "comm_privilege", (word36) (1ull << 29));
+  }
+
 //
 // fxe - load a segment into memory and execute it
 //
@@ -2075,11 +2322,17 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     // iocb [IOCB_USER_OUTPUT] . put_chars
 
-
     word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
 
     makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
     makeNullPtr (putCharEntry + 2);
+
+    // iocb [IOCB_USER_OUTPUT] . modes
+
+    word36 * modesEntry = (word36 *) & iocbUser -> modes;
+
+    makeITS (modesEntry, TRAP_SEGNO, FXE_RING, TRAP_MODES, 0, 0);
+    makeNullPtr (modesEntry + 2);
 
     // sim_printf ("Loading library segment\n");
 
@@ -2088,26 +2341,15 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_library_1_");
     installLibrary ("bound_library_2_");
     installLibrary ("bound_process_env_");
+    //installLibrary ("bound_io_commands_");
     installLibrary ("error_table_");
     //int lib2Idx = installLibrary ("bound_bce_wired");
     installLibrary ("sys_info");
+    initSysinfo ();
 
-    // Set the flag that applications check to see if Multics is up
     word18 value;
     word15 segno;
     int defIdx;
-
-    if (resolveName ("sys_info", "service_system", & segno, & value, & defIdx))
-      {
-        if (defIdx < 0)
-          sim_printf ("ERROR: dazed and confused; sys_info has no idx\n");
-        else
-          M [segTable [defIdx] . physmem + value] = 1;
-      }
-    else
-      {
-        sim_printf ("ERROR: can't find sys_info:service_system\n");
-      }
 
     // Set iox_$user_output
 
@@ -2157,15 +2399,16 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     char * args [maxargs];
     for (int i = 0; i < maxargs; i ++)
       args [i] = malloc (strlen (buf) + 1);
-    
-    int nargs = sscanf (buf, "%s%s%s%s%s%s%s%s%s%s", 
+    char * segmentName = malloc (strlen (buf) + 1);
+    int nargs = sscanf (buf, "%s%s%s%s%s%s%s%s%s%s%s", 
+                    segmentName,
                     args [0], args [1], args [2], args [3], args [4],
                     args [5], args [6], args [7], args [8], args [9]);
     if (nargs >= 1)
       {
-        sim_printf ("Loading segment %s\n", args [0]);
-        int segIdx = loadSegmentFromFile (args [0]);
-        segTable [segIdx] . segname = strdup (args [0]);
+        sim_printf ("Loading segment %s\n", segmentName);
+        int segIdx = loadSegmentFromFile (segmentName);
+        segTable [segIdx] . segname = strdup (segmentName);
         setSegno (segIdx, allocateSegno ());
         segTable [segIdx] . R1 = FXE_RING;
         segTable [segIdx] . R2 = FXE_RING;
@@ -2174,7 +2417,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         segTable [segIdx] . E = 1;
         segTable [segIdx] . W = 0;
         segTable [segIdx] . P = 0;
-        segTable [segIdx] . segname = strdup (args [0]);
+        segTable [segIdx] . segname = strdup (segmentName);
 
         installSDW (segIdx);
         installLOT (segIdx);
@@ -2210,11 +2453,36 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // AK92, pg 2-13: PR0 points to the argument list
 
-        // Create an empty argument list for now.
+        // Create the argument list.
 
-        word36 fxeMemPtr = fxeEntry -> physmem;
+        // Creating in memory
+        //     arg1 len
+        //     arg1
+        //     arg2 len
+        //     arg2
+        //     arg3 len
+        //     arg3
+        //     arg4 len
+        //     arg4
+        //     arg list
+        //        nargs, type
+        //        desc_cnt
+        //        arg1 ptr
+        //        arg2 ptr
+        //        arg3 ptr
+        //        arg4 ptr
 
-        word36 argList = fxeMemPtr - fxeEntry -> physmem; // wordno
+        word18 argPtrs [10];
+
+        word24 fxeMemPtr = fxeEntry -> physmem;
+        word18 next = 0;
+        for (int i = 0; i < nargs - 1; i ++)
+          {
+            argPtrs [i] = next;
+            strcpyVarying (fxeMemPtr, & next, args [i]);
+          }
+
+        word36 argList = fxeMemPtr + next;
 
 // Function: The cu_$arg_ptr entry point is used by a command or
 // subroutine that can be called with a varying number of arguments,
@@ -2224,14 +2492,45 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 // also returns the length of the argument.
 
         // word 0  arg_count, call_type
-        M [fxeMemPtr + 0] = 0;
-        putbits36 (M + fxeMemPtr +  0,  0, 18, nargs - 1);
-        putbits36 (M + fxeMemPtr +  0, 18, 18, 4); // inter-segment call
+        M [argList + 0] = 0;
+        putbits36 (M + argList +  0,  0, 17, nargs - 1);
+        putbits36 (M + argList +  0, 18, 18, 4); // inter-segment call
 
         // word 1  desc_count, 0
-        M [fxeMemPtr + 1] = 0000000000000; // 0 descs
+        M [argList + 2] = 0;
+        M [argList + 1] = 0000000000000; // 0 descs
 
- 
+        // List of arg ptrs
+        for (int i = 0; i < nargs - 1; i ++)
+          {
+            makeITS (M + argList + 2 + 2 * i, FXE_SEGNO, FXE_RING, argPtrs [i],
+                     0, 0);
+          }
+
+        next += (nargs - 1) * 2 + 2;
+
+        // List of descriptors
+
+        word36 descList = fxeMemPtr + next;
+
+        for (int i = 0; i < nargs - 1; i ++)
+          {
+            M [descList + i] = 0;
+            putbits36 (M + descList + i, 0, 1, 1); // flag
+            putbits36 (M + descList + i, 1, 6, 22); // type varying character string
+            putbits36 (M + descList + i, 7, 1, 0); // unpacked
+            putbits36 (M + descList + i, 8, 4, 0); // 0 dims
+            putbits36 (M + descList + i, 12, 24, strlen (args [i])); // 0 dims
+          }
+        next += nargs = 1;
+
+#if 0
+        for (uint i = 0; i < next; i ++)
+          {
+            sim_printf ("%3d %012llo\n", i, M [fxeMemPtr + i]);
+          }
+#endif
+
         PR [0] . SNR = FXE_SEGNO;
         PR [0] . RNR = FXE_RING;
         PR [0] . BITNO = 0;
@@ -2385,10 +2684,10 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     word18 value;
     word15 segno;
     int idx;
-    if (! resolveName ("pl1_operators_", "alm_return", 
+    if (! resolveName ("pl1_operators_", "alm_return_no_pop", 
                        & segno, & value, & idx))
       {
-        sim_printf ("ERROR: can't find alm_return\n");
+        sim_printf ("ERROR: can't find alm_return_no_pop\n");
         exit (1);
         //return;
       }
@@ -2479,7 +2778,7 @@ static void faultTag2Handler (void)
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
           if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
-              //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
+              sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
               free (segStr);
@@ -2513,6 +2812,8 @@ static void faultTag2Handler (void)
 
 static void trapPutChars (void)
   {
+    // declare iox_$put_chars entry (ptr, ptr, fixed bin(21), fixed bin(35));
+
     // Get the argument pointer
     word15 apSegno = PR [0] . SNR;
     word15 apWordno = PR [0] . WORDNO;
@@ -2553,7 +2854,7 @@ static void trapPutChars (void)
 
     if (arg_count != 4)
       {
-        sim_printf ("ERROR: put_chars expected 4 args, get %d\n", arg_count);
+        sim_printf ("ERROR: put_chars expected 4 args, got %d\n", arg_count);
         return;
       }
 
@@ -2568,10 +2869,10 @@ static void trapPutChars (void)
 
     // Process the arguments
 
-    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2);
-    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4);
-    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6);
-    //word24 ap4 = ITSToPhysmem (M + alPhysmem + 8);
+    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2, NULL);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4, NULL);
+    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6, NULL);
+    //word24 ap4 = ITSToPhysmem (M + alPhysmem + 8, NULL);
 
     //sim_printf ("ap1 %08o\n", ap1);
     //sim_printf ("ap2 %08o\n", ap2);
@@ -2580,7 +2881,7 @@ static void trapPutChars (void)
 
     //sim_printf ("@ap1 %012llo\n", M [ap1]);
   
-    word24 iocbPtr = ITSToPhysmem (M + ap1);
+    word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     //sim_printf ("iocbPtr %08o\n", iocbPtr);
 
     word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
@@ -2595,7 +2896,7 @@ static void trapPutChars (void)
 
     //sim_printf ("@ap2 %012llo\n", M [ap2]);
   
-    word24 bufPtr = ITSToPhysmem (M + ap2);
+    word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
     //sim_printf ("bufPtr %08o\n", bufPtr);
     //sim_printf ("@bufPtr %012llo\n", M [bufPtr]);
 
@@ -2617,6 +2918,248 @@ static void trapPutChars (void)
         word36 ch = getbits36 (M [bufPtr + woff], chno * 9, 9);
         sim_printf ("%c", (char) (ch & 0177U));
       }
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapModes (void)
+  {
+    // declare iox_$modes entry (ptr, char(*), char(*), fixed bin(35));
+
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    sim_printf ("arg_count %u\n", arg_count);
+    sim_printf ("call_type %u\n", call_type);
+    sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (arg_count != 4)
+      {
+        sim_printf ("ERROR: put_chars expected 4 args, got %d\n", arg_count);
+        return;
+      }
+
+    if (desc_count != 4)
+      {
+        sim_printf ("ERROR: put_chars expected 4 descs, got %d\n", arg_count);
+        return;
+      }
+
+    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
+                                         M [alPhysmem +  3]);
+    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
+                                         M [alPhysmem +  5]);
+    sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem +  6],
+                                         M [alPhysmem +  7]);
+    sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem +  8],
+                                         M [alPhysmem +  9]);
+
+    sim_printf ("dp1 %012llo %012llo\n", M [alPhysmem + 10],
+                                         M [alPhysmem + 11]);
+    sim_printf ("dp2 %012llo %012llo\n", M [alPhysmem + 12],
+                                         M [alPhysmem + 13]);
+    sim_printf ("dp3 %012llo %012llo\n", M [alPhysmem + 14],
+                                         M [alPhysmem + 15]);
+    sim_printf ("dp4 %012llo %012llo\n", M [alPhysmem + 16],
+                                         M [alPhysmem + 17]);
+
+    // Process the arguments
+
+    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
+    word24 ap3 = ITSToPhysmem (M + alPhysmem +  6, NULL);
+    word24 ap4 = ITSToPhysmem (M + alPhysmem +  8, NULL);
+
+    word24 dp1 = ITSToPhysmem (M + alPhysmem + 10, NULL);
+    word24 dp2 = ITSToPhysmem (M + alPhysmem + 12, NULL);
+    word24 dp3 = ITSToPhysmem (M + alPhysmem + 14, NULL);
+    word24 dp4 = ITSToPhysmem (M + alPhysmem + 16, NULL);
+
+    sim_printf ("ap1 %08o\n", ap1);
+    sim_printf ("ap2 %08o\n", ap2);
+    sim_printf ("ap3 %08o\n", ap3);
+    sim_printf ("ap4 %08o\n", ap4);
+
+    sim_printf ("dp1 %08o\n", dp1);
+    sim_printf ("dp2 %08o\n", dp2);
+    sim_printf ("dp3 %08o\n", dp3);
+    sim_printf ("dp4 %08o\n", dp4);
+
+    sim_printf ("@ap1 %012llo\n", M [ap1]);
+    sim_printf ("@dp1 %012llo\n", M [dp1]);
+  
+    word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
+    sim_printf ("iocbPtr %08o\n", iocbPtr);
+
+    word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+
+    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+    sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx != 0)
+      {
+        sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
+        return;
+      }
+
+    sim_printf ("@ap2 %012llo\n", M [ap2]);
+    sim_printf ("@dp2 %012llo\n", M [dp2]);
+    sim_printf ("desc2 type %lld\n", getbits36 (M [dp2], 1, 6));
+    sim_printf ("desc2 packed %lld\n", getbits36 (M [dp2], 7, 1));
+    sim_printf ("desc2 size %lld\n", getbits36 (M [dp2], 8, 24));
+
+    word6 newModesBitno;
+    word24 newModesPtr = ITSToPhysmem (M + ap2, & newModesBitno);
+    sim_printf ("newModesPtr %08o\n", newModesPtr);
+    sim_printf ("@newModesPtr %012llo\n", M [newModesPtr]);
+    sim_printf ("newModesBitno %u\n", newModesBitno);
+    if (newModesBitno)
+      {
+        sim_printf ("ERROR: newModesBitno (%d) != 0\n", newModesBitno);
+        return;
+      }
+
+    sim_printf ("@ap3 %012llo\n", M [ap3]);
+    sim_printf ("@dp3 %012llo\n", M [dp3]);
+    sim_printf ("desc3 type %lld\n", getbits36 (M [dp3], 1, 6));
+    sim_printf ("desc3 packed %lld\n", getbits36 (M [dp3], 7, 1));
+    sim_printf ("desc3 size %lld\n", getbits36 (M [dp3], 8, 24));
+  
+    word6 oldModesBitno;
+    word24 oldModesPtr = ITSToPhysmem (M + ap2, & oldModesBitno);
+    sim_printf ("oldModesPtr %08o\n", oldModesPtr);
+    sim_printf ("@oldModesPtr %012llo\n", M [oldModesPtr]);
+    sim_printf ("oldModesBitno %u\n", oldModesBitno);
+    if (oldModesBitno)
+      {
+        sim_printf ("ERROR: oldModesBitno (%d) != 0\n", oldModesBitno);
+        return;
+      }
+
+    //word36 status = M [ap4];
+
+    //sim_printf ("status %012llo\n", status);
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapGetLineLengthSwitch (void)
+  {
+    // declare get_line_length_$switch entry (ptr, fixed bin(35)) returns
+    //   (fixed bin);
+    //     switch ptr, status code, line length
+
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    sim_printf ("arg_count %u\n", arg_count);
+    sim_printf ("call_type %u\n", call_type);
+    sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (arg_count != 3)
+      {
+        sim_printf ("ERROR: put_chars expected 3 args, got %d\n", arg_count);
+        return;
+      }
+
+    if (desc_count != 0)
+      {
+        sim_printf ("ERROR: put_chars expected 0 descs, got %d\n", arg_count);
+        return;
+      }
+
+    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
+                                         M [alPhysmem +  3]);
+    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
+                                         M [alPhysmem +  5]);
+    sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem +  6],
+                                         M [alPhysmem +  7]);
+
+    // Process the arguments
+
+    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
+    word24 ap3 = ITSToPhysmem (M + alPhysmem +  6, NULL);
+
+    sim_printf ("ap1 %08o\n", ap1);
+    sim_printf ("ap2 %08o\n", ap2);
+    sim_printf ("ap3 %08o\n", ap3);
+
+    sim_printf ("@ap1 %012llo\n", M [ap1]);
+  
+    uint iocbIdx;
+    if (isNullPtr (ap1))
+      iocbIdx = IOCB_USER_OUTPUT;
+    else
+      {
+        word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
+        sim_printf ("iocbPtr %08o\n", iocbPtr);
+
+        word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+
+        iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+      }
+    sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx != IOCB_USER_OUTPUT)
+      {
+        sim_printf ("ERROR: iocbIdx (%d) != IOCB_USER_OUTPUT (%d)\n", 
+                    iocbIdx, IOCB_USER_OUTPUT);
+        return;
+      }
+
+    // sim_printf ("@ap2 %012llo\n", M [ap2]);
+
+    sim_printf ("@ap3 %012llo\n", M [ap3]);
+  
+
+    M [ap3] = 80;
 
     doRCU (true); // doesn't return
   }
@@ -2665,7 +3208,7 @@ static void trapHistoryRegsSet (void)
 
     if (arg_count != 4)
       {
-        sim_printf ("ERROR: put_chars expected 4 args, get %d\n", arg_count);
+        sim_printf ("ERROR: put_chars expected 4 args, got %d\n", arg_count);
         return;
       }
 
@@ -2680,10 +3223,10 @@ static void trapHistoryRegsSet (void)
 
     // Process the arguments
 
-    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2);
-    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4);
-    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6);
-    word24 ap4 = ITSToPhysmem (M + alPhysmem + 8);
+    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2, NULL);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4, NULL);
+    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6, NULL);
+    word24 ap4 = ITSToPhysmem (M + alPhysmem + 8, NULL);
 
     //sim_printf ("ap1 %08o\n", ap1);
     //sim_printf ("ap2 %08o\n", ap2);
@@ -2692,7 +3235,7 @@ static void trapHistoryRegsSet (void)
 
     //sim_printf ("@ap1 %012llo\n", M [ap1]);
   
-    word24 iocbPtr = ITSToPhysmem (M + ap1);
+    word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     //sim_printf ("iocbPtr %08o\n", iocbPtr);
 
     word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
@@ -2707,7 +3250,7 @@ static void trapHistoryRegsSet (void)
 
     //sim_printf ("@ap2 %012llo\n", M [ap2]);
   
-    word24 bufPtr = ITSToPhysmem (M + ap2);
+    word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
     //sim_printf ("bufPtr %08o\n", bufPtr);
     //sim_printf ("@bufPtr %012llo\n", M [bufPtr]);
 
@@ -2721,6 +3264,13 @@ static void trapHistoryRegsSet (void)
 
     //sim_printf ("status %012llo\n", status);
 #endif
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHistoryRegsGet (void)
+  {
+    //sim_printf ("trapHistoryRegsGet\n");
 
     doRCU (true); // doesn't return
   }
@@ -2752,8 +3302,17 @@ static void fxeTrap (void)
         case TRAP_PUT_CHARS:
           trapPutChars ();
           break;
+        case TRAP_MODES:
+          trapModes ();
+          break;
+        case TRAP_GET_LINE_LENGTH_SWITCH:
+          trapGetLineLengthSwitch ();
+          break;
         case TRAP_HISTORY_REGS_SET:
           trapHistoryRegsSet ();
+          break;
+        case TRAP_HISTORY_REGS_GET:
+          trapHistoryRegsGet ();
           break;
         case TRAP_RETURN_TO_FXE:
           trapReturnToFXE ();
