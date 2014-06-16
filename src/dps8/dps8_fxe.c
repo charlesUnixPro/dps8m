@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "dps8.h"
 #include "dps8_append.h"
@@ -68,6 +69,19 @@ static void printACC (word36 * p)
       {
         uint woffset = (i + 1) / 4;
         uint coffset = (i + 1) % 4;
+        word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
+        sim_printf ("%c", (char) (ch & 0177));
+      }
+  }
+#endif
+
+#if 0
+static void printNChars (word36 * p, word24 cnt)
+  {
+    for (uint i = 0; i < cnt; i ++)
+      {
+        uint woffset = i / 4;
+        uint coffset = i % 4;
         word36 ch = getbits36 (* (p + woffset), coffset * 9, 9);
         sim_printf ("%c", (char) (ch & 0177));
       }
@@ -181,7 +195,11 @@ static void strcpyVarying (word24 base, word18 * next, char * str)
 static void strcpyNonVarying (word24 base, word18 * next, char * str)
   {
     size_t len = strlen (str);
-    word18 offset = * next;
+    word18 offset;
+    if (next)
+      offset = * next;
+    else
+      offset = 0;
 #if 0
     // store the lengtn in the first word
     M [base + offset] = len;
@@ -198,7 +216,23 @@ static void strcpyNonVarying (word24 base, word18 * next, char * str)
         //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
       }
     offset += (len + 3) / 4;
-    * next = offset;
+    if (next)
+      * next = offset;
+  }
+
+// Copy multics string to C
+
+static void strcpyC (word24 addr, word24 len, char * str)
+  {
+    for (uint i = 0; i < len; i ++)
+      {
+        int woff = i / 4;
+        int choff = i % 4;
+        word36 ch = getbits36 (M [addr + woff], choff * 9, 9);
+        * (str ++) = (char) (ch & 0177);
+        //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
+      }
+    * (str ++) = '\0';
   }
 
 //
@@ -299,12 +333,12 @@ enum
     // hcs_
     TRAP_HISTORY_REGS_SET,
     TRAP_HISTORY_REGS_GET,
+    TRAP_FS_SEARCH_GET_WDIR,
+    TRAP_INITIATE_COUNT,
 
+    // FXE internal
     TRAP_RETURN_TO_FXE
   };
-
-#define TRAP_PUT_CHARS 1
-
 
 typedef struct segTableEntry
   {
@@ -893,6 +927,8 @@ static trapNameTableEntry trapNameTable [] =
   {
     { "hcs_", "history_regs_set", TRAP_HISTORY_REGS_SET },
     { "hcs_", "history_regs_get", TRAP_HISTORY_REGS_GET },
+    { "hcs_", "fs_search_get_wdir", TRAP_FS_SEARCH_GET_WDIR },
+    { "hcs_", "initiate_count", TRAP_INITIATE_COUNT },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
@@ -2341,6 +2377,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_library_1_");
     installLibrary ("bound_library_2_");
     installLibrary ("bound_process_env_");
+    installLibrary ("bound_expand_path_");
     //installLibrary ("bound_io_commands_");
     installLibrary ("error_table_");
     //int lib2Idx = installLibrary ("bound_bce_wired");
@@ -2406,6 +2443,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
                     args [5], args [6], args [7], args [8], args [9]);
     if (nargs >= 1)
       {
+        nargs --; // don't count the segment name
         sim_printf ("Loading segment %s\n", segmentName);
         int segIdx = loadSegmentFromFile (segmentName);
         segTable [segIdx] . segname = strdup (segmentName);
@@ -2464,6 +2502,10 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         //     arg3
         //     arg4 len
         //     arg4
+        //     desc1
+        //     desc2
+        //     desc3
+        //     desc4
         //     arg list
         //        nargs, type
         //        desc_cnt
@@ -2471,18 +2513,39 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         //        arg2 ptr
         //        arg3 ptr
         //        arg4 ptr
-
-        word18 argPtrs [10];
+        //        desc1 ptr
+        //        desc2 ptr
+        //        desc3 ptr
+        //        desc4 ptr
 
         word24 fxeMemPtr = fxeEntry -> physmem;
         word18 next = 0;
-        for (int i = 0; i < nargs - 1; i ++)
+
+        //word36 argList = fxeMemPtr + next;
+        word18 argAddrs [10];
+
+        for (int i = 0; i < nargs; i ++)
           {
-            argPtrs [i] = next;
-            strcpyVarying (fxeMemPtr, & next, args [i]);
+            argAddrs [i] = next;
+            strcpyNonVarying (fxeMemPtr, & next, args [i]);
           }
 
-        word36 argList = fxeMemPtr + next;
+        word18 descAddrs [10];
+        word36 descList = fxeMemPtr + next;
+        for (int i = 0; i < nargs; i ++)
+          {
+            descAddrs [i] = next;
+            M [descList + i] = 0;
+            putbits36 (M + descList + i, 0, 1, 1); // flag
+            putbits36 (M + descList + i, 1, 6, 21); // type non-varying character string
+            putbits36 (M + descList + i, 7, 1, 0); // unpacked
+            putbits36 (M + descList + i, 8, 4, 0); // 0 dims
+            putbits36 (M + descList + i, 12, 24, strlen (args [i])); // 0 dims
+          }
+        next += nargs;
+
+        
+        word36 argBlock = fxeMemPtr + next;
 
 // Function: The cu_$arg_ptr entry point is used by a command or
 // subroutine that can be called with a varying number of arguments,
@@ -2492,49 +2555,48 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 // also returns the length of the argument.
 
         // word 0  arg_count, call_type
-        M [argList + 0] = 0;
-        putbits36 (M + argList +  0,  0, 17, nargs - 1);
-        putbits36 (M + argList +  0, 18, 18, 4); // inter-segment call
+        M [argBlock + 0] = 0;
+        putbits36 (M + argBlock +  0,  0, 17, nargs);
+        putbits36 (M + argBlock +  0, 18, 18, 4); // inter-segment call
 
         // word 1  desc_count, 0
-        M [argList + 2] = 0;
-        M [argList + 1] = 0000000000000; // 0 descs
+        M [argBlock + 1] = 0;
+        putbits36 (M + argBlock +  1,  0, 17, nargs);
+
+        next += 2;
 
         // List of arg ptrs
-        for (int i = 0; i < nargs - 1; i ++)
+
+        word36 argPtrList = fxeMemPtr + next;
+        for (int i = 0; i < nargs; i ++)
           {
-            makeITS (M + argList + 2 + 2 * i, FXE_SEGNO, FXE_RING, argPtrs [i],
-                     0, 0);
+            makeITS (M + argPtrList + 2 * i, FXE_SEGNO, FXE_RING,
+                     argAddrs [i], 0, 0);
           }
 
-        next += (nargs - 1) * 2 + 2;
+        next += nargs * 2;
 
         // List of descriptors
 
-        word36 descList = fxeMemPtr + next;
-
-        for (int i = 0; i < nargs - 1; i ++)
+        word36 descPtrList = fxeMemPtr + next;
+        for (int i = 0; i < nargs; i ++)
           {
-            M [descList + i] = 0;
-            putbits36 (M + descList + i, 0, 1, 1); // flag
-            putbits36 (M + descList + i, 1, 6, 22); // type varying character string
-            putbits36 (M + descList + i, 7, 1, 0); // unpacked
-            putbits36 (M + descList + i, 8, 4, 0); // 0 dims
-            putbits36 (M + descList + i, 12, 24, strlen (args [i])); // 0 dims
+            makeITS (M + descPtrList + 2 * i, FXE_SEGNO, FXE_RING,
+                     descAddrs [i], 0, 0);
           }
-        next += nargs = 1;
+        next += 2 * nargs;
 
-#if 0
+#if 1
         for (uint i = 0; i < next; i ++)
           {
-            sim_printf ("%3d %012llo\n", i, M [fxeMemPtr + i]);
+            sim_printf ("%3o %012llo\n", i, M [fxeMemPtr + i]);
           }
 #endif
 
         PR [0] . SNR = FXE_SEGNO;
         PR [0] . RNR = FXE_RING;
         PR [0] . BITNO = 0;
-        PR [0] . WORDNO = argList;
+        PR [0] . WORDNO = argBlock;
 
 // AK92, pg 2-13: PR4 points to the linkage section for the executing procedure
 
@@ -3029,7 +3091,7 @@ static void trapModes (void)
     sim_printf ("@dp2 %012llo\n", M [dp2]);
     sim_printf ("desc2 type %lld\n", getbits36 (M [dp2], 1, 6));
     sim_printf ("desc2 packed %lld\n", getbits36 (M [dp2], 7, 1));
-    sim_printf ("desc2 size %lld\n", getbits36 (M [dp2], 8, 24));
+    sim_printf ("desc2 size %lld\n", getbits36 (M [dp2], 12, 24));
 
     word6 newModesBitno;
     word24 newModesPtr = ITSToPhysmem (M + ap2, & newModesBitno);
@@ -3046,7 +3108,7 @@ static void trapModes (void)
     sim_printf ("@dp3 %012llo\n", M [dp3]);
     sim_printf ("desc3 type %lld\n", getbits36 (M [dp3], 1, 6));
     sim_printf ("desc3 packed %lld\n", getbits36 (M [dp3], 7, 1));
-    sim_printf ("desc3 size %lld\n", getbits36 (M [dp3], 8, 24));
+    sim_printf ("desc3 size %lld\n", getbits36 (M [dp3], 12, 24));
   
     word6 oldModesBitno;
     word24 oldModesPtr = ITSToPhysmem (M + ap2, & oldModesBitno);
@@ -3085,9 +3147,6 @@ static void trapGetLineLengthSwitch (void)
     word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
     word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
     word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-    sim_printf ("arg_count %u\n", arg_count);
-    sim_printf ("call_type %u\n", call_type);
-    sim_printf ("desc_count %u\n", desc_count);
 
     // Error checking
     if (call_type != 4)
@@ -3115,25 +3174,12 @@ static void trapGetLineLengthSwitch (void)
         return;
       }
 
-    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
-                                         M [alPhysmem +  3]);
-    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
-                                         M [alPhysmem +  5]);
-    sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem +  6],
-                                         M [alPhysmem +  7]);
-
     // Process the arguments
 
     word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
-    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
+    // word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
     word24 ap3 = ITSToPhysmem (M + alPhysmem +  6, NULL);
 
-    sim_printf ("ap1 %08o\n", ap1);
-    sim_printf ("ap2 %08o\n", ap2);
-    sim_printf ("ap3 %08o\n", ap3);
-
-    sim_printf ("@ap1 %012llo\n", M [ap1]);
-  
     uint iocbIdx;
     if (isNullPtr (ap1))
       iocbIdx = IOCB_USER_OUTPUT;
@@ -3153,11 +3199,6 @@ static void trapGetLineLengthSwitch (void)
                     iocbIdx, IOCB_USER_OUTPUT);
         return;
       }
-
-    // sim_printf ("@ap2 %012llo\n", M [ap2]);
-
-    sim_printf ("@ap3 %012llo\n", M [ap3]);
-  
 
     M [ap3] = 80;
 
@@ -3275,6 +3316,352 @@ static void trapHistoryRegsGet (void)
     doRCU (true); // doesn't return
   }
 
+static void trapFSSearchGetWdir (void)
+  {
+    // dcl hcs_$fs_search_get_wdir ext entry(ptr,fixed bin(17));
+    //   path (out), leng (out)
+
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    sim_printf ("arg_count %u\n", arg_count);
+    sim_printf ("call_type %u\n", call_type);
+    sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (arg_count != 2)
+      {
+        sim_printf ("ERROR: fs_search_get_wdir expected 2 args, got %d\n",
+                     arg_count);
+        return;
+      }
+
+    if (desc_count != 0)
+      {
+        sim_printf ("ERROR: fs_search_get_wdir expected 0 descs, got %d\n", arg_count);
+        return;
+      }
+
+    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
+                                         M [alPhysmem +  3]);
+    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
+                                         M [alPhysmem +  5]);
+    // Process the arguments
+
+    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
+
+    sim_printf ("ap1 %08o\n", ap1);
+    sim_printf ("ap2 %08o\n", ap2);
+
+    sim_printf ("@ap1 %012llo\n", M [ap1]);
+  
+    if (isNullPtr (ap1))
+      {
+        // Can't do anything
+      }
+    else
+      {
+        char * cwd = ">udd>fxe>fxe";
+        word24 resPtr = ITSToPhysmem (M + ap1, NULL);
+        sim_printf ("resPtr %08o @resPTr %012llo\n", resPtr, M [resPtr]);
+        strcpyNonVarying (resPtr, NULL, cwd);
+        M [ap2] = strlen (cwd);
+      }
+
+
+
+
+    doRCU (true); // doesn't return
+  }
+
+static void trimTrailingSpaces (char * str)
+  {
+    char * end = str + strlen(str) - 1;
+    while (end > str && isspace (* end))
+      end --;
+  }
+
+static int initiateSegment (char * dir, char * entry, word36 * bitcnt,
+                            word72 * segptr)
+  {
+    trimTrailingSpaces (dir);
+    trimTrailingSpaces (entry);
+sim_printf ("entry %s\n", entry);
+    return 0;
+  }
+
+static void trapInitiateCount (void)
+  {
+// :Entry: initiate_count: 03/08/82  hcs_$initiate_count
+// 
+// 
+// Function: given a pathname and a reference name, causes the segment
+// defined by the pathname to be made known and the given reference name
+// initiated.  A segment number is assigned and returned as a pointer and
+// the bit count of the segment is returned.
+// 
+// 
+// Syntax:
+// declare hcs_$initiate_count entry (char(*), char(*), char(*),
+//      fixed bin(24), fixed bin(2), ptr, fixed bin(35));
+// call hcs_$initiate_count (dir_name, entryname, ref_name, bit_count,
+//      copy_ctl_sw, seg_ptr, code);
+
+
+// Arguments:
+// dir_name
+//    is the pathname of the containing directory.  (Input)
+// entryname
+//    is the entryname of the segment.  (Input)
+// ref_name
+//    is the reference name.  (Input) If it is zero length, the segment is
+//    initiated with a null reference name.
+// bit_count
+//    is the bit count of the segment.  (Output)
+// copy_ctl_sw
+//    is obsolete, and should be set to zero.  (Input)
+// 
+// seg_ptr
+//    is a pointer to the segment.  (Output)
+// code
+//    is a storage system status code.  (Output)
+// 
+// 
+// Notes:  The user must have nonnull access on the segment (the entryname
+// argument) in order to make it known.
+// 
+// If entryname cannot be made known, a null pointer is returned for
+// seg_ptr and the returned value of code indicates the reason for
+// failure.        Thus, the usual way to test whether the call was successful
+// is to check the pointer, not the code, since the code may be nonzero
+// even if the segment was successfully initiated.  If entryname is
+// already known to the user's process, code is returned as
+// error_table_$segknown and the seg_ptr argument contains a nonnull
+// pointer to entryname.  If entryname is not already known, and no
+// problems are encountered, seg_ptr contains a valid pointer and code is
+// 0.  If ref_name has already been initiated in the current ring, the
+// code is returned as error_table_$namedup.  The seg_ptr argument
+// contains a valid pointer to the segment being initiated.  If the
+// seg_ptr argument contains a nonnull pointer, the bit_count argument is
+// set to the bit count of the segment to which seg_ptr points.
+
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    sim_printf ("arg_count %u\n", arg_count);
+    sim_printf ("call_type %u\n", call_type);
+    sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (arg_count != 7)
+      {
+        sim_printf ("ERROR: initiate_count expected 7 args, got %d\n",
+                     arg_count);
+        return;
+      }
+
+    if (desc_count != 7)
+      {
+        sim_printf ("ERROR: initiate_count expected 7 descs, got %d\n", arg_count);
+        return;
+      }
+
+    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
+                                         M [alPhysmem +  3]);
+    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
+                                         M [alPhysmem +  5]);
+    sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem +  6],
+                                         M [alPhysmem +  7]);
+    sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem +  8],
+                                         M [alPhysmem +  9]);
+    sim_printf ("ap5 %012llo %012llo\n", M [alPhysmem +  0],
+                                         M [alPhysmem + 11]);
+    sim_printf ("ap6 %012llo %012llo\n", M [alPhysmem + 12],
+                                         M [alPhysmem + 13]);
+    sim_printf ("ap7 %012llo %012llo\n", M [alPhysmem + 14],
+                                         M [alPhysmem + 15]);
+
+    sim_printf ("dp1 %012llo %012llo\n", M [alPhysmem + 16],
+                                         M [alPhysmem + 17]);
+    sim_printf ("dp2 %012llo %012llo\n", M [alPhysmem + 18],
+                                         M [alPhysmem + 19]);
+    sim_printf ("dp3 %012llo %012llo\n", M [alPhysmem + 20],
+                                         M [alPhysmem + 21]);
+    sim_printf ("dp4 %012llo %012llo\n", M [alPhysmem + 22],
+                                         M [alPhysmem + 23]);
+    sim_printf ("dp5 %012llo %012llo\n", M [alPhysmem + 24],
+                                         M [alPhysmem + 25]);
+    sim_printf ("dp6 %012llo %012llo\n", M [alPhysmem + 26],
+                                         M [alPhysmem + 27]);
+    sim_printf ("dp7 %012llo %012llo\n", M [alPhysmem + 28],
+                                         M [alPhysmem + 29]);
+
+
+    // Process the arguments
+
+    // Argument 1: dir_name (input)
+    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
+    word24 dp1 = ITSToPhysmem (M + alPhysmem + 16, NULL);
+
+    sim_printf ("ap1 %08o\n", ap1);
+    sim_printf ("dp1 %08o\n", dp1);
+
+    sim_printf ("@ap1 %012llo\n", M [ap1]);
+    sim_printf ("@dp1 %012llo\n", M [dp1]);
+    sim_printf ("desc1 type %lld\n", getbits36 (M [dp1], 1, 6));
+    sim_printf ("desc1 packed %lld\n", getbits36 (M [dp1], 7, 1));
+    sim_printf ("desc1 size %lld\n", getbits36 (M [dp1], 12, 24));
+ 
+    word6 d1type = getbits36 (M [dp1], 1, 6);
+    word24 d1size = getbits36 (M [dp1], 12, 24);
+
+    if (d1type != 21)
+      {
+        sim_printf ("ERROR: initiate_count expected d1type 21, got %d\n", d1type);
+        return;
+      }
+    char * arg1 = malloc (d1size + 1);
+    strcpyC (ap1, d1size, arg1);
+    sim_printf ("arg1: '%s'\n", arg1);
+
+
+
+    // Argument 2: entry name
+    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
+    word24 dp2 = ITSToPhysmem (M + alPhysmem + 18, NULL);
+
+    sim_printf ("ap2 %08o\n", ap2);
+    sim_printf ("dp2 %08o\n", dp2);
+
+    sim_printf ("@ap2 %012llo\n", M [ap2]);
+    sim_printf ("@dp2 %012llo\n", M [dp2]);
+    sim_printf ("desc2 type %lld\n", getbits36 (M [dp2], 1, 6));
+    sim_printf ("desc2 packed %lld\n", getbits36 (M [dp2], 7, 1));
+    sim_printf ("desc2 size %lld\n", getbits36 (M [dp2], 12, 24));
+ 
+    word6 d2type = getbits36 (M [dp2], 1, 6);
+    word24 d2size = getbits36 (M [dp2], 12, 24);
+
+    if (d2type != 21)
+      {
+        sim_printf ("ERROR: initiate_count expected d2type 21, got %d\n", d2type);
+        return;
+      }
+    char * arg2 = malloc (d2size + 1);
+    strcpyC (ap2, d2size, arg2);
+    sim_printf ("arg2: '%s'\n", arg2);
+
+    // Argument 3: reference name
+
+
+// reference name
+// Name supplied to hcs_$initiate when a segment is made known, and entered
+// into the process's RNT. When a linkage fault occurs, the dynamic linker
+// searches for a segment with that reference name, using the process's search
+// rules. If the segment is not found by reference name, other search rules are
+// used, and if a segment is found, it is initiated with the reference name
+// used in the search. Thus one can issue the commands
+//
+//    initiate test_wankel wankel
+//    mysubsustem
+//
+// to cause the invocation of mysubsystem to find test_wankel when it links to
+// the function wankel.
+
+    word24 ap3 = ITSToPhysmem (M + alPhysmem +  6, NULL);
+    word24 dp3 = ITSToPhysmem (M + alPhysmem + 20, NULL);
+
+    sim_printf ("ap3 %08o\n", ap3);
+    sim_printf ("dp3 %08o\n", dp3);
+
+    sim_printf ("@ap3 %012llo\n", M [ap3]);
+    sim_printf ("@dp3 %012llo\n", M [dp3]);
+    sim_printf ("desc3 type %lld\n", getbits36 (M [dp3], 1, 6));
+    sim_printf ("desc3 packed %lld\n", getbits36 (M [dp3], 7, 1));
+    sim_printf ("desc3 size %lld\n", getbits36 (M [dp3], 12, 24));
+ 
+    word6 d3type = getbits36 (M [dp3], 1, 6);
+    word24 d3size = getbits36 (M [dp3], 12, 24);
+
+    if (d3type != 21)
+      {
+        sim_printf ("ERROR: initiate_count expected d3type 21, got %d\n", d3type);
+        return;
+      }
+
+    sim_printf ("arg3: '");
+    char * arg3 = NULL;
+    if (d3size)
+      {
+        arg3 = malloc (d3size + 1);
+        strcpyC (ap3, d3size, arg3);
+        sim_printf ("arg3: '%s'\n", arg3);
+      }
+    else
+      {
+        sim_printf ("arg3: NULL\n");
+      }
+
+    word36 bitcnt;
+    word72 ptr;
+
+    int code = initiateSegment (arg1, arg2, & bitcnt, & ptr);
+
+
+    free (arg1);
+    free (arg2);
+    if (arg3)
+      free (arg3);
+
+    doRCU (true); // doesn't return
+  }
 
 static void trapReturnToFXE (void)
   {
@@ -3313,6 +3700,12 @@ static void fxeTrap (void)
           break;
         case TRAP_HISTORY_REGS_GET:
           trapHistoryRegsGet ();
+          break;
+        case TRAP_FS_SEARCH_GET_WDIR:
+          trapFSSearchGetWdir ();
+          break;
+        case TRAP_INITIATE_COUNT:
+          trapInitiateCount ();
           break;
         case TRAP_RETURN_TO_FXE:
           trapReturnToFXE ();
