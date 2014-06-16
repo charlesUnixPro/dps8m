@@ -233,6 +233,14 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define FXE_RING 5
 // Traps
 
+enum
+  {
+    TRAP_UNUSED, // Don't use 0 so as to help distingish uninitialized fields
+    TRAP_PUT_CHARS, 
+    TRAP_HISTORY_REGS_SET,
+    TRAP_RETURN_TO_FXE
+  };
+
 #define TRAP_PUT_CHARS 1
 
 
@@ -810,9 +818,44 @@ static void installSDW (int segIdx)
     do_cams (TPR . CA);
   }
 
+typedef struct trapNameTableEntry
+  {
+    char * segName;
+    char * symbolName;
+    int trapNo;
+  } trapNameTableEntry;
+
+static trapNameTableEntry trapNameTable [] =
+  {
+    { "hcs_", "history_regs_set", TRAP_HISTORY_REGS_SET }
+  };
+#define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
+
+static int trapName (char * segName, char * symbolName)
+  {
+    for (uint i = 0; i < N_TRAP_NAMES; i ++)
+      {
+        if (strcmp (segName, trapNameTable [i] . segName) == 0 &&
+            strcmp (symbolName, trapNameTable [i] . symbolName) == 0)
+          {
+            return trapNameTable [i] . trapNo;
+          }
+      }
+    return -1;
+  }
+
 static int resolveName (char * segName, char * symbolName, word15 * segno,
                         word18 * value, int * index)
   {
+    int trapNo = trapName (segName, symbolName);
+    if (trapNo >= 0)
+      {
+        * segno = TRAP_SEGNO;
+        * value = trapNo;
+        * index = -1;
+        return 1;
+      }
+   
     //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     int idx;
     for (idx = 0; idx < (int) N_SEGS; idx ++)
@@ -1870,16 +1913,26 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
     makeITS (M + frameAddr + 18, stkSegno, ssIdx - stack0Idx, STK_TOP + FRAME_SZ, 0, 0);
 
     // word 20, 21    return_ptr
-    makeNullPtr (M + frameAddr + 20);
+    //makeNullPtr (M + frameAddr + 20);
+    makeITS (M + frameAddr + 20, TRAP_SEGNO, FXE_RING, TRAP_RETURN_TO_FXE, 0, 0);
     
     // word 22, 23    entry_ptr
     makeNullPtr (M + frameAddr + 22);
 
     // word 24, 25    operator_link_ptr
-    makeNullPtr (M + frameAddr + 23);
+    //makeNullPtr (M + frameAddr + 24);
+    word18 operator_table = 0777777;
+    if (! lookupDef (libIdx, "pl1_operators_", "operator_table",
+                     & operator_table))
+     {
+       sim_printf ("ERROR: Can't find pl1_operators_$operator_table\n");
+     }
+    word15 libSegno = segTable [libIdx] . segno;
+    makeITS (M + frameAddr + 24, libSegno, FXE_RING, operator_table, 0, 0);
+
 
     // word 25, 26    argument_ptr
-    makeNullPtr (M + frameAddr + 25);
+    makeNullPtr (M + frameAddr + 26);
 
     // Update the header
 
@@ -2046,7 +2099,10 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     if (resolveName ("sys_info", "service_system", & segno, & value, & defIdx))
       {
-        M [segTable [defIdx] . physmem + value] = 1;
+        if (defIdx < 0)
+          sim_printf ("ERROR: dazed and confused; sys_info has no idx\n");
+        else
+          M [segTable [defIdx] . physmem + value] = 1;
       }
     else
       {
@@ -2057,7 +2113,10 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     if (resolveName ("iox_", "user_output", & segno, & value, & defIdx))
       {
-        //M [segTable [infoIdx] . physmem + value] = 1;
+        //if (defIdx < 0)
+          //sim_printf ("ERROR: dazed and confused; iox_ has no idx\n");
+        //else
+          //M [segTable [infoIdx] . physmem + value] = 1;
       }
     else
       {
@@ -2293,6 +2352,7 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     PR [7] . RNR = PPR . PRR;
 #endif
 
+#if 0
     // Transfer to the return_ptr
     word15 spSegno = PR [6] . SNR;
     word18 spWordno = PR [6] . WORDNO;
@@ -2301,7 +2361,7 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     word24 rpAddr = spPhysmem + 20;
     word36 even = M [rpAddr];
     word36 odd = M [rpAddr + 1];
-    //sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);  
+    sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);  
     if (getbits36 (odd, 30, 6) != 020)
       {
         sim_printf ("ERROR: Expected tag 020 (%02llo)\n", 
@@ -2311,7 +2371,7 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     word15 indSegno = getbits36 (even, 3, 15);
     word15 indRing = getbits36 (even, 18, 3);
     word18 indWordno = getbits36 (odd, 0, 18);
-    word24 indPhysmem = segTable [segnoMap [indSegno]] . physmem + indWordno;
+    //word24 indPhysmem = segTable [segnoMap [indSegno]] . physmem + indWordno;
 
     //sim_printf ("ind %08o %012llo %012llo\n", indPhysmem, M [indPhysmem], M [indPhysmem + 1]);  
 
@@ -2319,6 +2379,23 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     PPR . PRR = indRing;
     PPR . IC = indWordno;
     // XXX PPR.P...
+#endif
+
+#if 1
+    word18 value;
+    word15 segno;
+    int idx;
+    if (! resolveName ("pl1_operators_", "alm_return", 
+                       & segno, & value, & idx))
+      {
+        sim_printf ("ERROR: can't find alm_return\n");
+        exit (1);
+        //return;
+      }
+    PPR . PSR = segno;
+    PPR . IC = value; // + 441; // return_main
+#endif
+
   }
 
 static void faultTag2Handler (void)
@@ -2402,7 +2479,7 @@ static void faultTag2Handler (void)
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
           if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
-              sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
+              //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
               free (segStr);
@@ -2436,6 +2513,118 @@ static void faultTag2Handler (void)
 
 static void trapPutChars (void)
   {
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    //sim_printf ("arg_count %u\n", arg_count);
+    //sim_printf ("call_type %u\n", call_type);
+    //sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (desc_count)
+      {
+        sim_printf ("ERROR: non-zero desc_count (%d) not handled\n", 
+                    desc_count);
+        return;
+      }
+
+    if (arg_count != 4)
+      {
+        sim_printf ("ERROR: put_chars expected 4 args, get %d\n", arg_count);
+        return;
+      }
+
+    //sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem + 2],
+    //                                     M [alPhysmem + 3]);
+    //sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem + 4],
+    //                                     M [alPhysmem + 5]);
+    //sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem + 6],
+    //                                     M [alPhysmem + 7]);
+    //sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem + 8],
+    //                                     M [alPhysmem + 9]);
+
+    // Process the arguments
+
+    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2);
+    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4);
+    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6);
+    //word24 ap4 = ITSToPhysmem (M + alPhysmem + 8);
+
+    //sim_printf ("ap1 %08o\n", ap1);
+    //sim_printf ("ap2 %08o\n", ap2);
+    //sim_printf ("ap3 %08o\n", ap3);
+    //sim_printf ("ap4 %08o\n", ap4);
+
+    //sim_printf ("@ap1 %012llo\n", M [ap1]);
+  
+    word24 iocbPtr = ITSToPhysmem (M + ap1);
+    //sim_printf ("iocbPtr %08o\n", iocbPtr);
+
+    word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+
+    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx != 0)
+      {
+        sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
+        return;
+      }
+
+    //sim_printf ("@ap2 %012llo\n", M [ap2]);
+  
+    word24 bufPtr = ITSToPhysmem (M + ap2);
+    //sim_printf ("bufPtr %08o\n", bufPtr);
+    //sim_printf ("@bufPtr %012llo\n", M [bufPtr]);
+
+    //sim_printf ("@ap3 %012llo\n", M [ap3]);
+  
+    word36 len = M [ap3];
+
+    //sim_printf ("len %012llo\n", len);
+
+    //word36 status = M [ap4];
+
+    //sim_printf ("status %012llo\n", status);
+
+    //sim_printf ("PUT_CHARS:");
+    for (int i = 0; i < (int) len; i ++)
+      {
+        int woff = i / 4;
+        int chno = i % 4;
+        word36 ch = getbits36 (M [bufPtr + woff], chno * 9, 9);
+        sim_printf ("%c", (char) (ch & 0177U));
+      }
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapHistoryRegsSet (void)
+  {
+    //sim_printf ("trapHistoryRegsSet\n");
+#if 0
     // Get the argument pointer
     word15 apSegno = PR [0] . SNR;
     word15 apWordno = PR [0] . WORDNO;
@@ -2531,37 +2720,46 @@ static void trapPutChars (void)
     word36 status = M [ap4];
 
     //sim_printf ("status %012llo\n", status);
-
-    //sim_printf ("PUT_CHARS:");
-    for (int i = 0; i < (int) len; i ++)
-      {
-        int woff = i / 4;
-        int chno = i % 4;
-        word36 ch = getbits36 (M [bufPtr + woff], chno * 9, 9);
-        sim_printf ("%c", (char) (ch & 0177U));
-      }
-    sim_printf ("\n");
+#endif
 
     doRCU (true); // doesn't return
   }
 
 
+static void trapReturnToFXE (void)
+  {
+    longjmp (jmpMain, JMP_STOP);
+  }
+
 static void fxeTrap (void)
   {
-    // Application has made an call into a routine that FXE wants to handle
+    // Application has made an call or return into a routine that FXE wants to handle
     // on the host.
 
     // Get the offending address from the SCU data
 
-    word18 offset = GETHI (M [0200 + 5]);
+    // Test FIF bit
+    word18 offset;
+    word1 FIF = getbits36 (M [0200 + 5], 29, 1);
+    if (FIF != 0)
+      offset = getbits36 (M [0200 + 4], 0, 18); // PPR . IC
+    else
+      offset = getbits36 (M [0200 + 5], 0, 18); // PPR . CA
 
+    // XXX make this into trapNamesTable callbacks
     switch (offset)
       {
         case TRAP_PUT_CHARS:
           trapPutChars ();
           break;
+        case TRAP_HISTORY_REGS_SET:
+          trapHistoryRegsSet ();
+          break;
+        case TRAP_RETURN_TO_FXE:
+          trapReturnToFXE ();
+          break;
         default:
-          sim_printf ("ERROR: unknown trap code\n");
+          sim_printf ("ERROR: unknown trap code %d\n", offset);
           break;
       }
   }
@@ -2572,7 +2770,7 @@ static void faultACVHandler (void)
 
     // Get the offending address from the SCU data
 
-    word18 offset = GETHI (M [0200 + 5]);
+    //word18 offset = GETHI (M [0200 + 5]);
     word15 segno = GETHI (M [0200 + 2]) & MASK15;
     //sim_printf ("acv fault %05o:%06o\n", segno, offset);
 
@@ -2581,8 +2779,6 @@ static void faultACVHandler (void)
         fxeTrap ();
       }
 
-
-    // Get the 
 #if 0
     // Get the physmem address of the segment
     word36 * even = M + DESCSEG + 2 * segno + 0;  
