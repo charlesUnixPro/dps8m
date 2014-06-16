@@ -981,7 +981,7 @@ E:;
     if (!SDW->E) {
         // Set fault ACV2 = E-OFF
         acvFaults |= ACV2;
-        acvFaultsMsg = "acvFaults(E) SDW .E set ON";
+        acvFaultsMsg = "acvFaults(E) SDW .E set OFF";
     }
     
     //SDW .G set ON?
@@ -1054,7 +1054,7 @@ F:;
     //SDW .E set ON?
     if (!SDW->E) {
         acvFaults |= ACV2;
-        acvFaultsMsg = "acvFaults(F) SDW .E set ON";
+        acvFaultsMsg = "acvFaults(F) SDW .E set OFF";
     }
     
     //C(PPR.PRR) = C(TPR.TRR)?
