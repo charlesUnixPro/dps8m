@@ -230,7 +230,7 @@ static void strcpyC (word24 addr, word24 len, char * str)
         int choff = i % 4;
         word36 ch = getbits36 (M [addr + woff], choff * 9, 9);
         * (str ++) = (char) (ch & 0177);
-        //sim_printf ("chn %3d %012llo\n", offset + woff, M [base + offset + woff]);
+        //sim_printf ("chn %3d %012llo\n", woff, M [addr + woff]);
       }
     * (str ++) = '\0';
   }
@@ -275,7 +275,7 @@ static int getSLTEidx (char * name)
         if (strcmp (SLTE [idx] . segname, name) == 0)
           return idx;
       }
-    sim_printf ("ERROR: %s not in SLTE\n", name);
+    //sim_printf ("ERROR: %s not in SLTE\n", name);
     return -1;
   }
 
@@ -335,6 +335,8 @@ enum
     TRAP_HISTORY_REGS_GET,
     TRAP_FS_SEARCH_GET_WDIR,
     TRAP_INITIATE_COUNT,
+    TRAP_TERMINATE_NAME,
+    TRAP_MAKE_PTR,
 
     // FXE internal
     TRAP_RETURN_TO_FXE
@@ -362,7 +364,12 @@ typedef struct segTableEntry
     word18 isot_offset;
     word36 * segnoPadAddr;
 
+// RNT
+
+    int RNTRefCount;
   } segTableEntry;
+
+
 
 static segTableEntry segTable [N_SEGS];
 
@@ -448,6 +455,65 @@ static word24 ITSToPhysmem (word36 * its, word6 * bitno)
     word24 physmem = segTable [segnoMap [segno]] . physmem  + wordno;
     return physmem;
   }
+
+
+// RNT Process Reference Name Table
+
+typedef struct RNTEntry
+  {
+    char * refName;
+    int idx;
+  } RNTEntry;
+static RNTEntry RNT [N_SEGS]; 
+#define RNT_TABLE_SIZE (sizeof (RNT) / sizeof (RNTEntry))
+
+// XXX Actually a segment can have many references; N_SEGS is not the right #
+
+static int searchRNT (char * name)
+  {
+    for (uint i = 0; i < RNT_TABLE_SIZE; i ++)
+      if (RNT [i] . refName && strcmp (name, RNT [i] . refName) == 0)
+        return i;
+    return -1;
+  }
+
+static void addRNTRef (int idx, char * name)
+  {
+    int i = searchRNT (name);
+    if (i >= 0)
+      {
+        segTable [RNT [i] . idx] . RNTRefCount ++;
+        return;
+      }
+    for (uint i = 0; i < RNT_TABLE_SIZE; i ++)
+      {
+        if (! RNT [i] . refName)
+          {
+            RNT [i] . refName = strdup (name);
+            RNT [i] . idx = idx;
+            segTable [idx] . RNTRefCount = 1;
+            return;
+          }
+      }
+    sim_printf ("ERROR: RNT full\n");
+  }
+
+static void delRNTRef (char * name)
+  {
+    int i = searchRNT (name);
+    if (i >= 0)
+      {
+        segTable [RNT [i] . idx] . RNTRefCount --;
+        free (RNT [i] . refName);
+        RNT [i] . refName = NULL;
+        RNT [i] . idx = 0;
+// XXX make unknown
+        return;
+      }
+    //sim_printf ("ERROR: delRNTRef couldn't find %s\n", name);
+  }
+
+
 
 static void initializeDSEG (void)
   {
@@ -862,6 +928,15 @@ next:
         return 0;
       }
 
+    // A null symbol name means we want the base of the segment
+    if (! symbolName)
+      {
+        symDef = p;
+        //sim_printf ("hit2\n");
+        * value =  0;
+        return 1;
+      }
+
     // Goto list of symbols defined in this segment
     p = (definition *) (defBase + p -> segname);
 
@@ -928,6 +1003,8 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "history_regs_get", TRAP_HISTORY_REGS_GET },
     { "hcs_", "fs_search_get_wdir", TRAP_FS_SEARCH_GET_WDIR },
     { "hcs_", "initiate_count", TRAP_INITIATE_COUNT },
+    { "hcs_", "terminate_name", TRAP_TERMINATE_NAME },
+    { "hcs_", "make_ptr", TRAP_MAKE_PTR },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
@@ -957,8 +1034,20 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         return 1;
       }
    
-    //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     int idx;
+    if ((idx = searchRNT (segName)))
+      {
+        segTableEntry * e = segTable + idx;
+        if (e -> allocated && e -> loaded && e -> definition_offset &&
+            lookupDef (idx, segName, symbolName, value))
+          {
+            * segno = e -> segno;
+            * index = idx;
+            //sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
+            return 1;
+          }
+      }
+    //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     for (idx = 0; idx < (int) N_SEGS; idx ++)
       {
         segTableEntry * e = segTable + idx;
@@ -967,6 +1056,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         if (! e -> loaded)
           continue;
         if (e -> definition_offset == 0)
+          continue;
+        if (e -> RNTRefCount) // Searched this segment already above.
           continue;
         if (lookupDef (idx, segName, symbolName, value))
           {
@@ -2282,6 +2373,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     // Reset all state data
     memset (segTable, 0, sizeof (segTable));
     memset (segnoMap, -1, sizeof (segnoMap));
+    memset (RNT, 0, sizeof (RNT));
     nextSegno = USER_SEGNO;
     nextPhysmem = 1;
 
@@ -2871,6 +2963,98 @@ static void faultTag2Handler (void)
     //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
   }
 
+typedef struct argTableEntry
+  {
+    word6 dType;
+    word24 argAddr;
+    word24 descAddr;
+    word24 dSize;
+  } argTableEntry;
+
+#define ARG1 0
+#define ARG2 1
+#define ARG3 2
+#define ARG4 3
+#define ARG5 4
+
+static int processArgs (int nargs, int ndescs, argTableEntry * t)
+  {
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    //sim_printf ("arg_count %u\n", arg_count);
+    //sim_printf ("call_type %u\n", call_type);
+    //sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return -1;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return -1;
+      }
+
+    if ((int) arg_count != nargs)
+      {
+        sim_printf ("ERROR: expected %d args, got %d\n",
+                     nargs, (int) arg_count);
+        return -1;
+      }
+
+    if ((int) desc_count != ndescs)
+      {
+        sim_printf ("ERROR: expected %d2 descs, got %d\n", 
+                    ndescs, (int) arg_count);
+        return -1;
+      }
+
+    uint alOffset = 2;
+    uint dlOffset = alOffset + nargs * 2;
+
+    for (int i = 0; i < nargs; i ++)
+      {
+        t [i] . argAddr = 
+          ITSToPhysmem (M + alPhysmem + alOffset + i * 2, NULL);
+        if (ndescs)
+          {
+            t [i] . descAddr = 
+              ITSToPhysmem (M + alPhysmem + dlOffset + i * 2, NULL);
+            word6 dt = getbits36 (M [t [i] . descAddr], 1, 6);
+            if (dt != t [i] . dType)
+              {
+                sim_printf ("ERROR: expected d%dType %u, got %u\n", 
+                            i + 1, t [i] . dType, dt);
+                return -1;
+              }
+            if (dt == 21)
+              {
+                t [i] . dSize = getbits36 (M [t [i] . descAddr], 12, 24);
+              }
+          }
+        else
+         {
+            t [i] . descAddr = MASK24;
+         }
+      }
+    return 0;
+  }
+
 static void trapPutChars (void)
   {
     // declare iox_$put_chars entry (ptr, ptr, fixed bin(21), fixed bin(35));
@@ -3406,8 +3590,8 @@ static void trimTrailingSpaces (char * str)
   }
 
 static int initiateSegment (char * __attribute__((unused)) dir, char * entry, 
-                            word24 * bitcntp,
-                            word36 * segptrp)
+                            word24 * bitcntp, word36 * segptrp, 
+                            word15 * segnop)
   {
 // XXX dir unused
 
@@ -3440,6 +3624,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     e -> P = 0;
 
     makeITS (segptrp, e -> segno, FXE_RING, 0, 0, 0);
+    * segnop = e -> segno;
 
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word24 maddr = segAddr;
@@ -3700,7 +3885,6 @@ static void trapInitiateCount (void)
         return;
       }
 
-    sim_printf ("arg3: '");
     char * arg3 = NULL;
     if (d3size)
       {
@@ -3816,7 +4000,8 @@ static void trapInitiateCount (void)
     // XXX Check if ref_name is known...
 
     word24 code = 0;
-    int status = initiateSegment (arg1, arg2, & bitcnt, ptr);
+    word15 segno;
+    int status = initiateSegment (arg1, arg2, & bitcnt, ptr, & segno);
     if (status)
       {
         sim_printf ("ERROR: initiateSegment fail\n");
@@ -3825,6 +4010,8 @@ static void trapInitiateCount (void)
         code = 1; // XXX need real codes
       }       
 
+    if (status == 0 && arg3)
+      addRNTRef (segnoMap [segno], arg3);
     M [ap4] = bitcnt & MASK24;
     M [ap6] = ptr [0];
     M [ap6 + 1] = ptr [1];
@@ -3833,6 +4020,217 @@ static void trapInitiateCount (void)
     free (arg2);
     if (arg3)
       free (arg3);
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapTerminateName (void)
+  {
+    // declare hcs_$terminate_name entry (char(*), fixed bin(35));
+    // call hcs_$terminate_name (ref_name, code);
+
+    // Get the argument pointer
+    word15 apSegno = PR [0] . SNR;
+    word15 apWordno = PR [0] . WORDNO;
+    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
+
+    // Find the argument list in memory
+    int alIdx = segnoMap [apSegno];
+    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+
+    // XXX 17s below are not typos.
+    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
+    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
+    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
+    sim_printf ("arg_count %u\n", arg_count);
+    sim_printf ("call_type %u\n", call_type);
+    sim_printf ("desc_count %u\n", desc_count);
+
+    // Error checking
+    if (call_type != 4)
+      {
+        sim_printf ("ERROR: call_type %d not handled\n", call_type);
+        return;
+      }
+
+    if (desc_count && desc_count != arg_count)
+      {
+        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
+                    arg_count, desc_count);
+        return;
+      }
+
+    if (arg_count != 2)
+      {
+        sim_printf ("ERROR: initiate_count expected 2 args, got %d\n",
+                     arg_count);
+        return;
+      }
+
+    if (desc_count != 2)
+      {
+        sim_printf ("ERROR: initiate_count expected 2 descs, got %d\n", arg_count);
+        return;
+      }
+
+
+    // Process the arguments
+
+    // Argument 1: ref name
+    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
+    word24 dp1 = ITSToPhysmem (M + alPhysmem +  6, NULL);
+
+    sim_printf ("ap1 %08o\n", ap1);
+    sim_printf ("dp1 %08o\n", dp1);
+
+    sim_printf ("@ap1 %012llo\n", M [ap1]);
+    sim_printf ("@dp1 %012llo\n", M [dp1]);
+    sim_printf ("desc1 type %lld\n", getbits36 (M [dp1], 1, 6));
+    sim_printf ("desc1 packed %lld\n", getbits36 (M [dp1], 7, 1));
+    sim_printf ("desc1 size %lld\n", getbits36 (M [dp1], 12, 24));
+ 
+    word6 d1type = getbits36 (M [dp1], 1, 6);
+    word24 d1size = getbits36 (M [dp1], 12, 24);
+
+    if (d1type != 21)
+      {
+        sim_printf ("ERROR: terminate_name expected d1type 21, got %d\n", d1type);
+        return;
+      }
+    char * arg1 = malloc (d1size + 1);
+    strcpyC (ap1, d1size, arg1);
+    trimTrailingSpaces (arg1);
+    sim_printf ("arg1: '%s'\n", arg1);
+
+    delRNTRef (arg1);
+
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapMakePtr (void)
+  {
+
+// :Entry: make_ptr: 03/08/82  hcs_$make_ptr
+// 
+// 
+// Function: when given a reference name and an entry point name,
+// returns a pointer to a specified entry point.  If the reference name
+// has not yet been initiated, the search rules are used to find a
+// segment with a name the same as the reference name.  The segment is
+// made known and the reference name initiated.  Use hcs_$make_entry to
+// have entry values returned.
+// 
+// 
+// Syntax:
+// declare hcs_$make_ptr entry (ptr, char(*), char(*), ptr, fixed
+//      bin(35));
+// call hcs_$make_ptr (ref_ptr, entryname, entry_point_name,
+//      entry_point_ptr, code);
+// 
+// Arguments:
+// ref_ptr
+//   is a pointer to the segment that is considered the referencing
+//    procedure.  (Input)  See "Notes" below.
+// entryname
+//    is the entryname of the segment.    (Input)
+// entry_point_name
+//    is the name of the entry point to be located.        (Input)
+// entry_point_ptr
+//    is the pointer to the segment entry point specified by entryname and
+//    entry_point_name.  (Output)
+// code
+//    is a storage system status code.  (Output)
+// 
+// Notes:  The directory in which the segment pointed to by ref_ptr is
+// located is used as the referencing directory for the standard search
+// rules.  If ref_ptr is null, then the standard search rule specifying
+// the referencing directory is skipped.  For a discussion of standard
+// search rules, refer to "Search Rules," in the Reference Manual.
+// Normally ref_ptr is null.
+//
+// The entryname and entry_point_name arguments are nonvarying character
+// strings with a length of up to 32 characters.  They need not be aligned
+// and can be blank padded.  If a null string is given for the
+// entry_point_name argument, then a pointer to the base of the segment is
+// returned.        In any case, the segment identified by entryname is made
+// known to the process with the entryname argument initiated as a
+// reference name.  If an error is encountered upon return, the
+// entry_point_ptr argument is null and an error code is given.
+ 
+    argTableEntry t [5] =
+      {
+        { 13, 0, 0, 0 },
+        { 21, 0, 0, 0 },
+        { 21, 0, 0, 0 },
+        { 13, 0, 0, 0 },
+        {  1, 0, 0, 0 }
+      };
+
+    if (processArgs (5, 5, t))
+      ;//return;
+
+
+    // Process the arguments
+
+    // Argument 1: ref name // XXX ignored
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        sim_printf ("WARNING: make_ptr ref name ignored\n");
+      }
+
+    // Argument 2: entry name
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * arg2 = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        arg2 = malloc (d2size + 1);
+        strcpyC (ap2, d2size, arg2);
+        trimTrailingSpaces (arg2);
+      }
+    sim_printf ("arg2: '%s'\n", arg2 ? arg2 : "NULL");
+
+
+    // Argument 3: entry point name
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 d3size = t [ARG3] . dSize;
+    char * arg3 = NULL;
+    if ((! isNullPtr (ap3)) && d3size)
+      {
+        arg3 = malloc (d3size + 1);
+        strcpyC (ap3, d3size, arg3);
+        trimTrailingSpaces (arg3);
+      }
+
+    // Argument 4: entry_point_ptr
+    word24 ap4 = t [ARG4] . argAddr;
+
+    // Argument 4: entry_point_ptr
+    word24 ap5 = t [ARG5] . argAddr;
+
+    word15 segno;
+    word18 value;
+    word24 code = 0;
+    int idx;
+    word36 ptr [2];
+
+    int rc = resolveName (arg2, arg3, & segno, & value, & idx);
+    if (! rc)
+      {
+        sim_printf ("make_ptr resolve fail %s|%s\n", arg2, arg3);
+        code = 1; // XXX need real code
+        makeNullPtr (ptr);
+      }
+    else
+      {
+        M [ap4] = ptr [0];
+        M [ap4 + 1] = ptr [1];
+      }
+    M [ap5] = code;
 
     doRCU (true); // doesn't return
   }
@@ -3880,6 +4278,12 @@ static void fxeTrap (void)
           break;
         case TRAP_INITIATE_COUNT:
           trapInitiateCount ();
+          break;
+        case TRAP_TERMINATE_NAME:
+          trapTerminateName ();
+          break;
+        case TRAP_MAKE_PTR:
+          trapMakePtr ();
           break;
         case TRAP_RETURN_TO_FXE:
           trapReturnToFXE ();
