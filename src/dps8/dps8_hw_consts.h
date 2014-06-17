@@ -231,17 +231,17 @@ enum {
 //
 
 #define ISITP(x)                (((x) & INST_M_TAG) == 041U)
-#define GET_ITP_PRNUM(Ypair)    ((word3)((Ypair[0] >> 33) & 07U))
-#define GET_ITP_WORDNO(Ypair)   ((word18)((Ypair[1] >> 18) & WMASK))
-#define GET_ITP_BITNO(Ypair)    ((word3)((Ypair[1] >> 9) & 077U))
-#define GET_ITP_MOD(Ypair)      (GET_TAG(Ypair[1]))
+#define GET_ITP_PRNUM(Ypair)    ((word3)(((Ypair)[0] >> 33) & 07U))
+#define GET_ITP_WORDNO(Ypair)   ((word18)(((Ypair)[1] >> 18) & WMASK))
+#define GET_ITP_BITNO(Ypair)    ((word3)(((Ypair)[1] >> 9) & 077U))
+#define GET_ITP_MOD(Ypair)      (GET_TAG((Ypair)[1]))
 
 #define ISITS(x)                (((x) & INST_M_TAG) == 043U)
-#define GET_ITS_SEGNO(Ypair)    ((word15)((Ypair[0] >> 18) & SMASK))
-#define GET_ITS_RN(Ypair)       ((word3)((Ypair[0] >> 15) & 07))
-#define GET_ITS_WORDNO(Ypair)   ((word18)((Ypair[1] >> 18) & WMASK))
-#define GET_ITS_BITNO(Ypair)    ((word3)((Ypair[1] >> 9) & 077))
-#define GET_ITS_MOD(Ypair)      (GET_TAG(Ypair[1]))
+#define GET_ITS_SEGNO(Ypair)    ((word15)(((Ypair)[0] >> 18) & SMASK))
+#define GET_ITS_RN(Ypair)       ((word3)(((Ypair)[0] >> 15) & 07))
+#define GET_ITS_WORDNO(Ypair)   ((word18)(((Ypair)[1] >> 18) & WMASK))
+#define GET_ITS_BITNO(Ypair)    ((word3)(((Ypair)[1] >> 9) & 077))
+#define GET_ITS_MOD(Ypair)      (GET_TAG((Ypair)[1]))
 
 //
 // Indicator register bits
