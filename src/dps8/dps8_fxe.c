@@ -413,6 +413,10 @@ enum
     TRAP_TERMINATE_NAME,
     TRAP_MAKE_PTR,
     TRAP_STATUS_MINS,
+    TRAP_MAKE_SEG,
+
+    // phcs_
+    TRAP_SET_KST_ATTRIBUTES,
 
     // FXE internal
     TRAP_RETURN_TO_FXE
@@ -423,12 +427,16 @@ typedef struct segTableEntry
     bool allocated;
     bool loaded;
     word15 segno;  // Multics segno
+
     bool wired;
     word3 R1, R2, R3;
     word1 R, E, W, P;
+
     char * segname;
     word18 seglen;
     word24 physmem;
+
+    bool explicit_deactivate_ok;
 
 // Cache values discovered during parseSegment
 
@@ -512,6 +520,14 @@ static void installLOT (int idx)
 //
 // segTable routines
 //
+
+static int lookupSegname (char * name)
+  {
+    for (uint i = 0; i < N_SEGS; i ++)
+      if (segTable [i] . segname && strcmp (name, segTable [i] . segname) == 0)
+        return 1;
+    return -1;
+  }
 
 static word24 lookupSegAddrByIdx (int segIdx)
   {
@@ -1039,6 +1055,8 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "terminate_name", TRAP_TERMINATE_NAME },
     { "hcs_", "make_ptr", TRAP_MAKE_PTR },
     { "hcs_", "status_mins", TRAP_STATUS_MINS },
+    { "hcs_", "make_seg", TRAP_MAKE_SEG },
+    { "phcs_", "set_kst_attributes", TRAP_SET_KST_ATTRIBUTES },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
@@ -1494,7 +1512,7 @@ static int loadSegmentFromFile (char * arg)
     int fd = open (arg, O_RDONLY);
     if (fd < 0)
       {
-        sim_printf ("ERROR: Unable to open '%s': %d\n", arg, errno);
+        //sim_printf ("ERROR: Unable to open '%s': %d\n", arg, errno);
         return -1;
       }
 
@@ -2175,6 +2193,11 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
 static int installLibrary (char * name)
   {
     int idx = loadSegmentFromFile (name);
+    if (idx < 0)
+      {
+        sim_printf ("ERROR: installLibrary of %s couldn't\n", name);
+        return -1;
+      }
     int slteIdx = -1;
     int segno = getSegnoFromSLTE (name, & slteIdx);
     if (segno)
@@ -2421,7 +2444,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     if (clrIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate clr segment\n");
-        return -1;
+        return SCPE_OK;
       }
 
     segTableEntry * clrEntry = segTable + clrIdx;
@@ -2452,7 +2475,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     if (iocbIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate iocb segment\n");
-        return -1;
+        return SCPE_OK;
       }
 
     segTableEntry * iocbEntry = segTable + iocbIdx;
@@ -2502,14 +2525,16 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     // sim_printf ("Loading library segment\n");
 
     libIdx = installLibrary ("bound_library_wired_");
-
+    if (libIdx < 0)
+      {
+        sim_printf ("ERROR: unable to load bound_library_wired_\n");
+        return SCPE_OK;
+      }
     installLibrary ("bound_library_1_");
     installLibrary ("bound_library_2_");
     installLibrary ("bound_process_env_");
     installLibrary ("bound_expand_path_");
-    //installLibrary ("bound_io_commands_");
     installLibrary ("error_table_");
-    //int lib2Idx = installLibrary ("bound_bce_wired");
     installLibrary ("sys_info");
     initSysinfo ();
 
@@ -2540,7 +2565,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     if (fxeIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate fxe segment\n");
-        return -1;
+        return SCPE_OK;
       }
     installLOT (fxeIdx);
     segTableEntry * fxeEntry = segTable + fxeIdx;
@@ -2575,6 +2600,11 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         nargs --; // don't count the segment name
         sim_printf ("Loading segment %s\n", segmentName);
         int segIdx = loadSegmentFromFile (segmentName);
+        if (segIdx < 0)
+          {
+            sim_printf ("ERROR: couldn't read %s\n", segmentName);
+            return SCPE_OK;
+          }
         segTable [segIdx] . segname = strdup (segmentName);
         setSegno (segIdx, allocateSegno ());
         segTable [segIdx] . R1 = FXE_RING;
@@ -3077,7 +3107,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
 
     if ((int) desc_count != ndescs)
       {
-        sim_printf ("ERROR: expected %d2 descs, got %d\n", 
+        sim_printf ("ERROR: expected %d descs, got %d\n", 
                     ndescs, (int) desc_count);
         return 0;
       }
@@ -3434,6 +3464,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
 
     segTableEntry * e = segTable + segIdx;
 
+    setSegno (segIdx, allocateSegno ());
     e -> R1 = FXE_RING;
     e -> R2 = FXE_RING;
     e -> R3 = FXE_RING;
@@ -3905,6 +3936,247 @@ done:;
     doRCU (true); // doesn't return
   }
 
+static void trapMakeSeg (void)
+  {
+
+// :Entry: make_seg: 03/08/82  hcs_$make_seg
+// 
+// 
+// Function: creates a segment with a specified entryname in a specified
+// directory.  Once the segment is created, it is made known to the
+// process and a pointer to the segment is returned to the caller.  If
+// the segment already exists or is already known, a nonzero code is
+// returned; however, a pointer to the segment is still returned.
+// 
+// 
+// Syntax:
+// declare hcs_$make_seg entry (char(*), char(*), char(*), fixed bin(5),
+//      ptr, fixed bin(35));
+// call hcs_$make_seg (dir_name, entryname, ref_name, mode, seg_ptr,
+//      code);
+// 
+// 
+// Arguments:
+// dir_name
+//    is the pathname of the containing directory.  (Input)
+// entryname
+//    is the entryname of the segment.  (Input)
+// ref_name
+//    is the desired reference name or a null character string ("").
+//    (Input)
+// mode
+//    specifies the mode for this user.  (Input) See "Notes" in the
+//    description of hcs_$append_branchx for more information on modes.
+// seg_ptr
+//    is a pointer to the created segment.  (Output)
+// 
+// 
+// code
+//    is a storage system status code.  (Output) It may be one of the
+//    following:
+//    error_table_$namedup
+//         if the specified segment already exists or the specified
+//         reference name has already been initiated
+//    error_table_$segknown
+//         if the specified segment is already known
+// 
+// 
+// Notes: If dir_name is null, the process directory is used.  If the
+// entryname is null, a unique name is generated.  The segment is made
+// known and ref_name is initiated.  See also "Constructing and
+// Interpreting Names" in the Reference Manual.
+// 
+// If the segment cannot be created or made known, a null pointer is
+// returned for seg_ptr and the returned value of code indicates the
+// reason for failure.      Thus, the usual way to test whether the call was
+// successful is to check the pointer, not the code, since the code may be
+// nonzero even if the segment was successfully initiated.
+// 
+ 
+    argTableEntry t [6] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (6, 6, t))
+      return;
+
+    word24 code = 0;
+
+    // Process the arguments
+
+    // Argument 1: dir_name // XXX ignored
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * dir_name = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        dir_name = malloc (d1size + 1);
+        strcpyC (ap1, d1size, dir_name);
+        trimTrailingSpaces (dir_name);
+      }
+    //sim_printf ("dir_name: '%s'\n", dir_name ? dir_name : "NULL");
+
+    // Argument 2: entryname
+    word24 ap2 = t [ARG2] . argAddr;
+    word6 d2size = t [ARG2] . dSize;
+
+    char * entryname = NULL;
+    if ((! isNullPtr (ap2)) && d2size)
+      {
+        entryname = malloc (d2size + 1);
+        strcpyC (ap2, d2size, entryname);
+        trimTrailingSpaces (entryname);
+      }
+    //sim_printf ("entryname: '%s'\n", entryname ? entryname : "NULL");
+
+    // Argument 3: ref_name
+    word24 ap3 = t [ARG3] . argAddr;
+    word6 d3size = t [ARG3] . dSize;
+
+    char * ref_name = NULL;
+    if ((! isNullPtr (ap3)) && d3size)
+      {
+        ref_name = malloc (d3size + 1);
+        strcpyC (ap3, d3size, ref_name);
+        trimTrailingSpaces (ref_name);
+      }
+    //sim_printf ("ref_name: '%s'\n", ref_name ? ref_name : "NULL");
+
+    // Argument 4: mode
+    word24 ap4 = t [ARG4] . argAddr;
+
+    word6 mode = M [ap4] & MASK6;
+    //sim_printf ("arg4: '%02o'\n", mode);
+
+    word36 ptr [2];
+
+    // Is the segment known?
+
+    int idx = lookupSegname (entryname);
+    if (idx >= 0)
+      {
+        segTableEntry * e = segTable + idx;
+        makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
+        code = 1; // XXX need a real code
+        goto done;
+      }
+
+    // Does the segment exist?
+    idx = loadSegmentFromFile (entryname); // XXX ignoring dir_name
+    if (idx >= 0)
+      {
+        segTableEntry * e = segTable + idx;
+        makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
+        code = 1; // XXX need a real code
+        goto done;
+      }
+
+    idx = allocateSegment ();
+    if (idx < 0)
+      {
+        sim_printf ("ERROR: Unable to allocate segment for make_seg\n");
+        return;
+      }
+
+    segTableEntry * e = segTable + idx;
+
+    setSegno (idx, allocateSegno ());
+    e -> R1 = FXE_RING;
+    e -> R2 = FXE_RING;
+    e -> R3 = FXE_RING;
+    e -> R = (mode & 010) ? 1 : 0;
+    e -> E = (mode & 004) ? 1 : 0;
+    e -> W = (mode & 002) ? 1 : 0;
+    e -> P = 0;
+
+    makeITS (ptr, e -> segno, FXE_RING, 0, 0, 0);
+
+done:;
+    word24 seg_ptrPtr = t [ARG5] . argAddr;
+    M [seg_ptrPtr] = ptr [0];
+    M [seg_ptrPtr + 1] = ptr [1];
+    word24 codePtr = t [ARG6] . argAddr;
+    M [codePtr] = code;
+    doRCU (true); // doesn't return
+  }
+
+static void trapSetKSTAttributes (void)
+  {
+// set_kst_attributes: proc (a_segno, a_kstap, a_code);
+//
+//   This procedure allows a sufficiently privileged user to change the segment
+//   use attributes stored in his kst.
+//
+//   Privileged users may set: allow_write, explicit_deact_ok, tpd, and audit.
+//   Highly privileged users may also set: tms, and tus.
+//
+// dcl  a_segno fixed bin (17),
+//      a_kstap ptr,
+//      a_code fixed bin (35);
+    argTableEntry t [] =
+      {
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+    if (! processArgs (3, 0, t))
+      return;
+
+    word24 code = 0;
+
+    // Argument 1: segno
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = M [ap1];
+
+    if (segno > N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = 1; // Need a real code XXX
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = 1; // Need a real code XXX
+        goto done;
+      }
+
+    // Argument 2: ksta
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 kstaPtr = ITSToPhysmem (M + ap2, NULL);
+    word36 kstaWhich = M [kstaPtr];
+    word36 kstaValue = M [kstaPtr + 1];
+
+    if (kstaWhich & (01llu << 35)) // allow_write
+      sim_printf ("WARNING: allow_write not implemented\n");
+    if (kstaWhich & (01llu << 34)) // tms
+      sim_printf ("WARNING: tms not implemented\n");
+    if (kstaWhich & (01llu << 33)) // tus
+      sim_printf ("WARNING: tus not implemented\n");
+    if (kstaWhich & (01llu << 32)) // tpd
+      sim_printf ("WARNING: tpd not implemented\n");
+    if (kstaWhich & (01llu << 31)) // audit
+      sim_printf ("WARNING: audit not implemented\n");
+    if (kstaWhich & (01llu << 30)) // explicit_deactivate_ok
+      {
+        segTable [idx] . explicit_deactivate_ok = 
+          (kstaValue & (01llu << 30)) ? true : false;
+      }
+
+done:;
+    word24 codePtr = t [ARG3] . argAddr;
+    M [codePtr] = code;
+    doRCU (true); // doesn't return
+  }
+
 static void trapReturnToFXE (void)
   {
     longjmp (jmpMain, JMP_STOP);
@@ -3960,6 +4232,14 @@ static void fxeTrap (void)
         case TRAP_STATUS_MINS:
           trapStatusMins ();
           break;
+        case TRAP_MAKE_SEG:
+          trapMakeSeg ();
+          break;
+
+        case TRAP_SET_KST_ATTRIBUTES:
+          trapSetKSTAttributes ();
+          break;
+
         case TRAP_RETURN_TO_FXE:
           trapReturnToFXE ();
           break;
