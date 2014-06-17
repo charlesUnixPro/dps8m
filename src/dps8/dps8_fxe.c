@@ -325,7 +325,7 @@ enum
     TRAP_UNUSED, // Don't use 0 so as to help distingish uninitialized fields
     // iox_
     TRAP_PUT_CHARS, 
-    TRAP_MODES, // deprecated
+    // TRAP_MODES, // deprecated
 
     // bound_io_commands
     TRAP_GET_LINE_LENGTH_SWITCH,
@@ -2454,12 +2454,14 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
     makeNullPtr (putCharEntry + 2);
 
+#if 0
     // iocb [IOCB_USER_OUTPUT] . modes
 
     word36 * modesEntry = (word36 *) & iocbUser -> modes;
 
     makeITS (modesEntry, TRAP_SEGNO, FXE_RING, TRAP_MODES, 0, 0);
     makeNullPtr (modesEntry + 2);
+#endif
 
     // sim_printf ("Loading library segment\n");
 
@@ -2976,6 +2978,8 @@ typedef struct argTableEntry
 #define ARG3 2
 #define ARG4 3
 #define ARG5 4
+#define ARG6 5
+#define ARG7 6
 
 static int processArgs (int nargs, int ndescs, argTableEntry * t)
   {
@@ -3000,28 +3004,28 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
     if (call_type != 4)
       {
         sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return -1;
+        return 0;
       }
 
     if (desc_count && desc_count != arg_count)
       {
         sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
                     arg_count, desc_count);
-        return -1;
+        return 0;
       }
 
     if ((int) arg_count != nargs)
       {
         sim_printf ("ERROR: expected %d args, got %d\n",
                      nargs, (int) arg_count);
-        return -1;
+        return 0;
       }
 
     if ((int) desc_count != ndescs)
       {
         sim_printf ("ERROR: expected %d2 descs, got %d\n", 
                     ndescs, (int) arg_count);
-        return -1;
+        return 0;
       }
 
     uint alOffset = 2;
@@ -3040,7 +3044,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
               {
                 sim_printf ("ERROR: expected d%dType %u, got %u\n", 
                             i + 1, t [i] . dType, dt);
-                return -1;
+                return 0;
               }
             if (dt == 21)
               {
@@ -3052,85 +3056,32 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
             t [i] . descAddr = MASK24;
          }
       }
-    return 0;
+    return 1;
   }
 
 static void trapPutChars (void)
   {
     // declare iox_$put_chars entry (ptr, ptr, fixed bin(21), fixed bin(35));
 
-    // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
-    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
-
-    // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
-
-    // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-    //sim_printf ("arg_count %u\n", arg_count);
-    //sim_printf ("call_type %u\n", call_type);
-    //sim_printf ("desc_count %u\n", desc_count);
-
-    // Error checking
-    if (call_type != 4)
+    argTableEntry t [4] =
       {
-        sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return;
-      }
+        { 13, 0, 0, 0 },
+        { 13, 0, 0, 0 },
+        {  1, 0, 0, 0 },
+        {  1, 0, 0, 0 }
+      };
 
-    if (desc_count && desc_count != arg_count)
-      {
-        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
-                    arg_count, desc_count);
-        return;
-      }
-
-    if (desc_count)
-      {
-        sim_printf ("ERROR: non-zero desc_count (%d) not handled\n", 
-                    desc_count);
-        return;
-      }
-
-    if (arg_count != 4)
-      {
-        sim_printf ("ERROR: put_chars expected 4 args, got %d\n", arg_count);
-        return;
-      }
-
-    //sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem + 2],
-    //                                     M [alPhysmem + 3]);
-    //sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem + 4],
-    //                                     M [alPhysmem + 5]);
-    //sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem + 6],
-    //                                     M [alPhysmem + 7]);
-    //sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem + 8],
-    //                                     M [alPhysmem + 9]);
+    if (! processArgs (4, 0, t))
+      return;
 
     // Process the arguments
 
-    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2, NULL);
-    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4, NULL);
-    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6, NULL);
-    //word24 ap4 = ITSToPhysmem (M + alPhysmem + 8, NULL);
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 ap3 = t [ARG3] . argAddr;
 
-    //sim_printf ("ap1 %08o\n", ap1);
-    //sim_printf ("ap2 %08o\n", ap2);
-    //sim_printf ("ap3 %08o\n", ap3);
-    //sim_printf ("ap4 %08o\n", ap4);
-
-    //sim_printf ("@ap1 %012llo\n", M [ap1]);
-  
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
-    //sim_printf ("iocbPtr %08o\n", iocbPtr);
-
     word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
-
     uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
     //sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx != 0)
@@ -3139,21 +3090,9 @@ static void trapPutChars (void)
         return;
       }
 
-    //sim_printf ("@ap2 %012llo\n", M [ap2]);
-  
     word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
-    //sim_printf ("bufPtr %08o\n", bufPtr);
-    //sim_printf ("@bufPtr %012llo\n", M [bufPtr]);
-
-    //sim_printf ("@ap3 %012llo\n", M [ap3]);
   
     word36 len = M [ap3];
-
-    //sim_printf ("len %012llo\n", len);
-
-    //word36 status = M [ap4];
-
-    //sim_printf ("status %012llo\n", status);
 
     //sim_printf ("PUT_CHARS:");
     for (int i = 0; i < (int) len; i ++)
@@ -3167,6 +3106,7 @@ static void trapPutChars (void)
     doRCU (true); // doesn't return
   }
 
+#if 0
 static void trapModes (void)
   {
     // declare iox_$modes entry (ptr, char(*), char(*), fixed bin(35));
@@ -3310,6 +3250,7 @@ static void trapModes (void)
 
     doRCU (true); // doesn't return
   }
+#endif
 
 static void trapGetLineLengthSwitch (void)
   {
@@ -3317,51 +3258,20 @@ static void trapGetLineLengthSwitch (void)
     //   (fixed bin);
     //     switch ptr, status code, line length
 
-    // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
-    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
-
-    // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
-
-    // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-
-    // Error checking
-    if (call_type != 4)
+    argTableEntry t [3] =
       {
-        sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return;
-      }
+        { 13, 0, 0, 0 },
+        {  1, 0, 0, 0 },
+        {  1, 0, 0, 0 }
+      };
 
-    if (desc_count && desc_count != arg_count)
-      {
-        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
-                    arg_count, desc_count);
-        return;
-      }
-
-    if (arg_count != 3)
-      {
-        sim_printf ("ERROR: put_chars expected 3 args, got %d\n", arg_count);
-        return;
-      }
-
-    if (desc_count != 0)
-      {
-        sim_printf ("ERROR: put_chars expected 0 descs, got %d\n", arg_count);
-        return;
-      }
+    if (! processArgs (3, 0, t))
+      return;
 
     // Process the arguments
 
-    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
-    // word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
-    word24 ap3 = ITSToPhysmem (M + alPhysmem +  6, NULL);
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap3 = t [ARG3] . argAddr;
 
     uint iocbIdx;
     if (isNullPtr (ap1))
@@ -3369,13 +3279,13 @@ static void trapGetLineLengthSwitch (void)
     else
       {
         word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
-        sim_printf ("iocbPtr %08o\n", iocbPtr);
+        //sim_printf ("iocbPtr %08o\n", iocbPtr);
 
         word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
 
         iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
       }
-    sim_printf ("iocbIdx %u\n", iocbIdx);
+    //sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx != IOCB_USER_OUTPUT)
       {
         sim_printf ("ERROR: iocbIdx (%d) != IOCB_USER_OUTPUT (%d)\n", 
@@ -3391,103 +3301,6 @@ static void trapGetLineLengthSwitch (void)
 static void trapHistoryRegsSet (void)
   {
     //sim_printf ("trapHistoryRegsSet\n");
-#if 0
-    // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
-    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
-
-    // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
-
-    // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-    //sim_printf ("arg_count %u\n", arg_count);
-    //sim_printf ("call_type %u\n", call_type);
-    //sim_printf ("desc_count %u\n", desc_count);
-
-    // Error checking
-    if (call_type != 4)
-      {
-        sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return;
-      }
-
-    if (desc_count && desc_count != arg_count)
-      {
-        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
-                    arg_count, desc_count);
-        return;
-      }
-
-    if (desc_count)
-      {
-        sim_printf ("ERROR: non-zero desc_count (%d) not handled\n", 
-                    desc_count);
-        return;
-      }
-
-    if (arg_count != 4)
-      {
-        sim_printf ("ERROR: put_chars expected 4 args, got %d\n", arg_count);
-        return;
-      }
-
-    //sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem + 2],
-    //                                     M [alPhysmem + 3]);
-    //sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem + 4],
-    //                                     M [alPhysmem + 5]);
-    //sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem + 6],
-    //                                     M [alPhysmem + 7]);
-    //sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem + 8],
-    //                                     M [alPhysmem + 9]);
-
-    // Process the arguments
-
-    word24 ap1 = ITSToPhysmem (M + alPhysmem + 2, NULL);
-    word24 ap2 = ITSToPhysmem (M + alPhysmem + 4, NULL);
-    word24 ap3 = ITSToPhysmem (M + alPhysmem + 6, NULL);
-    word24 ap4 = ITSToPhysmem (M + alPhysmem + 8, NULL);
-
-    //sim_printf ("ap1 %08o\n", ap1);
-    //sim_printf ("ap2 %08o\n", ap2);
-    //sim_printf ("ap3 %08o\n", ap3);
-    //sim_printf ("ap4 %08o\n", ap4);
-
-    //sim_printf ("@ap1 %012llo\n", M [ap1]);
-  
-    word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
-    //sim_printf ("iocbPtr %08o\n", iocbPtr);
-
-    word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
-
-    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    //sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx != 0)
-      {
-        sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
-        return;
-      }
-
-    //sim_printf ("@ap2 %012llo\n", M [ap2]);
-  
-    word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
-    //sim_printf ("bufPtr %08o\n", bufPtr);
-    //sim_printf ("@bufPtr %012llo\n", M [bufPtr]);
-
-    //sim_printf ("@ap3 %012llo\n", M [ap3]);
-  
-    word36 len = M [ap3];
-
-    //sim_printf ("len %012llo\n", len);
-
-    word36 status = M [ap4];
-
-    //sim_printf ("status %012llo\n", status);
-#endif
 
     doRCU (true); // doesn't return
   }
@@ -3504,64 +3317,20 @@ static void trapFSSearchGetWdir (void)
     // dcl hcs_$fs_search_get_wdir ext entry(ptr,fixed bin(17));
     //   path (out), leng (out)
 
-    // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
-    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
-
-    // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
-
-    // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-    sim_printf ("arg_count %u\n", arg_count);
-    sim_printf ("call_type %u\n", call_type);
-    sim_printf ("desc_count %u\n", desc_count);
-
-    // Error checking
-    if (call_type != 4)
+    argTableEntry t [2] =
       {
-        sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return;
-      }
+        { 13, 0, 0, 0 },
+        {  1, 0, 0, 0 }
+      };
 
-    if (desc_count && desc_count != arg_count)
-      {
-        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
-                    arg_count, desc_count);
-        return;
-      }
+    if (! processArgs (2, 0, t))
+      return;
 
-    if (arg_count != 2)
-      {
-        sim_printf ("ERROR: fs_search_get_wdir expected 2 args, got %d\n",
-                     arg_count);
-        return;
-      }
-
-    if (desc_count != 0)
-      {
-        sim_printf ("ERROR: fs_search_get_wdir expected 0 descs, got %d\n", arg_count);
-        return;
-      }
-
-    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
-                                         M [alPhysmem +  3]);
-    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
-                                         M [alPhysmem +  5]);
     // Process the arguments
 
-    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
-    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
 
-    sim_printf ("ap1 %08o\n", ap1);
-    sim_printf ("ap2 %08o\n", ap2);
-
-    sim_printf ("@ap1 %012llo\n", M [ap1]);
-  
     if (isNullPtr (ap1))
       {
         // Can't do anything
@@ -3570,13 +3339,9 @@ static void trapFSSearchGetWdir (void)
       {
         char * cwd = ">udd>fxe>fxe";
         word24 resPtr = ITSToPhysmem (M + ap1, NULL);
-        sim_printf ("resPtr %08o @resPTr %012llo\n", resPtr, M [resPtr]);
         strcpyNonVarying (resPtr, NULL, cwd);
         M [ap2] = strlen (cwd);
       }
-
-
-
 
     doRCU (true); // doesn't return
   }
@@ -3718,134 +3483,37 @@ static void trapInitiateCount (void)
 // seg_ptr argument contains a nonnull pointer, the bit_count argument is
 // set to the bit count of the segment to which seg_ptr points.
 
-    // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
-    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
-
-    // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
-
-    // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-    sim_printf ("arg_count %u\n", arg_count);
-    sim_printf ("call_type %u\n", call_type);
-    sim_printf ("desc_count %u\n", desc_count);
-
-    // Error checking
-    if (call_type != 4)
+    argTableEntry t [7] =
       {
-        sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return;
-      }
+        { 21, 0, 0, 0 },
+        { 21, 0, 0, 0 },
+        { 21, 0, 0, 0 },
+        {  1, 0, 0, 0 },
+        {  1, 0, 0, 0 },
+        { 13, 0, 0, 0 },
+        {  1, 0, 0, 0 }
+      };
 
-    if (desc_count && desc_count != arg_count)
-      {
-        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
-                    arg_count, desc_count);
-        return;
-      }
-
-    if (arg_count != 7)
-      {
-        sim_printf ("ERROR: initiate_count expected 7 args, got %d\n",
-                     arg_count);
-        return;
-      }
-
-    if (desc_count != 7)
-      {
-        sim_printf ("ERROR: initiate_count expected 7 descs, got %d\n", arg_count);
-        return;
-      }
-
-    sim_printf ("ap1 %012llo %012llo\n", M [alPhysmem +  2],
-                                         M [alPhysmem +  3]);
-    sim_printf ("ap2 %012llo %012llo\n", M [alPhysmem +  4],
-                                         M [alPhysmem +  5]);
-    sim_printf ("ap3 %012llo %012llo\n", M [alPhysmem +  6],
-                                         M [alPhysmem +  7]);
-    sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem +  8],
-                                         M [alPhysmem +  9]);
-    sim_printf ("ap5 %012llo %012llo\n", M [alPhysmem + 10],
-                                         M [alPhysmem + 11]);
-    sim_printf ("ap6 %012llo %012llo\n", M [alPhysmem + 12],
-                                         M [alPhysmem + 13]);
-    sim_printf ("ap7 %012llo %012llo\n", M [alPhysmem + 14],
-                                         M [alPhysmem + 15]);
-
-    sim_printf ("dp1 %012llo %012llo\n", M [alPhysmem + 16],
-                                         M [alPhysmem + 17]);
-    sim_printf ("dp2 %012llo %012llo\n", M [alPhysmem + 18],
-                                         M [alPhysmem + 19]);
-    sim_printf ("dp3 %012llo %012llo\n", M [alPhysmem + 20],
-                                         M [alPhysmem + 21]);
-    sim_printf ("dp4 %012llo %012llo\n", M [alPhysmem + 22],
-                                         M [alPhysmem + 23]);
-    sim_printf ("dp5 %012llo %012llo\n", M [alPhysmem + 24],
-                                         M [alPhysmem + 25]);
-    sim_printf ("dp6 %012llo %012llo\n", M [alPhysmem + 26],
-                                         M [alPhysmem + 27]);
-    sim_printf ("dp7 %012llo %012llo\n", M [alPhysmem + 28],
-                                         M [alPhysmem + 29]);
-
+    if (! processArgs (7, 7, t))
+      return;
 
     // Process the arguments
 
     // Argument 1: dir_name (input)
-    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
-    word24 dp1 = ITSToPhysmem (M + alPhysmem + 16, NULL);
-
-    sim_printf ("ap1 %08o\n", ap1);
-    sim_printf ("dp1 %08o\n", dp1);
-
-    sim_printf ("@ap1 %012llo\n", M [ap1]);
-    sim_printf ("@dp1 %012llo\n", M [dp1]);
-    sim_printf ("desc1 type %lld\n", getbits36 (M [dp1], 1, 6));
-    sim_printf ("desc1 packed %lld\n", getbits36 (M [dp1], 7, 1));
-    sim_printf ("desc1 size %lld\n", getbits36 (M [dp1], 12, 24));
- 
-    word6 d1type = getbits36 (M [dp1], 1, 6);
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 dp1 = t [ARG1] . descAddr;
     word24 d1size = getbits36 (M [dp1], 12, 24);
 
-    if (d1type != 21)
-      {
-        sim_printf ("ERROR: initiate_count expected d1type 21, got %d\n", d1type);
-        return;
-      }
     char * arg1 = malloc (d1size + 1);
     strcpyC (ap1, d1size, arg1);
-    sim_printf ("arg1: '%s'\n", arg1);
-
-
 
     // Argument 2: entry name
-    word24 ap2 = ITSToPhysmem (M + alPhysmem +  4, NULL);
-    word24 dp2 = ITSToPhysmem (M + alPhysmem + 18, NULL);
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 dp2 = t [ARG2] . descAddr;
 
-    sim_printf ("ap2 %08o\n", ap2);
-    sim_printf ("dp2 %08o\n", dp2);
-
-    sim_printf ("@ap2 %012llo\n", M [ap2]);
-    sim_printf ("@dp2 %012llo\n", M [dp2]);
-    sim_printf ("desc2 type %lld\n", getbits36 (M [dp2], 1, 6));
-    sim_printf ("desc2 packed %lld\n", getbits36 (M [dp2], 7, 1));
-    sim_printf ("desc2 size %lld\n", getbits36 (M [dp2], 12, 24));
- 
-    word6 d2type = getbits36 (M [dp2], 1, 6);
     word24 d2size = getbits36 (M [dp2], 12, 24);
-
-    if (d2type != 21)
-      {
-        sim_printf ("ERROR: initiate_count expected d2type 21, got %d\n", d2type);
-        return;
-      }
     char * arg2 = malloc (d2size + 1);
     strcpyC (ap2, d2size, arg2);
-    sim_printf ("arg2: '%s'\n", arg2);
 
     // Argument 3: reference name
 
@@ -3864,129 +3532,55 @@ static void trapInitiateCount (void)
 // to cause the invocation of mysubsystem to find test_wankel when it links to
 // the function wankel.
 
-    word24 ap3 = ITSToPhysmem (M + alPhysmem +  6, NULL);
-    word24 dp3 = ITSToPhysmem (M + alPhysmem + 20, NULL);
-
-    sim_printf ("ap3 %08o\n", ap3);
-    sim_printf ("dp3 %08o\n", dp3);
-
-    sim_printf ("@ap3 %012llo\n", M [ap3]);
-    sim_printf ("@dp3 %012llo\n", M [dp3]);
-    sim_printf ("desc3 type %lld\n", getbits36 (M [dp3], 1, 6));
-    sim_printf ("desc3 packed %lld\n", getbits36 (M [dp3], 7, 1));
-    sim_printf ("desc3 size %lld\n", getbits36 (M [dp3], 12, 24));
- 
-    word6 d3type = getbits36 (M [dp3], 1, 6);
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 dp3 = t [ARG3] . descAddr;
     word24 d3size = getbits36 (M [dp3], 12, 24);
-
-    if (d3type != 21)
-      {
-        sim_printf ("ERROR: initiate_count expected d3type 21, got %d\n", d3type);
-        return;
-      }
 
     char * arg3 = NULL;
     if (d3size)
       {
         arg3 = malloc (d3size + 1);
         strcpyC (ap3, d3size, arg3);
-        sim_printf ("arg3: '%s'\n", arg3);
       }
-    else
-      {
-        sim_printf ("arg3: NULL\n");
-      }
-
 
     // Argument 4: bit count
 
-    word24 ap4 = ITSToPhysmem (M + alPhysmem +  8, NULL);
-    word24 dp4 = ITSToPhysmem (M + alPhysmem + 22, NULL);
+    word24 ap4 = t [ARG4] . argAddr;
+    word24 dp4 = t [ARG4] . descAddr;
 
-    sim_printf ("ap4 %08o\n", ap4);
-    sim_printf ("dp4 %08o\n", dp4);
-
-    sim_printf ("@ap4 %012llo\n", M [ap4]);
-    sim_printf ("@dp4 %012llo\n", M [dp4]);
-    sim_printf ("desc4 type %lld\n", getbits36 (M [dp4], 1, 6));
-    sim_printf ("desc4 packed %lld\n", getbits36 (M [dp4], 7, 1));
-    sim_printf ("desc4 size %lld\n", getbits36 (M [dp4], 12, 24));
- 
-    word6 d4type = getbits36 (M [dp4], 1, 6);
     word24 d4size = getbits36 (M [dp4], 12, 24);
-
-    if (d4type != 1)
-      {
-        sim_printf ("ERROR: initiate_count expected d4type 1, got %d\n", d3type);
-        return;
-      }
     if (d4size != 24)
       {
-        sim_printf ("ERROR: initiate_count expected d4size 24, got %d\n", d3type);
+        sim_printf ("ERROR: initiate_count expected d4size 24, got %d\n", 
+                    d4size);
         return;
       }
 
     // Argument 6: seg ptr
 
-    word24 ap6 = ITSToPhysmem (M + alPhysmem + 12, NULL);
-    word24 dp6 = ITSToPhysmem (M + alPhysmem + 26, NULL);
-
-    sim_printf ("ap6 %08o\n", ap6);
-    sim_printf ("dp6 %08o\n", dp6);
-
-    sim_printf ("@ap6 %012llo\n", M [ap6]);
-    sim_printf ("@dp6 %012llo\n", M [dp6]);
-    sim_printf ("desc6 type %lld\n", getbits36 (M [dp6], 1, 6));
-    sim_printf ("desc6 packed %lld\n", getbits36 (M [dp6], 7, 1));
-    sim_printf ("desc6 size %lld\n", getbits36 (M [dp6], 12, 24));
- 
-    word6 d6type = getbits36 (M [dp6], 1, 6);
+    word24 ap6 = t [ARG6] . argAddr;
+    word24 dp6 = t [ARG6] . descAddr;
     word24 d6size = getbits36 (M [dp6], 12, 24);
 
-    if (d6type != 13)
-      {
-        sim_printf ("ERROR: initiate_count expected d6type 13, got %d\n", d6type);
-        return;
-      }
     if (d6size != 0)
       {
-        sim_printf ("ERROR: initiate_count expected d6size 0, got %d\n", d6size);
+        sim_printf ("ERROR: initiate_count expected d6size 0, got %d\n", 
+                    d6size);
         return;
       }
 
 
     // Argument 7: code
 
-    word24 ap7 = ITSToPhysmem (M + alPhysmem + 14, NULL);
-    word24 dp7 = ITSToPhysmem (M + alPhysmem + 28, NULL);
-
-    sim_printf ("ap7 %08o\n", ap7);
-    sim_printf ("dp7 %08o\n", dp7);
-
-    sim_printf ("@ap7 %012llo\n", M [ap7]);
-    sim_printf ("@dp7 %012llo\n", M [dp7]);
-    sim_printf ("desc7 type %lld\n", getbits36 (M [dp7], 1, 6));
-    sim_printf ("desc7 packed %lld\n", getbits36 (M [dp7], 7, 1));
-    sim_printf ("desc7 size %lld\n", getbits36 (M [dp7], 12, 24));
- 
-    word6 d7type = getbits36 (M [dp7], 1, 6);
+    //word24 ap7 = t [ARG7] . argAddr;
+    word24 dp7 = t [ARG7] . descAddr;
     word24 d7size = getbits36 (M [dp7], 12, 24);
 
-    if (d7type != 1)
-      {
-        sim_printf ("ERROR: initiate_count expected d7type 1, got %d\n", d7type);
-        return;
-      }
     if (d7size != 35)
       {
         sim_printf ("ERROR: initiate_count expected d7size 35, got %d\n", d7size);
         return;
       }
-
-
-
-
-
 
 
     word24 bitcnt;
@@ -4029,74 +3623,21 @@ static void trapTerminateName (void)
     // declare hcs_$terminate_name entry (char(*), fixed bin(35));
     // call hcs_$terminate_name (ref_name, code);
 
-    // Get the argument pointer
-    word15 apSegno = PR [0] . SNR;
-    word15 apWordno = PR [0] . WORDNO;
-    //sim_printf ("ap: %05o:%06o\n", apSegno, apWordno);
-
-    // Find the argument list in memory
-    int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
-
-    // XXX 17s below are not typos.
-    word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
-    word18 call_type  = getbits36 (M [alPhysmem + 0], 18, 18);
-    word18 desc_count = getbits36 (M [alPhysmem + 1],  0, 17);
-    sim_printf ("arg_count %u\n", arg_count);
-    sim_printf ("call_type %u\n", call_type);
-    sim_printf ("desc_count %u\n", desc_count);
-
-    // Error checking
-    if (call_type != 4)
+    argTableEntry t [2] =
       {
-        sim_printf ("ERROR: call_type %d not handled\n", call_type);
-        return;
-      }
+        { 21, 0, 0, 0 },
+        {  1, 0, 0, 0 }
+      };
 
-    if (desc_count && desc_count != arg_count)
-      {
-        sim_printf ("ERROR: arg_count %d != desc_count %d\n", 
-                    arg_count, desc_count);
-        return;
-      }
-
-    if (arg_count != 2)
-      {
-        sim_printf ("ERROR: initiate_count expected 2 args, got %d\n",
-                     arg_count);
-        return;
-      }
-
-    if (desc_count != 2)
-      {
-        sim_printf ("ERROR: initiate_count expected 2 descs, got %d\n", arg_count);
-        return;
-      }
-
+    if (! processArgs ( 2, 2, t))
+      return;
 
     // Process the arguments
 
     // Argument 1: ref name
-    word24 ap1 = ITSToPhysmem (M + alPhysmem +  2, NULL);
-    word24 dp1 = ITSToPhysmem (M + alPhysmem +  6, NULL);
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 d1size = t [ARG1] . dSize;
 
-    sim_printf ("ap1 %08o\n", ap1);
-    sim_printf ("dp1 %08o\n", dp1);
-
-    sim_printf ("@ap1 %012llo\n", M [ap1]);
-    sim_printf ("@dp1 %012llo\n", M [dp1]);
-    sim_printf ("desc1 type %lld\n", getbits36 (M [dp1], 1, 6));
-    sim_printf ("desc1 packed %lld\n", getbits36 (M [dp1], 7, 1));
-    sim_printf ("desc1 size %lld\n", getbits36 (M [dp1], 12, 24));
- 
-    word6 d1type = getbits36 (M [dp1], 1, 6);
-    word24 d1size = getbits36 (M [dp1], 12, 24);
-
-    if (d1type != 21)
-      {
-        sim_printf ("ERROR: terminate_name expected d1type 21, got %d\n", d1type);
-        return;
-      }
     char * arg1 = malloc (d1size + 1);
     strcpyC (ap1, d1size, arg1);
     trimTrailingSpaces (arg1);
@@ -4167,8 +3708,8 @@ static void trapMakePtr (void)
         {  1, 0, 0, 0 }
       };
 
-    if (processArgs (5, 5, t))
-      ;//return;
+    if (! processArgs (5, 5, t))
+      return;
 
 
     // Process the arguments
@@ -4261,9 +3802,11 @@ static void fxeTrap (void)
         case TRAP_PUT_CHARS:
           trapPutChars ();
           break;
+#if 0
         case TRAP_MODES:
           trapModes ();
           break;
+#endif
         case TRAP_GET_LINE_LENGTH_SWITCH:
           trapGetLineLengthSwitch ();
           break;
