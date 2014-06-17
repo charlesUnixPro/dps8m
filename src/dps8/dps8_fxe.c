@@ -337,6 +337,7 @@ enum
     TRAP_INITIATE_COUNT,
     TRAP_TERMINATE_NAME,
     TRAP_MAKE_PTR,
+    TRAP_STATUS_MINS,
 
     // FXE internal
     TRAP_RETURN_TO_FXE
@@ -1005,6 +1006,7 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "initiate_count", TRAP_INITIATE_COUNT },
     { "hcs_", "terminate_name", TRAP_TERMINATE_NAME },
     { "hcs_", "make_ptr", TRAP_MAKE_PTR },
+    { "hcs_", "status_mins", TRAP_STATUS_MINS },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
@@ -1075,7 +1077,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
         segTable [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
         if (! segTable [idx] . segno)
           {
-            segTable [idx] . segno = allocateSegno ();
+            setSegno (idx, allocateSegno ());
             // sim_printf ("assigning %d to %s\n", segTable [idx] . segno, segName);
           }
         segTable [idx] . segname = strdup (segName);
@@ -2428,7 +2430,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     iocbEntry -> W = 1;
     iocbEntry -> P = 0;
     iocbEntry -> segname = strdup ("iocb");
-    iocbEntry -> segno = IOCB_SEGNO;
     setSegno (iocbIdx, IOCB_SEGNO);
     iocbEntry -> seglen = 0777777;
     iocbEntry -> loaded = true;
@@ -2679,7 +2680,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
           }
         next += 2 * nargs;
 
-#if 1
+#if 0
         for (uint i = 0; i < next; i ++)
           {
             sim_printf ("%3o %012llo\n", i, M [fxeMemPtr + i]);
@@ -2980,6 +2981,9 @@ typedef struct argTableEntry
 #define ARG5 4
 #define ARG6 5
 #define ARG7 6
+#define DESC_PTR 13
+#define DESC_FIXED 1
+#define DESC_CHAR_SPLAT 21
 
 static int processArgs (int nargs, int ndescs, argTableEntry * t)
   {
@@ -3024,7 +3028,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
     if ((int) desc_count != ndescs)
       {
         sim_printf ("ERROR: expected %d2 descs, got %d\n", 
-                    ndescs, (int) arg_count);
+                    ndescs, (int) desc_count);
         return 0;
       }
 
@@ -3046,7 +3050,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
                             i + 1, t [i] . dType, dt);
                 return 0;
               }
-            if (dt == 21)
+            if (dt == DESC_CHAR_SPLAT)
               {
                 t [i] . dSize = getbits36 (M [t [i] . descAddr], 12, 24);
               }
@@ -3065,10 +3069,10 @@ static void trapPutChars (void)
 
     argTableEntry t [4] =
       {
-        { 13, 0, 0, 0 },
-        { 13, 0, 0, 0 },
-        {  1, 0, 0, 0 },
-        {  1, 0, 0, 0 }
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
       };
 
     if (! processArgs (4, 0, t))
@@ -3260,9 +3264,9 @@ static void trapGetLineLengthSwitch (void)
 
     argTableEntry t [3] =
       {
-        { 13, 0, 0, 0 },
-        {  1, 0, 0, 0 },
-        {  1, 0, 0, 0 }
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
       };
 
     if (! processArgs (3, 0, t))
@@ -3319,8 +3323,8 @@ static void trapFSSearchGetWdir (void)
 
     argTableEntry t [2] =
       {
-        { 13, 0, 0, 0 },
-        {  1, 0, 0, 0 }
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
       };
 
     if (! processArgs (2, 0, t))
@@ -3485,13 +3489,13 @@ static void trapInitiateCount (void)
 
     argTableEntry t [7] =
       {
-        { 21, 0, 0, 0 },
-        { 21, 0, 0, 0 },
-        { 21, 0, 0, 0 },
-        {  1, 0, 0, 0 },
-        {  1, 0, 0, 0 },
-        { 13, 0, 0, 0 },
-        {  1, 0, 0, 0 }
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
       };
 
     if (! processArgs (7, 7, t))
@@ -3625,8 +3629,8 @@ static void trapTerminateName (void)
 
     argTableEntry t [2] =
       {
-        { 21, 0, 0, 0 },
-        {  1, 0, 0, 0 }
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
       };
 
     if (! processArgs ( 2, 2, t))
@@ -3701,11 +3705,11 @@ static void trapMakePtr (void)
  
     argTableEntry t [5] =
       {
-        { 13, 0, 0, 0 },
-        { 21, 0, 0, 0 },
-        { 21, 0, 0, 0 },
-        { 13, 0, 0, 0 },
-        {  1, 0, 0, 0 }
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
       };
 
     if (! processArgs (5, 5, t))
@@ -3768,11 +3772,86 @@ static void trapMakePtr (void)
       }
     else
       {
-        M [ap4] = ptr [0];
-        M [ap4 + 1] = ptr [1];
+        makeITS (ptr, segno, FXE_RING, value, 0, 0);
       }
+    M [ap4] = ptr [0];
+    M [ap4 + 1] = ptr [1];
     M [ap5] = code;
 
+    doRCU (true); // doesn't return
+  }
+
+static void trapStatusMins (void)
+  {
+
+// :Entry: status_mins: 03/08/82  hcs_$status_mins
+// 
+// 
+// Function: returns the bit count and entry type given a pointer to the
+// segment.  Status permission on the directory or nonnull access to the
+// segment is required to use this entry point.
+// Syntax:
+// declare hcs_$status_mins entry (ptr, fixed bin(2), fixed bin(24),
+//      fixed bin(35));
+// call hcs_$status_mins (seg_ptr, type, bit_count, code);
+// 
+// 
+// Arguments:
+// seg_ptr
+//    points to the segment about which information is desired.  (Input)
+// type
+//    specifies the type of entry.  (Output)  It can be:
+//    0   link
+//    1   segment
+//    2   directory
+// bit_count
+//    is the bit count.  (Output)
+// code
+//    is a storage system status code.  (Output)
+
+ 
+    argTableEntry t [4] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (4, 0, t))
+      return;
+
+    // Process the arguments
+
+    // Argument 1: seg_ptr
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = GET_ITS_SEGNO (M + ap1);
+    word24 code = 0;
+    if (segno > N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("too big\n");
+        code = 1; // Need a real code XXX
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("unassigned %05o\n", segno);
+        code = 1; // Need a real code XXX
+        goto done;
+      }
+
+    // Argument 2: type
+    word24 ap2 = t [ARG2] . argAddr;
+    M [ap2] = 1; // XXX need real types
+
+    // Argument 3: bit_count
+    word24 ap3 = t [ARG3] . argAddr;
+    M [ap3] = segTable [idx] . seglen * 36u;
+done:;
+
+    word24 ap4 = t [ARG4] . argAddr;
+    M [ap4] = code;
     doRCU (true); // doesn't return
   }
 
@@ -3827,6 +3906,9 @@ static void fxeTrap (void)
           break;
         case TRAP_MAKE_PTR:
           trapMakePtr ();
+          break;
+        case TRAP_STATUS_MINS:
+          trapStatusMins ();
           break;
         case TRAP_RETURN_TO_FXE:
           trapReturnToFXE ();
