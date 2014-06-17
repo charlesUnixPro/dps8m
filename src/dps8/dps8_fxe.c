@@ -449,7 +449,6 @@ static word24 ITSToPhysmem (word36 * its, word6 * bitno)
     return physmem;
   }
 
-//static loadSegment (char * segname, word15 segno);
 static void initializeDSEG (void)
   {
 
@@ -3403,14 +3402,79 @@ static void trimTrailingSpaces (char * str)
     char * end = str + strlen(str) - 1;
     while (end > str && isspace (* end))
       end --;
+    * (end + 1) = 0;
   }
 
-static int initiateSegment (char * dir, char * entry, word36 * bitcnt,
-                            word72 * segptr)
+static int initiateSegment (char * __attribute__((unused)) dir, char * entry, 
+                            word24 * bitcntp,
+                            word36 * segptrp)
   {
-    trimTrailingSpaces (dir);
-    trimTrailingSpaces (entry);
-sim_printf ("entry %s\n", entry);
+// XXX dir unused
+
+    int fd = open (entry, O_RDONLY);
+    if (fd < 0)
+      {
+        sim_printf ("ERROR: Unable to open '%s': %d\n", entry, errno);
+        return -1;
+      }
+
+    off_t flen = lseek (fd, 0, SEEK_END);
+    lseek (fd, 0, SEEK_SET);
+    
+    int segIdx = allocateSegment ();
+    if (segIdx < 0)
+      {
+        sim_printf ("ERROR: Unable to allocate segment for segment initiate\n");
+        close (fd);
+        return -1;
+      }
+
+    segTableEntry * e = segTable + segIdx;
+
+    e -> R1 = FXE_RING;
+    e -> R2 = FXE_RING;
+    e -> R3 = FXE_RING;
+    e -> R = 1;
+    e -> E = 0;
+    e -> W = 1;
+    e -> P = 0;
+
+    makeITS (segptrp, e -> segno, FXE_RING, 0, 0, 0);
+
+    word24 segAddr = lookupSegAddrByIdx (segIdx);
+    word24 maddr = segAddr;
+    uint seglen = 0;
+    word24 bitcnt = 0;
+
+    // 4 bytes at a time; mapped to 9 bit ASCII is one word.
+    uint8 bytes [4];
+    ssize_t n;
+    while ((n = read (fd, bytes, 4)))
+      {
+        if (seglen > MAX18)
+          {
+            sim_printf ("ERROR: File too long\n");
+            close (fd);
+            return -1;
+          }
+        M [maddr] = 0;
+        for (uint i = 0; i < n; i ++)
+          {
+            putbits36 (M + maddr, i * 9, 9, bytes [i]);
+            bitcnt += 9;
+          }
+        maddr ++;
+        seglen ++;
+      }
+    sim_printf ("flen %ld seglen %d bitcnt %d %d\n", flen, seglen, bitcnt,
+                (bitcnt + 35) / 36);
+    * bitcntp = bitcnt;
+    segTable [segIdx] . seglen = seglen;
+    segTable [segIdx] . loaded = true;
+    sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
+                seglen, segIdx, segAddr);
+
+    close (fd);
     return 0;
   }
 
@@ -3521,7 +3585,7 @@ static void trapInitiateCount (void)
                                          M [alPhysmem +  7]);
     sim_printf ("ap4 %012llo %012llo\n", M [alPhysmem +  8],
                                          M [alPhysmem +  9]);
-    sim_printf ("ap5 %012llo %012llo\n", M [alPhysmem +  0],
+    sim_printf ("ap5 %012llo %012llo\n", M [alPhysmem + 10],
                                          M [alPhysmem + 11]);
     sim_printf ("ap6 %012llo %012llo\n", M [alPhysmem + 12],
                                          M [alPhysmem + 13]);
@@ -3649,11 +3713,121 @@ static void trapInitiateCount (void)
         sim_printf ("arg3: NULL\n");
       }
 
-    word36 bitcnt;
-    word72 ptr;
 
-    int code = initiateSegment (arg1, arg2, & bitcnt, & ptr);
+    // Argument 4: bit count
 
+    word24 ap4 = ITSToPhysmem (M + alPhysmem +  8, NULL);
+    word24 dp4 = ITSToPhysmem (M + alPhysmem + 22, NULL);
+
+    sim_printf ("ap4 %08o\n", ap4);
+    sim_printf ("dp4 %08o\n", dp4);
+
+    sim_printf ("@ap4 %012llo\n", M [ap4]);
+    sim_printf ("@dp4 %012llo\n", M [dp4]);
+    sim_printf ("desc4 type %lld\n", getbits36 (M [dp4], 1, 6));
+    sim_printf ("desc4 packed %lld\n", getbits36 (M [dp4], 7, 1));
+    sim_printf ("desc4 size %lld\n", getbits36 (M [dp4], 12, 24));
+ 
+    word6 d4type = getbits36 (M [dp4], 1, 6);
+    word24 d4size = getbits36 (M [dp4], 12, 24);
+
+    if (d4type != 1)
+      {
+        sim_printf ("ERROR: initiate_count expected d4type 1, got %d\n", d3type);
+        return;
+      }
+    if (d4size != 24)
+      {
+        sim_printf ("ERROR: initiate_count expected d4size 24, got %d\n", d3type);
+        return;
+      }
+
+    // Argument 6: seg ptr
+
+    word24 ap6 = ITSToPhysmem (M + alPhysmem + 12, NULL);
+    word24 dp6 = ITSToPhysmem (M + alPhysmem + 26, NULL);
+
+    sim_printf ("ap6 %08o\n", ap6);
+    sim_printf ("dp6 %08o\n", dp6);
+
+    sim_printf ("@ap6 %012llo\n", M [ap6]);
+    sim_printf ("@dp6 %012llo\n", M [dp6]);
+    sim_printf ("desc6 type %lld\n", getbits36 (M [dp6], 1, 6));
+    sim_printf ("desc6 packed %lld\n", getbits36 (M [dp6], 7, 1));
+    sim_printf ("desc6 size %lld\n", getbits36 (M [dp6], 12, 24));
+ 
+    word6 d6type = getbits36 (M [dp6], 1, 6);
+    word24 d6size = getbits36 (M [dp6], 12, 24);
+
+    if (d6type != 13)
+      {
+        sim_printf ("ERROR: initiate_count expected d6type 13, got %d\n", d6type);
+        return;
+      }
+    if (d6size != 0)
+      {
+        sim_printf ("ERROR: initiate_count expected d6size 0, got %d\n", d6size);
+        return;
+      }
+
+
+    // Argument 7: code
+
+    word24 ap7 = ITSToPhysmem (M + alPhysmem + 14, NULL);
+    word24 dp7 = ITSToPhysmem (M + alPhysmem + 28, NULL);
+
+    sim_printf ("ap7 %08o\n", ap7);
+    sim_printf ("dp7 %08o\n", dp7);
+
+    sim_printf ("@ap7 %012llo\n", M [ap7]);
+    sim_printf ("@dp7 %012llo\n", M [dp7]);
+    sim_printf ("desc7 type %lld\n", getbits36 (M [dp7], 1, 6));
+    sim_printf ("desc7 packed %lld\n", getbits36 (M [dp7], 7, 1));
+    sim_printf ("desc7 size %lld\n", getbits36 (M [dp7], 12, 24));
+ 
+    word6 d7type = getbits36 (M [dp7], 1, 6);
+    word24 d7size = getbits36 (M [dp7], 12, 24);
+
+    if (d7type != 1)
+      {
+        sim_printf ("ERROR: initiate_count expected d7type 1, got %d\n", d7type);
+        return;
+      }
+    if (d7size != 35)
+      {
+        sim_printf ("ERROR: initiate_count expected d7size 35, got %d\n", d7size);
+        return;
+      }
+
+
+
+
+
+
+
+    word24 bitcnt;
+    word36 ptr [2];
+
+    trimTrailingSpaces (arg1);
+    trimTrailingSpaces (arg2);
+
+    // XXX Check if segment is known....
+
+    // XXX Check if ref_name is known...
+
+    word24 code = 0;
+    int status = initiateSegment (arg1, arg2, & bitcnt, ptr);
+    if (status)
+      {
+        sim_printf ("ERROR: initiateSegment fail\n");
+        bitcnt = 0;
+        makeNullPtr (ptr);
+        code = 1; // XXX need real codes
+      }       
+
+    M [ap4] = bitcnt & MASK24;
+    M [ap6] = ptr [0];
+    M [ap6 + 1] = ptr [1];
 
     free (arg1);
     free (arg2);
