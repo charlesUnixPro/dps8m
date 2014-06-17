@@ -15,6 +15,80 @@
 #include "dps8_utils.h"
 #include "dps8_ins.h"
 
+typedef struct __attribute__ ((__packed__)) def_header
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint unused1 : 18;
+            uint def_list_relp : 18;
+          };
+        word36 align1;
+      };
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint unused2 : 16;
+            uint ignore : 1;
+            uint new_format : 1;
+            uint hash_table_relp : 18;
+          };
+        word36 align2;
+      };
+  } def_header;
+
+typedef struct __attribute__ ((__packed__)) link_header
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint defs_in_link : 6;
+            uint pad : 30;
+          };
+        word36 align1;
+      };
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint first_ref_relp : 18;
+            uint def_offset : 18;
+          };
+        word36 align2;
+      };
+
+    //word36 filled_in_later [4];
+    word36 symbol_ptr [2];
+    word36 original_linkage_ptr [2];
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint linkage_section_lng : 18;
+            uint link_begin : 18;
+          };
+        word36 align3;
+      };
+
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint static_length : 18;
+            uint segno_pad : 18;
+          };
+        word36 align4;
+      };
+
+
+  } link_header;
+
 //
 // Configuration constants
 //
@@ -246,8 +320,9 @@ static void strcpyC (word24 addr, word24 len, char * str)
 // process.
 //
 // The system book lists these values, but it finds them by parsing
-// the boot tape. Rather than parsing the boot tape or system boook,
-// just copy the needed values from the system book.
+// the boot tape. Rather than parsing the boot tape, extract the needed 
+// values from the system book. (./buildSLTE.sh reads the system book
+// and generates "slte.inc"
 //
 
 // The Multics SLTE table
@@ -311,7 +386,7 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define N_SEGNOS 01000
 #define DSEG_SEGNO 0
 #define IOCB_SEGNO 0265
-#define CLT_SEGNO 0266
+#define CLR_SEGNO 0266
 #define FXE_SEGNO 0267
 #define STACKS_SEGNO 0270
 #define USER_SEGNO 0600
@@ -362,6 +437,7 @@ typedef struct segTableEntry
     word18 entry_bound;
     word18 definition_offset;
     word18 linkage_offset;
+    word18 linkage_length;
     word18 isot_offset;
     word36 * segnoPadAddr;
 
@@ -379,28 +455,56 @@ static segTableEntry segTable [N_SEGS];
 static int segnoMap [N_SEGNOS];
 
 //
-// CLT - Multics segment containing the LOT and ISOT
+// CLR - Multics segment containing the LOT and ISOT
 //
 
-// Remember which segment has the CLT
+// Remember which segment has the CLR
 
-static int cltIdx;
+static int clrIdx;
 
 #define LOT_SIZE 0100000 // 2^12
 #define LOT_OFFSET 0 // LOT starts at word 0
 #define ISOT_OFFSET LOT_SIZE // ISOT follows LOT
-
-#define CLT_SIZE (LOT_SIZE * 2) // LOT + ISOT
+//#define CLR_SIZE (LOT_SIZE * 2) // LOT + ISOT
+#define CLR_FREE_START (LOT_SIZE * 2) // LOT + ISOT
 
 // installLOT - install a segment LOT and ISOT in the SLT
 
+static word18 clrFreePtr = CLR_FREE_START;
+
 static void installLOT (int idx)
   {
-    word36 * cltMemory = M + segTable [cltIdx] . physmem;
-    cltMemory [LOT_OFFSET + segTable [idx] . segno] = 
-      packedPtr (0, segTable [idx] . segno,
-                 segTable [idx] . linkage_offset);
-    cltMemory [ISOT_OFFSET + segTable [idx] . segno] = 
+    segTableEntry * segEntry = segTable + idx;
+    segTableEntry * clrEntry = segTable + clrIdx;
+
+    word36 * clrMemory = M + clrEntry -> physmem;
+    word18 newLinkage = clrFreePtr;
+    // Copy the linkage section to the CLR
+    word36 * segMemory = M + segEntry -> physmem;
+    word18 segLinkageOffset = segEntry -> linkage_offset;
+    //sim_printf ("orig link @ %05o:%06o\n", segEntry -> segno, segEntry -> linkage_offset);
+    word18 segLinkageLength = segEntry -> linkage_length;
+    if (segLinkageLength & 1)
+      segLinkageLength ++;
+    word36 * from = segMemory + segLinkageOffset;
+    word36 * to = clrMemory + clrFreePtr;
+    for (uint i = 0; i < segLinkageLength; i ++)
+      * (to ++) = * (from ++);
+    clrFreePtr += segLinkageLength;
+
+    link_header * lhp = (link_header *) (clrMemory + newLinkage);
+    //sim_printf ("link header %08o\n", (word24) ((word36 *) lhp - M));
+    makeITS (lhp -> original_linkage_ptr, segEntry -> segno, segEntry -> R1,
+             segEntry -> linkage_offset, 0, 0);
+    //clrMemory [LOT_OFFSET + segTable [idx] . segno] = 
+    //  packedPtr (0, segTable [idx] . segno,
+    //             segTable [idx] . linkage_offset);
+    //sim_printf ("newLinkage: %05o %06o-%06o\n", segTable [idx] . segno, newLinkage, clrFreePtr - 1);
+    clrMemory [LOT_OFFSET + segTable [idx] . segno] = 
+      packedPtr (0, segTable [clrIdx] . segno,
+                 newLinkage);
+
+    clrMemory [ISOT_OFFSET + segTable [idx] . segno] = 
       packedPtr (0, segTable [idx] . segno,
                  segTable [idx] . isot_offset);
   }
@@ -822,78 +926,6 @@ typedef struct __attribute__ ((__packed__)) type_pair
 //++ 
 //++ /* END INCLUDE FILE ... object_map.incl.pl1 */
 
-typedef struct __attribute__ ((__packed__)) def_header
-  {
-    union
-      {
-        struct __attribute__ ((__packed__))
-          {
-            uint unused1 : 18;
-            uint def_list_relp : 18;
-          };
-        word36 align1;
-      };
-
-    union
-      {
-        struct __attribute__ ((__packed__))
-          {
-            uint unused2 : 16;
-            uint ignore : 1;
-            uint new_format : 1;
-            uint hash_table_relp : 18;
-          };
-        word36 align2;
-      };
-  } def_header;
-
-typedef struct __attribute__ ((__packed__)) link_header
-  {
-    union
-      {
-        struct __attribute__ ((__packed__))
-          {
-            uint defs_in_link : 6;
-            uint pad : 30;
-          };
-        word36 align1;
-      };
-
-    union
-      {
-        struct __attribute__ ((__packed__))
-          {
-            uint first_ref_relp : 18;
-            uint def_offset : 18;
-          };
-        word36 align2;
-      };
-
-    word36 filled_in_later [4];
-
-    union
-      {
-        struct __attribute__ ((__packed__))
-          {
-            uint linkage_section_lng : 18;
-            uint link_begin : 18;
-          };
-        word36 align3;
-      };
-
-    union
-      {
-        struct __attribute__ ((__packed__))
-          {
-            uint static_length : 18;
-            uint segno_pad : 18;
-          };
-        word36 align4;
-      };
-
-
-  } link_header;
-
 static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
   {
     segTableEntry * e = segTable + segIdx;
@@ -1168,6 +1200,7 @@ static void parseSegment (int segIdx)
 //sim_printf ("linkage offset %o\n", mapp -> linkage_offset);
     e -> linkage_offset = mapp -> linkage_offset;
 //sim_printf ("linkage length %o\n", mapp -> linkage_length);
+    e -> linkage_length = mapp -> linkage_length;
 //sim_printf ("static offset %o\n", mapp -> static_offset);
     e -> isot_offset = mapp -> static_offset;
 //sim_printf ("static length %o\n", mapp -> static_length);
@@ -1322,18 +1355,18 @@ static void parseSegment (int segIdx)
         //sim_printf ("  tag %02o\n", l -> tag);
         if (l -> header_relp != 
             ((word18) (- (((word36 *) l) - linkBase)) & 0777777))
-          sim_printf ("Warning:  header_relp wrong %06o (%06o)\n",
+          sim_printf ("WARNING:  header_relp wrong %06o (%06o)\n",
                       l -> header_relp,
                       (word18) (- (((word36 *) l) - linkBase)) & 0777777);
         if (l -> run_depth != 0)
-          sim_printf ("Warning:  run_depth wrong %06o\n", l -> run_depth);
+          sim_printf ("WARNING:  run_depth wrong %06o\n", l -> run_depth);
 
         //sim_printf ("ringno %0o\n", l -> ringno);
         //sim_printf ("run_depth %02o\n", l -> run_depth);
         //sim_printf ("expression_relp %06o\n", l -> expression_relp);
        
         if (l -> expression_relp >= oip_dlng)
-          sim_printf ("Warning:  expression_relp too big %06o\n", l -> expression_relp);
+          sim_printf ("WARNING:  expression_relp too big %06o\n", l -> expression_relp);
 
         expression * expr = (expression *) (defBase + l -> expression_relp);
 
@@ -1341,18 +1374,18 @@ static void parseSegment (int segIdx)
                     //expr -> type_ptr, expr -> exp);
 
         if (expr -> type_ptr >= oip_dlng)
-          sim_printf ("Warning:  type_ptr too big %06o\n", expr -> type_ptr);
+          sim_printf ("WARNING:  type_ptr too big %06o\n", expr -> type_ptr);
         type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
 
         switch (typePair -> type)
           {
             case 1:
               sim_printf ("    1: self-referencing link\n");
-              sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+              sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
               break;
             case 3:
               sim_printf ("    3: referencing link\n");
-              sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+              sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
               break;
             case 4:
               sim_printf ("    4: referencing link with offset\n");
@@ -1362,10 +1395,10 @@ static void parseSegment (int segIdx)
               break;
             case 5:
               sim_printf ("    5: self-referencing link with offset\n");
-              sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+              sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
               break;
             default:
-              sim_printf ("Warning: unknown type %d\n", typePair -> type);
+              sim_printf ("WARNING: unknown type %d\n", typePair -> type);
               break;
           }
 
@@ -1376,9 +1409,9 @@ static void parseSegment (int segIdx)
         //sim_printf ("    ext_ptr %06o\n", typePair -> ext_ptr);
 
         if (typePair -> trap_ptr >= oip_dlng)
-          sim_printf ("Warning:  trap_ptr too big %06o\n", typePair -> trap_ptr);
+          sim_printf ("WARNING:  trap_ptr too big %06o\n", typePair -> trap_ptr);
         if (typePair -> ext_ptr >= oip_dlng)
-          sim_printf ("Warning:  ext_ptr too big %06o\n", typePair -> ext_ptr);
+          sim_printf ("WARNING:  ext_ptr too big %06o\n", typePair -> ext_ptr);
 
         if (typePair -> ext_ptr != 0)
           {
@@ -1982,7 +2015,7 @@ static void initStack (int ssIdx)
     makeITS (M + hdrAddr + 20, stkSegno, ssIdx - stack0Idx, STK_TOP, 0, 0);
 
     // word 22, 23    lot_ptr
-    makeITS (M + hdrAddr + 22, CLT_SEGNO, ssIdx - stack0Idx, LOT_OFFSET, 0, 0); 
+    makeITS (M + hdrAddr + 22, CLR_SEGNO, ssIdx - stack0Idx, LOT_OFFSET, 0, 0); 
 
     // word 24, 25    signal_ptr
 
@@ -2040,7 +2073,7 @@ static void initStack (int ssIdx)
     // word 40, 41    trans_op_tv_ptr
 
     // word 42, 43    isot_ptr
-    makeITS (M + hdrAddr + 42, CLT_SEGNO, 0, ISOT_OFFSET, 0, 0); 
+    makeITS (M + hdrAddr + 42, CLR_SEGNO, 0, ISOT_OFFSET, 0, 0); 
 
     // word 44, 45    sct_ptr
 
@@ -2378,37 +2411,39 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     memset (RNT, 0, sizeof (RNT));
     nextSegno = USER_SEGNO;
     nextPhysmem = 1;
-
+    clrFreePtr = CLR_FREE_START;
+    
     setupWiredSegments ();
 
-// Setup CLT
+// Setup CLR
 
-    cltIdx = allocateSegment ();
-    if (cltIdx < 0)
+    clrIdx = allocateSegment ();
+    if (clrIdx < 0)
       {
-        sim_printf ("ERROR: Unable to allocate clt segment\n");
+        sim_printf ("ERROR: Unable to allocate clr segment\n");
         return -1;
       }
 
-    segTableEntry * cltEntry = segTable + cltIdx;
+    segTableEntry * clrEntry = segTable + clrIdx;
 
-    cltEntry -> R1 = 0;
-    cltEntry -> R2 = FXE_RING;
-    cltEntry -> R3 = FXE_RING;
-    cltEntry -> R = 1;
-    cltEntry -> E = 0;
-    cltEntry -> W = 1;
-    cltEntry -> P = 0;
-    cltEntry -> segname = strdup ("clt");
-    setSegno (cltIdx, CLT_SEGNO);
-    cltEntry -> seglen = 2 * LOT_SIZE;
-    cltEntry -> loaded = true;
-    installSDW (cltIdx);
+    clrEntry -> R1 = 0;
+    clrEntry -> R2 = FXE_RING;
+    clrEntry -> R3 = FXE_RING;
+    clrEntry -> R = 1;
+    clrEntry -> E = 0;
+    clrEntry -> W = 1;
+    clrEntry -> P = 0;
+    clrEntry -> segname = strdup ("clr");
+    setSegno (clrIdx, CLR_SEGNO);
+    //clrEntry -> seglen = 2 * LOT_SIZE;
+    clrEntry -> seglen = 0777777;
+    clrEntry -> loaded = true;
+    installSDW (clrIdx);
 
-    word36 * cltMemory = M + cltEntry -> physmem;
+    word36 * clrMemory = M + clrEntry -> physmem;
 
     for (uint i = 0; i < LOT_SIZE; i ++)
-      cltMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
+      clrMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
 
 
 // Setup IOCB
@@ -2857,18 +2892,25 @@ static void faultTag2Handler (void)
   {
     // The fault pair saved the SCU data @ 0200
 
-    // Get the offending address from the SCU data
+    // Get the offending address from the SCU data (This is an address
+    // in the CLR copy of the linkage section)
 
     word18 offset = GETHI (M [0200 + 5]);
     word15 segno = GETHI (M [0200 + 2]) & MASK15;
-    // sim_printf ("f2 fault %05o:%06o\n", segno, offset);
+    //sim_printf ("f2 fault %05o:%06o\n", segno, offset);
 
+    if (segno != CLR_SEGNO)
+      {
+        sim_printf ("ERROR: expected clr segno %05o, found %05o\n", 
+                    CLR_SEGNO, segno);
+        return;
+      }
     // Get the physmem address of the segment
     word36 * even = M + DESCSEG + 2 * segno + 0;  
     //word36 * odd  = M + DESCSEG + 2 * segno + 1;  
     word24 segBaseAddr = getbits36 (* even, 0, 24);
     word24 addr = (segBaseAddr + offset) & MASK24;
-    // sim_printf ("addr %08o:%012llo\n", addr, M [addr]);
+    //sim_printf ("addr %08o:%012llo\n", addr, M [addr]);
 
     link_ * l = (link_ *) (M + addr);
 
@@ -2882,16 +2924,24 @@ static void faultTag2Handler (void)
       }
 
     if (linkCopy . run_depth != 0)
-      sim_printf ("Warning:  run_depth wrong %06o\n", linkCopy . run_depth);
+      sim_printf ("WARNING:  run_depth wrong %06o\n", linkCopy . run_depth);
 
-    // Find the linkage header
+    // Find the copied linkage header
     // sim_printf ("header_relp %08o\n", linkCopy . header_relp);
-    word24 linkHeaderOffset = (offset + SIGNEXT18 (linkCopy . header_relp)) & MASK24;
+    word24 cpLinkHeaderOffset = (offset + SIGNEXT18 (linkCopy . header_relp)) & MASK24;
     // sim_printf ("headerOffset %08o\n", linkHeaderOffset);
-    link_header * lh = (link_header *) (M + segBaseAddr + linkHeaderOffset);
+    link_header * cplh = (link_header *) (M + segBaseAddr + cpLinkHeaderOffset);
 
+    // Find the original linkage header
+
+    word15 linkHeaderSegno = GET_ITS_SEGNO (cplh -> original_linkage_ptr);
+    word24 linkHeaderOffset = GET_ITS_WORDNO (cplh -> original_linkage_ptr);
+    //sim_printf ("orig link @ %05o:%06o\n", linkHeaderSegno, linkHeaderOffset);
+    word24 linkSegBaseAddr = segTable [segnoMap [linkHeaderSegno]] . physmem;
+
+    link_header * lh = (link_header *) (M + linkSegBaseAddr + linkHeaderOffset);
     // Find the definition header
-    word36 * defBase = M + segBaseAddr + lh -> def_offset;
+    word36 * defBase = M + linkSegBaseAddr + lh -> def_offset;
     //sim_printf ("defs_in_link %o\n", lh -> defs_in_link);
     //sim_printf ("def_offset %o\n", lh -> def_offset);
     //sim_printf ("first_ref_relp %o\n", lh -> first_ref_relp);
@@ -3371,7 +3421,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
         return -1;
       }
 
-    off_t flen = lseek (fd, 0, SEEK_END);
+    /* off_t flen = */ lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
     
     int segIdx = allocateSegment ();
@@ -3420,8 +3470,8 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
         maddr ++;
         seglen ++;
       }
-    sim_printf ("flen %ld seglen %d bitcnt %d %d\n", flen, seglen, bitcnt,
-                (bitcnt + 35) / 36);
+    //sim_printf ("flen %ld seglen %d bitcnt %d %d\n", flen, seglen, bitcnt,
+                //(bitcnt + 35) / 36);
     * bitcntp = bitcnt;
     segTable [segIdx] . seglen = seglen;
     segTable [segIdx] . loaded = true;
@@ -3645,7 +3695,7 @@ static void trapTerminateName (void)
     char * arg1 = malloc (d1size + 1);
     strcpyC (ap1, d1size, arg1);
     trimTrailingSpaces (arg1);
-    sim_printf ("arg1: '%s'\n", arg1);
+    //sim_printf ("arg1: '%s'\n", arg1);
 
     delRNTRef (arg1);
 
@@ -3737,7 +3787,7 @@ static void trapMakePtr (void)
         strcpyC (ap2, d2size, arg2);
         trimTrailingSpaces (arg2);
       }
-    sim_printf ("arg2: '%s'\n", arg2 ? arg2 : "NULL");
+    //sim_printf ("arg2: '%s'\n", arg2 ? arg2 : "NULL");
 
 
     // Argument 3: entry point name
@@ -3766,7 +3816,7 @@ static void trapMakePtr (void)
     int rc = resolveName (arg2, arg3, & segno, & value, & idx);
     if (! rc)
       {
-        sim_printf ("make_ptr resolve fail %s|%s\n", arg2, arg3);
+        sim_printf ("WARNING: make_ptr resolve fail %s|%s\n", arg2, arg3);
         code = 1; // XXX need real code
         makeNullPtr (ptr);
       }
@@ -3829,14 +3879,14 @@ static void trapStatusMins (void)
     word24 code = 0;
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
-        sim_printf ("too big\n");
+        sim_printf ("ERROR: too big\n");
         code = 1; // Need a real code XXX
         goto done;
       }
     int idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
-        sim_printf ("unassigned %05o\n", segno);
+        sim_printf ("ERROR: unassigned %05o\n", segno);
         code = 1; // Need a real code XXX
         goto done;
       }
@@ -3954,7 +4004,7 @@ static void faultACVHandler (void)
       }
 
     if (linkCopy . run_depth != 0)
-      sim_printf ("Warning:  run_depth wrong %06o\n", linkCopy . run_depth);
+      sim_printf ("WARNING:  run_depth wrong %06o\n", linkCopy . run_depth);
 
     // Find the linkage header
     sim_printf ("header_relp %08o\n", linkCopy . header_relp);
@@ -3991,11 +4041,11 @@ static void faultACVHandler (void)
       {
         case 1:
           sim_printf ("    1: self-referencing link\n");
-          sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+          sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
           break;
         case 3:
           sim_printf ("    3: referencing link\n");
-          sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+          sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
           break;
         case 4:
           sim_printf ("    4: referencing link with offset\n");
@@ -4022,10 +4072,10 @@ static void faultACVHandler (void)
           break;
         case 5:
           sim_printf ("    5: self-referencing link with offset\n");
-          sim_printf ("Warning: unhandled type %d\n", typePair -> type);
+          sim_printf ("WARNING: unhandled type %d\n", typePair -> type);
           break;
         default:
-          sim_printf ("Warning: unknown type %d\n", typePair -> type);
+          sim_printf ("WARNING: unknown type %d\n", typePair -> type);
           break;
       }
 
