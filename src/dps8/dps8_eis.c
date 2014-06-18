@@ -7,6 +7,10 @@
 */
 
 #include <stdio.h>
+//#define DBGX
+#ifdef DBGX
+#include <ctype.h>
+#endif
 
 #include "dps8.h"
 #include "dps8_cpu.h"
@@ -4350,13 +4354,19 @@ void scm(DCDstruct *ins)
       __func__, y3);
     //get469(NULL, 0, 0, 0);    // initialize char getter
     
+#ifdef DBGX
+sim_printf ("SCM mask %06o ctest %06o\n", mask, ctest);
+#endif
     int i = 0;
     for(; i < e->N1; i += 1)
     {
         //int yCharn1 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
         int yCharn1 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
         
-        int c = (~mask & (yCharn1 ^ ctest)) & 0777;
+        int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
+#ifdef DBGX
+sim_printf ("SCM %03o %c %03o\n", yCharn1, iscntrl (yCharn1) ? '?' : yCharn1, c);
+#endif
         if (c == 0)
         {
             //00...0 → C(Y3)0,11
@@ -4537,7 +4547,7 @@ void scmr(DCDstruct *ins)
         //int yCharn1 = get469r(e, &newSrcAddr, &newSrcCN, e->srcTA2);
         int yCharn1 = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA2);
         
-        int c = (~mask & (yCharn1 ^ ctest)) & 0777;
+        int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
         {
             //00...0 → C(Y3)0,11
@@ -5025,17 +5035,31 @@ if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cy
     SETF (cu . IR, I_ZERO);  // set ZERO flag assuming strings are equal ...
     SETF (cu . IR, I_CARRY); // set CARRY flag assuming strings are equal ...
     
+#ifdef DBGX
+char c1buf [1024];
+char c2buf [1024];
+char * c1p = c1buf;
+char * c2p = c2buf;
+*c1p = '\0';
+*c2p = '\0';
+#endif
     uint i = 0;
 //---    for (; i < min (e->N1, e->N2); i += 1)
     for (; i < min (du . N1, du . N2); i ++)
       {
         int c1 = EISget469(&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
         int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2);   // get Y-char2n
-        
+#ifdef DBGX
+*(c1p++)=c1; *c1p=0;    
+*(c2p++)=c2; *c2p=0;    
+#endif
         if (c1 != c2)
           {
             CLRF (cu . IR, I_ZERO);  // an inequality found
             SCF (c1 < c2, cu . IR, I_CARRY);
+#ifdef DBGX
+sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
+#endif
             return;
         }
       }
@@ -5052,6 +5076,9 @@ if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cy
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
                 SCF (c1 < c2, cu . IR, I_CARRY);
+#ifdef DBGX
+sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
+#endif
                 return;
               }
           }
@@ -5069,10 +5096,16 @@ if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cy
                 
                 SCF(c1 < c2, cu.IR, I_CARRY);
                 
+#ifdef DBGX
+sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
+#endif
                 return;
               }
           }
       }
+#ifdef DBGX
+sim_printf ("cmpc <%s> <%s> =\n", c1buf, c2buf);
+#endif
   }
 
 /*
