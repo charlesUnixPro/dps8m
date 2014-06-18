@@ -3962,7 +3962,7 @@ void scm(DCDstruct *ins)
         //int yCharn1 = get469(e, &e->srcAddr, &e->srcCN, e->srcTA2);
         int yCharn1 = EISget469(&e->ADDR1, &e->srcCN, e->srcTA2);
         
-        int c = (~mask & (yCharn1 ^ ctest)) & 0777;
+        int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
         {
             //00...0 → C(Y3)0,11
@@ -4142,7 +4142,7 @@ void scmr(DCDstruct *ins)
         //int yCharn1 = get469r(e, &newSrcAddr, &newSrcCN, e->srcTA2);
         int yCharn1 = EISget469r(&e->ADDR1, &newSrcCN, e->srcTA2);
         
-        int c = (~mask & (yCharn1 ^ ctest)) & 0777;
+        int c = ((~mask) & (yCharn1 ^ ctest)) & 0777;
         if (c == 0)
         {
             //00...0 → C(Y3)0,11
