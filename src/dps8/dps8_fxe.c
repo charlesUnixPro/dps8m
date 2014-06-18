@@ -415,6 +415,7 @@ enum
 
     // phcs_
     TRAP_SET_KST_ATTRIBUTES,
+    TRAP_DEACTIVATE,
 
     // com_err_
     TRAP_COM_ERR,  // temp for debugging
@@ -1076,6 +1077,7 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "set_bc_seg", TRAP_SET_BC_SEG },
     { "hcs_", "high_low_seg_count", TRAP_HIGH_LOW_SEG_COUNT },
     { "phcs_", "set_kst_attributes", TRAP_SET_KST_ATTRIBUTES },
+    { "phcs_", "deactivate", TRAP_DEACTIVATE },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH },
     // { "com_err_", "com_err_", TRAP_COM_ERR }
   };
@@ -1171,8 +1173,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             segTable [idx] . W = SLTE [slteIdx] . W;
             segTable [idx] . P = SLTE [slteIdx] . P;
           }
-        sim_printf ("made %05o %s len %07o\n", segTable [idx] . segno, 
-                    segTable [idx] . segname, segTable [idx] . seglen);
+        //sim_printf ("made %05o %s len %07o\n", segTable [idx] . segno, 
+                    //segTable [idx] . segname, segTable [idx] . seglen);
         installLOT (idx);
         installSDW (idx);
         if (lookupDef (idx, segName, symbolName, value))
@@ -2839,6 +2841,9 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
 
+    sim_printf ("Starting execution...\n");
+    run_cmd (RU_CONT, "");
+
     return SCPE_OK;
   }
 
@@ -3060,7 +3065,7 @@ static void faultTag2Handler (void)
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
           if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
-              sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
+              //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
               free (segStr);
@@ -3213,7 +3218,7 @@ static void trapPutChars (void)
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
     uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    sim_printf ("iocbIdx %u\n", iocbIdx);
+    // sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx >= N_IOCBS)
       {
         sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
@@ -4149,7 +4154,7 @@ static void trapMakeSeg (void)
     e -> segname = strdup (entryname);
     installSDW (idx);
 
-    sim_printf ("made %05o %s\n", e -> segno, e -> segname);
+    //sim_printf ("made %05o %s\n", e -> segno, e -> segname);
     makeITS (ptr, e -> segno, FXE_RING, 0, 0, 0);
 
 done:;
@@ -4368,6 +4373,56 @@ static void trapComErr (void)
     doRCU (true); // doesn't return
   }
 
+static void trapDeactivate (void)
+  {
+//      phcs_$deactivate entry (ptr, fixed bin (35)),
+
+//                        deactivate (astep, code)
+//                        deactivate$for_delete (astep, code)
+//
+// FUNCTION -
+// 
+// The procedure "deactivate" deactivates the segment whose ASTE is pointed  to  by
+// the  input argument "astep".  If the deactivation is successful, it returns with
+// code=0; if the deactivation fails, it returns with code=0, or ehs=1.
+// The procedure "deactivate" does not concern itself with the AST lock. It assumes
+// there is no race condition.  It is the responsibility of the caller to make sure
+// there is no race condition. The initializer  or  shutdown  of  course  may  call
+// deactivate  without  locking  the AST. For normal processes, however, the caller
+// must make sure the AST is locked before the call  is  issued,  and  it  will  be
+// unlocked upon return as soon as it is safe to do so.
+// 
+// The  ASTE  is  left  in  the  circular list associated with the size of the page
+// table, at the first position, so that it will be found right away should an ASTE
+// of this size be needed.
+// 
+// The ASTE is removed from the uid hash table.
+// 
+// All items of the ASTE are zeroed except fp, bp, ptsi and marker. All  PTW's  are
+// initialized with a page not in core flag and a coded null disk address.
+
+// CAC: This makes no sense; eis_tester is passing in a pointer to a page
+// it wants deactivated; the just is no way for an ASTE to be passed in;
+// they don't exist in FXE.
+
+    argTableEntry t [] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+    if (! processArgs (2, 0, t))
+      return;
+
+    word24 code = 0;
+
+    // Argument 1: astep
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 astepPtr = ITSToPhysmem (M + ap1, NULL);
+    //for (int i = 0; i < /*12*/ 1; i ++)
+      //sim_printf (">%08o [%012llo]\n", astepPtr + i, M [astepPtr + i]);
+    doRCU (true); // doesn't return
+  }
+
 static void trapReturnToFXE (void)
   {
     sim_printf ("Process exited\n");
@@ -4436,6 +4491,9 @@ static void fxeTrap (void)
 
         case TRAP_SET_KST_ATTRIBUTES:
           trapSetKSTAttributes ();
+          break;
+        case TRAP_DEACTIVATE:
+          trapDeactivate ();
           break;
 
         case TRAP_COM_ERR:
