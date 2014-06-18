@@ -1077,7 +1077,7 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "high_low_seg_count", TRAP_HIGH_LOW_SEG_COUNT },
     { "phcs_", "set_kst_attributes", TRAP_SET_KST_ATTRIBUTES },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH },
-    { "com_err_", "com_err_", TRAP_COM_ERR }
+    // { "com_err_", "com_err_", TRAP_COM_ERR }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
 
@@ -2444,7 +2444,7 @@ static void initSysinfo (void)
     initSysinfoWord36 ("sys_info", "comm_privilege", (word36) (1ull << 29));
   }
 
-static void setupIOCB (segTableEntry * iocbEntry, int i)
+static void setupIOCB (segTableEntry * iocbEntry, char * name, int i)
   {
     // Define iocb [i]
 
@@ -2472,6 +2472,23 @@ static void setupIOCB (segTableEntry * iocbEntry, int i)
     makeITS (modesEntry, TRAP_SEGNO, FXE_RING, TRAP_MODES, 0, 0);
     makeNullPtr (modesEntry + 2);
 #endif
+
+
+    // Set iox_$<foo>
+
+    word18 value;
+    word15 segno;
+    int defIdx;
+
+    if (! resolveName ("iox_", name, & segno, & value, & defIdx))
+      {
+        sim_printf ("ERROR: can't find iox_:%s\n", name);
+        return;
+      }
+    //sim_printf ("iox_:%s %05o:%06o\n", name, segno, value);
+    makeITS (M + segTable [defIdx] . physmem + value, IOCB_SEGNO, FXE_RING,
+             i * sizeof (iocb), 0, 0);
+
   }
 
 t_stat fxeDump (int32 __attribute__((unused)) arg, 
@@ -2568,17 +2585,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     iocbEntry -> loaded = true;
     installSDW (iocbIdx);
 
-#define IOCB_USER_INPUT 0
-#define IOCB_USER_OUTPUT 1
-#define IOCB_ERROR_OUTPUT 2
-#define IOCB_USER_IO 3
-#define N_IOCBS 4
-
-    setupIOCB (iocbEntry, IOCB_USER_INPUT);
-    setupIOCB (iocbEntry, IOCB_USER_OUTPUT);
-    setupIOCB (iocbEntry, IOCB_ERROR_OUTPUT);
-    setupIOCB (iocbEntry, IOCB_USER_IO);
-
     // sim_printf ("Loading library segment\n");
 
     libIdx = installLibrary ("bound_library_wired_");
@@ -2602,26 +2608,16 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("sys_info");
     initSysinfo ();
 
-    word18 value;
-    word15 segno;
-    int defIdx;
+#define IOCB_USER_INPUT 0
+#define IOCB_USER_OUTPUT 1
+#define IOCB_ERROR_OUTPUT 2
+#define IOCB_USER_IO 3
+#define N_IOCBS 4
 
-    // Set iox_$user_output
-
-    if (resolveName ("iox_", "user_output", & segno, & value, & defIdx))
-      {
-        //if (defIdx < 0)
-          //sim_printf ("ERROR: dazed and confused; iox_ has no idx\n");
-        //else
-          //M [segTable [infoIdx] . physmem + value] = 1;
-      }
-    else
-      {
-        sim_printf ("ERROR: can't find iox_:user_output\n");
-      }
-    //sim_printf ("iox_:user_output %05o:%06o\n", segno, value);
-    makeITS (M + segTable [defIdx] . physmem + value, IOCB_SEGNO, FXE_RING,
-             IOCB_USER_OUTPUT * sizeof (iocb), 0, 0);
+    setupIOCB (iocbEntry, "user_input", IOCB_USER_INPUT);
+    setupIOCB (iocbEntry, "user_output", IOCB_USER_OUTPUT);
+    setupIOCB (iocbEntry, "error_output", IOCB_ERROR_OUTPUT);
+    setupIOCB (iocbEntry, "user_io", IOCB_USER_IO);
 
     // Create the fxe segment
 
