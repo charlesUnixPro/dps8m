@@ -1138,6 +1138,7 @@ t_stat sim_instr (void)
             goto jmpIntr;
 #endif
         case JMP_STOP:
+            reason = STOP_HALT;
             goto leave;
         case JMP_SYNC_FAULT_RETURN:
             goto syncFaultReturn;
