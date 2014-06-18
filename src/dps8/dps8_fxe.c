@@ -274,12 +274,6 @@ static void strcpyNonVarying (word24 base, word18 * next, char * str)
       offset = * next;
     else
       offset = 0;
-#if 0
-    // store the lengtn in the first word
-    M [base + offset] = len;
-    //sim_printf ("len %3d %012llo\n", offset, M [base + offset]);
-    offset ++;
-#endif
     for (uint i = 0; i < len; i ++)
       {
         int woff = i / 4;
@@ -392,6 +386,8 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define USER_SEGNO 0600
 #define TRAP_SEGNO 077776
 
+#define MAX_SEGLEN 01000000
+
 #define FXE_RING 5
 // Traps
 
@@ -414,9 +410,14 @@ enum
     TRAP_MAKE_PTR,
     TRAP_STATUS_MINS,
     TRAP_MAKE_SEG,
+    TRAP_SET_BC_SEG,
+    TRAP_HIGH_LOW_SEG_COUNT,
 
     // phcs_
     TRAP_SET_KST_ATTRIBUTES,
+
+    // com_err_
+    TRAP_COM_ERR,  // temp for debugging
 
     // FXE internal
     TRAP_RETURN_TO_FXE
@@ -433,8 +434,12 @@ typedef struct segTableEntry
     word1 R, E, W, P;
 
     char * segname;
-    word18 seglen;
+    // This the segment length in words; which means that it's maximum
+    // value 1<<18, which does not fit in a word18. See comments in
+    // installSDW.
+    word24 seglen;
     word24 physmem;
+    word24 bit_count;
 
     bool explicit_deactivate_ok;
 
@@ -1026,7 +1031,19 @@ static void installSDW (int segIdx)
 
     putbits36 (even, 33,  1, 1); // F: mark page as resident
 
-    putbits36 (odd,   1, 14, e -> seglen >> 4); // BOUND
+    // seglen is of type word18 and is the length in words which has a max 
+    // value of 1<<18, which will not fit in a word18. Word18 won't
+    // hold that value, but since it is implemented as a 32 bit word,
+    // there is no data loss. SDW.BOUND is interpreted (I think) with
+    // a 0 value meaning that the first 16 words are accessable, and
+    // a 777777 means the entire segment is.
+    // This code does not cope with a seglen of 0. XXX
+    //   seglen    -1      >>4
+    //        1       0      0
+    //       17      16      0
+    //       20      17      1
+    //  1000000  777777  37777
+    putbits36 (odd,   1, 14, (e -> seglen - 1) >> 4); // BOUND
     putbits36 (odd,  15,  1, e -> R);
     putbits36 (odd,  16,  1, e -> E);
     putbits36 (odd,  17,  1, e -> W);
@@ -1056,8 +1073,11 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "make_ptr", TRAP_MAKE_PTR },
     { "hcs_", "status_mins", TRAP_STATUS_MINS },
     { "hcs_", "make_seg", TRAP_MAKE_SEG },
+    { "hcs_", "set_bc_seg", TRAP_SET_BC_SEG },
+    { "hcs_", "high_low_seg_count", TRAP_HIGH_LOW_SEG_COUNT },
     { "phcs_", "set_kst_attributes", TRAP_SET_KST_ATTRIBUTES },
-    { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH }
+    { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH },
+    { "com_err_", "com_err_", TRAP_COM_ERR }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
 
@@ -1138,7 +1158,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             segTable [idx] . R3 = FXE_RING;
             segTable [idx] . R = 1;
             segTable [idx] . E = 1;
-            segTable [idx] . W = 0;
+            segTable [idx] . W = 1;
             segTable [idx] . P = 0;
           }
         else // segment in slte
@@ -1151,6 +1171,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             segTable [idx] . W = SLTE [slteIdx] . W;
             segTable [idx] . P = SLTE [slteIdx] . P;
           }
+        sim_printf ("made %05o %s len %07o\n", segTable [idx] . segno, 
+                    segTable [idx] . segname, segTable [idx] . seglen);
         installLOT (idx);
         installSDW (idx);
         if (lookupDef (idx, segName, symbolName, value))
@@ -1184,12 +1206,12 @@ static void parseSegment (int segIdx)
     word24 i = GETHI (lastword);
     if (i >= seglen)
       {
-        sim_printf ("ERROR: mapPtr too big %06u >= %06u\n", i, seglen);
+        sim_printf ("ERROR: mapPtr too big %07u >= %07u\n", i, seglen);
         return;
       }
     if (seglen - i - 1 < 11)
       {
-        sim_printf ("ERROR: mapPtr too small %06u\n", seglen - i - 1);
+        sim_printf ("ERROR: mapPtr too small %07u\n", seglen - i - 1);
         return;
       }
 
@@ -1467,6 +1489,7 @@ static void readSegment (int fd, int segIdx, off_t flen)
     //sim_printf ("seglen %d flen %ld\n", seglen, flen * 8 / 36);
     //segTable [segIdx] . seglen = seglen;
     segTable [segIdx] . seglen = flen * 8 / 36;
+    segTable [segIdx] . bit_count = 36 * segTable [segIdx] . seglen;
     segTable [segIdx] . loaded = true;
     //sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
                 //seglen, segIdx, segAddr);
@@ -1877,7 +1900,8 @@ static void createStackSegments (void)
         e -> E = 0;
         e -> W = 1;
         e -> P = 0;
-        e -> seglen = 0777777;
+        e -> seglen = MAX_SEGLEN;
+        e -> bit_count = 36 * e -> seglen;
         e -> loaded = true;
         word24 segAddr = lookupSegAddrByIdx (ssIdx);
         memset (M + segAddr, 0, sizeof (stack_header));
@@ -2420,6 +2444,55 @@ static void initSysinfo (void)
     initSysinfoWord36 ("sys_info", "comm_privilege", (word36) (1ull << 29));
   }
 
+static void setupIOCB (segTableEntry * iocbEntry, int i)
+  {
+    // Define iocb [i]
+
+    iocb * iocbUser =
+      (iocb *) (M + iocbEntry -> physmem + i * sizeof (iocb));
+
+    // iocb [i] . version
+
+    word36 * versionEntry = (word36 *) & iocbUser -> version;
+
+    * versionEntry = 0111117130062LLU; // 'IOX2'
+
+    // iocb [i] . put_chars
+
+    word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
+
+    makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
+    makeNullPtr (putCharEntry + 2);
+
+#if 0
+    // iocb [i] . modes
+
+    word36 * modesEntry = (word36 *) & iocbUser -> modes;
+
+    makeITS (modesEntry, TRAP_SEGNO, FXE_RING, TRAP_MODES, 0, 0);
+    makeNullPtr (modesEntry + 2);
+#endif
+  }
+
+t_stat fxeDump (int32 __attribute__((unused)) arg, 
+                char * __attribute__((unused)) buf)
+  {
+    sim_printf ("\nSegment table\n------- -----\n\n");
+    for (int idx = 0; idx < (int) N_SEGS; idx ++)
+      {
+        segTableEntry * e = segTable + idx;
+        if (! e -> allocated)
+          continue;
+        sim_printf ("%3d %c %06o %08o %07o %s\n", 
+                    idx, e -> loaded ? ' ' : '*',
+                    e -> segno, e -> physmem,
+                    e -> seglen, 
+                    e -> segname ? e -> segname : "anon");
+      }
+    sim_printf ("\n");
+    return SCPE_OK;
+  }
+
 //
 // fxe - load a segment into memory and execute it
 //
@@ -2459,7 +2532,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     clrEntry -> segname = strdup ("clr");
     setSegno (clrIdx, CLR_SEGNO);
     //clrEntry -> seglen = 2 * LOT_SIZE;
-    clrEntry -> seglen = 0777777;
+    clrEntry -> seglen = MAX_SEGLEN;
+    clrEntry -> bit_count = 36 * clrEntry -> seglen;
     clrEntry -> loaded = true;
     installSDW (clrIdx);
 
@@ -2489,38 +2563,21 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     iocbEntry -> P = 0;
     iocbEntry -> segname = strdup ("iocb");
     setSegno (iocbIdx, IOCB_SEGNO);
-    iocbEntry -> seglen = 0777777;
+    iocbEntry -> seglen = MAX_SEGLEN;
+    iocbEntry -> bit_count = 36 * iocbEntry -> seglen;
     iocbEntry -> loaded = true;
     installSDW (iocbIdx);
 
-#define IOCB_USER_OUTPUT 0
+#define IOCB_USER_INPUT 0
+#define IOCB_USER_OUTPUT 1
+#define IOCB_ERROR_OUTPUT 2
+#define IOCB_USER_IO 3
+#define N_IOCBS 4
 
-    // Define iocb [IOCB_USER_OUTPUT]
-
-    iocb * iocbUser =
-      (iocb *) (M + iocbEntry -> physmem + IOCB_USER_OUTPUT * sizeof (iocb));
-
-    // iocb [IOCB_USER_OUTPUT] . version
-
-    word36 * versionEntry = (word36 *) & iocbUser -> version;
-
-    * versionEntry = 0111117130062LLU; // 'IOX2'
-
-    // iocb [IOCB_USER_OUTPUT] . put_chars
-
-    word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
-
-    makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
-    makeNullPtr (putCharEntry + 2);
-
-#if 0
-    // iocb [IOCB_USER_OUTPUT] . modes
-
-    word36 * modesEntry = (word36 *) & iocbUser -> modes;
-
-    makeITS (modesEntry, TRAP_SEGNO, FXE_RING, TRAP_MODES, 0, 0);
-    makeNullPtr (modesEntry + 2);
-#endif
+    setupIOCB (iocbEntry, IOCB_USER_INPUT);
+    setupIOCB (iocbEntry, IOCB_USER_OUTPUT);
+    setupIOCB (iocbEntry, IOCB_ERROR_OUTPUT);
+    setupIOCB (iocbEntry, IOCB_USER_IO);
 
     // sim_printf ("Loading library segment\n");
 
@@ -2535,6 +2592,13 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_process_env_");
     installLibrary ("bound_expand_path_");
     installLibrary ("error_table_");
+#if 0
+      {
+        word15 segno; word18 value; int idx;
+        resolveName ("error_table_", "segknown", & segno, & value, & idx);
+        sim_printf ("err %d\n", value);
+      }
+#endif
     installLibrary ("sys_info");
     initSysinfo ();
 
@@ -2570,7 +2634,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLOT (fxeIdx);
     segTableEntry * fxeEntry = segTable + fxeIdx;
 
-    fxeEntry -> seglen = 0777777;
+    fxeEntry -> seglen = MAX_SEGLEN;
+    fxeEntry -> bit_count = 36 * fxeEntry -> seglen;
     fxeEntry -> R1 = FXE_RING;
     fxeEntry -> R2 = FXE_RING;
     fxeEntry -> R3 = FXE_RING;
@@ -2632,21 +2697,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         createFrame (stack0Idx + FXE_RING, segTable [stack0Idx] . segno, STK_TOP, 0);
 
 
-#if 0
-        sim_printf ("\nSegment table\n------- -----\n\n");
-        for (int idx = 0; idx < (int) N_SEGS; idx ++)
-          {
-            segTableEntry * e = segTable + idx;
-            if (! e -> allocated)
-              continue;
-            sim_printf ("%3d %c %06o %08o %06o %s\n", 
-                        idx, e -> loaded ? ' ' : '*',
-                        e -> segno, e -> physmem,
-                        e -> seglen, 
-                        e -> segname ? e -> segname : "anon");
-          }
-        sim_printf ("\n");
-#endif
 
 // AK92, pg 2-13: PR0 points to the argument list
 
@@ -3167,8 +3217,8 @@ static void trapPutChars (void)
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
     uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    //sim_printf ("iocbIdx %u\n", iocbIdx);
-    if (iocbIdx != 0)
+    sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx >= N_IOCBS)
       {
         sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
         return;
@@ -3472,6 +3522,8 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     e -> E = 0;
     e -> W = 1;
     e -> P = 0;
+    e -> segname = strdup (entry);
+    installSDW (segIdx);
 
     makeITS (segptrp, e -> segno, FXE_RING, 0, 0, 0);
     * segnop = e -> segno;
@@ -3505,9 +3557,10 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
                 //(bitcnt + 35) / 36);
     * bitcntp = bitcnt;
     segTable [segIdx] . seglen = seglen;
+    segTable [segIdx] . bit_count = 36 * segTable [segIdx] . seglen;
     segTable [segIdx] . loaded = true;
-    sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
-                seglen, segIdx, segAddr);
+    sim_printf ("Loaded %u words in segment %05o %s index %d @ %08o\n", 
+                seglen, e -> segno, e -> segname, segIdx, segAddr);
 
     close (fd);
     return 0;
@@ -4095,7 +4148,12 @@ static void trapMakeSeg (void)
     e -> E = (mode & 004) ? 1 : 0;
     e -> W = (mode & 002) ? 1 : 0;
     e -> P = 0;
+    e -> seglen = MAX_SEGLEN;
+    e -> bit_count = 36 * e -> seglen;
+    e -> segname = strdup (entryname);
+    installSDW (idx);
 
+    sim_printf ("made %05o %s\n", e -> segno, e -> segname);
     makeITS (ptr, e -> segno, FXE_RING, 0, 0, 0);
 
 done:;
@@ -4104,6 +4162,118 @@ done:;
     M [seg_ptrPtr + 1] = ptr [1];
     word24 codePtr = t [ARG6] . argAddr;
     M [codePtr] = code;
+    doRCU (true); // doesn't return
+  }
+
+static void trapSetBcSeg (void)
+  {
+
+// :Entry: set_bc_seg: 03/08/82  hcs_$set_bc_seg
+// 
+// 
+// Function: given a pointer to the segment, sets the bit count of a
+// segment in the storage system.  It also sets that bit count author of
+// the segment to be the user who called it.
+// 
+// 
+// Syntax:
+// declare hcs_$set_bc_seg entry (ptr, fixed bin(24), fixed bin(35));
+// call hcs_$set_bc_seg (seg_ptr, bit_count, code);
+// 
+// 
+// Arguments:
+// seg_ptr
+//    is a pointer to the segment whose bit count is to be changed.
+//    (Input)
+// bit_count
+//    is the new bit count of the segment.  (Input)
+// code
+//    is a storage system status code.  (Output)
+// 
+// 
+// Access required:
+// The user must have write access on the segment, but does not
+// need modify permission on the containing directory.
+// 
+// 
+// Notes: The hcs_$set_bc entry point performs the same function, when
+// provided with a pathname of a segment rather than a pointer.
+// 
+  
+    argTableEntry t [3] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    word24 code = 0;
+
+    // Process the arguments
+
+    // Argument 1: seg_ptr
+
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = GET_ITS_SEGNO (M + ap1);
+    if (segno > N_SEGNOS) // bigger segno then we deal with
+      {
+        sim_printf ("ERROR: too big\n");
+        code = 1; // Need a real code XXX
+        goto done;
+      }
+    int idx = segnoMap [segno];
+    if (idx < 0) // unassigned segno
+      {
+        sim_printf ("ERROR: unassigned %05o\n", segno);
+        code = 1; // Need a real code XXX
+        goto done;
+      }
+
+    // Argument 2: bit_count
+
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 bit_count = M [ap2];
+
+    segTable [idx] . bit_count = bit_count;
+    segTable [idx] . seglen = (bit_count + 35) / 36;
+
+done:;
+    word24 codePtr = t [ARG3] . argAddr;
+    M [codePtr] = code;
+    doRCU (true); // doesn't return
+  }
+
+static void trapHighLowSegCount (void)
+  {
+
+// dcl  hcs_$high_low_seg_count entry (fixed bin, fixed bin);
+//
+// 1) high_seg  the number to add to hcsc to get the highest segment number
+// being used.
+//
+// 2) hcsc      is the lowest non-hardcore segment number.
+//
+
+// /* Obtain the range of valid non ring 0 segment numbers. */
+//
+//        call hcs_$high_low_seg_count (highest_segno, hc_seg_count);
+//        highest_segno = highest_segno + hc_seg_count;
+//
+
+    argTableEntry t [2] =
+      {
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (2, 0, t))
+      return;
+    M [t [ARG1] . argAddr] = nextSegno - 1 - USER_SEGNO;
+    M [t [ARG2] . argAddr] = USER_SEGNO;
+    
     doRCU (true); // doesn't return
   }
 
@@ -4177,6 +4347,31 @@ done:;
     doRCU (true); // doesn't return
   }
 
+static void trapComErr (void)
+  {
+// com_err_:
+// procedure options (variable);
+// 
+// /* com_err_ formats error messages and signals the condition "command_error".
+// *   Its calling sequence is of the form: call com_err_(code, callername, ioa_control, arg1, arg2,...);.
+// *   If code > 0, the corresponding error_table_ message is included.  Callername is the name of the
+// *   calling procedure and is inserted with a colon at the beginning of the error message.
+// *   It may be either varying or fixed length; if it is null, the colon is omitted.
+// *   The rest of the arguments are optional; however, if arg1, etc. are present, ioa_control
+// *   must also be present.  ioa_control is a regular ioa_ control string and the argi are the
+// *   format arguments to ioa_.  If print_sw = "1"b after signalling "command_error", the
+// *   error message is printed.
+// *   Several other entry points are included in this procedure.  The active_fnc_err_
+// *   entry is similar to com_err_ except that the condition "active_function_error" is
+// *   signalled.  The suppress_name entry is identical to com_err_ except that the
+// *   callername is omitted from the error message.
+// *   There is an entry point for convert_status_code_, which simply looks up the code and
+// *   returns the error_table_ message.
+ 
+    sim_printf ("com err\n");
+    doRCU (true); // doesn't return
+  }
+
 static void trapReturnToFXE (void)
   {
     longjmp (jmpMain, JMP_STOP);
@@ -4235,9 +4430,19 @@ static void fxeTrap (void)
         case TRAP_MAKE_SEG:
           trapMakeSeg ();
           break;
+        case TRAP_SET_BC_SEG:
+          trapSetBcSeg ();
+          break;
+        case TRAP_HIGH_LOW_SEG_COUNT:
+          trapHighLowSegCount ();
+          break;
 
         case TRAP_SET_KST_ATTRIBUTES:
           trapSetKSTAttributes ();
+          break;
+
+        case TRAP_COM_ERR:
+          trapComErr ();
           break;
 
         case TRAP_RETURN_TO_FXE:
@@ -4255,15 +4460,15 @@ static void faultACVHandler (void)
 
     // Get the offending address from the SCU data
 
-    //word18 offset = GETHI (M [0200 + 5]);
+    word18 offset = GETHI (M [0200 + 5]);
     word15 segno = GETHI (M [0200 + 2]) & MASK15;
-    //sim_printf ("acv fault %05o:%06o\n", segno, offset);
 
     if (segno == TRAP_SEGNO)
       {
         fxeTrap ();
       }
 
+    sim_printf ("ERROR: acv fault %05o:%06o\n", segno, offset);
 #if 0
     // Get the physmem address of the segment
     word36 * even = M + DESCSEG + 2 * segno + 0;  
