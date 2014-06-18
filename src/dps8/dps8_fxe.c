@@ -4370,6 +4370,7 @@ static void trapComErr (void)
 
 static void trapReturnToFXE (void)
   {
+    sim_printf ("Process exited\n");
     longjmp (jmpMain, JMP_STOP);
   }
 
