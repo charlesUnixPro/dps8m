@@ -78,6 +78,7 @@ static CTAB dps8_cmds[] =
     {"TEST", test, 0, "test: internal testing\n", NULL},
     {"SBREAK", sbreak, 0, "sbreak: Set a breakpoint with segno:offset syntax\n", NULL},
     {"FXE", fxe, 0, "fxe: enter the FXE environment\n", NULL},
+    {"FXEDUMP", fxeDump, 0, "fxedump: dump the FXE environment\n", NULL},
     { NULL, NULL, 0, NULL, NULL}
 };
 
