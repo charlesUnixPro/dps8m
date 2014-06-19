@@ -5,6 +5,7 @@
  * \copyright Copyright (c) 2012 Harry Reed. All rights reserved.
 */
 
+//#define DBGF // eis page fault debugging
 #include <stdio.h>
 
 #include "dps8.h"
@@ -862,7 +863,9 @@ restart_1:
 
     if (info -> ndes > 0)
       {
+#ifdef DBGF
         doEIS_CAF ();
+#endif
         for(int n = 0; n < info -> ndes; n += 1)
           {
             Read (PPR . IC + 1 + n, & ci -> e . op [n], OPERAND_READ, 0); // I think.
