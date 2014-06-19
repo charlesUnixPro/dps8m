@@ -4,7 +4,7 @@ Writing SDW to address 00007000 (DSBR.ADDR+2*0 offset)
 2532 (004744) words loaded into segment 0(0) at address 000000
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestEIS ... 6/08 11:00 
+This is TestEIS ... 6/19 09:06 
 BTD Tests ...
 Result: 055065061062 (-512) (Should be 055065061062 (-512))
 Result: 000065065053 (55+) (Should be 000065065053 (55+))

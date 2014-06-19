@@ -1,7 +1,7 @@
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 Debug output to "STDOUT"
-Debug output to "STDOUT" at Sun Jun  8 12:00:47 2014
+Debug output to "STDOUT" at Thu Jun 19 10:06:53 2014
 TAPE: unit is read only
 DBG(2)> CPU FAULT: Fault 10(012), sub 1(01), dfc N, 'Illegal instruction'
 DBG(3)> CPU FAULT: fault cycle [0]
