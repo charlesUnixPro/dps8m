@@ -524,6 +524,7 @@ static word36 EISRead(EISaddr *p)
         TPR.TRR = p->RNR;
         TPR.TSR = p->SNR;
         
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %o:%06o\n", __func__, TPR . TSR, p -> address);
         Read (p->address, &data, EIS_OPERAND_READ, true);     // read data via AR/PR. TPR.{TRR,TSR} already set up
         sim_debug (DBG_TRACEEXT, & cpu_dev, "%s: read %012llo@%o:%06o\n", __func__, data, TPR . TSR, p -> address);
     }
@@ -5846,7 +5847,6 @@ void csl(DCDstruct *ins)
     CLRF(cu.IR, I_TRUNC);     // assume N1 <= N2
     
     bool bR = false; // result bit
-    
     int i = 0;
     for(i = 0 ; i < min(e->N1, e->N2) ; i += 1)
     {
