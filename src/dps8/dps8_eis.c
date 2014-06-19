@@ -4724,6 +4724,10 @@ void tct(DCDstruct *ins)
     
     //get469(NULL, 0, 0, 0);    // initialize char getter
 
+#ifdef DBGX
+sim_printf ("TCTR N1 %d\n", e -> N1);
+#endif
+
     int i = 0;
     for(; i < e->N1 ; i += 1)
     {
@@ -4746,6 +4750,11 @@ void tct(DCDstruct *ins)
         }
         
         unsigned int cout = xlate(xlatTbl, e->srcTA, m);
+#ifdef DBGX
+sim_printf ("TCT c %03o %c cout %03o %c\n",
+            m, iscntrl (m) ? '?' : m, 
+            cout, iscntrl (cout) ? '?' : cout);
+#endif
         if (cout)
         {
             CY3 = bitfieldInsert36(0, cout, 27, 9); // C(Y-char92)m → C(Y3)0,8
@@ -4937,6 +4946,10 @@ void tctr(DCDstruct *ins)
     
     //get469r(NULL, 0, 0, 0);    // initialize char getter
     
+#ifdef DBGX
+sim_printf ("TCTR N1 %d\n", e -> N1);
+#endif
+
     int i = 0;
     for(; i < e->N1 ; i += 1)
     {
@@ -4959,7 +4972,11 @@ void tctr(DCDstruct *ins)
         }
         
         unsigned int cout = xlate(xlatTbl, e->srcTA, m);
-
+#ifdef DBGX
+sim_printf ("TCT c %03o %c cout %03o %c\n",
+            m, iscntrl (m) ? '?' : m, 
+            cout, iscntrl (cout) ? '?' : cout);
+#endif
         if (cout)
         {
             CY3 = bitfieldInsert36(0, cout, 27, 9); // C(Y-char92)m → C(Y3)0,8
