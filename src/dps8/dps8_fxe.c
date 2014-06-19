@@ -3562,7 +3562,8 @@ static int getline_ (char *buf, int n)
               break;
             buf [whence ++] = (char) c;
             buf [whence] = 0;
-            sim_printf ("%c", (char) c);
+            //sim_printf ("%c", (char) c);
+            sim_printf ("\n");
             break;
           }
         if (whence >= n - 1)
