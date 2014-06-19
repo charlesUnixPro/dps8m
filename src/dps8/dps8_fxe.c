@@ -125,6 +125,7 @@ static int libIdx;
 //
 
 static int loadSegmentFromFile (char * arg);
+static void trapUnhandledSignal (void);
 
 //
 // Utility routines
@@ -149,7 +150,7 @@ static void printACC (word36 * p)
   }
 #endif
 
-#if 1
+#if 0
 static void printNChars (word36 * p, word24 cnt)
   {
     for (uint i = 0; i < cnt; i ++)
@@ -360,7 +361,7 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
   }
 
 //
-// segTable: the list of known segments
+// KST: the list of known segments
 //
 
 // lookupSegAddrByIdx - return the physical memory address of a segment
@@ -394,8 +395,10 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 enum
   {
     TRAP_UNUSED, // Don't use 0 so as to help distingish uninitialized fields
+
     // iox_
     TRAP_PUT_CHARS, 
+    TRAP_GET_LINE, 
     // TRAP_MODES, // deprecated
 
     // bound_io_commands
@@ -421,10 +424,11 @@ enum
     TRAP_COM_ERR,  // temp for debugging
 
     // FXE internal
+    TRAP_UNHANDLED_SIGNAL,
     TRAP_RETURN_TO_FXE
   };
 
-typedef struct segTableEntry
+typedef struct KSTEntry
   {
     bool allocated;
     bool loaded;
@@ -459,13 +463,13 @@ typedef struct segTableEntry
 // RNT
 
     int RNTRefCount;
-  } segTableEntry;
+  } KSTEntry;
 
 
 
-static segTableEntry segTable [N_SEGS];
+static KSTEntry KST [N_SEGS];
 
-// Map segno to segTableIdx
+// Map segno to KSTIdx
 
 static int segnoMap [N_SEGNOS];
 
@@ -489,8 +493,8 @@ static word18 clrFreePtr = CLR_FREE_START;
 
 static void installLOT (int idx)
   {
-    segTableEntry * segEntry = segTable + idx;
-    segTableEntry * clrEntry = segTable + clrIdx;
+    KSTEntry * segEntry = KST + idx;
+    KSTEntry * clrEntry = KST + clrIdx;
 
     word36 * clrMemory = M + clrEntry -> physmem;
     word18 newLinkage = clrFreePtr;
@@ -511,34 +515,34 @@ static void installLOT (int idx)
     //sim_printf ("link header %08o\n", (word24) ((word36 *) lhp - M));
     makeITS (lhp -> original_linkage_ptr, segEntry -> segno, segEntry -> R1,
              segEntry -> linkage_offset, 0, 0);
-    //clrMemory [LOT_OFFSET + segTable [idx] . segno] = 
-    //  packedPtr (0, segTable [idx] . segno,
-    //             segTable [idx] . linkage_offset);
-    //sim_printf ("newLinkage: %05o %06o-%06o\n", segTable [idx] . segno, newLinkage, clrFreePtr - 1);
-    clrMemory [LOT_OFFSET + segTable [idx] . segno] = 
-      packedPtr (0, segTable [clrIdx] . segno,
+    //clrMemory [LOT_OFFSET + KST [idx] . segno] = 
+    //  packedPtr (0, KST [idx] . segno,
+    //             KST [idx] . linkage_offset);
+    //sim_printf ("newLinkage: %05o %06o-%06o\n", KST [idx] . segno, newLinkage, clrFreePtr - 1);
+    clrMemory [LOT_OFFSET + KST [idx] . segno] = 
+      packedPtr (0, KST [clrIdx] . segno,
                  newLinkage);
 
-    clrMemory [ISOT_OFFSET + segTable [idx] . segno] = 
-      packedPtr (0, segTable [idx] . segno,
-                 segTable [idx] . isot_offset);
+    clrMemory [ISOT_OFFSET + KST [idx] . segno] = 
+      packedPtr (0, KST [idx] . segno,
+                 KST [idx] . isot_offset);
   }
 
 //
-// segTable routines
+// KST routines
 //
 
 static int lookupSegname (char * name)
   {
     for (uint i = 0; i < N_SEGS; i ++)
-      if (segTable [i] . segname && strcmp (name, segTable [i] . segname) == 0)
+      if (KST [i] . segname && strcmp (name, KST [i] . segname) == 0)
         return 1;
     return -1;
   }
 
 static word24 lookupSegAddrByIdx (int segIdx)
   {
-    return segTable [segIdx] . physmem;
+    return KST [segIdx] . physmem;
   }
 
 
@@ -547,10 +551,10 @@ static int allocateSegment (void)
   {
     for (int i = 0; i < (int) N_SEGS; i ++)
       {
-        if (! segTable [i] . allocated)
+        if (! KST [i] . allocated)
           {
-            segTable [i] . allocated = true;
-            segTable [i] . physmem = (nextPhysmem ++) * SEGSIZE;
+            KST [i] . allocated = true;
+            KST [i] . physmem = (nextPhysmem ++) * SEGSIZE;
             return i;
           }
       }
@@ -566,7 +570,7 @@ static int allocateSegno (void)
 
 static void setSegno (int idx, word15 segno)
   {
-    segTable [idx] . segno = segno;
+    KST [idx] . segno = segno;
     segnoMap [segno] = idx;
   }
 
@@ -580,7 +584,7 @@ static word24 ITSToPhysmem (word36 * its, word6 * bitno)
     if (bitno)
       * bitno = getbits36 (odd, 57 - 36, 6);
 
-    word24 physmem = segTable [segnoMap [segno]] . physmem  + wordno;
+    word24 physmem = KST [segnoMap [segno]] . physmem  + wordno;
     return physmem;
   }
 
@@ -610,7 +614,7 @@ static void addRNTRef (int idx, char * name)
     int i = searchRNT (name);
     if (i >= 0)
       {
-        segTable [RNT [i] . idx] . RNTRefCount ++;
+        KST [RNT [i] . idx] . RNTRefCount ++;
         return;
       }
     for (uint i = 0; i < RNT_TABLE_SIZE; i ++)
@@ -619,7 +623,7 @@ static void addRNTRef (int idx, char * name)
           {
             RNT [i] . refName = strdup (name);
             RNT [i] . idx = idx;
-            segTable [idx] . RNTRefCount = 1;
+            KST [idx] . RNTRefCount = 1;
             return;
           }
       }
@@ -631,7 +635,7 @@ static void delRNTRef (char * name)
     int i = searchRNT (name);
     if (i >= 0)
       {
-        segTable [RNT [i] . idx] . RNTRefCount --;
+        KST [RNT [i] . idx] . RNTRefCount --;
         free (RNT [i] . refName);
         RNT [i] . refName = NULL;
         RNT [i] . idx = 0;
@@ -698,7 +702,7 @@ static void initializeDSEG (void)
     DSBR . BND = N_DESCS / 8;
     DSBR . U = 1;
     // stack segno not yet assigned
-    //DSBR . STACK = segTable [STK_SEG + 5] . segno >> 3;
+    //DSBR . STACK = KST [STK_SEG + 5] . segno >> 3;
   }
 
 
@@ -1122,10 +1126,11 @@ typedef struct __attribute__ ((__packed__)) pl1_symbol_block
 
   } pl1_symbol_block;
 
+#if 0
 static void printLineNumbers (int segIdx)
   {
     sim_printf ("Line numbers:\n");
-    segTableEntry * e = segTable + segIdx;
+    KSTEntry * e = KST + segIdx;
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word36 * segp = M + segAddr;
     symbol_block * sbh = (symbol_block *) (segp + e -> symbol_offset);
@@ -1171,10 +1176,11 @@ static void printLineNumbers (int segIdx)
           sbh = NULL;
      }
   }
+#endif
 
 static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
   {
-    segTableEntry * e = segTable + segIdx;
+    KSTEntry * e = KST + segIdx;
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word36 * segp = M + segAddr;
     def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
@@ -1243,7 +1249,7 @@ next2:
 
 static void installSDW (int segIdx)
   {
-    segTableEntry * e = segTable + segIdx;
+    KSTEntry * e = KST + segIdx;
     word15 segno = e -> segno;
     // sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
     word36 * even = M + DESCSEG + 2 * segno + 0;  
@@ -1335,7 +1341,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
     int idx;
     if ((idx = searchRNT (segName)))
       {
-        segTableEntry * e = segTable + idx;
+        KSTEntry * e = KST + idx;
         if (e -> allocated && e -> loaded && e -> definition_offset &&
             lookupDef (idx, segName, symbolName, value))
           {
@@ -1348,7 +1354,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
     //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     for (idx = 0; idx < (int) N_SEGS; idx ++)
       {
-        segTableEntry * e = segTable + idx;
+        KSTEntry * e = KST + idx;
         if (! e -> allocated)
           continue;
         if (! e -> loaded)
@@ -1370,40 +1376,40 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
       {
         //sim_printf ("got file\n");
         int slteIdx = -1;
-        segTable [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
-        if (! segTable [idx] . segno)
+        KST [idx] . segno = getSegnoFromSLTE (segName, & slteIdx);
+        if (! KST [idx] . segno)
           {
             setSegno (idx, allocateSegno ());
-            // sim_printf ("assigning %d to %s\n", segTable [idx] . segno, segName);
+            // sim_printf ("assigning %d to %s\n", KST [idx] . segno, segName);
           }
-        segTable [idx] . segname = strdup (segName);
+        KST [idx] . segname = strdup (segName);
         if (slteIdx < 0) // segment not in slte
           {
-            segTable [idx] . R1 = FXE_RING;
-            segTable [idx] . R2 = FXE_RING;
-            segTable [idx] . R3 = FXE_RING;
-            segTable [idx] . R = 1;
-            segTable [idx] . E = 1;
-            segTable [idx] . W = 1;
-            segTable [idx] . P = 0;
+            KST [idx] . R1 = FXE_RING;
+            KST [idx] . R2 = FXE_RING;
+            KST [idx] . R3 = FXE_RING;
+            KST [idx] . R = 1;
+            KST [idx] . E = 1;
+            KST [idx] . W = 1;
+            KST [idx] . P = 0;
           }
         else // segment in slte
           {
-            segTable [idx] . R1 = SLTE [slteIdx] . R1;
-            segTable [idx] . R2 = SLTE [slteIdx] . R2;
-            segTable [idx] . R3 = SLTE [slteIdx] . R2;
-            segTable [idx] . R = SLTE [slteIdx] . R;
-            segTable [idx] . E = SLTE [slteIdx] . E;
-            segTable [idx] . W = SLTE [slteIdx] . W;
-            segTable [idx] . P = SLTE [slteIdx] . P;
+            KST [idx] . R1 = SLTE [slteIdx] . R1;
+            KST [idx] . R2 = SLTE [slteIdx] . R2;
+            KST [idx] . R3 = SLTE [slteIdx] . R2;
+            KST [idx] . R = SLTE [slteIdx] . R;
+            KST [idx] . E = SLTE [slteIdx] . E;
+            KST [idx] . W = SLTE [slteIdx] . W;
+            KST [idx] . P = SLTE [slteIdx] . P;
           }
-        //sim_printf ("made %05o %s len %07o\n", segTable [idx] . segno, 
-                    //segTable [idx] . segname, segTable [idx] . seglen);
+        //sim_printf ("made %05o %s len %07o\n", KST [idx] . segno, 
+                    //KST [idx] . segname, KST [idx] . seglen);
         installLOT (idx);
         installSDW (idx);
         if (lookupDef (idx, segName, symbolName, value))
           {
-            * segno = segTable [idx] . segno;
+            * segno = KST [idx] . segno;
             * index = idx;
             // sim_printf ("resoveName %s:%s %05o:%06o\n", segName, symbolName, * segno, * value);
             return 1;
@@ -1418,7 +1424,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
 static void parseSegment (int segIdx)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
-    segTableEntry * e = segTable + segIdx;
+    KSTEntry * e = KST + segIdx;
     word24 seglen = e -> seglen;
 
     word36 * segp = M + segAddr;
@@ -1715,10 +1721,10 @@ static void readSegment (int fd, int segIdx, off_t flen)
         seglen += 2;
       }
     //sim_printf ("seglen %d flen %ld\n", seglen, flen * 8 / 36);
-    //segTable [segIdx] . seglen = seglen;
-    segTable [segIdx] . seglen = flen * 8 / 36;
-    segTable [segIdx] . bit_count = 36 * segTable [segIdx] . seglen;
-    segTable [segIdx] . loaded = true;
+    //KST [segIdx] . seglen = seglen;
+    KST [segIdx] . seglen = flen * 8 / 36;
+    KST [segIdx] . bit_count = 36 * KST [segIdx] . seglen;
+    KST [segIdx] . loaded = true;
     //sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
                 //seglen, segIdx, segAddr);
     parseSegment (segIdx);
@@ -1729,8 +1735,8 @@ static int loadDeferred (char * arg)
   {
     int idx;
     for (idx = 0; idx < (int) N_SEGS; idx ++)
-      if (segTable [idx] . allocated && segTable [idx] . segname &&
-          strcmp (arg, segTable [idx] . segname) == 0)
+      if (KST [idx] . allocated && KST [idx] . segname &&
+          strcmp (arg, KST [idx] . segname) == 0)
         return idx;
 
     idx = allocateSegment ();
@@ -1740,7 +1746,7 @@ static int loadDeferred (char * arg)
         return -1;
       }
 
-    segTableEntry * e = segTable + idx;
+    KSTEntry * e = KST + idx;
 
     e -> segno = allocateSegno ();
     e -> R1 = FXE_RING;
@@ -1777,7 +1783,7 @@ static int loadSegmentFromFile (char * arg)
         return -1;
       }
 
-    segTableEntry * e = segTable + segIdx;
+    KSTEntry * e = KST + segIdx;
 
     e -> R1 = FXE_RING;
     e -> R2 = FXE_RING;
@@ -1798,18 +1804,18 @@ static void setupWiredSegments (void)
 
      // 'dseg' contains the fault traps
 
-     segTable [0] . allocated = true;
-     segTable [0] . loaded = true;
+     KST [0] . allocated = true;
+     KST [0] . loaded = true;
      setSegno (0, 0);
-     segTable [0] . wired = true;
-     segTable [0] . R1 = 0;
-     segTable [0] . R2 = 0;
-     segTable [0] . R3 = 0;
-     segTable [0] . R = 1;
-     segTable [0] . E = 0;
-     segTable [0] . W = 0;
-     segTable [0] . P = 0;
-     segTable [0] . segname = strdup ("dseg");
+     KST [0] . wired = true;
+     KST [0] . R1 = 0;
+     KST [0] . R2 = 0;
+     KST [0] . R3 = 0;
+     KST [0] . R = 1;
+     KST [0] . E = 0;
+     KST [0] . W = 0;
+     KST [0] . P = 0;
+     KST [0] . segname = strdup ("dseg");
           
      initializeDSEG ();
   }
@@ -2012,7 +2018,7 @@ typedef struct __attribute__ ((__packed__)) stack_header
     word72 lot_ptr;
 
 //++       2 signal_ptr       ptr,  /*  (24)  pointer to signal procedure for current ring */
-    word72 signal_ptr;
+    word36 signal_ptr [2];
 
 //++       2 bar_mode_sp       ptr,  /*  (26)  value of sp before entering bar mode */
     word72 bar_mode_sp;
@@ -2117,7 +2123,7 @@ static void createStackSegments (void)
         int ssIdx = allocateSegment ();
         if (i == 0)
           stack0Idx = ssIdx;
-        segTableEntry * e = segTable + ssIdx;
+        KSTEntry * e = KST + ssIdx;
         e -> segname = strdup ("stack_0");
         e -> segname [6] += i; // do not try this at home
         setSegno (ssIdx, STACKS_SEGNO + i);
@@ -2242,12 +2248,12 @@ static void initStack (int ssIdx)
 // we assume HDR_SIZE is a multiple of 8, since frames must be so aligned
 #define STK_TOP HDR_SIZE
 
-    word15 stkSegno = segTable [ssIdx] . segno;
+    word15 stkSegno = KST [ssIdx] . segno;
     word24 segAddr = lookupSegAddrByIdx (ssIdx);
     word24 hdrAddr = segAddr + HDR_OFFSET;
 
-    word15 libSegno = segTable [libIdx] . segno;
-    word3 libRing = segTable [libIdx] . R1;
+    word15 libSegno = KST [libIdx] . segno;
+    word3 libRing = KST [libIdx] . R1;
     word24 libAddr = lookupSegAddrByIdx (libIdx);
 
     // To help with debugging, initialize the stack header with
@@ -2288,6 +2294,7 @@ static void initStack (int ssIdx)
     makeITS (M + hdrAddr + 22, CLR_SEGNO, ssIdx - stack0Idx, LOT_OFFSET, 0, 0); 
 
     // word 24, 25    signal_ptr
+    makeITS (M + hdrAddr + 24, TRAP_SEGNO, FXE_RING, TRAP_UNHANDLED_SIGNAL, 0, 0);
 
     // word 26, 27    bar_mode_sp_ptr
 
@@ -2370,7 +2377,7 @@ static void initStack (int ssIdx)
 
 static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 prevRing)
   {
-    word15 stkSegno = segTable [ssIdx] . segno;
+    word15 stkSegno = KST [ssIdx] . segno;
     word24 segAddr = lookupSegAddrByIdx (ssIdx);
     word24 frameAddr = segAddr + STK_TOP;
     
@@ -2424,7 +2431,7 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
      {
        sim_printf ("ERROR: Can't find pl1_operators_$operator_table\n");
      }
-    word15 libSegno = segTable [libIdx] . segno;
+    word15 libSegno = KST [libIdx] . segno;
     makeITS (M + frameAddr + 24, libSegno, FXE_RING, operator_table, 0, 0);
 
 
@@ -2462,27 +2469,27 @@ static int installLibrary (char * name)
         setSegno (idx, segno);
         //sim_printf ("assigning %d to %s\n", segno, name);
       }
-    //sim_printf ("lib %s segno %o\n", name, segTable [idx] . segno);
-    segTable [idx] . segname = strdup (name);
+    //sim_printf ("lib %s segno %o\n", name, KST [idx] . segno);
+    KST [idx] . segname = strdup (name);
     if (slteIdx < 0) // segment not in slte
       {
-        segTable [idx] . R1 = FXE_RING;
-        segTable [idx] . R2 = FXE_RING;
-        segTable [idx] . R3 = FXE_RING;
-        segTable [idx] . R = 1;
-        segTable [idx] . E = 1;
-        segTable [idx] . W = 0;
-        segTable [idx] . P = 0;
+        KST [idx] . R1 = FXE_RING;
+        KST [idx] . R2 = FXE_RING;
+        KST [idx] . R3 = FXE_RING;
+        KST [idx] . R = 1;
+        KST [idx] . E = 1;
+        KST [idx] . W = 0;
+        KST [idx] . P = 0;
       }
     else // segment in slte
       {
-        segTable [idx] . R1 = SLTE [slteIdx] . R1;
-        segTable [idx] . R2 = SLTE [slteIdx] . R2;
-        segTable [idx] . R3 = SLTE [slteIdx] . R2;
-        segTable [idx] . R = SLTE [slteIdx] . R;
-        segTable [idx] . E = SLTE [slteIdx] . E;
-        segTable [idx] . W = SLTE [slteIdx] . W;
-        segTable [idx] . P = SLTE [slteIdx] . P;
+        KST [idx] . R1 = SLTE [slteIdx] . R1;
+        KST [idx] . R2 = SLTE [slteIdx] . R2;
+        KST [idx] . R3 = SLTE [slteIdx] . R2;
+        KST [idx] . R = SLTE [slteIdx] . R;
+        KST [idx] . E = SLTE [slteIdx] . E;
+        KST [idx] . W = SLTE [slteIdx] . W;
+        KST [idx] . P = SLTE [slteIdx] . P;
       }
 
     installLOT (idx);
@@ -2506,11 +2513,11 @@ static void initSysinfoStr (char * segName, char * compName, char * str,
                       segName, compName);
         else
           {
-            //M [segTable [defIdx] . physmem + value + offset] = word;
+            //M [KST [defIdx] . physmem + value + offset] = word;
             if (vary)
-              strcpyVarying (segTable [defIdx] . physmem, & value, str);
+              strcpyVarying (KST [defIdx] . physmem, & value, str);
             else
-              strcpyNonVarying (segTable [defIdx] . physmem, & value, str);
+              strcpyNonVarying (KST [defIdx] . physmem, & value, str);
           }
       }
     else
@@ -2532,7 +2539,7 @@ static void initSysinfoWord36Offset (char * segName, char * compName,
           sim_printf ("ERROR: dazed and confused; %s.%s has no idx\n",
                       segName, compName);
         else
-          M [segTable [defIdx] . physmem + value + offset] = word;
+          M [KST [defIdx] . physmem + value + offset] = word;
       }
     else
       {
@@ -2672,7 +2679,7 @@ static void initSysinfo (void)
     initSysinfoWord36 ("sys_info", "comm_privilege", (word36) (1ull << 29));
   }
 
-static void setupIOCB (segTableEntry * iocbEntry, char * name, int i)
+static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
   {
     // Define iocb [i]
 
@@ -2691,6 +2698,13 @@ static void setupIOCB (segTableEntry * iocbEntry, char * name, int i)
 
     makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
     makeNullPtr (putCharEntry + 2);
+
+    // iocb [i] . get_line
+
+    word36 * getLineEntry = (word36 *) & iocbUser -> get_line;
+
+    makeITS (getLineEntry, TRAP_SEGNO, FXE_RING, TRAP_GET_LINE, 0, 0);
+    makeNullPtr (getLineEntry + 2);
 
 #if 0
     // iocb [i] . modes
@@ -2714,7 +2728,7 @@ static void setupIOCB (segTableEntry * iocbEntry, char * name, int i)
         return;
       }
     //sim_printf ("iox_:%s %05o:%06o\n", name, segno, value);
-    makeITS (M + segTable [defIdx] . physmem + value, IOCB_SEGNO, FXE_RING,
+    makeITS (M + KST [defIdx] . physmem + value, IOCB_SEGNO, FXE_RING,
              i * sizeof (iocb), 0, 0);
 
   }
@@ -2725,7 +2739,7 @@ t_stat fxeDump (int32 __attribute__((unused)) arg,
     sim_printf ("\nSegment table\n------- -----\n\n");
     for (int idx = 0; idx < (int) N_SEGS; idx ++)
       {
-        segTableEntry * e = segTable + idx;
+        KSTEntry * e = KST + idx;
         if (! e -> allocated)
           continue;
         sim_printf ("%3d %c %06o %08o %07o %s\n", 
@@ -2747,13 +2761,45 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     sim_printf ("FXE: initializing...\n");
 
     // Reset all state data
-    memset (segTable, 0, sizeof (segTable));
+    memset (KST, 0, sizeof (KST));
     memset (segnoMap, -1, sizeof (segnoMap));
     memset (RNT, 0, sizeof (RNT));
     nextSegno = USER_SEGNO;
     nextPhysmem = 1;
     clrFreePtr = CLR_FREE_START;
-    
+ 
+// From AK92-2, Process Initialization
+//
+// Initialize the Known Segment Table (KST)
+// Initialize the Procsess Initialization Table (PIT)   ???
+// Set working directory to home directory
+// Call makestack
+//   -- create stack_N
+//   -- fill is null pointer, begin pointer, end pointer
+//   -- call get_initial_linkage to get the initial linkage for the ring ???
+//   -- call initialize_rnt 
+//      -- call define_area to get an area for the Reference Name Table (RNT) 
+//      (Not done; RNT is virtualized)
+//      -- initialize the RNT
+//      -- put pointer to RNT in stack header ???
+//      -- initialize search rules to default
+//   -- Add stack to KST.
+//   -- Snap links to signal_, unwinder_, alm operators, pl1 operators
+//       (Note: this picks up versions of these from the users home directory)
+//   -- Set static condition handlers for no_write_permission, 
+//   -- not_in_write_bracket, isot_fault and lot-fault, fills in the thread
+//   -- pointers for the first stack frame.
+// Find initial process.
+// Call call_outer_ring to call out to the user's initial_ring.
+// Start initial process.
+//
+// The default initial process is initialize_process, which:
+//  -- Initiate the PIT.
+//  -- Set the working directory.
+//  -- Set static condition handlers for cput, alrm, trm_ wkp_ adn sus_.
+//  -- Attach user_io, user_output, user_input and error_output switches.
+//  -- Call the process overseer.
+
     setupWiredSegments ();
 
 // Setup CLR
@@ -2765,7 +2811,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         return SCPE_OK;
       }
 
-    segTableEntry * clrEntry = segTable + clrIdx;
+    KSTEntry * clrEntry = KST + clrIdx;
 
     clrEntry -> R1 = 0;
     clrEntry -> R2 = FXE_RING;
@@ -2797,7 +2843,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         return SCPE_OK;
       }
 
-    segTableEntry * iocbEntry = segTable + iocbIdx;
+    KSTEntry * iocbEntry = KST + iocbIdx;
 
     iocbEntry -> R1 = 0;
     iocbEntry -> R2 = FXE_RING;
@@ -2823,6 +2869,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
       }
     installLibrary ("bound_library_1_");
     installLibrary ("bound_library_2_");
+    installLibrary ("bound_pl1_runtime_");
     installLibrary ("bound_process_env_");
     installLibrary ("bound_expand_path_");
     installLibrary ("error_table_");
@@ -2856,7 +2903,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         return SCPE_OK;
       }
     installLOT (fxeIdx);
-    segTableEntry * fxeEntry = segTable + fxeIdx;
+    KSTEntry * fxeEntry = KST + fxeIdx;
 
     fxeEntry -> seglen = MAX_SEGLEN;
     fxeEntry -> bit_count = 36 * fxeEntry -> seglen;
@@ -2894,33 +2941,35 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
             sim_printf ("ERROR: couldn't read %s\n", segmentName);
             return SCPE_OK;
           }
-        segTable [segIdx] . segname = strdup (segmentName);
+        KST [segIdx] . segname = strdup (segmentName);
         setSegno (segIdx, allocateSegno ());
-        segTable [segIdx] . R1 = FXE_RING;
-        segTable [segIdx] . R2 = FXE_RING;
-        segTable [segIdx] . R3 = FXE_RING;
-        segTable [segIdx] . R = 1;
-        segTable [segIdx] . E = 1;
-        segTable [segIdx] . W = 0;
-        segTable [segIdx] . P = 0;
-        segTable [segIdx] . segname = strdup (segmentName);
+        KST [segIdx] . R1 = FXE_RING;
+        KST [segIdx] . R2 = FXE_RING;
+        KST [segIdx] . R3 = FXE_RING;
+        KST [segIdx] . R = 1;
+        KST [segIdx] . E = 1;
+        KST [segIdx] . W = 0;
+        KST [segIdx] . P = 0;
+        KST [segIdx] . segname = strdup (segmentName);
 
         installSDW (segIdx);
         installLOT (segIdx);
 
+#if 0
         printLineNumbers (segIdx);
+#endif
         // sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
-        // segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
+        // segIdx, KST [segIdx] . segno, lookupSegAddrByIdx (segIdx));
         createStackSegments ();
         // sim_printf ("stack segment idx %d, segno %o, phyaddr %08o\n", 
-        // stack0Idx + FXE_RING, segTable [stack0Idx + FXE_RING] . segno, lookupSegAddrByIdx (stack0Idx + FXE_RING));
+        // stack0Idx + FXE_RING, KST [stack0Idx + FXE_RING] . segno, lookupSegAddrByIdx (stack0Idx + FXE_RING));
         // sim_printf ("lib segment idx %d, segno %o, phyaddr %08o\n", 
-        // libIdx, segTable [libIdx] . segno, lookupSegAddrByIdx (libIdx));
+        // libIdx, KST [libIdx] . segno, lookupSegAddrByIdx (libIdx));
 
         initStack (stack0Idx + 0);
         createFrame (stack0Idx + 0, 077777, 1, 0);
         initStack (stack0Idx + FXE_RING);
-        createFrame (stack0Idx + FXE_RING, segTable [stack0Idx] . segno, STK_TOP, 0);
+        createFrame (stack0Idx + FXE_RING, KST [stack0Idx] . segno, STK_TOP, 0);
 
 
 
@@ -2931,27 +2980,21 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         // Creating in memory
         //     arg1 len
         //     arg1
-        //     arg2 len
-        //     arg2
-        //     arg3 len
-        //     arg3
-        //     arg4 len
-        //     arg4
+        //      ..
+        //     argn len
+        //     argn
         //     desc1
-        //     desc2
-        //     desc3
-        //     desc4
+        //      ..
+        //     descn
         //     arg list
         //        nargs, type
         //        desc_cnt
         //        arg1 ptr
-        //        arg2 ptr
-        //        arg3 ptr
-        //        arg4 ptr
+        //      ..
+        //        argn ptr
         //        desc1 ptr
-        //        desc2 ptr
-        //        desc3 ptr
-        //        desc4 ptr
+        //      ..
+        //        descn ptr
 
         word24 fxeMemPtr = fxeEntry -> physmem;
         word18 next = 0;
@@ -3035,10 +3078,10 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // AK92, pg 2-13: PR4 points to the linkage section for the executing procedure
 
-        PR [4] . SNR = segTable [segIdx] . segno;
+        PR [4] . SNR = KST [segIdx] . segno;
         PR [4] . RNR = FXE_RING;
         PR [4] . BITNO = 0;
-        PR [4] . WORDNO = segTable [segIdx] . linkage_offset;
+        PR [4] . WORDNO = KST [segIdx] . linkage_offset;
 
 // AK92, pg 2-13: PR7 points to the stack frame
 
@@ -3060,11 +3103,11 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 
         set_addr_mode (APPEND_mode);
-        PPR . IC = segTable [segIdx] . entry;
+        PPR . IC = KST [segIdx] . entry;
         PPR . PRR = FXE_RING;
-        PPR . PSR = segTable [segIdx] . segno;
+        PPR . PSR = KST [segIdx] . segno;
         PPR . P = 0;
-        DSBR . STACK = segTable [stack0Idx + FXE_RING] . segno >> 3;
+        DSBR . STACK = KST [stack0Idx + FXE_RING] . segno >> 3;
       }
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
@@ -3116,7 +3159,7 @@ void fxeCall6TrapRestore (void)
     word15 spSegno = PR [6] . SNR;
     word18 spWordno = PR [6] . WORDNO;
     int spIdx = segnoMap [spSegno];
-    word24 spPhysmem = segTable [spIdx] . physmem + spWordno;
+    word24 spPhysmem = KST [spIdx] . physmem + spWordno;
     word24 rpAddr = spPhysmem + 24;
     word36 even = M [rpAddr];
     word36 odd = M [rpAddr + 1];
@@ -3124,8 +3167,8 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
 
     // C(Y-pair)3,17 -> C(PPR.PSR)
     PPR . PSR = getbits36 (even, 3, 15);
-    word3 targetRing = segTable [segnoMap [PPR . PSR]] . R1;
-    word3 targetP = segTable [segnoMap [PPR . PSR]] . P;
+    word3 targetRing = KST [segnoMap [PPR . PSR]] . R1;
+    word3 targetP = KST [segnoMap [PPR . PSR]] . P;
     
     // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
     PPR . PRR = max3(getbits36 (even, 18, 3), TPR . TRR, targetRing);
@@ -3157,7 +3200,7 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     word15 spSegno = PR [6] . SNR;
     word18 spWordno = PR [6] . WORDNO;
     int spIdx = segnoMap [spSegno];
-    word24 spPhysmem = segTable [spIdx] . physmem + spWordno;
+    word24 spPhysmem = KST [spIdx] . physmem + spWordno;
     word24 rpAddr = spPhysmem + 20;
     word36 even = M [rpAddr];
     word36 odd = M [rpAddr + 1];
@@ -3171,7 +3214,7 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
     word15 indSegno = getbits36 (even, 3, 15);
     word15 indRing = getbits36 (even, 18, 3);
     word18 indWordno = getbits36 (odd, 0, 18);
-    //word24 indPhysmem = segTable [segnoMap [indSegno]] . physmem + indWordno;
+    //word24 indPhysmem = KST [segnoMap [indSegno]] . physmem + indWordno;
 
     //sim_printf ("ind %08o %012llo %012llo\n", indPhysmem, M [indPhysmem], M [indPhysmem + 1]);  
 
@@ -3247,7 +3290,7 @@ static void faultTag2Handler (void)
     word15 linkHeaderSegno = GET_ITS_SEGNO (cplh -> original_linkage_ptr);
     word24 linkHeaderOffset = GET_ITS_WORDNO (cplh -> original_linkage_ptr);
     //sim_printf ("orig link @ %05o:%06o\n", linkHeaderSegno, linkHeaderOffset);
-    word24 linkSegBaseAddr = segTable [segnoMap [linkHeaderSegno]] . physmem;
+    word24 linkSegBaseAddr = KST [segnoMap [linkHeaderSegno]] . physmem;
 
     link_header * lh = (link_header *) (M + linkSegBaseAddr + linkHeaderOffset);
     // Find the definition header
@@ -3294,7 +3337,7 @@ static void faultTag2Handler (void)
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
           if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
-              sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
+              //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
               free (segStr);
@@ -3354,7 +3397,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
 
     // Find the argument list in memory
     int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+    word24 alPhysmem = KST [alIdx] . physmem + apWordno;
 
     // XXX 17s below are not typos.
     word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
@@ -3445,12 +3488,12 @@ static void trapPutChars (void)
     word24 ap3 = t [ARG3] . argAddr;
 
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
-    word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+    word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
     uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
     // sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx >= N_IOCBS)
       {
-        sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
+        sim_printf ("ERROR: iocbIdx (%d) >= N_IOCBS (%d)\n", iocbIdx, N_IOCBS);
         return;
       }
 
@@ -3470,6 +3513,130 @@ static void trapPutChars (void)
     doRCU (true); // doesn't return
   }
 
+static int getline_ (char *buf, int n)
+  {
+    int whence = 0;
+    buf [whence] = 0;
+    while (1)
+      {
+        t_stat c;
+        c = sim_poll_kbd ();
+        if (c == SCPE_OK)
+          {
+            usleep (100000); // 1/10 of a second
+            continue;
+          }
+
+        //sim_printf ("\n%o %o\n", c, c - SCPE_KFLAG);
+
+        if (c == SCPE_STOP)
+          {
+            // XXX deliver break to multics?
+            trapUnhandledSignal ();
+            break;           
+          }
+        c -= SCPE_KFLAG;    // translate to ascii
+
+        if (c == '\003') // control-c
+          {
+            // XXX deliver break to multics?
+            trapUnhandledSignal ();
+            break;           
+          }
+        if (c == '\004') // control-d
+          {
+            // XXX deliver break to multics?
+            trapUnhandledSignal ();
+            break;           
+          }
+        if (c == '\177' || c == '\010') // backspace, delete
+          {
+            if (whence > 0)
+              whence --;
+            sim_printf ("^H");
+            continue;
+          }
+        if (c == '\012' || c == '\015') // cr, lf
+          {
+            if (whence >= n - 1)
+              break;
+            buf [whence ++] = (char) c;
+            buf [whence] = 0;
+            sim_printf ("%c", (char) c);
+            break;
+          }
+        if (whence >= n - 1)
+          continue;
+        buf [whence ++] = (char) c;
+        buf [whence] = 0;
+        sim_printf ("%c", (char) c);
+      }
+    return whence;
+  }
+
+static void trapGetLine (void)
+  {
+    //  entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+    // get_line(iocb,bufptr,buflen,actlen,code) */
+
+    argTableEntry t [5] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (5, 0, t))
+      return;
+    // Process the arguments
+
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 ap4 = t [ARG4] . argAddr;
+    //word24 ap5 = t [ARG5] . argAddr;
+
+    word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
+    word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
+    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx >= N_IOCBS)
+      {
+        sim_printf ("ERROR: iocbIdx (%d) >= N_IOCBS (%d)\n", iocbIdx, N_IOCBS);
+        return;
+      }
+
+    word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
+  
+    word36 len = M [ap3];
+    if (len < 1 || len > 2048)
+      {
+        sim_printf ("WARNING: patching len from %lld to 128\n", len);
+        len = 128;
+      }
+
+//{
+//stack_header * sh = (stack_header *) (KST[stack0Idx+5].physmem);
+//sim_printf ("signal ptr %012llo %012llo\n", sh -> signal_ptr [0], sh -> signal_ptr [1]);
+//}
+    sim_printf ("GET_LINE: ");
+    char buf [len + 1];
+    int actlen = getline_ (buf, len + 1);
+
+    for (int i = 0; i < actlen; i ++)
+      {
+        int woff = i / 4;
+        int chno = i % 4;
+        putbits36 (M + bufPtr + woff, chno * 9, 9, buf [i]);
+      }
+
+    M [ap4] = actlen;
+
+    doRCU (true); // doesn't return
+  }
+
 #if 0
 static void trapModes (void)
   {
@@ -3482,7 +3649,7 @@ static void trapModes (void)
 
     // Find the argument list in memory
     int alIdx = segnoMap [apSegno];
-    word24 alPhysmem = segTable [alIdx] . physmem + apWordno;
+    word24 alPhysmem = KST [alIdx] . physmem + apWordno;
 
     // XXX 17s below are not typos.
     word18 arg_count  = getbits36 (M [alPhysmem + 0],  0, 17);
@@ -3564,10 +3731,10 @@ static void trapModes (void)
     word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
     sim_printf ("iocbPtr %08o\n", iocbPtr);
 
-    word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+    word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
 
     uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
-    sim_printf ("iocbIdx %u\n", iocbIdx);
+    //sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx != 0)
       {
         sim_printf ("ERROR: iocbIdx (%d) != 0\n", iocbIdx);
@@ -3645,7 +3812,7 @@ static void trapGetLineLengthSwitch (void)
         word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
         //sim_printf ("iocbPtr %08o\n", iocbPtr);
 
-        word24 iocb0 = segTable [segnoMap [IOCB_SEGNO]] . physmem;
+        word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
 
         iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
       }
@@ -3742,7 +3909,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
         return -1;
       }
 
-    segTableEntry * e = segTable + segIdx;
+    KSTEntry * e = KST + segIdx;
 
     setSegno (segIdx, allocateSegno ());
     e -> R1 = FXE_RING;
@@ -3786,9 +3953,9 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     //sim_printf ("flen %ld seglen %d bitcnt %d %d\n", flen, seglen, bitcnt,
                 //(bitcnt + 35) / 36);
     * bitcntp = bitcnt;
-    segTable [segIdx] . seglen = seglen;
-    segTable [segIdx] . bit_count = 36 * segTable [segIdx] . seglen;
-    segTable [segIdx] . loaded = true;
+    KST [segIdx] . seglen = seglen;
+    KST [segIdx] . bit_count = 36 * KST [segIdx] . seglen;
+    KST [segIdx] . loaded = true;
     sim_printf ("Loaded %u words in segment %05o %s index %d @ %08o\n", 
                 seglen, e -> segno, e -> segname, segIdx, segAddr);
 
@@ -4211,7 +4378,7 @@ static void trapStatusMins (void)
 
     // Argument 3: bit_count
     word24 ap3 = t [ARG3] . argAddr;
-    M [ap3] = segTable [idx] . seglen * 36u;
+    M [ap3] = KST [idx] . seglen * 36u;
 done:;
 
     word24 ap4 = t [ARG4] . argAddr;
@@ -4345,7 +4512,7 @@ static void trapMakeSeg (void)
     int idx = lookupSegname (entryname);
     if (idx >= 0)
       {
-        segTableEntry * e = segTable + idx;
+        KSTEntry * e = KST + idx;
         makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
         code = 1; // XXX need a real code
         goto done;
@@ -4355,7 +4522,7 @@ static void trapMakeSeg (void)
     idx = loadSegmentFromFile (entryname); // XXX ignoring dir_name
     if (idx >= 0)
       {
-        segTableEntry * e = segTable + idx;
+        KSTEntry * e = KST + idx;
         makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
         code = 1; // XXX need a real code
         goto done;
@@ -4368,7 +4535,7 @@ static void trapMakeSeg (void)
         return;
       }
 
-    segTableEntry * e = segTable + idx;
+    KSTEntry * e = KST + idx;
 
     setSegno (idx, allocateSegno ());
     e -> R1 = FXE_RING;
@@ -4467,8 +4634,8 @@ static void trapSetBcSeg (void)
     word24 ap2 = t [ARG2] . argAddr;
     word24 bit_count = M [ap2];
 
-    segTable [idx] . bit_count = bit_count;
-    segTable [idx] . seglen = (bit_count + 35) / 36;
+    KST [idx] . bit_count = bit_count;
+    KST [idx] . seglen = (bit_count + 35) / 36;
 
 done:;
     word24 codePtr = t [ARG3] . argAddr;
@@ -4567,7 +4734,7 @@ static void trapSetKSTAttributes (void)
       sim_printf ("WARNING: audit not implemented\n");
     if (kstaWhich & (01llu << 30)) // explicit_deactivate_ok
       {
-        segTable [idx] . explicit_deactivate_ok = 
+        KST [idx] . explicit_deactivate_ok = 
           (kstaValue & (01llu << 30)) ? true : false;
       }
 
@@ -4604,6 +4771,14 @@ static void trapComErr (void)
 
 static void trapDeactivate (void)
   {
+
+#if 0
+// XXX This is called by eis_tester to check page fault handling in EIS.
+//   1. We know EIS page fault handling is broken.
+//   2. FXE is unpaged for now.
+//   3. Therefore, this call is ignored.
+
+
 //      phcs_$deactivate entry (ptr, fixed bin (35)),
 
 //                        deactivate (astep, code)
@@ -4649,7 +4824,23 @@ static void trapDeactivate (void)
     word24 astepPtr = ITSToPhysmem (M + ap1, NULL);
     //for (int i = 0; i < /*12*/ 1; i ++)
       //sim_printf (">%08o [%012llo]\n", astepPtr + i, M [astepPtr + i]);
+#endif
     doRCU (true); // doesn't return
+  }
+
+// Invoke signal handler...
+
+// io_signal, signal_, signal: entry (a_name, a_mcptr, a_info_ptr);
+//   a_name          char (*),      /* condition being signalled */
+//   a_info_ptr      ptr,           /* information about software signal */
+//   a_wcptr         ptr,           /* info about wall crossing from this ring before crawlout */
+//   a_mcptr          ptr;           /* optional machine conditions ptr */
+ 
+
+static void trapUnhandledSignal (void)
+  {
+    sim_printf ("Unhandled signal\n");
+    longjmp (jmpMain, JMP_STOP);
   }
 
 static void trapReturnToFXE (void)
@@ -4678,6 +4869,9 @@ static void fxeTrap (void)
       {
         case TRAP_PUT_CHARS:
           trapPutChars ();
+          break;
+        case TRAP_GET_LINE:
+          trapGetLine ();
           break;
 #if 0
         case TRAP_MODES:
@@ -4729,6 +4923,9 @@ static void fxeTrap (void)
           trapComErr ();
           break;
 
+        case TRAP_UNHANDLED_SIGNAL:
+          trapUnhandledSignal ();
+          break;
         case TRAP_RETURN_TO_FXE:
           trapReturnToFXE ();
           break;
@@ -4884,13 +5081,13 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
     static char buf [129];
     for (uint i = 0; i < N_SEGS; i ++)
       {
-        if (segTable [i] . allocated && segTable [i] . segno == segno)
+        if (KST [i] . allocated && KST [i] . segno == segno)
           {
             if (compname)
-                * compname = segTable [i] . segname;
+                * compname = KST [i] . segname;
             if (compoffset)
                 * compoffset = 0;  
-            sprintf (buf, "%s:+0%0o", segTable [i] . segname, offset);
+            sprintf (buf, "%s:+0%0o", KST [i] . segname, offset);
             return buf;
           }
       }
