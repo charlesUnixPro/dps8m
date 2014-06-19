@@ -149,7 +149,7 @@ static void printACC (word36 * p)
   }
 #endif
 
-#if 0
+#if 1
 static void printNChars (word36 * p, word24 cnt)
   {
     for (uint i = 0; i < cnt; i ++)
@@ -453,6 +453,7 @@ typedef struct segTableEntry
     word18 linkage_offset;
     word18 linkage_length;
     word18 isot_offset;
+    word18 symbol_offset;
     word36 * segnoPadAddr;
 
 // RNT
@@ -948,6 +949,229 @@ typedef struct __attribute__ ((__packed__)) type_pair
 //++ 
 //++ /* END INCLUDE FILE ... object_map.incl.pl1 */
 
+
+typedef struct __attribute__ ((__packed__)) symbol_block
+  {
+    word36 dcl_version;
+    word36 identifier [2];
+    word36 gen_number;
+    word72 gen_created;
+    word72 object_created;
+    word36 generator [2];
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint size : 18;
+            uint offset : 18;
+          } gen_version;
+        word36 align1;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint size : 18;
+            uint offset : 18;
+          } userid;
+        word36 align2;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint size : 18;
+            uint offset : 18;
+          } comment;
+        word36 align3;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint stat_boundary : 18;
+            uint text_boundary : 18;
+          };
+        word36 align4;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint area_pointer : 18;
+            uint source_map : 18;
+          };
+        word36 align5;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint block_size : 18;
+            uint backpointer : 18;
+          };
+        word36 align6;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint rel_text : 18;
+            uint next_block : 18;
+          };
+        word36 align7;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint rel_link : 18;
+            uint rel_def : 18;
+          };
+        word36 align8;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint maxi_truncate : 18;
+            uint rel_symbol : 18;
+          };
+        word36 align9;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint unused : 18;
+            uint mini_truncate : 18;
+          };
+        word36 align10;
+      };
+  } symbol_block;
+
+typedef struct __attribute__ ((__packed__)) map
+  {
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint size : 18;
+            uint offset : 18;
+          } pathname;
+        word36 align1;
+      };
+    word36 uid;
+    word36 dtm [2];
+  } map;
+
+typedef struct __attribute__ ((__packed__)) source_map
+  {
+    word36 version;
+    word36 number;
+    map firstMap;
+  } source_map;
+
+typedef struct __attribute__ ((__packed__)) pl1_symbol_block
+  {
+    word36 version;
+    word36 identifier [2];
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint pad : 1;
+            uint long_profile : 1;
+            uint table_removed : 1;
+            uint io : 1;
+            uint flow : 1;
+            uint map : 1;
+            uint table : 1;
+            uint profile : 1;
+          } flags;
+        word36 align1;
+      };
+    word36 greatest_severity [2];
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint profile : 18;
+            uint root : 18;
+          };
+        word36 align2;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint last : 18;
+            uint first : 18;
+          } map;
+        word36 align3;
+      };
+    union
+      {
+        struct __attribute__ ((__packed__))
+          {
+            uint length : 18;
+            uint offset : 18;
+          } segname;
+        word36 align4;
+      };
+
+  } pl1_symbol_block;
+
+static void printLineNumbers (int segIdx)
+  {
+    sim_printf ("Line numbers:\n");
+    segTableEntry * e = segTable + segIdx;
+    word24 segAddr = lookupSegAddrByIdx (segIdx);
+    word36 * segp = M + segAddr;
+    symbol_block * sbh = (symbol_block *) (segp + e -> symbol_offset);
+//sim_printf ("e -> symbol_offset %06o\n", e -> symbol_offset);    
+    //printNChars (sbh -> identifier, 8);
+    while (sbh)
+      {
+#if 0
+        //sim_printf ("source_map %06o\n", sbh -> source_map);    
+        //source_map * sm = (source_map *) (segp + sbh -> source_map + e -> symbol_offset);
+        source_map * sm = (source_map *) (((word36 *) sbh) + sbh -> source_map);
+        //sim_printf ("sm version %llu number %llu\n", sm -> version, sm -> number);
+
+        map * mp = & sm -> firstMap;
+        for (uint i = 0; i < sm -> number; i ++)
+          {
+            //sim_printf ("os %06o sz %06o uid %012llo dtm %012llo %012llo\n",
+              //mp [i] . pathname . offset, mp [i] . pathname . size,
+              //mp [i] . uid, mp [i] . dtm [0], mp [i] . dtm [1]);
+            word36 * pn = (((word36 *) sbh) + mp [i] . pathname . offset);
+            printNChars (pn, mp [i] . pathname . size);
+            sim_printf ("\n");
+          }
+#endif
+
+        //sim_printf ("area %06o\n", sbh -> area_pointer);
+        if (sbh -> area_pointer)
+          {
+            pl1_symbol_block * psb = 
+             (pl1_symbol_block *) (((word36 *) sbh) + sbh -> area_pointer);
+            if (psb -> identifier [0] == 0160154061151llu &&
+                psb -> identifier [1] == 0156146157040llu) // "pl1info"
+              {
+                // printNChars (psb -> identifier, 8); sim_printf ("\n");
+                if (psb -> flags . map)
+                  sim_printf ("has map\n");
+              }
+          }
+        //sim_printf ("next_block %06o\n", sbh -> next_block);
+        if (sbh -> next_block)
+          sbh = (symbol_block *) (segp + e -> symbol_offset + sbh -> next_block);
+        else
+          sbh = NULL;
+     }
+  }
+
 static int lookupDef (int segIdx, char * segName, char * symbolName, word18 * value)
   {
     segTableEntry * e = segTable + segIdx;
@@ -1247,6 +1471,8 @@ static void parseSegment (int segIdx)
     e -> isot_offset = mapp -> static_offset;
 //sim_printf ("static length %o\n", mapp -> static_length);
 //sim_printf ("symbol offset %o\n", mapp -> symbol_offset);
+    e -> symbol_offset = mapp -> symbol_offset;
+
 //sim_printf ("symbol length %o\n", mapp -> symbol_length);
 
 //    word36 * oip_textp = segp + mapp -> text_offset;
@@ -2681,6 +2907,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
         installSDW (segIdx);
         installLOT (segIdx);
+
+        printLineNumbers (segIdx);
         // sim_printf ("executed segment idx %d, segno %o, phyaddr %08o\n", 
         // segIdx, segTable [segIdx] . segno, lookupSegAddrByIdx (segIdx));
         createStackSegments ();
@@ -2841,8 +3069,9 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
 
-    sim_printf ("Starting execution...\n");
-    run_cmd (RU_CONT, "");
+// XXX breaks SIM_DEBUG
+    //sim_printf ("Starting execution...\n");
+    //run_cmd (RU_CONT, "");
 
     return SCPE_OK;
   }
@@ -3065,7 +3294,7 @@ static void faultTag2Handler (void)
           char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
           if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
             {
-              //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
+              sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
               makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                        linkCopy . modifier);
               free (segStr);
