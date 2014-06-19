@@ -7,6 +7,7 @@
 */
 
 #include <stdio.h>
+//#define DBGF // page fault debugging
 //#define DBGX
 #ifdef DBGX
 #include <ctype.h>
@@ -28,6 +29,7 @@ struct MOPstruct
 };
 
 
+#ifdef DBGF
 static void packCharBit (word6 * D_PTR_B, word3 TAk, uint effCHAR, uint effBITNO)
   {
     switch (TAk)
@@ -463,6 +465,7 @@ void doEIS_CAF (void)
     if (ndes == 3)
       setupOperandDesc (3);
   }
+#endif
 
 // CANFAULT
 static void EISWrite(EISaddr *p, word36 data)
@@ -488,6 +491,7 @@ static void EISWrite(EISaddr *p, word36 data)
     }
 }
 
+#ifdef DBXF
 static word36 myEISRead (int k)
   {
 
@@ -509,6 +513,7 @@ static word36 myEISRead (int k)
             address = (AR [arn] . WORDNO + SIGNEXT15 (offset)) & MASK18;
 #endif   
   }
+#endif
 
 // CANFAULT
 static word36 EISRead(EISaddr *p)
@@ -5021,6 +5026,7 @@ void cmpc(DCDstruct *ins)
     parseAlphanumericOperandDescriptor(1, e);
     parseAlphanumericOperandDescriptor(2, e);
     
+#ifdef DBGF
 // debug
 if (e->TA1 != du . TA1) sim_printf ("TA1 %d %d\n", e -> TA1, du . TA1);
 if (e->TA2 != du . TA2) sim_printf ("TA2 %d %d\n", e -> TA2, du . TA2);
@@ -5033,14 +5039,19 @@ unpackCharBit (du . D_PTR_B [0], du . TA1, & du_CN1, & du_BITNO1);
 unpackCharBit (du . D_PTR_B [1], du . TA2, & du_CN2, & du_BITNO2);
 if (e->CN1 != (int) du_CN1) sim_printf ("%lld CN1 %d %u\n", sys_stats . total_cycles, e->CN1, du_CN1);
 if (e->CN2 != (int) du_CN2) sim_printf ("%lld CN2 %d %u\n", sys_stats . total_cycles, e->CN2, du_CN2);
+#endif
 
-//---    e->srcCN = e->CN1;  ///< starting at char pos CN
-//---    e->srcCN2= e->CN2;  ///< character number
+#ifdef DBGF
     e -> srcCN = du_CN1;  // starting at char pos CN
     e -> srcCN2= du_CN2;  // character number
-    
-//---    e->srcTA = e->TA1;
+
     e -> srcTA = du . TA1;
+#else
+    e->srcCN = e->CN1;  ///< starting at char pos CN
+    e->srcCN2= e->CN2;  ///< character number
+    
+    e->srcTA = e->TA1;
+#endif
     
     int fill = (int) getbits36 (cu . IWB, 0, 9);
     
@@ -5060,12 +5071,21 @@ char * c2p = c2buf;
 *c1p = '\0';
 *c2p = '\0';
 #endif
+#ifdef DBGF
     uint i = 0;
-//---    for (; i < min (e->N1, e->N2); i += 1)
     for (; i < min (du . N1, du . N2); i ++)
+#else
+    int i = 0;
+    for (; i < min (e->N1, e->N2); i += 1)
+#endif
       {
+#ifdef DBGF
         int c1 = EISget469(&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
         int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2);   // get Y-char2n
+#else
+        int c1 = EISget469(&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n
+        int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2);   // get Y-char2n
+#endif
 #ifdef DBGX
 *(c1p++)=c1; *c1p=0;    
 *(c2p++)=c2; *c2p=0;    
@@ -5080,31 +5100,53 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
             return;
         }
       }
-//---    if (e->N1 < e->N2)
+#ifdef DBGF
     if (du . N1 < du . N2)
       {
-//---        for(; i < e->N2; i += 1)
+#else
+    if (e->N1 < e->N2)
+#endif
+#ifdef DBGF
         for (; i < du . N2; i ++)
+#else
+        for(; i < e->N2; i += 1)
+#endif
           {
             int c1 = fill;     // use fill for Y-char1n
+#ifdef DBGF
             int c2 = EISget469(&e->ADDR2, &e->srcCN2, du . TA2); // get Y-char2n
+#else
+            int c2 = EISget469(&e->ADDR2, &e->srcCN2, e->TA2); // get Y-char2n
+#endif
             
             if (c1 != c2)
               {
                 CLRF (cu . IR, I_ZERO);  // an inequality found
                 SCF (c1 < c2, cu . IR, I_CARRY);
-#ifdef DBGX
+#ifdef DBGF
 sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
 #endif
                 return;
               }
           }
+#ifdef DBGF
       }
     else if (du . N1 > du . N2)
       {
+#else
+    else if (e->N1 > e->N2)
+#endif
+#ifdef DBGF
         for(; i < du . N1; i ++)
+#else
+        for(; i < e->N1; i ++)
+#endif
           {
+#ifdef DBGF
             int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  du . TA1);   // get Y-char1n
+#else
+            int c1 = EISget469 (&e->ADDR1,  &e->srcCN,  e->TA1);   // get Y-char1n
+#endif
             int c2 = fill;   // use fill for Y-char2n
             
             if (c1 != c2)
@@ -5119,7 +5161,9 @@ sim_printf ("cmpc <%s> <%s> %c\n", c1buf, c2buf, c1<c2?'<':'>');
                 return;
               }
           }
+#ifdef DBGF
       }
+#endif
 #ifdef DBGX
 sim_printf ("cmpc <%s> <%s> =\n", c1buf, c2buf);
 #endif
