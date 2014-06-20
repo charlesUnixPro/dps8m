@@ -415,6 +415,7 @@ enum
     TRAP_MAKE_SEG,
     TRAP_SET_BC_SEG,
     TRAP_HIGH_LOW_SEG_COUNT,
+    TRAP_FS_GET_MODE,
 
     // phcs_
     TRAP_SET_KST_ATTRIBUTES,
@@ -943,6 +944,12 @@ typedef struct __attribute__ ((__packed__)) type_pair
       };
   } type_pair;
 
+typedef struct __attribute__ ((__packed__)) initialization_info
+  {
+    word36 n_words;
+    word36 code;
+    word36 info [];
+  } initialization_info;
 //++ 
 //++ declare   map_ptr bit(18) aligned based;          /* Last word of the segment. It points to the base of the object map. */
 //++ 
@@ -1306,6 +1313,7 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "make_seg", TRAP_MAKE_SEG },
     { "hcs_", "set_bc_seg", TRAP_SET_BC_SEG },
     { "hcs_", "high_low_seg_count", TRAP_HIGH_LOW_SEG_COUNT },
+    { "hcs_", "fs_get_mode", TRAP_FS_GET_MODE },
     { "phcs_", "set_kst_attributes", TRAP_SET_KST_ATTRIBUTES },
     { "phcs_", "deactivate", TRAP_DEACTIVATE },
     { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH },
@@ -1415,6 +1423,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             return 1;
           }
         // sim_printf ("found segment but not symbol\n");
+// XXX this segment should be terminated if the symbol was not found
         return 0; 
       }
     // sim_printf ("resoveName fail\n");
@@ -2872,6 +2881,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_pl1_runtime_");
     installLibrary ("bound_process_env_");
     installLibrary ("bound_expand_path_");
+    installLibrary ("bound_ti_term_");
+    installLibrary ("bound_fscom1_");
     installLibrary ("error_table_");
 #if 0
       {
@@ -3250,7 +3261,7 @@ static void faultTag2Handler (void)
 
     word18 offset = GETHI (M [0200 + 5]);
     word15 segno = GETHI (M [0200 + 2]) & MASK15;
-    //sim_printf ("f2 fault %05o:%06o\n", segno, offset);
+    sim_printf ("f2 fault %05o:%06o\n", segno, offset);
 
     if (segno != CLR_SEGNO)
       {
@@ -3314,49 +3325,120 @@ static void faultTag2Handler (void)
 
     type_pair * typePair = (type_pair *) (defBase + expr -> type_ptr);
 
-    word15 refSegno;
-    word18 refValue;
-    int defIdx;
-
     switch (typePair -> type)
       {
         case 1:
           //sim_printf ("    1: self-referencing link\n");
           sim_printf ("ERROR: unhandled type %d\n", typePair -> type);
           return;
-        case 3:
-          //sim_printf ("    3: referencing link\n");
-          sim_printf ("ERROT: unhandled type %d\n", typePair -> type);
-          return;
-        case 4:
-          //sim_printf ("    4: referencing link with offset\n");
-          //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
-          //sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
-          ;
-          char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
-          char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
-          if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
-            {
-              //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
-              makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
-                       linkCopy . modifier);
-              free (segStr);
-              free (extStr);
-              doRCU (false); // doesn't return
-            }
-          else
-            {
-              sim_printf ("ERROR: can't resolve %s:%s\n", segStr, extStr);
-            }
 
-          free (segStr);
-          free (extStr);
-          //int segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
+        case 3:
+          {
+            word15 refSegno;
+            word18 refValue;
+            int defIdx;
+
+            sim_printf ("    3: referencing link with offset\n");
+            sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+            char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
+            if (resolveName (segStr, NULL, & refSegno, & refValue, & defIdx))
+              {
+                sim_printf ("FXE: snap %s\n", segStr);
+                makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
+                         linkCopy . modifier);
+                free (segStr);
+                doRCU (false); // doesn't return
+              }
+            else
+              {
+                sim_printf ("ERROR: can't resolve %s\n", segStr);
+              }
+
+            free (segStr);
+          }
           break;
+
+
+        case 4:
+          {
+            word15 refSegno;
+            word18 refValue;
+            int defIdx;
+
+            //sim_printf ("    4: referencing link with offset\n");
+            //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+            //sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+            char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
+            char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
+            if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
+              {
+                //sim_printf ("FXE: snap %s:%s\n", segStr, extStr);
+                makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
+                         linkCopy . modifier);
+                free (segStr);
+                free (extStr);
+                doRCU (false); // doesn't return
+              }
+            else
+              {
+                sim_printf ("ERROR: can't resolve %s:%s\n", segStr, extStr);
+              }
+
+            free (segStr);
+            free (extStr);
+            //int segIdx = loadSegmentFromFile (sprintACC (defBase + typePair -> seg_ptr));
+          }
+          break;
+
         case 5:
-          //sim_printf ("    5: self-referencing link with offset\n");
-          sim_printf ("ERROR: unhandled type %d\n", typePair -> type);
-          return;
+          {
+            //sim_printf ("    5: self-referencing link with offset\n");
+            //sim_printf ("      seg %d\n", typePair -> seg_ptr);
+            //sim_printf ("      ext %s\n", sprintACC (defBase + typePair -> ext_ptr));
+
+// XXX ext contains the name of the external variable; it is unclear
+// how this name should be used.
+            if (typePair -> seg_ptr != 5)
+              {
+                sim_printf ("ERROR: dont grok seg_ptr (%d) != 5\n",
+                            typePair -> seg_ptr);
+                break;
+              }        
+
+            initialization_info * iip = 
+              (initialization_info *) (defBase + typePair -> trap_ptr);
+
+            word36 n_words = iip -> n_words;
+            sim_printf ("n words %lld code %lld\n", n_words, iip -> code);
+
+            word18 variableOffset = clrFreePtr;
+            clrFreePtr += iip -> n_words;
+
+            if (iip -> code == 0)
+              {
+                // no initialization
+              }
+            else if (iip -> code == 2)
+              {
+                // copy info array
+                KSTEntry * clrEntry = KST + clrIdx;
+                word36 * clrMemory = M + clrEntry -> physmem;
+                word36 * to = clrMemory + variableOffset;
+
+                for (uint i = 0; i < (uint) n_words; i ++)
+                  to [i] = iip -> info [i]; 
+              }
+            else
+              {
+                sim_printf ("ERROR: dont grok code (%lld) != 0 or 2\n",
+                            iip -> n_words);
+                break;
+              }
+            makeITS (M + addr, CLR_SEGNO, linkCopy . ringno, variableOffset, 0, 
+                     linkCopy . modifier);
+            doRCU (false); // doesn't return
+          }
+
         default:
           sim_printf ("ERROR: unknown type %d\n", typePair -> type);
           return;
@@ -4675,6 +4757,67 @@ static void trapHighLowSegCount (void)
     doRCU (true); // doesn't return
   }
 
+static void trapFSGetMode (void)
+  {
+// fs_get$mode returns the mode of the current user at the current
+//   validation level for the segment specified by segptr.
+// USAGE: call fs_get$mode (segptr, mode, code);
+//   1) segptr ptr - - - pointer to segment
+//   2) mode fixed bin(5) - - - mode of user (output)
+//   3) code fixed bin - - - error code (output)
+// Notes: The mode argument is a fixed binary number where the desired
+// mode is encoded with one access mode specified by each bit.  For
+// segments the modes are:
+//    read         the 8-bit is 1 (i.e., 01000b)
+//    execute      the 4-bit is 1 (i.e., 00100b)
+//    write                the 2-bit is 1 (i.e., 00010b)
+// For directories, the modes are:
+//    status               the 8-bit is 1 (i.e., 01000b)
+//    modify               the 2-bit is 1 (i.e., 00010b)
+//    append               the 1-bit is 1 (i.e., 00001b)
+    argTableEntry t [3] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (3, 0, t))
+      return;
+
+    // Argument 1: seg_ptr
+    word24 ap1 = t [ARG1] . argAddr;
+    word15 segno = GET_ITS_SEGNO (M + ap1);
+    word24 code = 0;
+    if (segno >= N_SEGNOS)
+      {
+        code = 1; // XXX
+      }
+    else
+      {
+        int idx = segnoMap [segno];
+        if (idx < 0)
+          {
+            code = 1; // XXX
+          }
+        else
+          {
+            word36 m = 0;
+            KSTEntry * e = KST + idx;
+            if (e -> R)
+              m |= 010;
+            if (e -> E)
+              m |= 004;
+            if (e -> W)
+              m |= 002;
+            M [t [ARG2] . argAddr] = m;
+          }
+      }
+    M [t [ARG3] . argAddr] = code;
+
+    doRCU (true); // doesn't return
+  }
+
 static void trapSetKSTAttributes (void)
   {
 // set_kst_attributes: proc (a_segno, a_kstap, a_code);
@@ -4911,6 +5054,9 @@ static void fxeTrap (void)
           break;
         case TRAP_HIGH_LOW_SEG_COUNT:
           trapHighLowSegCount ();
+          break;
+        case TRAP_FS_GET_MODE:
+          trapFSGetMode ();
           break;
 
         case TRAP_SET_KST_ATTRIBUTES:
