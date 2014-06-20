@@ -2242,91 +2242,6 @@ void fxeSetCall6Trap (void)
 
 void fxeCall6TrapRestore (void)
   {
-#if 0
-    if (! c6tValid)
-      {
-        sim_printf ("ERROR: !c6tValid\n");
-        return;
-      }
-
-    PPR . P = c6tPPR_P;
-    PPR . PRR = c6tPPR_PRR;
-    PPR . PSR = c6tPPR_PSR;
-    PPR . IC = c6tPPR_IC;
-    c6tValid = false;
-#endif
-
-#if 0
-    // emulate "rtcd    sp|stack_frame.return_ptr"
-    word15 spSegno = PR [6] . SNR;
-    word18 spWordno = PR [6] . WORDNO;
-    int spIdx = segnoMap [spSegno];
-    word24 spPhysmem = KST [spIdx] . physmem + spWordno;
-    word24 rpAddr = spPhysmem + 24;
-    word36 even = M [rpAddr];
-    word36 odd = M [rpAddr + 1];
-sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);  
-
-    // C(Y-pair)3,17 -> C(PPR.PSR)
-    PPR . PSR = getbits36 (even, 3, 15);
-    word3 targetRing = KST [segnoMap [PPR . PSR]] . R1;
-    word3 targetP = KST [segnoMap [PPR . PSR]] . P;
-    
-    // Maximum of C(Y-pair)18,20; C(TPR.TRR); C(SDW.R1) -> C(PPR.PRR)
-    PPR . PRR = max3(getbits36 (even, 18, 3), TPR . TRR, targetRing);
-
-    // C(Y-pair)36,53 -> C(PPR.IC)
-    PPR . IC = getbits36 (odd, 0, 18);
-
-    // If C(PPR.PRR) = 0 then C(SDW.P) -> C(PPR.P);
-    // otherwise 0 -> C(PPR.P)
-    if (PPR . PRR == 0)
-      PPR . P = targetP;
-    else
-      PPR . P = 0;
-
-    // C(PPR.PRR) -> C(PRn.RNR) for n = (0, 1, ..., 7)
-
-    PR [0] . RNR =
-    PR [1] . RNR =
-    PR [2] . RNR =
-    PR [3] . RNR =
-    PR [4] . RNR =
-    PR [5] . RNR =
-    PR [6] . RNR =
-    PR [7] . RNR = PPR . PRR;
-#endif
-
-#if 0
-    // Transfer to the return_ptr
-    word15 spSegno = PR [6] . SNR;
-    word18 spWordno = PR [6] . WORDNO;
-    int spIdx = segnoMap [spSegno];
-    word24 spPhysmem = KST [spIdx] . physmem + spWordno;
-    word24 rpAddr = spPhysmem + 20;
-    word36 even = M [rpAddr];
-    word36 odd = M [rpAddr + 1];
-    sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);  
-    if (getbits36 (odd, 30, 6) != 020)
-      {
-        sim_printf ("ERROR: Expected tag 020 (%02llo)\n", 
-                    getbits36 (odd, 30, 6));
-        return;
-      }
-    word15 indSegno = getbits36 (even, 3, 15);
-    word15 indRing = getbits36 (even, 18, 3);
-    word18 indWordno = getbits36 (odd, 0, 18);
-    //word24 indPhysmem = KST [segnoMap [indSegno]] . physmem + indWordno;
-
-    //sim_printf ("ind %08o %012llo %012llo\n", indPhysmem, M [indPhysmem], M [indPhysmem + 1]);  
-
-    PPR . PSR = indSegno;
-    PPR . PRR = indRing;
-    PPR . IC = indWordno;
-    // XXX PPR.P...
-#endif
-
-#if 1
     word18 value;
     word15 segno;
     int idx;
@@ -2339,8 +2254,6 @@ sim_printf ("rp %08o %012llo %012llo\n", rpAddr, M [rpAddr], M [rpAddr + 1]);
       }
     PPR . PSR = segno;
     PPR . IC = value; // + 441; // return_main
-#endif
-
   }
 
 static void faultTag2Handler (void)
