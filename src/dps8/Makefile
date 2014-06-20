@@ -261,6 +261,15 @@ H_SRCS += dps8_utils.h
 H_SRCS += utarray.h
 H_SRCS += uthash.h
 H_SRCS += utlist.h
+H_SRCS += definition_dcls.incl.pl1.h
+H_SRCS += iocbx.incl.pl1.h
+H_SRCS += linkdcl.incl.pl1.h
+H_SRCS += object_map.incl.pl1.h
+H_SRCS += pl1_symbol_block.incl.pl1.h
+H_SRCS += source_map.incl.pl1.h
+H_SRCS += stack_header.incl.pl1.h
+H_SRCS += symbol_block.incl.pl1.h
+
 
 
 all: tags locallibs_then_dps8 
