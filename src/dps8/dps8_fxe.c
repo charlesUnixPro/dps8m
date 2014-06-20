@@ -99,9 +99,10 @@
 
 static bool FXEinitialized = false;
 
-// Remember which segment we loaded bound_library_wired_ into
+// Remember which segments we loaded bound_library_wired_ and error_table into
 
 static int libIdx;
+static int errIdx;
 
 //
 // Forward declarations
@@ -182,6 +183,14 @@ static int accCmp (word36 * acc, char * str)
     return 1;
   }
    
+static void trimTrailingSpaces (char * str)
+  {
+    char * end = str + strlen(str) - 1;
+    while (end > str && isspace (* end))
+      end --;
+    * (end + 1) = 0;
+  }
+
 static word36 packedPtr (word6 bitno, word12 shortSegNo, word18 wordno)
   {
     word36 p = 0;
@@ -1914,6 +1923,21 @@ t_stat fxeDump (int32 __attribute__((unused)) arg,
     return SCPE_OK;
   }
 
+static word18 lookupErrorCode (char * name)
+  {
+    //word15 segno; 
+    word18 value; 
+    //int idx;
+
+    //if (resolveName ("error_table_", name, & segno, & value, & idx))
+    if (! lookupDef (errIdx, "error_table_", name, & value))
+      {
+        sim_printf ("ERROR: couldn't resolve error_table_$%s\n", name);
+        return 1; // XXX what is the error code for unknown error code?
+      }
+    return value;
+ }
+
 //
 // fxe - load a segment into memory and execute it
 //
@@ -2020,7 +2044,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_expand_path_");
     installLibrary ("bound_ti_term_");
     installLibrary ("bound_fscom1_");
-    installLibrary ("error_table_");
+    errIdx = installLibrary ("error_table_");
 #if 0
       {
         word15 segno; word18 value; int idx;
@@ -2613,8 +2637,9 @@ static void trapPutChars (void)
     // sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx >= N_IOCBS)
       {
-        sim_printf ("ERROR: iocbIdx (%d) >= N_IOCBS (%d)\n", iocbIdx, N_IOCBS);
-        return;
+        //sim_printf ("ERROR: iocbIdx (%d) >= N_IOCBS (%d)\n", iocbIdx, N_IOCBS);
+        M [t [ARG4] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
+        doRCU (true); // doesn't return
       }
 
     word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
@@ -2630,6 +2655,7 @@ static void trapPutChars (void)
         sim_printf ("%c", (char) (ch & 0177U));
       }
 
+    M [t [ARG4] . argAddr] = 0;
     doRCU (true); // doesn't return
   }
 
@@ -2725,8 +2751,8 @@ static void trapGetLine (void)
     //sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx >= N_IOCBS)
       {
-        sim_printf ("ERROR: iocbIdx (%d) >= N_IOCBS (%d)\n", iocbIdx, N_IOCBS);
-        return;
+        M [t [ARG5] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
+        doRCU (true); // doesn't return
       }
 
     word24 bufPtr = ITSToPhysmem (M + ap2, NULL);
@@ -2754,6 +2780,7 @@ static void trapGetLine (void)
       }
 
     M [ap4] = actlen;
+    M [t [ARG5] . argAddr] = 0;
 
     doRCU (true); // doesn't return
   }
@@ -2940,12 +2967,14 @@ static void trapGetLineLengthSwitch (void)
     //sim_printf ("iocbIdx %u\n", iocbIdx);
     if (iocbIdx != IOCB_USER_OUTPUT)
       {
-        sim_printf ("ERROR: iocbIdx (%d) != IOCB_USER_OUTPUT (%d)\n", 
-                    iocbIdx, IOCB_USER_OUTPUT);
-        return;
+        //sim_printf ("ERROR: iocbIdx (%d) != IOCB_USER_OUTPUT (%d)\n", 
+                    //iocbIdx, IOCB_USER_OUTPUT);
+        M [t [ARG2] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
+        doRCU (true); // doesn't return
       }
 
     M [ap3] = 80;
+    M [t [ARG2] . argAddr] = 0;
 
     doRCU (true); // doesn't return
   }
@@ -2986,6 +3015,7 @@ static void trapFSSearchGetWdir (void)
     if (isNullPtr (ap1))
       {
         // Can't do anything
+        M [ap2] = 0;
       }
     else
       {
@@ -2996,14 +3026,6 @@ static void trapFSSearchGetWdir (void)
       }
 
     doRCU (true); // doesn't return
-  }
-
-static void trimTrailingSpaces (char * str)
-  {
-    char * end = str + strlen(str) - 1;
-    while (end > str && isspace (* end))
-      end --;
-    * (end + 1) = 0;
   }
 
 static int initiateSegment (char * __attribute__((unused)) dir, char * entry, 
@@ -3201,7 +3223,8 @@ static void trapInitiateCount (void)
       {
         sim_printf ("ERROR: initiate_count expected d4size 24, got %d\n", 
                     d4size);
-        return;
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
       }
 
     // Argument 6: seg ptr
@@ -3214,7 +3237,8 @@ static void trapInitiateCount (void)
       {
         sim_printf ("ERROR: initiate_count expected d6size 0, got %d\n", 
                     d6size);
-        return;
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
       }
 
 
@@ -3227,7 +3251,8 @@ static void trapInitiateCount (void)
     if (d7size != 35)
       {
         sim_printf ("ERROR: initiate_count expected d7size 35, got %d\n", d7size);
-        return;
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
       }
 
 
@@ -3249,7 +3274,7 @@ static void trapInitiateCount (void)
         sim_printf ("ERROR: initiateSegment fail\n");
         bitcnt = 0;
         makeNullPtr (ptr);
-        code = 1; // XXX need real codes
+        code = lookupErrorCode ("bad_segment"); // XXX probably not the right code
       }       
 
     if (status == 0 && arg3)
@@ -3257,6 +3282,7 @@ static void trapInitiateCount (void)
     M [ap4] = bitcnt & MASK24;
     M [ap6] = ptr [0];
     M [ap6 + 1] = ptr [1];
+    M [t [ARG7] . argAddr] = code;
 
     free (arg1);
     free (arg2);
@@ -3411,7 +3437,7 @@ static void trapMakePtr (void)
     if (! rc)
       {
         sim_printf ("WARNING: make_ptr resolve fail %s|%s\n", arg2, arg3);
-        code = 1; // XXX need real code
+        code = lookupErrorCode ("bad_entry_point_name");
         makeNullPtr (ptr);
       }
     else
@@ -3474,14 +3500,14 @@ static void trapStatusMins (void)
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
         sim_printf ("ERROR: too big\n");
-        code = 1; // Need a real code XXX
+        code = lookupErrorCode ("invalidsegno");
         goto done;
       }
     int idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
-        code = 1; // Need a real code XXX
+        code = lookupErrorCode ("invalidsegno");
         goto done;
       }
 
@@ -3627,7 +3653,7 @@ static void trapMakeSeg (void)
       {
         KSTEntry * e = KST + idx;
         makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
-        code = 1; // XXX need a real code
+        code = lookupErrorCode ("bad_entry_point_name");
         goto done;
       }
 
@@ -3637,7 +3663,7 @@ static void trapMakeSeg (void)
       {
         KSTEntry * e = KST + idx;
         makeITS (ptr, e -> segno, e -> R1, 0, 0, 0);
-        code = 1; // XXX need a real code
+        code = lookupErrorCode ("bad_entry_point_name");
         goto done;
       }
 
@@ -3649,8 +3675,8 @@ static void trapMakeSeg (void)
                            0);
     if (idx < 0)
       {
-        sim_printf ("ERROR: Unable to allocate segment for make_seg\n");
-        return;
+        code = lookupErrorCode ("noalloc");
+        goto done;
       }
 
     KSTEntry * e = KST + idx;
@@ -3725,14 +3751,14 @@ static void trapSetBcSeg (void)
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
         sim_printf ("ERROR: too big\n");
-        code = 1; // Need a real code XXX
+        code = lookupErrorCode ("invalidsegno");
         goto done;
       }
     int idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
-        code = 1; // Need a real code XXX
+        code = lookupErrorCode ("invalidsegno");
         goto done;
       }
 
@@ -3815,14 +3841,14 @@ static void trapFSGetMode (void)
     word24 code = 0;
     if (segno >= N_SEGNOS)
       {
-        code = 1; // XXX
+        code = lookupErrorCode ("invalidsegno");
       }
     else
       {
         int idx = segnoMap [segno];
         if (idx < 0)
           {
-            code = 1; // XXX
+            code = lookupErrorCode ("invalidsegno");
           }
         else
           {
@@ -3873,14 +3899,14 @@ static void trapSetKSTAttributes (void)
     if (segno > N_SEGNOS) // bigger segno then we deal with
       {
         sim_printf ("ERROR: too big\n");
-        code = 1; // Need a real code XXX
+        code = lookupErrorCode ("invalidsegno");
         goto done;
       }
     int idx = segnoMap [segno];
     if (idx < 0) // unassigned segno
       {
         sim_printf ("ERROR: unassigned %05o\n", segno);
-        code = 1; // Need a real code XXX
+        code = lookupErrorCode ("invalidsegno");
         goto done;
       }
 
