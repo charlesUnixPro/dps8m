@@ -17,7 +17,6 @@
 //   Implement user_storage_ptr.
 //   Implement rnt_ptr.
 //   Make trap handlers callbacks instead of switches.
-//   Improve allocateSegment call with abbreviations.
 //   
 // Medium items.
 //    Research trans_op_tv_ptr, sct_ptrunwinder_ptr, ect_ptr, assign_linkage_ptr.
@@ -544,6 +543,10 @@ static void setSegno (int idx, word15 segno)
 
 static word24 nextPhysmem = 1; // First block is used by dseg;
 
+#define RINGS_FFF FXE_RING, FXE_RING, FXE_RING
+#define RINGS_ZFF 0, FXE_RING, FXE_RING
+#define P_REW 1, 1, 1, 0
+#define P_RW  1, 0, 1, 0
 static int allocateSegment (uint seglen, char * segname, uint segno,
                             uint R1, uint R2, uint R3, 
                             uint R, uint E, uint W, uint P)
@@ -1342,8 +1345,7 @@ static int loadSegmentFromFile (char * arg)
     //word24 bitcnt = flen * 8;
     //word18 wordcnt = nbits2nwords (bitcnt);
     word18 wordcnt = (flen * 8) / 36;
-    int segIdx = allocateSegment (wordcnt, arg, 0, 
-                                  FXE_RING, FXE_RING, FXE_RING, 1, 1, 1, 0);
+    int segIdx = allocateSegment (wordcnt, arg, 0, RINGS_FFF, P_REW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
@@ -1387,7 +1389,7 @@ static void createStackSegments (void)
         char segname [SEGNAME_LEN + 1];
         sprintf (segname, "stack_%d", i);
         int ssIdx = allocateSegment (MAX_SEGLEN, segname, STACKS_SEGNO + i,
-                                     i, FXE_RING, FXE_RING, 1, 0, 1, 0);
+                                     i, FXE_RING, FXE_RING, P_RW);
         if (i == 0)
           stack0Idx = ssIdx;
         KSTEntry * e = KST + ssIdx;
@@ -1968,8 +1970,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // Setup CLR
 
-    clrIdx = allocateSegment (MAX_SEGLEN, "clr", CLR_SEGNO, 
-                              0, FXE_RING, FXE_RING, 1, 0, 1, 0);
+    clrIdx = allocateSegment (MAX_SEGLEN, "clr", CLR_SEGNO, RINGS_ZFF, P_RW);
     if (clrIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate clr segment\n");
@@ -1992,7 +1993,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 // Setup IOCB
 
     int iocbIdx = allocateSegment (MAX_SEGLEN, "iocb", IOCB_SEGNO, 
-                                   0, FXE_RING, FXE_RING, 1, 0, 1, 0);
+                                   RINGS_ZFF, P_RW);
     if (iocbIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate iocb segment\n");
@@ -2044,8 +2045,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     // Create the fxe segment
 
     int fxeIdx = allocateSegment (MAX_SEGLEN, "fxe", FXE_SEGNO, 
-                                  FXE_RING, FXE_RING, FXE_RING, 
-                                  1, 1, 1, 0);
+                                  RINGS_FFF, P_REW);
     if (fxeIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate fxe segment\n");
@@ -3025,7 +3025,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     word24 bitcnt = flen * 8;
     word18 wordcnt = nbits2nwords (bitcnt);
     int segIdx = allocateSegment (wordcnt, entry, allocateSegno (),
-                                  FXE_RING, FXE_RING, FXE_RING, 1, 0, 1, 0);
+                                  RINGS_FFF, P_RW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment initiate\n");
@@ -3642,7 +3642,7 @@ static void trapMakeSeg (void)
       }
 
     idx = allocateSegment (MAX_SEGLEN, entryname, allocateSegno (), 
-                           FXE_RING, FXE_RING, FXE_RING, 
+                           RINGS_FFF, 
                            (mode & 010) ? 1 : 0,
                            (mode & 004) ? 1 : 0,
                            (mode & 002) ? 1 : 0,
