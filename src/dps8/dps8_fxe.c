@@ -260,6 +260,10 @@ static void strcpyC (word24 addr, word24 len, char * str)
     * (str ++) = '\0';
   }
 
+// Convert bit count to word count, rounding up
+
+#define nbits2nwords(nbits) (((nbits) + 35u) / 36u)
+
 //
 // SLTE
 //
@@ -512,10 +516,11 @@ static void setSegno (int idx, word15 segno)
 
 static word24 nextPhysmem = 1; // First block is used by dseg;
 
-static int allocateSegment (char * segname, uint segno,
+static int allocateSegment (uint seglen, char * segname, uint segno,
                             uint R1, uint R2, uint R3, 
                             uint R, uint E, uint W, uint P)
   {
+sim_printf ("allocate segment len %u name %s\n", seglen, segname);
     for (int i = 0; i < (int) N_SEGS; i ++)
       {
         KSTEntry * e = KST + i;
@@ -523,6 +528,8 @@ static int allocateSegment (char * segname, uint segno,
           {
             e -> allocated = true;
             e -> physmem = (nextPhysmem ++) * SEGSIZE;
+            e -> seglen = seglen;
+            e -> bit_count = 36 * seglen;
             e -> R1 = R1;
             e -> R2 = R2;
             e -> R3 = R3;
@@ -1250,7 +1257,7 @@ static void parseSegment (int segIdx)
 #endif
   }
 
-static void readSegment (int fd, int segIdx, off_t flen)
+static void readSegment (int fd, int segIdx/* , off_t flen*/)
   {
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word24 maddr = segAddr;
@@ -1276,8 +1283,8 @@ static void readSegment (int fd, int segIdx, off_t flen)
       }
     //sim_printf ("seglen %d flen %ld\n", seglen, flen * 8 / 36);
     //KST [segIdx] . seglen = seglen;
-    KST [segIdx] . seglen = flen * 8 / 36;
-    KST [segIdx] . bit_count = 36 * KST [segIdx] . seglen;
+    //KST [segIdx] . seglen = flen * 8 / 36;
+    //KST [segIdx] . bit_count = 36 * KST [segIdx] . seglen;
     KST [segIdx] . loaded = true;
     //sim_printf ("Loaded %u words in segment index %d @ %08o\n", 
                 //seglen, segIdx, segAddr);
@@ -1296,14 +1303,20 @@ static int loadSegmentFromFile (char * arg)
     off_t flen = lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
 
-    int segIdx = allocateSegment (arg, 0, FXE_RING, FXE_RING, FXE_RING, 1, 1, 1, 0);
+    // mapID works better if the length is the last whole word loaded;
+    // (ignore partial reads).
+    //word24 bitcnt = flen * 8;
+    //word18 wordcnt = nbits2nwords (bitcnt);
+    word18 wordcnt = (flen * 8) / 36;
+    int segIdx = allocateSegment (wordcnt, arg, 0, 
+                                  FXE_RING, FXE_RING, FXE_RING, 1, 1, 1, 0);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
         return -1;
       }
 
-    readSegment (fd, segIdx, flen);
+    readSegment (fd, segIdx /*, flen*/);
 
     return segIdx;
   }
@@ -1339,13 +1352,11 @@ static void createStackSegments (void)
       {
         char segname [SEGNAME_LEN + 1];
         sprintf (segname, "stack_%d", i);
-        int ssIdx = allocateSegment (segname, STACKS_SEGNO + i,
+        int ssIdx = allocateSegment (MAX_SEGLEN, segname, STACKS_SEGNO + i,
                                      i, FXE_RING, FXE_RING, 1, 0, 1, 0);
         if (i == 0)
           stack0Idx = ssIdx;
         KSTEntry * e = KST + ssIdx;
-        e -> seglen = MAX_SEGLEN;
-        e -> bit_count = 36 * e -> seglen;
         e -> loaded = true;
         word24 segAddr = lookupSegAddrByIdx (ssIdx);
         memset (M + segAddr, 0, sizeof (stack_header));
@@ -2018,7 +2029,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // Setup CLR
 
-    clrIdx = allocateSegment ("clr", CLR_SEGNO, 
+    clrIdx = allocateSegment (MAX_SEGLEN, "clr", CLR_SEGNO, 
                               0, FXE_RING, FXE_RING, 1, 0, 1, 0);
     if (clrIdx < 0)
       {
@@ -2029,7 +2040,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     KSTEntry * clrEntry = KST + clrIdx;
 
     //clrEntry -> seglen = 2 * LOT_SIZE;
-    clrEntry -> seglen = MAX_SEGLEN;
     clrEntry -> bit_count = 36 * clrEntry -> seglen;
     clrEntry -> loaded = true;
     installSDW (clrIdx);
@@ -2042,7 +2052,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // Setup IOCB
 
-    int iocbIdx = allocateSegment ("iocb", IOCB_SEGNO, 
+    int iocbIdx = allocateSegment (MAX_SEGLEN, "iocb", IOCB_SEGNO, 
                                    0, FXE_RING, FXE_RING, 1, 0, 1, 0);
     if (iocbIdx < 0)
       {
@@ -2052,8 +2062,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     KSTEntry * iocbEntry = KST + iocbIdx;
 
-    iocbEntry -> seglen = MAX_SEGLEN;
-    iocbEntry -> bit_count = 36 * iocbEntry -> seglen;
     iocbEntry -> loaded = true;
     installSDW (iocbIdx);
 
@@ -2096,7 +2104,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     // Create the fxe segment
 
-    int fxeIdx = allocateSegment ("fxe", FXE_SEGNO, 
+    int fxeIdx = allocateSegment (MAX_SEGLEN, "fxe", FXE_SEGNO, 
                                   FXE_RING, FXE_RING, FXE_RING, 
                                   1, 1, 1, 0);
     if (fxeIdx < 0)
@@ -2107,8 +2115,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLOT (fxeIdx);
     KSTEntry * fxeEntry = KST + fxeIdx;
 
-    fxeEntry -> seglen = MAX_SEGLEN;
-    fxeEntry -> bit_count = 36 * fxeEntry -> seglen;
     fxeEntry -> loaded = true;
     installSDW (fxeIdx);
 
@@ -3161,10 +3167,12 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
         return -1;
       }
 
-    /* off_t flen = */ lseek (fd, 0, SEEK_END);
+    off_t flen = lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
     
-    int segIdx = allocateSegment (entry, allocateSegno (),
+    word24 bitcnt = flen * 8;
+    word18 wordcnt = nbits2nwords (bitcnt);
+    int segIdx = allocateSegment (wordcnt, entry, allocateSegno (),
                                   FXE_RING, FXE_RING, FXE_RING, 1, 0, 1, 0);
     if (segIdx < 0)
       {
@@ -3183,7 +3191,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     word24 segAddr = lookupSegAddrByIdx (segIdx);
     word24 maddr = segAddr;
     uint seglen = 0;
-    word24 bitcnt = 0;
+    //word24 bitcntRead = 0;
 
     // 4 bytes at a time; mapped to 9 bit ASCII is one word.
     uint8 bytes [4];
@@ -3200,7 +3208,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
         for (uint i = 0; i < n; i ++)
           {
             putbits36 (M + maddr, i * 9, 9, bytes [i]);
-            bitcnt += 9;
+            //bitcntRead += 9;
           }
         maddr ++;
         seglen ++;
@@ -3208,8 +3216,6 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     //sim_printf ("flen %ld seglen %d bitcnt %d %d\n", flen, seglen, bitcnt,
                 //(bitcnt + 35) / 36);
     * bitcntp = bitcnt;
-    KST [segIdx] . seglen = seglen;
-    KST [segIdx] . bit_count = 36 * KST [segIdx] . seglen;
     KST [segIdx] . loaded = true;
     sim_printf ("Loaded %u words in segment %05o %s index %d @ %08o\n", 
                 seglen, e -> segno, e -> segname, segIdx, segAddr);
@@ -3783,7 +3789,7 @@ static void trapMakeSeg (void)
         goto done;
       }
 
-    idx = allocateSegment (entryname, allocateSegno (), 
+    idx = allocateSegment (MAX_SEGLEN, entryname, allocateSegno (), 
                            FXE_RING, FXE_RING, FXE_RING, 
                            (mode & 010) ? 1 : 0,
                            (mode & 004) ? 1 : 0,
@@ -3797,8 +3803,6 @@ static void trapMakeSeg (void)
 
     KSTEntry * e = KST + idx;
 
-    e -> seglen = MAX_SEGLEN;
-    e -> bit_count = 36 * e -> seglen;
     installSDW (idx);
 
     //sim_printf ("made %05o %s\n", e -> segno, e -> segname);
