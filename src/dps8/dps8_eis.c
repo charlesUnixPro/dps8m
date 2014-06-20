@@ -5217,7 +5217,7 @@ void scd(DCDstruct *ins)
     }
     
     //e->srcAddr2 = GETHI(e->OP2);
-    e->ADDR2.address = GETHI(e->OP2);
+    //e->ADDR2.address = GETHI(e->OP2);
     
     // fetch 'test' char - double
     //If MF2.ID = 0 and MF2.REG = du, then the second word following the instruction word does not contain an operand descriptor for the test character; instead, it contains the test character as a direct upper operand in bits 0,8.
@@ -5410,7 +5410,7 @@ void scdr(DCDstruct *ins)
 
     
     //e->srcAddr2 = GETHI(e->OP2);
-    e->ADDR2.address = GETHI(e->OP2);
+    //e->ADDR2.address = GETHI(e->OP2);
     
     // fetch 'test' char - double
     //If MF2.ID = 0 and MF2.REG = du, then the second word following the instruction word does not contain an operand descriptor for the test character; instead, it contains the test character as a direct upper operand in bits 0,8.
