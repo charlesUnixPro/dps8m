@@ -6,6 +6,7 @@
 //   Add the file system.
 //   Understand control points.
 //   Understand run units, run unit depth.
+//   Implement signalling.
 //
 // Hot items.
 //   Implement sys_link_info_ptr area.
@@ -18,6 +19,30 @@
 // Medium items.
 //    Research trans_op_tv_ptr, sct_ptrunwinder_ptr, ect_ptr, assign_linkage_ptr.
 //
+// system free area notes:
+//
+// MR12.3/documentation/info_segments/get_system_free_area_.info.ascii
+// :Entry: get_system_free_area_: 02/02/83  get_system_free_area_
+//
+//
+// Function: returns a pointer to the system free area for the ring in
+// which it was called.  Allocations by system programs are performed in
+// this area.
+//
+//
+// Syntax:
+// declare get_system_free_area_ entry returns (ptr);
+// area_ptr = get_system_free_area_ ();
+//
+// Arguments:
+// area_ptr
+//    is a pointer to the system free area.  (Output)
+//
+// MR12.3/documentation/info_segments/allocation_storage.gi.info.ascii
+//
+
+
+
 // From multicians: The maximum size of user ring stacks is initially set to 48K.SEGSIZE;
 
 #include <sys/types.h>
@@ -42,7 +67,7 @@
 #include "pl1_symbol_block.incl.pl1.h"
 #include "iocbx.incl.pl1.h"
 #include "stack_header.incl.pl1.h"
-
+#include "system_link_names.incl.pl1.h"
 
 
 //
@@ -1483,7 +1508,7 @@ static void initStack (int ssIdx)
 
     // word 46, 47    unwinder_ptr
 
-    // word 48, 49    sys_link_info_ptr
+    // word 48, 49    sys_link_info_ptr ptr to *system link name table
 
     // word 50, 51    rnt_ptr
 
