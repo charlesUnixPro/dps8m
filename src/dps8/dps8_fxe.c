@@ -346,6 +346,8 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define MAX_SEGLEN 01000000
 
 #define FXE_RING 5
+
+#define SEGNAME_LEN 32
 // Traps
 
 enum
@@ -395,7 +397,7 @@ typedef struct KSTEntry
     word3 R1, R2, R3;
     word1 R, E, W, P;
 
-    char * segname;
+    char segname [SEGNAME_LEN + 1];
     // This the segment length in words; which means that it's maximum
     // value 1<<18, which does not fit in a word18. See comments in
     // installSDW.
@@ -492,7 +494,7 @@ static void installLOT (int idx)
 static int lookupSegname (char * name)
   {
     for (uint i = 0; i < N_SEGS; i ++)
-      if (KST [i] . segname && strcmp (name, KST [i] . segname) == 0)
+      if (strcmp (name, KST [i] . segname) == 0)
         return 1;
     return -1;
   }
@@ -502,16 +504,36 @@ static word24 lookupSegAddrByIdx (int segIdx)
     return KST [segIdx] . physmem;
   }
 
+static void setSegno (int idx, word15 segno)
+  {
+    KST [idx] . segno = segno;
+    segnoMap [segno] = idx;
+  }
 
 static word24 nextPhysmem = 1; // First block is used by dseg;
-static int allocateSegment (void)
+
+static int allocateSegment (char * segname, uint segno,
+                            uint R1, uint R2, uint R3, 
+                            uint R, uint E, uint W, uint P)
   {
     for (int i = 0; i < (int) N_SEGS; i ++)
       {
-        if (! KST [i] . allocated)
+        KSTEntry * e = KST + i;
+        if (! e -> allocated)
           {
-            KST [i] . allocated = true;
-            KST [i] . physmem = (nextPhysmem ++) * SEGSIZE;
+            e -> allocated = true;
+            e -> physmem = (nextPhysmem ++) * SEGSIZE;
+            e -> R1 = R1;
+            e -> R2 = R2;
+            e -> R3 = R3;
+            e -> R = R;
+            e -> E = E;
+            e -> W = W;
+            e -> P = P;
+            if (segno)
+              setSegno (i, segno);
+            strncpy (e -> segname, segname, SEGNAME_LEN + 1);
+
             return i;
           }
       }
@@ -523,12 +545,6 @@ static int nextSegno = USER_SEGNO;
 static int allocateSegno (void)
   {
     return nextSegno ++;
-  }
-
-static void setSegno (int idx, word15 segno)
-  {
-    KST [idx] . segno = segno;
-    segnoMap [segno] = idx;
   }
 
 static word24 ITSToPhysmem (word36 * its, word6 * bitno)
@@ -920,7 +936,6 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             setSegno (idx, allocateSegno ());
             // sim_printf ("assigning %d to %s\n", KST [idx] . segno, segName);
           }
-        KST [idx] . segname = strdup (segName);
         if (slteIdx < 0) // segment not in slte
           {
             KST [idx] . R1 = FXE_RING;
@@ -1269,40 +1284,6 @@ static void readSegment (int fd, int segIdx, off_t flen)
     parseSegment (segIdx);
   }
 
-#if 0
-static int loadDeferred (char * arg)
-  {
-    int idx;
-    for (idx = 0; idx < (int) N_SEGS; idx ++)
-      if (KST [idx] . allocated && KST [idx] . segname &&
-          strcmp (arg, KST [idx] . segname) == 0)
-        return idx;
-
-    idx = allocateSegment ();
-    if (idx < 0)
-      {
-        sim_printf ("Unable to allocate segment for segment %s\n", arg);
-        return -1;
-      }
-
-    KSTEntry * e = KST + idx;
-
-    e -> segno = allocateSegno ();
-    e -> R1 = FXE_RING;
-    e -> R2 = FXE_RING;
-    e -> R3 = FXE_RING;
-    e -> R = 1;
-    e -> E = 1;
-    e -> W = 1;
-    e -> P = 0;
-    e -> segname = strdup (arg);
-    e -> loaded = false;
-
-    sim_printf ("Deferred %s in %d\n", arg, idx);
-    return idx;
-  }
-#endif
-
 static int loadSegmentFromFile (char * arg)
   {
     int fd = open (arg, O_RDONLY);
@@ -1314,23 +1295,13 @@ static int loadSegmentFromFile (char * arg)
 
     off_t flen = lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
-    
-    int segIdx = allocateSegment ();
+
+    int segIdx = allocateSegment (arg, 0, FXE_RING, FXE_RING, FXE_RING, 1, 1, 1, 0);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
         return -1;
       }
-
-    KSTEntry * e = KST + segIdx;
-
-    e -> R1 = FXE_RING;
-    e -> R2 = FXE_RING;
-    e -> R3 = FXE_RING;
-    e -> R = 1;
-    e -> E = 1;
-    e -> W = 1;
-    e -> P = 0;
 
     readSegment (fd, segIdx, flen);
 
@@ -1354,7 +1325,7 @@ static void setupWiredSegments (void)
      KST [0] . E = 0;
      KST [0] . W = 0;
      KST [0] . P = 0;
-     KST [0] . segname = strdup ("dseg");
+     strncpy (KST [0] . segname, "dseg", SEGNAME_LEN + 1);
           
      initializeDSEG ();
   }
@@ -1366,20 +1337,13 @@ static void createStackSegments (void)
   {
     for (int i = 0; i < 8; i ++)
       {
-        int ssIdx = allocateSegment ();
+        char segname [SEGNAME_LEN + 1];
+        sprintf (segname, "stack_%d", i);
+        int ssIdx = allocateSegment (segname, STACKS_SEGNO + i,
+                                     i, FXE_RING, FXE_RING, 1, 0, 1, 0);
         if (i == 0)
           stack0Idx = ssIdx;
         KSTEntry * e = KST + ssIdx;
-        e -> segname = strdup ("stack_0");
-        e -> segname [6] += i; // do not try this at home
-        setSegno (ssIdx, STACKS_SEGNO + i);
-        e -> R1 = i;
-        e -> R2 = FXE_RING;
-        e -> R3 = FXE_RING;
-        e -> R = 1;
-        e -> E = 0;
-        e -> W = 1;
-        e -> P = 0;
         e -> seglen = MAX_SEGLEN;
         e -> bit_count = 36 * e -> seglen;
         e -> loaded = true;
@@ -1716,7 +1680,6 @@ static int installLibrary (char * name)
         //sim_printf ("assigning %d to %s\n", segno, name);
       }
     //sim_printf ("lib %s segno %o\n", name, KST [idx] . segno);
-    KST [idx] . segname = strdup (name);
     if (slteIdx < 0) // segment not in slte
       {
         KST [idx] . R1 = FXE_RING;
@@ -1992,7 +1955,8 @@ t_stat fxeDump (int32 __attribute__((unused)) arg,
                     idx, e -> loaded ? ' ' : '*',
                     e -> segno, e -> physmem,
                     e -> seglen, 
-                    e -> segname ? e -> segname : "anon");
+                    //e -> segname ? e -> segname : "anon");
+                    strlen (e -> segname) ? e -> segname : "anon");
       }
     sim_printf ("\n");
     return SCPE_OK;
@@ -2054,7 +2018,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // Setup CLR
 
-    clrIdx = allocateSegment ();
+    clrIdx = allocateSegment ("clr", CLR_SEGNO, 
+                              0, FXE_RING, FXE_RING, 1, 0, 1, 0);
     if (clrIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate clr segment\n");
@@ -2063,15 +2028,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     KSTEntry * clrEntry = KST + clrIdx;
 
-    clrEntry -> R1 = 0;
-    clrEntry -> R2 = FXE_RING;
-    clrEntry -> R3 = FXE_RING;
-    clrEntry -> R = 1;
-    clrEntry -> E = 0;
-    clrEntry -> W = 1;
-    clrEntry -> P = 0;
-    clrEntry -> segname = strdup ("clr");
-    setSegno (clrIdx, CLR_SEGNO);
     //clrEntry -> seglen = 2 * LOT_SIZE;
     clrEntry -> seglen = MAX_SEGLEN;
     clrEntry -> bit_count = 36 * clrEntry -> seglen;
@@ -2086,7 +2042,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // Setup IOCB
 
-    int iocbIdx = allocateSegment ();
+    int iocbIdx = allocateSegment ("iocb", IOCB_SEGNO, 
+                                   0, FXE_RING, FXE_RING, 1, 0, 1, 0);
     if (iocbIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate iocb segment\n");
@@ -2095,15 +2052,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     KSTEntry * iocbEntry = KST + iocbIdx;
 
-    iocbEntry -> R1 = 0;
-    iocbEntry -> R2 = FXE_RING;
-    iocbEntry -> R3 = FXE_RING;
-    iocbEntry -> R = 1;
-    iocbEntry -> E = 0;
-    iocbEntry -> W = 1;
-    iocbEntry -> P = 0;
-    iocbEntry -> segname = strdup ("iocb");
-    setSegno (iocbIdx, IOCB_SEGNO);
     iocbEntry -> seglen = MAX_SEGLEN;
     iocbEntry -> bit_count = 36 * iocbEntry -> seglen;
     iocbEntry -> loaded = true;
@@ -2148,7 +2096,9 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     // Create the fxe segment
 
-    int fxeIdx = allocateSegment ();
+    int fxeIdx = allocateSegment ("fxe", FXE_SEGNO, 
+                                  FXE_RING, FXE_RING, FXE_RING, 
+                                  1, 1, 1, 0);
     if (fxeIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate fxe segment\n");
@@ -2159,15 +2109,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     fxeEntry -> seglen = MAX_SEGLEN;
     fxeEntry -> bit_count = 36 * fxeEntry -> seglen;
-    fxeEntry -> R1 = FXE_RING;
-    fxeEntry -> R2 = FXE_RING;
-    fxeEntry -> R3 = FXE_RING;
-    fxeEntry -> R = 1;
-    fxeEntry -> E = 1;
-    fxeEntry -> W = 1;
-    fxeEntry -> P = 0;
-    fxeEntry -> segname = strdup ("fxe");
-    setSegno (fxeIdx, FXE_SEGNO);
     fxeEntry -> loaded = true;
     installSDW (fxeIdx);
 
@@ -2193,7 +2134,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
             sim_printf ("ERROR: couldn't read %s\n", segmentName);
             return SCPE_OK;
           }
-        KST [segIdx] . segname = strdup (segmentName);
         setSegno (segIdx, allocateSegno ());
         KST [segIdx] . R1 = FXE_RING;
         KST [segIdx] . R2 = FXE_RING;
@@ -2202,7 +2142,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         KST [segIdx] . E = 1;
         KST [segIdx] . W = 0;
         KST [segIdx] . P = 0;
-        KST [segIdx] . segname = strdup (segmentName);
 
         installSDW (segIdx);
         installLOT (segIdx);
@@ -3225,7 +3164,8 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     /* off_t flen = */ lseek (fd, 0, SEEK_END);
     lseek (fd, 0, SEEK_SET);
     
-    int segIdx = allocateSegment ();
+    int segIdx = allocateSegment (entry, allocateSegno (),
+                                  FXE_RING, FXE_RING, FXE_RING, 1, 0, 1, 0);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment initiate\n");
@@ -3235,15 +3175,6 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
 
     KSTEntry * e = KST + segIdx;
 
-    setSegno (segIdx, allocateSegno ());
-    e -> R1 = FXE_RING;
-    e -> R2 = FXE_RING;
-    e -> R3 = FXE_RING;
-    e -> R = 1;
-    e -> E = 0;
-    e -> W = 1;
-    e -> P = 0;
-    e -> segname = strdup (entry);
     installSDW (segIdx);
 
     makeITS (segptrp, e -> segno, FXE_RING, 0, 0, 0);
@@ -3852,7 +3783,12 @@ static void trapMakeSeg (void)
         goto done;
       }
 
-    idx = allocateSegment ();
+    idx = allocateSegment (entryname, allocateSegno (), 
+                           FXE_RING, FXE_RING, FXE_RING, 
+                           (mode & 010) ? 1 : 0,
+                           (mode & 004) ? 1 : 0,
+                           (mode & 002) ? 1 : 0,
+                           0);
     if (idx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for make_seg\n");
@@ -3861,17 +3797,8 @@ static void trapMakeSeg (void)
 
     KSTEntry * e = KST + idx;
 
-    setSegno (idx, allocateSegno ());
-    e -> R1 = FXE_RING;
-    e -> R2 = FXE_RING;
-    e -> R3 = FXE_RING;
-    e -> R = (mode & 010) ? 1 : 0;
-    e -> E = (mode & 004) ? 1 : 0;
-    e -> W = (mode & 002) ? 1 : 0;
-    e -> P = 0;
     e -> seglen = MAX_SEGLEN;
     e -> bit_count = 36 * e -> seglen;
-    e -> segname = strdup (entryname);
     installSDW (idx);
 
     //sim_printf ("made %05o %s\n", e -> segno, e -> segname);
