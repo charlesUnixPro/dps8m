@@ -2767,7 +2767,11 @@ t_stat fxeDump (int32 __attribute__((unused)) arg,
 
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
+    t_stat run_boot_prep (void);
     sim_printf ("FXE: initializing...\n");
+
+    // Reset hardware
+    run_boot_prep ();
 
     // Reset all state data
     memset (KST, 0, sizeof (KST));
@@ -3123,9 +3127,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
 
-// XXX breaks SIM_DEBUG
-    //sim_printf ("Starting execution...\n");
-    //run_cmd (RU_CONT, "");
+    sim_printf ("Starting execution...\n");
+    run_cmd (RU_CONT, "");
 
     return SCPE_OK;
   }
@@ -3261,7 +3264,7 @@ static void faultTag2Handler (void)
 
     word18 offset = GETHI (M [0200 + 5]);
     word15 segno = GETHI (M [0200 + 2]) & MASK15;
-    sim_printf ("f2 fault %05o:%06o\n", segno, offset);
+    //sim_printf ("f2 fault %05o:%06o\n", segno, offset);
 
     if (segno != CLR_SEGNO)
       {
