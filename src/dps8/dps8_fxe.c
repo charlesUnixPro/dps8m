@@ -7,6 +7,7 @@
 //   Understand control points.
 //   Understand run units, run unit depth.
 //   Implement signalling.
+//   Move RNT into CLR?
 //
 // Hot items.
 //   Implement sys_link_info_ptr area.
@@ -15,6 +16,8 @@
 //   Implement clr_ptr.
 //   Implement user_storage_ptr.
 //   Implement rnt_ptr.
+//   Make trap handlers callbacks instead of switches.
+//   Improve allocateSegment call with abbreviations.
 //   
 // Medium items.
 //    Research trans_op_tv_ptr, sct_ptrunwinder_ptr, ect_ptr, assign_linkage_ptr.
@@ -601,10 +604,8 @@ typedef struct RNTEntry
     char * refName;
     int idx;
   } RNTEntry;
-static RNTEntry RNT [N_SEGS]; 
+static RNTEntry RNT [N_SEGS]; // XXX Actually a segment can have many references; N_SEGS is not the right #
 #define RNT_TABLE_SIZE (sizeof (RNT) / sizeof (RNTEntry))
-
-// XXX Actually a segment can have many references; N_SEGS is not the right #
 
 static int searchRNT (char * name)
   {
@@ -640,11 +641,12 @@ static void delRNTRef (char * name)
     int i = searchRNT (name);
     if (i >= 0)
       {
-        KST [RNT [i] . idx] . RNTRefCount --;
+        if (KST [RNT [i] . idx] . RNTRefCount)
+          KST [RNT [i] . idx] . RNTRefCount --;
         free (RNT [i] . refName);
         RNT [i] . refName = NULL;
         RNT [i] . idx = 0;
-// XXX make unknown
+// XXX make segment unknown if RNTRefCount became 0;
         return;
       }
     //sim_printf ("ERROR: delRNTRef couldn't find %s\n", name);
@@ -835,6 +837,13 @@ next2:
 static void installSDW (int segIdx)
   {
     KSTEntry * e = KST + segIdx;
+
+    if (e -> seglen == 0)
+      {
+        sim_printf ("ERROR: Tried to install zero length segment (idx %d)\n",
+                    segIdx);
+        return;
+     }
     word15 segno = e -> segno;
     // sim_printf ("install idx %d segno %o (%s) @ %08o len %d\n", segIdx, segno, e -> segname, e -> physmem, e -> seglen);
     word36 * even = M + DESCSEG + 2 * segno + 0;  
@@ -853,7 +862,7 @@ static void installSDW (int segIdx)
     // there is no data loss. SDW.BOUND is interpreted (I think) with
     // a 0 value meaning that the first 16 words are accessable, and
     // a 777777 means the entire segment is.
-    // This code does not cope with a seglen of 0. XXX
+    // This code does not cope with a seglen of 0.
     //   seglen    -1      >>4
     //        1       0      0
     //       17      16      0
@@ -1762,7 +1771,6 @@ static void initSysinfo (void)
     initSysinfoWord36 ("sys_info", "initialization_state", (word36) (4));
     initSysinfoWord36 ("sys_info", "system_type", (word36) (1)); // L68_SYSTEM
 
-// XXX
 // call set_time ("02/24/73 14:00 est Saturday", sys_info.first_reasonable_time);
 //      /* The invention of NSS, roughly */
 // call set_time ("12/31/99 23:59:59", sys_info.last_reasonable_time);
