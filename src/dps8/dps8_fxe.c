@@ -108,7 +108,7 @@ static int dsegIdx;
 //
 
 static int loadSegmentFromFile (char * arg);
-static void trapUnhandledSignal (void);
+static void trapFXE_UnhandledSignal (void);
 
 //
 // Utility routines
@@ -872,45 +872,50 @@ typedef struct trapNameTableEntry
     void (* trapFunc) (void);
   } trapNameTableEntry;
 
-static void trapHistoryRegsSet (void);
-static void trapHistoryRegsGet (void);
-static void trapFSSearchGetWdir (void);
-static void trapInitiateCount (void);
-static void trapTerminateName (void);
-static void trapMakePtr (void);
-static void trapStatusMins (void);
-static void trapMakeSeg (void);
-static void trapSetBcSeg (void);
-static void trapHighLowSegCount (void);
-static void trapFSGetMode (void);
-static void trapSetKSTAttributes (void);
-static void trapDeactivate (void);
+static void trapHCS_HistoryRegsSet (void);
+static void trapHCS_HistoryRegsGet (void);
+static void trapHCS_FSSearchGetWdir (void);
+static void trapHCS_InitiateCount (void);
+static void trapHCS_TerminateName (void);
+static void trapHCS_MakePtr (void);
+static void trapHCS_StatusMins (void);
+static void trapHCS_MakeSeg (void);
+static void trapHCS_SetBcSeg (void);
+static void trapHCS_HighLowSegCount (void);
+static void trapHCS_FSGetMode (void);
+static void trapPHCS_SetKSTAttributes (void);
+static void trapPHCS_Deactivate (void);
 static void trapGetLineLengthSwitch (void);
-static void trapUnhandledSignal (void);
-static void trapReturnToFXE (void);
-static void trapPutChars (void);
-static void trapGetLine (void);
+static void trapFXE_UnhandledSignal (void);
+static void trapFXE_ReturnToFXE (void);
+static void trapFXE_PutChars (void);
+static void trapFXE_GetLine (void);
+static void trapFXE_Control (void);
 
 static trapNameTableEntry trapNameTable [] =
   {
-    { "hcs_", "history_regs_set", trapHistoryRegsSet },
-    { "hcs_", "history_regs_get", trapHistoryRegsGet },
-    { "hcs_", "fs_search_get_wdir", trapFSSearchGetWdir },
-    { "hcs_", "initiate_count", trapInitiateCount },
-    { "hcs_", "terminate_name", trapTerminateName },
-    { "hcs_", "make_ptr", trapMakePtr },
-    { "hcs_", "status_mins", trapStatusMins },
-    { "hcs_", "make_seg", trapMakeSeg },
-    { "hcs_", "set_bc_seg", trapSetBcSeg },
-    { "hcs_", "high_low_seg_count", trapHighLowSegCount },
-    { "hcs_", "fs_get_mode", trapFSGetMode },
-    { "phcs_", "set_kst_attributes", trapSetKSTAttributes },
-    { "phcs_", "deactivate", trapDeactivate },
+    { "hcs_", "history_regs_set", trapHCS_HistoryRegsSet },
+    { "hcs_", "history_regs_get", trapHCS_HistoryRegsGet },
+    { "hcs_", "fs_search_get_wdir", trapHCS_FSSearchGetWdir },
+    { "hcs_", "initiate_count", trapHCS_InitiateCount },
+    { "hcs_", "terminate_name", trapHCS_TerminateName },
+    { "hcs_", "make_ptr", trapHCS_MakePtr },
+    { "hcs_", "status_mins", trapHCS_StatusMins },
+    { "hcs_", "make_seg", trapHCS_MakeSeg },
+    { "hcs_", "set_bc_seg", trapHCS_SetBcSeg },
+    { "hcs_", "high_low_seg_count", trapHCS_HighLowSegCount },
+    { "hcs_", "fs_get_mode", trapHCS_FSGetMode },
+
+    { "phcs_", "set_kst_attributes", trapPHCS_SetKSTAttributes },
+    { "phcs_", "deactivate", trapPHCS_Deactivate },
+
     { "get_line_length_", "switch", trapGetLineLengthSwitch },
-    { "fxe", "unhandled_signal", trapUnhandledSignal },
-    { "fxe", "return_to_fxe", trapReturnToFXE },
-    { "fxe", "put_chars", trapPutChars },
-    { "fxe", "get_line", trapGetLine },
+
+    { "fxe", "unhandled_signal", trapFXE_UnhandledSignal },
+    { "fxe", "return_to_fxe", trapFXE_ReturnToFXE },
+    { "fxe", "put_chars", trapFXE_PutChars },
+    { "fxe", "get_line", trapFXE_GetLine },
+    { "fxe", "control", trapFXE_Control },
     // { "com_err_", "com_err_", trapComErr }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
@@ -1863,6 +1868,13 @@ static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
     makeITS (getLineEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "get_line"), 0, 0);
     makeNullPtr (getLineEntry + 2);
 
+    // iocb [i] . control
+
+    word36 * controlEntry = (word36 *) & iocbUser -> control;
+
+    makeITS (controlEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "control"), 0, 0);
+    makeNullPtr (controlEntry + 2);
+
 #if 0
     // iocb [i] . modes
 
@@ -2035,6 +2047,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_expand_path_");
     installLibrary ("bound_ti_term_");
     installLibrary ("bound_fscom1_");
+    installLibrary ("bound_video_"); // for video_data_:terminal_iocb
     errIdx = installLibrary ("error_table_");
     installLibrary ("sys_info");
     initSysinfo ();
@@ -2594,7 +2607,7 @@ static int processArgs (int nargs, int ndescs, argTableEntry * t)
     return 1;
   }
 
-static void trapPutChars (void)
+static void trapFXE_PutChars (void)
   {
     // declare iox_$put_chars entry (ptr, ptr, fixed bin(21), fixed bin(35));
 
@@ -2662,7 +2675,7 @@ static int getline_ (char *buf, int n)
         if (c == SCPE_STOP)
           {
             // XXX deliver break to multics?
-            trapUnhandledSignal ();
+            trapFXE_UnhandledSignal ();
             break;           
           }
         c -= SCPE_KFLAG;    // translate to ascii
@@ -2670,13 +2683,13 @@ static int getline_ (char *buf, int n)
         if (c == '\003') // control-c
           {
             // XXX deliver break to multics?
-            trapUnhandledSignal ();
+            trapFXE_UnhandledSignal ();
             break;           
           }
         if (c == '\004') // control-d
           {
             // XXX deliver break to multics?
-            trapUnhandledSignal ();
+            trapFXE_UnhandledSignal ();
             break;           
           }
         if (c == '\177' || c == '\010') // backspace, delete
@@ -2705,7 +2718,73 @@ static int getline_ (char *buf, int n)
     return whence;
   }
 
-static void trapGetLine (void)
+static void trapFXE_Control (void)
+  {
+
+// :Entry:  control:  01/24/84 iox_$control
+// 
+// 
+// Function: performs a specified control order on an I/O switch.  The
+// allowed control orders depend on the attachment of the switch.  For
+// details on control orders, see the description of the particular I/O
+// module used in the attach operation.
+// 
+// 
+// Syntax:
+// declare iox_$control entry (ptr, char(*), ptr, fixed bin(35));
+// call iox_$control (iocb_ptr, order, info_ptr, code);
+// 
+// Arguments:
+// iocb_ptr
+//    points to the switch's control block.  (Input)
+// order
+//    is the name of the control order.  (Input)
+// info_ptr
+//    is null or points to data whose form depends on the attachment.
+//    (Input)
+// 
+// code
+//    is an I/O system status code.  (Output)
+//    error_table_$no_operation
+//       is returned if the switch is open for a control order which is
+//       not supported for a particular attachment, or is returned by I/O
+//       modules that support orders with the switch closed.
+//    error_table_$not_open
+//       is returned if the switch is closed.
+
+
+    argTableEntry t [4] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (4, 4, t))
+      return;
+
+#if 0
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 ap4 = t [ARG4] . argAddr;
+
+    word24 iocbPtr = ITSToPhysmem (M + ap1, NULL);
+    word24 iocb0 = KST [segnoMap [IOCB_SEGNO]] . physmem;
+    uint iocbIdx = (iocbPtr - iocb0) / sizeof (iocb);
+    //sim_printf ("iocbIdx %u\n", iocbIdx);
+    if (iocbIdx >= N_IOCBS)
+      {
+        M [t [ARG5] . argAddr] = lookupErrorCode ("not_a_valid_iocb");
+        doRCU (true); // doesn't return
+      }
+#endif
+
+    doRCU (true); // doesn't return
+  }
+
+static void trapFXE_GetLine (void)
   {
     //  entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
     // get_line(iocb,bufptr,buflen,actlen,code) */
@@ -2963,21 +3042,21 @@ static void trapGetLineLengthSwitch (void)
     doRCU (true); // doesn't return
   }
 
-static void trapHistoryRegsSet (void)
+static void trapHCS_HistoryRegsSet (void)
   {
-    //sim_printf ("trapHistoryRegsSet\n");
+    //sim_printf ("trapHCS_HistoryRegsSet\n");
 
     doRCU (true); // doesn't return
   }
 
-static void trapHistoryRegsGet (void)
+static void trapHCS_HistoryRegsGet (void)
   {
-    //sim_printf ("trapHistoryRegsGet\n");
+    //sim_printf ("trapHCS_HistoryRegsGet\n");
 
     doRCU (true); // doesn't return
   }
 
-static void trapFSSearchGetWdir (void)
+static void trapHCS_FSSearchGetWdir (void)
   {
     // dcl hcs_$fs_search_get_wdir ext entry(ptr,fixed bin(17));
     //   path (out), leng (out)
@@ -3082,7 +3161,7 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
     return 0;
   }
 
-static void trapInitiateCount (void)
+static void trapHCS_InitiateCount (void)
   {
 // :Entry: initiate_count: 03/08/82  hcs_$initiate_count
 // 
@@ -3276,7 +3355,7 @@ static void trapInitiateCount (void)
     doRCU (true); // doesn't return
   }
 
-static void trapTerminateName (void)
+static void trapHCS_TerminateName (void)
   {
     // declare hcs_$terminate_name entry (char(*), fixed bin(35));
     // call hcs_$terminate_name (ref_name, code);
@@ -3307,7 +3386,7 @@ static void trapTerminateName (void)
     doRCU (true); // doesn't return
   }
 
-static void trapMakePtr (void)
+static void trapHCS_MakePtr (void)
   {
 
 // :Entry: make_ptr: 03/08/82  hcs_$make_ptr
@@ -3435,7 +3514,7 @@ static void trapMakePtr (void)
     doRCU (true); // doesn't return
   }
 
-static void trapStatusMins (void)
+static void trapHCS_StatusMins (void)
   {
 
 // :Entry: status_mins: 03/08/82  hcs_$status_mins
@@ -3509,7 +3588,7 @@ done:;
     doRCU (true); // doesn't return
   }
 
-static void trapMakeSeg (void)
+static void trapHCS_MakeSeg (void)
   {
 
 // :Entry: make_seg: 03/08/82  hcs_$make_seg
@@ -3679,7 +3758,7 @@ done:;
     doRCU (true); // doesn't return
   }
 
-static void trapSetBcSeg (void)
+static void trapHCS_SetBcSeg (void)
   {
 
 // :Entry: set_bc_seg: 03/08/82  hcs_$set_bc_seg
@@ -3760,7 +3839,7 @@ done:;
     doRCU (true); // doesn't return
   }
 
-static void trapHighLowSegCount (void)
+static void trapHCS_HighLowSegCount (void)
   {
 
 // dcl  hcs_$high_low_seg_count entry (fixed bin, fixed bin);
@@ -3791,7 +3870,7 @@ static void trapHighLowSegCount (void)
     doRCU (true); // doesn't return
   }
 
-static void trapFSGetMode (void)
+static void trapHCS_FSGetMode (void)
   {
 // fs_get$mode returns the mode of the current user at the current
 //   validation level for the segment specified by segptr.
@@ -3852,7 +3931,7 @@ static void trapFSGetMode (void)
     doRCU (true); // doesn't return
   }
 
-static void trapSetKSTAttributes (void)
+static void trapPHCS_SetKSTAttributes (void)
   {
 // set_kst_attributes: proc (a_segno, a_kstap, a_code);
 //
@@ -3949,7 +4028,7 @@ static void trapComErr (void)
   }
 #endif
 
-static void trapDeactivate (void)
+static void trapPHCS_Deactivate (void)
   {
 
 #if 0
@@ -4017,13 +4096,13 @@ static void trapDeactivate (void)
 //   a_mcptr          ptr;           /* optional machine conditions ptr */
  
 
-static void trapUnhandledSignal (void)
+static void trapFXE_UnhandledSignal (void)
   {
     sim_printf ("Unhandled signal\n");
     longjmp (jmpMain, JMP_STOP);
   }
 
-static void trapReturnToFXE (void)
+static void trapFXE_ReturnToFXE (void)
   {
     sim_printf ("Process exited\n");
     longjmp (jmpMain, JMP_STOP);
