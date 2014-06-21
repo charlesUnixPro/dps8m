@@ -6,12 +6,12 @@
 //   Add the file system.
 //   Understand control points.
 //   Understand run units, run unit depth.
-//   Implement signalling.
+//   Implement signaling. (See AK92-2, page 184)
 //   Move RNT into CLR?
+//   fxeshell
 //
 // Hot items.
 //   Implement sys_link_info_ptr area.
-//   Implement error codes.
 //   Implement combined_stat_ptr.
 //   Implement clr_ptr.
 //   Implement user_storage_ptr.
@@ -367,19 +367,23 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 //
 // segno usage:
 //          0  dseg
-//       0265  iocbs
-//       0266  combined linkage segment
-//       0267  fxe
-/// 0270-0277  stacks
+//      1-477  Multics
+//  0500-0507  stacks
+//       0510  iocbs
+//       0511  combined linkage segment
+//       0512  ring 5 system free ares
+//       0577  fxe
+//  
 //  0600-0777  user 
 //     077776  fxe trap       
 
 #define N_SEGNOS 01000
+
 #define DSEG_SEGNO 0
-#define IOCB_SEGNO 0265
-#define CLR_SEGNO 0266
-#define FXE_SEGNO 0267
-#define STACKS_SEGNO 0270
+#define IOCB_SEGNO 0510
+#define CLR_SEGNO 0511
+#define FXE_SEGNO 0557
+#define STACKS_SEGNO 0500
 #define USER_SEGNO 0600
 #define TRAP_SEGNO 077776
 
@@ -388,6 +392,7 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define FXE_RING 5
 
 #define SEGNAME_LEN 32
+
 // Traps
 
 enum
