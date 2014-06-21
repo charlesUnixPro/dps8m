@@ -16,7 +16,6 @@
 //   Implement clr_ptr.
 //   Implement user_storage_ptr.
 //   Implement rnt_ptr.
-//   Make trap handlers callbacks instead of switches.
 //   
 // Medium items.
 //    Research trans_op_tv_ptr, sct_ptrunwinder_ptr, ect_ptr, assign_linkage_ptr.
@@ -45,7 +44,6 @@
 
 
 
-// From multicians: The maximum size of user ring stacks is initially set to 48K.SEGSIZE;
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -394,45 +392,6 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 
 #define SEGNAME_LEN 32
 
-// Traps
-
-enum
-  {
-    TRAP_UNUSED, // Don't use 0 so as to help distingish uninitialized fields
-
-    // iox_
-    TRAP_PUT_CHARS, 
-    TRAP_GET_LINE, 
-    // TRAP_MODES, // deprecated
-
-    // bound_io_commands
-    TRAP_GET_LINE_LENGTH_SWITCH,
-    
-    // hcs_
-    TRAP_HISTORY_REGS_SET,
-    TRAP_HISTORY_REGS_GET,
-    TRAP_FS_SEARCH_GET_WDIR,
-    TRAP_INITIATE_COUNT,
-    TRAP_TERMINATE_NAME,
-    TRAP_MAKE_PTR,
-    TRAP_STATUS_MINS,
-    TRAP_MAKE_SEG,
-    TRAP_SET_BC_SEG,
-    TRAP_HIGH_LOW_SEG_COUNT,
-    TRAP_FS_GET_MODE,
-
-    // phcs_
-    TRAP_SET_KST_ATTRIBUTES,
-    TRAP_DEACTIVATE,
-
-    // com_err_
-    TRAP_COM_ERR,  // temp for debugging
-
-    // FXE internal
-    TRAP_UNHANDLED_SIGNAL,
-    TRAP_RETURN_TO_FXE
-  };
-
 typedef struct KSTEntry
   {
     bool allocated;
@@ -556,7 +515,7 @@ static void setSegno (int idx, word15 segno)
     segnoMap [segno] = idx;
   }
 
-static word24 nextPhysmem = 1; // First block is used by dseg;
+static word24 nextPhysmem = 0; 
 
 #define RINGS_FFF FXE_RING, FXE_RING, FXE_RING
 #define RINGS_ZFF 0, FXE_RING, FXE_RING
@@ -567,13 +526,17 @@ static int allocateSegment (uint seglen, char * segname, uint segno,
                             uint R, uint E, uint W, uint P)
   {
 sim_printf ("allocate segment len %u name %s\n", seglen, segname);
+
+    // Round seglen up to next page boundary
+    uint seglenpage = (seglen + 1023u) & ~1023u;
     for (int i = 0; i < (int) N_SEGS; i ++)
       {
         KSTEntry * e = KST + i;
         if (! e -> allocated)
           {
             e -> allocated = true;
-            e -> physmem = (nextPhysmem ++) * SEGSIZE;
+            e -> physmem = nextPhysmem;
+            nextPhysmem += seglenpage;
             e -> seglen = seglen;
             e -> bit_count = 36 * seglen;
             e -> R1 = R1;
@@ -906,26 +869,49 @@ typedef struct trapNameTableEntry
   {
     char * segName;
     char * symbolName;
-    int trapNo;
+    void (* trapFunc) (void);
   } trapNameTableEntry;
+
+static void trapHistoryRegsSet (void);
+static void trapHistoryRegsGet (void);
+static void trapFSSearchGetWdir (void);
+static void trapInitiateCount (void);
+static void trapTerminateName (void);
+static void trapMakePtr (void);
+static void trapStatusMins (void);
+static void trapMakeSeg (void);
+static void trapSetBcSeg (void);
+static void trapHighLowSegCount (void);
+static void trapFSGetMode (void);
+static void trapSetKSTAttributes (void);
+static void trapDeactivate (void);
+static void trapGetLineLengthSwitch (void);
+static void trapUnhandledSignal (void);
+static void trapReturnToFXE (void);
+static void trapPutChars (void);
+static void trapGetLine (void);
 
 static trapNameTableEntry trapNameTable [] =
   {
-    { "hcs_", "history_regs_set", TRAP_HISTORY_REGS_SET },
-    { "hcs_", "history_regs_get", TRAP_HISTORY_REGS_GET },
-    { "hcs_", "fs_search_get_wdir", TRAP_FS_SEARCH_GET_WDIR },
-    { "hcs_", "initiate_count", TRAP_INITIATE_COUNT },
-    { "hcs_", "terminate_name", TRAP_TERMINATE_NAME },
-    { "hcs_", "make_ptr", TRAP_MAKE_PTR },
-    { "hcs_", "status_mins", TRAP_STATUS_MINS },
-    { "hcs_", "make_seg", TRAP_MAKE_SEG },
-    { "hcs_", "set_bc_seg", TRAP_SET_BC_SEG },
-    { "hcs_", "high_low_seg_count", TRAP_HIGH_LOW_SEG_COUNT },
-    { "hcs_", "fs_get_mode", TRAP_FS_GET_MODE },
-    { "phcs_", "set_kst_attributes", TRAP_SET_KST_ATTRIBUTES },
-    { "phcs_", "deactivate", TRAP_DEACTIVATE },
-    { "get_line_length_", "switch", TRAP_GET_LINE_LENGTH_SWITCH },
-    // { "com_err_", "com_err_", TRAP_COM_ERR }
+    { "hcs_", "history_regs_set", trapHistoryRegsSet },
+    { "hcs_", "history_regs_get", trapHistoryRegsGet },
+    { "hcs_", "fs_search_get_wdir", trapFSSearchGetWdir },
+    { "hcs_", "initiate_count", trapInitiateCount },
+    { "hcs_", "terminate_name", trapTerminateName },
+    { "hcs_", "make_ptr", trapMakePtr },
+    { "hcs_", "status_mins", trapStatusMins },
+    { "hcs_", "make_seg", trapMakeSeg },
+    { "hcs_", "set_bc_seg", trapSetBcSeg },
+    { "hcs_", "high_low_seg_count", trapHighLowSegCount },
+    { "hcs_", "fs_get_mode", trapFSGetMode },
+    { "phcs_", "set_kst_attributes", trapSetKSTAttributes },
+    { "phcs_", "deactivate", trapDeactivate },
+    { "get_line_length_", "switch", trapGetLineLengthSwitch },
+    { "fxe", "unhandled_signal", trapUnhandledSignal },
+    { "fxe", "return_to_fxe", trapReturnToFXE },
+    { "fxe", "put_chars", trapPutChars },
+    { "fxe", "get_line", trapGetLine },
+    // { "com_err_", "com_err_", trapComErr }
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
 
@@ -936,7 +922,7 @@ static int trapName (char * segName, char * symbolName)
         if (strcmp (segName, trapNameTable [i] . segName) == 0 &&
             strcmp (symbolName, trapNameTable [i] . symbolName) == 0)
           {
-            return trapNameTable [i] . trapNo;
+            return i;
           }
       }
     return -1;
@@ -1388,13 +1374,17 @@ static void setupWiredSegments (void)
 
 static int stack0Idx;
 
+// From multicians: The maximum size of user ring stacks is initially set to 48K
+
+#define STK_SIZE (48 * 1024)
+
 static void createStackSegments (void)
   {
     for (int i = 0; i < 8; i ++)
       {
         char segname [SEGNAME_LEN + 1];
         sprintf (segname, "stack_%d", i);
-        int ssIdx = allocateSegment (MAX_SEGLEN, segname, STACKS_SEGNO + i,
+        int ssIdx = allocateSegment (STK_SIZE, segname, STACKS_SEGNO + i,
                                      i, FXE_RING, FXE_RING, P_RW);
         if (i == 0)
           stack0Idx = ssIdx;
@@ -1463,7 +1453,7 @@ static void initStack (int ssIdx)
     makeITS (M + hdrAddr + 22, CLR_SEGNO, ssIdx - stack0Idx, LOT_OFFSET, 0, 0); 
 
     // word 24, 25    signal_ptr
-    makeITS (M + hdrAddr + 24, TRAP_SEGNO, FXE_RING, TRAP_UNHANDLED_SIGNAL, 0, 0);
+    makeITS (M + hdrAddr + 24, TRAP_SEGNO, FXE_RING, trapName ("fxe", "unhandled_signal"), 0, 0);
 
     // word 26, 27    bar_mode_sp_ptr
 
@@ -1587,7 +1577,7 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
 
     // word 20, 21    return_ptr
     //makeNullPtr (M + frameAddr + 20);
-    makeITS (M + frameAddr + 20, TRAP_SEGNO, FXE_RING, TRAP_RETURN_TO_FXE, 0, 0);
+    makeITS (M + frameAddr + 20, TRAP_SEGNO, FXE_RING, trapName ("fxe", "return_to_fxe"), 0, 0);
     
     // word 22, 23    entry_ptr
     makeNullPtr (M + frameAddr + 22);
@@ -1863,14 +1853,14 @@ static void setupIOCB (KSTEntry * iocbEntry, char * name, int i)
 
     word36 * putCharEntry = (word36 *) & iocbUser -> put_chars;
 
-    makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, TRAP_PUT_CHARS, 0, 0);
+    makeITS (putCharEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "put_chars"), 0, 0);
     makeNullPtr (putCharEntry + 2);
 
     // iocb [i] . get_line
 
     word36 * getLineEntry = (word36 *) & iocbUser -> get_line;
 
-    makeITS (getLineEntry, TRAP_SEGNO, FXE_RING, TRAP_GET_LINE, 0, 0);
+    makeITS (getLineEntry, TRAP_SEGNO, FXE_RING, trapName ("fxe", "get_line"), 0, 0);
     makeNullPtr (getLineEntry + 2);
 
 #if 0
@@ -1956,7 +1946,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     memset (segnoMap, -1, sizeof (segnoMap));
     memset (RNT, 0, sizeof (RNT));
     nextSegno = USER_SEGNO;
-    nextPhysmem = 1;
+    nextPhysmem = 0;
     clrFreePtr = CLR_FREE_START;
  
 // From AK92-2, Process Initialization
@@ -2046,13 +2036,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     installLibrary ("bound_ti_term_");
     installLibrary ("bound_fscom1_");
     errIdx = installLibrary ("error_table_");
-#if 0
-      {
-        word15 segno; word18 value; int idx;
-        resolveName ("error_table_", "segknown", & segno, & value, & idx);
-        sim_printf ("err %d\n", value);
-      }
-#endif
     installLibrary ("sys_info");
     initSysinfo ();
 
@@ -2235,7 +2218,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         PR [0] . SNR = FXE_SEGNO;
         PR [0] . RNR = FXE_RING;
         PR [0] . BITNO = 0;
-        PR [0] . WORDNO = argBlock;
+        PR [0] . WORDNO = argBlock - fxeMemPtr;
 
 // AK92, pg 2-13: PR4 points to the linkage section for the executing procedure
 
@@ -3939,6 +3922,7 @@ done:;
     doRCU (true); // doesn't return
   }
 
+#if 0
 static void trapComErr (void)
   {
 // com_err_:
@@ -3963,6 +3947,7 @@ static void trapComErr (void)
     sim_printf ("com err\n");
     doRCU (true); // doesn't return
   }
+#endif
 
 static void trapDeactivate (void)
   {
@@ -4059,78 +4044,7 @@ static void fxeTrap (void)
     else
       offset = getbits36 (M [0200 + 5], 0, 18); // PPR . CA
 
-    // XXX make this into trapNamesTable callbacks
-    switch (offset)
-      {
-        case TRAP_PUT_CHARS:
-          trapPutChars ();
-          break;
-        case TRAP_GET_LINE:
-          trapGetLine ();
-          break;
-#if 0
-        case TRAP_MODES:
-          trapModes ();
-          break;
-#endif
-        case TRAP_GET_LINE_LENGTH_SWITCH:
-          trapGetLineLengthSwitch ();
-          break;
-        case TRAP_HISTORY_REGS_SET:
-          trapHistoryRegsSet ();
-          break;
-        case TRAP_HISTORY_REGS_GET:
-          trapHistoryRegsGet ();
-          break;
-        case TRAP_FS_SEARCH_GET_WDIR:
-          trapFSSearchGetWdir ();
-          break;
-        case TRAP_INITIATE_COUNT:
-          trapInitiateCount ();
-          break;
-        case TRAP_TERMINATE_NAME:
-          trapTerminateName ();
-          break;
-        case TRAP_MAKE_PTR:
-          trapMakePtr ();
-          break;
-        case TRAP_STATUS_MINS:
-          trapStatusMins ();
-          break;
-        case TRAP_MAKE_SEG:
-          trapMakeSeg ();
-          break;
-        case TRAP_SET_BC_SEG:
-          trapSetBcSeg ();
-          break;
-        case TRAP_HIGH_LOW_SEG_COUNT:
-          trapHighLowSegCount ();
-          break;
-        case TRAP_FS_GET_MODE:
-          trapFSGetMode ();
-          break;
-
-        case TRAP_SET_KST_ATTRIBUTES:
-          trapSetKSTAttributes ();
-          break;
-        case TRAP_DEACTIVATE:
-          trapDeactivate ();
-          break;
-
-        case TRAP_COM_ERR:
-          trapComErr ();
-          break;
-
-        case TRAP_UNHANDLED_SIGNAL:
-          trapUnhandledSignal ();
-          break;
-        case TRAP_RETURN_TO_FXE:
-          trapReturnToFXE ();
-          break;
-        default:
-          sim_printf ("ERROR: unknown trap code %d\n", offset);
-          break;
-      }
+    trapNameTable [offset] . trapFunc ();
   }
 
 static void faultACVHandler (void)
