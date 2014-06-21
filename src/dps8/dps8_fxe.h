@@ -1,3 +1,4 @@
+extern DEVICE fxe_dev;
 t_stat fxe (int32 arg, char * buf);
 t_stat fxeDump (int32 __attribute__((unused)) arg,
                 char * __attribute__((unused)) buf);

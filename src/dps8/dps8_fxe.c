@@ -58,6 +58,7 @@
 #include "dps8_sys.h"
 #include "dps8_utils.h"
 #include "dps8_ins.h"
+#include "dps8_fxe.h"
 
 #include "object_map.incl.pl1.h"
 #include "definition_dcls.incl.pl1.h"
@@ -101,6 +102,8 @@ static bool FXEinitialized = false;
 
 static int libIdx;
 static int errIdx;
+static int ssaIdx;
+static int clrIdx;
 static int dsegIdx;
 
 //
@@ -371,6 +374,7 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 //       0510  iocbs
 //       0511  combined linkage segment
 //       0512  ring 5 system free ares
+//       0513  system storage area
 //       0577  fxe
 //  
 //  0600-0777  user 
@@ -379,10 +383,11 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define N_SEGNOS 01000
 
 #define DSEG_SEGNO 0
+#define STACKS_SEGNO 0500
 #define IOCB_SEGNO 0510
 #define CLR_SEGNO 0511
+#define SSA_SEGNO 0513
 #define FXE_SEGNO 0557
-#define STACKS_SEGNO 0500
 #define USER_SEGNO 0600
 #define TRAP_SEGNO 077776
 
@@ -440,10 +445,6 @@ static int segnoMap [N_SEGNOS];
 //
 // CLR - Multics segment containing the LOT and ISOT
 //
-
-// Remember which segment has the CLR
-
-static int clrIdx;
 
 #define LOT_SIZE 0100000 // 2^12
 #define LOT_OFFSET 0 // LOT starts at word 0
@@ -525,7 +526,8 @@ static int allocateSegment (uint seglen, char * segname, uint segno,
                             uint R1, uint R2, uint R3, 
                             uint R, uint E, uint W, uint P)
   {
-sim_printf ("allocate segment len %u name %s\n", seglen, segname);
+    if_sim_debug (DBG_TRACE, & fxe_dev)
+      sim_printf ("allocate segment len %u name %s\n", seglen, segname);
 
     // Round seglen up to next page boundary
     uint seglenpage = (seglen + 1023u) & ~1023u;
@@ -818,6 +820,66 @@ next2:
     return 0;
   }
 
+static int lookupEntry (int segIdx, char * entryName, word18 * value)
+  {
+    KSTEntry * e = KST + segIdx;
+    word24 segAddr = lookupSegAddrByIdx (segIdx);
+    word36 * segp = M + segAddr;
+    def_header * oip_defp = (def_header *) (segp + e -> definition_offset);
+
+    word36 * defBase = (word36 *) oip_defp;
+
+    definition * p = (definition *) (defBase +
+                                     oip_defp -> def_list_relp);
+    // Search for the segment
+
+    definition * symDef = NULL;
+
+    while (* (word36 *) p)
+      {
+        if (p -> ignore != 0)
+          goto next;
+        if (p -> class != 3)  // Not segment name?
+          goto next;
+        if (accCmp (defBase + p -> symbol, entryName))
+          {
+            //sim_printf ("hit\n");
+            break;
+          }
+next:
+        p = (definition *) (defBase + p -> forward);
+      }
+    if (! (* (word36 *) p))
+      {
+        //sim_printf ("can't find segment name %s\n", entryName);
+        return 0;
+      }
+
+    // Goto list of symbols defined in this segment
+    p = (definition *) (defBase + p -> segname);
+
+    while (* (word36 *) p)
+      {
+        if (p -> ignore != 0)
+          goto next2;
+        if (p -> class == 3)  // Segment name marks the end of the 
+                              // list of symbols is the segment
+          break;
+
+        if (accCmp (defBase + p -> symbol, entryName))
+          {
+            symDef = p;
+            //sim_printf ("hit2\n");
+            * value =  p -> value;
+            return 1;
+          }
+next2:
+        p = (definition *) (defBase + p -> forward);
+      }
+    //sim_printf ("can't find symbol name %s\n", entryName);
+    return 0;
+  }
+
 static void installSDW (int segIdx)
   {
     KSTEntry * e = KST + segIdx;
@@ -883,6 +945,7 @@ static void trapHCS_MakeSeg (void);
 static void trapHCS_SetBcSeg (void);
 static void trapHCS_HighLowSegCount (void);
 static void trapHCS_FSGetMode (void);
+static void trapHCS_TerminateNoname (void);
 static void trapPHCS_SetKSTAttributes (void);
 static void trapPHCS_Deactivate (void);
 static void trapGetLineLengthSwitch (void);
@@ -891,6 +954,11 @@ static void trapFXE_ReturnToFXE (void);
 static void trapFXE_PutChars (void);
 static void trapFXE_GetLine (void);
 static void trapFXE_Control (void);
+
+// debugging traps
+#if 0
+static void trapFXE_debug (void);
+#endif
 
 static trapNameTableEntry trapNameTable [] =
   {
@@ -905,6 +973,7 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "set_bc_seg", trapHCS_SetBcSeg },
     { "hcs_", "high_low_seg_count", trapHCS_HighLowSegCount },
     { "hcs_", "fs_get_mode", trapHCS_FSGetMode },
+    { "hcs_", "terminate_noname", trapHCS_TerminateNoname },
 
     { "phcs_", "set_kst_attributes", trapPHCS_SetKSTAttributes },
     { "phcs_", "deactivate", trapPHCS_Deactivate },
@@ -916,7 +985,11 @@ static trapNameTableEntry trapNameTable [] =
     { "fxe", "put_chars", trapFXE_PutChars },
     { "fxe", "get_line", trapFXE_GetLine },
     { "fxe", "control", trapFXE_Control },
-    // { "com_err_", "com_err_", trapComErr }
+
+    // { "com_err_", "com_err_", trapComErr },
+
+// debug
+    // { "expand_pathname_", "expand_pathname_", trapFXE_debug },
   };
 #define N_TRAP_NAMES (sizeof (trapNameTable) / sizeof (trapNameTableEntry))
 
@@ -1354,7 +1427,7 @@ static int loadSegmentFromFile (char * arg)
     //word24 bitcnt = flen * 8;
     //word18 wordcnt = nbits2nwords (bitcnt);
     word18 wordcnt = (flen * 8) / 36;
-    int segIdx = allocateSegment (wordcnt, arg, 0, RINGS_FFF, P_REW);
+    int segIdx = allocateSegment (wordcnt, basename (arg), 0, RINGS_FFF, P_REW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
@@ -1442,6 +1515,7 @@ static void initStack (int ssIdx)
     M [hdrAddr + 11] = ((word36) LOT_SIZE << 18) | 0;
 
     // word 12, 13    system_storage_ptr
+    makeITS (M + hdrAddr + 12, SSA_SEGNO, 0, 0, 0, 0); 
 
     // word 14, 15    user_storage_ptr
 
@@ -1948,7 +2022,8 @@ static word18 lookupErrorCode (char * name)
 t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
   {
     t_stat run_boot_prep (void);
-    sim_printf ("FXE: initializing...\n");
+    if_sim_debug (DBG_TRACE, & fxe_dev)
+      sim_printf ("FXE: initializing...\n");
 
     // Reset hardware
     run_boot_prep ();
@@ -2005,9 +2080,6 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
       }
 
     KSTEntry * clrEntry = KST + clrIdx;
-
-    //clrEntry -> seglen = 2 * LOT_SIZE;
-    clrEntry -> bit_count = 36 * clrEntry -> seglen;
     clrEntry -> loaded = false;
     installSDW (clrIdx);
 
@@ -2015,6 +2087,24 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     for (uint i = 0; i < LOT_SIZE; i ++)
       clrMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
+
+// Setup SSA
+
+    ssaIdx = allocateSegment (MAX_SEGLEN, "ssa", SSA_SEGNO, 0, 0, 0, P_RW);
+    if (ssaIdx < 0)
+      {
+        sim_printf ("ERROR: Unable to allocate clr segment\n");
+        return SCPE_OK;
+      }
+
+    KSTEntry * ssaEntry = KST + ssaIdx;
+    ssaEntry -> loaded = false;
+    installSDW (ssaIdx);
+
+    word36 * ssaMemory = M + ssaEntry -> physmem;
+
+    for (uint i = 0; i < LOT_SIZE; i ++)
+      ssaMemory [i] = 0007777000000; // bitno 0, seg 7777, word 0
 
 
 // Setup IOCB
@@ -2093,7 +2183,21 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     if (nargs >= 1)
       {
         nargs --; // don't count the segment name
-        sim_printf ("Loading segment %s\n", segmentName);
+
+        // segmentName may be "name" or "segment:entry"
+
+        char * entryName = segmentName;
+        char * colon = strchr (segmentName, ':');
+        if (colon)
+          {
+            // replace the colon with a null, and point entryName to 
+            // the trailing substr
+            * colon = '\0';
+            entryName = colon + 1;
+          }
+
+        if_sim_debug (DBG_TRACE, & fxe_dev)
+          sim_printf ("Loading segment %s\n", segmentName);
         int segIdx = loadSegmentFromFile (segmentName);
         if (segIdx < 0)
           {
@@ -2111,6 +2215,21 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
         installSDW (segIdx);
         installLOT (segIdx);
+
+        // Default entry point is the first entry
+        word18 entryOffset = KST [segIdx] . entry;
+
+        // If a component name was specified, use it.
+        if (colon)
+          {
+             if (! lookupEntry (segIdx, entryName, & entryOffset))
+               {
+                 sim_printf ("ERROR: can't find entry point %s:%s\n",
+                             segmentName, entryName);
+                 return SCPE_OK;
+               }
+           }
+
 
 #if 0
         printLineNumbers (segIdx);
@@ -2169,7 +2288,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
         word36 descList = fxeMemPtr + next;
         for (int i = 0; i < nargs; i ++)
           {
-            descAddrs [i] = next;
+            descAddrs [i] = next + i;
             M [descList + i] = 0;
             putbits36 (M + descList + i, 0, 1, 1); // flag
             putbits36 (M + descList + i, 1, 6, 21); // type non-varying character string
@@ -2260,7 +2379,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 
         set_addr_mode (APPEND_mode);
-        PPR . IC = KST [segIdx] . entry;
+        //PPR . IC = KST [segIdx] . entry;
+        PPR . IC = entryOffset;
         PPR . PRR = FXE_RING;
         PPR . PSR = KST [segIdx] . segno;
         PPR . P = 0;
@@ -2269,7 +2389,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     for (int i = 0; i < maxargs; i ++)
       free (args [i]);
 
-    sim_printf ("Starting execution...\n");
+    if_sim_debug (DBG_TRACE, & fxe_dev)
+      sim_printf ("Starting execution...\n");
     run_cmd (RU_CONT, "");
 
     return SCPE_OK;
@@ -2341,7 +2462,7 @@ static void faultTag2Handler (void)
 
     if (linkCopy . tag != 046)
       {
-        sim_printf ("f2 handler dazed and confused. not f2? %012llo\n", M [addr]);
+        sim_printf ("ERROR: f2 handler dazed and confused. not f2? %012llo\n", M [addr]);
         return;
       }
 
@@ -2396,12 +2517,13 @@ static void faultTag2Handler (void)
             word18 refValue;
             int defIdx;
 
-            sim_printf ("    3: referencing link with offset\n");
-            sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
+            //sim_printf ("    3: referencing link with offset\n");
+            //sim_printf ("      seg %s\n", sprintACC (defBase + typePair -> seg_ptr));
             char * segStr = strdup (sprintACC (defBase + typePair -> seg_ptr));
             if (resolveName (segStr, NULL, & refSegno, & refValue, & defIdx))
               {
-                sim_printf ("FXE: snap (3) %s %05o:%06o\n", segStr, refSegno, refValue);
+                if_sim_debug (DBG_TRACE, & fxe_dev)
+                  sim_printf ("FXE: snap (3) %s %05o:%06o\n", segStr, refSegno, refValue);
                 makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                          linkCopy . modifier);
                 free (segStr);
@@ -2430,7 +2552,8 @@ static void faultTag2Handler (void)
             char * extStr = strdup (sprintACC (defBase + typePair -> ext_ptr));
             if (resolveName (segStr, extStr, & refSegno, & refValue, & defIdx))
               {
-                sim_printf ("FXE: snap (4) %s$%s %05o:%06o\n", segStr, extStr, refSegno, refValue);
+                if_sim_debug (DBG_TRACE, & fxe_dev)
+                  sim_printf ("FXE: snap (4) %s$%s %05o:%06o\n", segStr, extStr, refSegno, refValue);
                 makeITS (M + addr, refSegno, linkCopy . ringno, refValue, 0, 
                          linkCopy . modifier);
                 free (segStr);
@@ -3154,8 +3277,9 @@ static int initiateSegment (char * __attribute__((unused)) dir, char * entry,
                 //(bitcnt + 35) / 36);
     * bitcntp = bitcnt;
     KST [segIdx] . loaded = true;
-    sim_printf ("Loaded %u words in segment %05o %s index %d @ %08o\n", 
-                seglen, e -> segno, e -> segname, segIdx, segAddr);
+    if_sim_debug (DBG_TRACE, & fxe_dev)
+      sim_printf ("Loaded %u words in segment %05o %s index %d @ %08o\n", 
+                  seglen, e -> segno, e -> segname, segIdx, segAddr);
 
     close (fd);
     return 0;
@@ -3870,6 +3994,25 @@ static void trapHCS_HighLowSegCount (void)
     doRCU (true); // doesn't return
   }
 
+static void trapHCS_TerminateNoname (void)
+  {
+// terminate_$noname removes a single null name from a segment given its
+// segment pointer.
+// USAGE: call terminate_$noname call hcs_$terminate_noname (segptr, code)
+
+    argTableEntry t [2] =
+      {
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (2, 0, t))
+      return;
+// XXX implement
+
+    doRCU (true); // doesn't return
+  }
+
 static void trapHCS_FSGetMode (void)
   {
 // fs_get$mode returns the mode of the current user at the current
@@ -4098,15 +4241,49 @@ static void trapPHCS_Deactivate (void)
 
 static void trapFXE_UnhandledSignal (void)
   {
-    sim_printf ("Unhandled signal\n");
+    sim_printf ("ERROR: Unhandled signal\n");
     longjmp (jmpMain, JMP_STOP);
   }
 
 static void trapFXE_ReturnToFXE (void)
   {
-    sim_printf ("Process exited\n");
+    if_sim_debug (DBG_TRACE, & fxe_dev)
+      sim_printf ("Process exited\n");
     longjmp (jmpMain, JMP_STOP);
   }
+
+#if 0
+static void trapFXE_debug (void)
+  {
+    sim_printf ("fxe debug\n");
+
+#if 1 // debug for expand_pathname_
+    argTableEntry t [] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+    if (! processArgs (4, 4, t))
+      return;
+
+    // Argument 1: pathname
+    word24 ap1 = t [ARG1] . argAddr;
+    word6 d1size = t [ARG1] . dSize;
+
+    char * pathname = NULL;
+    if ((! isNullPtr (ap1)) && d1size)
+      {
+        pathname = malloc (d1size + 1);
+        strcpyC (ap1, d1size, pathname);
+        trimTrailingSpaces (pathname);
+      }
+    sim_printf ("pathname: '%s'\n", pathname ? pathname : "NULL");
+#endif
+
+  }
+#endif
 
 static void fxeTrap (void)
   {
@@ -4122,7 +4299,8 @@ static void fxeTrap (void)
       offset = getbits36 (M [0200 + 4], 0, 18); // PPR . IC
     else
       offset = getbits36 (M [0200 + 5], 0, 18); // PPR . CA
-
+    if_sim_debug (DBG_TRACE, & fxe_dev)
+      sim_printf ("FXE: trap %s:%s\n", trapNameTable [offset] . segName, trapNameTable [offset] . symbolName);
     trapNameTable [offset] . trapFunc ();
   }
 
@@ -4284,4 +4462,36 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
       }
     return NULL;
   }
+
+// simh stuff
+
+DEVICE fxe_dev =
+  {
+    (char *) "FXE",       /* name */
+    NULL,        /* units */
+    NULL,        /* registers */
+    NULL,        /* modifiers */
+    0,           /* #units */
+    8,           /* address radix */
+    PASIZE,      /* address width */
+    1,           /* address increment */
+    8,           /* data radix */
+    36,          /* data width */
+    NULL,        /* examine routine */
+    NULL,        /* deposit routine */
+    NULL,        /* reset routine */
+    NULL,        /* boot routine */
+    NULL,        /* attach routine */
+    NULL,        /* detach routine */
+    NULL,        /* context */
+    0,           /* flags */
+    0,           /* debug control flags */
+    0,           /* debug flag names */
+    NULL,        /* memory size change */
+    NULL,        /* logical name */
+    NULL,        /* help */
+    NULL,        /* attach_help */
+    NULL,        /* help_ctx */
+    NULL         /* description */
+  };
 

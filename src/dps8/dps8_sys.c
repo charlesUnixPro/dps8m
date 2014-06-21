@@ -1526,10 +1526,10 @@ DEVICE * sim_devices [] =
     & scu_dev,
     & clk_dev,
     // & mpc_dev,
-    & opcon_dev, // Not hooked up yet
+    & opcon_dev,
 //    & disk_dev, // Not hooked up yet
     & sys_dev,
-
+    & fxe_dev,
     NULL
 };
 
