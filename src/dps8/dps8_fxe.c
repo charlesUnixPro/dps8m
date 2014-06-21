@@ -44,7 +44,6 @@
 
 
 
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -112,6 +111,7 @@ static int dsegIdx;
 
 static int loadSegmentFromFile (char * arg);
 static void trapFXE_UnhandledSignal (void);
+static int loadSegment (char * arg);
 
 //
 // Utility routines
@@ -396,6 +396,26 @@ static int getSegnoFromSLTE (char * name, int * slteIdx)
 #define FXE_RING 5
 
 #define SEGNAME_LEN 32
+#define PATHNAME_LEN 168
+
+
+//
+// pathname mangling
+//
+
+typedef char segnameBuf [SEGNAME_LEN + 1];
+typedef char pathnameBuf [PATHNAME_LEN + 1];
+
+// '>' (root) <-->  ./MR12.3/
+// foo>       <-->  foo/
+
+#define UNIX_PATHNAME_LEN (PATHNAME_LEN + 16) // space for the "./MR12_3
+#define MROOT "./MR12.3/"
+
+#define DEF_CWD ">udd>fxe"
+static pathnameBuf cwd = DEF_CWD;
+
+
 
 typedef struct KSTEntry
   {
@@ -407,7 +427,7 @@ typedef struct KSTEntry
     word3 R1, R2, R3;
     word1 R, E, W, P;
 
-    char segname [SEGNAME_LEN + 1];
+    segnameBuf segname;
     // This the segment length in words; which means that it's maximum
     // value 1<<18, which does not fit in a word18. See comments in
     // installSDW.
@@ -1019,6 +1039,7 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
       }
    
     int idx;
+#if 1
     if ((idx = searchRNT (segName)))
       {
         KSTEntry * e = KST + idx;
@@ -1031,6 +1052,8 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             return 1;
           }
       }
+#endif
+#if 1
     //sim_printf ("resolveName %s:%s\n", segName, symbolName);
     for (idx = 0; idx < (int) N_SEGS; idx ++)
       {
@@ -1051,7 +1074,9 @@ static int resolveName (char * segName, char * symbolName, word15 * segno,
             return 1;
           }
       }
-    idx = loadSegmentFromFile (segName);
+#endif
+    //idx = loadSegmentFromFile (segName);
+    idx = loadSegment (segName);
     if (idx >= 0)
       {
         //sim_printf ("got file\n");
@@ -1412,7 +1437,17 @@ static void readSegment (int fd, int segIdx/* , off_t flen*/)
 
 static int loadSegmentFromFile (char * arg)
   {
-    int fd = open (arg, O_RDONLY);
+
+    char upathname [UNIX_PATHNAME_LEN + 1];
+    strncpy (upathname, MROOT, UNIX_PATHNAME_LEN + 1);
+    strncat (upathname, arg, UNIX_PATHNAME_LEN + 1);
+    char * blow;
+    while ((blow = strchr (upathname, '>')))
+      * blow = '/';
+    //sim_printf ("tada> %s\n", upathname);
+
+    //int fd = open (arg, O_RDONLY);
+    int fd = open (upathname, O_RDONLY);
     if (fd < 0)
       {
         //sim_printf ("ERROR: Unable to open '%s': %d\n", arg, errno);
@@ -1426,8 +1461,10 @@ static int loadSegmentFromFile (char * arg)
     // (ignore partial reads).
     //word24 bitcnt = flen * 8;
     //word18 wordcnt = nbits2nwords (bitcnt);
-    word18 wordcnt = (flen * 8) / 36;
-    int segIdx = allocateSegment (wordcnt, basename (arg), 0, RINGS_FFF, P_REW);
+    word18 wordcnt = (flen * 8) / 36; 
+// XXX it would be better to be pasing around the segment name as well as the
+// path instead of relying on basename here.
+    int segIdx = allocateSegment (wordcnt, basename (upathname), 0, RINGS_FFF, P_REW);
     if (segIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate segment for segment load\n");
@@ -1437,6 +1474,89 @@ static int loadSegmentFromFile (char * arg)
     readSegment (fd, segIdx /*, flen*/);
 
     return segIdx;
+  }
+
+static void buildPath (pathnameBuf pathname, char * path, char * component)
+  {
+    strncpy (pathname, path, PATHNAME_LEN + 1);
+    strncat (pathname, ">", PATHNAME_LEN + 1);
+    strncat (pathname, component, PATHNAME_LEN + 1);
+    pathname [PATHNAME_LEN] = '\0';
+  }
+
+static int loadSegment (char * arg)
+  {
+// Search rules:
+//
+//  1. initiated segments.
+//      reference name
+//         a. use in a dynamically linked external program reference.
+//         b. a call to hcs_$initiate, hcs_$initiate)count, or hcs_$make_seg.
+//         c. a call to hcs_$make_ptr.
+//
+//  2. referencing directory
+//       the referencing directory contains the procedure segment whose call
+//       or reference initiated the search.
+//
+//  3. working directory
+//
+//  4. system libraries
+//       >system_library_standard
+//       >system_library_unbundled
+//       >system_library_1
+//       >system_library_tools
+//       >system_library_auth_maint
+
+
+// 1. initiated segments
+
+    int idx = searchRNT (arg);
+
+    if (idx >= 0)
+      return idx;
+
+    for (idx = 0; idx < (int) N_SEGS; idx ++)
+      {
+        KSTEntry * e = KST + idx;
+        if (! e -> allocated)
+          continue;
+        if (e -> RNTRefCount) // Searched this segment already above.
+          continue;
+        if (strcmp (arg, e -> segname) == 0)
+          return idx;
+      }
+
+// 2. referencing directory XXX don't know how to do this.
+
+// 3. working directory
+
+    pathnameBuf pathname = "";
+    buildPath (& pathname [0], cwd, arg);
+
+    idx = loadSegmentFromFile (pathname);
+    if (idx >= 0)
+      return idx;
+
+//  4. system libraries
+
+    static pathnameBuf stds [5] =
+      {
+        ">system_library_standard",
+        ">system_library_unbundled",
+        ">library_dir_dir>system_library_1>execution",
+        ">system_library_tools",
+        ">system_library_auth_maint"
+      };
+
+    for (int i = 0; i < 5; i ++)
+      {
+        buildPath (& pathname [0], stds [i], arg);
+
+        idx = loadSegmentFromFile (pathname);
+        if (idx >= 0)
+          return idx;
+      }
+    return -1;
   }
 
 static void setupWiredSegments (void)
@@ -1460,7 +1580,7 @@ static void createStackSegments (void)
   {
     for (int i = 0; i < 8; i ++)
       {
-        char segname [SEGNAME_LEN + 1];
+        segnameBuf segname;
         sprintf (segname, "stack_%d", i);
         int ssIdx = allocateSegment (STK_SIZE, segname, STACKS_SEGNO + i,
                                      i, FXE_RING, FXE_RING, P_RW);
@@ -1689,7 +1809,8 @@ static void createFrame (int ssIdx, word15 prevSegno, word18 prevWordno, word3 p
 
 static int installLibrary (char * name)
   {
-    int idx = loadSegmentFromFile (name);
+    //int idx = loadSegmentFromFile (name);
+    int idx = loadSegment (name);
     if (idx < 0)
       {
         sim_printf ("ERROR: installLibrary of %s couldn't\n", name);
@@ -2035,7 +2156,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
     nextSegno = USER_SEGNO;
     nextPhysmem = 0;
     clrFreePtr = CLR_FREE_START;
- 
+    strcpy (cwd, DEF_CWD);
+
 // From AK92-2, Process Initialization
 //
 // Initialize the Known Segment Table (KST)
@@ -2124,7 +2246,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     // sim_printf ("Loading library segment\n");
 
-    libIdx = installLibrary ("bound_library_wired_");
+    libIdx = installLibrary (">>bound_library_wired_");
     if (libIdx < 0)
       {
         sim_printf ("ERROR: unable to load bound_library_wired_\n");
@@ -2198,7 +2320,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
         if_sim_debug (DBG_TRACE, & fxe_dev)
           sim_printf ("Loading segment %s\n", segmentName);
-        int segIdx = loadSegmentFromFile (segmentName);
+        //int segIdx = loadSegmentFromFile (segmentName);
+        int segIdx = loadSegment (segmentName);
         if (segIdx < 0)
           {
             sim_printf ("ERROR: couldn't read %s\n", segmentName);
@@ -3205,7 +3328,6 @@ static void trapHCS_FSSearchGetWdir (void)
       }
     else
       {
-        char * cwd = ">udd>fxe>fxe";
         word24 resPtr = ITSToPhysmem (M + ap1, NULL);
         strcpyNonVarying (resPtr, NULL, cwd);
         M [ap2] = strlen (cwd);
@@ -3845,7 +3967,8 @@ static void trapHCS_MakeSeg (void)
       }
 
     // Does the segment exist?
-    idx = loadSegmentFromFile (entryname); // XXX ignoring dir_name
+    //idx = loadSegmentFromFile (entryname); // XXX ignoring dir_name
+    idx = loadSegment (entryname); // XXX ignoring dir_name
     if (idx >= 0)
       {
         KSTEntry * e = KST + idx;
