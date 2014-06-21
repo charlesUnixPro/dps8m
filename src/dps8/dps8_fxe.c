@@ -99,10 +99,11 @@
 
 static bool FXEinitialized = false;
 
-// Remember which segments we loaded bound_library_wired_ and error_table into
+// Remember where important segments are
 
 static int libIdx;
 static int errIdx;
+static int dsegIdx;
 
 //
 // Forward declarations
@@ -675,10 +676,12 @@ static void initializeDSEG (void)
   {
 
     // 0100 (64) - 0177 (127) Fault pairs
-    // 0200 (128) - 0207 (135) SCU yblock
+    // 0200 (128) - 0207 (135) SCU y8block
     // 0300 - 2377 descriptor segment: 1000 segments at 2 words per segment.
 #define DESCSEG 0300
-#define N_DESCS 01000
+#define N_DESCS N_SEGNOS
+
+#define DSEG_SIZE (DESCSEG + N_DESCS * 2)
 
     //    org   0100 " Fault pairs
     //    bss   64
@@ -688,6 +691,7 @@ static void initializeDSEG (void)
     //    bss   0400*2
 
 
+    dsegIdx = allocateSegment (DSEG_SIZE, "dseg", 0, 0, 0, 0, 0, 0, 0, 0);
     // Fill the fault pairs with fxeFaultHandler traps.
 
     // (12-bits of which the top-most 7-bits are used)
@@ -1375,22 +1379,10 @@ static void setupWiredSegments (void)
   {
      // allocate wired segments
 
-     // 'dseg' contains the fault traps
+     // 'dseg' contains the fault pairs and descriptors
 
-     KST [0] . allocated = true;
-     KST [0] . loaded = true;
-     setSegno (0, 0);
-     KST [0] . wired = true;
-     KST [0] . R1 = 0;
-     KST [0] . R2 = 0;
-     KST [0] . R3 = 0;
-     KST [0] . R = 1;
-     KST [0] . E = 0;
-     KST [0] . W = 0;
-     KST [0] . P = 0;
-     strncpy (KST [0] . segname, "dseg", SEGNAME_LEN + 1);
-          
      initializeDSEG ();
+     KST [dsegIdx] . wired = true;
   }
 
 
@@ -1407,7 +1399,7 @@ static void createStackSegments (void)
         if (i == 0)
           stack0Idx = ssIdx;
         KSTEntry * e = KST + ssIdx;
-        e -> loaded = true;
+        e -> loaded = false;
         word24 segAddr = lookupSegAddrByIdx (ssIdx);
         memset (M + segAddr, 0, sizeof (stack_header));
 
@@ -1917,11 +1909,15 @@ t_stat fxeDump (int32 __attribute__((unused)) arg,
         KSTEntry * e = KST + idx;
         if (! e -> allocated)
           continue;
-        sim_printf ("%3d %c %06o %08o %07o %s\n", 
-                    idx, e -> loaded ? ' ' : '*',
+        sim_printf ("%3d %c %06o %08o %07o %o%o%o %c%c%c%c %s\n", 
+                    idx, e -> loaded ? '*' : ' ',
                     e -> segno, e -> physmem,
                     e -> seglen, 
-                    //e -> segname ? e -> segname : "anon");
+                    e -> R1, e -> R2, e -> R3,
+                    e -> R ? 'R' : '.',
+                    e -> E ? 'E' : '.',
+                    e -> W ? 'W' : '.',
+                    e -> P ? 'P' : '.',
                     strlen (e -> segname) ? e -> segname : "anon");
       }
     sim_printf ("\n");
@@ -2010,7 +2006,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     //clrEntry -> seglen = 2 * LOT_SIZE;
     clrEntry -> bit_count = 36 * clrEntry -> seglen;
-    clrEntry -> loaded = true;
+    clrEntry -> loaded = false;
     installSDW (clrIdx);
 
     word36 * clrMemory = M + clrEntry -> physmem;
@@ -2031,7 +2027,7 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
     KSTEntry * iocbEntry = KST + iocbIdx;
 
-    iocbEntry -> loaded = true;
+    iocbEntry -> loaded = false;
     installSDW (iocbIdx);
 
     // sim_printf ("Loading library segment\n");
