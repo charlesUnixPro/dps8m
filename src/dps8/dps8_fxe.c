@@ -40,7 +40,51 @@
 //
 // MR12.3/documentation/info_segments/allocation_storage.gi.info.ascii
 //
+// bound_file_system.s.archive
+//   get_initial_linkage: This entry is called only by makestack when a new 
+//                        ring is being created. The program makestack
+//                        may have been called by link_man.
+//
+// dcl  1 ainfo aligned like area_info;
+//
+// /* set up linkage section area */
+// 
+//           if pds$clr_stack_size (aring) > 0 then do;        /* initial area is in stack */
+//                ainfo.size = pds$clr_stack_size (aring);
+//                ainfo.areap = ptr (sp, stack_end);
+//                stack_end = stack_end + ainfo.size;          /* update length of stack */
+//                stack_end = divide (stack_end + 15, 16, 17, 0) * 16;
+//                                                             /* round up */
+//                end;
+//           else do;                                          /* clr is to go into separate seg */
+//                ainfo.size = sys_info$max_seg_size;
+//                ainfo.areap = null;
+//                end;
+//           ainfo.version = area_info_version_1;
+//           string (ainfo.control) = "0"b;
+//           ainfo.control.extend = "1"b;
+//           ainfo.control.zero_on_free = "1"b;
+//           ainfo.control.system = "1"b;
+//           ainfo.owner = "linker";
+//           call define_area_ (addr (ainfo), code);
+//           if code ^= 0 then call terminate_proc (error_table_$termination_requested);
+// 
+//      sp -> stack_header.system_free_ptr, 
+//      sp -> stack_header.user_free_ptr, 
+//      sp -> stack_header.assign_linkage_ptr,
+//      sp -> stack_header.clr_ptr, 
+//      sp -> stack_header.combined_stat_ptr = ainfo.areap;
+//
 
+
+//  define_area_ is in bound_library_1.s.archive; it builds area_header from
+//  area_info
+
+
+// makestack is called by act_proc.
+// create_proc is called (somehow) by cpg_ create process group
+// cpg_ is called by dialup_, absentee_user_manager, and
+//   daemon_user_manager_ to create user processes.
 
 
 #include <sys/types.h>
@@ -67,6 +111,7 @@
 #include "iocbx.incl.pl1.h"
 #include "stack_header.incl.pl1.h"
 #include "system_link_names.incl.pl1.h"
+#include "area_info.incl.pl1.h"
 
 
 //
