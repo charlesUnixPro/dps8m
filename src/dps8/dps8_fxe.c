@@ -3,7 +3,6 @@
 //   Allocate segments by size.
 //   Implement paging.
 //   Add a stack dumper.
-//   Add the file system.
 //   Understand control points.
 //   Understand run units, run unit depth.
 //   Implement signaling. (See AK92-2, page 184)
@@ -958,6 +957,7 @@ static void trapHCS_HistoryRegsSet (void);
 static void trapHCS_HistoryRegsGet (void);
 static void trapHCS_FSSearchGetWdir (void);
 static void trapHCS_InitiateCount (void);
+static void trapHCS_Initiate (void);
 static void trapHCS_TerminateName (void);
 static void trapHCS_MakePtr (void);
 static void trapHCS_StatusMins (void);
@@ -986,6 +986,7 @@ static trapNameTableEntry trapNameTable [] =
     { "hcs_", "history_regs_get", trapHCS_HistoryRegsGet },
     { "hcs_", "fs_search_get_wdir", trapHCS_FSSearchGetWdir },
     { "hcs_", "initiate_count", trapHCS_InitiateCount },
+    { "hcs_", "initiate", trapHCS_Initiate },
     { "hcs_", "terminate_name", trapHCS_TerminateName },
     { "hcs_", "make_ptr", trapHCS_MakePtr },
     { "hcs_", "status_mins", trapHCS_StatusMins },
@@ -3601,6 +3602,216 @@ static void trapHCS_InitiateCount (void)
     doRCU (true); // doesn't return
   }
 
+static void trapHCS_Initiate (void)
+  {
+// 
+// Function: given a pathname and a reference name, makes known the
+// segment defined by the pathname, initiates the given reference name,
+// and increments the count of initiated reference names for the segment.
+// 
+// 
+// Syntax:
+// declare hcs_$initiate entry (char(*), char(*), char(*), fixed bin(1),
+//      fixed bin(2), ptr, fixed bin(35));
+// call hcs_$initiate (dir_name, entryname, ref_name, seg_sw, copy_ctl_sw,
+//      seg_ptr, code);
+// 
+//    
+// Arguments:
+// dir_name
+//    is the        pathname of the containing directory.  (Input)
+// entryname
+//    is the entryname of the segment.  (Input)
+// ref_name
+//    is the reference name.  (Input) If it is zero length, the segment is
+//    initiated with a null reference name.
+// seg_sw
+//    is the reserved segment switch.  (Input)
+//    0   if no segment number has been reserved
+//    1   if a segment number was reserved
+// copy_ctl_sw
+//    is obsolete, and should be set to zero.  (Input)
+// 
+// 
+// seg_ptr
+//    is a pointer to the segment.
+//    1  if seg_sw is on (Input) 
+//    0  if seg_sw is off (Output) 
+// code
+//    is a storage system status code.  (Output)
+// 
+// Notes: If a segment is concurrently initiated more than a
+// system-defined number of times, the usage count of the segment is said
+// to be in an overflowed condition, and further initiations do not
+// affect the usage count.  This affects the use of the
+// hcs_$terminate_noname and hcs_$terminate_name entry points.  If the
+// reserved segment switch is on, then the segment pointer is input and
+// the segment is made known with that segment number.  In this case, the
+// user supplies the initial segment number.  If the reserved segment
+// switch is off, a segment number is assigned and returned as a pointer.
+// 
+// 
+// If entryname cannot be made known, a null pointer is returned for
+// seg_ptr and the returned value of code indicates the reason for
+// failure.        Thus, the usual way to test whether the call was successful
+// is to check the pointer, not the code, since the code may be nonzero
+// even if the segment was successfully initiated.  If entryname is
+// already known to the user's process, code is returned as
+// error_table_$segknown and the seg_ptr argument contains a nonnull
+// pointer to entryname.  If ref_name has already been initiated in the
+// current ring, the code is returned as error_table_$namedup.      The
+// seg_ptr argument contains a valid pointer to the segment being
+// initiated.  If entryname is not already known, and no problems are
+// encountered, seg_ptr contains a valid pointer and code is 0.
+// 
+
+
+    argTableEntry t [7] =
+      {
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_CHAR_SPLAT, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 },
+        { DESC_PTR, 0, 0, 0 },
+        { DESC_FIXED, 0, 0, 0 }
+      };
+
+    if (! processArgs (7, 7, t))
+      return;
+
+    // Process the arguments
+
+    // Argument 1: dir_name (input)
+    word24 ap1 = t [ARG1] . argAddr;
+    word24 dp1 = t [ARG1] . descAddr;
+    word24 d1size = getbits36 (M [dp1], 12, 24);
+
+    char * arg1 = malloc (d1size + 1);
+    strcpyC (ap1, d1size, arg1);
+
+    // Argument 2: entry name
+    word24 ap2 = t [ARG2] . argAddr;
+    word24 dp2 = t [ARG2] . descAddr;
+
+    word24 d2size = getbits36 (M [dp2], 12, 24);
+    char * arg2 = malloc (d2size + 1);
+    strcpyC (ap2, d2size, arg2);
+
+    // Argument 3: reference name
+
+
+// reference name
+// Name supplied to hcs_$initiate when a segment is made known, and entered
+// into the process's RNT. When a linkage fault occurs, the dynamic linker
+// searches for a segment with that reference name, using the process's search
+// rules. If the segment is not found by reference name, other search rules are
+// used, and if a segment is found, it is initiated with the reference name
+// used in the search. Thus one can issue the commands
+//
+//    initiate test_wankel wankel
+//    mysubsustem
+//
+// to cause the invocation of mysubsystem to find test_wankel when it links to
+// the function wankel.
+
+    word24 ap3 = t [ARG3] . argAddr;
+    word24 dp3 = t [ARG3] . descAddr;
+    word24 d3size = getbits36 (M [dp3], 12, 24);
+
+    char * arg3 = NULL;
+    if (d3size)
+      {
+        arg3 = malloc (d3size + 1);
+        strcpyC (ap3, d3size, arg3);
+      }
+
+    // Argument 4: reserved segment switch
+
+    word24 ap4 = t [ARG4] . argAddr;
+    word24 dp4 = t [ARG4] . descAddr;
+
+    word24 d4size = getbits36 (M [dp4], 12, 24);
+    if (d4size != 17)
+      {
+        sim_printf ("ERROR: initiate_count expected d4size 17, got %d\n", 
+                    d4size);
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
+      }
+
+    word24 seg_sw = getbits36 (M [ap4], 36 - 17, 17);
+    if (seg_sw)
+      {
+        sim_printf ("ERROR: can't grok seg_sw != 0\n");
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
+      }
+    // Argument 6: seg ptr
+
+    word24 ap6 = t [ARG6] . argAddr;
+    word24 dp6 = t [ARG6] . descAddr;
+    word24 d6size = getbits36 (M [dp6], 12, 24);
+
+    if (d6size != 0)
+      {
+        sim_printf ("ERROR: initiate_count expected d6size 0, got %d\n", 
+                    d6size);
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
+      }
+
+
+    // Argument 7: code
+
+    //word24 ap7 = t [ARG7] . argAddr;
+    word24 dp7 = t [ARG7] . descAddr;
+    word24 d7size = getbits36 (M [dp7], 12, 24);
+
+    if (d7size != 35)
+      {
+        sim_printf ("ERROR: initiate_count expected d7size 35, got %d\n", d7size);
+        M [t [ARG7] . argAddr] = lookupErrorCode ("bad_arg");
+        doRCU (true); // doesn't return
+      }
+
+
+    word24 bitcnt;
+    word36 ptr [2];
+
+    trimTrailingSpaces (arg1);
+    trimTrailingSpaces (arg2);
+
+    // XXX Check if segment is known....
+
+    // XXX Check if ref_name is known...
+
+    word24 code = 0;
+    word15 segno;
+    int status = initiateSegment (arg1, arg2, & bitcnt, ptr, & segno);
+    if (status)
+      {
+        sim_printf ("ERROR: initiateSegment fail\n");
+        bitcnt = 0;
+        makeNullPtr (ptr);
+        code = lookupErrorCode ("bad_segment"); // XXX probably not the right code
+      }       
+
+    if (status == 0 && arg3)
+      addRNTRef (segnoMap [segno], arg3);
+    //M [ap4] = bitcnt & MASK24;
+    M [ap6] = ptr [0];
+    M [ap6 + 1] = ptr [1];
+    M [t [ARG7] . argAddr] = code;
+
+    free (arg1);
+    free (arg2);
+    if (arg3)
+      free (arg3);
+
+    doRCU (true); // doesn't return
+  }
+
 static void trapHCS_TerminateName (void)
   {
     // declare hcs_$terminate_name entry (char(*), fixed bin(35));
@@ -4588,6 +4799,11 @@ char * lookupFXESegmentAddress (word18 segno, word18 offset,
 
 // simh stuff
 
+static DEBTAB fxe_dt [] = 
+  {
+    { "TRACE",      DBG_TRACE       },
+  };
+
 DEVICE fxe_dev =
   {
     (char *) "FXE",       /* name */
@@ -4607,9 +4823,9 @@ DEVICE fxe_dev =
     NULL,        /* attach routine */
     NULL,        /* detach routine */
     NULL,        /* context */
-    0,           /* flags */
+    DEV_DEBUG,   /* flags */
     0,           /* debug control flags */
-    0,           /* debug flag names */
+    fxe_dt,      /* debug flag names */
     NULL,        /* memory size change */
     NULL,        /* logical name */
     NULL,        /* help */
