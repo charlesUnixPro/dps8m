@@ -1299,6 +1299,7 @@ t_stat sim_instr (void)
                   {
                     processorCycle = INSTRUCTION_FETCH;
                     // fetch next instruction into current instruction struct
+                    clr_went_appending (); // XXX not sure this is the right place
                     fetchInstruction(PPR.IC);
                   }
 
@@ -1901,6 +1902,16 @@ void set_went_appending (void)
     went_appending = true;
   }
 
+void clr_went_appending (void)
+  {
+    went_appending = false;
+  }
+
+bool get_went_appending (void)
+  {
+    return went_appending;
+  }
+
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -1926,8 +1937,14 @@ static bool clear_TEMPORARY_ABSOLUTE_mode (void)
 addr_modes_t get_addr_mode(void)
 {
     if (secret_addressing_mode)
+      { sim_debug (DBG_TRACE, & cpu_dev, "SECRET\n"); }
+    if (secret_addressing_mode)
         return ABSOLUTE_mode; // This is not the mode you are looking for
 
+    if (went_appending)
+      { sim_debug (DBG_TRACE, & cpu_dev, "WENT\n"); }
+    if (went_appending)
+        return APPEND_mode;
     //if (IR.abs_mode)
     if (TSTF(cu.IR, I_ABS))
         return ABSOLUTE_mode;
@@ -1950,12 +1967,13 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+    went_appending = false;
 // Temporary hack to fix fault/intr pair address mode state tracking
 //   1. secret_addressing_mode is only set in fault/intr pair processing.
 //   2. Assume that the only set_addr_mode that will occur is the b29 special
-//   case, and ITx if added.
-    if (secret_addressing_mode && mode == APPEND_mode)
-      set_went_appending ();
+//   case or ITx.
+    //if (secret_addressing_mode && mode == APPEND_mode)
+      //set_went_appending ();
 
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {

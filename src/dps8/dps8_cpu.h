@@ -772,15 +772,15 @@ typedef struct
     word1 SD_ON;   // 21    SDWAM enabled
                    // 22    PTWAMM Match on PTWAM -- not implemented
     word1 PT_ON;   // 23    PTWAM enabled
-                   // 24    PI-AP Instruction fetch append cycle
-                   // 25    DSPTW Fetch descriptor segment PTW
-                   // 26    SDWNP Fetch SDW non paged
-                   // 27    SDWP  Fetch SDW paged
-                   // 28    PTW   Fetch PTW
-                   // 29    PTW2  Fetch prepage PTW
-                   // 30    FAP   Fetch final address - paged
-                   // 31    FANP  Fetch final address - nonpaged
-                   // 32    FABS  Fetch final address - absolute
+    word1 PI_AP;   // 24    PI-AP Instruction fetch append cycle
+    word1 DSPTW;   // 25    DSPTW Fetch descriptor segment PTW
+    word1 SDWNP;   // 26    SDWNP Fetch SDW non paged
+    word1 SDWP;    // 27    SDWP  Fetch SDW paged
+    word1 PTW;     // 28    PTW   Fetch PTW
+    word1 PTW2;    // 29    PTW2  Fetch prepage PTW
+    word1 FAP;     // 30    FAP   Fetch final address - paged
+    word1 FANP;    // 31    FANP  Fetch final address - nonpaged
+    word1 FABS;    // 32    FABS  Fetch final address - absolute
                    // 33-35 FCT   Fault counter - counts retries
 
     /* word 1 */
@@ -1061,6 +1061,8 @@ int core_read72 (word24 addr, word72 *dst);
 
 int is_priv_mode (void);
 void set_went_appending (void);
+void clr_went_appending (void);
+bool get_went_appending (void);
 addr_modes_t get_addr_mode (void);
 void set_addr_mode (addr_modes_t mode);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);

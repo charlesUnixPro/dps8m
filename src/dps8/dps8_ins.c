@@ -185,7 +185,17 @@ static void scu2words(word36 *words)
     putbits36 (& words [0], 18,  1, PPR.P);
     putbits36 (& words [0], 21,  1, cu.SD_ON);
     putbits36 (& words [0], 23,  1, cu.PT_ON);
-    
+    putbits36 (& words [0], 24,  1, cu . PI_AP);   // 24    PI-AP
+    putbits36 (& words [0], 25,  1, cu . DSPTW);   // 25    DSPTW
+    putbits36 (& words [0], 26,  1, cu . SDWNP);   // 26    SDWNP
+    putbits36 (& words [0], 27,  1, cu . SDWP);    // 27    SDWP
+    putbits36 (& words [0], 28,  1, cu . PTW);     // 28    PTW
+    putbits36 (& words [0], 29,  1, cu . PTW2);    // 29    PTW2
+    putbits36 (& words [0], 30,  1, cu . FAP);     // 30    FAP
+    putbits36 (& words [0], 31,  1, cu . FANP);    // 31    FANP
+    putbits36 (& words [0], 32,  1, cu . FABS);    // 32    FABS
+
+//sim_printf ("scu2words wrote %012llo @ %08o\n", words [0], words);
     // words [1]
     
     putbits36 (& words [1], 30, 5, cu.FI_ADDR);
@@ -264,6 +274,15 @@ static void words2scu (word36 * words)
     PPR.P           = getbits36(words[0], 18, 1);
     cu.SD_ON        = getbits36(words[0], 21, 1);
     cu.PT_ON        = getbits36(words[0], 23, 1);
+    cu.PI_AP        = getbits36(words[0], 24, 1);
+    cu.DSPTW        = getbits36(words[0], 25, 1);
+    cu.SDWNP        = getbits36(words[0], 26, 1);
+    cu.SDWP         = getbits36(words[0], 27, 1);
+    cu.PTW          = getbits36(words[0], 28, 1);
+    cu.PTW2         = getbits36(words[0], 29, 1);
+    cu.FAP          = getbits36(words[0], 30, 1);
+    cu.FANP         = getbits36(words[0], 31, 1);
+    cu.FABS         = getbits36(words[0], 32, 1);
     
     // words[1]
 
@@ -635,10 +654,12 @@ void fetchInstruction (word18 addr)
     TPR.TRR = PPR.PRR;
     TPR.TSR = PPR.PSR;
 
+#if 0
     if (get_addr_mode() == ABSOLUTE_mode)
       sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %06o\n", PPR . IC);
     else
       sim_debug (DBG_TRACE, & cpu_dev, "Instruction fetch: %05o:%06o\n", PPR . PSR, PPR . IC);
+#endif
 
     Read(addr, & cu . IWB, INSTRUCTION_FETCH, 0);
     
@@ -878,6 +899,8 @@ restart_1:
           {
             if (ci -> a)   // if A bit set set-up TPR stuff ...
               doPtrReg ();
+            else
+              clr_went_appending ();
             // Setup for ABUSE_CT_HOLD code
             // This must not happen on instruction restart
             cu . CT_HOLD = 0; // Clear hidden CI/SC/SCR bits
@@ -3075,6 +3098,9 @@ static t_stat DoBasicInstruction (void)
                 uint32 n = opcode & 07;  // get n
                 word18 tmp18 = rX[n] & GETHI(CY);
                 tmp18 &= MASK18;
+                sim_debug (DBG_TRACE, & cpu_dev, 
+                           "n %o rX %06o HI %06o tmp %06o\n",
+                           n, rX [n], (word18) (GETHI(CY) & MASK18), tmp18);
 
                 if (tmp18 == 0)
                     SETF(cu.IR, I_ZERO);

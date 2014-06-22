@@ -18,7 +18,7 @@
 t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b29)
 {
     word24 finalAddress;
-    if (b29)
+    if (b29 || get_went_appending ())
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
         goto B29;
@@ -27,11 +27,13 @@ t_stat Read(word18 address, word36 *result, _processor_cycle_type cyctyp, bool b
     {
         case ABSOLUTE_MODE:
         
+            setAPUStatus (apuStatus_FABS);
             core_read(address, result);
             return SCPE_OK;
         
         case BAR_MODE:
         
+            setAPUStatus (apuStatus_FABS); // XXX maybe...
             finalAddress = getBARaddress(address);
         
             core_read(finalAddress, result);
@@ -55,7 +57,7 @@ B29:        //finalAddress = doAppendRead(i, accessType, address);
 t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29)
 {
     word24 finalAddress;
-    if (b29)
+    if (b29 || get_went_appending ())
         //<generate address from  pRn and offset in address>
         //core_read (address, * result);
         goto B29;
@@ -65,12 +67,14 @@ t_stat Write(word18 address, word36 data, _processor_cycle_type cyctyp, bool b29
     {
         case ABSOLUTE_MODE:
         
+            setAPUStatus (apuStatus_FABS);
             core_write(address, data);
             return SCPE_OK;
         
         case BAR_MODE:
         
             finalAddress = getBARaddress(address);
+            setAPUStatus (apuStatus_FABS); // XXX maybe...
             core_write(finalAddress, data);
         
             return SCPE_OK;

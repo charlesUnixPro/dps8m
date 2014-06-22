@@ -30,6 +30,22 @@ enum _appendingUnit_cycle_type {
 };
 
 
+typedef enum apuStatusBits
+  {
+    apuStatus_PI_AP,
+    apuStatus_DSPTW,
+    apuStatus_SDWNP,
+    apuStatus_SDWP,
+    apuStatus_PTW,
+    apuStatus_PTW2,
+    apuStatus_FAP,
+    apuStatus_FANP,
+    apuStatus_FABS,
+    apuStatus_MDSPTW,
+    apuStatus_MPTW,
+  } apuStatusBits;
+
+void setAPUStatus (apuStatusBits status);
 
 void doPtrReg (void);        ///< used by EIS stuff
 t_stat dumpSDWAM (void);

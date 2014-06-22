@@ -17,6 +17,81 @@
  * \brief the appending unit ...
  */
 
+#if 0
+typedef enum apuStatusBits
+  {
+    apuStatus_PI_AP = 1llu < (36 - 24),
+    apuStatus_DSPTW = 1llu < (36 - 25),
+    apuStatus_SDWNP = 1llu < (36 - 26),
+    apuStatus_SDWP  = 1llu < (36 - 27),
+    apuStatus_PTW   = 1llu < (36 - 28),
+    apuStatus_PTW2  = 1llu < (36 - 29),
+    apuStatus_FAP   = 1llu < (36 - 30),
+    apuStatus_FANP  = 1llu < (36 - 31),
+    apuStatus_FABS  = 1llu < (36 - 32),
+  } apuStatusBits;
+
+static const apuStatusBits apuStatusAll =
+    apuStatus_PI_AP |
+    apuStatus_DSPTW |
+    apuStatus_SDWNP |
+    apuStatus_SDWP  |
+    apuStatus_PTW   |
+    apuStatus_PTW2  |
+    apuStatus_FAP   |
+    apuStatus_FANP  |
+    apuStatus_FABS;
+#endif
+
+void setAPUStatus (apuStatusBits status)
+  {
+    cu . PI_AP = 0;
+    cu . DSPTW = 0;
+    cu . SDWNP = 0;
+    cu . SDWP  = 0;
+    cu . PTW   = 0;
+    cu . PTW2  = 0;
+    cu . FAP   = 0;
+    cu . FANP  = 0;
+    cu . FABS  = 0;
+    switch (status)
+      {
+        case apuStatus_PI_AP:
+          cu . PI_AP = 1;
+          break;
+        case apuStatus_DSPTW:
+        case apuStatus_MDSPTW: // XXX this doesn't seem like the right solution.
+                               // XXX there is a MDSPTW bit in the APU history
+                               // register, but not in the CU.
+          cu . DSPTW = 1;
+          break;
+        case apuStatus_SDWNP:
+          cu . SDWNP = 1;
+          break;
+        case apuStatus_SDWP:
+          cu . SDWP  = 1;
+          break;
+        case apuStatus_PTW:
+        case apuStatus_MPTW: // XXX this doesn't seem like the right solution.
+                             // XXX there is a MPTW bit in the APU history
+                             // XXX register, but not in the CU.
+          cu . PTW   = 1;
+          break;
+        case apuStatus_PTW2:
+          cu . PTW2  = 1;
+          break;
+        case apuStatus_FAP:
+          cu . FAP   = 1;
+          break;
+        case apuStatus_FANP:
+          cu . FANP  = 1;
+          break;
+        case apuStatus_FABS:
+          cu . FABS  = 1;
+          break;
+      }
+  }
+
 static char *strSDW(_sdw *SDW);
 
 static enum _appendingUnit_cycle_type appendingUnitCycleType = APPUNKNOWN;
@@ -45,6 +120,7 @@ void doPtrReg(void)
     TPR.CA = (PAR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
     TPR.TBR = PAR[n].BITNO;
     
+    set_went_appending ();
     sim_debug(DBG_APPENDING, &cpu_dev, "doPtrReg(): n=%o offset=%05o TPR.CA=%06o TPR.TBR=%o TPR.TSR=%05o TPR.TRR=%o\n", n, offset, TPR.CA, TPR.TBR, TPR.TSR, TPR.TRR);
 }
 
@@ -196,6 +272,8 @@ static _ptw0* fetchDSPTW(word15 segno)
         // generate access violation, out of segment bounds fault
         doFault(acc_viol_fault, ACV15, "acvFault: fetchDSPTW out of segment bounds fault");
         
+    setAPUStatus (apuStatus_DSPTW);
+
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
 
@@ -222,7 +300,9 @@ static _ptw0* modifyDSPTW(word15 segno)
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
         doFault(acc_viol_fault, ACV15, "acvFault: modifyDSPTW out of segment bounds fault");
-    
+
+    setAPUStatus (apuStatus_MDSPTW); 
+
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
     
@@ -288,6 +368,7 @@ static _sdw0* fetchPSDW(word15 segno)
 
     //    sim_debug(DBG_APPENDING, &cpu_dev, "fetchPSDW(1):PTW:%s\n",
 
+    setAPUStatus (apuStatus_SDWP);
     word24 y1 = (2 * segno) % 1024;
     
     word36 SDWeven, SDWodd;
@@ -326,6 +407,8 @@ static _sdw0* fetchPSDW(word15 segno)
 static _sdw0 *fetchNSDW(word15 segno)
 {
     sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(0):segno=%05o\n", segno);
+
+    setAPUStatus (apuStatus_SDWNP);
 
     if (2 * segno >= 16 * (DSBR.BND + 1))
     {
@@ -528,6 +611,9 @@ static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 
 static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
 {
+
+    setAPUStatus (apuStatus_PTW);
+
     word24 y2 = offset % 1024;
     word24 x2 = (offset - y2) / 1024;
     
@@ -604,7 +690,6 @@ static void loadPTWAM(word15 segno, word18 offset)
 
 }
 
-#ifndef QUIET_UNUSED
 /**
  * modify target segment PTW (Set M=1) ...
  */
@@ -615,6 +700,8 @@ static _ptw* modifyPTW(_sdw *sdw, word18 offset)
     
     word36 PTWx2;
     
+    setAPUStatus (apuStatus_MPTW);
+
     core_read(sdw->ADDR + x2, &PTWx2);
     PTWx2 = SETBIT(PTWx2, 6);
     core_write(sdw->ADDR + x2, PTWx2);
@@ -623,7 +710,6 @@ static _ptw* modifyPTW(_sdw *sdw, word18 offset)
     
     return PTW;
 }
-#endif
 
 
 
@@ -1121,7 +1207,8 @@ G:;
 H:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): FANP\n");
     appendingUnitCycleType = FANP;
-    
+    setAPUStatus (apuStatus_FANP);
+
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(H): SDW->ADDR=%08o TPR.CA=%06o \n", SDW->ADDR, address);
 
     finalAddress = SDW->ADDR + address;
@@ -1139,15 +1226,19 @@ I:;
     //if (isSTROP(i) && PTW->M == 0)
     if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
     {
+#if 1
         // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
         appendingUnitCycleType = MPTW;
         PTW->M = 1;
         
-       // modifyPTW(SDW, address); is this better?
+#else
+       modifyPTW(SDW, address);
+#endif
     }
     
     // final address paged
     appendingUnitCycleType = FAP;
+    setAPUStatus (apuStatus_FAP);
     
     //word24 y2 = TPR.CA % 1024;
     word24 y2 = address % 1024;
