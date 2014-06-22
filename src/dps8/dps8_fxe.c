@@ -1544,6 +1544,7 @@ static int loadSegment (char * arg)
       {
         ">system_library_standard",
         ">system_library_unbundled",
+// XXX why is execution needed?
         ">library_dir_dir>system_library_1>execution",
         ">system_library_tools",
         ">system_library_auth_maint"
@@ -2213,7 +2214,8 @@ t_stat fxe (int32 __attribute__((unused)) arg, char * buf)
 
 // Setup SSA
 
-    ssaIdx = allocateSegment (MAX_SEGLEN, "ssa", SSA_SEGNO, 0, 0, 0, P_RW);
+    //ssaIdx = allocateSegment (MAX_SEGLEN, "ssa", SSA_SEGNO, 0, 0, 0, P_RW);
+    ssaIdx = allocateSegment (MAX_SEGLEN, "ssa", SSA_SEGNO, RINGS_ZFF, P_RW);
     if (ssaIdx < 0)
       {
         sim_printf ("ERROR: Unable to allocate clr segment\n");
