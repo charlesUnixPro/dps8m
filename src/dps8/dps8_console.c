@@ -291,6 +291,7 @@ static int con_iom3_cmd (int iom_unit_num, UNIT * unitp, pcw_t * pcwp,
 // The tape channel is a CPI; use the PCW for the command.
 // commands.
 // The IDCW is from the connect PCW; the DDCW is the first in the mbox.
+// unless it's not: T&4 puts a command in the PCW.
 
     * stati = 0;
     * is_read = true;
