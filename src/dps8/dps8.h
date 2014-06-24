@@ -214,9 +214,11 @@ typedef enum opc_flag
 
 // bits 25, 26
     EOP3_ALPHA      = (EOP_ALPHA << 25),
-    EOP3_MASK       = (3U << 25)
+    EOP3_MASK       = (3U << 25),
 #define EOP3_SHIFT 25
 
+    READ_YBLOCK32   = (1U << 26),  // fetches/reads Y-block16 operands from memory
+    STORE_YBLOCK32  = (1U << 27),  // fetches/reads Y-block16 operands from memory
   } opc_flag;
 
 
@@ -320,8 +322,8 @@ enum eCAFoper {
 };
 typedef enum eCAFoper eCAFoper;
 
-#define READOP(i)  ((bool) (i->info->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 |  READ_YBLOCK16)) )
-#define WRITEOP(i) ((bool) (i->info->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16)) )
+#define READOP(i)  ((bool) (i->info->flags & ( READ_OPERAND |  READ_YPAIR |  READ_YBLOCK8 | READ_YBLOCK16 | READ_YBLOCK32)) )
+#define WRITEOP(i) ((bool) (i->info->flags & (STORE_OPERAND | STORE_YPAIR | STORE_YBLOCK8 | STORE_YBLOCK16 | STORE_YBLOCK32)) )
 #define RMWOP(i)   ((bool) READOP(i) && WRITEOP(i)) // if it's both read and write it's a RMW
 
 #define TRANSOP(i) ((bool) (i->info->flags & (TRANSFER_INS) ))

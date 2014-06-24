@@ -366,7 +366,11 @@ sim_debug (DBG_TRACE, & cpu_dev, "CAC MFkRL\n");
                   du . D_RES [k - 1] &= 07777777;  // 21-bits of length.
                   break;
                 default:
-                  doFault (illproc_fault, 0, "illegal TAk");
+                  // Technically, ill_proc should be "illegal eis modifier",
+                  // but the Fault Register has no such bit; the Fault
+                  // register description says ill_proc is anything not
+                  // handled by other bits.
+                  doFault (illproc_fault, ill_proc, "illegal TAk");
               }
           }
         else
@@ -2035,8 +2039,12 @@ void btd(DCDstruct *ins)
     
     //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
     //load9x(e->N1, addr, e->CN1, e);
+                  // Technically, ill_proc should be "illegal eis modifier",
+                  // but the Fault Register has no such bit; the Fault
+                  // register description says ill_proc is anything not
+                  // handled by other bits.
     if (e->N1 == 0 || e->N1 > 8)
-        doFault(illproc_fault, 0, "btd(1): N1 == 0 || N1 > 8"); 
+        doFault(illproc_fault, ill_proc, "btd(1): N1 == 0 || N1 > 8"); 
 
     load9x(e->N1, &e->ADDR1, e->CN1, e);
     
@@ -2240,7 +2248,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                     c &= 0xf;   // hack off all but lower 4 bits
                     
                     if (c < 012 || c > 017)
-                        doFault(illproc_fault, 0, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(illproc_fault, ill_dig, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
                     
                     if (c == 015)   // '-'
                         e->sign = -1;
@@ -2271,7 +2279,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 {
                     c &= 0xf;   // hack off all but lower 4 bits
                     if (c > 011)
-                        doFault(illproc_fault,0,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(illproc_fault,ill_dig,"loadInputBufferNumric(2): illegal char in input"); // TODO: generate ill proc fault
                     
                     *p++ = c; // store 4-bit char in buffer
                 }
@@ -2284,7 +2292,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == 0) // first had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                        doFault(illproc_fault,0,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(illproc_fault,ill_dig,"loadInputBufferNumric(3): illegal char in input"); // TODO: generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -2292,7 +2300,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(illproc_fault, 0,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
+                        doFault(illproc_fault, ill_dig,"loadInputBufferNumric(4): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;
@@ -2303,7 +2311,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 if (n == N-1) // last had better be a sign ....
                 {
                     if (c < 012 || c > 017)
-                         doFault(illproc_fault, 0,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
+                         doFault(illproc_fault, ill_dig,"loadInputBufferNumric(5): illegal char in input"); // XXX generate ill proc fault; // XXX generate ill proc fault
                     if (c == 015)   // '-'
                         e->sign = -1;
                     e->srcTally -= 1;   // 1 less source char
@@ -2311,7 +2319,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 else
                 {
                     if (c > 011)
-                        doFault(illproc_fault, 0,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
+                        doFault(illproc_fault, ill_dig,"loadInputBufferNumric(6): illegal char in input"); // XXX generate ill proc fault
                     *p++ = c; // store 4-bit char in buffer
                 }
                 break;

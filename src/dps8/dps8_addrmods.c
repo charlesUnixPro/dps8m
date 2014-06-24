@@ -114,6 +114,10 @@ static char * opDescSTR (void)
             case 16:
               strcat (temp, "readCYblock16");
               break;
+
+            case 32:
+              strcat (temp, "readCYblock32");
+              break;
           }
       }
 
@@ -138,6 +142,10 @@ static char * opDescSTR (void)
 
             case 16:
               strcat (temp, "writeCYblock16");
+              break;
+
+            case 32:
+              strcat (temp, "writeCYblock32");
               break;
           }
       }
@@ -182,6 +190,7 @@ static char * operandSTR(void)
             break;
         case 8:
         case 16:
+        case 32:
         default:
             sprintf(temp, "Unhandled size: %d", n);
             break;

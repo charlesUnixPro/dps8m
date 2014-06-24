@@ -33,6 +33,7 @@ word36 CY = 0;              ///< C(Y) operand data from memory
 word36 Ypair[2];        ///< 2-words
 word36 Yblock8[8];      ///< 8-words
 word36 Yblock16[16];    ///< 16-words
+word36 Yblock32[32];    ///< 32-words
 static int doABSA (word36 * result);
 
 static t_stat doInstruction (void);
@@ -755,8 +756,9 @@ t_stat executeInstruction (void)
       goto restart_1;
 
     // check for priv ins - Attempted execution in normal or BAR modes causes a illegal procedure fault.
+    // Not clear what the subfault should be; see Fault Register in AL39.
     if ((ci->info->flags & PRIV_INS) && !is_priv_mode())
-        doFault(illproc_fault, 0, "Attempted execution of privileged instruction.");
+        doFault(illproc_fault, ill_proc, "Attempted execution of privileged instruction.");
     
     // check for illegal addressing mode(s) ...
     
@@ -764,35 +766,37 @@ t_stat executeInstruction (void)
     if (ci->info->mods == NO_CSS)
     {
         if (_nocss[ci->tag])
-            doFault(illproc_fault, 0, "Illegal CI/SC/SCR modification");
+            doFault(illproc_fault, ill_mod, "Illegal CI/SC/SCR modification");
     }
     // No DU/DL/CI/SC/SCR allowed
     else if (ci->info->mods == NO_DDCSS)
     {
         if (_noddcss[ci->tag])
-            doFault(illproc_fault, 0, "Illegal DU/DL/CI/SC/SCR modification");
+            doFault(illproc_fault, ill_mod, "Illegal DU/DL/CI/SC/SCR modification");
     }
     // No DL/CI/SC/SCR allowed
     else if (ci->info->mods == NO_DLCSS)
     {
         if (_nodlcss[ci->tag])
-            doFault(illproc_fault, 0, "Illegal DL/CI/SC/SCR modification");
+            doFault(illproc_fault, ill_mod, "Illegal DL/CI/SC/SCR modification");
     }
     // No DU/DL allowed
     else if (ci->info->mods == NO_DUDL)
     {
         if (_nodudl[ci->tag])
-            doFault(illproc_fault, 0, "Illegal DU/DL modification");
+            doFault(illproc_fault, ill_mod, "Illegal DU/DL modification");
     }
     if (cu . xdo == 1) // Execute even or odd of XED
     {
+    // Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags == NO_XED)
-            doFault(illproc_fault, 0, "Instruction not allowed in XED");
+            doFault(illproc_fault, ill_proc, "Instruction not allowed in XED");
     }
     if (cu . xde == 1 && cu . xdo == 0) // Execute XEC
     {
+    // Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags == NO_XEC)
-            doFault(illproc_fault, 0, "Instruction not allowed in XEC");
+            doFault(illproc_fault, ill_proc, "Instruction not allowed in XEC");
     }
 
     if (cu . rpt || cu .rd)
@@ -807,7 +811,7 @@ t_stat executeInstruction (void)
               break;
             default:
               // generate fault. Only R & RI allowed
-              doFault(illproc_fault, 0, "ill addr mod from RPT");
+              doFault(illproc_fault, ill_mod, "ill addr mod from RPT");
           }
         word6 Td = GET_TD(ci->tag);
         switch (Td)
@@ -823,12 +827,13 @@ t_stat executeInstruction (void)
               break;
             default:
               // generate fault. Only Xn allowed
-              doFault(illproc_fault, 0, "ill addr mod from RPT");
+              doFault(illproc_fault, ill_mod, "ill addr mod from RPT");
           }
 // XXX Does this need to also check for NO_RPL?
         // repeat allowed for this instruction?
+    // Not clear what the subfault should be; see Fault Register in AL39.
         if (ci->info->flags & NO_RPT)
-          doFault(illproc_fault, 0, "no rpt allowed for instruction");
+          doFault(illproc_fault, ill_proc, "no rpt allowed for instruction");
       }
 
     if (cu . repeat_first)
@@ -4522,7 +4527,7 @@ static t_stat DoBasicInstruction (void)
                   return STOP_UNIMP;
 
                 default:
-                  doFault (illproc_fault, 0, "lcpr tag invalid");
+                  doFault (illproc_fault, ill_mod, "lcpr tag invalid");
 
               }
             break;
@@ -4536,13 +4541,124 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0257:  ///< lsdp
-            doFault(illproc_fault, 0, "lsdp is illproc on DPS8M");
+            // Not clear what the subfault should be; see Fault Register in AL39.
+            doFault(illproc_fault, ill_proc, "lsdp is illproc on DPS8M");
 
         case 0613:  ///< rcu
             doRCU (false); // never returns
 
         case 0452:  ///< scpr
-            return STOP_UNIMP;
+          {
+            uint tag = (i -> tag) & MASK6;
+            switch (tag)
+              {
+                case 000: // C(APU history register#1) -> C(Y-pair)0,35
+                  {
+                    // XXX punt
+                    Ypair [0] = 0;
+                    Ypair [1] = 0;
+                  }
+                  break;
+
+                case 001: // C(fault register) -> C(Y-pair)0,35
+                          // 00...0 -> C(Y-pair)36,71
+                  {
+                    Ypair [0] = 0;
+                    // a 0 ILL OP
+                    if (cpu . faultNumber == illproc_fault &&
+                        cpu . subFault == ill_op)
+                      setbits36 (Ypair [0], 0, 1, 1); 
+
+                    // b 1 ILL MOD
+                    if (cpu . faultNumber == illproc_fault &&
+                        cpu . subFault == ill_mod)
+                      setbits36 (Ypair [0], 1, 1, 1); 
+
+                    // c 2 ILL SLV
+                    if (cpu . faultNumber == illproc_fault &&
+                        cpu . subFault == ill_slv)
+                      setbits36 (Ypair [0], 2, 1, 1);
+
+                    // d 3 ILL PROC
+                    if (cpu . faultNumber == illproc_fault &&
+                        cpu . subFault == ill_proc)
+                      setbits36 (Ypair [0], 3, 1, 1);
+
+                    // e 4 NEM 
+                    if (cpu . faultNumber == op_not_complete_fault &&
+                        cpu . subFault == nem)
+                      setbits36 (Ypair [0], 4, 1, 1);
+
+                    // f 5 OOB
+                    if (cpu . faultNumber == store_fault &&
+                        cpu . subFault == oob)
+                      setbits36 (Ypair [0], 5, 1, 1);
+
+                    // g 6 ILL DIG
+                    if (cpu . faultNumber == illproc_fault &&
+                        cpu . subFault == ill_dig)
+                      setbits36 (Ypair [0], 6, 1, 1);
+
+                    // h 7 PROC PARU
+
+                    // i 8 PROC PARU
+
+                    // j 9 $CON A
+
+                    // k 10 $CON B
+
+                    // l 11 $CON C
+
+                    // m 12 $CON D
+
+                    // n 13 DA ERR
+
+                    // o 14 DA ERR2
+
+                    //   15 zero
+
+                    //   16-19 IAA
+
+                    //   20-23 IAB
+
+                    //   24-27 IAC
+
+                    //   28-31 IAD
+
+                    // p 32 CPAR DIR
+
+                    // q 33 CPAR STR
+
+                    // r 34 CPAR IA
+
+                    // s 35 CPAR BLK
+
+                    Ypair [1] = 0;
+
+                    // t 36 Port A
+                    // u 37 Port B
+                    // v 38 Port C
+                    // w 39 Port D
+                    // x 40 WNO buffer ov
+                    // y 41 WNO parity err
+                    // z 42 Level 0
+                    // A 43 Level 1
+                    // B 44 Level 2
+                    // C 45 Level 3
+                    // D 46 CDDMM
+                    // E 47 SDWAM parity error
+                    // F 48 PTWAM parity error
+                    //   49-71 zero
+                  }
+                  break;
+
+                default:
+                  {
+                    return STOP_UNIMP;
+                  }
+              }
+          }
+          break;
 
         case 0657:  ///< scu
             // AL-39 defines the behaivor of SCU during fault/interrupt
@@ -4568,7 +4684,21 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0557:  ///< ssdp
-            return STOP_UNIMP;
+          {
+// XXX The associative memory is ignored (forced to "no match") during address preparation.
+
+            // Level j is selected by C(TPR.CA)12,13
+            uint level = (TPR . CA >> 4) & 02u;
+            uint toffset = level * 16;
+            for (uint i = 0; i < 16; i ++)
+              {
+                Yblock16 [i] = 0;
+                setbits36 (Yblock16 [i], 0, 15, SDWAM [toffset + i] . POINTER);
+                setbits36 (Yblock16 [i], 27, 1, SDWAM [toffset + i] . F);
+                setbits36 (Yblock16 [i], 30, 6, SDWAM [toffset + i] . USE);
+              }
+          }
+          break;
 
         case 0532:  ///< cams
             do_cams (TPR.CA);
@@ -4757,7 +4887,7 @@ static t_stat DoBasicInstruction (void)
 
                 default:
                   // XXX Guessing values; also don't know if this is actually a fault
-                  doFault(illproc_fault, 0, "Illegal register select value");
+                  doFault(illproc_fault, ill_mod, "Illegal register select value");
               }
             SCF (rA == 0, cu.IR, I_ZERO);
             SCF (rA & SIGN36, cu.IR, I_NEG);
@@ -6052,26 +6182,82 @@ static t_stat DoEISInstruction (void)
         // priviledged instructions
             
         case 0173:  ///< lptr
-            doFault(illproc_fault, 0, "lptr is illproc on DPS8M");
+            // Not clear what the subfault should be; see Fault Register in AL39.
+            doFault(illproc_fault, ill_proc, "lptr is illproc on DPS8M");
 
         case 0232:  ///< lsdr
-            doFault(illproc_fault, 0, "lsdr is illproc on DPS8M");
+            // Not clear what the subfault should be; see Fault Register in AL39.
+            doFault(illproc_fault, ill_proc, "lsdr is illproc on DPS8M");
 
         case 0257:  ///< lptp
-            doFault(illproc_fault, 0, "lptp is illproc on DPS8M");
+            // Not clear what the subfault should be; see Fault Register in AL39.
+            doFault(illproc_fault, ill_proc, "lptp is illproc on DPS8M");
 
         case 0774:  ///< lra
             return STOP_UNIMP;
 
         case 0557:  ///< sptp
-            return STOP_UNIMP;
+          {
+// XXX The associative memory is ignored (forced to "no match") during address preparation.
+
+            // Level j is selected by C(TPR.CA)12,13
+            uint level = (TPR . CA >> 4) & 02u;
+            uint toffset = level * 16;
+            for (uint i = 0; i < 16; i ++)
+              {
+                Yblock16 [i] = 0;
+                setbits36 (Yblock16 [i], 0, 15, PTWAM [toffset + i] . POINTER);
+                setbits36 (Yblock16 [i], 15, 12, PTWAM [toffset + i] . PAGENO);
+                setbits36 (Yblock16 [i], 27, 1, PTWAM [toffset + i] . F);
+                setbits36 (Yblock16 [i], 30, 6, PTWAM [toffset + i] . USE);
+              }
+          }
+          break;
 
         case 0154:  ///< sptr
-            return STOP_UNIMP;
+          {
+// XXX The associative memory is ignored (forced to "no match") during address preparation.
+
+            // Level j is selected by C(TPR.CA)12,13
+            uint level = (TPR . CA >> 4) & 02u;
+            uint toffset = level * 16;
+            for (uint i = 0; i < 16; i ++)
+              {
+                Yblock16 [i] = 0;
+                setbits36 (Yblock16 [i], 0, 13, PTWAM [toffset + i] . ADDR);
+                setbits36 (Yblock16 [i], 29, 1, PTWAM [toffset + i] . M);
+              }
+          }
+          break;
 
         case 0254:  ///< ssdr
-            return STOP_UNIMP;
-            
+          {
+// XXX The associative memory is ignored (forced to "no match") during address preparation.
+
+            // Level j is selected by C(TPR.CA)12,13
+            uint level = (TPR . CA >> 4) & 02u;
+            uint toffset = level * 16;
+            for (uint i = 0; i < 16; i ++)
+              {
+                Yblock32 [i * 2] = 0;
+                setbits36 (Yblock32 [i * 2], 0, 23, SDWAM [toffset + i] . ADDR);
+                setbits36 (Yblock32 [i * 2], 24, 3, SDWAM [toffset + i] . R1);
+                setbits36 (Yblock32 [i * 2], 27, 3, SDWAM [toffset + i] . R2);
+                setbits36 (Yblock32 [i * 2], 30, 3, SDWAM [toffset + i] . R3);
+                Yblock32 [i * 2 + 1] = 0;
+                setbits36 (Yblock32 [i * 2 + 1], 37 - 36, 14, SDWAM [toffset + i] . BOUND);
+                setbits36 (Yblock32 [i * 2 + 1], 51 - 36, 1, SDWAM [toffset + i] . R);
+                setbits36 (Yblock32 [i * 2 + 1], 52 - 36, 1, SDWAM [toffset + i] . E);
+                setbits36 (Yblock32 [i * 2 + 1], 53 - 36, 1, SDWAM [toffset + i] . W);
+                setbits36 (Yblock32 [i * 2 + 1], 54 - 36, 1, SDWAM [toffset + i] . P);
+                setbits36 (Yblock32 [i * 2 + 1], 55 - 36, 1, SDWAM [toffset + i] . U);
+                setbits36 (Yblock32 [i * 2 + 1], 56 - 36, 1, SDWAM [toffset + i] . G);
+                setbits36 (Yblock32 [i * 2 + 1], 57 - 36, 1, SDWAM [toffset + i] . C);
+                setbits36 (Yblock32 [i * 2 + 1], 58 - 36, 14, SDWAM [toffset + i] . CL);
+              }
+          }
+          break;
+
         // Privileged - Clear Associative Memory
         case 0532:  ///< camp
             do_camp (TPR.CA);
@@ -6316,7 +6502,8 @@ static int doABSA (word36 * result)
     if (get_addr_mode () == ABSOLUTE_mode && ! i -> a)
       {
         sim_debug (DBG_ERR, & cpu_dev, "ABSA in absolute mode\n");
-        doFault (illproc_fault, 0, "ABSA in absolute mode.");
+        // Not clear what the subfault should be; see Fault Register in AL39.
+        doFault (illproc_fault, ill_proc, "ABSA in absolute mode.");
       }
 
     // XXX This mode logic should not be necessary, but something is still wrong

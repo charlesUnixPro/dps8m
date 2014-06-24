@@ -1559,6 +1559,8 @@ int OPSIZE (void)
         return 8;
     else if (i->info->flags & (READ_YBLOCK16 | STORE_YBLOCK16))
         return 16;
+    else if (i->info->flags & (READ_YBLOCK32 | STORE_YBLOCK32))
+        return 32;
     return 0;
 }
 
@@ -1605,6 +1607,12 @@ t_stat ReadOP (word18 addr, _processor_cycle_type cyctyp, bool b29)
                 Read (addr + j, Yblock16 + j, cyctyp, b29);
             
             break;
+        case 32:
+            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            for (int j = 0 ; j < 32 ; j += 1)
+                Read (addr + j, Yblock16 + j, cyctyp, b29);
+            
+            break;
     }
     //TPR.CA = addr;  // restore address
     
@@ -1641,6 +1649,11 @@ t_stat WriteOP(word18 addr, _processor_cycle_type __attribute__((unused)) cyctyp
             for (int j = 0 ; j < 16 ; j += 1)
                 Write (addr + j, Yblock16[j], OPERAND_STORE, b29);
             break;
+        case 32:
+            addr &= 0777760;   // make on 16-word boundary // XXX don't know
+            for (int j = 0 ; j < 32 ; j += 1)
+                Write (addr + j, Yblock32[j], OPERAND_STORE, b29);
+            break;
     }
     //TPR.CA = addr;  // restore address
     
@@ -1653,62 +1666,53 @@ t_stat WriteOP(word18 addr, _processor_cycle_type __attribute__((unused)) cyctyp
  */
 int32 core_read(word24 addr, word36 *data)
 {
-    if(addr >= MEMSIZE) {
-        *data = 0;
-        return -1;
-    } else {
-        if (M[addr] & MEM_UNINITIALIZED)
-        {
-            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
-        }
-        *data = M[addr] & DMASK;
-        sim_debug (DBG_CORE, & cpu_dev,
-                   "core_read  %08o %012llo\n",
-                    addr, * data);
-    }
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_read nem");
+    if (M[addr] & MEM_UNINITIALIZED)
+      {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+      }
+    *data = M[addr] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read  %08o %012llo\n",
+                addr, * data);
     return 0;
 }
 
 int core_write(word24 addr, word36 data) {
-    if(addr >= MEMSIZE) {
-        return -1;
-    } else {
-        M[addr] = data & DMASK;
-        sim_debug (DBG_CORE, & cpu_dev,
-                   "core_write %08o %012llo\n",
-                    addr, data);
-    }
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_write nem");
+    M[addr] = data & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_write %08o %012llo\n",
+                addr, data);
     return 0;
 }
 
 int core_read2(word24 addr, word36 *even, word36 *odd) {
-    if(addr >= MEMSIZE) {
-        *even = 0;
-        *odd = 0;
-        return -1;
-    } else {
-        if(addr & 1) {
-            sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
-            addr &= ~1; /* make it an even address */
-        }
-        if (M[addr] & MEM_UNINITIALIZED)
-        {
-            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
-        }
-        *even = M[addr++] & DMASK;
-        sim_debug (DBG_CORE, & cpu_dev,
-                   "core_read2 %08o %012llo\n",
-                    addr - 1, * even);
-        if (M[addr] & MEM_UNINITIALIZED)
-        {
-            sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
-        }
-        *odd = M[addr] & DMASK;
-        sim_debug (DBG_CORE, & cpu_dev,
-                   "core_read2 %08o %012llo\n",
-                    addr, * odd);
-        return 0;
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_read2 nem");
+    if(addr & 1) {
+        sim_debug(DBG_MSG, &cpu_dev,"warning: subtracting 1 from pair at %o in core_read2\n", addr);
+        addr &= ~1; /* make it an even address */
     }
+    if (M[addr] & MEM_UNINITIALIZED)
+    {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+    }
+    *even = M[addr++] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read2 %08o %012llo\n",
+                addr - 1, * even);
+    if (M[addr] & MEM_UNINITIALIZED)
+    {
+        sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
+    }
+    *odd = M[addr] & DMASK;
+    sim_debug (DBG_CORE, & cpu_dev,
+               "core_read2 %08o %012llo\n",
+                addr, * odd);
+    return 0;
 }
 //
 ////! for working with CY-pairs
@@ -1722,16 +1726,14 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
 //}
 //
 int core_write2(word24 addr, word36 even, word36 odd) {
-    if(addr >= MEMSIZE) {
-        return -1;
-    } else {
-        if(addr & 1) {
-            sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
-            addr &= ~1; /* make it even a dress, or iron a skirt ;) */
-        }
-        M[addr++] = even;
-        M[addr] = odd;
+    if(addr >= MEMSIZE)
+      doFault (op_not_complete_fault, nem, "core_write2 nem");
+    if(addr & 1) {
+        sim_debug(DBG_MSG, &cpu_dev, "warning: subtracting 1 from pair at %o in core_write2\n", addr);
+        addr &= ~1; /* make it even a dress, or iron a skirt ;) */
     }
+    M[addr++] = even;
+    M[addr] = odd;
     return 0;
 }
 ////! for working with CY-pairs
