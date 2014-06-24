@@ -18,10 +18,6 @@
 static t_uint64 FR;
 #endif
 
-#ifndef QUIET_UNUSED
-static void doG7Faults();
-#endif
-
 /*
  FAULT RECOGNITION
  For the discussion following, the term "function" is defined as a major processor functional cycle. Examples are: APPEND CYCLE, CA CYCLE, INSTRUCTION FETCH CYCLE, OPERAND STORE CYCLE, DIVIDE EXECUTION CYCLE. Some of these cycles are discussed in various sections of this manual.
@@ -378,7 +374,7 @@ static int nFaultNumber = -1;
 static int nFaultGroup = -1;
 static int nFaultPriority = -1;
 #endif
-static int g7Faults = 0;
+static _fault g7Faults = 0;
 
 // We stash a few things for debugging; they are accessed by emCall.
 static word18 fault_ic; 
@@ -515,12 +511,21 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
  */
 bool bG7Pending()
 {
-    return g7Faults;
+    return g7Faults != 0;
 }
 
-#ifndef QUIET_UNUSED
-static void doG7Faults()
-{
-    
-}
-#endif
+void setG7fault (_fault faultNo)
+  {
+    g7Faults |= (1u << faultNo);
+  }
+
+void doG7Fault (void)
+  {
+     if (g7Faults & (1u << timer_fault))
+       {
+         g7Faults &= ~(1u << timer_fault);
+
+         doFault (timer_fault, 0, "Timer runout"); 
+       }
+     doFault (trouble_fault, (_fault_subtype) g7Faults, "Dazed and confused in doG7Fault");
+  }

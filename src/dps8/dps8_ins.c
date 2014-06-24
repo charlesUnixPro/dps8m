@@ -4846,7 +4846,8 @@ static t_stat DoBasicInstruction (void)
                 return STOP_DIS;
               }
 
-            if (events . int_pending == 0 &&
+            if ((! switches . tro_enable) &&
+                events . int_pending == 0 &&
                 sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
@@ -4866,6 +4867,10 @@ static t_stat DoBasicInstruction (void)
                   return rc;
                 if (sample_interrupts ())
                   break;
+                if (rTR == 0)
+                  doFault (timer_fault, 0, "Timer runout");
+                rTR = (rTR - 1) & 0777777777u;
+
               }
             sim_printf ("left DIS_cycle\n");
             break;
@@ -6639,7 +6644,8 @@ void doRCU (bool fxeTrap)
         longjmp (jmpMain, JMP_REENTRY);
       }
 
-    if (cu . FI_ADDR == FAULT_MME)
+    if (cu . FI_ADDR == FAULT_MME ||
+        cu . FI_ADDR == FAULT_TRO)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
     if (cu . FI_ADDR == FAULT_DF1 || 

@@ -616,7 +616,9 @@ static t_stat cpu_reset (DEVICE *dptr)
     PPR.PRR = 0;
     PPR.PSR = 0;
     PPR.P = 1;
-    
+   
+    rTR = 0;
+ 
     processorCycle = UNKNOWN_CYCLE;
     //processorAddressingMode = ABSOLUTE_MODE;
     set_addr_mode(ABSOLUTE_mode);
@@ -1166,6 +1168,16 @@ t_stat sim_instr (void)
           //return reason;
           break;
 
+
+        // Manage the timer register
+
+        if (rTR == 0) // passing thorugh 0...
+          {
+            if (switches . tro_enable)
+              setG7fault (timer_fault);
+          }
+        rTR = (rTR - 1) & 0777777777u;
+
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu . cycle));
         switch (cpu . cycle)
@@ -1275,8 +1287,9 @@ t_stat sim_instr (void)
                   }
                 if (cpu . g7_flag)
                   {
-                    setCpuCycle (FAULT_cycle);
-                    break;
+                    cpu . g7_flag = false;
+                    //setCpuCycle (FAULT_cycle);
+                    doG7Fault ();
                   }
 
                 // If we have done the even of an XED, do the odd
@@ -2154,7 +2167,7 @@ static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, in
     sim_printf("Bullet time:              %01o(8)\n", switches . bullet_time);
     sim_printf("Disable kbd bkpt:         %01o(8)\n", switches . disable_kbd_bkpt);
     sim_printf("Report faults:            %01o(8)\n", switches . report_faults);
-
+    sim_printf("TRO faults enabled:       %01o(8)\n", switches . tro_enable);
     return SCPE_OK;
 }
 
@@ -2186,6 +2199,7 @@ static t_stat cpu_show_config(FILE * __attribute__((unused)) st, UNIT * uptr, in
 //           bullet_time = n
 //           disable_kbd_bkpt = n
 //           report_faults = n
+//           tro_enable = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2281,6 +2295,7 @@ static config_list_t cpu_config_list [] =
     /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
     /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
     /* 25 */ { "report_faults", 0, 1, cfg_on_off },
+    /* 26 */ { "tro_enable", 0, 1, cfg_on_off },
     { NULL, 0, 0, NULL }
   };
 
@@ -2415,6 +2430,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 __attribute__((unused)) value, 
 
             case 25: // REPORT_FAULTS
               switches . report_faults = v;
+              break;
+
+            case 26: // TRO_ENABLE
+              switches . tro_enable = v;
               break;
 
             default:

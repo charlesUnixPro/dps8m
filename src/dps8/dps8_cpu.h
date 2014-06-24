@@ -698,6 +698,7 @@ typedef struct
     uint bullet_time;
     uint disable_kbd_bkpt;
     uint report_faults;   // If set, faults are reported and ignored
+    uint tro_enable;   // If set, Timer runout faults are generated.
   } switches_t;
 
 extern switches_t switches;

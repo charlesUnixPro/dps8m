@@ -430,5 +430,11 @@ typedef struct DCDstruct DCDstruct;
 
 #define ARRAY_SIZE(a) ( sizeof(a) / sizeof((a)[0]) )
 
+#ifdef __GNUC__
+#define NO_RETURN   __attribute__ ((noreturn))
+#else
+#define NO_RETURN
+#endif
+
 
 #endif // ifdef DPS8_H

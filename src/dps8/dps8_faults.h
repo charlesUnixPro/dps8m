@@ -66,10 +66,10 @@ void emCallReportFault (void);
 
 void cu_safe_restore (void);
 
-void doFault(_fault faultNumber, _fault_subtype faultSubtype, const char *faultMsg) ///< fault handler
-#ifdef __GNUC__
-  __attribute__ ((noreturn))
-#endif
-;
+void doG7Fault(void) NO_RETURN;
+
+void doFault(_fault faultNumber, _fault_subtype faultSubtype, const char *faultMsg) NO_RETURN; ///< fault handler
 bool bG7Pending();
+void setG7fault (_fault faultNo);
+void doG7Fault (void);
 

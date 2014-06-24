@@ -13,10 +13,6 @@ t_stat prepareComputedAddress (void);   // new
 void cu_safe_restore(void);
 void fetchInstruction(word18 addr);
 t_stat executeInstruction (void);
-void doRCU (bool fxeTrap)
-#ifdef __GNUC__
-  __attribute__ ((noreturn))
-#endif
-;
+void doRCU (bool fxeTrap) NO_RETURN;
 
 
