@@ -6,6 +6,8 @@
 //  Copyright (c) 2013 Harry Reed. All rights reserved.
 //
 
+// source/library_dir_dir/system_library_1/source/bound_volume_rldr_ut_.s.archive/rdisk_.pl1
+
 #include <stdio.h>
 
 #include "dps8.h"
@@ -144,6 +146,10 @@ DEVICE disk_dev = {
     NULL          // description
 };
 
+static struct disk_state
+  {
+    enum { no_mode, seek512_mode } io_mode;
+  } disk_state [N_DISK_UNITS_MAX];
 
 static struct
   {
@@ -162,7 +168,7 @@ static struct
 
 void disk_init (void)
   {
-    // memset (disk_state, 0, sizeof (disk_state));
+    memset (disk_state, 0, sizeof (disk_state));
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
       cables_from_ioms_to_disk [i] . iom_unit_num = -1;
   }
@@ -207,9 +213,34 @@ t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_co
 
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
+// First call to disk to 20184:
+//
+// Connect channel LPW at 001410: [dcw=01412 ires=0 hrel=0 ae=0 nc=0 trun=1 srel=0 tally=01]
+// Connect channel PCW at 001412: [dev-cmd=040, dev-code=00, ext=00, mask=0, ctrl=02, chan-cmd=02, chan-data=01, chan=013]
+// Payload Channel 013 (11):
+//     Channel 0:13 mbx
+//     chanloc 001454
+//     LPW at 001454: [dcw=0345162 ires=0 hrel=0 ae=0 nc=0 trun=0 srel=0 tally=00] [lbnd=00 size=00(0) idcw=00]
+//     IDCW 0 at 345162 : I-DCW: [dev-cmd=040, dev-code=00, ext=00, mask=1, ctrl=00, chan-cmd=00, chan-data=00, chan=013]
+//     -- control !=2
+//     DDCW 1 at 345163: D-DCW: type=0(IOTD), addr=000000, cp=00, tally=00(0) tally-ctl=0
+//     -- control !=2
+// 40 is reset status
+
+// second access:
+//  pcw is reset status
+//  idcw is 030 "execute device command (DLI)" according to AB87
+//              SEEK_512 according to source/library_dir_dir/system_library_tools/source/bound_io_tools_.s.archive/exercise_disk.pl1
+
+// seek command constrution
+
+//  dcw.address = rel (addr (seek_data));
+
+
     * need_data = false;
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
+    struct disk_state * disk_statep = & disk_state [disk_unit_num];
 
     sim_debug (DBG_DEBUG, & disk_dev, "%s: IOM %c, Chan 0%o, dev-cmd 0%o, dev-code 0%o\n",
             __func__, 'A' + iom_unit_num, pcwp -> chan, pcwp -> dev_cmd, pcwp -> dev_code);
@@ -232,6 +263,18 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
 
     switch (pcwp -> dev_cmd)
       {
+        case 030: // CMD 30 SEEK_512
+          {
+            * is_read = false; // XXX I don't really understand the semantics
+                               // of is_read, but a seek is closer to a write
+                               // then a read.
+            disk_statep -> io_mode = seek512_mode;
+            * need_data = false;
+            * stati = 04000;
+            sim_debug (DBG_NOTIFY, & disk_dev, "seek512\n");
+            return 0;
+          }
+
         case 040: // CMD 40 Reset status
           {
             * stati = 04000;
@@ -254,7 +297,21 @@ static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__
   {
 sim_printf ("disk_iom_io called\n");
     //int disk_unit_num = DISK_UNIT_NUM (unitp);
-    return 0;
+    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    struct disk_state * disk_statep = & disk_state [disk_unit_num];
+    if (disk_statep -> io_mode == seek512_mode)
+      {
+        sim_printf ("seek512_mode; tally %u\n", * tally);
+        * stati = 04000; // ok
+        return 0;
+      }
+    else
+      {
+        sim_printf ("disk_iom_io called w/mode %d\n", disk_statep -> io_mode);
+        * stati = 05302; // MPC Device Data Alert Inconsistent command
+        return 1;
+      }
+    // return 0; // not reached
   }
 
 static t_stat disk_show_nunits (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
