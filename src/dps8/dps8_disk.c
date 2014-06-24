@@ -6,8 +6,6 @@
 //  Copyright (c) 2013 Harry Reed. All rights reserved.
 //
 
-// source/library_dir_dir/system_library_1/source/bound_volume_rldr_ut_.s.archive/rdisk_.pl1
-
 #include <stdio.h>
 
 #include "dps8.h"
@@ -60,10 +58,6 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static int disk_iom3_cmd (int iom_unit_num, UNIT * unitp, pcw_t * p, 
-                          uint mbx_addr, word12 * stati,
-                          word6 * rcount, word12 * residue, word3 * char_pos,
-                          word1 * is_read);
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read);
 static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
@@ -151,11 +145,6 @@ DEVICE disk_dev = {
 };
 
 
-static struct disk_state
-  {
-    enum { no_mode, seek512_mode } io_mode;
-  } disk_state [N_DISK_UNITS_MAX];
-
 static struct
   {
     int iom_unit_num;
@@ -173,7 +162,7 @@ static struct
 
 void disk_init (void)
   {
-    memset (disk_state, 0, sizeof (disk_state));
+    // memset (disk_state, 0, sizeof (disk_state));
     for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
       cables_from_ioms_to_disk [i] . iom_unit_num = -1;
   }
@@ -205,7 +194,7 @@ t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_co
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DISK, chan_type_PSI, disk_unit_num, & disk_dev, & disk_unit [disk_unit_num], disk_iom_cmd, disk_iom_io, disk_iom3_cmd);
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DISK, chan_type_PSI, disk_unit_num, & disk_dev, & disk_unit [disk_unit_num], disk_iom_cmd, disk_iom_io);
     if (rc)
       return rc;
 
@@ -216,21 +205,12 @@ t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_co
     return SCPE_OK;
   }
 
-static int disk_iom3_cmd (int iom_unit_num, UNIT * unitp, pcw_t * p, 
-                          uint mbx_addr, word12 * stati,
-                          word6 * rcount, word12 * residue, word3 * char_pos,
-                          word1 * is_read)
-  { 
-    return 1;
-  }
-
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
     * need_data = false;
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
 
-    struct disk_state * disk_statep = & disk_state [disk_unit_num];
     sim_debug (DBG_DEBUG, & disk_dev, "%s: IOM %c, Chan 0%o, dev-cmd 0%o, dev-code 0%o\n",
             __func__, 'A' + iom_unit_num, pcwp -> chan, pcwp -> dev_cmd, pcwp -> dev_code);
 
@@ -252,14 +232,6 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
 
     switch (pcwp -> dev_cmd)
       {
-        case 030: // SEEK_512
-          {
-            disk_statep -> io_mode = seek512_mode;
-            * need_data = true;
-            * stati = 04000; // have_status = 1
-            return 0;
-          }
-
         case 040: // CMD 40 Reset status
           {
             * stati = 04000;
@@ -278,21 +250,10 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
     // return 1;   // not reached
   }
 
-static int disk_iom_io (UNIT * unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 *  stati)
+static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * __attribute__((unused)) tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 * __attribute__((unused)) stati)
   {
 sim_printf ("disk_iom_io called\n");
-    int disk_unit_num = DISK_UNIT_NUM (unitp);
-    struct disk_state * disk_statep = & disk_state [disk_unit_num];
-    if (disk_statep -> io_mode == seek512_mode)
-      {
-        sim_printf ("tally %u\n", * tally);
-      }
-    else
-      {
-        sim_printf ("disk_iom_io called w/mode %d\n", disk_statep -> io_mode);
-        * stati = 05302; // MPC Device Data Alert Inconsistent command
-        return 1;
-      }
+    //int disk_unit_num = DISK_UNIT_NUM (unitp);
     return 0;
   }
 

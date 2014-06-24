@@ -41,64 +41,15 @@ typedef struct pcw_s
     uint chan;       // 6 bits; bits 3..8 of word 2
   } pcw_t;
 
-typedef struct
-  {
-    uint32 dcw_ptr;     // bits 0..17
-    word1 ires;    // bit 18; IDCW restrict
-    word1 hrel;    // bit 19; hardware relative addressing
-    word1 ae;      // bit 20; address extension
-    word1 nc;      // bit 21; no tally; zero means update tally
-    word1 trunout; // bit 22; signal tally runout?
-    word1 srel;    // bit 23; software relative addressing; not for Multics!
-    uint32 tally;    // bits 24..35
-    // following not valid for paged mode; see B15; but maybe IOM-B non existant
-    uint32 lbnd;
-    uint32 size;
-    uint32 idcw;    // ptr to most recent dcw, idcw, ...
-  } lpw_t;
- 
-typedef struct dcw_t
-  {
-    enum { ddcw, tdcw, idcw } type;
-    union
-      {
-        pcw_t instr;
-        struct
-          {
-            uint daddr; // data address; 18 bits at 0..17);
-            uint cp;    // char position; 3 bits 18..20
-            uint tctl;  // tally control; 1 bit at 21
-            uint type;  // 2 bits at 22..23
-            uint tally; // 12 bits at 24..35
-          } ddcw;
-        struct {
-            uint addr;
-            bool ec;  // extension control
-            bool i;   // IDCW control
-            bool r;   // relative addressing control
-          } xfer;
-      } fields;
-  } dcw_t;
-
 enum chan_type { chan_type_CPI, chan_type_PSI };
 typedef enum chan_type chan_type;
 
 // Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
 enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC };
 
-int send_terminate_interrupt(int iom_unit_num, uint chan);
-char * dcw2text (const dcw_t * p);
-void fetch_and_parse_dcw (int iom_unit_num, uint chan, dcw_t *p, uint32 addr, int read_only);
-char * lpw2text (const lpw_t * p, int conn);
-void iom_fault (int iom_unit_num, uint chan, const char * who, int is_sys, int signal);
-void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
-typedef int iom3_cmd (int iom_unit_num, UNIT * unitp, pcw_t * p, 
-                      uint mbx_addr, word12 * stati,
-                      word6 * rcount, word12 * residue, word3 * char_pos,
-                      word1 * is_read);
 typedef int iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
 typedef int iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
-t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io, iom3_cmd * iom3_cmd);
+t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io);
 void iom_init(void);
 void iom_interrupt(int iom_unit_num);
 t_stat iom_svc(UNIT* up);
