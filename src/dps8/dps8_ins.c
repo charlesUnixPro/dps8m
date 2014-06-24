@@ -6642,7 +6642,8 @@ void doRCU (bool fxeTrap)
     if (cu . FI_ADDR == FAULT_MME)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
-    if (cu . FI_ADDR == FAULT_DF3 || 
+    if (cu . FI_ADDR == FAULT_DF1 || 
+        cu . FI_ADDR == FAULT_DF3 || 
         cu . FI_ADDR == FAULT_F2 || 
         cu . FI_ADDR == FAULT_F3)
       {
@@ -6658,6 +6659,6 @@ void doRCU (bool fxeTrap)
             longjmp (jmpMain, JMP_RESTART);
           }
       }
-    sim_printf ("doRCU dies with unhandled fault number\n");
+    sim_printf ("doRCU dies with unhandled fault number %d\n", cu . FI_ADDR);
     doFault (FAULT_TRB, cu . FI_ADDR, "doRCU dies with unhandled fault number");
   }
