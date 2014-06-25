@@ -4521,10 +4521,12 @@ static t_stat DoBasicInstruction (void)
                   break;
 
                 case 03: // DPS 8m 0's -> history
-                  return STOP_UNIMP;
+                  // XXX punt
+                  break;
 
                 case 05: // DPS 8m 1's -> history
-                  return STOP_UNIMP;
+                  // XXX punt
+                  break;
 
                 default:
                   doFault (illproc_fault, ill_mod, "lcpr tag invalid");
@@ -4552,7 +4554,7 @@ static t_stat DoBasicInstruction (void)
             uint tag = (i -> tag) & MASK6;
             switch (tag)
               {
-                case 000: // C(APU history register#1) -> C(Y-pair)0,35
+                case 000: // C(APU history register#1) -> C(Y-pair)
                   {
                     // XXX punt
                     Ypair [0] = 0;
@@ -4567,37 +4569,37 @@ static t_stat DoBasicInstruction (void)
                     // a 0 ILL OP
                     if (cpu . faultNumber == illproc_fault &&
                         cpu . subFault == ill_op)
-                      setbits36 (Ypair [0], 0, 1, 1); 
+                      putbits36 (& Ypair [0], 0, 1, 1); 
 
                     // b 1 ILL MOD
                     if (cpu . faultNumber == illproc_fault &&
                         cpu . subFault == ill_mod)
-                      setbits36 (Ypair [0], 1, 1, 1); 
+                      putbits36 (& Ypair [0], 1, 1, 1); 
 
                     // c 2 ILL SLV
                     if (cpu . faultNumber == illproc_fault &&
                         cpu . subFault == ill_slv)
-                      setbits36 (Ypair [0], 2, 1, 1);
+                      putbits36 (& Ypair [0], 2, 1, 1);
 
                     // d 3 ILL PROC
                     if (cpu . faultNumber == illproc_fault &&
                         cpu . subFault == ill_proc)
-                      setbits36 (Ypair [0], 3, 1, 1);
+                      putbits36 (& Ypair [0], 3, 1, 1);
 
                     // e 4 NEM 
                     if (cpu . faultNumber == op_not_complete_fault &&
                         cpu . subFault == nem)
-                      setbits36 (Ypair [0], 4, 1, 1);
+                      putbits36 (& Ypair [0], 4, 1, 1);
 
                     // f 5 OOB
                     if (cpu . faultNumber == store_fault &&
                         cpu . subFault == oob)
-                      setbits36 (Ypair [0], 5, 1, 1);
+                      putbits36 (& Ypair [0], 5, 1, 1);
 
                     // g 6 ILL DIG
                     if (cpu . faultNumber == illproc_fault &&
                         cpu . subFault == ill_dig)
-                      setbits36 (Ypair [0], 6, 1, 1);
+                      putbits36 (& Ypair [0], 6, 1, 1);
 
                     // h 7 PROC PARU
 
@@ -4652,6 +4654,63 @@ static t_stat DoBasicInstruction (void)
                   }
                   break;
 
+                case 006: // C(mode register) -> C(Y-pair)0,35
+                          // C(cache mode register) -> C(Y-pair)36,72
+                  {
+                    Ypair [0] = 0;
+                    putbits36 (& Ypair [0], 18, 1, MR . cuolin);
+                    putbits36 (& Ypair [0], 19, 1, MR . solin);
+                    putbits36 (& Ypair [0], 20, 1, MR . sdpap);
+                    putbits36 (& Ypair [0], 21, 1, MR . separ);
+                    putbits36 (& Ypair [0], 22, 2, MR . tm);
+                    putbits36 (& Ypair [0], 24, 2, MR . vm);
+                    putbits36 (& Ypair [0], 28, 1, MR . hrhlt);
+                    putbits36 (& Ypair [0], 29, 1, MR . hrxfr);
+                    putbits36 (& Ypair [0], 30, 1, MR . ihr);
+                    putbits36 (& Ypair [0], 31, 1, MR . ihrrs);
+                    putbits36 (& Ypair [0], 32, 1, MR . mrgctl);
+                    putbits36 (& Ypair [0], 33, 1, MR . hexfp);
+                    putbits36 (& Ypair [0], 35, 1, MR . emr);
+                    Ypair [1] = 0;
+                    putbits36 (& Ypair [1], 36 - 36, 15, CMR . cache_dir_address);
+                    putbits36 (& Ypair [1], 51 - 36, 1, CMR . par_bit);
+                    putbits36 (& Ypair [1], 52 - 36, 1, CMR . lev_ful);
+                    putbits36 (& Ypair [1], 54 - 36, 1, CMR . csh1_on);
+                    putbits36 (& Ypair [1], 55 - 36, 1, CMR . csh2_on);
+                    putbits36 (& Ypair [1], 57 - 36, 1, CMR . inst_on);
+                    putbits36 (& Ypair [1], 59 - 36, 1, CMR . csh_reg);
+                    putbits36 (& Ypair [1], 60 - 36, 1, CMR . str_asd);
+                    putbits36 (& Ypair [1], 61 - 36, 1, CMR . col_ful);
+                    putbits36 (& Ypair [1], 62 - 36, 2, CMR . rro_AB);
+                    putbits36 (& Ypair [1], 68 - 36, 1, CMR . bypass_cache);
+                    putbits36 (& Ypair [1], 70 - 36, 2, CMR . luf);
+                  }
+                  break;
+
+                case 010: // C(APU history register#2) -> C(Y-pair)
+                  {
+                    // XXX punt
+                    Ypair [0] = 0;
+                    Ypair [1] = 0;
+                  }
+                  break;
+
+                case 020: // C(CU history register) -> C(Y-pair)
+                  {
+                    // XXX punt
+                    Ypair [0] = 0;
+                    Ypair [1] = 0;
+                  }
+                  break;
+
+                case 040: // C(OU/DU history register) -> C(Y-pair)
+                  {
+                    // XXX punt
+                    Ypair [0] = 0;
+                    Ypair [1] = 0;
+                  }
+                  break;
+
                 default:
                   {
                     return STOP_UNIMP;
@@ -4693,9 +4752,9 @@ static t_stat DoBasicInstruction (void)
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock16 [i] = 0;
-                setbits36 (Yblock16 [i], 0, 15, SDWAM [toffset + i] . POINTER);
-                setbits36 (Yblock16 [i], 27, 1, SDWAM [toffset + i] . F);
-                setbits36 (Yblock16 [i], 30, 6, SDWAM [toffset + i] . USE);
+                putbits36 (& Yblock16 [i], 0, 15, SDWAM [toffset + i] . POINTER);
+                putbits36 (& Yblock16 [i], 27, 1, SDWAM [toffset + i] . F);
+                putbits36 (& Yblock16 [i], 30, 6, SDWAM [toffset + i] . USE);
               }
           }
           break;
@@ -4997,10 +5056,12 @@ static t_stat DoBasicInstruction (void)
                   return rc;
                 if (sample_interrupts ())
                   break;
-                if (rTR == 0)
-                  doFault (timer_fault, 0, "Timer runout");
-                rTR = (rTR - 1) & 0777777777u;
-
+                if (switches . tro_enable)
+                  {
+                    if (rTR == 0)
+                      doFault (timer_fault, 0, "Timer runout");
+                    rTR = (rTR - 1) & 0777777777u;
+                  }
               }
             sim_printf ("left DIS_cycle\n");
             break;
@@ -6206,10 +6267,10 @@ static t_stat DoEISInstruction (void)
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock16 [i] = 0;
-                setbits36 (Yblock16 [i], 0, 15, PTWAM [toffset + i] . POINTER);
-                setbits36 (Yblock16 [i], 15, 12, PTWAM [toffset + i] . PAGENO);
-                setbits36 (Yblock16 [i], 27, 1, PTWAM [toffset + i] . F);
-                setbits36 (Yblock16 [i], 30, 6, PTWAM [toffset + i] . USE);
+                putbits36 (& Yblock16 [i], 0, 15, PTWAM [toffset + i] . POINTER);
+                putbits36 (& Yblock16 [i], 15, 12, PTWAM [toffset + i] . PAGENO);
+                putbits36 (& Yblock16 [i], 27, 1, PTWAM [toffset + i] . F);
+                putbits36 (& Yblock16 [i], 30, 6, PTWAM [toffset + i] . USE);
               }
           }
           break;
@@ -6224,8 +6285,8 @@ static t_stat DoEISInstruction (void)
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock16 [i] = 0;
-                setbits36 (Yblock16 [i], 0, 13, PTWAM [toffset + i] . ADDR);
-                setbits36 (Yblock16 [i], 29, 1, PTWAM [toffset + i] . M);
+                putbits36 (& Yblock16 [i], 0, 13, PTWAM [toffset + i] . ADDR);
+                putbits36 (& Yblock16 [i], 29, 1, PTWAM [toffset + i] . M);
               }
           }
           break;
@@ -6240,20 +6301,20 @@ static t_stat DoEISInstruction (void)
             for (uint i = 0; i < 16; i ++)
               {
                 Yblock32 [i * 2] = 0;
-                setbits36 (Yblock32 [i * 2], 0, 23, SDWAM [toffset + i] . ADDR);
-                setbits36 (Yblock32 [i * 2], 24, 3, SDWAM [toffset + i] . R1);
-                setbits36 (Yblock32 [i * 2], 27, 3, SDWAM [toffset + i] . R2);
-                setbits36 (Yblock32 [i * 2], 30, 3, SDWAM [toffset + i] . R3);
+                putbits36 (& Yblock32 [i * 2], 0, 23, SDWAM [toffset + i] . ADDR);
+                putbits36 (& Yblock32 [i * 2], 24, 3, SDWAM [toffset + i] . R1);
+                putbits36 (& Yblock32 [i * 2], 27, 3, SDWAM [toffset + i] . R2);
+                putbits36 (& Yblock32 [i * 2], 30, 3, SDWAM [toffset + i] . R3);
                 Yblock32 [i * 2 + 1] = 0;
-                setbits36 (Yblock32 [i * 2 + 1], 37 - 36, 14, SDWAM [toffset + i] . BOUND);
-                setbits36 (Yblock32 [i * 2 + 1], 51 - 36, 1, SDWAM [toffset + i] . R);
-                setbits36 (Yblock32 [i * 2 + 1], 52 - 36, 1, SDWAM [toffset + i] . E);
-                setbits36 (Yblock32 [i * 2 + 1], 53 - 36, 1, SDWAM [toffset + i] . W);
-                setbits36 (Yblock32 [i * 2 + 1], 54 - 36, 1, SDWAM [toffset + i] . P);
-                setbits36 (Yblock32 [i * 2 + 1], 55 - 36, 1, SDWAM [toffset + i] . U);
-                setbits36 (Yblock32 [i * 2 + 1], 56 - 36, 1, SDWAM [toffset + i] . G);
-                setbits36 (Yblock32 [i * 2 + 1], 57 - 36, 1, SDWAM [toffset + i] . C);
-                setbits36 (Yblock32 [i * 2 + 1], 58 - 36, 14, SDWAM [toffset + i] . CL);
+                putbits36 (& Yblock32 [i * 2 + 1], 37 - 36, 14, SDWAM [toffset + i] . BOUND);
+                putbits36 (& Yblock32 [i * 2 + 1], 51 - 36, 1, SDWAM [toffset + i] . R);
+                putbits36 (& Yblock32 [i * 2 + 1], 52 - 36, 1, SDWAM [toffset + i] . E);
+                putbits36 (& Yblock32 [i * 2 + 1], 53 - 36, 1, SDWAM [toffset + i] . W);
+                putbits36 (& Yblock32 [i * 2 + 1], 54 - 36, 1, SDWAM [toffset + i] . P);
+                putbits36 (& Yblock32 [i * 2 + 1], 55 - 36, 1, SDWAM [toffset + i] . U);
+                putbits36 (& Yblock32 [i * 2 + 1], 56 - 36, 1, SDWAM [toffset + i] . G);
+                putbits36 (& Yblock32 [i * 2 + 1], 57 - 36, 1, SDWAM [toffset + i] . C);
+                putbits36 (& Yblock32 [i * 2 + 1], 58 - 36, 14, SDWAM [toffset + i] . CL);
               }
           }
           break;
@@ -6832,13 +6893,14 @@ void doRCU (bool fxeTrap)
       }
 
     if (cu . FI_ADDR == FAULT_MME ||
-        cu . FI_ADDR == FAULT_TRO)
+        0 /* cu . FI_ADDR == FAULT_TRO */)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
 
     if (cu . FI_ADDR == FAULT_DF1 || 
         cu . FI_ADDR == FAULT_DF3 || 
         cu . FI_ADDR == FAULT_F2 || 
-        cu . FI_ADDR == FAULT_F3)
+        cu . FI_ADDR == FAULT_F3 ||
+        cu . FI_ADDR == FAULT_TRO)
       {
         if (cu . FIF == 1)
           {

@@ -1473,8 +1473,11 @@ void iom_interrupt (int iom_unit_num)
       __func__, 'A' + iom_unit_num);
     sim_debug (DBG_TRACE, & iom_dev, "\nIOM starting.\n");
 
-    //iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
-
+    if_sim_debug (DBG_TRACE, & iom_dev)
+      {
+        sim_printf ("[%lld]\n", sys_stats . total_cycles);
+        iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
+      }
     int ret = do_connect_chan (iom_unit_num);
     if (ret)
       {

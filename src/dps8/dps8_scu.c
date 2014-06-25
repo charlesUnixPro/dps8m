@@ -1054,14 +1054,13 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
             break;
           }
 
-        case 00002: // Interrupt mask
-          sim_printf ("rscr Interrupt mask %o\n", function);
-          return STOP_UNIMP;
-
         case 00003: // Interrupt cells
-          sim_printf ("rscr Interrupt cells%o\n", function);
-          return STOP_UNIMP;
-
+          {
+            scu_t * up = scu + scu_unit_num;
+            * rega = up -> exec_intr_mask [0];
+            * regq = up -> exec_intr_mask [1];
+          }
+          break;
 
         case 00004: // Get calendar clock (4MW SCU only)
         case 00005: 
@@ -1078,7 +1077,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
                 break;
               }
             /// The calendar clock consists of a 52-bit register which counts
-            // microseconds and is readable as a double-precision integer by a
+            // microseconds and is eadable as a double-precision integer by a
             // single instruction from any central processor. This rate is in
             // the same order of magnitude as the instruction processing rate of
             // the GE-645, so that timing of 10-instruction subroutines is
@@ -1114,6 +1113,32 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
         case 00006: // Interrupt cells
           sim_printf ("rscr SU Mode Register%o\n", function);
           return STOP_UNIMP;
+
+        // XXX there is no way that this code is right
+        case 00002: // mask register
+        case 00012: 
+        case 00022: 
+        case 00032: 
+        case 00042: 
+        case 00052: 
+        case 00062: 
+        case 00072: 
+          {
+            uint portNum = (function >> 3) & MASK3;
+            scu_t * up = scu + scu_unit_num;
+            uint maskContents = 0;
+            if (up -> mask_assignment [0] == portNum)
+              {
+                maskContents = up -> exec_intr_mask [0];
+              }
+            else if (up -> mask_assignment [1] == portNum)
+              {
+                maskContents = up -> exec_intr_mask [1];
+              }
+            * rega = maskContents; 
+            * regq = 0;
+          }
+          break;
 
         default:
           sim_printf ("rscr %o\n", function);

@@ -148,7 +148,7 @@ DEVICE disk_dev = {
 
 static struct disk_state
   {
-    enum { no_mode, seek512_mode } io_mode;
+    enum { no_mode, seek512_mode, read_mode } io_mode;
   } disk_state [N_DISK_UNITS_MAX];
 
 static struct
@@ -253,7 +253,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
         //  022 read status register -- from disk_init
         //  023 read ascii
         //  025 read -- disk_control.list
-        //  030 seek512 -- disk_control.list
+        //  030 seek512 -- disk_control.list, dctl.alm
         //  031 write -- disk_control.list
         //  033 write ascii
         //  042 restore access arm -- from disk_init
@@ -263,13 +263,36 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
 
     switch (pcwp -> dev_cmd)
       {
+        case 000: // CMD 00 REQUEST STATUS
+          {
+            * is_read = true; // XXX I don't really understand the semantics
+                               // of is_read
+            disk_statep -> io_mode = no_mode;
+            * need_data = false;
+            * stati = 04000;
+            sim_debug (DBG_NOTIFY, & disk_dev, "request status\n");
+            return 0;
+          }
+
+
+        case 025: // CMD 25 READ
+          {
+            * is_read = true; // XXX I don't really understand the semantics
+                               // of is_read
+            disk_statep -> io_mode = read_mode;
+            * need_data = true;
+            sim_debug (DBG_NOTIFY, & disk_dev, "request status\n");
+            return 0;
+          }
+
+
         case 030: // CMD 30 SEEK_512
           {
             * is_read = false; // XXX I don't really understand the semantics
                                // of is_read, but a seek is closer to a write
                                // then a read.
             disk_statep -> io_mode = seek512_mode;
-            * need_data = false;
+            * need_data = true;
             * stati = 04000;
             sim_debug (DBG_NOTIFY, & disk_dev, "seek512\n");
             return 0;
@@ -278,6 +301,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
         case 040: // CMD 40 Reset status
           {
             * stati = 04000;
+            disk_statep -> io_mode = no_mode;
             sim_debug (DBG_NOTIFY, & disk_dev, "Reset status\n");
             return 0;
           }
@@ -302,6 +326,12 @@ sim_printf ("disk_iom_io called\n");
     if (disk_statep -> io_mode == seek512_mode)
       {
         sim_printf ("seek512_mode; tally %u\n", * tally);
+        * stati = 04000; // ok
+        return 0;
+      }
+    else if (disk_statep -> io_mode == read_mode)
+      {
+        sim_printf ("read_mode; tally %u\n", * tally);
         * stati = 04000; // ok
         return 0;
       }

@@ -403,12 +403,13 @@ struct _cache_mode_register
     word1    lev_ful;
     word1    csh1_on;
     word1    csh2_on;
-    word1    opnd_on;
-    word1    inst_on; // DPS8, but not DPS8M
+    word1    opnd_on; // DPS8, but not DPS8M
+    word1    inst_on;
     word1    csh_reg;
     word1    str_asd;
     word1    col_ful;
     word2    rro_AB;
+    word1    bypass_cache;
     word2    luf;       // LUF value
                         // 0   1   2   3
                         // Lockup time
