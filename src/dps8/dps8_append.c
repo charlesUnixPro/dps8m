@@ -1226,7 +1226,7 @@ I:;
     //if (isSTROP(i) && PTW->M == 0)
     if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
     {
-#if 1
+#if 0
         // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
         appendingUnitCycleType = MPTW;
         PTW->M = 1;
