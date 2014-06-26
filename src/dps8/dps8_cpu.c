@@ -998,7 +998,9 @@ t_stat simh_hooks (void)
     // check clock queue 
     if (sim_interval <= 0)
       {
+//int32 int0 = sim_interval;
         reason = sim_process_event ();
+//sim_printf ("int delta %d\n", sim_interval - int0);
         if (reason)
           return reason;
       }
@@ -1169,14 +1171,20 @@ t_stat sim_instr (void)
           break;
 
 
-        // Manage the timer register
+        // Manage the timer register // XXX this should be sync to the EXECUTE cycle, not the
+                                     // simh clock clyce; move down...
+                                     // Acutally have FETCH jump to EXECUTE
+                                     // instead of breaking.
 
-        if (rTR == 0) // passing thorugh 0...
+        if (rTR)
           {
-            if (switches . tro_enable)
-              setG7fault (timer_fault);
+            rTR = (rTR - 1) & MASK27;
+            if (rTR == 0) // passing thorugh 0...
+              {
+                if (switches . tro_enable)
+                  setG7fault (timer_fault);
+              }
           }
-        rTR = (rTR - 1) & 0777777777u;
 
         sim_debug (DBG_CYCLE, & cpu_dev, "Cycle switching to %s\n",
                    cycleStr (cpu . cycle));
@@ -1217,6 +1225,7 @@ t_stat sim_instr (void)
                       {
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
                                    intr_pair_addr);
+//sim_printf ("intr_pair_addr %u [%lld]\n", intr_pair_addr, sys_stats . total_cycles);
 
                         // get interrupt pair
                         core_read2(intr_pair_addr, instr_buf, instr_buf + 1);

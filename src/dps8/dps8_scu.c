@@ -663,8 +663,26 @@ typedef struct
   {
     uint mode; // program or manual
     uint port_enable [N_SCU_PORTS];  // enable/disable
+
+    // Mask registers A and B, each with 32 interrupt bits.
+    word32 exec_intr_mask [N_ASSIGNMENTS];
+
+    // Mask assignment.
+    // 2 mask registers, A and B, each 32 bits wide.
+    // A CPU will be attached to port N. 
+    // Mask assignment assigns a mask register (A or B) to a CPU
+    // on port N.
+    // That is, when interrupt I is set:
+    //   For reg = A, B
+    //     
+    // Mask A, B is set to Off or 0-7.
+    // mask_enable [A|B] says that mask A or B is not off
+    // if (mask_enable) then mask_assignment is a port number
     uint mask_enable [N_ASSIGNMENTS]; // enable/disable
     uint mask_assignment [N_ASSIGNMENTS]; // assigned port number
+
+
+
     uint lower_store_size; // In K words, power of 2; 32 - 4096
     uint cyclic; // 7 bits
     uint nea; // 8 bits
@@ -685,7 +703,6 @@ typedef struct
         int dev_port; // which port on the connected device?
     } ports[N_SCU_PORTS];
     
-    uint exec_intr_mask [N_ASSIGNMENTS];
 } scu_t;
 
 static scu_t scu [N_SCU_UNITS_MAX];
@@ -801,7 +818,7 @@ t_stat scu_sscr (uint scu_unit_num, uint __attribute__((unused)) cpu_unit_num, w
     switch (function)
       {
         case 00000: // Set system controller mode register
-sim_printf ("sscr %o\n", function);
+//sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         case 00001: // Set system controller configuration register 
@@ -893,26 +910,27 @@ sim_printf ("sscr %o\n", function);
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= (getbits36(rega, 0, 16) << 16);
             scu [scu_unit_num] . exec_intr_mask [mask_num] |= getbits36(regq, 0, 16);
             sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", __func__, mask_num + 'A', bin2text(scu [scu_unit_num] . exec_intr_mask [mask_num], N_CELL_INTERRUPTS));
+//sim_printf ("sscr  exec_intr_mask %012o\n", scu [scu_unit_num] . exec_intr_mask [mask_num]);
           }
           break;
 
         case 00003: // Set interrupt cells
-sim_printf ("sscr %o\n", function);
+//sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         case 00004: // Set calendar clock (4MW SCU only)
         case 00005: 
-sim_printf ("sscr %o\n", function);
+//sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         case 00006: // Set unit mode register
         case 00007: 
           // XXX See notes in AL39 sscr re: store unit selection
-sim_printf ("sscr %o\n", function);
+//sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         default:
-sim_printf ("sscr %o\n", function);
+//sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
       }
     return SCPE_OK;
@@ -1184,7 +1202,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 
 // =============================================================================
 
-// The SC (set execute cells) SCU command.
+// The SXC (set execute cells) SCU command.
 
 // From AN70:
 //  It then generates a word with
@@ -1196,6 +1214,7 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
 {
     const char* moi = "SCU::interrupt";
     
+//sim_printf ("received %d\n", inum);
     if (inum > 31) {
         sim_debug (DBG_WARN, &scu_dev, "%s: Bad interrupt number %d\n", moi, inum);
         return 1;
@@ -1209,7 +1228,8 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
         }
         uint mask = scu [scu_unit_num] . exec_intr_mask [pima];
         uint port = scu [scu_unit_num ] . mask_assignment [pima];
-        if ((mask & (1<<inum)) == 0) {
+//sim_printf ("recv  exec_intr_mask %012o %d %012o\n", scu [scu_unit_num] . exec_intr_mask [pima], inum, 1<<(31-inum));
+        if ((mask & (1<<(31-inum))) == 0) {
             sim_debug (DBG_INFO, &scu_dev, "%s: PIMA %c: Port %d is masked against interrupts.\n",
                     moi, 'A' + pima, port);
             sim_debug (DBG_DEBUG, &scu_dev, "%s: Mask: %s\n", moi, bin2text(mask, N_CELL_INTERRUPTS));
@@ -1225,6 +1245,8 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
                         scu[scu_unit_num].ports[port].idnum, inum);
 // This the equivalent of the XIP interrupt line to the CPU
 // XXX it really should be done with cpu_svc();
+//sim_printf ("delivered %d\n", inum);
+//sim_printf ("[%lld]\n", sys_stats . total_cycles);
                 events.any = 1;
                 events.int_pending = 1;
                 events.interrupts[inum] = 1;
@@ -1638,7 +1660,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * r
 
     int mask_num = -1;
     uint n_masks_found = 0;
-    for (int p = 0; p < N_ASSIGNMENTS; p ++)
+    for (int p = 0; p < N_ASSIGNMENTS; p ++) // Mask A, B
       {
         if (scu [scu_unit_num] . mask_enable [p] == 0) 
           continue;
@@ -1724,9 +1746,8 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
     //scu_t * scup = scu + scu_unit_num;
     int mask_num = -1;
     uint n_masks_found = 0;
-    for (int p = 0; p < N_ASSIGNMENTS; p ++)
+    for (int p = 0; p < N_ASSIGNMENTS; p ++) // Mask A, B
       {
-        //if (scup -> interrupts [p] . mask_assign . unassigned)
         if (scu [scu_unit_num] . mask_enable [p] == 0) 
           continue;
         if (scu [scu_unit_num] . mask_assignment [p] == (uint) scu_port_num) 
@@ -1760,6 +1781,8 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
     scu [scu_unit_num] . exec_intr_mask [mask_num] =
       ((uint) getbits36(rega, 0, 16) << 16) |
       ((uint) getbits36(regq, 0, 16) <<  0);
+//sim_printf ("smcm  exec_intr_mask %012o\n", scu [scu_unit_num] . exec_intr_mask [mask_num]);
+//sim_printf ("[%lld]\n", sys_stats . total_cycles);
     scu [scu_unit_num] . port_enable [0] = (uint) getbits36 (rega, 32, 1);
     scu [scu_unit_num] . port_enable [1] = (uint) getbits36 (rega, 33, 1);
     scu [scu_unit_num] . port_enable [2] = (uint) getbits36 (rega, 34, 1);

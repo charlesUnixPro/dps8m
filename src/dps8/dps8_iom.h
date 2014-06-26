@@ -52,7 +52,6 @@ typedef int iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint *
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io);
 void iom_init(void);
 void iom_interrupt(int iom_unit_num);
-t_stat iom_svc(UNIT* up);
 t_stat channel_svc(UNIT *up);
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
 

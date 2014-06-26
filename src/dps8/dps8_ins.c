@@ -200,6 +200,8 @@ static void scu2words(word36 *words)
     // words [1]
     
     putbits36 (& words [1], 30, 5, cu.FI_ADDR);
+//sim_printf ("setting F/I to %d; cycle %d\n", cpu . cycle == INTERRUPT_cycle ? 0 : 1, cpu . cycle);
+    putbits36 (& words [1], 35, 1, cpu . cycle == INTERRUPT_cycle ? 0 : 1);
 
     // words [2]
     
@@ -288,6 +290,7 @@ static void words2scu (word36 * words)
     // words[1]
 
     cu.FI_ADDR      = getbits36(words[1], 30, 5);
+    cu.FLT_INT      = getbits36(words[1], 35, 1);
 
     // words[2]
     
@@ -1428,7 +1431,7 @@ static t_stat DoBasicInstruction (void)
             Yblock8[4] = rA;
             Yblock8[5] = rQ;
             Yblock8[6] = SETHI(Yblock8[7], (word18)rE << 10);           // needs checking
-            Yblock8[7] = ((rTR & 0777777777LL) << 9) | (rRALR & 07);    // needs checking
+            Yblock8[7] = ((rTR & MASK27) << 9) | (rRALR & 07);    // needs checking
                     
             //WriteN(i, 8, TPR.CA, Yblock8, OperandWrite, rTAG); // write 8-words to memory
             
@@ -4539,7 +4542,12 @@ static t_stat DoBasicInstruction (void)
             break;
 
         case 0637:  ///< ldt
-            rTR = (CY << 9) & 0777777777000LL;
+            //rTR = (CY & MASK27) << 9;
+            //rTR = CY & MASK27;
+            rTR = (CY & MASK27) >> 9;
+//sim_printf ("rTR %d\n", rTR);
+if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
+  rTR = 0;
             break;
 
         case 0257:  ///< lsdp
@@ -4960,7 +4968,7 @@ static t_stat DoBasicInstruction (void)
             // cioc The system controller addressed by Y (i.e., contains 
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
-
+//sim_printf ("cioc [%lld]\n", sys_stats . total_cycles);
             int cpu_port_num = query_scpage_map (TPR.CA);
 
             if (cpu_port_num < 0)
@@ -5049,6 +5057,12 @@ static t_stat DoBasicInstruction (void)
             sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
             sim_printf ("entered DIS_cycle\n");
 
+            // No operation takes place, and the processor does not 
+            // continue with the next instruction; it waits for a 
+            // external interrupt signal.
+            // AND, according to pxss.alm, TRO
+
+#if 1
             while (1)
               {
                 t_stat rc = simh_hooks ();
@@ -5056,16 +5070,25 @@ static t_stat DoBasicInstruction (void)
                   return rc;
                 if (sample_interrupts ())
                   break;
-                if (switches . tro_enable)
+                if (rTR)
                   {
-                    if (rTR == 0)
-                      doFault (timer_fault, 0, "Timer runout");
-                    rTR = (rTR - 1) & 0777777777u;
+                    rTR = (rTR - 1) & MASK27;
+                    if (switches . tro_enable)
+                      {
+                        if (rTR == 0)
+                          {
+                            //doFault (timer_fault, 0, "Timer runout");
+                            setG7fault (timer_fault);
+                            break;
+                          }
+                      }
                   }
               }
             sim_printf ("left DIS_cycle\n");
             break;
-
+#else
+            longjmp (jmpMain, JMP_REFETCH);
+#endif
  
             
         default:
@@ -6892,15 +6915,27 @@ void doRCU (bool fxeTrap)
         longjmp (jmpMain, JMP_REENTRY);
       }
 
-    if (cu . FI_ADDR == FAULT_MME ||
-        0 /* cu . FI_ADDR == FAULT_TRO */)
+//sim_printf ("F/I is %d\n", cu . FLT_INT);
+    if (cu . FLT_INT == 0) // is interrupt, not fault
+      {
+        //cpu . cycle = FETCH_cycle;
+        //longjmp (jmpMain, JMP_REENTRY);
+//sim_printf ("int refetch\n");
+        longjmp (jmpMain, JMP_REFETCH);
+      }
+
+    if (cu . FI_ADDR == FAULT_MME)
       longjmp (jmpMain, JMP_SYNC_FAULT_RETURN);
+
+    if (cu . FI_ADDR == FAULT_TRO)  // g7 fault
+      {
+        longjmp (jmpMain, JMP_REFETCH);
+      }
 
     if (cu . FI_ADDR == FAULT_DF1 || 
         cu . FI_ADDR == FAULT_DF3 || 
         cu . FI_ADDR == FAULT_F2 || 
-        cu . FI_ADDR == FAULT_F3 ||
-        cu . FI_ADDR == FAULT_TRO)
+        cu . FI_ADDR == FAULT_F3)
       {
         if (cu . FIF == 1)
           {

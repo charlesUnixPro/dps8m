@@ -207,7 +207,7 @@ static const char * simh_tape_msg (int code); // hack
 static const size_t bufsz = 4096 * 1024;
 static struct tape_state
   {
-    enum { no_mode, read_mode, write_mode } io_mode;
+    enum { no_mode, read_mode, write_mode, survey_mode } io_mode;
     uint8 * bufp;
     t_mtrlnt tbc; // Number of bytes read into buffer
     uint words_processed; // Number of Word36 processed from the buffer
@@ -491,7 +491,34 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
 //--             return 0;
 //--         }
 
-        case 040:               // CMD 040 -- Reset Device Status
+        case 033:               // CMD 033 -- WILD GUESS: Return the Survey
+                                //            devices data
+          {
+            * stati = 04000; // have_status = 1
+            tape_statep -> io_mode = survey_mode;
+            * need_data = true;
+//sim_printf ("got 033\n");
+            return 0;
+          }
+
+        case 057:               // CMD 057 -- Survey devices
+          {
+            * stati = 04000; // have_status = 1
+            //* need_data = true;
+//sim_printf ("got survey devices\n");
+            return 0;
+          }
+            
+        case 040:               // CMD 040 -- Reset Status
+            // BUG: How should 040 reset status differ from 051 reset device
+            // status?  Presumably the former is for the MPC itself...
+            * stati = 04000;
+            sim_debug (DBG_INFO, & tape_dev,
+                       "%s: Reset status is %04o.\n",
+                       __func__, * stati);
+            return 0;
+
+        case 051:               // CMD 051 -- Reset Device Status
             // BUG: How should 040 reset status differ from 051 reset device
             // status?  Presumably the former is for the MPC itself...
             * stati = 04000;
@@ -599,6 +626,7 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_
 //--     
     struct tape_state * tape_statep = & tape_state [mt_unit_num];
     
+//sim_printf ("in mt_iom_io\n");
     if (tape_statep -> io_mode == no_mode)
       {
         // no prior read or write command
@@ -640,6 +668,23 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_
         * stati = 04000; // BUG: do we need to detect end-of-record?
         if (sim_tape_wrp (unitp))
           * stati |= 1;
+        return 0;
+      }
+    else if (tape_statep -> io_mode == survey_mode)
+      {
+        //        2 survey_data,
+        //          3 handler (16) unaligned,
+        //            4 pad1 bit (1),               // 0
+        //            4 reserved bit (1),           // 1
+        //            4 operational bit (1),        // 2
+        //            4 ready bit (1),              // 3
+        //            4 number uns fixed bin (5),   // 4-8
+        //            4 pad2 bit (1),               // 9
+        //            4 speed uns fixed bin (3),    // 10-12
+        //            4 nine_track bit (1),         // 13
+        //            4 density uns fixed bin (4);  // 14-17
+//sim_printf ("tally %d\n", * tally);
+        
         return 0;
       }
     else

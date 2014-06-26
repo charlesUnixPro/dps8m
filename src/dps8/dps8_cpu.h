@@ -821,7 +821,7 @@ typedef struct
                    // 24-26 IACHN     Illegal action processor port
                    // 27-29 CNCHN     Connect fault - connect processor port
     word5 FI_ADDR; // 30-34 F/I ADDR  Modulo 2 fault/interrupt vector address
-                   // 35    F/I       0 = interrupt; 1 = fault
+    word1 FLT_INT; // 35    F/I       0 = interrupt; 1 = fault
 
     /* word 2 */
                    //  0- 2 TRR

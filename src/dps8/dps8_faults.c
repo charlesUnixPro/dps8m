@@ -497,8 +497,8 @@ void doFault(_fault faultNumber, _fault_subtype subFault, const char *faultMsg)
         // cu_safe_store ();
       }
     
-    // Set control unit 'fault occured during insturction fetch' flag
-    cu . FIF = cpu . cycle == INSTRUCTION_FETCH ? 1 : 0;
+    // Set control unit 'fault occured during instruction fetch' flag
+    cu . FIF = cpu . cycle == FETCH_cycle ? 1 : 0;
     cu . FI_ADDR = faultNumber;
 
     cpu . cycle = FAULT_cycle;

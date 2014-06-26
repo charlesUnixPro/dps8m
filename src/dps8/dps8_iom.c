@@ -359,12 +359,13 @@ static t_stat iom_reset(DEVICE *dptr);
 
 #define IOM_CONNECT_CHAN 2U
 
+static t_stat iom_svc (UNIT * unitp);
 static UNIT iom_unit [N_IOM_UNITS_MAX] =
   {
-    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
-    { UDATA(NULL /*&iom_svc*/, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+    { UDATA(& iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA(& iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA(& iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL },
+    { UDATA(& iom_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
   };
 
 #define IOM_UNIT_NUM(uptr) ((uptr) - iom_unit)
@@ -1469,6 +1470,23 @@ static t_stat iom_reset(DEVICE * __attribute__((unused)) dptr)
 
 void iom_interrupt (int iom_unit_num)
   {
+// simh merges together activates; if the unit already has an
+// event scheduled, OTOH, issuing a CIOC before the previous operation
+// has completed seems dubious.
+#if 0
+    if (sim_is_active (& iom_unit [iom_unit_num]))
+      sim_printf ("overlapping IOM interrupts\n");
+    sim_activate (& iom_unit [iom_unit_num], 1024);
+#else
+    iom_svc (iom_unit + iom_unit_num);
+#endif
+  }
+
+//void iom_interrupt (int iom_unit_num)
+static t_stat iom_svc (UNIT * unitp)
+  {
+//sim_printf ("iom_svc\n");
+    int iom_unit_num = unitp - iom_unit;
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c starting.\n",
       __func__, 'A' + iom_unit_num);
     sim_debug (DBG_TRACE, & iom_dev, "\nIOM starting.\n");
@@ -1487,6 +1505,7 @@ void iom_interrupt (int iom_unit_num)
 
     sim_debug (DBG_DEBUG, & iom_dev, "%s: IOM %c finished.\n",
       __func__, 'A' + iom_unit_num);
+    return SCPE_OK;
   }
 
 //
@@ -1751,7 +1770,9 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
           }
       }
 #else
+    if (is_cpi)
     {
+///sim_printf ("is CPI\n");
       // 3. The connect channel PCW is treated differently by the CPI channel
       // and the PSI channel. The CPI channel does a store status, The
       // PSI channel goes into startup.
@@ -1922,6 +1943,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
         
         dcw_t dcw;
     // XXX check 1 bit; read_only
+//sim_printf ("dcw_addr %o\n", dcw_addr);
         fetch_and_parse_dcw (iom_unit_num, chan, & dcw, dcw_addr, 1);
         sim_debug (DBG_INFO, & iom_dev, "%s: DCW is: %s\n",
                    __func__, dcw2text (& dcw));
@@ -1937,6 +1959,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
         
         stati = 0;
     
+//sim_printf ("got dcw type %d\n", dcw . type);
         if (dcw . type == idcw)
           {
             // 4.3.1b: IDCW == YES
@@ -1954,7 +1977,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
                 // SEND IDCW TO CHANNEL
                 need_data = false;
                 dev_send_idcw (iom_unit_num, chan, pcwp -> dev_code, & dcw . fields . instr, & stati, & need_data, & is_read);
-                //sim_printf ("dev_send_idcw p(1) stati %04o control %o\n", stati, dcw . fields . instr . control);
+//sim_printf ("dev_send_idcw p(1) stati %04o control %o\n", stati, dcw . fields . instr . control);
                 char_pos = 0;
                 rcount = dcw . fields . instr . chan_data;
                 residue = 0;
@@ -2014,6 +2037,7 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
         else // we know it is not a idcw, so it must be a tdcw
           addr = dcw . fields . xfer . addr;
     
+//sim_printf ("ddcw 1\n");
         if (lpw . srel != 0)
           {
             // 4.3.1b: LPW 23 REL == 1
@@ -2196,9 +2220,10 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
 #endif
 
         first_list = false;
+//sim_printf ("at loop botton; ptro %d need_data %d\n", ptro, need_data);
       }
     //while (lpw . nc == 0 &&  ! (lpw . trunout && lpw . tally <= 0) && ! disconnect);
-    while (! ptro || need_data);
+    while ((! ptro) || need_data);
 
     status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
     //status_service (iom_unit_num, chan, pcwp -> dev_code, stati, pcwp -> dev_code, is_read);
@@ -4175,11 +4200,15 @@ static void iom_show_channel_mbx (int iom_unit_num, uint chan)
     
     uint32 addr = lpw . dcw_ptr;
     if (lpw . tally == 0)
-      lpw . tally = 10;
+      lpw . tally = 3;
 
     // This isn't quite right, but sufficient for debugging
     uint control = 2;
+#if 0
     for (int i = 0; i < (int) lpw.tally && control == 2; ++ i)
+#else
+    for (int i = 0; i < (int) lpw.tally; ++ i)
+#endif
       {
         if (i > 4096)
           break;
@@ -4201,13 +4230,15 @@ static void iom_show_channel_mbx (int iom_unit_num, uint chan)
             control = dcw . fields . instr . control;
           }
         ++ addr;
-        //if (control != 2)
-          //{
-            //if (i == lpw . tally)
-              //sim_printf ("    -- end of list --\n");
-            //else
-              //sim_printf ("    -- end of list (because dcw control != 2) --\n");
-          // }
+#if 1
+        if (control != 2)
+          {
+            if (i == (int) lpw . tally)
+              sim_printf ("    -- end of list --\n");
+            else
+              sim_printf ("    -- end of list (because dcw control != 2) --\n");
+          }
+#endif
       }
     sim_printf ("\n");
   }
