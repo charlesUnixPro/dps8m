@@ -58,7 +58,12 @@ static DEBTAB opcon_dt [] =
 #define N_OPCON_UNITS 1
 #define OPCON_UNIT_NUM 0
 
-static UNIT opcon_unit [N_OPCON_UNITS] = {{ UDATA(NULL, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }};
+static t_stat opcon_svc (UNIT * unitp);
+
+static UNIT opcon_unit [N_OPCON_UNITS] =
+  {
+    { UDATA (& opcon_svc, 0, 0), 0, 0, 0, 0, 0, NULL, NULL }
+  };
 
 static t_stat opcon_reset (DEVICE * dptr);
 
@@ -555,6 +560,22 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * pcwp)
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);
 
     return 1;
+  }
+
+static t_stat opcon_svc (UNIT * unitp)
+  {
+    int con_unit_num = OPCON_UNIT_NUM;
+    int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
+    //pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    word24 dcw_ptr = (word24) (unitp -> u3);
+    pcw_t pcw;
+    word36 word0, word1;
+    
+    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+    decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
+ 
+    con_iom_cmd (unitp, & pcw);
+    return SCPE_OK;
   }
 
 

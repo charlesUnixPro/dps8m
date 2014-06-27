@@ -103,6 +103,8 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint
 #define N_MT_UNITS_MAX 16
 #define N_MT_UNITS 1 // default
 
+static t_stat mt_svc (UNIT *up);
+
 static UNIT mt_unit [N_MT_UNITS_MAX] = {
     // NOTE: other SIMH tape sims don't set UNIT_SEQ
     // CAC: Looking at SIMH source, the only place UNIT_SEQ is used
@@ -112,22 +114,22 @@ static UNIT mt_unit [N_MT_UNITS_MAX] = {
     // run commands, including CONTINUE.
     // Turning UNIT_SEQ off.
     // XXX Should we rewind on reset? What is the actual behavior?
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL /*&mt_svc*/, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& mt_svc, UNIT_ATTABLE | /* UNIT_SEQ | */ UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, 0), 0, 0, 0, 0, 0, NULL, NULL}
 };
 
 static DEBTAB mt_dt [] =
@@ -279,7 +281,7 @@ t_stat cable_mt (int mt_unit_num, int iom_unit_num, int chan_num, int dev_code)
 
     return SCPE_OK;
   }
-
+ 
 static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 //static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
@@ -595,6 +597,22 @@ sim_printf ("not instr\n");
     return 1;
   }
 
+static t_stat mt_svc (UNIT * unitp)
+  {
+    int mt_unit_num = MT_UNIT_NUM (unitp);
+    int iom_unit_num = cables_from_ioms_to_mt [mt_unit_num] . iom_unit_num;
+    //pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    word24 dcw_ptr = (word24) (unitp -> u3);
+    pcw_t pcw;
+    word36 word0, word1;
+
+    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+    decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
+
+    mt_iom_cmd (unitp, & pcw);
+    return SCPE_OK;
+  }
+    
 
 static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp)
   {

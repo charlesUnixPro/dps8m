@@ -63,24 +63,26 @@ static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * des
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp);
 static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
+static t_stat disk_svc (UNIT *);
+
 static UNIT disk_unit [N_DISK_UNITS_MAX] =
   {
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
-    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, & disk_svc},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL},
+    {UDATA (& disk_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS), 0, 0, 0, 0, 0, NULL, NULL}
   };
 
 #define DISK_UNIT_NUM(uptr) ((uptr) - disk_unit)
@@ -512,6 +514,22 @@ sim_printf ("not instr\n");
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);
 
     return 1;
+  }
+
+static t_stat disk_svc (UNIT * unitp)
+  {
+    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
+    //pcw_t * pcwp = (pcw_t *) (unitp -> up7);
+    word24 dcw_ptr = (word24) (unitp -> u3);
+    pcw_t pcw;
+    word36 word0, word1;
+    
+    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+    decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
+ 
+    disk_iom_cmd (unitp, & pcw);
+    return SCPE_OK;
   }
 
 static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * __attribute__((unused)) tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 * __attribute__((unused)) stati)

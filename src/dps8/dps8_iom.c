@@ -362,7 +362,7 @@ static void store_abs_word (word24 addr, word36 data)
     core_write (addr, data);
   }
 
-static void fetch_abs_pair (word24 addr, word36 * even, word36 * odd)
+void fetch_abs_pair (word24 addr, word36 * even, word36 * odd)
   {
     core_read2 (addr, even, odd);
   }
@@ -465,8 +465,8 @@ void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn)
 // Decode an idcw word or pcw word pair
 //
 
-static void decode_idcw (int iom_unit_num, pcw_t *p, bool is_pcw, 
-                         word36 word0, word36 word1)
+void decode_idcw (int iom_unit_num, pcw_t *p, bool is_pcw, 
+                  word36 word0, word36 word1)
   {
     p->dev_cmd = getbits36(word0, 0, 6);
     p->dev_code = getbits36(word0, 6, 6);
@@ -1673,9 +1673,12 @@ static int send_flags_to_channel (void)
     return 0;
   }
 
+//
+// xxdo_payload_channel
 // return 0 ok, != 0 error
+//
 
-static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
+static int xxdo_payload_channel (int iom_unit_num, pcw_t * pcwp)
   {
     uint chan = pcwp -> chan;
     uint dev_code = pcwp -> dev_code;
@@ -1716,6 +1719,63 @@ static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
   }
 
 //
+// do_payload_channel
+// return 0 ok, != 0 error
+//
+
+static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/)
+  {
+    pcw_t pcw;
+    word36 word0, word1;
+    
+    (void) fetch_abs_pair (dcw_ptr, & word0, & word1);
+    decode_idcw (iom_unit_num, & pcw, 1, word0, word1);
+    
+    uint chan = pcw . chan;
+    uint dev_code = pcw . dev_code;
+    DEVICE * devp = iom [iom_unit_num] . channels [chan] [dev_code] . dev;
+
+    if (devp == NULL)
+      {
+        // BUG: no device connected; what's the appropriate fault code(s) ?
+//--         chanp->status.power_off = 1;
+        sim_debug (DBG_WARN, & iom_dev,
+                   "%s: No device connected to channel %#o(%d)\n",
+                   __func__, chan, chan);
+        iom_fault (iom_unit_num, chan, __func__, 0, 0);
+        return 1;
+      }
+    
+    iom_cmd * iom_cmd = iom [iom_unit_num] .channels [chan] [dev_code] . 
+                        iom_cmd;
+    if (! iom_cmd)
+      {
+        // BUG: no device connected; what's the appropriate fault code(s) ?
+        sim_debug (DBG_ERR, & iom_dev,
+                   "%s: iom_cmd on channel %#o (%d) dev_code %d is missing.\n",
+                   __func__, chan, chan, dev_code);
+        iom_fault (iom_unit_num, chan, __func__, 0, 0);
+        return 1;
+      }
+
+    UNIT * unitp = iom [iom_unit_num] .channels [chan] [dev_code] . board;
+#if 1
+    // pass the pcw pointer in through up7 for convienence
+    unitp -> u3 = (int32) dcw_ptr;
+    sim_activate (unitp, 1024);
+    return 0;
+#else
+    int rc = iom_cmd (unitp, pcwp);
+
+    sim_debug (DBG_DEBUG, & iom_dev,
+               "%s: iom_cmd returns rc:%d:\n",
+               __func__, rc);
+
+    return rc;
+#endif
+  }
+
+//
 // do_connect_chan ()
 //
 // Process the "connect channel".  This is what the IOM does when it
@@ -1750,7 +1810,6 @@ static int do_connect_chan (int iom_unit_num)
         sim_debug (DBG_TRACE, & iom_dev,
                    "Connect LPW at %#06o: %s\n", 
                     chanloc, lpw2text (& lpw, true));
-
         // 4.3.1a: CONNECT_CHANNEL = YES
     
         // 4.3.1a: LPW 21,22 == 00?
@@ -1842,7 +1901,7 @@ static int do_connect_chan (int iom_unit_num)
         //dcwp -> type = idcw;
         //dcwp -> fields . instr = pcw;
 
-        int ret = do_payload_channel (iom_unit_num, & pcw);
+        int ret = do_payload_channel (iom_unit_num, lpw . dcw_ptr);
         if (ret)
           {
             sim_debug (DBG_DEBUG, & iom_dev,
@@ -2100,8 +2159,17 @@ static t_stat boot_svc (UNIT * unitp)
 
 static t_stat iom_boot (int32 unit_num, DEVICE * __attribute__((unused)) dptr)
   {
+#if 0
+    // initialize memory with boot program
+    init_memory_iom ((uint)unit_num);
+
+    // simulate $CON
+    iom_interrupt (unit_num);
+
+#else
     sim_activate (& boot_channel_unit [unit_num], sys_opts . iom_times . boot_time );
     // returning OK from the simh BOOT command causes simh to start the CPU
+#endif
     return SCPE_OK;
   }
 
