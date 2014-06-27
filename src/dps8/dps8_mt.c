@@ -526,9 +526,15 @@ sim_printf ("tally %d\n", tally);
                        __func__, stati);
             break;
 
-        case 051:               // CMD 051 -- Console Write Alert
-            // Ignore
-            stati = 0;
+// Okay, this is convoluted. Multics locates the console by sending CMD 051
+// to devices in the PCW, with the understanding that only the console 
+// device will "respond", whatever that means.
+// But, bootload_tape_label checks for controller firmware loaded
+// ("intellegence") by sending a 051 in a IDCW.
+// Since it's diffcult here to test for PCW/IDCW, assume that the PCW case
+// has been filtered out at a higher level
+        case 051:               // CMD 051 -- Reset device status
+            stati = 04000;
             break;
 
         default:
@@ -542,7 +548,7 @@ sim_printf ("tally %d\n", tally);
 
     status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
 
-    return 0;   // not reached
+    return 0;
   }
 
 /*
@@ -557,18 +563,23 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
 
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
-    // However, the PCW may need a DDCW. So we setup the payload channel
-    // mailbox pointer first, so that we can track processed DDCWs.
 
     uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
+// Ignore a CMD 051 in the PCW
+    if (pcwp -> dev_cmd == 051)
+      return 1;
     bool disc;
     mt_cmd (unitp, pcwp, & disc);
 
-    uint ctrl = pcwp -> control;
+    // ctrl of the pcw is observed to be 0 even when there are idcws in the
+    // list so ignore that and force it to 2.
+    //uint ctrl = pcwp -> control;
+    uint ctrl = 2;
 
+sim_printf ("starting list; disc %d, ctrl %d\n", disc, ctrl);
     while ((! disc) && ctrl == 2)
       {
 sim_printf ("perusing channel mbx lpw....\n");
@@ -593,54 +604,6 @@ sim_printf ("not instr\n");
     return 1;
   }
 
-#if 0
-// Extract the N'th 36 bit word from a buffer
-//
-//   bits: buffer of bits from a simh tape. The data is
-//   packed as 2 36 bit words in 9 eight bit bytes (2 * 36 == 7 * 9)
-//   The of the bytes in bits is
-//      byte     value
-//       0       most significant byte in word 0
-//       1       2nd msb in word 0
-//       2       3rd msb in word 0
-//       3       4th msb in word 0
-//       4       upper half is 4 least significant bits in word 0
-//               lower half is 4 most significant bit in word 1
-//       5       5th to 13th most signicant bits in word 1
-//       6       ...
-//       7       ...
-//       8       least significant byte in word 1
-//
-
-// Multics humor: this is idiotic
-
-static t_uint64 extr36 (uint8 * bits, uint woffset)
-  {
-    uint isOdd = woffset % 2;
-    uint dwoffset = woffset / 2;
-    uint8 * p = bits + dwoffset * 9;
-
-    t_uint64 w;
-    if (isOdd)
-      {
-        w  = ((t_uint64) (p [4] & 0xf)) << 32;
-        w |=  (t_uint64) (p [5]) << 24;
-        w |=  (t_uint64) (p [6]) << 16;
-        w |=  (t_uint64) (p [7]) << 8;
-        w |=  (t_uint64) (p [8]);
-      }
-    else
-      {
-        w  =  (t_uint64) (p [0]) << 28;
-        w |=  (t_uint64) (p [1]) << 20;
-        w |=  (t_uint64) (p [2]) << 12;
-        w |=  (t_uint64) (p [3]) << 4;
-        w |= ((t_uint64) (p [4]) >> 4) & 0xf;
-      }
-    // DMASK shouldn't be neccessary but is robust
-    return w & DMASK;
-  }
-#endif
 
 static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_processed, t_uint64 *wordp)
   {

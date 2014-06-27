@@ -272,37 +272,34 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
 //-- // ============================================================================
 //-- 
 
-/*
- * con_iom_cmd()
- *
- * Handle a device command.  Invoked by the IOM while processing a PCW
- * or IDCW.
- */
-
-static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p)
+//static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
+static int con_cmd (UNIT * unitp, pcw_t * pcwp)
   {
-    return 1;
-  }
-#if 0
-static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
-  {
-    * need_data = false;
-    * is_read = true;
- 
-    //check_keyboard ();
+    int con_unit_num = OPCON_UNIT_NUM;
+    int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
     
-    switch (p -> dev_cmd)
+    word12 stati = 0;
+    word6 rcount = 0;
+    word12 residue = 0;
+    word3 char_pos = 0;
+    bool is_read = true;
+
+    int chan = pcwp-> chan;
+
+sim_printf ("con_cmd %o\n", pcwp -> dev_cmd);
+    switch (pcwp -> dev_cmd)
       {
         case 0: // CMD 00 Request status
           {
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Status request cmd received",
                        __func__);
-            * stati = 04000;
-            return 0;
-        }
+            stati = 04000;
+          }
+          break;
 
         case 023:               // Read ASCII
+          {
             console_state . io_mode = read_mode;
             sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Read ASCII command received\n", __func__);
             if (console_state . tailp != console_state . buf)
@@ -313,17 +310,107 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 
             console_state . tailp = console_state . buf;
             console_state . readp = console_state . buf;
             console_state . have_eol = 0;
-            //*majorp = 00;
-            //*subp = 0;
-            * stati = 04000;
-            * need_data = true;
-            // breakpoint not helpful as cmd is probably in a list with an IO
-            // cancel_run(STOP_IBKPT);
-            // sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Auto-breakpoint for read.\n");
-            return 0;
+
+            // Read keyboard if we don't have an EOL from the operator
+            // yet
+            if (! console_state . have_eol)
+              {
+                // We won't return anything to the IOM until the operator
+                // has finished entering a full line and pressed ENTER.
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Starting input loop for channel %d (%#o)\n", chan, chan);
+                time_t now = time(NULL);
+                while (time(NULL) < now + 30 && ! console_state . have_eol)
+                  {
+                    check_keyboard ();
+                    usleep (100000);       // FIXME: blocking
+                  }
+                // Impossible to both have EOL and have buffer overflow
+                if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+                  {
+                    stati = 04340;
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
+                    break;
+                  }
+                if (! console_state . have_eol)
+                  {
+                    stati = 04310;
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout\n");
+                  }
+              }
+            // We have an EOL from the operator
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Transfer for channel %d (%#o)\n", chan, chan);
+            
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+sim_printf ("read  got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            uint cp = dcw.fields.ddcw.cp;
+
+            if (type != 0 && type != 1) //IOTD, IOTP
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+sim_printf ("tally %d\n", tally);
+            while (tally && console_state . readp < console_state . tailp)
+              {
+                int charno;
+                for (charno = 0; charno < 4; ++ charno)
+                  {
+                    if (console_state . readp >= console_state . tailp)
+                      break;
+                    unsigned char c = * console_state . readp ++;
+                    M [daddr] = setbits36 (M [daddr], charno * 9, 9, c);
+                  }
+                cp = charno % 4;
+
+                daddr ++;
+                tally --;
+              }
+            if (console_state . readp < console_state . tailp)
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: discarding %ld characters from end of line\n", console_state . tailp - console_state . readp);
+              }
+            console_state . readp = console_state . buf;
+            console_state . tailp = console_state . buf;
+            console_state . have_eol = 0;
+
+            stati = 04000;
+          }
+          break;
+
 
         case 033:               // Write ASCII
-            * is_read = false;
+          {
+            is_read = false;
             console_state . io_mode = write_mode;
 
             sim_debug (DBG_NOTIFY, & opcon_dev,
@@ -332,50 +419,149 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 
               {
                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_cmd: Might be discarding previously buffered input.\n");
               }
-            * stati = 00;
-            * need_data = true;
-            return 0;
+
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+sim_printf ("read  got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            uint cp = dcw.fields.ddcw.cp;
+
+            if (type != 0 && type != 1) //IOTD, IOTP
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+sim_printf ("tally %d\n", tally);
+            sim_printf ("CONSOLE: ");
+            word36 datum;
+
+            // Tally is in words, not chars.
+
+            while (tally)
+              {
+                datum = M [daddr ++];
+                tally --;
+
+                for (int i = 0; i < 4; i ++)
+                  {
+                    word36 wide_char = datum >> 27; // slide leftmost char into low byte
+                    datum = datum << 9; // lose the leftmost char
+                    char ch = wide_char & 0x7f;
+                    if (isprint (ch))
+                      sim_printf ("%c", ch);
+                    else
+                      {
+                        if (ch && ch != '\015' && ch != '\012' && ch != '\177')
+                          sim_printf ("\\%03o", ch);
+                      }
+                    //if (ch == '\r')
+                      //sim_printf ("\n");
+                  }
+              }
+            sim_printf ("\n");
+            stati = 04000;
+          }
+          break;
 
         case 040:               // Reset
+          {
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Reset cmd received\n", __func__);
             console_state . io_mode = no_mode;
-            * stati = 04000;
-            return 0;
+            stati = 04000;
+          }
+          break;
 
         case 051:               // Write Alert -- Ring Bell
-            * is_read = false;
+          {
+            is_read = false;
             // AN70-1 says only console channels respond to this command
             sim_printf ("CONSOLE: ALERT\n");
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Write Alert cmd received\n", __func__);
             sim_putchar('\a');
-            * stati = 04000;
-            return 0;
+            stati = 04000;
+          }
+          break;
 
         case 057:               // Read ID (according to AN70-1)
+          {
             // FIXME: No support for Read ID; appropriate values are not known
             // [CAC] Looking at the bootload console code, it seems more 
             // concerned about the device responding, rather then the actual
             // returned value. Make some thing up.
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Read ID received\n", __func__);
-            //*majorp = 05;
-            //*subp = 1;
-            * stati = 04500;
-            return 0;
+            stati = 04500;
+          }
+          break;
 
         default:
           {
-            * stati = 04501; // command reject, invalid instruction code
+            stati = 04501; // command reject, invalid instruction code
             sim_debug (DBG_ERR, & opcon_dev, "%s: Unknown command 0%o\n",
-                       __func__, p -> dev_cmd);
-            return 1;
+                       __func__, pcwp -> dev_cmd);
+            break;
           }
       }
-    // return 1;   // not reached
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
+
+    return 0;
   }
-#endif
+
+/*
+ * con_iom_cmd()
+ *
+ * Handle a device command.  Invoked by the IOM while processing a PCW
+ * or IDCW.
+ */
+
+// The console is a CPI device; only the PCW command is executed.
+
+static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * pcwp)
+  {
+    int con_unit_num = OPCON_UNIT_NUM;
+    int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
+
+    // Execute the command in the PCW.
+
+    uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+
+    bool disc;
+    con_cmd (unitp, pcwp);
+
+    send_terminate_interrupt (iom_unit_num, pcwp -> chan);
+
+    return 1;
+  }
 
 
 /*
