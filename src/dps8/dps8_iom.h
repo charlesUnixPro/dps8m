@@ -1,31 +1,4 @@
-extern DEVICE iom_dev;
-// I/O Multiplexer
-enum { max_channels = 32 }; // enums are more constant than consts...
-
-//-- // Used to communicate between the IOM and devices
-//-- typedef struct {
-//--     int iom_unit_num;
-//--     int chan;
-//--     void* statep; // For use by device specific code
-//--     int dev_cmd; // 6 bits
-//--     // XXX Caution; this is the unit number from the IOM, it is NOT the
-//--     // same as unit number. E.g.
-//--     //    dev_code       simh
-//--     //      0            cardreader[0]
-//--     //      1            tape[0]
-//--     //      2            tape[1]
-//--     //      3            disk[0]
-//-- 
-//--     int dev_code; // 6 bits
-//--     int chan_data; // 6 bits; often some sort of count
-//--     bool have_status; // set to true by the device when operation is complete
-//--     int major;
-//--     int substatus;
-//--     bool is_read;
-//--     int time; // request by device for queuing via sim_activate()
-//-- } chan_devinfo;
-
-typedef struct pcw_s
+typedef struct pcw_t
   {
     uint dev_cmd;    // 6 bits; 0..5
     uint dev_code;   // 6 bits; 6..11
@@ -41,17 +14,60 @@ typedef struct pcw_s
     uint chan;       // 6 bits; bits 3..8 of word 2
   } pcw_t;
 
-enum chan_type { chan_type_CPI, chan_type_PSI };
-typedef enum chan_type chan_type;
+// Much of this is from AN87 as 43A23985 lacked details of 0..11 and 22..36
 
+typedef struct dcw_t
+  {
+    enum { ddcw, tdcw, idcw } type;
+    union
+      {
+        pcw_t instr;
+        struct
+          {
+            uint daddr; // data address; 18 bits at 0..17);
+            uint cp;    // char position; 3 bits 18..20
+            uint tctl;  // tally control; 1 bit at 21
+            uint type;  // 2 bits at 22..23
+            uint tally; // 12 bits at 24..35
+          } ddcw;
+        struct {
+            uint addr;
+            bool ec;  // extension control
+            bool i;   // IDCW control
+            bool r;   // relative addressing control
+          } xfer;
+      } fields;
+  } dcw_t;
+
+typedef struct
+  {
+    uint32 dcw_ptr;     // bits 0..17
+    word1 ires;    // bit 18; IDCW restrict
+    word1 hrel;    // bit 19; hardware relative addressing
+    word1 ae;      // bit 20; address extension
+    word1 nc;      // bit 21; no tally; zero means update tally
+    word1 trunout; // bit 22; signal tally runout?
+    word1 srel;    // bit 23; software relative addressing; not for Multics!
+    uint32 tally;    // bits 24..35
+    // following not valid for paged mode; see B15; but maybe IOM-B non existant
+    uint32 lbnd;
+    uint32 size;
+    uint32 idcw;    // ptr to most recent dcw, idcw, ...
+  } lpw_t;
+ 
 // Devices connected to an IOM (I/O multiplexer) (possibly indirectly)
 enum dev_type { DEVT_NONE = 0, DEVT_TAPE, DEVT_CON, DEVT_DISK, DEVT_MPC };
+typedef enum chan_type { chan_type_CPI, chan_type_PSI } chan_type;
 
-typedef int iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-typedef int iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
-t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io);
-void iom_init(void);
-void iom_interrupt(int iom_unit_num);
-t_stat channel_svc(UNIT *up);
+typedef int iom_cmd (UNIT * unitp, pcw_t * p);
+extern DEVICE iom_dev;
+
+void iom_interrupt (int iom_unit_num);
+void iom_init (void);
 t_stat cable_iom (int iom_unit_num, int iom_port_num, int scu_unit_num, int scu_port_num);
-
+t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd);
+int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp);
+uint mbx_loc (int iom_unit_num, uint chan_num);
+void fetch_and_parse_lpw (lpw_t * p, uint addr, bool is_conn);
+int status_service(int iom_unit_num, uint chan, uint dev_code, word12 stati, word6 rcount, word12 residue, word3 char_pos, bool is_read);
+int send_terminate_interrupt (int iom_unit_num, uint chan);

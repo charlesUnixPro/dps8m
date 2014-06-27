@@ -60,7 +60,7 @@
 static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
-static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read);
+static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp);
 static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static UNIT disk_unit [N_DISK_UNITS_MAX] =
@@ -200,7 +200,7 @@ t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_co
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DISK, chan_type_PSI, disk_unit_num, & disk_dev, & disk_unit [disk_unit_num], disk_iom_cmd, disk_iom_io);
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DISK, chan_type_PSI, disk_unit_num, & disk_dev, & disk_unit [disk_unit_num], disk_iom_cmd);
     if (rc)
       return rc;
 
@@ -211,6 +211,12 @@ t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_co
     return SCPE_OK;
   }
 
+static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+  {
+    return 1;
+  }
+
+#if 0
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
   {
 // First call to disk to 20184:
@@ -316,6 +322,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
       }
     // return 1;   // not reached
   }
+#endif
 
 static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * __attribute__((unused)) tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 * __attribute__((unused)) stati)
   {

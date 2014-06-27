@@ -129,7 +129,7 @@ static struct
 
 static void check_keyboard (void);
 
-static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
+static int con_iom_cmd (UNIT * unitp, pcw_t * p);
 static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static t_stat opcon_reset (DEVICE * __attribute__((unused)) dptr)
@@ -161,7 +161,7 @@ t_stat cable_opcon (int iom_unit_num, int chan_num)
       }
 
     // Plug the other end of the cable in
-    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, chan_type_CPI, OPCON_UNIT_NUM, & opcon_dev, & opcon_unit [OPCON_UNIT_NUM], con_iom_cmd, con_iom_io);
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, 0, DEVT_CON, chan_type_CPI, OPCON_UNIT_NUM, & opcon_dev, & opcon_unit [OPCON_UNIT_NUM], con_iom_cmd);
     if (rc)
       return rc;
 
@@ -279,6 +279,11 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
  * or IDCW.
  */
 
+static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p)
+  {
+    return 1;
+  }
+#if 0
 static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
   {
     * need_data = false;
@@ -370,6 +375,7 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 
       }
     // return 1;   // not reached
   }
+#endif
 
 
 /*
