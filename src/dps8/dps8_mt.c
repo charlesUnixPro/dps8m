@@ -295,7 +295,6 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
     * disc = false;
 
     int chan = pcwp-> chan;
-sim_printf ("mt_cmd %o\n", pcwp -> dev_cmd);
     switch (pcwp -> dev_cmd)
       {
         case 0: // CMD 00 Request status
@@ -311,7 +310,6 @@ sim_printf ("mt_cmd %o\n", pcwp -> dev_cmd);
           }
         case 5: // CMD 05 -- Read Binary Record
           {
-sim_printf ("at mt read\n");
             // We read the record into the tape controllers memory;
             // IOM can subsequently retrieve the data via DCWs.
             if (tape_statep -> bufp == NULL)
@@ -338,7 +336,6 @@ sim_printf ("at mt read\n");
               {
                 if (ret == MTSE_TMK)
                   {
-sim_printf ("tapemark\n");
                     sim_debug (DBG_NOTIFY, & tape_dev,
                                 "%s: EOF: %s\n", __func__, simh_tape_msg (ret));
                     stati = 04423; // EOF category EOF file mark
@@ -392,7 +389,6 @@ sim_printf ("tapemark\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("read  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -430,7 +426,6 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
             while (tally)
               {
                 // read
@@ -515,7 +510,7 @@ sim_printf ("tally %d\n", tally);
           {
             stati = 04000; // have_status = 1
             //* need_data = true;
-//sim_printf ("got survey devices\n");
+sim_printf ("got survey devices\n");
             break;
           }
             
@@ -579,18 +574,14 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     //uint ctrl = pcwp -> control;
     uint ctrl = 2;
 
-sim_printf ("starting list; disc %d, ctrl %d\n", disc, ctrl);
     while ((! disc) && ctrl == 2)
       {
-sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
         int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw);
         if (rc)
           {
-sim_printf ("list service denies!\n");
             break;
           }
-sim_printf ("persuing got type %d\n", dcw . type);
         if (dcw . type != idcw)
           {
 sim_printf ("not instr\n");
@@ -642,7 +633,6 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_
 //--     
     struct tape_state * tape_statep = & tape_state [mt_unit_num];
     
-//sim_printf ("in mt_iom_io\n");
     if (tape_statep -> io_mode == no_mode)
       {
         // no prior read or write command
@@ -699,7 +689,6 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_
         //            4 speed uns fixed bin (3),    // 10-12
         //            4 nine_track bit (1),         // 13
         //            4 density uns fixed bin (4);  // 14-17
-//sim_printf ("tally %d\n", * tally);
         
         return 0;
       }

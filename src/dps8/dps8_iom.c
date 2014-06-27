@@ -1241,7 +1241,6 @@ int status_service (int iom_unit_num, uint chan, uint dev_code, word12 stati,
         lq = 0;
       }
 #endif
-sim_printf ("writing status %012llo %012llo @ %08o\n", word1, word2, addr);
     store_abs_pair (addr, word1, word2);
 
     if (tally > 0 || (tally == 0 && lq != 0))
@@ -1514,14 +1513,12 @@ int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp)
                __func__, dcw_addr);
         
     // XXX check 1 bit; read_only
-sim_printf ("dcw_addr %o\n", dcw_addr);
     fetch_and_parse_dcw (iom_unit_num, chan_num, dcwp, dcw_addr, 1);
     
     // 4.3.1b: C
     
     // 4.3.1b: IDCW?
         
-sim_printf ("got dcw type %d %s\n", dcwp -> type, dcw2text (dcwp));
     if (dcwp -> type == idcw)
       {
         // 4.3.1b: IDCW == YES
@@ -1533,7 +1530,6 @@ sim_printf ("got dcw type %d %s\n", dcwp -> type, dcw2text (dcwp));
             // 4.3.1b: LPW 18 RES == YES
             user_fault_flag = iom_cs_idcw_in_res_mode;
           }
-//sim_printf ("cac terminate D\n");
         goto D;
       }
     
@@ -1549,7 +1545,6 @@ sim_printf ("got dcw type %d %s\n", dcwp -> type, dcw2text (dcwp));
     else // we know it is not a idcw, so it must be a tdcw
       addr = dcwp -> fields . xfer . addr;
  
-//sim_printf ("ddcw 1\n");
     if (lpw . srel != 0)
       {
         // 4.3.1b: LPW 23 REL == 1
@@ -1682,9 +1677,6 @@ static int send_flags_to_channel (void)
 
 static int do_payload_channel (int iom_unit_num, pcw_t * pcwp)
   {
-
-sim_printf ("do_payload_channel %s\n", pcw2text (pcwp));
-
     uint chan = pcwp -> chan;
     uint dev_code = pcwp -> dev_code;
     DEVICE * devp = iom [iom_unit_num] . channels [chan] [dev_code] . dev;
@@ -1741,7 +1733,6 @@ static int do_connect_chan (int iom_unit_num)
     bool ptro = false;
     bool first_list = true;
 
-iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
     uint chanloc = mbx_loc (iom_unit_num, IOM_CONNECT_CHAN);
 
     do // while (!ptro)
@@ -1820,7 +1811,6 @@ iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
                    __func__, pcw2text (& pcw));
         sim_debug (DBG_TRACE, & iom_dev, "PCW is: %s\n", 
                    pcw2text (& pcw));
-sim_printf ("connect got pcw %s\n", pcw2text (& pcw));
         // BUG/TODO: Should these be user faults, not system faults?
 
         // 4.3.1b: PCW 18-20 != 111

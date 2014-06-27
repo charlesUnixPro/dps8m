@@ -286,7 +286,6 @@ static int con_cmd (UNIT * unitp, pcw_t * pcwp)
 
     int chan = pcwp-> chan;
 
-sim_printf ("con_cmd %o\n", pcwp -> dev_cmd);
     switch (pcwp -> dev_cmd)
       {
         case 0: // CMD 00 Request status
@@ -351,7 +350,6 @@ sim_printf ("con_cmd %o\n", pcwp -> dev_cmd);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("read  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -379,7 +377,6 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
             while (tally && console_state . readp < console_state . tailp)
               {
                 int charno;
@@ -431,7 +428,6 @@ sim_printf ("tally %d\n", tally);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("read  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -446,7 +442,6 @@ sim_printf ("read  got type %d\n", dcw . type);
 
             if (type != 0 && type != 1) //IOTD, IOTP
               {
-sim_printf ("uncomfortable with this\n");
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
@@ -459,7 +454,6 @@ sim_printf ("uncomfortable with this\n");
                 tally = 4096;
               }
 
-sim_printf ("tally %d\n", tally);
             sim_printf ("CONSOLE: ");
             word36 datum;
 
