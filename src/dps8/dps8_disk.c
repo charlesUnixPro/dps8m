@@ -227,6 +227,10 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 
     * disc = false;
 
+// init_toehold.pl1:
+/* write command = "31"b3; read command = "25"b3 */
+//  pcw.command = "40"b3;                      /* reset status */
+
     int chan = pcwp-> chan;
 sim_printf ("disk_cmd %o\n", pcwp -> dev_cmd);
     switch (pcwp -> dev_cmd)

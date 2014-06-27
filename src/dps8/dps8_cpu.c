@@ -981,7 +981,7 @@ static uint get_highest_intr (void)
             if (events . fault [i])
               cnt ++;
           events . any = !! cnt;
-
+          //sim_printf ("int num %d (%o), pair_addr %o\n", int_num, int_num, int_num * 2);
           return int_num * 2;
         }
     return 1;
@@ -1191,6 +1191,7 @@ t_stat sim_instr (void)
         switch (cpu . cycle)
           {
             case INTERRUPT_cycle:
+              {
                 // In the INTERRUPT CYCLE, the processor safe-stores
                 // the Control Unit Data (see Section 3) into 
                 // program-invisible holding registers in preparation 
@@ -1202,6 +1203,9 @@ t_stat sim_instr (void)
                 // port for which there is a bit set in the interrupt 
                 // present register.  
 
+                uint intr_pair_addr;
+                intr_pair_addr = get_highest_intr ();
+                cu . FI_ADDR = intr_pair_addr / 2;
                 cu_safe_store ();
 
                 // Temporary absolute mode
@@ -1219,8 +1223,6 @@ t_stat sim_instr (void)
                     // In the h/w this is done later, but doing it now allows 
                     // us to avoid clean up for no interrupt pending.
 
-                    uint intr_pair_addr;
-                    intr_pair_addr = get_highest_intr ();
                     if (intr_pair_addr != 1) // no interrupts 
                       {
                         sim_debug (DBG_INTR, & cpu_dev, "intr_pair_addr %u\n", 
@@ -1244,7 +1246,8 @@ t_stat sim_instr (void)
 // The only place cycle is set to INTERRUPT_cycle in FETCH_cycle; therefore
 // we can safely assume that is the state that should be restored.
                 setCpuCycle (FETCH_cycle);
-                break;
+              }
+              break;
 
             case INTERRUPT_EXEC_cycle:
             case INTERRUPT_EXEC2_cycle:
@@ -1286,7 +1289,15 @@ t_stat sim_instr (void)
 
             case FETCH_cycle:
 
-                if (cpu . interrupt_flag)
+// If the instruction pair virtual address being formed is the result of a 
+// transfer of control condition or if the current instruction is 
+// Execute (xec), Execute Double (xed), Repeat (rpt), Repeat Double (rpd), 
+// or Repeat Link (rpl), the group 7 faults and interrupt present lines are 
+// not sampled.
+
+                if (cpu . interrupt_flag && 
+                   ((PPR . IC % 2) == 0) &&
+                   (! (cu . xde | cu . xdo | cu . rpt | cu . rd)))
                   {
 // This is the only place cycle is set to INTERRUPT_cycle; therefore
 // return from interrupt can safely assume the it should set the cycle
@@ -1326,11 +1337,13 @@ t_stat sim_instr (void)
                   }
 
 
-// XXX Consider not checking for interrupts if cu.rpt
-
                 // XXX The conditions are more rigorous: see AL39, pg 327
-                if (PPR.IC % 2 == 0 && // Even address
-                    ci -> i == 0) // Not inhibited
+           // ci is not set up yet; check the inhibit bit in the IWB!
+                //if (PPR.IC % 2 == 0 && // Even address
+                    //ci -> i == 0) // Not inhibited
+                //if (PPR.IC % 2 == 0 && // Even address
+                    //GET_I (cu . IWB) == 0) // Not inhibited
+                if (GET_I (cu . IWB) == 0) // Not inhibited
                   {
                     cpu . interrupt_flag = sample_interrupts ();
                     cpu . g7_flag = bG7Pending ();

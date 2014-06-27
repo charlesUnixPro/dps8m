@@ -1470,7 +1470,8 @@ int iomListService (int iom_unit_num, int chan_num, dcw_t * dcwp)
           {
             // 4.3.1a: TALLY == 0
             // 4.3.1a: SET USER FAULT FLAG
-            iom_fault (iom_unit_num, chan_num, __func__, 0, 1);
+            //iom_fault (iom_unit_num, chan_num, __func__, 0, 1);
+            return 1;
           }
         else if (lpw . tally > 1)
           {
@@ -1762,7 +1763,7 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
 #if 1
     // pass the pcw pointer in through up7 for convienence
     unitp -> u3 = (int32) dcw_ptr;
-    sim_activate (unitp, 1024);
+    sim_activate (unitp, sys_opts . iom_times . chan_activate);
     return 0;
 #else
     int rc = iom_cmd (unitp, pcwp);

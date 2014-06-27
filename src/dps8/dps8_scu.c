@@ -1214,7 +1214,7 @@ int scu_set_interrupt(uint scu_unit_num, uint inum)
 {
     const char* moi = "SCU::interrupt";
     
-//sim_printf ("received %d\n", inum);
+    //sim_printf ("received %d (%o)\n", inum, inum);
     if (inum > 31) {
         sim_debug (DBG_WARN, &scu_dev, "%s: Bad interrupt number %d\n", moi, inum);
         return 1;

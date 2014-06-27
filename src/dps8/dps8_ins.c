@@ -5069,7 +5069,10 @@ if (rTR == 261632)  // XXX temp hack to make Timer register one-shot
                 if (rc)
                   return rc;
                 if (sample_interrupts ())
-                  break;
+                  {
+                    //sim_printf ("leaving dis 'cause of interrupt\n");
+                    break;
+                  }
                 if (rTR)
                   {
                     rTR = (rTR - 1) & MASK27;
