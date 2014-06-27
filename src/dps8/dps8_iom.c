@@ -2095,7 +2095,7 @@ static void iom_show_channel_mbx (int iom_unit_num, uint chan)
     
     uint32 addr = lpw . dcw_ptr;
     if (lpw . tally == 0)
-      lpw . tally = 3;
+      lpw . tally = 5;
 
     // This isn't quite right, but sufficient for debugging
     uint control = 2;

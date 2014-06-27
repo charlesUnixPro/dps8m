@@ -211,14 +211,152 @@ t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_co
     return SCPE_OK;
   }
 
-static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+//static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
+static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
   {
-    return 1;
-  }
+    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
+    struct disk_state * disk_statep = & disk_state [disk_unit_num];
+    word12 stati = 0;
+    word6 rcount = 0;
+    word12 residue = 0;
+    word3 char_pos = 0;
+    bool is_read = true;
 
+    * disc = false;
+
+    int chan = pcwp-> chan;
+sim_printf ("disk_cmd %o\n", pcwp -> dev_cmd);
+    switch (pcwp -> dev_cmd)
+      {
+        case 025: // CMD 25 READ
+          {
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+sim_printf ("read  got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            uint cp = dcw.fields.ddcw.cp;
+
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
 #if 0
-static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
-  {
+            if (type == 3 && tally != 1)
+              {
+                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
+                           __func__, tally);
+              }
+#endif
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+sim_printf ("tally %d\n", tally);
+            stati = 04000;
+          }
+          break;
+
+        case 030: // CMD 30 SEEK_512
+          {
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+sim_printf ("read  got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            uint cp = dcw.fields.ddcw.cp;
+
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+#if 0
+            if (type == 3 && tally != 1)
+              {
+                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
+                           __func__, tally);
+              }
+#endif
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+sim_printf ("tally %d\n", tally);
+            stati = 04000;
+          }
+          break;
+
+        case 040: // CMD 40 Reset status
+          {
+            stati = 04000;
+            disk_statep -> io_mode = no_mode;
+            sim_debug (DBG_NOTIFY, & disk_dev, "Reset status\n");
+          }
+          break;
+
+        default:
+exit(1);
+      
+      }
+    status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
+
+    return 0;
+#if 0
 // First call to disk to 20184:
 //
 // Connect channel LPW at 001410: [dcw=01412 ires=0 hrel=0 ae=0 nc=0 trun=1 srel=0 tally=01]
@@ -321,8 +459,60 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need
           }
       }
     // return 1;   // not reached
-  }
 #endif
+  }
+
+static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
+  {
+    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
+
+    // First, execute the command in the PCW, and then walk the 
+    // payload channel mbx looking for IDCWs.
+
+    uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+    //lpw_t lpw;
+    //fetch_and_parse_lpw (& lpw, chanloc, false);
+
+// Ignore a CMD 051 in the PCW
+    if (pcwp -> dev_cmd == 051)
+      return 1;
+    bool disc;
+    disk_cmd (unitp, pcwp, & disc);
+
+    // ctrl of the pcw is observed to be 0 even when there are idcws in the
+    // list so ignore that and force it to 2.
+    //uint ctrl = pcwp -> control;
+    uint ctrl = 2;
+    if (disc)
+      ctrl = 0;
+sim_printf ("starting list; disc %d, ctrl %d\n", disc, ctrl);
+
+    // It looks like the disk controller ignores IOTD and olny obeys ctrl...
+    //while ((! disc) && ctrl == 2)
+    while (ctrl == 2)
+      {
+sim_printf ("perusing channel mbx lpw....\n");
+        dcw_t dcw;
+        int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw);
+        if (rc)
+          {
+sim_printf ("list service denies!\n");
+            break;
+          }
+sim_printf ("persuing got type %d\n", dcw . type);
+        if (dcw . type != idcw)
+          {
+sim_printf ("not instr\n");
+            break;
+          }
+        disk_cmd (unitp, & dcw . fields . instr, & disc);
+        ctrl = dcw . fields . instr . control;
+      }
+    send_terminate_interrupt (iom_unit_num, pcwp -> chan);
+
+    return 1;
+  }
 
 static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * __attribute__((unused)) tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 * __attribute__((unused)) stati)
   {
