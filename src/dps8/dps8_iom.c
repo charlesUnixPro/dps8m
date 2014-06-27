@@ -1,3 +1,35 @@
+//
+// \file dps8_iom.c
+// \project dps8
+// \date 9/21/12
+//  Adapted by Harry Reed on 9/21/12.
+//  27Nov13 CAC - Reference document is
+//    431239854 6000B IOM Spec Jul75
+//    This is a 6000B IOM emulator. 
+//
+
+// iom.c -- emulation of an I/O Multiplexer
+// 
+// See: Document 43A239854 -- 6000B I/O Multiplexer
+// (43A239854_600B_IOM_Spec_Jul75.pdf)
+// 
+// See AN87 which specifies some details of portions of PCWs that are
+// interpreted by the channel boards and not the IOM itself.
+// 
+// See also: http://www.multicians.org/fjcc5.html -- Communications
+// and Input/Output Switching in a Multiplex Computing System
+// 
+// See also: Patents: 4092715, 4173783, 1593312
+
+
+// Copyright (c) 2007-2013 Michael Mondy
+// 
+// This software is made available under the terms of the
+// ICU License -- ICU 1.8.1 and later.
+// See the LICENSE file at the top-level directory of this distribution and
+// at http://example.org/project/LICENSE.
+
+
 #include <stdio.h>
 #include <sys/time.h>
 
