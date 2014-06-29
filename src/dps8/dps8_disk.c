@@ -232,11 +232,20 @@ static int disk_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
 //  pcw.command = "40"b3;                      /* reset status */
 
     int chan = pcwp-> chan;
-sim_printf ("disk_cmd %o\n", pcwp -> dev_cmd);
+//sim_printf ("disk_cmd %o [%lld]\n", pcwp -> dev_cmd, sys_stats . total_cycles);
     switch (pcwp -> dev_cmd)
       {
+        case 000: // CMD 00 Request status
+          {
+            stati = 04000;
+            disk_statep -> io_mode = no_mode;
+            sim_debug (DBG_NOTIFY, & disk_dev, "Request status\n");
+          }
+          break;
+
         case 025: // CMD 25 READ
           {
+sim_printf ("disk read [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
             dcw_t dcw;
@@ -293,6 +302,7 @@ sim_printf ("tally %d\n", tally);
 
         case 030: // CMD 30 SEEK_512
           {
+sim_printf ("disk seek512 [%lld]\n", sys_stats . total_cycles);
             // Get the DDCW
 
             dcw_t dcw;
@@ -304,7 +314,7 @@ sim_printf ("tally %d\n", tally);
                 stati = 05001; // BUG: arbitrary error code; config switch
                 break;
               }
-sim_printf ("read  got type %d\n", dcw . type);
+sim_printf ("seek  got type %d\n", dcw . type);
             if (dcw . type != ddcw)
               {
                 sim_printf ("not ddcw? %d\n", dcw . type);
@@ -347,6 +357,137 @@ sim_printf ("tally %d\n", tally);
           }
           break;
 
+        case 033: // CMD 33 WRITE AND COMPARE
+          {
+sim_printf ("disk write&cmp [%lld]\n", sys_stats . total_cycles);
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+sim_printf ("write got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            uint cp = dcw.fields.ddcw.cp;
+
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+#if 0
+            if (type == 3 && tally != 1)
+              {
+                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
+                           __func__, tally);
+              }
+#endif
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+sim_printf ("tally %d\n", tally);
+            stati = 04000;
+          }
+          break;
+
+        case 034: // CMD 30 SEEK
+          {
+sim_printf ("disk seek [%lld]\n", sys_stats . total_cycles);
+            // Get the DDCW
+
+            dcw_t dcw;
+            int rc = iomListService (iom_unit_num, chan, & dcw);
+
+            if (rc)
+              {
+                sim_printf ("list service failed\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+sim_printf ("seek  got type %d\n", dcw . type);
+            if (dcw . type != ddcw)
+              {
+                sim_printf ("not ddcw? %d\n", dcw . type);
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+
+            uint type = dcw.fields.ddcw.type;
+            uint tally = dcw.fields.ddcw.tally;
+            uint daddr = dcw.fields.ddcw.daddr;
+            uint cp = dcw.fields.ddcw.cp;
+
+            if (type == 0) // IOTD
+              * disc = true;
+            else if (type == 1) // IOTP
+              * disc = false;
+            else
+              {
+sim_printf ("uncomfortable with this\n");
+                stati = 05001; // BUG: arbitrary error code; config switch
+                break;
+              }
+#if 0
+            if (type == 3 && tally != 1)
+              {
+                sim_debug (DBG_ERR, &iom_dev, "%s: Type is 3, but tally is %d\n",
+                           __func__, tally);
+              }
+#endif
+            if (tally == 0)
+              {
+                sim_debug (DBG_DEBUG, & iom_dev,
+                           "%s: Tally of zero interpreted as 010000(4096)\n",
+                           __func__);
+                tally = 4096;
+              }
+
+sim_printf ("tally %d\n", tally);
+            stati = 04000;
+          }
+          break;
+
+// dcl  1 io_status_word based (io_status_word_ptr) aligned,       /* I/O status information */
+//   (
+//   2 t bit (1),              /* set to "1"b by IOM */
+//   2 power bit (1),          /* non-zero if peripheral absent or power off */
+//   2 major bit (4),          /* major status */
+//   2 sub bit (6),            /* substatus */
+//   2 eo bit (1),             /* even/odd bit */
+//   2 marker bit (1),         /* non-zero if marker status */
+//   2 soft bit (2),           /* software status */
+//   2 initiate bit (1),       /* initiate bit */
+//   2 abort bit (1),          /* software abort bit */
+//   2 channel_stat bit (3),   /* IOM channel status */
+//   2 central_stat bit (3),   /* IOM central status */
+//   2 mbz bit (6),
+//   2 rcount bit (6)
+//   ) unaligned;              /* record count residue */
+
         case 040: // CMD 40 Reset status
           {
             stati = 04000;
@@ -356,7 +497,11 @@ sim_printf ("tally %d\n", tally);
           break;
 
         default:
-exit(1);
+          {
+sim_printf ("disk daze %d\n", pcwp -> dev_cmd);
+            stati = 04000;
+          }
+          break;
       
       }
     status_service (iom_unit_num, chan, pcwp -> dev_code, stati, rcount, residue, char_pos, is_read);
@@ -492,29 +637,30 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     uint ctrl = 2;
     if (disc)
       ctrl = 0;
-sim_printf ("starting list; disc %d, ctrl %d\n", disc, ctrl);
+//sim_printf ("starting list; disc %d, ctrl %d\n", disc, ctrl);
 
     // It looks like the disk controller ignores IOTD and olny obeys ctrl...
     //while ((! disc) && ctrl == 2)
     while (ctrl == 2)
       {
-sim_printf ("perusing channel mbx lpw....\n");
+//sim_printf ("perusing channel mbx lpw....\n");
         dcw_t dcw;
         int rc = iomListService (iom_unit_num, pcwp -> chan, & dcw);
         if (rc)
           {
-sim_printf ("list service denies!\n");
+//sim_printf ("list service denies!\n");
             break;
           }
-sim_printf ("persuing got type %d\n", dcw . type);
+//sim_printf ("persuing got type %d\n", dcw . type);
         if (dcw . type != idcw)
           {
-sim_printf ("not instr\n");
+//sim_printf ("not instr\n");
             break;
           }
         disk_cmd (unitp, & dcw . fields . instr, & disc);
         ctrl = dcw . fields . instr . control;
       }
+//sim_printf ("disk interrupts\n");
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);
 
     return 1;
@@ -538,7 +684,7 @@ static t_stat disk_svc (UNIT * unitp)
 
 static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * __attribute__((unused)) tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 * __attribute__((unused)) stati)
   {
-sim_printf ("disk_iom_io called\n");
+//sim_printf ("disk_iom_io called\n");
     //int disk_unit_num = DISK_UNIT_NUM (unitp);
     int disk_unit_num = DISK_UNIT_NUM (unitp);
     struct disk_state * disk_statep = & disk_state [disk_unit_num];
