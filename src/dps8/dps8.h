@@ -18,6 +18,10 @@
 
 #include <setjmp.h>     // for setjmp/longjmp used by interrupts & faults
 
+#if defined(__APPLE__) && defined(__MACH__)
+#include <libgen.h> // needed for OS/X
+#endif
+
 #ifndef EMULATOR_ONLY
 #define EMULATOR_ONLY 1
 #endif
