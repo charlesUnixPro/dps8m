@@ -705,7 +705,11 @@ static _ptw* modifyPTW(_sdw *sdw, word18 offset)
     core_read(sdw->ADDR + x2, &PTWx2);
     PTWx2 = SETBIT(PTWx2, 6);
     core_write(sdw->ADDR + x2, PTWx2);
-    
+//if_sim_debug (DBG_TRACE, & cpu_dev)
+//sim_printf ("modifyPTW 0%o %012llo ADDR %o U %llo M %llo F %llo FC %llo\n",
+            //sdw -> ADDR + x2, PTWx2, GETHI (PTWx2), TSTBIT(PTWx2, 9), 
+            //TSTBIT(PTWx2, 6), TSTBIT(PTWx2, 2), PTWx2 & 3);
+   
     PTW->M = 1;
     
     return PTW;
@@ -1224,7 +1228,8 @@ I:;
 
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(I)\n");
     //if (isSTROP(i) && PTW->M == 0)
-    if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
+    //if (thisCycle == OPERAND_STORE && PTW->M == 0)  // is this the right way to do this?
+    if (StrOp && PTW->M == 0)  // is this the right way to do this?
     {
 #if 0
         // Modify PTW -  Sets the page modified bit (PTW.M) in the PTW for a page in other than a descriptor segment page table.
