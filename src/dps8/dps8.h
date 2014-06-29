@@ -435,8 +435,10 @@ typedef struct DCDstruct DCDstruct;
 
 #ifdef __GNUC__
 #define NO_RETURN   __attribute__ ((noreturn))
+#define UNUSED      __attribute__ ((unused))
 #else
 #define NO_RETURN
+#define UNUSED
 #endif
 
 
