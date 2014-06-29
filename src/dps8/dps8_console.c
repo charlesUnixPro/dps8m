@@ -135,7 +135,9 @@ static struct
 static void check_keyboard (void);
 
 static int con_iom_cmd (UNIT * unitp, pcw_t * p);
+#if 0
 static int con_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
+#endif
 
 static t_stat opcon_reset (DEVICE * __attribute__((unused)) dptr)
   {
@@ -278,7 +280,7 @@ static int opcon_autoinput_show (FILE * __attribute__((unused)) st, UNIT * __att
 //-- 
 
 //static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read)
-static int con_cmd (UNIT * unitp, pcw_t * pcwp)
+static int con_cmd (UNIT * UNUSED unitp, pcw_t * pcwp)
   {
     int con_unit_num = OPCON_UNIT_NUM;
     int iom_unit_num = cables_from_ioms_to_con [con_unit_num] . iom_unit_num;
@@ -443,7 +445,7 @@ sim_printf ("uncomfortable with this\n");
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
             uint daddr = dcw.fields.ddcw.daddr;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type != 0 && type != 1) //IOTD, IOTP
               {
@@ -552,9 +554,8 @@ static int con_iom_cmd (UNIT * __attribute__((unused)) unitp, pcw_t * pcwp)
 
     // Execute the command in the PCW.
 
-    uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+    // uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
 
-    bool disc;
     con_cmd (unitp, pcwp);
 
     send_terminate_interrupt (iom_unit_num, pcwp -> chan);
@@ -579,6 +580,7 @@ static t_stat opcon_svc (UNIT * unitp)
   }
 
 
+#if 0
 /*
  * con_iom_io()
  *
@@ -823,6 +825,7 @@ static int con_iom_io (UNIT * __attribute__((unused)) unitp, uint chan, uint __a
       }
     // return 0;
   }
+#endif
 
 //-- // The IOM will send a fault to the device for TRO and/or PTRO
 //-- // pre ? PTRO : TRO

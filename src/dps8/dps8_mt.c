@@ -98,7 +98,7 @@ static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p);
-static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
+//static int mt_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 #define N_MT_UNITS_MAX 16
 #define N_MT_UNITS 1 // default
@@ -401,7 +401,7 @@ static int mt_cmd (UNIT * unitp, pcw_t * pcwp, bool * disc)
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
             uint daddr = dcw.fields.ddcw.daddr;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
               * disc = true;
@@ -561,7 +561,7 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
 
-    uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+    //uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
@@ -632,6 +632,7 @@ static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_pro
     return 0;
   }
 
+#if 0
 static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_code, uint * tally, uint * __attribute__((unused)) cp, word36 * wordp, word12 * stati)
   {
     //sim_debug (DBG_DEBUG, & tape_dev, "%s\n", __func__);
@@ -726,6 +727,8 @@ static int mt_iom_io (UNIT * unitp, uint chan, uint __attribute__((unused)) dev_
 //--     cancel_run(STOP_BUG);
 //    return 1;
   }
+#endif
+
 //-- 
 //-- static t_stat mt_svc(UNIT *up)
 //-- {

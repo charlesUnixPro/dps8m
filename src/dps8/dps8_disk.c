@@ -61,7 +61,7 @@ static t_stat disk_reset (DEVICE * dptr);
 static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp);
-static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
+//static int disk_iom_io (UNIT * unitp, uint chan, uint dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static t_stat disk_svc (UNIT *);
 
@@ -267,8 +267,8 @@ sim_printf ("read  got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
               * disc = true;
@@ -324,8 +324,8 @@ sim_printf ("seek  got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
               * disc = true;
@@ -381,8 +381,8 @@ sim_printf ("write got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
               * disc = true;
@@ -438,8 +438,8 @@ sim_printf ("seek  got type %d\n", dcw . type);
 
             uint type = dcw.fields.ddcw.type;
             uint tally = dcw.fields.ddcw.tally;
-            uint daddr = dcw.fields.ddcw.daddr;
-            uint cp = dcw.fields.ddcw.cp;
+            // uint daddr = dcw.fields.ddcw.daddr;
+            // uint cp = dcw.fields.ddcw.cp;
 
             if (type == 0) // IOTD
               * disc = true;
@@ -621,7 +621,7 @@ static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp)
     // First, execute the command in the PCW, and then walk the 
     // payload channel mbx looking for IDCWs.
 
-    uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
+    // uint chanloc = mbx_loc (iom_unit_num, pcwp -> chan);
     //lpw_t lpw;
     //fetch_and_parse_lpw (& lpw, chanloc, false);
 
@@ -682,7 +682,8 @@ static t_stat disk_svc (UNIT * unitp)
     return SCPE_OK;
   }
 
-static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__((unused)) chan, uint __attribute__((unused)) dev_code, uint * __attribute__((unused)) tally, uint * __attribute__((unused)) cp, word36 * __attribute__((unused)) wordp, word12 * __attribute__((unused)) stati)
+#if 0
+static int disk_iom_io (UNIT * UNUSED unitp, uint UNUSED chan, uint UNUSED dev_code, uint * UNUSED tally, uint * UNUSED cp, word36 * UNUSED wordp, word12 * UNUSED stati)
   {
 //sim_printf ("disk_iom_io called\n");
     //int disk_unit_num = DISK_UNIT_NUM (unitp);
@@ -708,14 +709,15 @@ static int disk_iom_io (UNIT * __attribute__((unused)) unitp, uint __attribute__
       }
     // return 0; // not reached
   }
+#endif
 
-static t_stat disk_show_nunits (FILE * __attribute__((unused)) st, UNIT * __attribute__((unused)) uptr, int __attribute__((unused)) val, void * __attribute__((unused)) desc)
+static t_stat disk_show_nunits (FILE * UNUSED st, UNIT * UNUSED uptr, int UNUSED val, void * UNUSED desc)
   {
     sim_printf("Number of DISK units in system is %d\n", disk_dev . numunits);
     return SCPE_OK;
   }
 
-static t_stat disk_set_nunits (UNIT * __attribute__((unused)) uptr, int32 __attribute__((unused)) value, char * cptr, void * __attribute__((unused)) desc)
+static t_stat disk_set_nunits (UNIT * UNUSED uptr, int32 UNUSED value, char * cptr, void * UNUSED desc)
   {
     int n = atoi (cptr);
     if (n < 1 || n > N_DISK_UNITS_MAX)

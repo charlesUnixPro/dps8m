@@ -1674,6 +1674,7 @@ static int send_flags_to_channel (void)
     return 0;
   }
 
+#if 0
 //
 // xxdo_payload_channel
 // return 0 ok, != 0 error
@@ -1718,6 +1719,7 @@ static int xxdo_payload_channel (int iom_unit_num, pcw_t * pcwp)
 
     return rc;
   }
+#endif
 
 //
 // do_payload_channel
@@ -1735,6 +1737,9 @@ static int do_payload_channel (int iom_unit_num, word24 dcw_ptr /*pcw_t * pcwp*/
     uint chan = pcw . chan;
     uint dev_code = pcw . dev_code;
     DEVICE * devp = iom [iom_unit_num] . channels [chan] [dev_code] . dev;
+
+//if (chan == 013) iom_show_mbx (NULL, iom_unit + iom_unit_num, 0, "");
+//if (chan == 013) sim_printf ("[%lld]\n", sys_stats . total_cycles);
 
     if (devp == NULL)
       {
